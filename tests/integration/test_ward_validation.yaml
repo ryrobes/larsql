@@ -1,0 +1,105 @@
+# Test: Ward Validation (Retry Mode)
+# Tests: Ward validates output, retry on failure, successful output passes
+# Expected: Initial output may fail validation, retry succeeds, final output valid
+
+cascade_id: integration_test_ward_validation
+description: |
+  Integration test verifying ward validation system:
+  - Pre/post wards can validate cell output
+  - Retry mode allows automatic retry on validation failure
+  - Valid output eventually passes through
+  - Ward results are tracked in state
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Generate content that must pass validation
+  - name: generate_content
+    instructions: |
+      Write a short sentence (exactly 10-50 words) about the benefits of exercise.
+
+      IMPORTANT: Your response MUST:
+      - Start with a capital letter
+      - End with a period
+      - Be between 10 and 50 words
+      - Be grammatically correct
+
+      Just write the sentence directly, no preamble.
+    rules:
+      max_turns: 1
+      max_attempts: 3
+    wards:
+      post:
+        - mode: retry
+          validator:
+            python: |
+              # Validate the output
+              # Note: polyglot validators receive 'content' (string) and 'original_input' (dict)
+              text = content.strip() if content else ""
+
+              # Basic checks
+              words = text.split()
+              word_count = len(words)
+
+              errors = []
+              if word_count < 10:
+                  errors.append(f"Too few words: {word_count}")
+              if word_count > 50:
+                  errors.append(f"Too many words: {word_count}")
+              if text and not text[0].isupper():
+                  errors.append("Must start with capital letter")
+              if text and not text.rstrip().endswith('.'):
+                  errors.append("Must end with period")
+
+              valid = len(errors) == 0
+              reason = "Valid content" if valid else "; ".join(errors)
+
+              result = {"valid": valid, "reason": reason}
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: Content was generated (LLM output in state)
+        content_str = state.get('output_generate_content', '')
+        if content_str:
+            checks.append({'check': 'content_generated', 'passed': True})
+        else:
+            checks.append({'check': 'content_generated', 'passed': False})
+            errors.append("No content generated")
+
+        # Check 2: The content should meet our validation criteria
+        # (since ward in retry mode should ensure this)
+        words = content_str.split() if content_str else []
+        word_count = len(words)
+
+        if 10 <= word_count <= 50:
+            checks.append({'check': 'word_count_valid', 'passed': True})
+        else:
+            checks.append({'check': 'word_count_valid', 'passed': False})
+            errors.append(f"Word count {word_count} not in range 10-50")
+
+        # Check 3: Content starts with capital and ends with period
+        if content_str and content_str[0].isupper():
+            checks.append({'check': 'starts_capital', 'passed': True})
+        else:
+            checks.append({'check': 'starts_capital', 'passed': False})
+            errors.append("Content doesn't start with capital")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'content_preview': content_str[:100] if content_str else None,
+            'word_count': word_count
+        }

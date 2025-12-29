@@ -1,0 +1,103 @@
+background_image: examples/kate.jpg
+background_darken: 0.5
+blocks:
+    - block_id: metrics_stream
+      type: process
+      command: python -u examples/scripts/test_metrics_output.py
+      x: 5
+      y: 3
+      width: 51
+      height: 37
+      block_map:
+          title: Metrics Stream
+          overlay_color: "#008080"
+          darken_factor: 0.6
+          blend_opacity: 0.3
+    - block_id: status_bar_chart
+      type: bar_chart
+      source_block: metrics_stream
+      x: 99
+      y: 23
+      width: 42
+      height: 11
+      data_extraction:
+          patterns:
+              - type: contains
+                value: "[SUCCESS]"
+                metric: success_count
+              - type: contains
+                value: "[ERROR]"
+                metric: error_count
+              - type: contains
+                value: "[WARNING]"
+                metric: warning_count
+          metrics:
+              - name: success_count
+                label: Success
+                aggregation: sum
+              - name: error_count
+                label: Errors
+                aggregation: sum
+              - name: warning_count
+                label: Warnings
+                aggregation: sum
+      block_map:
+          title: Request Status
+          overlay_color: "#ff6b6b"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: cpu_line_chart
+      type: line_chart
+      source_block: metrics_stream
+      x: 125
+      y: 6
+      width: 45
+      height: 15
+      data_extraction:
+          patterns:
+              - type: extract_number
+                prefix: "CPU:"
+                metric: cpu_usage
+          metric: cpu_usage
+          max_points: 60
+      block_map:
+          title: CPU Usage Over Time
+          overlay_color: "#4ecdc4"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: memory_line_chart
+      type: line_chart
+      source_block: metrics_stream
+      x: 66
+      y: 36
+      width: 94
+      height: 15
+      data_extraction:
+          patterns:
+              - type: extract_number
+                prefix: "Memory:"
+                metric: memory_usage
+          metric: memory_usage
+          max_points: 60
+      block_map:
+          title: Memory Usage (MB)
+          overlay_color: "#f7b731"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: total_lines
+      type: line_counter
+      source_block: metrics_stream
+      x: 71
+      y: 2
+      width: 34
+      height: 8
+      visualization:
+          font: ansi_regular
+          format: "{value}"
+      block_map:
+          title: Total Lines
+          overlay_color: "#a55eea"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+          css_merge:
+              color: "#ffffff"

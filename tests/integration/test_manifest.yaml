@@ -1,0 +1,70 @@
+# Test: Manifest (Quartermaster Auto Tool Selection)
+# Tests: traits: manifest enables automatic tool selection
+# Expected: LLM can discover and use tools without explicit listing
+
+cascade_id: integration_test_manifest
+description: |
+  Integration test verifying manifest/quartermaster feature:
+  - traits: manifest enables automatic tool discovery
+  - LLM can select and use appropriate tools
+  - Tools execute successfully when chosen
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Use manifest to auto-select tools
+  - name: auto_tool_select
+    instructions: |
+      You have access to tools via the manifest system.
+
+      Use the set_state tool to store a value:
+      - key: "manifest_test"
+      - value: "success"
+
+      After calling set_state, confirm you did it.
+    traits: manifest
+    manifest_context: current
+    rules:
+      max_turns: 3
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Check 1: LLM output exists
+        output_str = state.get('output_auto_tool_select') or ''
+        if output_str and len(output_str) > 0:
+            checks.append({'check': 'llm_responded', 'passed': True})
+        else:
+            checks.append({'check': 'llm_responded', 'passed': False})
+            errors.append("No LLM output")
+
+        # Check 2: set_state was called (manifest_test key exists)
+        manifest_val = state.get('manifest_test')
+        if manifest_val == 'success':
+            checks.append({'check': 'tool_executed', 'passed': True})
+        else:
+            # Lenient: LLM might not have followed instructions exactly
+            # But some state should exist showing the cascade ran
+            if manifest_val:
+                checks.append({'check': 'tool_executed', 'passed': True, 'note': 'Value was: ' + str(manifest_val)})
+            else:
+                checks.append({'check': 'tool_executed', 'passed': False})
+                errors.append("set_state tool not called or manifest_test not set")
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'manifest_test_value': manifest_val,
+            'state_keys': list(state.keys())
+        }

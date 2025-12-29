@@ -1,0 +1,102 @@
+# Test: Output Schema Validation
+# Tests: JSON schema validation with automatic retry on schema errors
+# Expected: LLM output conforms to schema, validated_output in state
+
+cascade_id: integration_test_output_schema
+description: |
+  Integration test verifying output_schema validation:
+  - LLM must produce JSON matching schema
+  - Schema errors trigger retry with retry_instructions
+  - Valid output stored in state.validated_output
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Generate structured output with schema validation
+  - name: generate_product
+    instructions: |
+      Create a product entry for a "Wireless Mouse".
+
+      Return ONLY valid JSON (no markdown, no explanation) with this exact structure:
+      {
+        "name": "Product name here",
+        "price": 29.99,
+        "in_stock": true
+      }
+    output_schema:
+      type: object
+      required:
+        - name
+        - price
+        - in_stock
+      properties:
+        name:
+          type: string
+          minLength: 3
+        price:
+          type: number
+          minimum: 0
+        in_stock:
+          type: boolean
+    rules:
+      max_turns: 1
+      max_attempts: 3
+      retry_instructions: |
+        Schema validation failed: {{ schema_error }}
+
+        Return ONLY a JSON object with:
+        - name (string, 3+ chars)
+        - price (number >= 0)
+        - in_stock (boolean)
+
+        Attempt {{ attempt }}/{{ max_attempts }}
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Check 1: validated_output exists in state
+        validated = state.get('validated_output')
+        if validated:
+            checks.append({'check': 'validated_output_exists', 'passed': True})
+        else:
+            checks.append({'check': 'validated_output_exists', 'passed': False})
+            errors.append("No validated_output in state")
+
+        # Check 2: validated_output has required fields
+        if validated:
+            has_name = 'name' in validated
+            has_price = 'price' in validated
+            has_stock = 'in_stock' in validated
+            if has_name and has_price and has_stock:
+                checks.append({'check': 'has_required_fields', 'passed': True})
+            else:
+                checks.append({'check': 'has_required_fields', 'passed': False})
+                errors.append("Missing required fields in validated_output")
+
+        # Check 3: Field types are correct
+        if validated:
+            name_ok = isinstance(validated.get('name'), str)
+            price_ok = isinstance(validated.get('price'), (int, float))
+            stock_ok = isinstance(validated.get('in_stock'), bool)
+            if name_ok and price_ok and stock_ok:
+                checks.append({'check': 'correct_types', 'passed': True})
+            else:
+                checks.append({'check': 'correct_types', 'passed': False})
+                errors.append("Field types incorrect")
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'validated_output': validated
+        }

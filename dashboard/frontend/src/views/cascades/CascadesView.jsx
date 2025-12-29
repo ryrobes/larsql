@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
 import { Button } from '../../components';
-import useNavigationStore from '../../stores/navigationStore';
 import useStudioCascadeStore from '../../studio/stores/studioCascadeStore';
 import CostTimelineChart from '../../components/CostTimelineChart';
+import CascadeSpecGraph from '../../components/CascadeSpecGraph';
 import KPICard from '../receipts/components/KPICard';
+import { ROUTES } from '../../routes.helpers';
 import './CascadesView.css';
 
 // Register AG Grid modules
@@ -216,8 +218,15 @@ const darkTheme = themeQuartz.withParams({
  * 1. All cascades grid with aggregate metrics
  * 2. Cascade instances grid (when cascade selected)
  */
-const CascadesView = ({ navigate, params = {} }) => {
-  const [selectedCascade, setSelectedCascade] = useState(null);
+const CascadesView = () => {
+  // React Router hooks
+  const { cascadeId: urlCascadeId } = useParams();
+  const navigate = useNavigate();
+
+  // Decode the cascade ID from URL
+  const initialCascadeId = urlCascadeId ? decodeURIComponent(urlCascadeId) : null;
+
+  const [selectedCascade, setSelectedCascade] = useState(initialCascadeId);
   const [cascades, setCascades] = useState([]);
   const [instances, setInstances] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -225,7 +234,6 @@ const CascadesView = ({ navigate, params = {} }) => {
   const [gridHeight, setGridHeight] = useState(600);
   const gridRef = useRef(null);
   const containerRef = useRef(null);
-  const { navigate: navStore } = useNavigationStore();
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -253,11 +261,11 @@ const CascadesView = ({ navigate, params = {} }) => {
         setMode('timeline');
 
         // Then navigate to Studio (will show the loaded cascade)
-        navStore('studio', {});
+        navigate(ROUTES.STUDIO);
       } else {
         console.warn('[CascadesView] Could not find cascade file for:', selectedCascade);
         // Fallback: navigate with cascade param, let Studio handle it
-        navStore('studio', { cascade: selectedCascade });
+        navigate(ROUTES.studioWithCascade(selectedCascade));
       }
     } catch (err) {
       console.error('[CascadesView] Error loading cascade:', err);
@@ -341,13 +349,16 @@ const CascadesView = ({ navigate, params = {} }) => {
     }
   };
 
-  // Initialize from URL params
+  // Sync state with URL params when URL changes
   useEffect(() => {
-    if (params.cascade || params.id) {
-      const cascadeId = params.cascade || params.id;
-      setSelectedCascade(cascadeId);
+    const newCascadeId = urlCascadeId ? decodeURIComponent(urlCascadeId) : null;
+    if (newCascadeId !== selectedCascade) {
+      setSelectedCascade(newCascadeId);
+      if (!newCascadeId) {
+        setInstances([]);
+      }
     }
-  }, [params.cascade, params.id]);
+  }, [urlCascadeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initial load
   useEffect(() => {
@@ -915,8 +926,8 @@ const CascadesView = ({ navigate, params = {} }) => {
     const { cascade_id } = event.data;
     if (cascade_id) {
       setSelectedCascade(cascade_id);
-      // Update URL to /#/cascades/{cascade_id}
-      navStore('cascades', { cascade: cascade_id });
+      // Update URL to /cascades/{cascade_id}
+      navigate(ROUTES.cascadesWithCascade(cascade_id));
     }
   };
 
@@ -924,7 +935,7 @@ const CascadesView = ({ navigate, params = {} }) => {
   const handleInstanceClick = (event) => {
     const { session_id } = event.data;
     if (session_id && selectedCascade) {
-      navStore('studio', { cascade: selectedCascade, session: session_id });
+      navigate(ROUTES.studioWithSession(selectedCascade, session_id));
     }
   };
 
@@ -932,8 +943,8 @@ const CascadesView = ({ navigate, params = {} }) => {
   const handleBack = () => {
     setSelectedCascade(null);
     setInstances([]);
-    // Update URL back to /#/cascades
-    navStore('cascades', {});
+    // Update URL back to /
+    navigate(ROUTES.CASCADES);
   };
 
   // Auto-size columns on first render
@@ -962,6 +973,17 @@ const CascadesView = ({ navigate, params = {} }) => {
     // Otherwise show all cascades (empty array = no filter)
     return [];
   }, [selectedCascade, filteredCascades, hasActiveFilters]);
+
+  // Get selected cascade's cells for spec graph
+  const selectedCascadeData = useMemo(() => {
+    if (!selectedCascade) return null;
+    const cascade = cascades.find(c => c.cascade_id === selectedCascade);
+    if (!cascade) return null;
+    return {
+      cells: cascade.phases || [],
+      inputsSchema: cascade.inputs_schema || {},
+    };
+  }, [selectedCascade, cascades]);
 
   return (
     <div className="cascades-view">
@@ -1056,6 +1078,17 @@ const CascadesView = ({ navigate, params = {} }) => {
           <CostTimelineChart cascadeIds={cascadeIdsForChart} />
         </div>
       </div>
+
+      {/* Cascade Spec Graph - only show when viewing a specific cascade */}
+      {selectedCascade && selectedCascadeData && selectedCascadeData.cells.length > 0 && (
+        <div className="cascades-section">
+          <CascadeSpecGraph
+            cells={selectedCascadeData.cells}
+            inputsSchema={selectedCascadeData.inputsSchema}
+            cascadeId={selectedCascade}
+          />
+        </div>
+      )}
 
       {/* Grid Section */}
       <div className="cascades-section">
@@ -1228,7 +1261,7 @@ const CascadesView = ({ navigate, params = {} }) => {
                   rowData={gridData}
                   columnDefs={columnDefs}
                   defaultColDef={defaultColDef}
-                  getRowId={(params) => params.data.cascade_id || params.data.session_id}
+                  getRowId={(params) => params.data.session_id || params.data.cascade_id}
                   domLayout="normal"
                   suppressCellFocus={true}
                   suppressMovableColumns={false}

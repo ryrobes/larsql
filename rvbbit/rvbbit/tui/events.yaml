@@ -1,0 +1,369 @@
+background_image: examples/leaves.jpg
+background_darken: 0.5
+
+parameters:
+  namespace:
+    type: dropdown
+    options: [default, kube-system, production, staging]
+    default: default
+  
+  refresh_rate:
+    type: slider
+    min: 1
+    max: 30
+    default: 5
+    step: 1
+  
+  action:
+    type: buttons
+    options: [Start, Stop, Refresh, Clear]
+    default: Stop
+
+blocks:
+  - block_id: namespace_fetcher
+    type: process
+    command: echo '["default", "kube-system", "production", "staging", "development", "tests"]'
+    visible: false
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+    data_extraction:
+      patterns:
+        - type: structured
+          format: json
+          path: "$"
+          store_as: namespaces
+    triggers:
+      on_data_change:
+        - namespace_control.refresh()
+
+  - block_id: data_monitor
+    type: continuous
+    command: |
+      while true; do
+        echo "[$(date +%H:%M:%S)] Monitoring namespace: {namespace} (refresh: {refresh_rate}s)"
+        echo "Status: $(shuf -n1 -e healthy warning critical)"
+        echo "Pods: $(shuf -i 1-50 -n1)"
+        echo "CPU: $(shuf -i 10-90 -n1)%"
+        echo "Memory: $(shuf -i 100-800 -n1)MB"
+        echo "Errors: $(shuf -i 0-5 -n1)"
+        sleep {refresh_rate}
+      done
+    x: 10
+    y: 5
+    width: 74
+    height: 20
+    data_extraction:
+      patterns:
+        - type: contains
+          value: "Status: critical"
+          metric: is_critical
+        - type: contains
+          value: "Status: warning"
+          metric: is_warning
+        - type: extract_number
+          prefix: "Pods:"
+          metric: pod_count
+        - type: extract_number
+          prefix: "CPU:"
+          suffix: "%"
+          metric: cpu_usage
+        - type: extract_number
+          prefix: "Memory:"
+          suffix: "MB"
+          metric: memory_usage
+        - type: extract_number
+          prefix: "Errors:"
+          metric: error_count
+    triggers:
+      on_data_change:
+        is_critical:
+          - alert_panel.show()
+          - "notify('⚠️ Critical status detected!')"
+          - delay(3000)
+          - alert_panel.hide()
+    block_map:
+      title: "📊 System Monitor"
+      overlay_color: "#2c3e50"
+      darken_factor: 0.6
+      blend_opacity: 0.3
+      border: false
+      padding: 1
+
+  - block_id: metrics_dashboard
+    type: panel
+    x: 10
+    y: 26
+    width: 74
+    height: 24
+    content:
+      - "[bold cyan]━━━ Real-time Metrics Dashboard ━━━[/bold cyan]"
+      - ""
+      - "[bold]Current Status:[/bold]"
+      - "• System: {{data_monitor.is_critical ? '[bold red]🔴 CRITICAL[/bold red]' : data_monitor.is_warning ? '[yellow]⚠️ WARNING[/yellow]' : '[green]✅ HEALTHY[/green]'}}"
+      - "• Namespace: [cyan]{namespace}[/cyan] | Refresh: {refresh_rate}s"
+      - ""
+      - "[bold]Resource Usage:[/bold]"
+      - "• Pods: [{{gradient(data_monitor.pod_count, 0, 50, '#00ff00', '#ff0000')}}]{{data_monitor.pod_count}} / 50[/] ({{data_monitor.pod_count * 2}}% capacity)"
+      - "• CPU: [{{gradient(data_monitor.cpu_usage, 0, 100, '#00ff00', '#ff0000')}}]{{data_monitor.cpu_usage}}%[/]"
+      - "• Memory: [{{gradient(data_monitor.memory_usage, 0, 1000, '#0099ff', '#ff0000')}}]{{data_monitor.memory_usage}}MB[/] / 1000MB"
+      - "• Errors: {{data_monitor.error_count > 0 ? '[red]' : '[green]'}}{{data_monitor.error_count}}[/]"
+      - ""
+      - "[bold]Statistics (since start):[/bold]"
+      - "• Average Pods: {{data_monitor.pod_count_avg:.1f}}"
+      - "• Peak Pods: {{data_monitor.pod_count_max}}"
+      - "• Min Pods: {{data_monitor.pod_count_min}}"
+      - "• Total Samples: {{data_monitor.pod_count_count}}"
+      - ""
+      - "[bold]Alerts:[/bold]"
+      - "{{data_monitor.pod_count > 40 ? '[bold red]⚠️ HIGH POD COUNT WARNING[/bold red]' : ''}}"
+      - "{{data_monitor.cpu_usage > 80 ? '[bold yellow]⚠️ HIGH CPU USAGE[/bold yellow]' : ''}}"
+      - "{{data_monitor.memory_usage > 700 ? '[bold yellow]⚠️ HIGH MEMORY USAGE[/bold yellow]' : ''}}"
+      - "{{data_monitor.error_count > 3 ? '[bold red]🚨 ERROR THRESHOLD EXCEEDED[/bold red]' : ''}}"
+    block_map:
+      title: "Live Metrics & Analytics"
+      overlay_color: "#1a1a2e"
+      darken_factor: 0.7
+      blend_opacity: 0.4
+      border: false
+      padding: 1
+
+  - block_id: namespace_control
+    type: controls
+    parameters: [namespace, refresh_rate]
+    layout: vertical
+    always_expanded: true
+    x: 86
+    y: 5
+    width: 50
+    height: 15
+    triggers:
+      on_parameter_change:
+        namespace:
+          - data_monitor.restart()
+          - "notify('Switched to namespace: {namespace}')"
+        refresh_rate:
+          - data_monitor.restart()
+    block_map:
+      title: "🎛️ Namespace Controls"
+      overlay_color: "#34495e"
+      darken_factor: 0.7
+      blend_opacity: 0.4
+      border: false
+      padding: 1
+
+  - block_id: action_buttons
+    type: controls
+    parameters: [action]
+    layout: vertical
+    always_expanded: true
+    x: 86
+    y: 21
+    width: 50
+    height: 8
+    triggers:
+      on_parameter_change:
+        action:
+          Start:
+            - data_monitor.start()
+            - "notify('📡 Monitoring started')"
+          Stop:
+            - data_monitor.stop()
+            - "notify('⏹️ Monitoring stopped')"
+          Refresh:
+            - namespace_fetcher.restart()
+            - data_monitor.restart()
+            - "notify('🔄 Refreshing data...')"
+          Clear:
+            - data_monitor.clear()
+            - "notify('🧹 Cleared output')"
+    block_map:
+      title: "🎬 Actions"
+      overlay_color: "#e74c3c"
+      darken_factor: 0.7
+      blend_opacity: 0.4
+      border: false
+      padding: 1
+
+  - block_id: alert_panel
+    type: panel
+    visible: false
+    x: 139
+    y: 5
+    width: 50
+    height: 15
+    content:
+      - "[bold red]━━━ ⚠️  SYSTEM ALERT ⚠️  ━━━[/bold red]"
+      - ""
+      - "[yellow]Critical status detected![/yellow]"
+      - ""
+      - "Last Readings:"
+      - "• Pods: {{data_monitor.pod_count}}"
+      - "• CPU: {{data_monitor.cpu_usage}}%"
+      - "• Memory: {{data_monitor.memory_usage}}MB"
+      - "• Errors: {{data_monitor.error_count}}"
+      - ""
+      - "[dim]This panel was triggered automatically[/dim]"
+      - "[dim]and will hide in 3 seconds.[/dim]"
+    block_map:
+      title: "🚨 Alert"
+      overlay_color: "#c0392b"
+      darken_factor: 0.8
+      blend_opacity: 0.5
+      border: true
+      padding: 1
+
+  - block_id: status_summary
+    type: panel
+    x: 86
+    y: 30
+    width: 50
+    height: 20
+    content:
+      - "[bold cyan]System Health Summary[/bold cyan]"
+      - ""
+      - "Pod Load Bar: [{{gradient(data_monitor.pod_count, 0, 50, '#00ff00', '#ff0000')}}]"
+      - "{{data_monitor.pod_count <= 10 ? '▓▓░░░░░░░░ Low' : data_monitor.pod_count <= 20 ? '▓▓▓▓░░░░░░ Normal' : data_monitor.pod_count <= 30 ? '▓▓▓▓▓▓░░░░ Medium' : data_monitor.pod_count <= 40 ? '▓▓▓▓▓▓▓▓░░ High' : '▓▓▓▓▓▓▓▓▓▓ Critical'}}"
+      - ""
+      - "CPU Load Bar: [{{gradient(data_monitor.cpu_usage, 0, 100, '#00ff00', '#ff0000')}}]"
+      - "{{data_monitor.cpu_usage <= 20 ? '▓▓░░░░░░░░ Low' : data_monitor.cpu_usage <= 40 ? '▓▓▓▓░░░░░░ Normal' : data_monitor.cpu_usage <= 60 ? '▓▓▓▓▓▓░░░░ Medium' : data_monitor.cpu_usage <= 80 ? '▓▓▓▓▓▓▓▓░░ High' : '▓▓▓▓▓▓▓▓▓▓ Critical'}}"
+      - ""
+      - "Memory Usage:"
+      - "{{data_monitor.memory_usage}}MB / 1000MB ({{data_monitor.memory_usage / 10:.0f}}%)"
+      - ""
+      - "[bold]Feature Demo:[/bold]"
+      - "• Conditional text & colors"
+      - "• Math expressions"
+      - "• Gradient functions"
+      - "• Aggregations (avg/min/max)"
+      - "• Real-time updates"
+      - "• Emergent behavior!"
+    block_map:
+      title: "📊 Health Summary"
+      overlay_color: "#2980b9"
+      darken_factor: 0.6
+      blend_opacity: 0.3
+      border: false
+      padding: 1
+
+  # Add chart blocks showcasing built-in chart capabilities
+  - block_id: cpu_line_chart
+    type: line_chart
+    parent_of: [data_monitor]
+    x: 139
+    y: 5
+    width: 50
+    height: 12
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: "CPU:"
+          suffix: "%"
+          metric: cpu_usage
+      metric: cpu_usage
+      max_points: 60
+    block_map:
+      title: "CPU Usage Over Time"
+      overlay_color: "#4ecdc4"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: status_bar_chart
+    type: bar_chart
+    source_block: data_monitor
+    x: 139
+    y: 18
+    width: 50
+    height: 12
+    data_extraction:
+      patterns:
+        - type: contains
+          value: "Status: healthy"
+          metric: healthy_count
+        - type: contains
+          value: "Status: warning"
+          metric: warning_count
+        - type: contains
+          value: "Status: critical"
+          metric: critical_count
+      metrics:
+        - name: healthy_count
+          label: "Healthy"
+          aggregation: sum
+        - name: warning_count
+          label: "Warning"
+          aggregation: sum
+        - name: critical_count
+          label: "Critical"
+          aggregation: sum
+    block_map:
+      title: "Status Distribution"
+      overlay_color: "#ff6b6b"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: time_window_chart
+    type: bar_chart
+    source_block: data_monitor
+    x: 191
+    y: 5
+    width: 58
+    height: 15
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: "Pods:"
+          metric: pods
+        - type: extract_number
+          prefix: "Errors:"
+          metric: errors
+      metrics:
+        - name: pods
+          label: "Pods (Now)"
+          aggregation: last
+        - name: pods
+          label: "Pods (30s avg)"
+          aggregation: average
+          time_window: "30s"
+        - name: pods
+          label: "Pods (1m max)"
+          aggregation: max
+          time_window: "minute"
+        - name: errors
+          label: "Errors (30s)"
+          aggregation: sum
+          time_window: "30s"
+        - name: errors
+          label: "Errors (1m)"
+          aggregation: sum
+          time_window: "minute"
+    block_map:
+      title: "Time Window Analysis"
+      overlay_color: "#e67e22"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: memory_sparkline
+    type: sparkline
+    source_block: data_monitor
+    x: 191
+    y: 21
+    width: 58
+    height: 9
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: "Memory:"
+          suffix: "MB"
+          metric: memory_usage
+      metric: memory_usage
+      max_points: 50
+      sparkline_config:
+        height: 7
+        format: "Memory: {value}MB [{min}-{max}]"
+    block_map:
+      title: "Memory Sparkline"
+      overlay_color: "#9b59b6"
+      darken_factor: 0.5
+      blend_opacity: 0.3

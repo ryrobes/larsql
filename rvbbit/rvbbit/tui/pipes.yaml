@@ -1,0 +1,366 @@
+background_image: examples/capecod.jpg
+background_darken: 0.5
+parameters:
+  refresh_rate:
+    type: slider
+    min: 0.1
+    max: 10.0
+    default: 0.1
+  class:
+    type: dropdown
+    options:
+    - class
+    default: Class X
+blocks:
+- block_id: raw_data
+  type: continuous
+  command: |
+    while true; do
+    echo "Timestamp: $(date +%s)"
+    echo "CPU: $(vmstat 1 2 | tail -1 | awk '{print 100-$15}')%"
+    echo "Memory: $(free -m | awk 'NR==2{print $3}') MB"
+    echo "Status: $(shuf -n1 -e OK OK ERROR OK OK)"
+    echo "---"
+    sleep {refresh_rate}
+    done
+  x: 18
+  y: 5
+  width: 35
+  height: 51
+  block_map:
+    title: Raw Data Stream
+    overlay_color: accent
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+- block_id: metrics_pipe
+  type: pipe
+  source_block: raw_data
+  transform: grep -E 'CPU:|Memory:|Timestamp:'
+  x: 87
+  y: 12
+  width: 27
+  height: 9
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      suffix: '%'
+      metric: cpu
+    - type: extract_number
+      prefix: 'Memory:'
+      suffix: MB
+      metric: memory
+    - type: extract_number
+      prefix: 'Timestamp:'
+      metric: timestamp
+  block_map:
+    title: Metrics Filter
+    overlay_color: accent
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+- block_id: error_pipe
+  type: pipe
+  source_block: raw_data
+  transform: grep ERROR || echo 'No errors'
+  x: 89
+  y: 24
+  width: 27
+  height: 8
+  data_extraction:
+    patterns:
+    - type: contains
+      value: ERROR
+      metric: has_error
+  triggers:
+    on_data_change:
+      has_error:
+      - alert_panel.show()
+      - delay(3000)
+      - alert_panel.hide()
+  block_map:
+    title: Error Filter
+    overlay_color: '#e74c3c'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+- block_id: json_pipe
+  type: pipe
+  source_block: metrics_pipe
+  transform: |
+    awk '/CPU:/ {cpu=$2} /Memory:/ {mem=$2} END {printf "{\"cpu\":\"%s\",\"memory\":\"%s\"}\n", cpu, mem} '
+  x: 134
+  y: 43
+  width: 12
+  height: 7
+  block_map:
+    title: JSON Formatter
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+    padding: 1
+- block_id: json_pipe2
+  type: pipe
+  source_block: json_pipe
+  command: |
+    jq
+  x: 171
+  y: 44
+  width: 30
+  height: 7
+  block_map:
+    title: JSON Formatter
+    overlay_color: light
+    render_raw_ansi: true
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+    padding: 1
+- block_id: stats_panel
+  type: panel
+  x: 58
+  y: 36
+  width: 27
+  height: 12
+  content:
+  - '[bold cyan]Live Statistics[/bold cyan]'
+  - ''
+  - 'CPU: {{metrics_pipe.cpu}}%'
+  - 'Memory: {{metrics_pipe.memory}}MB'
+  - ''
+  - 'CPU Avg: {{metrics_pipe.cpu_avg:.1f}}%'
+  - 'Memory Avg: {{metrics_pipe.memory_avg:.1f}}MB'
+  - ''
+  - 'Has Errors: {{error_pipe.has_error ? ''[red]YES[/red]'' : ''[green]NO[/green]''}}'
+  block_map:
+    title: 📈 Stats Panel
+    overlay_color: '#9b59b6'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+    border: false
+- block_id: alert_panel
+  type: panel
+  x: 61
+  y: 42
+  width: 50
+  height: 8
+  content:
+  - '[bold red]ERROR DETECTED[/bold red]'
+  - ''
+  - An error was found in the data stream!
+  - Check the error filter for details.
+  block_map:
+    title: 🚨 Alert
+    overlay_color: '#c0392b'
+    darken_factor: 0.8
+    blend_opacity: 0.5
+    border: false
+- block_id: metrics_chart
+  type: line_chart
+  source_block: metrics_pipe
+  x: 159
+  y: 3
+  width: 62
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      suffix: '%'
+      metric: cpu
+    metric: cpu
+    max_points: 50
+  block_map:
+    title: CPU Over Time
+    color: accent
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+- block_id: memory_chart
+  type: line_chart
+  source_block: metrics_pipe
+  x: 159
+  y: 18
+  width: 63
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'Memory:'
+      suffix: MB
+      metric: memory
+    metric: memory
+    max_points: 50
+  block_map:
+    title: Memory Over Time
+    color: accent
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+- block_id: controls
+  type: controls
+  parameters:
+  - refresh_rate
+  layout: vertical
+  always_expanded: true
+  x: 111
+  y: 2
+  width: 36
+  height: 7
+  triggers:
+    on_parameter_change:
+      refresh_rate:
+      - raw_data.restart()
+  block_map:
+    title: Controls
+    overlay_color: dominant
+    darken_factor: 0.7
+    blend_opacity: 0.4
+    border: false
+- block_id: spare_widget_0678
+  type: continuous
+  command: ../cheshire/venv/bin/cheshire 'SELECT name as process, round(CAST(resident_size AS REAL)/1024/1024,2) as mem FROM
+    processes ORDER BY resident_size DESC LIMIT 20' rich_table 5 --title 'Top 10 Memory Consumers'  --database 'osquery'
+  x: 221
+  y: 3
+  width: 42
+  height: 30
+  block_map:
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 1
+- block_id: spare_widget_03333
+  type: continuous
+  command: ../cheshire/venv/bin/cheshire 'SELECT '\''Used'\'' as x, (memory_total - memory_available)/1024/1024 as y FROM
+    memory_info UNION ALL SELECT '\''Available'\'', memory_available/1024/1024 FROM memory_info UNION ALL SELECT '\''Cached'\'',
+    cached/1024/1024 FROM memory_info' pie 2 --title 'Memory Breakdown' --color 'yellow' --database 'osquery' --height 33
+    --width 22
+  x: 210
+  y: 33
+  width: 39
+  height: 26
+  block_map:
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+- block_id: spare_widget_0777
+  type: aggregator
+  x: 159
+  y: 34
+  width: 32
+  height: 8
+  source_block: metrics_pipe
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      suffix: '%'
+      metric: cpu2
+    - type: extract_number
+      prefix: 'CPU:'
+      suffix: '%'
+      metric: cpu
+    metric: cpu
+    max_points: 50
+  aggregation:
+    sources:
+    - block: metrics_pipe
+      metric: cpu
+  visualization:
+    type: figlet
+    font: ansi_regular
+    format: '{value:.0f}%'
+  block_map:
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: spare_widget_08897
+  type: continuous
+  command: ../cheshire/venv/bin/cheshire 'SELECT name as x, CAST(resident_size AS REAL)/1024/1024 as y FROM processes ORDER
+    BY resident_size DESC LIMIT 11' bar 1 --title 'Top 10 Memory Consumers' --color 'cyan' --database 'osquery' --width 125
+  x: 79
+  y: 53
+  width: 129
+  height: 15
+  block_map:
+    overlay_color: dark
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+
+- block_id: viz_controls2
+  type: controls
+  layout: vertical
+  always_expanded: true
+  source_block: filter_rabbit-sample-data_bigfoot_sightings_class_000_erqlpi
+  parameters:
+  - class
+  data_extraction:
+    patterns:
+      - type: extract_string
+        prefix: '"class": '
+        #suffix: '"'
+        store_as: class
+  on_parameter_change:
+    class:
+    - 'notify(''Switched to class: {class}'')'
+  x: 255
+  y: 35
+  width: 50
+  height: 20
+  block_map:
+    title: Visualization Controls
+    border: false
+    padding: 1
+
+- block_id: filter_rabbit-sample-data_bigfoot_sightings_class_000_erqlpi
+  type: continuous
+  x: 313
+  y: 33
+  width: 35
+  height: 25
+  command: "cheshire 'SELECT DISTINCT class FROM bigfoot_sightings WHERE class IS NOT NULL ORDER BY class LIMIT 50' json 0 --db '../data-rabbit/flow-story-backend/data/rabbit-sample-data.db'" # | sed 's/\e\\[[0-9;]*[a-zA-Z]//g'"
+  # data_extraction:
+  #   patterns:
+  #     - type: extract_string
+  #       prefix: '"class": "'
+  #       suffix: '"'
+  #       metric: class
+  triggers:
+    on_data_change:
+    - viz_controls2.refresh()
+  block_map:
+    title: 'Filter: class'
+    overlay_color: '#2c3e50'
+    blend_opacity: 0.8
+    border: true
+    border_color: '#3498db'
+    padding: 1
+    _is_filter: true
+    _filter_config:
+      dimension: class
+      table: bigfoot_sightings
+      filter_type: select
+      target_charts:
+      - matrix_heatmap
+      - bar
+      - tg_stacked
+      - simple_bar
+      - line
+      - tg_bar
+  _pool_widget_id: tpl_pool_000
+editor_state:
+  position:
+    x: 10
+    y: 5
+    width: 80
+    height: 30

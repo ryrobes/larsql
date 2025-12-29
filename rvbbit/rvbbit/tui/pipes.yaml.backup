@@ -1,0 +1,18 @@
+block_id: chart_09d
+type: continuous
+x: 209
+y: 56
+width: 65
+height: 18
+command: 'cheshire ''SELECT state as x, COUNT(*) as y FROM bigfoot_sightings GROUP BY 1 ORDER BY 2 DESC'' bar 0 --title ''bigfoot_sightings:
+  Record Count by state'' --db ''../data-rabbit/flow-story-backend/data/rabbit-sample-data.db'''
+block_map:
+  title: 'bigfoot_sightings: Record Count by state'
+  overlay_color: '#000000'
+  darken_factor: 0.9
+  blend_opacity: 0.8
+  border: true
+  padding: 1
+  _template_name: 'bigfoot_sightings: Record Count by state'
+  _template_description: Count of records grouped by state
+  _template_category: cheshire_rabbit-sample-data

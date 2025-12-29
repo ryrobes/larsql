@@ -7888,12 +7888,14 @@ Use only numbers 0-100 for scores."""
         Auto-save images from RECEIVED messages only (assistant, tool roles).
         Skips user-role messages (sent/injection messages) to avoid duplicates.
         Tool result images are already saved explicitly when received.
+        Deduplicates images based on content fingerprint.
         """
         from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
         import re
 
         indent = "  " * self.depth
         images_to_save = []
+        seen_fingerprints = set()  # Track unique images by content fingerprint
 
         for msg in messages:
             role = msg.get("role", "")
@@ -7910,14 +7912,32 @@ Use only numbers 0-100 for scores."""
                         image_url = item.get("image_url", {})
                         url = image_url.get("url", "") if isinstance(image_url, dict) else image_url
                         if url.startswith("data:"):
-                            images_to_save.append((url, item.get("description", "image")))
+                            # Deduplicate by fingerprint (first 200 chars after the header)
+                            try:
+                                _, b64_part = url.split(",", 1)
+                                fingerprint = b64_part[:200]
+                            except ValueError:
+                                fingerprint = url[:200]
+
+                            if fingerprint not in seen_fingerprints:
+                                seen_fingerprints.add(fingerprint)
+                                images_to_save.append((url, item.get("description", "image")))
 
             # Handle string content with embedded base64
             elif isinstance(content, str):
                 data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
                 matches = re.findall(data_url_pattern, content)
                 for match in matches:
-                    images_to_save.append((match, "embedded_image"))
+                    # Deduplicate by fingerprint
+                    try:
+                        _, b64_part = match.split(",", 1)
+                        fingerprint = b64_part[:200]
+                    except ValueError:
+                        fingerprint = match[:200]
+
+                    if fingerprint not in seen_fingerprints:
+                        seen_fingerprints.add(fingerprint)
+                        images_to_save.append((match, "embedded_image"))
 
         if images_to_save:
             next_idx = get_next_image_index(self.session_id, cell_name)
@@ -8731,9 +8751,10 @@ Refinement directive: {reforge_config.honing_prompt}
 
             duration_ms = (time.time() - start_time) * 1000
 
-            # Extract and save images from response
+            # Extract and save images from response (with deduplication)
             saved_paths = []
             raw_images = response.get("images", [])
+            seen_fingerprints = set()  # Track unique images by content fingerprint
 
             if raw_images:
                 config = get_config()
@@ -8741,7 +8762,9 @@ Refinement directive: {reforge_config.honing_prompt}
                 os.makedirs(image_dir, exist_ok=True)
 
                 for img_data in raw_images:
-                    # OpenRouter returns: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+                    # Handle multiple image response formats:
+                    # - Format 1: {"type": "image_url", "image_url": {"url": "data:..."}}
+                    # - Format 2: {"image_url": {"url": "data:..."}} (seedream-4.5, etc.)
                     if isinstance(img_data, dict):
                         url = img_data.get("image_url", {}).get("url", "")
                         if url.startswith("data:"):
@@ -8749,6 +8772,15 @@ Refinement directive: {reforge_config.honing_prompt}
                             # Format: data:image/png;base64,<data>
                             try:
                                 header, b64_data = url.split(",", 1)
+
+                                # Deduplicate by content fingerprint (first 200 chars of base64)
+                                # This catches identical images that might appear multiple times
+                                fingerprint = b64_data[:200]
+                                if fingerprint in seen_fingerprints:
+                                    console.print(f"{indent}    [dim]⏭️  Skipping duplicate image[/dim]")
+                                    continue
+                                seen_fingerprints.add(fingerprint)
+
                                 # Determine extension from mime type
                                 ext = ".png"
                                 if "jpeg" in header or "jpg" in header:

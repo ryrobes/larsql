@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import PromptPhylogeny from './components/PromptPhylogeny';
@@ -10,6 +11,7 @@ import EvolutionMetrics from './components/EvolutionMetrics';
 import GenerationTimeline from './components/GenerationTimeline';
 import LinearInfluenceView from './components/LinearInfluenceView';
 import EvolveModal from './components/EvolveModal';
+import { ROUTES } from '../../routes.helpers';
 import './EvolutionView.css';
 
 /**
@@ -21,11 +23,18 @@ import './EvolutionView.css';
  * - Pattern analysis (hot/cold phrases)
  * - Model performance metrics
  *
- * Receives params from router:
- * - params.cascade - Initial cascade ID to display
- * - params.session - Initial session ID to show evolution for
+ * Route params:
+ * - :cascadeId - Initial cascade ID to display
+ * - :sessionId - Initial session ID to show evolution for
  */
-const EvolutionView = ({ params, navigate }) => {
+const EvolutionView = () => {
+  // Get route parameters from React Router
+  const { cascadeId, sessionId } = useParams();
+  const navigate = useNavigate();
+
+  // Decode URL params
+  const initialCascade = cascadeId ? decodeURIComponent(cascadeId) : null;
+  const initialSession = sessionId ? decodeURIComponent(sessionId) : null;
   const [selectedCascade, setSelectedCascade] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedSpecies, setSelectedSpecies] = useState(null);
@@ -49,13 +58,13 @@ const EvolutionView = ({ params, navigate }) => {
 
   // Initialize from URL params
   useEffect(() => {
-    if (params?.cascade) {
-      setSelectedCascade(params.cascade);
+    if (initialCascade) {
+      setSelectedCascade(initialCascade);
     }
-    if (params?.session) {
-      setSelectedSession(params.session);
+    if (initialSession) {
+      setSelectedSession(initialSession);
     }
-  }, [params]);
+  }, [initialCascade, initialSession]);
 
   // Fetch available cascades with sounding data
   useEffect(() => {
@@ -149,15 +158,15 @@ const EvolutionView = ({ params, navigate }) => {
     }
   };
 
-  const handleCascadeChange = (cascadeId) => {
-    setSelectedCascade(cascadeId);
+  const handleCascadeChange = (newCascadeId) => {
+    setSelectedCascade(newCascadeId);
     setSelectedSession(null); // Clear session so it auto-selects latest
     setSelectedSpecies(null);
     setSpecies([]); // Clear species list
 
     // Update URL
-    if (cascadeId) {
-      navigate('evolution', { cascade: cascadeId });
+    if (newCascadeId) {
+      navigate(ROUTES.evolutionWithCascade(newCascadeId));
     }
   };
 
@@ -196,15 +205,12 @@ const EvolutionView = ({ params, navigate }) => {
     }
   };
 
-  const handleSessionSelect = (sessionId) => {
-    setSelectedSession(sessionId);
+  const handleSessionSelect = (newSessionId) => {
+    setSelectedSession(newSessionId);
 
     // Update URL
-    if (sessionId) {
-      navigate('evolution', {
-        cascade: selectedCascade,
-        session: sessionId
-      });
+    if (newSessionId && selectedCascade) {
+      navigate(ROUTES.evolutionWithSession(selectedCascade, newSessionId));
     }
   };
 

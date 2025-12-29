@@ -74,7 +74,6 @@ const CascadeSwimlane = ({
   expandedLoading,
   onToggleExpand,
   onCellClick,
-  navigate,
 }) => {
   const { cascade_id, run_count, runs, total_cost } = cascade;
   const latestRun = runs && runs.length > 0 ? runs[0] : null;
@@ -116,7 +115,6 @@ const CascadeSwimlane = ({
                 cellNames={expandedData.cell_names || []}
                 runs={expandedData.runs || []}
                 onCellClick={onCellClick}
-                navigate={navigate}
               />
             ) : null}
           </div>

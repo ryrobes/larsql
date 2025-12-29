@@ -1,0 +1,74 @@
+# Test: Model Override (Per-Cell Model Selection)
+# Tests: Different models can be specified per cell
+# Expected: Each cell uses its specified model, outputs are generated
+
+cascade_id: integration_test_model_override
+description: |
+  Integration test verifying per-cell model override:
+  - Cell can specify model: to use a different model
+  - Default model used when no override specified
+  - Multiple models can be used in a single cascade
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Use a fast model
+  - name: fast_task
+    model: x-ai/grok-4.1-fast
+    instructions: |
+      Say "FAST" and nothing else.
+    rules:
+      max_turns: 1
+    handoffs:
+      - default_task
+
+  # Cell 2: Use default model (no override)
+  - name: default_task
+    instructions: |
+      Say "DEFAULT" and nothing else.
+    rules:
+      max_turns: 1
+    handoffs:
+      - verify
+
+  # Cell 3: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Check 1: Fast model output exists
+        fast_output = state.get('output_fast_task') or ''
+        if fast_output and len(fast_output) > 0:
+            checks.append({'check': 'fast_model_output', 'passed': True})
+        else:
+            checks.append({'check': 'fast_model_output', 'passed': False})
+            errors.append("No output from fast_task")
+
+        # Check 2: Default model output exists
+        default_output = state.get('output_default_task') or ''
+        if default_output and len(default_output) > 0:
+            checks.append({'check': 'default_model_output', 'passed': True})
+        else:
+            checks.append({'check': 'default_model_output', 'passed': False})
+            errors.append("No output from default_task")
+
+        # Check 3: Both cells completed (shows model routing worked)
+        if fast_output and default_output:
+            checks.append({'check': 'both_models_executed', 'passed': True})
+        else:
+            checks.append({'check': 'both_models_executed', 'passed': False})
+            errors.append("Not all model cells executed")
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'fast_output': fast_output[:50] if fast_output else None,
+            'default_output': default_output[:50] if default_output else None
+        }

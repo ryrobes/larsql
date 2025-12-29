@@ -31,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 2px;
   background-color: #0a0614;
   border-bottom: 1px solid #1a1628;
   flex-shrink: 0;
@@ -52,10 +52,10 @@
 
 .nav-cascade-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
   color: #f0f4f8;
   white-space: nowrap;
-  overflow: hidden;
+  /* overflow: hidden; */
   text-overflow: ellipsis;
 }
 
@@ -1434,9 +1434,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  overflow-y: auto; /* Scroll enabled by default, disabled during flip via inline style */
+  overflow-y: auto;
   overflow-x: hidden;
   backface-visibility: hidden; /* Hide back face during flip */
   transform-style: preserve-3d;
-  /* z-index and overflow set by Framer Motion during animation */
 }

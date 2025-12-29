@@ -1,7 +1,9 @@
 import React, { useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import CellTile from './CellTile';
 import CellGroup from './CellGroup';
+import { ROUTES } from '../../../routes.helpers';
 import './LinkedScrollGrid.css';
 
 /**
@@ -37,7 +39,8 @@ const formatCost = (cost) => {
  *
  * All rows scroll together so cell columns stay aligned.
  */
-const LinkedScrollGrid = ({ cellNames, runs, onCellClick, navigate }) => {
+const LinkedScrollGrid = ({ cellNames, runs, onCellClick }) => {
+  const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
 
@@ -129,7 +132,7 @@ const LinkedScrollGrid = ({ cellNames, runs, onCellClick, navigate }) => {
             <div className="row-session-col">
               <span
                 className="row-session"
-                onClick={() => navigate && navigate('studio', { session: run.session_id })}
+                onClick={() => navigate(ROUTES.studioWithSession(run.cascade_id, run.session_id))}
                 title={`Open ${run.session_id} in Studio`}
               >
                 {run.session_id}

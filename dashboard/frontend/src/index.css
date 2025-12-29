@@ -13,7 +13,7 @@ svg.iconify,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -23,7 +23,7 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+  font-family: 'Google Sans Code', source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
@@ -60,7 +60,7 @@ code {
   border-top: 1px solid #2C3B4B;
   overflow-y: auto;
   padding: 1rem;
-  font-family: 'Courier New', monospace;
+  font-family: 'Google Sans Code', 'Courier New', monospace;
   font-size: 12px;
 }
 

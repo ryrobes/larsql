@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
 import { Button, CheckpointRenderer, GhostMessage, useToast } from '../../components';
@@ -6,6 +7,7 @@ import SimpleSidebar from './components/SimpleSidebar';
 import CascadePickerModal from './components/CascadePickerModal';
 import useExplorePolling from './hooks/useExplorePolling';
 import { cancelCascade } from '../../utils/cascadeActions';
+import { ROUTES } from '../../routes.helpers';
 import './ExploreView.css';
 
 /**
@@ -25,8 +27,12 @@ import './ExploreView.css';
  * 5. Cascade continues seamlessly
  * 6. Loop repeats until complete
  */
-const ExploreView = ({ params, navigate }) => {
-  const sessionId = params?.session || params?.id;
+const ExploreView = () => {
+  // Get route parameters from React Router
+  const { sessionId: urlSessionId } = useParams();
+  const navigate = useNavigate();
+
+  const sessionId = urlSessionId ? decodeURIComponent(urlSessionId) : null;
   const { showToast } = useToast();
 
   const [showPicker, setShowPicker] = useState(!sessionId);
@@ -71,7 +77,7 @@ const ExploreView = ({ params, navigate }) => {
         // Only auto-restore if session is active
         if (session.status === 'running' || session.status === 'blocked') {
           console.log('[ExploreView] Auto-restoring active session:', lastSession);
-          navigate('explore', { session: lastSession });
+          navigate(ROUTES.exploreWithSession(lastSession));
           setShowPicker(false);
         } else {
           console.log('[ExploreView] Session is', session.status, '- showing picker for new cascade');
@@ -137,7 +143,7 @@ const ExploreView = ({ params, navigate }) => {
   const handleStartCascade = async (cascadePath, inputs, existingSessionId = null) => {
     // Handle resume case (existingSessionId provided)
     if (existingSessionId) {
-      navigate('explore', { session: existingSessionId });
+      navigate(ROUTES.exploreWithSession(existingSessionId));
       setShowPicker(false);
       showToast('Resumed session', { type: 'success' });
       return;
@@ -163,7 +169,7 @@ const ExploreView = ({ params, navigate }) => {
       }
 
       // Navigate to new session
-      navigate('explore', { session: data.session_id });
+      navigate(ROUTES.exploreWithSession(data.session_id));
       setShowPicker(false);
       showToast('Cascade started', { type: 'success' });
 
@@ -201,7 +207,7 @@ const ExploreView = ({ params, navigate }) => {
       <div className="explore-view">
         <CascadePickerModal
           isOpen={showPicker}
-          onClose={() => navigate('studio')}
+          onClose={() => navigate(ROUTES.STUDIO)}
           onStart={handleStartCascade}
         />
         <div className="explore-empty-state">
@@ -233,7 +239,7 @@ const ExploreView = ({ params, navigate }) => {
         <Icon icon="mdi:alert-circle" width="32" />
         <h3>Error loading session</h3>
         <p>{error}</p>
-        <Button variant="secondary" onClick={() => navigate('studio')}>
+        <Button variant="secondary" onClick={() => navigate(ROUTES.STUDIO)}>
           Back to Studio
         </Button>
       </div>
@@ -374,7 +380,7 @@ const ExploreView = ({ params, navigate }) => {
         {/* Sidebar */}
         <SimpleSidebar
           sessionId={sessionId}
-          cascadeId={cascadeId || params?.cascade}
+          cascadeId={cascadeId}
           orchestrationState={orchestrationState}
           totalCost={totalCost}
           sessionStatus={sessionStatus}

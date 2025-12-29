@@ -1,0 +1,115 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+    - block_id: continuous_viz
+      type: continuous
+      command:
+          bash -c "while true; do echo '📊 Data visualization with refresh={refresh}s,
+          color={color}, style={style}'; sleep {refresh}; done"
+      parameters:
+          refresh:
+              type: slider
+              min: 1
+              max: 10
+              default: 2
+              step: 1
+          color:
+              type: dropdown
+              options:
+                  - red
+                  - blue
+                  - green
+                  - yellow
+                  - cyan
+                  - magenta
+              default: cyan
+          style:
+              type: buttons
+              options:
+                  - line
+                  - bar
+                  - scatter
+                  - heatmap
+              default: line
+      x: 10
+      y: 5
+      width: 80
+      height: 20
+      block_map:
+          title: 📊 Continuous Visualization
+          overlay_color: "#2c3e50"
+          darken_factor: 0.6
+          blend_opacity: 0.3
+          border: false
+          padding: 1
+    - block_id: viz_controls
+      type: controls
+      target_block: continuous_viz
+      layout: vertical
+      always_expanded: true
+      x: 95
+      y: 5
+      width: 50
+      height: 20
+      block_map:
+          title: 🎛️ Visualization Controls
+          overlay_color: "#34495e"
+          darken_factor: 0.7
+          blend_opacity: 0.4
+          border: false
+          padding: 1
+    - block_id: continuous_monitor
+      type: continuous
+      command:
+          'bash -c "echo ''Monitor starting with interval={interval}s, threshold={threshold},
+          mode={mode}''; while true; do value=$((RANDOM % 100)); echo \"[$(date +%H:%M:%S)]
+          Value: $value (threshold={threshold}, mode={mode})\"; if [ $value -gt {threshold}
+          ]; then echo ''⚠️ ALERT: Value exceeds threshold!''; fi; sleep {interval}; done"'
+      parameters:
+          interval:
+              type: vslider
+              min: 1
+              max: 10
+              default: 3
+              step: 1
+              height: 6
+          threshold:
+              type: slider
+              min: 10
+              max: 90
+              default: 50
+              step: 10
+          mode:
+              type: cycle
+              options:
+                  - normal
+                  - verbose
+                  - quiet
+                  - debug
+              default: normal
+      x: 10
+      y: 28
+      width: 80
+      height: 25
+      block_map:
+          title: 📡 System Monitor
+          overlay_color: "#16a085"
+          darken_factor: 0.6
+          blend_opacity: 0.3
+          border: false
+          padding: 1
+    - block_id: monitor_controls
+      type: controls
+      target_block: continuous_monitor
+      layout: vertical
+      x: 95
+      y: 28
+      width: 50
+      height: 25
+      block_map:
+          title: 🎚️ Monitor Settings
+          overlay_color: "#8e44ad"
+          darken_factor: 0.7
+          blend_opacity: 0.4
+          border: false
+          padding: 1

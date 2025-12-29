@@ -1,8 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { RouterProvider } from 'react-router-dom';
 import './index.css';
 import './styles/index.css'; // Import global design system
-import App from './App';
+import { router } from './routes';
 
 // Suppress benign ResizeObserver error from React Flow
 // This error occurs when resize callbacks can't be delivered in a single animation frame
@@ -26,6 +27,6 @@ window.addEventListener('error', (event) => {
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <RouterProvider router={router} />
   </React.StrictMode>
 );

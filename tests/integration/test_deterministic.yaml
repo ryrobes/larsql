@@ -1,0 +1,130 @@
+# Test: Deterministic Cells (Tool-Based, No LLM)
+# Tests: Direct tool execution, routing based on tool output, hybrid flow
+# Expected: Tools execute without LLM, routing works, data flows correctly
+
+cascade_id: integration_test_deterministic
+description: |
+  Integration test verifying deterministic (tool-based) execution:
+  - Cells with 'tool' field execute directly without LLM
+  - Tool outputs are accessible to subsequent cells
+  - Routing via _route field works
+  - Hybrid mixing of deterministic and LLM cells
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Deterministic - Generate test data with SQL
+  - name: create_data
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (
+          VALUES
+            (1, 'Alice', 85),
+            (2, 'Bob', 92),
+            (3, 'Carol', 78),
+            (4, 'Dave', 95)
+        ) AS t(id, name, score)
+    handoffs:
+      - transform_data
+
+  # Cell 2: Deterministic - Transform with Python
+  - name: transform_data
+    tool: python_data
+    inputs:
+      code: |
+        # Access the SQL data from previous cell
+        df = data.create_data
+
+        # Add computed columns
+        df['grade'] = df['score'].apply(
+            lambda x: 'A' if x >= 90 else 'B' if x >= 80 else 'C'
+        )
+        df['passed'] = df['score'] >= 80
+
+        result = df
+    handoffs:
+      - aggregate
+
+  # Cell 3: Deterministic - Aggregate with SQL (using temp table)
+  - name: aggregate
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT
+          grade,
+          COUNT(*) as count,
+          AVG(score) as avg_score,
+          SUM(CASE WHEN passed THEN 1 ELSE 0 END) as passed_count
+        FROM _transform_data
+        GROUP BY grade
+        ORDER BY grade
+    handoffs:
+      - verify
+
+  # Cell 4: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: SQL data was created
+        try:
+            raw_data = data.create_data
+            if len(raw_data) == 4:
+                checks.append({'check': 'sql_data_created', 'passed': True})
+            else:
+                checks.append({'check': 'sql_data_created', 'passed': False})
+                errors.append(f"Expected 4 rows, got {len(raw_data)}")
+        except Exception as e:
+            checks.append({'check': 'sql_data_created', 'passed': False})
+            errors.append(f"SQL data error: {e}")
+
+        # Check 2: Python transform added columns
+        try:
+            transformed = data.transform_data
+            if 'grade' in transformed.columns and 'passed' in transformed.columns:
+                checks.append({'check': 'python_transform_worked', 'passed': True})
+            else:
+                checks.append({'check': 'python_transform_worked', 'passed': False})
+                errors.append(f"Missing columns. Got: {list(transformed.columns)}")
+        except Exception as e:
+            checks.append({'check': 'python_transform_worked', 'passed': False})
+            errors.append(f"Transform error: {e}")
+
+        # Check 3: SQL aggregation worked (via temp table)
+        try:
+            agg_data = data.aggregate
+            # Should have grades A, B, C
+            grades = set(agg_data['grade'].tolist()) if hasattr(agg_data, 'grade') else set()
+            if 'A' in grades and 'B' in grades:
+                checks.append({'check': 'sql_aggregation_worked', 'passed': True})
+            else:
+                checks.append({'check': 'sql_aggregation_worked', 'passed': False})
+                errors.append(f"Expected grades A, B. Got: {grades}")
+        except Exception as e:
+            checks.append({'check': 'sql_aggregation_worked', 'passed': False})
+            errors.append(f"Aggregation error: {e}")
+
+        # Check 4: All cells are in data namespace
+        available = data.list_available()
+        expected = ['create_data', 'transform_data', 'aggregate']
+        missing = [c for c in expected if c not in available]
+        if len(missing) == 0:
+            checks.append({'check': 'all_outputs_available', 'passed': True})
+        else:
+            checks.append({'check': 'all_outputs_available', 'passed': False})
+            errors.append(f"Missing outputs: {missing}")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'available_data': available
+        }

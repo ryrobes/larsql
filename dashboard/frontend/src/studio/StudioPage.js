@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
@@ -17,25 +18,13 @@ import ContextExplorerSidebar from './components/ContextExplorerSidebar';
 import './editors'; // Initialize cell editor registry
 import './StudioPage.css';
 
-function StudioPage({
-  onMessageFlow,
-  onCockpit,
-  onSextant,
-  onWorkshop,
-  onPlayground,
-  onTools,
-  onSearch,
-  onSqlQuery,
-  onArtifacts,
-  onBrowser,
-  onSessions,
-  onBlocked,
-  blockedCount,
-  sseConnected, // Only used for Header in query mode (not used in AppShell/timeline mode)
-  initialCascade,
-  initialSession,
-  onCascadeLoaded
-}) {
+function StudioPage() {
+  // Get route parameters from React Router
+  const { cascadeId, sessionId } = useParams();
+
+  // Map route params to the names used internally
+  const initialCascade = cascadeId ? decodeURIComponent(cascadeId) : null;
+  const initialSession = sessionId ? decodeURIComponent(sessionId) : null;
   const {
     historyPanelOpen,
     fetchConnections,
@@ -585,7 +574,6 @@ function StudioPage({
         }
 
         lastLoadedRef.current = { cascade: initialCascade, session: initialSession };
-        if (onCascadeLoaded) onCascadeLoaded();
         return;
       }
 
@@ -603,7 +591,6 @@ function StudioPage({
           console.warn('[StudioPage] Cascade not found:', initialCascade);
         }
         lastLoadedRef.current = { cascade: initialCascade, session: null };
-        if (onCascadeLoaded) onCascadeLoaded();
         return;
       }
 
@@ -805,20 +792,6 @@ function StudioPage({
                 <span className="header-stat">{connections.length} <span className="stat-dim">connections</span></span>
               </>
             }
-            onMessageFlow={onMessageFlow}
-            onCockpit={onCockpit}
-            onSextant={onSextant}
-            onWorkshop={onWorkshop}
-            onPlayground={onPlayground}
-            onTools={onTools}
-            onSearch={onSearch}
-            onSqlQuery={onSqlQuery}
-            onArtifacts={onArtifacts}
-            onBrowser={onBrowser}
-            onSessions={onSessions}
-            onBlocked={onBlocked}
-            blockedCount={blockedCount}
-            sseConnected={sseConnected}
           />
         </>
       )}

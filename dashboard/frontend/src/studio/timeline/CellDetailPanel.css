@@ -211,6 +211,40 @@
   overflow: hidden;
 }
 
+/* Vertical gutter for code/results split */
+.cell-detail-split > .gutter {
+  background-color: #1a1628;
+  cursor: row-resize;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.cell-detail-split > .gutter:hover {
+  background-color: #00e5ff;
+}
+
+.cell-detail-split > .gutter:active {
+  background-color: #00e5ff;
+}
+
+.cell-detail-split > .gutter::after {
+  content: '';
+  display: block;
+  position: absolute;
+  width: 32px;
+  height: 2px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #475569;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.cell-detail-split > .gutter:hover::after {
+  background-color: #0a0a0a;
+}
+
 .cell-detail-code-only {
   height: 100%;
   width: 100%;

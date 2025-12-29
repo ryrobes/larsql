@@ -1,0 +1,109 @@
+# Test: Basic Flow - Handoffs, Context, State
+# Tests: Cell handoffs work, context passes between cells, state can be set/read
+# Expected: All 3 cells execute, state contains expected values, outputs accessible
+
+cascade_id: integration_test_basic_flow
+description: |
+  Integration test verifying basic cascade execution:
+  - Handoffs between cells work correctly
+  - Context from previous cells is accessible
+  - State can be set and read across cells
+  - Outputs are properly accumulated
+
+inputs_schema:
+  test_value: A test value to track through the flow
+
+cells:
+  # Cell 1: Set initial state and produce output
+  - name: initialize
+    instructions: |
+      You are a test assistant. Do the following:
+      1. Use set_state to set "flow_marker" to "INIT_COMPLETE"
+      2. Use set_state to set "test_input" to "{{ input.test_value }}"
+      3. Respond with exactly: "Initialization complete. Marker set."
+    traits:
+      - set_state
+    handoffs:
+      - process
+    rules:
+      max_turns: 2
+
+  # Cell 2: Access state and context, modify state
+  - name: process
+    instructions: |
+      You are processing data. The flow_marker from state is: {{ state.flow_marker }}
+      The test input was: {{ state.test_input }}
+
+      Do the following:
+      1. Use set_state to set "processing_status" to "PROCESSED"
+      2. Confirm you can see the flow_marker value
+      3. Respond with exactly: "Processing complete. Status updated."
+    context:
+      from:
+        - previous
+    traits:
+      - set_state
+    handoffs:
+      - verify
+    rules:
+      max_turns: 2
+
+  # Cell 3: Deterministic verification using python_data
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        # Access state and input via the injected variables
+        # state and input are already available in python_data execution context
+        # Note: LLM outputs are stored in state as 'output_<cell_name>' strings
+
+        checks = []
+        errors = []
+
+        # Check 1: flow_marker was set
+        if state.get('flow_marker') == 'INIT_COMPLETE':
+            checks.append({'check': 'flow_marker_set', 'passed': True})
+        else:
+            checks.append({'check': 'flow_marker_set', 'passed': False})
+            errors.append(f"flow_marker expected 'INIT_COMPLETE', got '{state.get('flow_marker')}'")
+
+        # Check 2: test_input was stored
+        if state.get('test_input') == 'hello_world':
+            checks.append({'check': 'test_input_stored', 'passed': True})
+        else:
+            checks.append({'check': 'test_input_stored', 'passed': False})
+            errors.append(f"test_input expected 'hello_world', got '{state.get('test_input')}'")
+
+        # Check 3: processing_status was set
+        if state.get('processing_status') == 'PROCESSED':
+            checks.append({'check': 'processing_status_set', 'passed': True})
+        else:
+            checks.append({'check': 'processing_status_set', 'passed': False})
+            errors.append(f"processing_status expected 'PROCESSED', got '{state.get('processing_status')}'")
+
+        # Check 4: input was passed correctly
+        if input.get('test_value') == 'hello_world':
+            checks.append({'check': 'input_received', 'passed': True})
+        else:
+            checks.append({'check': 'input_received', 'passed': False})
+            errors.append(f"input.test_value expected 'hello_world', got '{input.get('test_value')}'")
+
+        # Check 5: LLM cell outputs exist in state
+        init_output = state.get('output_initialize')
+        proc_output = state.get('output_process')
+        if init_output and proc_output:
+            checks.append({'check': 'llm_outputs_stored', 'passed': True})
+        else:
+            checks.append({'check': 'llm_outputs_stored', 'passed': False})
+            errors.append(f"Missing LLM outputs: init={bool(init_output)}, proc={bool(proc_output)}")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'state_keys': list(state.keys())
+        }

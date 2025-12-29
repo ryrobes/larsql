@@ -1,8 +1,10 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import RichMarkdown from '../../../components/RichMarkdown';
 import DynamicUI from '../../../components/DynamicUI';
+import { ROUTES } from '../../../routes.helpers';
 import './CellDetailModal.css';
 
 /**
@@ -357,11 +359,12 @@ const CellDetailModal = ({
   onClose,
   cellDetail,
   loading,
-  navigate,
   siblingCount = 1,
   currentIndex = 0,
   onNavigate,
 }) => {
+  const navigate = useNavigate();
+
   if (!isOpen) return null;
 
   const hasMultipleOutputs = siblingCount > 1;
@@ -375,8 +378,8 @@ const CellDetailModal = ({
   };
 
   const handleOpenInStudio = () => {
-    if (cellDetail && navigate) {
-      navigate('studio', { session: cellDetail.session_id });
+    if (cellDetail) {
+      navigate(ROUTES.studioWithSession(cellDetail.cascade_id, cellDetail.session_id));
       onClose();
     }
   };

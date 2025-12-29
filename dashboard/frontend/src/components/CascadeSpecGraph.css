@@ -1,0 +1,517 @@
+/**
+ * CascadeSpecGraph - Read-only cascade specification graph styles
+ */
+
+.spec-graph-container {
+  background: transparent;
+  overflow: hidden;
+}
+
+/* Header */
+.spec-graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.spec-graph-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.spec-graph-title svg {
+  color: #a78bfa;
+}
+
+.spec-graph-count {
+  font-weight: 400;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.spec-graph-legend {
+  display: flex;
+  gap: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Scrollable area */
+.spec-graph-scroll {
+  overflow: auto;
+  padding: 12px 0;
+  background: transparent;
+}
+
+.spec-graph-scroll.grabbing {
+  cursor: grabbing !important;
+}
+
+/* Very faint scrollbars since drag-scroll is primary */
+.spec-graph-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.spec-graph-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.spec-graph-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.15);
+  border-radius: 2px;
+}
+
+.spec-graph-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.3);
+}
+
+.spec-graph-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Canvas */
+.spec-graph-canvas {
+  min-width: 100%;
+}
+
+/* Node wrapper */
+.spec-node-wrapper {
+  z-index: 10;
+}
+
+/* Cell Node */
+.spec-cell-node {
+  background: linear-gradient(135deg, #121212 0%, #0f0d14 100%);
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  padding: 8px 10px;
+  position: relative;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+  height: 70px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.spec-cell-node:hover {
+  border-color: #a78bfa;
+  transform: translateY(-1px);
+}
+
+.spec-cell-node.has-candidates {
+  border-color: #fbbf24;
+}
+
+/* Top row */
+.spec-cell-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spec-cell-type {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.spec-cell-badges {
+  display: flex;
+  gap: 4px;
+}
+
+.spec-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(167, 139, 250, 0.15);
+}
+
+.spec-badge.branch {
+  color: #ff006e;
+  background: rgba(255, 0, 110, 0.15);
+}
+
+.spec-badge.merge {
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.15);
+}
+
+/* Cell name */
+.spec-cell-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Features row */
+.spec-cell-features {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.spec-feature {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.spec-feature.candidates {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.spec-feature.wards {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.spec-feature.loop {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.spec-feature.model {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.spec-feature.turns {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+/* Candidates stack effect */
+.spec-cell-stack-1,
+.spec-cell-stack-2 {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  right: -3px;
+  bottom: -3px;
+  background: linear-gradient(135deg, #121212 0%, #0f0d14 100%);
+  border: 1px solid #1a1628;
+  border-radius: 6px;
+  z-index: -1;
+}
+
+.spec-cell-stack-2 {
+  top: 6px;
+  left: 6px;
+  right: -6px;
+  bottom: -6px;
+  z-index: -2;
+  opacity: 0.5;
+}
+
+/* Empty state */
+.spec-graph-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.spec-graph-empty svg {
+  color: #334155;
+}
+
+/* Edge styles */
+.spec-graph-edges path {
+  transition: opacity 0.15s ease;
+}
+
+/* Inputs Node */
+.spec-inputs-node {
+  background: #000;
+  border: 2px dashed #fbbf24;
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 120px;
+  box-sizing: border-box;
+}
+
+.spec-inputs-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.spec-inputs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.spec-input-param {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 3px;
+}
+
+.spec-input-name {
+  font-size: 10px;
+  font-weight: 500;
+  color: #fcd34d;
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spec-inputs-wrapper {
+  z-index: 10;
+}
+
+/* Mode indicator */
+.spec-graph-mode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+
+.spec-graph-mode.linear {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.spec-graph-mode.graph {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+/* Resize handle */
+.spec-graph-resize-handle {
+  height: 12px;
+  background: transparent;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.spec-graph-resize-handle:hover {
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.spec-graph-resize-handle:active {
+  background: rgba(0, 229, 255, 0.1);
+}
+
+.spec-graph-resize-grip {
+  width: 40px;
+  height: 2px;
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 1px;
+  transition: background-color 0.15s ease;
+}
+
+.spec-graph-resize-handle:hover .spec-graph-resize-grip {
+  background: rgba(100, 116, 139, 0.5);
+}
+
+.spec-graph-resize-handle:active .spec-graph-resize-grip {
+  background: #00e5ff;
+}
+
+/* Prevent text selection while resizing */
+.spec-graph-container.resizing {
+  user-select: none;
+}
+
+.spec-graph-container.resizing .spec-graph-scroll {
+  pointer-events: none;
+}
+
+/* Actions area */
+.spec-graph-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+/* YAML button */
+.spec-graph-yaml-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  background: rgba(100, 116, 139, 0.2);
+  border: 1px solid #1a1628;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.spec-graph-yaml-btn:hover {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.15);
+  border-color: #a78bfa;
+}
+
+/* YAML Modal */
+.spec-yaml-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.spec-yaml-modal {
+  background: #0a0a0a;
+  border: 1px solid #1a1628;
+  border-radius: 8px;
+  width: calc(100vw - 80px);
+  max-width: 1200px;
+  height: calc(100vh - 100px);
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.spec-yaml-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #0f0d14;
+  border-bottom: 1px solid #1a1628;
+}
+
+.spec-yaml-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.spec-yaml-modal-title svg {
+  color: #a78bfa;
+}
+
+.spec-yaml-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.spec-yaml-modal-close:hover {
+  color: #e2e8f0;
+  background: rgba(100, 116, 139, 0.3);
+}
+
+.spec-yaml-modal-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Loading state */
+.spec-yaml-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.spec-yaml-loading svg {
+  color: #a78bfa;
+}
+
+.spec-yaml-loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

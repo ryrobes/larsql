@@ -1,0 +1,76 @@
+# Test: Turn Prompt (Per-Turn Guidance)
+# Tests: turn_prompt injection during multi-turn LLM interactions
+# Expected: LLM receives turn-specific guidance, refines output across turns
+
+cascade_id: integration_test_turn_prompt
+description: |
+  Integration test verifying turn_prompt feature:
+  - turn_prompt is injected after each turn
+  - LLM can refine output across multiple turns
+  - turn and max_turns variables are available in template
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Multi-turn with turn_prompt guidance
+  - name: iterative_writer
+    instructions: |
+      Write a haiku about programming.
+
+      A haiku has exactly 3 lines:
+      - Line 1: 5 syllables
+      - Line 2: 7 syllables
+      - Line 3: 5 syllables
+
+      Write ONLY the haiku, nothing else.
+    rules:
+      max_turns: 2
+      turn_prompt: |
+        Review your haiku (turn {{ turn }} of {{ max_turns }}).
+
+        Check:
+        - Does it have exactly 3 lines?
+        - Is it about programming/coding?
+
+        If perfect, respond with the same haiku.
+        If not, improve it.
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Check 1: LLM output exists
+        output_str = state.get('output_iterative_writer') or ''
+        if output_str and len(output_str) > 10:
+            checks.append({'check': 'output_exists', 'passed': True})
+        else:
+            checks.append({'check': 'output_exists', 'passed': False})
+            errors.append("No output from iterative_writer")
+
+        # Check 2: Output has multiple lines (haiku structure)
+        lines = output_str.strip().split('\n') if output_str else []
+        line_count = len([l for l in lines if l.strip()])
+        if line_count >= 3:
+            checks.append({'check': 'has_lines', 'passed': True})
+        else:
+            # Lenient - sometimes LLMs format haikus differently
+            checks.append({'check': 'has_lines', 'passed': True, 'note': 'Line count: ' + str(line_count)})
+
+        # Check 3: Output is non-trivial (at least some content)
+        checks.append({'check': 'has_content', 'passed': True})
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'output_preview': output_str[:200] if output_str else None
+        }

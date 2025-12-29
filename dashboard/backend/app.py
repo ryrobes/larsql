@@ -141,11 +141,15 @@ def sanitize_for_json(obj):
     """Recursively sanitize an object for JSON serialization.
 
     Converts NaN/Infinity to None, which becomes null in JSON.
+    Converts bytes to placeholder string (for binary/image data).
     """
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None
         return obj
+    elif isinstance(obj, bytes):
+        # Binary data (e.g., images) can't be JSON serialized
+        return f"<binary data: {len(obj)} bytes>"
     elif isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -525,8 +529,9 @@ def get_cascade_definitions():
 
                             if cascade_id and cascade_id not in all_cascades:
                                 # Extract phase data with full spec
+                                # Support both "cells" (current) and "phases" (legacy)
                                 phases_data = []
-                                for p in config.get("phases", []):
+                                for p in config.get("cells", config.get("phases", [])):
                                     rules = p.get("rules", {})
                                     soundings = p.get("soundings", {})
                                     wards = p.get("wards", {})

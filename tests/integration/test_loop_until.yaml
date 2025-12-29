@@ -1,0 +1,83 @@
+# Test: Loop Until Validation
+# Tests: Cell retries until validator passes, max_attempts respected
+# Expected: Cell retries with validation feedback until passing
+
+cascade_id: integration_test_loop_until
+description: |
+  Integration test verifying loop_until validation pattern:
+  - Cell retries until validator returns valid=true
+  - Validation feedback is injected into retry prompts
+  - max_attempts is respected
+  - Final valid output is stored
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Generate content that must satisfy validator
+  - name: generate_number
+    instructions: |
+      Generate a random number between 50 and 100 (inclusive).
+
+      Respond with ONLY the number, nothing else. Just a single integer.
+
+      Example valid responses: 75, 88, 99, 50, 100
+      Example invalid responses: 25, 49, 101, "the number is 75"
+    rules:
+      max_turns: 1
+      max_attempts: 5
+      loop_until:
+        python: |
+          # Parse the output as a number
+          # Note: polyglot validators receive 'content' (string) and 'original_input' (dict)
+          text = content.strip() if content else ""
+
+          try:
+              num = int(text)
+              if 50 <= num <= 100:
+                  result = {"valid": True, "reason": f"Valid number: {num}"}
+              else:
+                  result = {"valid": False, "reason": f"Number {num} not in range 50-100"}
+          except ValueError:
+              result = {"valid": False, "reason": f"Could not parse as integer: {text}"}
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: Output exists (LLM output in state)
+        output_str = state.get('output_generate_number', '')
+        if output_str:
+            checks.append({'check': 'output_exists', 'passed': True})
+        else:
+            checks.append({'check': 'output_exists', 'passed': False})
+            errors.append("No output generated")
+
+        # Check 2: Output is a valid number in range
+        text = output_str.strip() if output_str else ""
+        try:
+            num = int(text)
+            if 50 <= num <= 100:
+                checks.append({'check': 'number_in_range', 'passed': True})
+            else:
+                checks.append({'check': 'number_in_range', 'passed': False})
+                errors.append(f"Number {num} not in range 50-100")
+        except (ValueError, TypeError) as e:
+            checks.append({'check': 'number_in_range', 'passed': False})
+            errors.append(f"Could not parse number from: '{text}'")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'final_value': text
+        }

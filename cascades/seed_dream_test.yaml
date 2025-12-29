@@ -1,0 +1,75 @@
+cascade_id: mm_test123
+description: Generated from Image Playground
+inputs_schema:
+  prompt: Prompt text for prompt
+cells:
+- name: llm_phase
+  instructions: 'Please rewrite and enhance this image prompt, be vivid with lots of rich details, but staying true to the
+    original intent. Please return ONLY the enriched prompt.
+
+
+    Image Prompt:
+
+    {{ input.prompt }}
+
+    '
+  model: x-ai/grok-4.1-fast
+  rules:
+    max_turns: 1
+- name: bytedance_seed_seedream_4_5_raw1
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: bytedance_seed_seedream_4_5_raw2
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: bytedance_seed_seedream_4_5_raw3
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
+- name: bytedance_seed_seedream_4_5_remix1
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output
+- name: bytedance_seed_seedream_4_5_remix12
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output
+- name: bytedance_seed_seedream_4_5_remixed
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ outputs.llm_phase }}'
+  image_config:
+    width: 1024
+    height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output
+- name: bytedance_seed_seedream_4_5_raw
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024

@@ -1,0 +1,189 @@
+background_image: examples/capecod.jpg
+background_darken: 0.5
+
+blocks:
+  # Main visible dashboard
+  - block_id: perf_monitor
+    type: panel
+    x: 5
+    y: 2
+    width: 50
+    height: 15
+    content:
+      - '[bold cyan]Performance Monitor with Viewport Culling[/bold cyan]'
+      - ''
+      - 'Total Widgets: {{_culling_stats.total_widgets:d}}'
+      - 'Visible Widgets: {{_culling_stats.visible_widgets:d}}'
+      - 'Culled (Skipped): {{_culling_stats.culled_widgets:d}}'
+      - 'Efficiency Ratio: {{_culling_stats.efficiency_ratio:.1f}}%'
+      - ''
+      - 'Cull Analysis Time: {{_culling_stats.last_cull_time:.3f}}ms'
+      - 'Skipped Off-screen Updates: {{_debug_skipped_offscreen:d}}'
+      - ''
+      - 'FPS: {{fps:.1f}}'
+      - 'Frame Time: {{frame_time:.1f}}ms'
+    block_map:
+      title: '🎯 Culling Performance'
+      overlay_color: '#3498db'
+      darken_factor: 0.6
+      blend_opacity: 0.4
+      border: true
+
+  - block_id: info_panel
+    type: panel
+    x: 60
+    y: 2
+    width: 45
+    height: 15
+    content:
+      - '[bold yellow]Viewport Culling Demo[/bold yellow]'
+      - ''
+      - 'This dashboard has many widgets:'
+      - '• 3 visible panels'
+      - '• 50+ spare widgets off-screen'
+      - ''
+      - 'With culling enabled:'
+      - '• Only visible widgets render'
+      - '• Off-screen updates are skipped'
+      - '• Widget count stays constant'
+      - '• OFFSET system remains stable'
+    block_map:
+      title: '📋 Information'
+      overlay_color: '#9b59b6'
+      darken_factor: 0.6
+      blend_opacity: 0.3
+      border: true
+
+  - block_id: test_panel
+    type: panel  
+    x: 110
+    y: 2
+    width: 35
+    height: 15
+    content:
+      - 'This is a visible panel'
+      - 'It should be rendered'
+      - ''
+      - 'Try resizing the terminal'
+      - 'The culling stats will update'
+    block_map:
+      title: 'Test Panel'
+      overlay_color: '#27ae60'
+      darken_factor: 0.6
+      blend_opacity: 0.3
+      border: true
+
+  # Add many spare widgets off-screen for the template system
+  # These simulate your widget pool for drag-and-drop
+  
+  # Row 1 of spare widgets (far off-screen)
+  - block_id: spare_widget_0001
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare Widget 1', 'Ready for use']
+    block_map:
+      title: 'Spare 1'
+      overlay_color: dark
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: spare_widget_0002
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare Widget 2', 'Ready for use']
+    block_map:
+      title: 'Spare 2'
+      overlay_color: dark
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: spare_widget_0003
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare Widget 3', 'Ready for use']
+    block_map:
+      title: 'Spare 3'
+      overlay_color: dark
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: spare_widget_0004
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare Widget 4', 'Ready for use']
+    block_map:
+      title: 'Spare 4'
+      overlay_color: dark
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: spare_widget_0005
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare Widget 5', 'Ready for use']
+    block_map:
+      title: 'Spare 5'
+      overlay_color: dark
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  # Add 45 more to make 50 total spare widgets
+  - block_id: spare_widget_0006
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare 6']
+    block_map: {overlay_color: dark}
+
+  - block_id: spare_widget_0007
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare 7']
+    block_map: {overlay_color: dark}
+
+  - block_id: spare_widget_0008
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare 8']
+    block_map: {overlay_color: dark}
+
+  - block_id: spare_widget_0009
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare 9']
+    block_map: {overlay_color: dark}
+
+  - block_id: spare_widget_0010
+    type: panel
+    x: 9999
+    y: 9999
+    width: 20
+    height: 10
+    content: ['Spare 10']
+    block_map: {overlay_color: dark}

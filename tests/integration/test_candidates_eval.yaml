@@ -1,0 +1,80 @@
+# Test: Candidates with Evaluator
+# Tests: Multiple candidates generated, evaluator selects winner, outputs propagate
+# Expected: N candidates run, evaluator picks one, winner output available
+
+cascade_id: integration_test_candidates
+description: |
+  Integration test verifying candidates (Tree of Thought) feature:
+  - Multiple candidate attempts are generated
+  - Evaluator cell runs and selects a winner
+  - Winner output is propagated to next cell
+  - Candidate metadata is accessible
+
+inputs_schema:
+  topic: Topic for candidate generation
+
+cells:
+  # Cell 1: Generate candidates
+  - name: generate_ideas
+    instructions: |
+      Generate a creative idea about: {{ input.topic }}
+
+      Your response MUST include:
+      1. A title (on its own line, prefixed with "Title:")
+      2. A one-sentence description
+
+      Be creative and unique. This is candidate {{ sounding_index + 1 }} of {{ sounding_factor }}.
+    rules:
+      max_turns: 1
+    candidates:
+      factor: 3
+      evaluator_instructions: |
+        Evaluate these {{ soundings | length }} ideas about "{{ input.topic }}".
+
+        Pick the MOST creative and well-structured idea.
+
+        Respond with the index (0-based) of your choice and a brief reason.
+      mutate: false
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: Winner output exists in state (LLM outputs stored as output_<cell_name>)
+        winner_output = state.get('output_generate_ideas')
+        if winner_output:
+            checks.append({'check': 'winner_output_exists', 'passed': True})
+        else:
+            checks.append({'check': 'winner_output_exists', 'passed': False})
+            errors.append("No winner output in state")
+
+        # Check 2: Output has meaningful content (at least 20 chars)
+        if winner_output and len(winner_output) > 20:
+            checks.append({'check': 'output_has_content', 'passed': True})
+        else:
+            checks.append({'check': 'output_has_content', 'passed': False})
+            errors.append(f"Winner output too short: {len(winner_output) if winner_output else 0} chars")
+
+        # Check 3: Verify input was received
+        if input.get('topic'):
+            checks.append({'check': 'input_received', 'passed': True})
+        else:
+            checks.append({'check': 'input_received', 'passed': False})
+            errors.append("Topic input not received")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'state_keys': list(state.keys())
+        }

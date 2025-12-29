@@ -1,0 +1,206 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+    - block_id: metrics_stream
+      type: process
+      command: python -u examples/scripts/test_metrics_output.py
+      x: 5
+      y: 2
+      width: 52
+      height: 25
+      data_extraction:
+          patterns:
+              - type: extract_number
+                prefix: "CPU:"
+                metric: cpu
+              - type: extract_number
+                prefix: "Memory:"
+                metric: memory
+              - type: contains
+                value: "[SUCCESS]"
+                metric: success
+              - type: contains
+                value: "[ERROR]"
+                metric: errors
+              - type: contains
+                value: "[WARNING]"
+                metric: warnings
+      block_map:
+          title: Metrics Stream
+          overlay_color: "#2c3e50"
+          darken_factor: 0.6
+          blend_opacity: 0.3
+    - block_id: live_dashboard
+      type: panel
+      x: 60
+      y: 2
+      width: 60
+      height: 25
+      content:
+          - "[bold cyan]Live System Metrics[/bold cyan]"
+          - ""
+          - "CPU Usage: [bold yellow]{{metrics_stream.cpu:.1f}}%[/bold yellow]"
+          - "Memory: [bold green]{{metrics_stream.memory:.0f}} MB[/bold green]"
+          - ""
+          - "[bold]Performance Summary:[/bold]"
+          - " Average CPU: {{metrics_stream.cpu_avg:.1f}}%"
+          - " Peak Memory: {{metrics_stream.memory_max:.0f}} MB"
+          - " Min Memory: {{metrics_stream.memory_min:.0f}} MB"
+          - ""
+          - "[bold]Request Statistics:[/bold]"
+          - " Success: {{metrics_stream.success_count}}"
+          - " Errors: {{metrics_stream.errors_count}}"
+          - " arnings: {{metrics_stream.warnings_count}}"
+          - ""
+          - "[bold]Success Rate:[/bold]"
+          - "Total Requests: {{metrics_stream.success_count}} + {{metrics_stream.errors_count}}"
+          - "[dim]Last CPU reading: {{metrics_stream.cpu:.2f}}%[/dim]"
+      block_map:
+          title: Live Dashboard
+          overlay_color: "#3498db"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: alert_panel
+      type: panel
+      x: 123
+      y: 2
+      width: 55
+      height: 10
+      content:
+          - "[bold red]ALERTS[/bold red]"
+          - ""
+          - "CPU Status: {{metrics_stream.cpu:.0f}}% - {{metrics_stream.cpu > 80 ? '[red]HIGH[/red]'
+            : '[green]OK[/green]'}}"
+          - "Memory: {{metrics_stream.memory}} MB"
+          - "Error Rate: {{metrics_stream.errors_count}} errors detected"
+      block_map:
+          title: System Alerts
+          overlay_color: "#e74c3c"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: formatted_stats
+      type: panel
+      x: 123
+      y: 13
+      width: 55
+      height: 14
+      content:
+          - "[bold]Formatted Statistics:[/bold]"
+          - ""
+          - "Currency format: ${{metrics_stream.memory:,.2f}}"
+          - "Percentage: {{metrics_stream.cpu:.1%}}"
+          - "Scientific: {{metrics_stream.memory:.2e}}"
+          - "Padded: '{{metrics_stream.cpu:>10.1f}}'"
+          - ""
+          - "[bold]Conditional Formatting:[/bold]"
+          - "CPU: {{metrics_stream.cpu:.1f}}% {{metrics_stream.cpu > 70 ? 'X' : 'Q'}}"
+          - "Memory: {{metrics_stream.memory}} MB {{metrics_stream.memory > 500 ? 'Y'
+            : 'Z'}}"
+          - ""
+          - "[dim]Updates automatically as metrics change![/dim]"
+      block_map:
+          title: Format Examples
+          overlay_color: "#9b59b6"
+          darken_factor: 0.5
+          blend_opacity: 0.3
+    - block_id: sparkline_viz
+      type: sparkline
+      source_block: metrics_stream
+      x: 60
+      y: 29
+      width: 174
+      height: 8
+      data_extraction:
+          patterns:
+              - type: extract_number
+                prefix: "CPU:"
+                metric: cpu
+          metric: cpu
+          max_points: 150
+      sparkline:
+          style: braille
+      block_map:
+          title: CPU History
+          overlay_color: "#1abc9c"
+    - block_id: help
+      type: panel
+      x: 5
+      y: 37
+      width: 175
+      height: 8
+      content:
+          - "[bold yellow]Template Variable Demo[/bold yellow]"
+          - ""
+          - "This demo shows how to use template variables in panel blocks:"
+          - " {{block_id.metric}} - Shows the last value"
+          - " {{block_id.metric:format}} - With Python format specifiers (.1f, .2%, etc)"
+          - " {{block_id.metric_sum}}, _avg, _count, _min, _max - Aggregations"
+          - " Updates automatically when metrics change!"
+      block_map:
+          overlay_color: "#f39c12"
+          darken_factor: 0.7
+          blend_opacity: 0.4
+    - block_id: panel_6146
+      type: panel
+      x: 18
+      y: 39
+      width: 40
+      height: 10
+      content:
+          - "[bold]New Panel[/bold]"
+          - ""
+          - Edit the JSON to customize this panel
+      block_map:
+          title: Info Panel
+          overlay_color: "#3498db"
+    - block_id: aggregator_3865
+      type: aggregator
+      x: 60
+      y: 39
+      width: 30
+      height: 10
+      aggregation:
+          sources:
+              - block: source_block_id
+                metric: value
+                aggregation: count
+          operation: sum
+      visualization:
+          type: figlet
+          font: ansi_shadow
+          format: "{value:.0f}"
+      block_map:
+          title: Counter
+          overlay_color: "#f39c12"
+    - block_id: panel_8755
+      type: panel
+      x: 92
+      y: 39
+      width: 40
+      height: 10
+      content:
+          - "[bold]New Panel[/bold]"
+          - ""
+          - Edit the JSON to customize this panel
+      block_map:
+          title: Info Panel
+          overlay_color: "#3498db"
+    - block_id: aggregator_9279
+      type: aggregator
+      x: 134
+      y: 39
+      width: 29
+      height: 10
+      aggregation:
+          sources:
+              - block: source_block_id
+                metric: value
+                aggregation: count
+          operation: sum
+      visualization:
+          type: figlet
+          font: ansi_shadow
+          format: "{value:.0f}"
+      block_map:
+          title: Counter
+          overlay_color: "#f39c12"

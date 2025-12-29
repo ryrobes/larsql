@@ -1056,12 +1056,7 @@ function CascadeNavigator() {
               initial={{ rotateY: 90, zIndex: 200 }}
               animate={{ rotateY: 0, zIndex: 200 }}
               exit={{ rotateY: -90, zIndex: 200 }}
-              transition={{ duration: 0.4, ease: 'easeInOut' }}
-              style={{ overflow: 'hidden' }} // Hide overflow during animation
-              onAnimationComplete={() => {
-                // Re-enable scroll after flip completes
-                document.querySelector('.nav-yaml-view')?.style.setProperty('overflow-y', 'auto');
-              }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
             >
               {/* Warning banners */}
               {viewMode === 'replay' && (
@@ -1110,12 +1105,7 @@ function CascadeNavigator() {
               initial={{ rotateY: -90, zIndex: 200 }}
               animate={{ rotateY: 0, zIndex: 1 }}
               exit={{ rotateY: 90, zIndex: 200 }}
-              transition={{ duration: 0.4, ease: 'easeInOut' }}
-              style={{ overflow: 'hidden' }} // Hide overflow during animation
-              onAnimationComplete={() => {
-                // Re-enable scroll after flip completes
-                document.querySelector('.nav-normal-view')?.style.setProperty('overflow-y', 'auto');
-              }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
             >
           {/* Inputs Form (if cascade has inputs_schema) */}
           {hasInputs && (

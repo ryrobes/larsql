@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
 import { Button, Badge, useToast } from '../../components';
 import CheckpointRenderer from '../../components/CheckpointRenderer';
 import CheckpointModal from '../../components/CheckpointModal';
-import useNavigationStore from '../../stores/navigationStore';
+import { ROUTES } from '../../routes.helpers';
 import './InterruptsView.css';
 
 /**
@@ -22,7 +23,7 @@ const InterruptsView = () => {
   const [splitSizes, setSplitSizes] = useState([25, 75]);
   const [showModal, setShowModal] = useState(false);
   const { showToast } = useToast();
-  const { navigate } = useNavigationStore();
+  const navigate = useNavigate();
 
   // Fetch pending checkpoints
   const fetchCheckpoints = useCallback(async () => {
@@ -269,7 +270,7 @@ const InterruptsView = () => {
                     variant="ghost"
                     size="sm"
                     icon="mdi:eye"
-                    onClick={() => navigate(`studio?session=${selectedCheckpoint.session_id}`)}
+                    onClick={() => navigate(ROUTES.studioWithSession(selectedCheckpoint.cascade_id, selectedCheckpoint.session_id))}
                   >
                     View in Studio
                   </Button>

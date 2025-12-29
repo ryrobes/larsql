@@ -35,6 +35,25 @@ from rvbbit.db_adapter import get_db
 sessions_bp = Blueprint('sessions', __name__)
 
 
+def sanitize_for_json(obj):
+    """Recursively sanitize an object for JSON serialization.
+
+    Converts NaN/Infinity to None, bytes to placeholder string.
+    """
+    import math
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, bytes):
+        return f"<binary data: {len(obj)} bytes>"
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    return obj
+
+
 def _enrich_sessions_with_metrics(sessions: list) -> list:
     """
     Enrich session list with analytics metrics from cascade_analytics and cell_analytics tables.
@@ -111,6 +130,28 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                     'bottleneck_cell_pct': float(row.get('bottleneck_cell_pct', 0) or 0),
                 }
 
+        # Query for distinct models used per session
+        # Uses ClickHouse's groupArray(DISTINCT ...) to avoid correlated subqueries
+        models_query = f"""
+            SELECT
+                session_id,
+                groupArray(DISTINCT model) as models
+            FROM unified_logs
+            WHERE session_id IN ('{session_ids_str}')
+                AND model IS NOT NULL
+                AND model != ''
+            GROUP BY session_id
+        """
+
+        models_result = db.query(models_query)
+
+        # Build models map
+        models_map = {}
+        for row in models_result:
+            sid = row.get('session_id')
+            if sid:
+                models_map[sid] = row.get('models', [])
+
         # Build metrics map
         metrics_map = {}
 
@@ -137,6 +178,7 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                 'cells_with_context': 0,
                 'bottleneck_cell': None,
                 'bottleneck_cell_pct': 0.0,
+                'models': [],
             }
 
         # Populate with actual metrics from cascade_analytics
@@ -167,12 +209,18 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
                     metrics_map[sid]['bottleneck_cell'] = bottleneck_map[sid]['bottleneck_cell']
                     metrics_map[sid]['bottleneck_cell_pct'] = bottleneck_map[sid]['bottleneck_cell_pct']
 
+        # Merge models data for ALL sessions (not just those with analytics)
+        for sid in metrics_map:
+            if sid in models_map:
+                metrics_map[sid]['models'] = models_map[sid]
+
         # Get input_data and output from cascade_sessions table
         # ALWAYS fetch this regardless of cascade_analytics presence
+        # Truncate both to 300 chars to reduce payload size
         cascade_sessions_query = f"""
             SELECT
                 session_id,
-                input_data,
+                LEFT(toString(input_data), 300) as input_data_truncated,
                 LEFT(output, 300) as output_truncated
             FROM cascade_sessions
             WHERE session_id IN ('{session_ids_str}')
@@ -185,16 +233,16 @@ def _enrich_sessions_with_metrics(sessions: list) -> list:
             sid = row.get('session_id')
 
             if sid in metrics_map:
-                # Process input_data
-                if row.get('input_data'):
+                # Process input_data (already truncated to 300 chars in query)
+                if row.get('input_data_truncated'):
                     try:
-                        input_data = row['input_data']
+                        input_data = row['input_data_truncated']
                         if isinstance(input_data, str):
                             input_data = json.loads(input_data)
                         metrics_map[sid]['input_data'] = input_data
                     except Exception as e:
-                        print(f"[DEBUG] Failed to parse input_data for {sid}: {e}")
-                        metrics_map[sid]['input_data'] = row['input_data']
+                        # If JSON parse fails (likely due to truncation), use as string
+                        metrics_map[sid]['input_data'] = row['input_data_truncated']
 
                 # Process output
                 if row.get('output_truncated'):
@@ -384,9 +432,12 @@ def list_all_sessions():
             result[i]['is_zombie'] = is_zombie
             result[i]['can_resume'] = can_resume
 
+        # Sanitize result to handle bytes (images) and other non-JSON-serializable types
+        sanitized_result = [sanitize_for_json(session) for session in result]
+
         return jsonify({
-            'sessions': result,
-            'total': len(result)
+            'sessions': sanitized_result,
+            'total': len(sanitized_result)
         })
 
     except Exception as e:
@@ -413,7 +464,7 @@ def get_session_detail(session_id: str):
         is_zombie = _check_is_zombie(session)
         can_resume = session.resumable and session.last_checkpoint_id is not None
 
-        return jsonify(_session_to_dict(session, is_zombie, can_resume))
+        return jsonify(sanitize_for_json(_session_to_dict(session, is_zombie, can_resume)))
 
     except Exception as e:
         import traceback
@@ -572,9 +623,12 @@ def list_blocked_sessions():
             can_resume = session.resumable and session.last_checkpoint_id is not None
             result.append(_session_to_dict(session, is_zombie, can_resume))
 
+        # Sanitize to handle bytes (images) and other non-JSON-serializable types
+        sanitized_result = [sanitize_for_json(session) for session in result]
+
         return jsonify({
-            'sessions': result,
-            'total': len(result)
+            'sessions': sanitized_result,
+            'total': len(sanitized_result)
         })
 
     except Exception as e:

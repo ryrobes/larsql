@@ -167,7 +167,7 @@ cells:
   #   - Each sounding exits early when confident, continues if unsure
   # ============================================================
   - name: extract_brand
-    model: anthropic/claude-opus-4.5
+    #model: anthropic/claude-opus-4.5
     traits:
       - brave_web_search
     instructions: |
@@ -260,7 +260,7 @@ cells:
   # Cell 5: VALIDATE - Ward validation with retry
   # ============================================================
   - name: validate
-    model: anthropic/claude-opus-4.5
+    #model: anthropic/claude-opus-4.5
     instructions: |
       Finalize the brand extraction result.
 

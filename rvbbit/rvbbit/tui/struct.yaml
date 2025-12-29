@@ -1,0 +1,135 @@
+background_image: alice.jpg
+background_darken: 0.5
+blocks:
+  - block_id: sensor_data
+    type: process
+    command: python -u test_structured_output.py
+    x: 5
+    y: 2
+    width: 55
+    height: 20
+    block_map:
+      title: Sensor Data Stream
+      overlay_color: "#2d3436"
+      darken_factor: 0.6
+      blend_opacity: 0.3
+
+  - block_id: event_counts
+    type: bar_chart
+    source_block: sensor_data
+    x: 65
+    y: 2
+    width: 45
+    height: 12
+    data_extraction:
+      patterns:
+        - type: contains
+          value: "[SENSOR_READ]"
+          metric: sensor_reads
+        - type: contains
+          value: "[NETWORK_SEND]"
+          metric: network_sends
+        - type: contains
+          value: "[CACHE_HIT]"
+          metric: cache_hits
+        - type: contains
+          value: "[CACHE_MISS]"
+          metric: cache_misses
+        - type: contains
+          value: "[DB_QUERY]"
+          metric: db_queries
+        - type: contains
+          value: "[API_CALL]"
+          metric: api_calls
+      metrics:
+        - name: sensor_reads
+          label: Sensors
+          aggregation: count
+        - name: network_sends
+          label: Network
+          aggregation: count
+        - name: cache_hits
+          label: Cache Hit
+          aggregation: count
+        - name: cache_misses
+          label: Cache Miss
+          aggregation: count
+        - name: db_queries
+          label: Database
+          aggregation: count
+        - name: api_calls
+          label: API
+          aggregation: count
+    block_map:
+      title: System Events
+      overlay_color: "#00b894"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: temperature_chart
+    type: line_chart
+    source_block: sensor_data
+    x: 115
+    y: 2
+    width: 40
+    height: 12
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: "Temperature:"
+          metric: temperature
+      metric: temperature
+      max_points: 50
+    block_map:
+      title: Temperature (°C)
+      overlay_color: "#e17055"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: humidity_chart
+    type: line_chart
+    source_block: sensor_data
+    x: 160
+    y: 2
+    width: 40
+    height: 12
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: "Humidity:"
+          metric: humidity
+      metric: humidity
+      max_points: 50
+    block_map:
+      title: Humidity (%)
+      overlay_color: "#74b9ff"
+      darken_factor: 0.5
+      blend_opacity: 0.3
+
+  - block_id: status_summary
+    type: bar_chart
+    source_block: sensor_data
+    x: 65
+    y: 15
+    width: 35
+    height: 10
+    data_extraction:
+      patterns:
+        - type: contains
+          value: "Status: OK"
+          metric: ok_status
+        - type: contains
+          value: "Status: WARNING"
+          metric: warning_status
+      metrics:
+        - name: ok_status
+          label: OK
+          aggregation: count
+        - name: warning_status
+          label: Warning
+          aggregation: count
+    block_map:
+      title: System Status
+      overlay_color: "#a29bfe"
+      darken_factor: 0.5
+      blend_opacity: 0.3

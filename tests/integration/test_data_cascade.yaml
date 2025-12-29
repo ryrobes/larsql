@@ -1,0 +1,166 @@
+# Test: Data Cascade (Polyglot Execution)
+# Tests: SQL, Python, JavaScript, Clojure cells in sequence with temp tables
+# Expected: All 4 languages execute, data flows via temp tables
+
+cascade_id: integration_test_data_cascade
+description: |
+  Integration test verifying polyglot data cascade execution:
+  - SQL cell creates initial data
+  - Python cell transforms data
+  - JavaScript cell adds fields
+  - Clojure cell aggregates
+  - Temp tables (_cell_name) work across languages
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: SQL - Create base data
+  - name: sql_base
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (
+          VALUES
+            ('2024-01-01', 'Electronics', 100),
+            ('2024-01-02', 'Electronics', 150),
+            ('2024-01-03', 'Clothing', 80),
+            ('2024-01-04', 'Clothing', 120),
+            ('2024-01-05', 'Books', 30)
+        ) AS t(date, category, amount)
+    handoffs:
+      - python_transform
+
+  # Cell 2: Python - Add computed fields
+  - name: python_transform
+    tool: python_data
+    inputs:
+      code: |
+        df = data.sql_base
+
+        # Add tax calculation
+        df['tax'] = df['amount'] * 0.1
+        df['total'] = df['amount'] + df['tax']
+
+        result = df
+    handoffs:
+      - js_enrich
+
+  # Cell 3: JavaScript - Add categorization
+  - name: js_enrich
+    tool: js_data
+    inputs:
+      code: |
+        const data_in = data.python_transform;
+
+        result = data_in.map(row => ({
+          ...row,
+          size: row.amount >= 100 ? 'large' : 'small',
+          quarter: 'Q1'
+        }));
+    handoffs:
+      - clojure_agg
+
+  # Cell 4: Clojure - Aggregate
+  - name: clojure_agg
+    tool: clojure_data
+    inputs:
+      code: |
+        (let [rows (:js-enrich data)
+              by-cat (group-by :category rows)]
+          (for [[cat items] by-cat]
+            {:category cat
+             :count (count items)
+             :total_amount (reduce + (map :amount items))
+             :total_with_tax (reduce + (map :total items))}))
+    handoffs:
+      - verify
+
+  # Cell 5: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: SQL base data
+        try:
+            sql_df = data.sql_base
+            if len(sql_df) == 5:
+                checks.append({'check': 'sql_data', 'passed': True})
+            else:
+                checks.append({'check': 'sql_data', 'passed': False})
+                errors.append(f"SQL: expected 5 rows, got {len(sql_df)}")
+        except Exception as e:
+            checks.append({'check': 'sql_data', 'passed': False})
+            errors.append(f"SQL error: {e}")
+
+        # Check 2: Python transform added tax columns
+        try:
+            py_df = data.python_transform
+            if 'tax' in py_df.columns and 'total' in py_df.columns:
+                checks.append({'check': 'python_transform', 'passed': True})
+            else:
+                checks.append({'check': 'python_transform', 'passed': False})
+                errors.append(f"Python: missing tax/total columns")
+        except Exception as e:
+            checks.append({'check': 'python_transform', 'passed': False})
+            errors.append(f"Python error: {e}")
+
+        # Check 3: JS added size and quarter
+        try:
+            js_data_result = data.js_enrich
+            # js_data returns list of dicts
+            if isinstance(js_data_result, list):
+                first = js_data_result[0] if js_data_result else {}
+            else:
+                first = js_data_result.iloc[0].to_dict() if len(js_data_result) > 0 else {}
+
+            if 'size' in first and 'quarter' in first:
+                checks.append({'check': 'js_enrich', 'passed': True})
+            else:
+                checks.append({'check': 'js_enrich', 'passed': False})
+                errors.append(f"JS: missing size/quarter fields. Got: {list(first.keys())}")
+        except Exception as e:
+            checks.append({'check': 'js_enrich', 'passed': False})
+            errors.append(f"JS error: {e}")
+
+        # Check 4: Clojure aggregation
+        try:
+            clj_result = data.clojure_agg
+            # Should have 3 categories
+            if isinstance(clj_result, list):
+                cats = [r.get('category') for r in clj_result]
+            else:
+                cats = clj_result['category'].tolist() if 'category' in clj_result.columns else []
+
+            expected_cats = {'Electronics', 'Clothing', 'Books'}
+            if expected_cats.issubset(set(cats)):
+                checks.append({'check': 'clojure_agg', 'passed': True})
+            else:
+                checks.append({'check': 'clojure_agg', 'passed': False})
+                errors.append(f"Clojure: expected {expected_cats}, got {set(cats)}")
+        except Exception as e:
+            checks.append({'check': 'clojure_agg', 'passed': False})
+            errors.append(f"Clojure error: {e}")
+
+        # Check 5: All languages accessible
+        available = data.list_available()
+        expected = ['sql_base', 'python_transform', 'js_enrich', 'clojure_agg']
+        present = [c for c in expected if c in available]
+        if len(present) == 4:
+            checks.append({'check': 'all_languages', 'passed': True})
+        else:
+            checks.append({'check': 'all_languages', 'passed': False})
+            errors.append(f"Missing: {set(expected) - set(present)}")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'available_data': available
+        }

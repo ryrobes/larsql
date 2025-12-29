@@ -1,0 +1,104 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+- block_id: metrics_stream
+  type: process
+  command: python -u examples/scripts/test_metrics_output.py
+  x: 5
+  y: 2
+  width: 55
+  height: 61
+  block_map:
+    title: Metrics Stream
+    overlay_color: '#2c3e50'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+- block_id: rolling_metrics
+  type: bar_chart
+  source_block: metrics_stream
+  x: 100
+  y: 6
+  width: 55
+  height: 20
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory
+    - type: contains
+      value: '[SUCCESS]'
+      metric: success
+    - type: contains
+      value: '[ERROR]'
+      metric: errors
+    metrics:
+    - name: cpu
+      label: CPU (avg 10)
+      aggregation: average
+      window: 10
+    - name: cpu
+      label: CPU (max 10)
+      aggregation: max
+      window: 10
+    - name: memory
+      label: Mem (avg 10)
+      aggregation: average
+      window: 10
+    - name: success
+      label: Success (5s)
+      aggregation: sum
+      window: 5
+    - name: errors
+      label: Errors (10s)
+      aggregation: sum
+      window: 10
+    - name: errors
+      label: Errors (total)
+      aggregation: sum
+  block_map:
+    title: Rolling Window Metrics
+    overlay_color: '#e74c3c'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: performance_summary
+  type: bar_chart
+  source_block: metrics_stream
+  x: 100
+  y: 28
+  width: 45
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu_values
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory_values
+    metrics:
+    - name: cpu_values
+      label: CPU Min
+      aggregation: min
+    - name: cpu_values
+      label: CPU Avg
+      aggregation: average
+    - name: cpu_values
+      label: CPU Max
+      aggregation: max
+    - name: memory_values
+      label: Mem Min
+      aggregation: min
+    - name: memory_values
+      label: Mem Avg
+      aggregation: average
+    - name: memory_values
+      label: Mem Max
+      aggregation: max
+  block_map:
+    title: Performance Statistics
+    overlay_color: '#3498db'
+    darken_factor: 0.5
+    blend_opacity: 0.3

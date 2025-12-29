@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
-import useNavigationStore from '../../../stores/navigationStore';
+import { ROUTES } from '../../../routes.helpers';
 import './AlertsPanel.css';
 
 // Register AG Grid modules
@@ -33,17 +34,15 @@ const darkTheme = themeQuartz.withParams({
  * @param {Array} alerts - Array of alert objects from backend
  */
 const AlertsPanel = ({ alerts = [] }) => {
-  const navigate = useNavigationStore((state) => state.navigate);
+  const navigate = useNavigate();
 
   // Handle row click - navigate to Studio with session
   const handleRowClick = (event) => {
     const { cascade_id, session_id } = event.data;
-    if (session_id) {
-      const params = { session: session_id };
-      if (cascade_id) {
-        params.cascade = cascade_id;
-      }
-      navigate('studio', params);
+    if (session_id && cascade_id) {
+      navigate(ROUTES.studioWithSession(cascade_id, session_id));
+    } else if (cascade_id) {
+      navigate(ROUTES.studioWithCascade(cascade_id));
     }
   };
 

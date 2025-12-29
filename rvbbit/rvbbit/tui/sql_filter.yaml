@@ -1,0 +1,117 @@
+background_image: examples/capecod.jpg
+background_darken: 0.5
+parameters:
+  class:
+    type: buttons
+    options:
+    - Class A
+    - Class B
+    - Class C
+    - '%'
+    default: '%'
+  season:
+    type: buttons
+    options:
+    - Fall
+    - Winter
+    - Spring
+    - Summer
+    - Unknown
+    - '%'
+    default: '%'
+blocks:
+- block_id: viz_controls
+  type: controls
+  layout: vertical
+  always_expanded: true
+  parameters:
+  - class
+  - season
+  triggers:
+    on_parameter_change:
+      class:
+      - 'notify(''Switched to class: {class}'')'
+      - season_bar.refresh()
+      - state_bar.refresh()
+      - callout_num.refresh()
+      - point_map.refresh()
+      season:
+      - 'notify(''Switched to season: {season}'')'
+      - season_bar.refresh()
+      - state_bar.refresh()
+      - callout_num.refresh()
+      - point_map.refresh()
+  x: 11
+  y: 16
+  width: 56
+  height: 12
+  block_map:
+    title: Visualization Controls
+    overlay_color: dark
+    border: false
+    padding: 1
+- block_id: season_bar
+  type: continuous
+  x: 199
+  y: 30
+  width: 97
+  height: 19
+  command: |
+    cheshire "SELECT season as x, COUNT(*) as y FROM bigfoot_sightings where class LIKE '{class}' and season like '{season}' GROUP BY 1 ORDER BY 2 DESC" bar 0 \
+    --title 'bigfoot_sightings: Record Count by season' --db '../data-rabbit/flow-story-backend/data/rabbit-sample-data.db' --color cyan
+  block_map:
+    title: 'bigfoot_sightings: Record Count by season'
+    overlay_color: dark
+    blend_opacity: 0.75
+    border: false
+    padding: 1
+    color: cyan
+- block_id: state_bar
+  type: continuous
+  x: 200
+  y: 14
+  width: 83
+  height: 16
+  command: |
+    cheshire "SELECT state as x, COUNT(*) as y FROM bigfoot_sightings where class LIKE '{class}' and season like '{season}' GROUP BY 1 ORDER BY 2 DESC" bar 0 \
+    --title 'bigfoot_sightings: Record Count by state' --db '../data-rabbit/flow-story-backend/data/rabbit-sample-data.db' --color cyan
+  block_map:
+    title: 'bigfoot_sightings: Record Count by state'
+    overlay_color: dark
+    blend_opacity: 0.75
+    border: false
+    padding: 1
+    color: cyan
+- block_id: callout_num
+  type: continuous
+  x: 105
+  y: 1
+  width: 178
+  height: 13
+  command: |
+    cheshire "SELECT COUNT(*) as x, ' ' || COUNT(*) || ' bigfoot sightings' as y FROM bigfoot_sightings  where class LIKE '{class}' and season like '{season}'" figlet 0 \
+    --title 'bigfoot_sightings: Total Record Count' --db '../data-rabbit/flow-story-backend/data/rabbit-sample-data.db' --color cyan
+  block_map:
+    title: 'bigfoot_sightings: Total Record Count'
+    overlay_color: dark
+    blend_opacity: 0.75
+    border: false
+    color: cyan
+- block_id: point_map
+  type: continuous
+  x: 93
+  y: 42
+  width: 110
+  height: 31
+  command: |
+    cheshire "SELECT zip_lat as lat, zip_long as lon, class as color FROM bigfoot_sightings_locations \
+    WHERE zip_lat IS NOT NULL AND zip_long IS NOT NULL AND class IS NOT NULL AND class LIKE '{class}' and season like '{season}' " map_points 0 \
+    --title 'bigfoot_sightings_locations: Map by class (Braille)' --db '../data-rabbit/flow-story-backend/data/rabbit-sample-data.db'
+  block_map:
+    title: 'bigfoot_sightings_locations: Map by class (Braille'
+    overlay_color: dark
+    blend_opacity: 0.75
+    border: false
+    padding: 1
+    color: cyan
+  _pool_widget_id: tpl_pool_003

@@ -484,7 +484,7 @@
   background: rgba(22, 32, 42, 0.5);
   border: 1px solid rgba(74, 158, 221, 0.1);
   border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
   font-size: 0.8rem;
 }
 
@@ -558,7 +558,7 @@
 .dom-content {
   margin: 0;
   padding: 1rem;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Google Sans Code', 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   line-height: 1.5;
   color: var(--mist-gray, #9AA5B1);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import Badge from '../../../components/Badge/Badge';
-import useNavigationStore from '../../../stores/navigationStore';
+import { ROUTES } from '../../../routes.helpers';
 import './InsightCard.css';
 
 /**
@@ -9,7 +10,7 @@ import './InsightCard.css';
  * For context_hotspot warnings, shows the actual message breakdown inline
  */
 const InsightCard = ({ insight }) => {
-  const navigate = useNavigationStore((state) => state.navigate);
+  const navigate = useNavigate();
   const [contextData, setContextData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -62,10 +63,15 @@ const InsightCard = ({ insight }) => {
 
   const handleViewSession = () => {
     if (insight.action?.type === 'view_session' || insight.action?.type === 'view_context') {
-      const params = {};
-      if (insight.action.cascade_id) params.cascade = insight.action.cascade_id;
-      if (insight.action.session_id) params.session = insight.action.session_id;
-      navigate('studio', params);
+      const cascadeId = insight.action.cascade_id;
+      const sessionId = insight.action.session_id;
+      if (cascadeId && sessionId) {
+        navigate(ROUTES.studioWithSession(cascadeId, sessionId));
+      } else if (cascadeId) {
+        navigate(ROUTES.studioWithCascade(cascadeId));
+      } else {
+        navigate(ROUTES.STUDIO);
+      }
     }
   };
 

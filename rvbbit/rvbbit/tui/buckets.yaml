@@ -1,0 +1,121 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+- block_id: metrics_stream
+  type: process
+  command: python -u examples/scripts/test_metrics_output.py
+  x: 5
+  y: 2
+  width: 51
+  height: 31
+  block_map:
+    title: Metrics Stream
+    overlay_color: '#2c3e50'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+- block_id: requests_per_minute
+  type: line_chart
+  source_block: metrics_stream
+  x: 60
+  y: 2
+  width: 60
+  height: 15
+  data_extraction:
+    patterns:
+    - type: contains
+      value: '[SUCCESS]'
+      metric: requests
+    metric: requests
+    bucket_size: 30s
+    aggregation: count
+    max_points: 20
+  block_map:
+    title: Request Rate (30s buckets)
+    overlay_color: '#27ae60'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: cpu_average_timeline
+  type: line_chart
+  source_block: metrics_stream
+  x: 125
+  y: 2
+  width: 60
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu
+    metric: cpu
+    bucket_size: minute
+    aggregation: average
+    max_points: 30
+  block_map:
+    title: CPU Usage (1-min avg)
+    overlay_color: '#3498db'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: error_rate_timeline
+  type: line_chart
+  source_block: metrics_stream
+  x: 60
+  y: 18
+  width: 60
+  height: 15
+  data_extraction:
+    patterns:
+    - type: contains
+      value: '[ERROR]'
+      metric: errors
+    metric: errors
+    bucket_size: minute
+    aggregation: count
+    max_points: 20
+  block_map:
+    title: Errors per Minute
+    padding: 1
+    overlay_color: '#e74c3c'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: memory_peaks
+  type: line_chart
+  source_block: metrics_stream
+  x: 125
+  y: 18
+  width: 60
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory
+    metric: memory
+    bucket_size: 30s
+    aggregation: max
+    max_points: 40
+  block_map:
+    title: Memory Peaks (30s intervals)
+    padding: 1
+    overlay_color: '#f39c12'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: raw_cpu_comparison
+  type: line_chart
+  source_block: metrics_stream
+  x: 60
+  y: 34
+  width: 179
+  height: 13
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu_raw
+    metric: cpu_raw
+    max_points: 100
+  block_map:
+    title: Raw CPU (no bucketing)
+    padding: 1
+    overlay_color: '#95a5a6'
+    darken_factor: 0.5
+    blend_opacity: 0.3

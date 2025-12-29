@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import Badge from '../../../components/Badge/Badge';
-import useNavigationStore from '../../../stores/navigationStore';
 import ContextBreakdownFilterPanel from './ContextBreakdownFilterPanel';
+import { ROUTES } from '../../../routes.helpers';
 import './ContextBreakdownPanel.css';
 
 // localStorage keys for Context Breakdown filters (separate from Outputs)
@@ -89,7 +90,7 @@ const groupCellsByCellName = (cells) => {
  * Shows aggregated relevance metrics per cascade, drill-down to sessions, cells, and messages
  */
 const ContextBreakdownPanel = () => {
-  const navigate = useNavigationStore((state) => state.navigate);
+  const navigate = useNavigate();
 
   // Filter state with localStorage persistence
   const [timeFilter, setTimeFilter] = useState(getInitialTimeFilter);
@@ -222,7 +223,7 @@ const ContextBreakdownPanel = () => {
   };
 
   const handleViewSession = (sessionId, cascadeId) => {
-    navigate('studio', { session: sessionId, cascade: cascadeId });
+    navigate(ROUTES.studioWithSession(cascadeId, sessionId));
   };
 
   const formatTimestamp = (timestamp) => {

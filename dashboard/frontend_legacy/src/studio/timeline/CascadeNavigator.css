@@ -31,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 2px;
   background-color: #0a0614;
   border-bottom: 1px solid #1a1628;
   flex-shrink: 0;
@@ -52,10 +52,10 @@
 
 .nav-cascade-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 14px;
   color: #f0f4f8;
   white-space: nowrap;
-  overflow: hidden;
+  /* overflow: hidden; */
   text-overflow: ellipsis;
 }
 

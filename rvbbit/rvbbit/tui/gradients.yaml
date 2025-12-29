@@ -1,0 +1,132 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+- block_id: metrics_stream
+  type: process
+  command: python -u examples/scripts/test_metrics_output.py
+  x: 5
+  y: 2
+  width: 50
+  height: 25
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory
+    - type: contains
+      value: '[ERROR]'
+      metric: errors
+  block_map:
+    title: 'Metrics (CPU: {{metrics_stream.cpu:.0f}}%)'
+    overlay_color: '{{gradient(metrics_stream.cpu, 0, 100, ''#00ff00'', ''#ff0000'')}}'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+- block_id: cpu_heatmap
+  type: bar_chart
+  source_block: metrics_stream
+  x: 65
+  y: 2
+  width: 60
+  height: 15
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu
+    metrics:
+    - name: cpu
+      label: CPU %
+      aggregation: average
+      window: 10
+  block_map:
+    title: CPU Usage Heatmap
+    overlay_color: '{{gradient(metrics_stream.cpu, 0, 100, ''#0000ff'', ''#ff0000'')}}'
+    darken_factor: '{{0.3 + metrics_stream.cpu / 200}}'
+    blend_opacity: 0.4
+- block_id: memory_gradient
+  type: sparkline
+  source_block: metrics_stream
+  x: 66
+  y: 31
+  width: 55
+  height: 8
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory
+    metric: memory
+    max_points: 100
+  sparkline:
+    style: braille
+  block_map:
+    title: 'Memory: {{metrics_stream.memory:.0f}} MB'
+    overlay_color: '{{gradient(metrics_stream.memory, 0, 1000, ''#2ecc71'', ''#e74c3c'')}}'
+- block_id: gradient_panel
+  type: panel
+  x: 65
+  y: 18
+  width: 120
+  height: 12
+  content:
+  - '[bold]Color Gradient Demo[/bold]'
+  - ''
+  - 'CPU Color: {{gradient(metrics_stream.cpu, 0, 100, ''#00ff00'', ''#ff0000'')}}'
+  - 'Memory Color: {{gradient(metrics_stream.memory, 0, 1000, ''#0099ff'', ''#ff9900'')}}'
+  - ''
+  - 'The gradient function smoothly interpolates between two colors:'
+  - • gradient(value, min, max, start_color, end_color)
+  - • CPU goes from green (0%) to red (100%)
+  - • Memory goes from blue (0 MB) to orange (1000 MB)
+  - ''
+  - Perfect for creating heatmaps and visual indicators!
+  block_map:
+    title: Gradient Examples
+    overlay_color: '{{gradient(metrics_stream.cpu, 0, 100, ''#9b59b6'', ''#f39c12'')}}'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: error_heatmap
+  type: aggregator
+  x: 5
+  y: 28
+  width: 35
+  height: 9
+  aggregation:
+    sources:
+    - block: metrics_stream
+      metric: errors
+      aggregation: count
+    operation: sum
+  data_extraction:
+    patterns:
+    - type: contains
+      value: '[ERROR]'
+      metric: errors
+  visualization:
+    type: figlet
+    font: ansi_shadow
+    format: '{value:.0f}'
+  block_map:
+    title: Error Count
+    overlay_color: '{{gradient(metrics_stream.errors_count, 0, 20, ''#27ae60'', ''#c0392b'')}}'
+    css_merge:
+      color: '{{gradient(metrics_stream.errors_count, 0, 20, ''#f1c40f'', ''#e74c3c'')}}'
+- block_id: help
+  type: panel
+  x: 45
+  y: 31
+  width: 135
+  height: 6
+  content:
+  - '[bold yellow]Gradient Function[/bold yellow]'
+  - ''
+  - 'Syntax: {{gradient(value, min, max, start_color, end_color)}}'
+  - • Smoothly interpolates colors based on value position in range
+  - • Works with any numeric metric - perfect for heatmaps and status indicators
+  block_map:
+    overlay_color: '#34495e'
+    darken_factor: 0.7
+    blend_opacity: 0.4

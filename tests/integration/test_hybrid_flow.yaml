@@ -1,0 +1,136 @@
+# Test: Hybrid Flow (Mixed LLM + Deterministic)
+# Tests: Alternating LLM and deterministic cells, state sharing
+# Expected: Both cell types execute, state is shared
+
+cascade_id: integration_test_hybrid_flow
+description: |
+  Integration test verifying hybrid LLM + deterministic execution:
+  - Deterministic cells can prepare data
+  - LLM cells can read and modify state
+  - State is shared across both cell types
+
+inputs_schema:
+  category: Product category to analyze
+
+cells:
+  # Cell 1: Deterministic - Generate test data
+  - name: generate_data
+    tool: sql_data
+    inputs:
+      query: |
+        SELECT * FROM (
+          VALUES
+            ('Widget A', 29.99, 100),
+            ('Widget B', 49.99, 75),
+            ('Gadget X', 99.99, 30),
+            ('Gadget Y', 149.99, 20)
+        ) AS t(product, price, stock)
+    handoffs:
+      - analyze_with_llm
+
+  # Cell 2: LLM - Analyze (simplified - no complex templating)
+  - name: analyze_with_llm
+    instructions: |
+      You are analyzing product data for the "{{ input.category }}" category.
+
+      Use set_state to store:
+      - "most_expensive" = "Gadget Y" (it's the most expensive at $149.99)
+      - "analysis_done" = "true"
+
+      Then respond with: "Analysis complete for {{ input.category }}."
+    traits:
+      - set_state
+    rules:
+      max_turns: 2
+    handoffs:
+      - transform_data
+
+  # Cell 3: Deterministic - Transform data
+  - name: transform_data
+    tool: python_data
+    inputs:
+      code: |
+        # Get the original data
+        df = data.generate_data
+
+        # Access state set by LLM
+        most_expensive = state.get('most_expensive', 'Unknown')
+
+        # Add computed column
+        df['inventory_value'] = df['price'] * df['stock']
+
+        result = df
+    handoffs:
+      - finalize
+
+  # Cell 4: LLM - Final summary
+  - name: finalize
+    instructions: |
+      The analysis identified {{ state.most_expensive }} as the most expensive product.
+
+      Use set_state to set "flow_complete" to "true".
+
+      Then respond: "Hybrid flow complete."
+    traits:
+      - set_state
+    rules:
+      max_turns: 1
+    handoffs:
+      - verify
+
+  # Cell 5: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        import json
+
+        checks = []
+        errors = []
+
+        # Check 1: Initial SQL data was generated
+        try:
+            initial = data.generate_data
+            if len(initial) == 4:
+                checks.append({'check': 'sql_data_generated', 'passed': True})
+            else:
+                checks.append({'check': 'sql_data_generated', 'passed': False})
+                errors.append(f"Expected 4 rows, got {len(initial)}")
+        except Exception as e:
+            checks.append({'check': 'sql_data_generated', 'passed': False})
+            errors.append(f"SQL data error: {e}")
+
+        # Check 2: LLM set state values
+        if state.get('analysis_done') == 'true':
+            checks.append({'check': 'llm_set_analysis_state', 'passed': True})
+        else:
+            checks.append({'check': 'llm_set_analysis_state', 'passed': False})
+            errors.append(f"analysis_done not set. State: {list(state.keys())}")
+
+        # Check 3: Transform added computed column
+        try:
+            transformed = data.transform_data
+            if 'inventory_value' in transformed.columns:
+                checks.append({'check': 'transform_added_column', 'passed': True})
+            else:
+                checks.append({'check': 'transform_added_column', 'passed': False})
+                errors.append("Transform did not add inventory_value")
+        except Exception as e:
+            checks.append({'check': 'transform_added_column', 'passed': False})
+            errors.append(f"Transform error: {e}")
+
+        # Check 4: Final LLM marked flow complete
+        if state.get('flow_complete') == 'true':
+            checks.append({'check': 'flow_marked_complete', 'passed': True})
+        else:
+            checks.append({'check': 'flow_marked_complete', 'passed': False})
+            errors.append(f"flow_complete not set")
+
+        all_passed = len(errors) == 0
+
+        result = {
+            'passed': all_passed,
+            'reason': 'All checks passed' if all_passed else '; '.join(errors),
+            'checks': checks,
+            'state_keys': list(state.keys())
+        }

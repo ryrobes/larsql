@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import FilterPanel from './components/FilterPanel';
 import CascadeSwimlane from './components/CascadeSwimlane';
 import CellDetailModal from './components/CellDetailModal';
+import { ROUTES } from '../../routes.helpers';
 import './OutputsView.css';
 
 // localStorage key for persisting filters
@@ -38,7 +40,8 @@ const saveFiltersToStorage = (filters) => {
  * 2. Expanded swimlane: Stacked runs with linked horizontal scroll
  * 3. Cell modal: Full content detail with actions
  */
-const OutputsView = ({ navigate }) => {
+const OutputsView = () => {
+  const navigate = useNavigate();
   const [cascades, setCascades] = useState([]);
   const [allCascadeIds, setAllCascadeIds] = useState([]); // All cascade IDs for filter panel
   const [loading, setLoading] = useState(true);
@@ -305,7 +308,6 @@ const OutputsView = ({ navigate }) => {
                 expandedLoading={expandedCascadeId === cascade.cascade_id && expandedLoading}
                 onToggleExpand={() => handleToggleExpand(cascade.cascade_id)}
                 onCellClick={handleCellClick}
-                navigate={navigate}
               />
             ))
           )}
@@ -318,7 +320,6 @@ const OutputsView = ({ navigate }) => {
         onClose={handleCloseModal}
         cellDetail={cellDetail}
         loading={cellDetailLoading}
-        navigate={navigate}
         siblingCount={siblingMessageIds.length}
         currentIndex={currentOutputIndex}
         onNavigate={handleNavigateOutput}

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { Button } from '../../components';
 import OverviewPanel from './components/OverviewPanel';
 import AlertsPanel from './components/AlertsPanel';
 import ContextBreakdownPanel from './components/ContextBreakdownPanel';
+import { ROUTES } from '../../routes.helpers';
 import './ReceiptsView.css';
 
 // Deep equality check for data comparison (prevents unnecessary re-renders)
@@ -42,7 +44,8 @@ const getInitialGranularity = () => {
 /**
  * ReceiptsView - Cost & Reliability Explorer
  */
-const ReceiptsView = ({ navigate, params = {} }) => {
+const ReceiptsView = () => {
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState('overview');
   const [timeRange, setTimeRange] = useState(getInitialTimeRange);
   const [granularity, setGranularity] = useState(getInitialGranularity);
@@ -199,8 +202,8 @@ const ReceiptsView = ({ navigate, params = {} }) => {
 
   // Navigate to session detail
   const handleSessionClick = useCallback((session) => {
-    if (navigate && session.session_id) {
-      navigate(`studio/${session.cascade_id}/${session.session_id}`);
+    if (session.session_id) {
+      navigate(ROUTES.studioWithSession(session.cascade_id, session.session_id));
     }
   }, [navigate]);
 

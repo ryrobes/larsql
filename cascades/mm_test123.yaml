@@ -56,8 +56,19 @@ cells:
     - cell: llm_phase
       include:
       - output
-- name: flux_2_max
-  model: black-forest-labs/flux.2-max
+# - name: flux_2_max ## always fails
+#   model: black-forest-labs/flux.2-max
+#   instructions: '{{ outputs.llm_phase }}'
+#   image_config:
+#     width: 1024
+#     height: 1024
+#   context:
+#     from:
+#     - cell: llm_phase
+#       include:
+#       - output
+- name: bytedance_seed_seedream_4_5_remixed
+  model: bytedance-seed/seedream-4.5
   instructions: '{{ outputs.llm_phase }}'
   image_config:
     width: 1024
@@ -67,6 +78,12 @@ cells:
     - cell: llm_phase
       include:
       - output
+- name: bytedance_seed_seedream_4_5_raw
+  model: bytedance-seed/seedream-4.5
+  instructions: '{{ input.prompt }}'
+  image_config:
+    width: 1024
+    height: 1024
 _playground:
   version: 1
   viewport:

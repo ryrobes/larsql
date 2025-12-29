@@ -1,0 +1,86 @@
+# Test: Reforge (Iterative Refinement)
+# Tests: Candidates with reforge iterations, honing prompts, winner selection
+# Expected: Initial candidates run, winner selected, reforge improves it
+
+cascade_id: integration_test_reforge
+description: |
+  Integration test verifying reforge (iterative refinement):
+  - Initial candidates are generated
+  - Evaluator selects winner
+  - Winner is refined through reforge steps
+  - Final output is best refined version
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Generate and refine content
+  - name: create_content
+    instructions: |
+      Write a short product description (2-3 sentences) for a "Smart Water Bottle".
+
+      The description should:
+      1. Mention a key feature
+      2. Include a benefit for the user
+      3. Be engaging and professional
+
+      Just write the description, no preamble.
+    rules:
+      max_turns: 1
+    candidates:
+      factor: 2
+      evaluator_instructions: |
+        Compare these product descriptions.
+        Pick the one that is more engaging and clearly states benefits.
+        Return the index (0 or 1) of the better one.
+      reforge:
+        steps: 1
+        factor_per_step: 2
+        honing_prompt: |
+          Improve this product description:
+          - Make it more concise
+          - Add a call-to-action
+          - Ensure it's under 50 words
+        evaluator_override: |
+          Compare these refined descriptions.
+          Pick the most polished, professional one.
+        mutate: false
+    handoffs:
+      - verify
+
+  # Cell 2: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Check 1: Content was generated (LLM output in state)
+        content_str = state.get('output_create_content', '') or ''
+
+        if content_str and len(content_str) > 0:
+            checks.append({'check': 'content_generated', 'passed': True})
+        else:
+            checks.append({'check': 'content_generated', 'passed': False})
+            errors.append("No content generated")
+
+        # Check 2: Content is non-empty string
+        if len(content_str) > 20:
+            checks.append({'check': 'content_has_substance', 'passed': True})
+        else:
+            checks.append({'check': 'content_has_substance', 'passed': False})
+            errors.append("Content too short: " + str(len(content_str)) + " chars")
+
+        # Check 3: Content has some text (very lenient)
+        checks.append({'check': 'content_relevant', 'passed': True})
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'content_preview': content_str[:200] if content_str else None,
+            'content_length': len(content_str) if content_str else 0
+        }

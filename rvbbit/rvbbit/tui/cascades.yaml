@@ -1,0 +1,224 @@
+# RVBBIT Cascade Monitor - Alice TUI Dashboard
+# Launch with: rvbbit tui
+# Note: Use absolute path for background image since YAML may run from temp dir
+background_image: /home/ryanr/repos/rvbbit/alice/examples/capecod.jpg
+background_darken: 0.5
+
+parameters:
+  limit:
+    type: slider
+    min: 10
+    max: 100
+    default: 25
+    step: 5
+  refresh:
+    type: slider
+    min: 1
+    max: 30
+    default: 5
+    step: 1
+
+blocks:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # HEADER - Title bar with live stats
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: header
+    type: panel
+    x: 2
+    y: 1
+    width: 156
+    height: 3
+    content:
+      - "[bold cyan]RVBBIT Cascade Monitor[/bold cyan] | [green]Running: {{stats_source.running}}[/green] | [yellow]Blocked: {{stats_source.blocked}}[/yellow] | [blue]Completed: {{stats_source.completed}}[/blue] | [red]Errors: {{stats_source.errors}}[/red] | Cost: [green]${{cost_source.cost}}[/green]"
+    block_map:
+      title: ""
+      overlay_color: "#1a1a2e"
+      darken_factor: 0.85
+      border: false
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STATS SOURCE - Hidden block that fetches summary stats
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: stats_source
+    type: continuous
+    command: |
+      while true; do
+        rvbbit sql query "SELECT countIf(status='running') as running, countIf(status='blocked') as blocked, countIf(status='completed') as completed, countIf(status='error') as errors, countIf(status='orphaned') as orphaned FROM session_state FINAL" --format json 2>/dev/null
+        REF="{{refresh}}"
+        sleep ${REF:-5}
+      done
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+    visible: false
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: '"running":'
+          metric: running
+        - type: extract_number
+          prefix: '"blocked":'
+          metric: blocked
+        - type: extract_number
+          prefix: '"completed":'
+          metric: completed
+        - type: extract_number
+          prefix: '"errors":'
+          metric: errors
+        - type: extract_number
+          prefix: '"orphaned":'
+          metric: orphaned
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # COST SOURCE - Today's spending
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: cost_source
+    type: continuous
+    command: |
+      while true; do
+        rvbbit sql query "SELECT round(sum(cost), 4) as total_cost, count(*) as messages, sum(tokens_in) as tokens_in, sum(tokens_out) as tokens_out FROM unified_logs WHERE toDate(timestamp) = today()" --format json 2>/dev/null
+        sleep 30
+      done
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+    visible: false
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: '"total_cost":'
+          metric: cost
+        - type: extract_number
+          prefix: '"messages":'
+          metric: messages
+        - type: extract_number
+          prefix: '"tokens_in":'
+          metric: tokens_in
+        - type: extract_number
+          prefix: '"tokens_out":'
+          metric: tokens_out
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SESSIONS LIST - Main table showing recent cascade sessions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: sessions_list
+    type: continuous
+    command: |
+      while true; do
+        LIM="{{limit}}"
+        LIM=${LIM:-25}
+        rvbbit sql query "SELECT substring(session_id, 1, 28) as session, substring(cascade_id, 1, 20) as cascade, status, substring(current_cell, 1, 15) as phase, substring(toString(started_at), 12, 8) as started FROM session_state FINAL ORDER BY updated_at DESC LIMIT 22" --format table 2>/dev/null
+        REF="{{refresh}}"
+        sleep 5 #${REF:-5}
+      done
+    x: 2
+    y: 5
+    width: 90
+    height: 20
+    block_map:
+      title: "Recent Sessions"
+      overlay_color: "#16213e"
+      darken_factor: 0.7
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ACTIVE CASCADES - Prominently show running/blocked sessions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: active_cascades
+    type: continuous
+    command: |
+      while true; do
+        #echo "[bold green]Active Cascades[/bold green]"
+        #echo ""
+        rvbbit sql query "SELECT status, substring(cascade_id, 1, 18) as cascade, substring(current_cell, 1, 12) as phase, substring(session_id, 1, 20) as session FROM session_state FINAL WHERE status IN ('running', 'blocked', 'starting') ORDER BY started_at DESC LIMIT 6" --format table 2>/dev/null
+        #echo ""
+        #echo "[dim]Press 'q' to quit[/dim]"
+        REF="{{refresh}}"
+        sleep 5 #${REF:-5}
+      done
+    x: 95
+    y: 5
+    width: 63
+    height: 12
+    block_map:
+      title: "Active Now"
+      overlay_color: "#0f3460"
+      darken_factor: 0.6
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STATUS CHART - Bar chart of session statuses (cheshire)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: status_chart
+    type: continuous
+    command: |
+      while true; do
+        rvbbit sql query "SELECT status, count(*) as cnt FROM session_state FINAL GROUP BY status ORDER BY cnt DESC" --format json 2>/dev/null | cheshire "SELECT status as x, cnt as y FROM data" bar 0 --title "Status" 2>/dev/null || echo "Loading..."
+        REF="{{refresh}}"
+        sleep 5 #${REF:-5}
+      done
+    x: 95
+    y: 18
+    width: 63
+    height: 14
+    block_map:
+      title: "Status Distribution"
+      overlay_color: "#2c3e50"
+      darken_factor: 0.6
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # COST CHART - Hourly cost over last 12h (cheshire)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: cost_chart
+    type: continuous
+    command: |
+      while true; do
+        rvbbit sql query "SELECT toHour(timestamp) as hr, round(SUM(cost), 4) as cost FROM all_data WHERE timestamp > now() - INTERVAL 12 HOUR GROUP BY hr ORDER BY hr" --format json 2>/dev/null | cheshire "SELECT hr as x, cost as y FROM data" bar 0 --title "Cost by Hour" 2>/dev/null || echo "Loading..."
+        sleep 30
+      done
+    x: 2
+    y: 26
+    width: 90
+    height: 14
+    block_map:
+      title: "Cost Over Time"
+      overlay_color: "#1a1a2e"
+      darken_factor: 0.7
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # CONTROLS - Sliders for limit and refresh rate
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: controls
+    type: controls
+    parameters: [limit, refresh]
+    layout: vertical
+    always_expanded: true
+    x: 95
+    y: 33
+    width: 63
+    height: 7
+    triggers:
+      on_parameter_change:
+        limit:
+          - sessions_list.restart()
+        refresh:
+          - sessions_list.restart()
+          - active_cascades.restart()
+          - stats_source.restart()
+          - status_chart.restart()
+    block_map:
+      title: "Controls"
+      overlay_color: "#34495e"
+      darken_factor: 0.7
+      blend_opacity: 0.4
+      border: true
+      padding: 1

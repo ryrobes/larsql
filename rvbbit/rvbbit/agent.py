@@ -202,9 +202,80 @@ class Agent:
                     ]
 
                 # Handle images from image generation models
-                # OpenRouter returns images in message.images as list of {"type": "image_url", "image_url": {"url": "data:..."}}
+                # Different providers return images in different formats:
+                # - OpenRouter (most models): message.images = [{"type": "image_url", "image_url": {"url": "data:..."}}]
+                # - Some models (seedream-4.5): message.images = [{"image_url": {"url": "data:..."}}]
+                # LiteLLM may not always expose 'images' as a direct attribute, so we try multiple extraction methods
+                raw_images = None
+
+                # Method 1: Direct attribute access (standard litellm models)
                 if hasattr(message, "images") and message.images:
-                    msg_dict["images"] = message.images
+                    raw_images = message.images
+
+                # Method 2: Try model_extra (Pydantic v2 stores extra fields here)
+                if not raw_images and hasattr(message, "model_extra"):
+                    raw_images = message.model_extra.get("images") if message.model_extra else None
+
+                # Method 3: Try __dict__ (some models expose extra fields here)
+                if not raw_images and hasattr(message, "__dict__"):
+                    raw_images = message.__dict__.get("images")
+
+                # Method 4: Try the raw Choice object (access from response.choices[0])
+                if not raw_images:
+                    choice = response.choices[0]
+                    # Try choice's model_extra
+                    if hasattr(choice, "model_extra") and choice.model_extra:
+                        choice_msg = choice.model_extra.get("message", {})
+                        if isinstance(choice_msg, dict):
+                            raw_images = choice_msg.get("images")
+                    # Try choice's __dict__
+                    if not raw_images and hasattr(choice, "__dict__"):
+                        choice_dict = choice.__dict__
+                        if "message" in choice_dict and isinstance(choice_dict["message"], dict):
+                            raw_images = choice_dict["message"].get("images")
+
+                # Method 5: Try _raw_response if litellm preserved it
+                if not raw_images and hasattr(response, "_raw_response"):
+                    try:
+                        raw_resp = response._raw_response
+                        if isinstance(raw_resp, dict):
+                            choices = raw_resp.get("choices", [])
+                            if choices and isinstance(choices[0], dict):
+                                msg = choices[0].get("message", {})
+                                raw_images = msg.get("images") if isinstance(msg, dict) else None
+                    except Exception:
+                        pass
+
+                # Normalize image format and store (with deduplication)
+                if raw_images:
+                    normalized_images = []
+                    seen_urls = set()  # Track unique image URLs to prevent duplicates
+
+                    for img in raw_images:
+                        url = None
+                        normalized_img = None
+
+                        if isinstance(img, dict):
+                            # Format 1: {"type": "image_url", "image_url": {"url": "..."}}
+                            # Format 2: {"image_url": {"url": "..."}}
+                            url = img.get("image_url", {}).get("url", "")
+                            normalized_img = img
+                        elif isinstance(img, str) and img.startswith("data:"):
+                            # Some models might return raw data URLs
+                            url = img
+                            normalized_img = {"image_url": {"url": img}}
+
+                        # Deduplicate based on URL (or first 100 chars of base64 for efficiency)
+                        if url and normalized_img:
+                            # Use a fingerprint: mime type + first 100 chars of base64 data
+                            # This catches identical images even if full URL is massive
+                            url_fingerprint = url[:200] if url.startswith("data:") else url
+                            if url_fingerprint not in seen_urls:
+                                seen_urls.add(url_fingerprint)
+                                normalized_images.append(normalized_img)
+
+                    if normalized_images:
+                        msg_dict["images"] = normalized_images
 
                 # Capture full response
                 full_response = {

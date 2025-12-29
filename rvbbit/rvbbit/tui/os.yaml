@@ -1,0 +1,232 @@
+background_image: examples/alice2.jpg
+background_darken: 0.5
+
+blocks:
+
+- block_id: spare_widget_03
+  type: continuous
+  command: while true; do top -b -n 1 -d 1 | grep "Cpu(s)" | awk '{print "CPU:", $2}'; sleep 0.33; done
+  x: 8
+  y: 6
+  width: 24
+  height: 14  
+  block_map:
+    title: New Continuous
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: 0
+    padding: 2
+  display_name: continuous_8001
+
+
+- block_id: spare_widget_0335
+  type: continuous
+  command:   ../cheshire/venv/bin/cheshire 'SELECT ROUND(SUM(resident_size) / 1024.0 / 1024.0, 2) AS y FROM processes WHERE name LIKE '\''python%'\'' OR name = '\''python'\'' OR cmdline LIKE '\''%alice%'\'';' json 1 --title 'Total Process Count' --database 'osquery'
+  x: 8
+  y: 30
+  width: 24
+  height: 8  
+  block_map:
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: 0
+    padding: 2
+
+- block_id: memory_chart2
+  type: line_chart
+  source_block: spare_widget_0335
+  x: 49
+  y: 29
+  width: 270
+  height: 20
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: '"y": "'
+      suffix: '"'
+      metric: mem
+    metric: mem
+    max_points: 250
+  block_map:
+    color: accent
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+
+- block_id: spare_widget_067
+  type: aggregator
+  x: 8
+  y: 38
+  width: 31
+  height: 8
+  # data_extraction:
+  #   patterns:
+  #   - type: extract_number
+  #     prefix: 'CPU: '
+  #     suffix: ''
+  #     metric: value
+  #   metric: value
+  #   max_points: 50  
+  aggregation:
+    sources:
+    - block: spare_widget_0335
+      metric: mem
+      #aggregation: a
+    #operation: max
+  visualization:
+    type: figlet
+    font: ansi_regular
+    format: '{value:.0f}'
+  block_map:
+    #color: dominant
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+
+
+
+
+
+- block_id: spare_widget_0335a
+  type: continuous
+  command:   ../cheshire/venv/bin/cheshire 'SELECT ROUND(SUM(resident_size) / 1024.0 / 1024.0, 2) AS y FROM processes WHERE name LIKE '\''python%'\'' OR name = '\''python'\'' OR cmdline LIKE '\''%alice%'\'';' json 30 --title 'Total Process Count' --database 'osquery'
+  x: 8
+  y: 51
+  width: 24
+  height: 8  
+  block_map:
+    title: New Continuous
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: 0
+    padding: 2
+- block_id: memory_chart2a
+  type: line_chart
+  source_block: spare_widget_0335a
+  x: 49
+  y: 50
+  width: 270
+  height: 20
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: '"y": "'
+      suffix: '"'
+      metric: mem
+    metric: mem
+    max_points: 250
+  block_map:
+    color: accent
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+- block_id: spare_widget_067a
+  type: aggregator
+  x: 8
+  y: 59
+  width: 31
+  height: 8
+  aggregation:
+    sources:
+    - block: spare_widget_0335a
+      metric: mem
+  visualization:
+    type: figlet
+    font: ansi_regular
+    format: '{value:.0f}'
+  block_map:
+    #color: dominant
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+
+
+
+
+
+
+
+
+- block_id: memory_chart
+  type: line_chart
+  source_block: spare_widget_03
+  x: 49
+  y: 7
+  width: 270
+  height: 20
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'CPU: '
+      suffix: ''
+      metric: cpu
+    metric: cpu
+    max_points: 250
+  block_map:
+    title: CPU
+    color: accent
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3
+    border: false
+    padding: 2
+
+# - block_id: memory_chardt
+#   type: figletv
+#   source_block: spare_widget_03
+#   x: 30
+#   y: 31
+#   width: 62
+#   height: 12
+#   data_extraction:
+#     patterns:
+#     - type: extract_number
+#       prefix: 'CPU: '
+#       suffix: ''
+#       metric: cpu
+#     metric: cpu
+#     max_points: 50
+#   block_map:
+#     title: CPU
+#     #color: dominant
+#     # overlay_color: secondary
+#     darken_factor: 0.5
+#     blend_opacity: 0.3
+#     border: false
+#     padding: 2
+
+- block_id: spare_widget_0
+  type: aggregator
+  x: 8
+  y: 20
+  width: 26
+  height: 8
+  # data_extraction:
+  #   patterns:
+  #   - type: extract_number
+  #     prefix: 'CPU: '
+  #     suffix: ''
+  #     metric: value
+  #   metric: value
+  #   max_points: 50  
+  aggregation:
+    sources:
+    - block: spare_widget_03
+      metric: cpu
+      #aggregation: a
+    #operation: max
+  visualization:
+    type: figlet
+    font: ansi_regular
+    format: '{value:.0f}'
+  block_map:
+    #overlay_color: secondary
+    darken_factor: 0.5
+    blend_opacity: 0.3

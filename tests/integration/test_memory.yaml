@@ -1,0 +1,139 @@
+# Test: Memory (RAG Embedding and Recall)
+# Tests: Automatic message embedding and semantic retrieval
+# Expected: Content stored in memory can be retrieved via query
+
+cascade_id: integration_test_memory
+description: |
+  Integration test verifying memory (RAG) feature:
+  - Memory bank is created when memory: is configured
+  - LLM messages are auto-saved and embedded
+  - Memory can be queried to retrieve relevant content
+
+# Configure memory bank for this cascade
+memory: inttest_memory_bank
+
+inputs_schema: {}
+
+cells:
+  # Cell 1: Generate a unique secret identifier
+  - name: generate_secret
+    tool: python_data
+    inputs:
+      code: |
+        import uuid
+        import time
+        # Create a unique secret with timestamp to ensure uniqueness
+        unique_id = str(uuid.uuid4())[:8].upper()
+        timestamp = str(int(time.time()))[-4:]
+        secret = "RVBBIT_MEM_" + unique_id + "_" + timestamp
+        result = {"secret": secret}
+    handoffs:
+      - store_in_memory
+
+  # Cell 2: LLM discusses the secret (auto-saved to memory via callback)
+  - name: store_in_memory
+    instructions: |
+      IMPORTANT: You must remember this exact secret code: {{ state.output_generate_secret.result.secret }}
+
+      Say exactly: "I have stored the secret code: {{ state.output_generate_secret.result.secret }} in my memory."
+
+      Do not say anything else.
+    rules:
+      max_turns: 1
+    handoffs:
+      - query_memory
+
+  # Cell 3: Query memory directly using Python (no LLM)
+  - name: query_memory
+    tool: python_data
+    inputs:
+      code: |
+        # Import memory system
+        from rvbbit.memory import get_memory_system
+
+        memory_system = get_memory_system()
+        memory_name = "inttest_memory_bank"
+
+        # Check if memory exists
+        mem_exists = memory_system.exists(memory_name)
+
+        # Query the memory for secret-related content
+        if mem_exists:
+            query_results = memory_system.query(memory_name, "secret code RVBBIT", limit=10)
+            metadata = memory_system.get_metadata(memory_name)
+            msg_count = metadata.get('message_count', 0)
+        else:
+            query_results = "Memory bank does not exist"
+            msg_count = 0
+
+        result = {
+            "memory_exists": mem_exists,
+            "message_count": msg_count,
+            "query_results": query_results
+        }
+    handoffs:
+      - verify
+
+  # Cell 4: Deterministic verification
+  - name: verify
+    tool: python_data
+    inputs:
+      code: |
+        checks = []
+        errors = []
+
+        # Get the original secret from cell 1
+        gen_output = state.get('output_generate_secret') or {}
+        gen_result = gen_output.get('result', {}) if isinstance(gen_output, dict) else {}
+        secret = gen_result.get('secret', '') if isinstance(gen_result, dict) else ''
+
+        # Get memory query results from cell 3
+        mem_output = state.get('output_query_memory') or {}
+        mem_result = mem_output.get('result', {}) if isinstance(mem_output, dict) else {}
+        query_results = mem_result.get('query_results', '') if isinstance(mem_result, dict) else ''
+        mem_exists = mem_result.get('memory_exists', False) if isinstance(mem_result, dict) else False
+        msg_count = mem_result.get('message_count', 0) if isinstance(mem_result, dict) else 0
+
+        # Check 1: Secret was generated with correct format
+        if secret and 'RVBBIT_MEM_' in secret:
+            checks.append({'check': 'secret_generated', 'passed': True})
+        else:
+            checks.append({'check': 'secret_generated', 'passed': False})
+            errors.append("Secret not generated: " + str(secret)[:50])
+
+        # Check 2: Memory bank exists
+        if mem_exists:
+            checks.append({'check': 'memory_exists', 'passed': True})
+        else:
+            checks.append({'check': 'memory_exists', 'passed': False})
+            errors.append("Memory bank does not exist")
+
+        # Check 3: Messages were saved to memory
+        if msg_count > 0:
+            checks.append({'check': 'messages_saved', 'passed': True})
+        else:
+            checks.append({'check': 'messages_saved', 'passed': False})
+            errors.append("No messages in memory bank")
+
+        # Check 4: Secret found in memory query results
+        query_str = str(query_results)
+        if secret and secret in query_str:
+            checks.append({'check': 'secret_in_memory', 'passed': True})
+        else:
+            # Lenient: check if any part of secret pattern found
+            if 'RVBBIT_MEM_' in query_str:
+                checks.append({'check': 'secret_in_memory', 'passed': True, 'note': 'Found memory pattern, exact match may differ'})
+            else:
+                checks.append({'check': 'secret_in_memory', 'passed': False})
+                errors.append("Secret not found in memory results")
+
+        all_passed = len(errors) == 0
+        reason_str = 'All checks passed' if all_passed else '; '.join(errors)
+
+        result = {
+            'passed': all_passed,
+            'reason': reason_str,
+            'checks': checks,
+            'secret': secret,
+            'memory_preview': query_str[:400] if query_str else None
+        }

@@ -1,0 +1,135 @@
+background_image: examples/alice.jpg
+background_darken: 0.5
+blocks:
+- block_id: metrics_stream
+  type: process
+  command: python -u examples/scripts/test_metrics_output.py
+  x: 5
+  y: 2
+  width: 50
+  height: 25
+  block_map:
+    title: Metrics Stream
+    overlay_color: '#34495e'
+    darken_factor: 0.6
+    blend_opacity: 0.3
+- block_id: time_based_metrics
+  type: bar_chart
+  source_block: metrics_stream
+  x: 60
+  y: 2
+  width: 60
+  height: 20
+  data_extraction:
+    patterns:
+    - type: contains
+      value: '[SUCCESS]'
+      metric: success
+    - type: contains
+      value: '[ERROR]'
+      metric: errors
+    - type: contains
+      value: '[WARNING]'
+      metric: warnings
+    - type: extract_number
+      prefix: 'CPU:'
+      metric: cpu
+    metrics:
+    - name: success
+      label: Success (30s)
+      aggregation: count
+      time_window: 30s
+    - name: success
+      label: Success (1m)
+      aggregation: count
+      time_window: minute
+    - name: errors
+      label: Errors (1m)
+      aggregation: sum
+      time_window: minute
+    - name: warnings
+      label: Warn (5m)
+      aggregation: count
+      time_window: 5min
+    - name: cpu
+      label: CPU (1m avg)
+      aggregation: average
+      time_window: minute
+    - name: cpu
+      label: CPU (5m avg)
+      aggregation: average
+      time_window: 5min
+  block_map:
+    title: Time Window Metrics
+    overlay_color: '#e67e22'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: performance_history
+  type: bar_chart
+  source_block: metrics_stream
+  x: 60
+  y: 36
+  width: 60
+  height: 14
+  data_extraction:
+    patterns:
+    - type: extract_number
+      prefix: 'Memory:'
+      metric: memory
+    metrics:
+    - name: memory
+      label: Mem Now
+      aggregation: last
+    - name: memory
+      label: Mem (30s max)
+      aggregation: max
+      time_window: 30s
+    - name: memory
+      label: Mem (1m avg)
+      aggregation: average
+      time_window: minute
+    - name: memory
+      label: Mem (5m avg)
+      aggregation: average
+      time_window: 5min
+  block_map:
+    title: Memory Analysis
+    overlay_color: '#9b59b6'
+    darken_factor: 0.5
+    blend_opacity: 0.3
+- block_id: rate_metrics
+  type: bar_chart
+  source_block: metrics_stream
+  x: 60
+  y: 23
+  width: 60
+  height: 12
+  data_extraction:
+    patterns:
+    - type: count_lines
+      metric: lines
+    - type: contains
+      value: '[SUCCESS]'
+      metric: requests
+    metrics:
+    - name: lines
+      label: Lines/min
+      aggregation: count
+      time_window: minute
+    - name: requests
+      label: Req/30s
+      aggregation: count
+      time_window: 30s
+    - name: requests
+      label: Req/min
+      aggregation: count
+      time_window: minute
+    - name: requests
+      label: Req/5min
+      aggregation: count
+      time_window: 5min
+  block_map:
+    title: Rate Metrics
+    overlay_color: '#1abc9c'
+    darken_factor: 0.5
+    blend_opacity: 0.3

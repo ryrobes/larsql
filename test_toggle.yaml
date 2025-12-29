@@ -1,0 +1,35 @@
+blocks:
+- block_id: source1
+  command: echo "Source 1"
+  height: 10
+  triggers:
+    on_data_change:
+    - target1.refresh()
+  type: continuous
+  width: 30
+  x: 10
+  y: 5
+- block_id: target1
+  command: echo "Target 1"
+  height: 10
+  type: continuous
+  width: 30
+  x: 50
+  y: 5
+- block_id: source2
+  command: echo "Source 2"
+  height: 10
+  triggers:
+    on_data_change:
+    - target2.refresh()
+  type: continuous
+  width: 30
+  x: 10
+  y: 20
+- block_id: target2
+  command: echo "Target 2"
+  height: 10
+  type: continuous
+  width: 30
+  x: 50
+  y: 20

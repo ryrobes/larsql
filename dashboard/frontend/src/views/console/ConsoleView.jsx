@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
 import { Button, useToast } from '../../components';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import KPICard from '../receipts/components/KPICard';
-import useNavigationStore from '../../stores/navigationStore';
+import { ROUTES } from '../../routes.helpers';
 import './ConsoleView.css';
 
 // Register AG Grid modules
@@ -124,6 +125,68 @@ const DurationRenderer = (props) => {
   );
 };
 
+const ModelsRenderer = (props) => {
+  const models = props.value || [];
+
+  if (!models.length) {
+    return <span style={{ color: '#475569', fontSize: '11px' }}>-</span>;
+  }
+
+  // Extract short model name (last part after /)
+  const getShortName = (model) => {
+    const parts = model.split('/');
+    return parts[parts.length - 1];
+  };
+
+  // Color palette for model pills (cycle through)
+  const colors = [
+    { bg: 'rgba(167, 139, 250, 0.2)', border: '#a78bfa', text: '#c4b5fd' }, // purple
+    { bg: 'rgba(96, 165, 250, 0.2)', border: '#60a5fa', text: '#93c5fd' },  // blue
+    { bg: 'rgba(52, 211, 153, 0.2)', border: '#34d399', text: '#6ee7b7' },  // green
+    { bg: 'rgba(251, 191, 36, 0.2)', border: '#fbbf24', text: '#fcd34d' },  // yellow
+    { bg: 'rgba(248, 113, 113, 0.2)', border: '#f87171', text: '#fca5a5' }, // red
+    { bg: 'rgba(45, 212, 191, 0.2)', border: '#2dd4bf', text: '#5eead4' },  // teal
+  ];
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '3px',
+      alignItems: 'center',
+      paddingTop: '10px',
+    }}>
+      {models.map((model, i) => {
+        const color = colors[i % colors.length];
+        return (
+          <span
+            key={model}
+            title={model}
+            style={{
+              display: 'inline-block',
+              padding: '1px 5px',
+              fontSize: '9px',
+              fontWeight: '500',
+              fontFamily: 'var(--font-mono)',
+              backgroundColor: color.bg,
+              border: `1px solid ${color.border}`,
+              borderRadius: '3px',
+              color: color.text,
+              whiteSpace: 'nowrap',
+              maxWidth: '100px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: '1.3',
+            }}
+          >
+            {getShortName(model)}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 // Dark theme for AG Grid matching Studio
 const darkTheme = themeQuartz.withParams({
   backgroundColor: '#000000',
@@ -163,7 +226,7 @@ const ConsoleView = () => {
   const gridRef = useRef(null);
   const containerRef = useRef(null);
   const { showToast } = useToast();
-  const { navigate } = useNavigationStore();
+  const navigate = useNavigate();
   const prevDataHashRef = useRef(null);
 
   // Fetch recent sessions from sessions API
@@ -220,6 +283,7 @@ const ConsoleView = () => {
         total_context_cost_estimated: session.total_context_cost_estimated || 0,
         bottleneck_cell: session.bottleneck_cell,
         bottleneck_cell_pct: session.bottleneck_cell_pct || 0,
+        models: session.models || [],
       }));
 
       // Only update state if data actually changed (prevent unnecessary re-renders)
@@ -314,7 +378,7 @@ const ConsoleView = () => {
   const handleRowClick = (event) => {
     const { cascade_id, session_id } = event.data;
     if (cascade_id && session_id) {
-      navigate('studio', { cascade: cascade_id, session: session_id });
+      navigate(ROUTES.studioWithSession(cascade_id, session_id));
     }
   };
 
@@ -373,6 +437,19 @@ const ConsoleView = () => {
             {params.value}
           </span>
         );
+      },
+    },
+    {
+      field: 'models',
+      headerName: 'Models',
+      headerTooltip: 'LLM models used in this session',
+      width: 180,
+      wrapText: true,
+      autoHeight: true,
+      cellRenderer: ModelsRenderer,
+      tooltipValueGetter: (params) => {
+        const models = params.value || [];
+        return models.length ? models.join('\n') : 'No models used';
       },
     },
     {
@@ -568,21 +645,29 @@ const ConsoleView = () => {
     {
       field: 'started_at',
       headerName: 'Started',
-      flex: 1.5,
-      minWidth: 160,
+      width: 100,
       valueFormatter: (params) => {
         if (!params.value) return '-';
         // Convert UTC timestamp to local timezone
         const utcDate = new Date(params.value + 'Z'); // Append Z to treat as UTC
-        return utcDate.toLocaleString(undefined, {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        });
+        const now = new Date();
+        const diffMs = now - utcDate;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return '<1m ago';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) {
+          const remainingMins = diffMins % 60;
+          return remainingMins > 0 ? `${diffHours}h ${remainingMins}m ago` : `${diffHours}h ago`;
+        }
+        if (diffDays < 7) {
+          const remainingHours = diffHours % 24;
+          return remainingHours > 0 ? `${diffDays}d ${remainingHours}h ago` : `${diffDays}d ago`;
+        }
+        // Fallback to short date for older entries
+        return utcDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       },
       tooltipValueGetter: (params) => {
         if (!params.value) return null;
