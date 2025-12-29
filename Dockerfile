@@ -7,9 +7,9 @@
 FROM node:18-slim AS frontend-builder
 
 WORKDIR /app/frontend
-COPY dashboard/frontend/package*.json ./
+COPY studio/frontend/package*.json ./
 RUN npm ci --production=false
-COPY dashboard/frontend/ ./
+COPY studio/frontend/ ./
 RUN npm run build
 
 # =============================================================================
@@ -70,15 +70,15 @@ COPY rvbbit/pyproject.toml rvbbit/README.md ./rvbbit/
 COPY rvbbit/rvbbit ./rvbbit/rvbbit
 RUN pip install --no-cache-dir ./rvbbit
 
-# Install dashboard backend dependencies
-COPY dashboard/backend/requirements.txt ./dashboard/backend/
+# Install studio backend dependencies
+COPY studio/backend/requirements.txt ./studio/backend/
 RUN pip install --no-cache-dir flask flask-cors duckdb gunicorn gevent
 
-# Copy dashboard backend
-COPY dashboard/backend ./dashboard/backend
+# Copy studio backend
+COPY studio/backend ./studio/backend
 
 # Copy built frontend
-COPY --from=frontend-builder /app/frontend/build ./dashboard/frontend/build
+COPY --from=frontend-builder /app/frontend/build ./studio/frontend/build
 
 # Install Rabbitize and Playwright
 COPY rabbitize/package*.json ./rabbitize/
@@ -107,9 +107,9 @@ ENV FLASK_ENV=production
 
 # Health check (uses cascade-definitions endpoint as proxy for health)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5001/api/cascade-definitions || exit 1
+    CMD curl -f http://localhost:5050/api/cascade-definitions || exit 1
 
-EXPOSE 5001
+EXPOSE 5050
 
 # Run with gunicorn for production
-CMD ["gunicorn", "--worker-class", "gevent", "--workers", "2", "--bind", "0.0.0.0:5001", "--chdir", "/app/dashboard/backend", "app:app"]
+CMD ["gunicorn", "--worker-class", "gevent", "--workers", "2", "--bind", "0.0.0.0:5050", "--chdir", "/app/studio/backend", "app:app"]

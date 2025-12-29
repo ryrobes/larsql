@@ -33,19 +33,19 @@ fi
 
 # Create new tmux session with backend in left pane
 echo "Creating tmux session..."
-tmux new-session -d -s "$SESSION_NAME" -n "rvbbit" -c "$RVBBIT_ROOT/dashboard/backend"
+tmux new-session -d -s "$SESSION_NAME" -n "rvbbit" -c "$RVBBIT_ROOT/studio/backend"
 
 # Set environment in tmux session
 tmux send-keys -t "$SESSION_NAME:0.0" "export RVBBIT_ROOT='$RVBBIT_ROOT'" C-m
 
 # Start backend in left pane
-tmux send-keys -t "$SESSION_NAME:0.0" "echo '🔧 Backend Server (port 5001)'" C-m
+tmux send-keys -t "$SESSION_NAME:0.0" "echo '🔧 Backend Server (port 5050)'" C-m
 tmux send-keys -t "$SESSION_NAME:0.0" "echo '================================'" C-m
 tmux send-keys -t "$SESSION_NAME:0.0" "echo ''" C-m
 tmux send-keys -t "$SESSION_NAME:0.0" "python app.py" C-m
 
 # Split window vertically (right pane for frontend)
-tmux split-window -h -t "$SESSION_NAME:0" -c "$RVBBIT_ROOT/dashboard/frontend"
+tmux split-window -h -t "$SESSION_NAME:0" -c "$RVBBIT_ROOT/studio/frontend"
 
 # Set environment in right pane
 tmux send-keys -t "$SESSION_NAME:0.1" "export RVBBIT_ROOT='$RVBBIT_ROOT'" C-m
@@ -73,7 +73,7 @@ echo "✅ RVBBIT UI Started in Tmux"
 echo "════════════════════════════════════════════"
 echo ""
 echo "📺 Tmux Session: $SESSION_NAME"
-echo "   Left pane:  Backend  (port 5001)"
+echo "   Left pane:  Backend  (port 5050)"
 echo "   Right pane: Frontend (port 5550)"
 echo ""
 echo "🌐 Open: http://localhost:5550"

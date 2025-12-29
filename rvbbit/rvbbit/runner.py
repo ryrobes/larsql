@@ -4537,6 +4537,40 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Analytics is optional, never fail cascade
 
+            # Credit snapshot tracking (async, non-blocking)
+            # Logs OpenRouter credit balance if stale or cascade had significant cost
+            try:
+                from .credits import maybe_log_credit_snapshot
+
+                def run_credit_snapshot():
+                    try:
+                        # Query total cost for this cascade from unified_logs
+                        from .db_adapter import get_db
+                        db = get_db()
+                        cost_result = db.query(f"""
+                            SELECT COALESCE(SUM(cost), 0) as total_cost
+                            FROM unified_logs
+                            WHERE session_id = '{self.session_id}'
+                        """)
+                        cascade_cost = float(cost_result[0][0]) if cost_result else 0
+
+                        # Conditionally log credit snapshot
+                        maybe_log_credit_snapshot(
+                            cascade_cost=cascade_cost,
+                            cascade_id=self.config.cascade_id,
+                            session_id=self.session_id
+                        )
+                    except Exception as e:
+                        logger = logging.getLogger(__name__)
+                        logger.debug(f"Credit snapshot failed: {e}")
+
+                # Run in background thread (don't block cascade completion)
+                credit_thread = threading.Thread(target=run_credit_snapshot, daemon=True)
+                credit_thread.start()
+
+            except Exception:
+                pass  # Credit tracking is optional, never fail cascade
+
             # For cascade soundings, emit cascade_complete event here since
             # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent
             if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):

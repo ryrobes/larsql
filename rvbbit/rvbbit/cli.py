@@ -546,7 +546,59 @@ def main():
     tools_find_parser.add_argument('query', help='Natural language query (e.g., "parse PDF documents")')
     tools_find_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
 
-    # Note: 'server' command moved to 'sql server' subcommand above for clarity
+    # Serve command group - Run servers
+    serve_parser = subparsers.add_parser('serve', help='Run RVBBIT servers (studio, sql)')
+    serve_subparsers = serve_parser.add_subparsers(dest='serve_command', help='Server subcommands')
+
+    # serve studio - Run the Studio web UI backend
+    serve_studio_parser = serve_subparsers.add_parser(
+        'studio',
+        help='Start the RVBBIT Studio web UI backend'
+    )
+    serve_studio_parser.add_argument(
+        '--host',
+        default='127.0.0.1',
+        help='Host to listen on (default: 127.0.0.1)'
+    )
+    serve_studio_parser.add_argument(
+        '--port',
+        type=int,
+        default=5050,
+        help='Port to listen on (default: 5050)'
+    )
+    serve_studio_parser.add_argument(
+        '--workers',
+        type=int,
+        default=2,
+        help='Number of Gunicorn workers (default: 2, ignored in dev mode)'
+    )
+    serve_studio_parser.add_argument(
+        '--dev',
+        action='store_true',
+        help='Development mode: Flask debug server, no static file serving'
+    )
+
+    # serve sql - PostgreSQL wire protocol server (same as sql server)
+    serve_sql_parser = serve_subparsers.add_parser(
+        'sql',
+        help='Start PostgreSQL wire protocol server (connect from DBeaver, psql, Tableau, etc.)'
+    )
+    serve_sql_parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0 = all interfaces)'
+    )
+    serve_sql_parser.add_argument(
+        '--port',
+        type=int,
+        default=15432,
+        help='Port to listen on (default: 15432; standard PostgreSQL is 5432)'
+    )
+    serve_sql_parser.add_argument(
+        '--session-prefix',
+        default='pg_client',
+        help='Prefix for DuckDB session IDs (default: pg_client)'
+    )
 
     # TUI command - Launch Alice-powered terminal dashboard
     tui_parser = subparsers.add_parser('tui', help='Launch interactive TUI dashboard for cascade monitoring')
@@ -791,6 +843,14 @@ def main():
             cmd_tools_find(args)
         else:
             tools_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'serve':
+        if args.serve_command == 'studio':
+            cmd_serve_studio(args)
+        elif args.serve_command == 'sql':
+            cmd_serve_sql(args)
+        else:
+            serve_parser.print_help()
             sys.exit(1)
     elif args.command == 'server':
         # Start PostgreSQL wire protocol server
@@ -3207,6 +3267,118 @@ def cmd_tools_find(args):
     from rvbbit.tools_mgmt import semantic_find_tools
 
     semantic_find_tools(args.query, limit=args.limit)
+
+
+def cmd_serve_studio(args):
+    """Start RVBBIT Studio web UI backend."""
+    import subprocess
+
+    # Find studio directory relative to this file or RVBBIT_ROOT
+    studio_backend_dir = None
+
+    # Try relative to RVBBIT_ROOT if set
+    rvbbit_root = os.environ.get('RVBBIT_ROOT')
+    if rvbbit_root:
+        candidate = os.path.join(rvbbit_root, 'studio', 'backend')
+        if os.path.exists(candidate):
+            studio_backend_dir = candidate
+
+    # Try relative to this file (rvbbit package location)
+    if not studio_backend_dir:
+        package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Go up to repo root
+        repo_root = os.path.dirname(package_dir)
+        candidate = os.path.join(repo_root, 'studio', 'backend')
+        if os.path.exists(candidate):
+            studio_backend_dir = candidate
+
+    if not studio_backend_dir:
+        print("❌ Could not find studio/backend directory.")
+        print("   Set RVBBIT_ROOT environment variable or run from the rvbbit repo.")
+        sys.exit(1)
+
+    # Check for built frontend
+    frontend_build_dir = os.path.join(os.path.dirname(studio_backend_dir), 'frontend', 'build')
+    has_built_frontend = os.path.exists(frontend_build_dir) and os.path.exists(
+        os.path.join(frontend_build_dir, 'index.html')
+    )
+
+    print(f"🌊 RVBBIT Studio")
+    print(f"   Backend dir: {studio_backend_dir}")
+    print(f"   Host: {args.host}")
+    print(f"   Port: {args.port}")
+    print(f"   Mode: {'development' if args.dev else 'production'}")
+    print(f"   Static files: {'yes' if has_built_frontend and not args.dev else 'no'}")
+    print()
+
+    if args.dev:
+        # Development mode: run Flask directly
+        print("💡 Development mode - use 'npm start' in studio/frontend for hot reload")
+        print()
+
+        # Set environment variables
+        env = os.environ.copy()
+        env['FLASK_ENV'] = 'development'
+        env['FLASK_DEBUG'] = '1'
+
+        # Run app.py directly
+        subprocess.run(
+            [sys.executable, 'app.py'],
+            cwd=studio_backend_dir,
+            env=env
+        )
+    else:
+        # Production mode: use Gunicorn with gevent
+        if not has_built_frontend:
+            print("⚠️  No built frontend found at studio/frontend/build/")
+            print("   Run 'npm run build' in studio/frontend/ to build static files")
+            print("   Or use --dev mode for development")
+            print()
+
+        try:
+            import gunicorn
+        except ImportError:
+            print("❌ Gunicorn not installed. Install with: pip install gunicorn gevent")
+            print("   Or use --dev mode for Flask development server")
+            sys.exit(1)
+
+        print(f"🚀 Starting with Gunicorn ({args.workers} workers, gevent)")
+        print(f"   URL: http://{args.host}:{args.port}")
+        print()
+
+        # Build gunicorn command
+        cmd = [
+            sys.executable, '-m', 'gunicorn',
+            '--worker-class', 'gevent',
+            '--workers', str(args.workers),
+            '--bind', f'{args.host}:{args.port}',
+            '--chdir', studio_backend_dir,
+            'app:app'
+        ]
+
+        subprocess.run(cmd)
+
+
+def cmd_serve_sql(args):
+    """Start RVBBIT PostgreSQL wire protocol server (alias for sql server)."""
+    from rvbbit.server import start_postgres_server
+
+    print(f"🚀 Starting RVBBIT PostgreSQL server...")
+    print(f"   Host: {args.host}")
+    print(f"   Port: {args.port}")
+    print(f"   Session prefix: {args.session_prefix}")
+    print()
+    print(f"💡 TIP: Connect with:")
+    print(f"   psql postgresql://localhost:{args.port}/default")
+    print(f"   DBeaver: New Connection → PostgreSQL → localhost:{args.port}")
+    print()
+
+    # Start server (blocking call)
+    start_postgres_server(
+        host=args.host,
+        port=args.port,
+        session_prefix=args.session_prefix
+    )
 
 
 def cmd_sql_server(args):
