@@ -1,0 +1,298 @@
+/* ============================================
+   TAGGED VIEW - Large preview cards grouped by tag
+   ============================================ */
+
+.tagged-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Loading, Error, Empty States */
+.tagged-view-loading,
+.tagged-view-error,
+.tagged-view-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-muted);
+}
+
+.tagged-view-loading .spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tagged-view-error h3,
+.tagged-view-empty h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
+}
+
+.tagged-view-error p,
+.tagged-view-empty p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.tagged-view-error button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tagged-view-error button:hover {
+  border-color: var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+}
+
+/* Tag Group */
+.tag-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tag-group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+}
+
+.tag-group-header .tag-color-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tag-color, var(--color-accent-purple));
+}
+
+.tag-group-header .tag-group-icon {
+  color: var(--tag-color, var(--color-accent-purple));
+}
+
+.tag-group-header h3 {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.tag-group-header .tag-group-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+}
+
+.tag-group-header .tag-group-description {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  margin-left: auto;
+}
+
+/* Tag Group Outputs Grid */
+.tag-group-outputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 20px;
+}
+
+/* Tagged Output Card - 2x larger than regular tiles */
+.tagged-output-card {
+  position: relative;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tagged-output-card:hover {
+  border-color: var(--type-color, var(--color-border-medium));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px);
+}
+
+/* Large Preview Area */
+.tagged-output-preview {
+  width: 100%;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.tagged-output-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tagged-output-preview .preview-chart,
+.tagged-output-preview .preview-table,
+.tagged-output-preview .preview-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.tagged-output-preview .preview-chart svg,
+.tagged-output-preview .preview-table svg {
+  width: 64px;
+  height: 64px;
+  opacity: 0.5;
+}
+
+.tagged-output-preview .preview-chart span,
+.tagged-output-preview .preview-table span {
+  font-size: var(--font-size-md);
+}
+
+.tagged-output-preview .preview-text {
+  flex-direction: row;
+  flex-wrap: wrap;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.tagged-output-preview .preview-text svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.tagged-output-preview .preview-text span {
+  flex: 1;
+  text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Card Footer */
+.tagged-output-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-top: 1px solid var(--color-border-dim);
+}
+
+.tagged-output-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tagged-output-info .cascade-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tagged-output-info .cell-name {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tagged-output-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tagged-output-meta .dynamic-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(251, 191, 36, 0.2);
+  border-radius: 50%;
+  color: var(--color-accent-yellow);
+}
+
+.tagged-output-meta .dynamic-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tagged-output-meta .type-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  color: var(--type-color, var(--color-text-muted));
+}
+
+.tagged-output-meta .type-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Note Indicator */
+.tagged-output-note {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  color: var(--color-accent-yellow);
+  backdrop-filter: blur(4px);
+}
+
+.tagged-output-note svg {
+  width: 14px;
+  height: 14px;
+}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import RichTooltip, { RunningCascadeTooltipContent, Tooltip } from '../components/RichTooltip';
 import { getTopViews, getBottomViews } from '../views';
@@ -48,9 +48,65 @@ const VerticalSidebar = ({
   const topViews = getTopViews();
   const bottomViews = getBottomViews();
 
+  // Track latest images for running sessions (for faint background effect)
+  const [sessionImages, setSessionImages] = useState({});
+  const fetchedSessionsRef = useRef(new Set());
+
+  // Fetch latest images for running sessions
+  useEffect(() => {
+    const fetchImages = async (force = false) => {
+      for (const session of runningSessions) {
+        // Skip if we've already fetched for this session recently (unless forced)
+        if (!force && fetchedSessionsRef.current.has(session.session_id)) continue;
+
+        try {
+          const res = await fetch(`http://localhost:5001/api/session/${session.session_id}/latest-image`);
+          const data = await res.json();
+
+          if (data.image_url) {
+            setSessionImages(prev => ({
+              ...prev,
+              [session.session_id]: `http://localhost:5001${data.image_url}`
+            }));
+          }
+          fetchedSessionsRef.current.add(session.session_id);
+        } catch (err) {
+          // Silently fail - images are optional decoration
+          console.debug('[VerticalSidebar] Failed to fetch image for session:', session.session_id);
+        }
+      }
+    };
+
+    if (runningSessions.length > 0) {
+      // Initial fetch
+      fetchImages(false);
+
+      // Periodically refresh images every 5 seconds for new images (force refresh)
+      const interval = setInterval(() => fetchImages(true), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [runningSessions]);
+
+  // Clean up images for sessions that are no longer running
+  useEffect(() => {
+    const activeIds = new Set(runningSessions.map(s => s.session_id));
+
+    // Remove images and fetch state for sessions that ended
+    setSessionImages(prev => {
+      const next = { ...prev };
+      for (const sessionId of Object.keys(next)) {
+        if (!activeIds.has(sessionId)) {
+          delete next[sessionId];
+          fetchedSessionsRef.current.delete(sessionId);
+        }
+      }
+      return next;
+    });
+  }, [runningSessions]);
+
   // Force re-render every second to update live time displays
-  const [currentTime, setCurrentTime] = React.useState(Date.now());
-  React.useEffect(() => {
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(Date.now());
     }, 1000); // Update every second for live time
@@ -59,8 +115,8 @@ const VerticalSidebar = ({
   }, []);
 
   // Track session start times (from first poll) for client-side duration calculation
-  const sessionStartTimesRef = React.useRef({});
-  React.useEffect(() => {
+  const sessionStartTimesRef = useRef({});
+  useEffect(() => {
     runningSessions.forEach(session => {
       if (!sessionStartTimesRef.current[session.session_id]) {
         // First time seeing this session - record when we first saw it
@@ -171,9 +227,10 @@ const VerticalSidebar = ({
                   .slice(0, 2) || 'C';
 
                 // Format cost for display (always 3 decimal places)
+                // Note: No $ prefix since we show currency icon separately
                 const costDisplay = session.cost != null && !isNaN(session.cost)
-                  ? (session.cost < 0.001 ? '<$0.001' : `$${session.cost.toFixed(3)}`)
-                  : '$0.000';
+                  ? (session.cost < 0.001 ? '<0.001' : session.cost.toFixed(3))
+                  : '0.000';
 
                 // Calculate live duration client-side for smooth ticking
                 // SAFETY: Ensure age_seconds is a reasonable number (not a timestamp)
@@ -229,6 +286,9 @@ const VerticalSidebar = ({
                   durationDisplay = `${hours}h${mins.toString().padStart(2, '0')}`;
                 }
 
+                // Get the latest image for this session (for faint background)
+                const sessionImage = sessionImages[session.session_id];
+
                 return (
                   <RichTooltip
                     key={session.session_id}
@@ -245,8 +305,9 @@ const VerticalSidebar = ({
                     }
                   >
                     <button
-                      className={`vsidebar-running-btn ${isCurrent ? 'current' : ''}`}
+                      className={`vsidebar-running-btn ${isCurrent ? 'current' : ''} ${sessionImage ? 'has-image' : ''}`}
                       onClick={() => onJoinSession && onJoinSession(session)}
+                      style={sessionImage ? { '--bg-image-url': `url(${sessionImage})` } : undefined}
                     >
                       <span className="vsidebar-running-avatar">
                         {displayName}

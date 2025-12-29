@@ -277,6 +277,78 @@ class Agent:
                     if normalized_images:
                         msg_dict["images"] = normalized_images
 
+                # Handle videos from video generation models
+                # Similar extraction methods as images, looking for:
+                # - {"type": "video_url", "video_url": {"url": "data:video/mp4;base64,..."}}
+                # - {"video_url": {"url": "data:video/mp4;base64,..."}}
+                # - Raw data URLs: "data:video/mp4;base64,..."
+                raw_videos = None
+
+                # Method 1: Direct attribute access
+                if hasattr(message, "videos") and message.videos:
+                    raw_videos = message.videos
+
+                # Method 2: Try model_extra (Pydantic v2)
+                if not raw_videos and hasattr(message, "model_extra"):
+                    raw_videos = message.model_extra.get("videos") if message.model_extra else None
+
+                # Method 3: Try __dict__
+                if not raw_videos and hasattr(message, "__dict__"):
+                    raw_videos = message.__dict__.get("videos")
+
+                # Method 4: Try the raw Choice object
+                if not raw_videos:
+                    choice = response.choices[0]
+                    if hasattr(choice, "model_extra") and choice.model_extra:
+                        choice_msg = choice.model_extra.get("message", {})
+                        if isinstance(choice_msg, dict):
+                            raw_videos = choice_msg.get("videos")
+                    if not raw_videos and hasattr(choice, "__dict__"):
+                        choice_dict = choice.__dict__
+                        if "message" in choice_dict and isinstance(choice_dict["message"], dict):
+                            raw_videos = choice_dict["message"].get("videos")
+
+                # Method 5: Try _raw_response
+                if not raw_videos and hasattr(response, "_raw_response"):
+                    try:
+                        raw_resp = response._raw_response
+                        if isinstance(raw_resp, dict):
+                            choices = raw_resp.get("choices", [])
+                            if choices and isinstance(choices[0], dict):
+                                msg = choices[0].get("message", {})
+                                raw_videos = msg.get("videos") if isinstance(msg, dict) else None
+                    except Exception:
+                        pass
+
+                # Normalize video format and store (with deduplication)
+                if raw_videos:
+                    normalized_videos = []
+                    seen_urls = set()
+
+                    for vid in raw_videos:
+                        url = None
+                        normalized_vid = None
+
+                        if isinstance(vid, dict):
+                            # Format 1: {"type": "video_url", "video_url": {"url": "..."}}
+                            # Format 2: {"video_url": {"url": "..."}}
+                            url = vid.get("video_url", {}).get("url", "")
+                            normalized_vid = vid
+                        elif isinstance(vid, str) and vid.startswith("data:video"):
+                            # Raw data URL
+                            url = vid
+                            normalized_vid = {"video_url": {"url": vid}}
+
+                        # Deduplicate based on URL fingerprint
+                        if url and normalized_vid:
+                            url_fingerprint = url[:200] if url.startswith("data:") else url
+                            if url_fingerprint not in seen_urls:
+                                seen_urls.add(url_fingerprint)
+                                normalized_videos.append(normalized_vid)
+
+                    if normalized_videos:
+                        msg_dict["videos"] = normalized_videos
+
                 # Capture full response
                 full_response = {
                     "id": response.id,

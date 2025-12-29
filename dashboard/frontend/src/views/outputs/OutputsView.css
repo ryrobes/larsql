@@ -91,6 +91,41 @@
   border-radius: var(--radius-sm);
 }
 
+/* Tabs */
+.outputs-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-sm);
+}
+
+.outputs-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.outputs-tab:hover {
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.outputs-tab.active {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--color-accent-cyan);
+}
+
 .outputs-header-right {
   display: flex;
   align-items: center;

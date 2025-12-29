@@ -101,6 +101,7 @@ const ExploreView = () => {
     sessionError,
     totalCost,
     cascadeId,
+    toolCounts,
     isPolling,
     error
   } = useExplorePolling(sessionId);
@@ -384,6 +385,7 @@ const ExploreView = () => {
           orchestrationState={orchestrationState}
           totalCost={totalCost}
           sessionStatus={sessionStatus}
+          toolCounts={toolCounts}
           onEnd={handleEndCascade}
           onNewCascade={() => setShowPicker(true)}
         />

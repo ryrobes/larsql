@@ -67,6 +67,7 @@ def classify_content(
     content: Any = None,
     metadata: Optional[Dict] = None,
     images: Optional[List[str]] = None,
+    videos: Optional[List[str]] = None,
     tool_calls: Optional[List[Dict]] = None,
     role: Optional[str] = None,
 ) -> str:
@@ -75,20 +76,22 @@ def classify_content(
 
     Priority order:
     1. Explicit tool_calls parameter (highest signal)
-    2. Images (has_images or images array)
-    3. Metadata type hints (plotly, table, etc.)
-    4. Content structure analysis
-    5. Text pattern analysis (markdown vs plain text)
+    2. Videos (has_videos or videos array)
+    3. Images (has_images or images array)
+    4. Metadata type hints (plotly, table, etc.)
+    5. Content structure analysis
+    6. Text pattern analysis (markdown vs plain text)
 
     Args:
         content: The message content (string, dict, list, or None)
         metadata: Optional metadata dict with type hints
         images: Optional list of image paths/URLs
+        videos: Optional list of video paths/URLs
         tool_calls: Optional list of tool call dicts
         role: Optional message role (user, assistant, system, tool)
 
     Returns:
-        Content type string (e.g., 'text', 'markdown', 'tool_call:request_decision')
+        Content type string (e.g., 'text', 'markdown', 'video', 'tool_call:request_decision')
     """
     # 1. Check for explicit tool calls
     if tool_calls and len(tool_calls) > 0:
@@ -96,7 +99,17 @@ def classify_content(
         if tool_type:
             return tool_type
 
-    # 2. Check for images
+    # 2. Check for videos (before images - video takes precedence)
+    if videos and len(videos) > 0:
+        return 'video'
+
+    # Check metadata for videos
+    if metadata:
+        meta_videos = metadata.get('videos')
+        if meta_videos and len(meta_videos) > 0:
+            return 'video'
+
+    # 3. Check for images
     if images and len(images) > 0:
         return 'image'
 
@@ -106,11 +119,13 @@ def classify_content(
         if meta_images and len(meta_images) > 0:
             return 'image'
 
-    # 3. Check metadata type hints
+    # 5. Check metadata type hints
     if metadata:
         meta_type = metadata.get('type')
         if meta_type == 'plotly':
             return 'chart'
+        if meta_type == 'video':
+            return 'video'
         if meta_type == 'image':
             return 'image'
         if meta_type == 'error':
@@ -315,6 +330,10 @@ def _classify_dict_content(content: Dict) -> Optional[str]:
     if content.get('error') or content.get('type') == 'error':
         return 'error'
 
+    # Video reference
+    if content.get('type') == 'video' or content.get('url', '').endswith(('.mp4', '.webm', '.mov', '.avi', '.mkv')):
+        return 'video'
+
     # Image reference
     if content.get('type') == 'image' or content.get('url', '').endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
         return 'image'
@@ -418,6 +437,7 @@ CONTENT_TYPES = [
     'json',
     'table',
     'image',
+    'video',
     'chart',
     'tool_call',
     'error',

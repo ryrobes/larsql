@@ -58,6 +58,42 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [modalImage, setModalImage] = useState(null);
   const lastSyncedYamlRef = useRef('');
+
+  // Split sizes with localStorage persistence
+  const [editorResultsSplit, setEditorResultsSplit] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-cell-editor-results-split');
+      return saved ? JSON.parse(saved) : [60, 40];
+    } catch {
+      return [60, 40];
+    }
+  });
+  const [codeYamlSplit, setCodeYamlSplit] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-cell-code-yaml-split');
+      return saved ? JSON.parse(saved) : [60, 40];
+    } catch {
+      return [60, 40];
+    }
+  });
+
+  const handleEditorResultsSplitChange = useCallback((sizes) => {
+    setEditorResultsSplit(sizes);
+    try {
+      localStorage.setItem('studio-cell-editor-results-split', JSON.stringify(sizes));
+    } catch (e) {
+      console.warn('Failed to save split sizes to localStorage:', e);
+    }
+  }, []);
+
+  const handleCodeYamlSplitChange = useCallback((sizes) => {
+    setCodeYamlSplit(sizes);
+    try {
+      localStorage.setItem('studio-cell-code-yaml-split', JSON.stringify(sizes));
+    } catch (e) {
+      console.warn('Failed to save split sizes to localStorage:', e);
+    }
+  }, []);
   const editorRef = useRef(null);
   const yamlEditorRef = useRef(null);
   const yamlEditorEverFocusedRef = useRef(false);
@@ -885,10 +921,11 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
           <Split
             className="cell-detail-split"
             direction="vertical"
-            sizes={[60, 40]}
+            sizes={editorResultsSplit}
             minSize={[100, 100]}
             gutterSize={6}
             gutterAlign="center"
+            onDragEnd={handleEditorResultsSplitChange}
           >
               {/* Code/Custom Editor Container (keeps consistent structure for Split) */}
               <div className="cell-detail-code-container">
@@ -899,10 +936,11 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     <Split
                       className="cell-detail-code-yaml-split"
                       direction="horizontal"
-                      sizes={[60, 40]}
+                      sizes={codeYamlSplit}
                       minSize={[200, 200]}
                       gutterSize={6}
                       gutterAlign="center"
+                      onDragEnd={handleCodeYamlSplitChange}
                     >
                       <div className="cell-detail-custom-editor">
                         {React.createElement(
@@ -1003,10 +1041,11 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                   <Split
                     className="cell-detail-code-yaml-split"
                     direction="horizontal"
-                    sizes={[60, 40]}
+                    sizes={codeYamlSplit}
                     minSize={[200, 200]}
                     gutterSize={6}
                     gutterAlign="center"
+                    onDragEnd={handleCodeYamlSplitChange}
                   >
                     <div
                       ref={setDropRef}

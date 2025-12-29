@@ -1,0 +1,291 @@
+/* TagModal.css - Styles for tag modal */
+
+/* Mode Selection */
+.tag-mode-section {
+  margin-bottom: 20px;
+}
+
+.tag-section-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary, #888);
+  margin-bottom: 8px;
+}
+
+.tag-mode-options {
+  display: flex;
+  gap: 10px;
+}
+
+.tag-mode-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-mode-option:hover {
+  background: var(--color-bg-hover, #222);
+  border-color: var(--color-border-hover, #444);
+}
+
+.tag-mode-option.active {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: var(--color-accent-purple, #a78bfa);
+}
+
+.tag-mode-option input[type="radio"] {
+  display: none;
+}
+
+.tag-mode-option svg {
+  flex-shrink: 0;
+  color: var(--color-text-secondary, #888);
+  margin-top: 2px;
+}
+
+.tag-mode-option.active svg {
+  color: var(--color-accent-purple, #a78bfa);
+}
+
+.tag-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tag-mode-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary, #fff);
+}
+
+.tag-mode-desc {
+  font-size: 11px;
+  color: var(--color-text-secondary, #888);
+}
+
+/* Tag Selection */
+.tag-selection-section {
+  margin-bottom: 16px;
+}
+
+.tag-selection-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-select {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  color: var(--color-text-primary, #fff);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tag-select:focus {
+  outline: none;
+  border-color: var(--color-accent-purple, #a78bfa);
+}
+
+.tag-select option {
+  background: var(--color-bg-secondary, #121212);
+  color: var(--color-text-primary, #fff);
+}
+
+.tag-new-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  color: var(--color-text-primary, #fff);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-new-btn:hover {
+  background: var(--color-bg-hover, #222);
+  border-color: var(--color-accent-purple, #a78bfa);
+}
+
+/* Create New Tag */
+.tag-create-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tag-create-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-name-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  color: var(--color-text-primary, #fff);
+  font-size: 13px;
+}
+
+.tag-name-input:focus {
+  outline: none;
+  border-color: var(--color-accent-purple, #a78bfa);
+}
+
+.tag-name-input::placeholder {
+  color: var(--color-text-muted, #666);
+}
+
+.tag-cancel-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  color: var(--color-text-secondary, #888);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-cancel-new-btn:hover {
+  background: var(--color-bg-hover, #222);
+  color: var(--color-text-primary, #fff);
+}
+
+/* Color Picker */
+.tag-color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.tag-color-swatch.active {
+  border-color: var(--color-text-primary, #fff);
+  box-shadow: 0 0 0 2px var(--swatch-color);
+}
+
+/* Note Input */
+.tag-note-section {
+  margin-bottom: 16px;
+}
+
+.tag-note-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary, #1a1a1a);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 6px;
+  color: var(--color-text-primary, #fff);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.tag-note-input:focus {
+  outline: none;
+  border-color: var(--color-accent-purple, #a78bfa);
+}
+
+.tag-note-input::placeholder {
+  color: var(--color-text-muted, #666);
+}
+
+/* Error Display */
+.tag-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 6px;
+  color: var(--color-error, #f87171);
+  font-size: 12px;
+}
+
+/* Modal Buttons */
+.tag-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tag-modal-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--color-border, #333);
+  color: var(--color-text-secondary, #888);
+}
+
+.tag-modal-btn-secondary:hover:not(:disabled) {
+  background: var(--color-bg-tertiary, #1a1a1a);
+  color: var(--color-text-primary, #fff);
+}
+
+.tag-modal-btn-primary {
+  background: var(--color-accent-purple, #a78bfa);
+  border: 1px solid var(--color-accent-purple, #a78bfa);
+  color: #000;
+}
+
+.tag-modal-btn-primary:hover:not(:disabled) {
+  background: #b89dff;
+  border-color: #b89dff;
+}
+
+/* Spinning animation for loading state */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

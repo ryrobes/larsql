@@ -17,8 +17,24 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
  */
 function RecentRunsSection() {
   const { cascade, viewMode, replaySessionId, setReplayMode, setLiveMode } = useStudioCascadeStore();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-recent-runs-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
   const [recentRuns, setRecentRuns] = useState([]);
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-recent-runs-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
   const [loading, setLoading] = useState(false);
   const [, setTimestampTick] = useState(0); // Force re-render for timestamp updates
 

@@ -112,3 +112,13 @@
 .ghost-thinking {
   border-left-color: var(--color-accent-purple);
 }
+
+/* Thinking text - longer, more readable */
+.ghost-thinking-text {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}

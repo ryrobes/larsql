@@ -24,6 +24,7 @@ const SimpleSidebar = ({
   orchestrationState,
   totalCost,
   sessionStatus,
+  toolCounts = {},
   onEnd,
   onNewCascade
 }) => {
@@ -91,6 +92,29 @@ const SimpleSidebar = ({
           </div>
         </div>
       </div>
+
+      {/* Tool Counts - Live tracking */}
+      {Object.keys(toolCounts).length > 0 && (
+        <div className="tool-counts-section">
+          <div className="section-label">
+            <Icon icon="mdi:hammer-wrench" width="14" />
+            <span>Tool Calls</span>
+            <span className="total-count">
+              {Object.values(toolCounts).reduce((a, b) => a + b, 0)}
+            </span>
+          </div>
+          <div className="tool-counts-list">
+            {Object.entries(toolCounts)
+              .sort((a, b) => b[1] - a[1])  // Sort by count descending
+              .map(([tool, count]) => (
+                <div key={tool} className="tool-count-item">
+                  <span className="tool-name">{tool}</span>
+                  <span className="tool-count">{count}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* EXTENSION POINT: Phase Timeline */}
       {/* {orchestrationState.phaseHistory && (

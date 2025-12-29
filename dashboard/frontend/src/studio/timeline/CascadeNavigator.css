@@ -647,6 +647,10 @@
 
 .nav-inputs-section {
   border-bottom: 1px solid #1a1628;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #0d0b14;
 }
 
 .nav-inputs-section .inputs-form {
@@ -680,6 +684,76 @@
 
 .nav-inputs-section .inputs-form-input {
   background-color: #0a0818;
+}
+
+/* ============================================
+   INTERRUPT ALERT
+   High-visibility button for pending checkpoints
+   ============================================ */
+
+.nav-interrupt-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 8px 8px 0;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(255, 0, 110, 0.08));
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px;
+  animation: interrupt-pulse 2s ease-in-out infinite;
+}
+
+@keyframes interrupt-pulse {
+  0%, 100% {
+    border-color: rgba(251, 191, 36, 0.4);
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.15);
+  }
+  50% {
+    border-color: rgba(251, 191, 36, 0.7);
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.3);
+  }
+}
+
+.nav-interrupt-alert-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-interrupt-alert-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(251, 191, 36, 0.2);
+  border-radius: 6px;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.nav-interrupt-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nav-interrupt-alert-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.nav-interrupt-alert-meta {
+  font-size: 10px;
+  color: rgba(251, 191, 36, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Updated header layout for Run All button */
@@ -738,7 +812,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 4px 0;
+  padding: 4px 0 4px 12px;
 }
 
 .var-palette-hint {

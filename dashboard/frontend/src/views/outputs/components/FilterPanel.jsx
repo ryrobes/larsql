@@ -35,8 +35,9 @@ const FilterPanel = ({
   allCascadeIds,
   selectedCascades,
   onSelectedCascadesChange,
-  starredOnly,
-  onStarredOnlyChange,
+  selectedTags,
+  onSelectedTagsChange,
+  availableTags,
   selectedContentTypes,
   onSelectedContentTypesChange,
 }) => {
@@ -119,6 +120,18 @@ const FilterPanel = ({
     onSelectedCascadesChange([]);
   };
 
+  const handleTagToggle = (tagName) => {
+    if (selectedTags.includes(tagName)) {
+      onSelectedTagsChange(selectedTags.filter(t => t !== tagName));
+    } else {
+      onSelectedTagsChange([...selectedTags, tagName]);
+    }
+  };
+
+  const handleClearTags = () => {
+    onSelectedTagsChange([]);
+  };
+
   // Check if any tool_call subtype is selected
   const hasToolCallSubtypeSelected = selectedContentTypes.some(t => t.startsWith('tool_call:'));
 
@@ -158,20 +171,38 @@ const FilterPanel = ({
         </div>
       </div>
 
-      {/* Starred Filter */}
+      {/* Tags Filter */}
       <div className="filter-section">
         <div className="filter-section-header">
-          <Icon icon="mdi:star" width="14" />
-          <span>Starred</span>
+          <Icon icon="mdi:tag-multiple" width="14" />
+          <span>Tags</span>
+          {selectedTags.length > 0 && (
+            <button className="filter-clear-btn" onClick={handleClearTags}>
+              Clear ({selectedTags.length})
+            </button>
+          )}
         </div>
-        <div className="filter-options">
-          <button
-            className={`filter-chip starred-chip ${starredOnly ? 'active' : ''}`}
-            onClick={() => onStarredOnlyChange(!starredOnly)}
-          >
-            <Icon icon={starredOnly ? "mdi:star" : "mdi:star-outline"} width="12" />
-            Starred Only
-          </button>
+        <div className="filter-tags-list">
+          {(!availableTags || availableTags.length === 0) ? (
+            <div className="filter-empty">No tags yet</div>
+          ) : (
+            availableTags.map(tag => (
+              <label
+                key={tag.tag_name}
+                className={`filter-tag-item ${selectedTags.includes(tag.tag_name) ? 'active' : ''}`}
+                style={{ '--tag-color': tag.tag_color }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedTags.includes(tag.tag_name)}
+                  onChange={() => handleTagToggle(tag.tag_name)}
+                />
+                <div className="tag-color-dot" />
+                <span className="tag-name">{tag.tag_name}</span>
+                {tag.count > 0 && <span className="tag-count">{tag.count}</span>}
+              </label>
+            ))
+          )}
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import FilterPanel from './components/FilterPanel';
 import CascadeSwimlane from './components/CascadeSwimlane';
 import CellDetailModal from './components/CellDetailModal';
+import TaggedView from './components/TaggedView';
 import { ROUTES } from '../../routes.helpers';
 import './OutputsView.css';
 
@@ -53,18 +54,42 @@ const OutputsView = () => {
   // Filters (initialized from localStorage if available)
   const [timeFilter, setTimeFilter] = useState(storedFilters?.timeFilter || 'all');
   const [selectedCascades, setSelectedCascades] = useState(storedFilters?.selectedCascades || []);
-  const [starredOnly, setStarredOnly] = useState(storedFilters?.starredOnly || false);
+  const [selectedTags, setSelectedTags] = useState(storedFilters?.selectedTags || []);
   const [selectedContentTypes, setSelectedContentTypes] = useState(storedFilters?.selectedContentTypes || []);
+
+  // Available tags from API
+  const [availableTags, setAvailableTags] = useState([]);
+
+  // Active tab: 'swimlanes' or 'tagged'
+  const [activeTab, setActiveTab] = useState('swimlanes');
 
   // Save filters to localStorage whenever they change
   useEffect(() => {
     saveFiltersToStorage({
       timeFilter,
       selectedCascades,
-      starredOnly,
+      selectedTags,
       selectedContentTypes,
     });
-  }, [timeFilter, selectedCascades, starredOnly, selectedContentTypes]);
+  }, [timeFilter, selectedCascades, selectedTags, selectedContentTypes]);
+
+  // Fetch available tags
+  const fetchAvailableTags = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/outputs/tags');
+      const data = await response.json();
+      if (data.tags) {
+        setAvailableTags(data.tags);
+      }
+    } catch (err) {
+      console.error('[OutputsView] Error fetching tags:', err);
+    }
+  }, []);
+
+  // Fetch tags on mount
+  useEffect(() => {
+    fetchAvailableTags();
+  }, [fetchAvailableTags]);
 
   // Expanded cascades
   const [expandedCascadeId, setExpandedCascadeId] = useState(null);
@@ -92,9 +117,7 @@ const OutputsView = () => {
       if (selectedContentTypes.length > 0) {
         params.set('content_types', selectedContentTypes.join(','));
       }
-      if (starredOnly) {
-        params.set('starred_only', 'true');
-      }
+      // Note: Tag filtering for swimlanes could be added later if needed
 
       const response = await fetch(`http://localhost:5001/api/outputs/swimlanes?${params}`);
       const data = await response.json();
@@ -110,20 +133,22 @@ const OutputsView = () => {
     } finally {
       setLoading(false);
     }
-  }, [timeFilter, selectedCascades, selectedContentTypes, starredOnly]);
+  }, [timeFilter, selectedCascades, selectedContentTypes]);
 
   useEffect(() => {
     fetchSwimlanes();
   }, [fetchSwimlanes]);
 
   // Fetch all cascade IDs on mount (for filter panel - doesn't change with filters)
+  // Uses lightweight endpoint that only returns IDs, not full cascade data
   useEffect(() => {
     const fetchAllCascadeIds = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/outputs/swimlanes?time_filter=all');
+        const response = await fetch('http://localhost:5001/api/outputs/cascade-ids');
         const data = await response.json();
-        if (data.cascades) {
-          setAllCascadeIds(data.cascades.map(c => c.cascade_id));
+        if (data.cascade_ids) {
+          // Extract just the cascade_id strings from the response objects
+          setAllCascadeIds(data.cascade_ids.map(c => c.cascade_id));
         }
       } catch (err) {
         console.error('[OutputsView] Error fetching all cascade IDs:', err);
@@ -262,12 +287,30 @@ const OutputsView = () => {
         <div className="outputs-header-left">
           <Icon icon="mdi:folder-multiple-image" width="22" />
           <h1>Outputs</h1>
-          <span className="outputs-count">{cascades.length} cascades</span>
+          <div className="outputs-tabs">
+            <button
+              className={`outputs-tab ${activeTab === 'swimlanes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('swimlanes')}
+            >
+              <Icon icon="mdi:view-dashboard-outline" width="14" />
+              Swimlanes
+            </button>
+            <button
+              className={`outputs-tab ${activeTab === 'tagged' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tagged')}
+            >
+              <Icon icon="mdi:tag-multiple" width="14" />
+              Tagged
+            </button>
+          </div>
         </div>
         <div className="outputs-header-right">
           <button
             className="outputs-refresh-btn"
-            onClick={fetchSwimlanes}
+            onClick={() => {
+              fetchSwimlanes();
+              fetchAvailableTags();
+            }}
             disabled={loading}
           >
             <Icon icon={loading ? "mdi:loading" : "mdi:refresh"} width="16" className={loading ? "spinning" : ""} />
@@ -284,34 +327,42 @@ const OutputsView = () => {
           allCascadeIds={allCascadeIds}
           selectedCascades={selectedCascades}
           onSelectedCascadesChange={setSelectedCascades}
-          starredOnly={starredOnly}
-          onStarredOnlyChange={setStarredOnly}
+          selectedTags={selectedTags}
+          onSelectedTagsChange={setSelectedTags}
+          availableTags={availableTags}
           selectedContentTypes={selectedContentTypes}
           onSelectedContentTypesChange={setSelectedContentTypes}
         />
 
-        {/* Swimlanes */}
-        <div className="outputs-swimlanes">
-          {cascades.length === 0 ? (
-            <div className="outputs-empty">
-              <Icon icon="mdi:inbox-outline" width="48" />
-              <h3>No outputs found</h3>
-              <p>{selectedContentTypes.length > 0 || selectedCascades.length > 0 ? 'No cascades match the selected filters' : 'Run some cascades to see their outputs here'}</p>
-            </div>
-          ) : (
-            cascades.map((cascade) => (
-              <CascadeSwimlane
-                key={cascade.cascade_id}
-                cascade={cascade}
-                isExpanded={expandedCascadeId === cascade.cascade_id}
-                expandedData={expandedCascadeId === cascade.cascade_id ? expandedData : null}
-                expandedLoading={expandedCascadeId === cascade.cascade_id && expandedLoading}
-                onToggleExpand={() => handleToggleExpand(cascade.cascade_id)}
-                onCellClick={handleCellClick}
-              />
-            ))
-          )}
-        </div>
+        {/* Main Content - Swimlanes or Tagged View */}
+        {activeTab === 'swimlanes' ? (
+          <div className="outputs-swimlanes">
+            {cascades.length === 0 ? (
+              <div className="outputs-empty">
+                <Icon icon="mdi:inbox-outline" width="48" />
+                <h3>No outputs found</h3>
+                <p>{selectedContentTypes.length > 0 || selectedCascades.length > 0 ? 'No cascades match the selected filters' : 'Run some cascades to see their outputs here'}</p>
+              </div>
+            ) : (
+              cascades.map((cascade) => (
+                <CascadeSwimlane
+                  key={cascade.cascade_id}
+                  cascade={cascade}
+                  isExpanded={expandedCascadeId === cascade.cascade_id}
+                  expandedData={expandedCascadeId === cascade.cascade_id ? expandedData : null}
+                  expandedLoading={expandedCascadeId === cascade.cascade_id && expandedLoading}
+                  onToggleExpand={() => handleToggleExpand(cascade.cascade_id)}
+                  onCellClick={handleCellClick}
+                />
+              ))
+            )}
+          </div>
+        ) : (
+          <TaggedView
+            selectedTags={selectedTags}
+            onCellClick={handleCellClick}
+          />
+        )}
       </div>
 
       {/* Cell Detail Modal */}
@@ -323,6 +374,8 @@ const OutputsView = () => {
         siblingCount={siblingMessageIds.length}
         currentIndex={currentOutputIndex}
         onNavigate={handleNavigateOutput}
+        availableTags={availableTags}
+        onRefreshTags={fetchAvailableTags}
       />
     </div>
   );

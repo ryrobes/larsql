@@ -7977,6 +7977,105 @@ Use only numbers 0-100 for scores."""
             # Silently fail - don't break execution
             pass
 
+    def _save_videos_from_messages(self, messages: list, cell_name: str):
+        """
+        Auto-save videos from RECEIVED messages only (assistant, tool roles).
+        Skips user-role messages (sent/injection messages) to avoid duplicates.
+        Deduplicates videos based on content fingerprint.
+        """
+        from .utils import (
+            get_video_save_path, decode_and_save_video, get_next_video_index,
+            get_video_extension_from_data_url
+        )
+        import re
+
+        indent = "  " * self.depth
+        videos_to_save = []
+        seen_fingerprints = set()  # Track unique videos by content fingerprint
+
+        for msg in messages:
+            role = msg.get("role", "")
+            # Only save from received messages (assistant, tool), not sent (user)
+            if role == "user":
+                continue
+
+            content = msg.get("content")
+
+            # Handle multi-modal content (array format)
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "video_url":
+                        video_url = item.get("video_url", {})
+                        url = video_url.get("url", "") if isinstance(video_url, dict) else video_url
+                        if url.startswith("data:video"):
+                            # Deduplicate by fingerprint (first 200 chars after the header)
+                            try:
+                                _, b64_part = url.split(",", 1)
+                                fingerprint = b64_part[:200]
+                            except ValueError:
+                                fingerprint = url[:200]
+
+                            if fingerprint not in seen_fingerprints:
+                                seen_fingerprints.add(fingerprint)
+                                videos_to_save.append((url, item.get("description", "video")))
+
+            # Handle string content with embedded base64
+            elif isinstance(content, str):
+                data_url_pattern = r'data:video/[^;]+;base64,[A-Za-z0-9+/=]+'
+                matches = re.findall(data_url_pattern, content)
+                for match in matches:
+                    # Deduplicate by fingerprint
+                    try:
+                        _, b64_part = match.split(",", 1)
+                        fingerprint = b64_part[:200]
+                    except ValueError:
+                        fingerprint = match[:200]
+
+                    if fingerprint not in seen_fingerprints:
+                        seen_fingerprints.add(fingerprint)
+                        videos_to_save.append((match, "embedded_video"))
+
+            # Handle 'videos' key in message (similar to images)
+            videos_list = msg.get("videos", [])
+            if videos_list:
+                for vid in videos_list:
+                    url = None
+                    if isinstance(vid, dict):
+                        url = vid.get("video_url", {}).get("url", "")
+                    elif isinstance(vid, str) and vid.startswith("data:video"):
+                        url = vid
+
+                    if url and url.startswith("data:video"):
+                        try:
+                            _, b64_part = url.split(",", 1)
+                            fingerprint = b64_part[:200]
+                        except ValueError:
+                            fingerprint = url[:200]
+
+                        if fingerprint not in seen_fingerprints:
+                            seen_fingerprints.add(fingerprint)
+                            videos_to_save.append((url, "video"))
+
+        if videos_to_save:
+            next_idx = get_next_video_index(self.session_id, cell_name)
+
+            for i, (vid_data, desc) in enumerate(videos_to_save):
+                # Get the correct extension from the data URL
+                extension = get_video_extension_from_data_url(vid_data)
+                save_path = get_video_save_path(
+                    self.session_id,
+                    cell_name,
+                    next_idx + i,
+                    extension=extension
+                )
+
+                if not os.path.exists(save_path):
+                    try:
+                        decode_and_save_video(vid_data, save_path)
+                        console.print(f"{indent}    [dim]🎬 Saved video: {save_path}[/dim]")
+                    except Exception as e:
+                        console.print(f"{indent}    [dim yellow]⚠️  Failed to save video: {e}[/dim yellow]")
+
     def _build_context_with_images(self, winner_context: list, refinement_instructions: str) -> list:
         """
         Build refinement context messages that include re-encoded images.
@@ -11074,8 +11173,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             log_message(self.session_id, "system", "Follow-up response had empty content (not added to history)",
                                        trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="warning", depth=turn_trace.depth)
 
-                        # Auto-save any images from messages (catches manual injection, feedback loops, etc.)
+                        # Auto-save any images/videos from messages (catches manual injection, feedback loops, etc.)
                         self._save_images_from_messages(self.context_messages, phase.name)
+                        self._save_videos_from_messages(self.context_messages, phase.name)
 
                     # ========== AUDIBLE CHECK ==========
                     # Check if user has signaled an audible (feedback injection)
@@ -11635,8 +11735,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # Continue to next attempt (loop will iterate)
 
-        # Auto-save any images from final phase context (catches all images before phase completion)
+        # Auto-save any images/videos from final phase context (catches all before phase completion)
         self._save_images_from_messages(self.context_messages, phase.name)
+        self._save_videos_from_messages(self.context_messages, phase.name)
 
         # ========== OUTPUT EXTRACTION: Extract structured content from phase output ==========
         if phase.output_extraction:

@@ -10,7 +10,7 @@ import CellDetailPanel from './CellDetailPanel';
 import { CellAnatomyPanel } from '../phase-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
 import { Tooltip } from '../../components/RichTooltip';
-import { Button, Modal, ModalHeader, ModalContent, ModalFooter } from '../../components';
+import { Button, Modal, ModalHeader, ModalContent, ModalFooter, useToast } from '../../components';
 import {
   buildFBPLayout,
   CARD_WIDTH,
@@ -311,6 +311,18 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   // New cascade confirmation modal
   const [showNewModal, setShowNewModal] = useState(false);
 
+  // Save cascade modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveModalPath, setSaveModalPath] = useState('');
+  const [saveModalCascadeId, setSaveModalCascadeId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Checkpoint/blocked cell state
+  const [blockedCellName, setBlockedCellName] = useState(null);
+
+  // Toast notifications
+  const { showToast } = useToast();
+
   // console.log('[CascadeTimeline] Store data:', {
   //   hasCascade: !!cascade,
   //   cascadeId: cascade?.cascade_id,
@@ -465,6 +477,51 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     useStudioCascadeStore.setState({ childSessions });
   }, [childSessions]);
 
+  // Poll for pending checkpoints to detect blocked cells
+  // Use cascadeSessionId (live) or replaySessionId (replay mode)
+  const checkpointSessionId = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
+
+  useEffect(() => {
+    console.log('[CascadeTimeline] Checkpoint polling setup:', { checkpointSessionId, cascadeSessionId, viewMode });
+
+    if (!checkpointSessionId) {
+      setBlockedCellName(null);
+      return;
+    }
+
+    const fetchCheckpoint = async () => {
+      try {
+        const res = await fetch('http://localhost:5001/api/checkpoints');
+        const data = await res.json();
+
+        if (data.error) return;
+
+        // Find pending checkpoint for current session
+        const pending = (data.checkpoints || []).find(
+          cp => cp.status === 'pending' && cp.session_id === checkpointSessionId
+        );
+
+        console.log('[CascadeTimeline] Checkpoint check:', {
+          checkpointSessionId,
+          foundCell: pending?.cell_name,
+          pendingCount: (data.checkpoints || []).filter(cp => cp.status === 'pending').length
+        });
+
+        setBlockedCellName(pending?.cell_name || null);
+      } catch (err) {
+        // Silently ignore - not critical
+      }
+    };
+
+    // Initial fetch
+    fetchCheckpoint();
+
+    // Poll every 2 seconds while running, 5 seconds otherwise
+    const interval = setInterval(fetchCheckpoint, isRunningAll ? 2000 : 5000);
+
+    return () => clearInterval(interval);
+  }, [checkpointSessionId, isRunningAll]);
+
   // Update analytics when polling returns new data
   const prevAnalyticsHashRef = useRef('');
   useEffect(() => {
@@ -488,8 +545,15 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const [timelineHeight, setTimelineHeight] = useState(0); // Actual measured height for clipping
   const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
 
-  // Split panel resize state
-  const [graphPanelHeight, setGraphPanelHeight] = useState(null); // null = use default heights
+  // Split panel resize state (with localStorage persistence)
+  const [graphPanelHeight, setGraphPanelHeight] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-graph-panel-height');
+      return saved ? parseInt(saved, 10) : null;
+    } catch {
+      return null; // null = use default heights
+    }
+  });
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef({ y: 0, initialHeight: 0 });
 
@@ -579,7 +643,15 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false);
-  }, []);
+    // Save to localStorage
+    if (graphPanelHeight !== null) {
+      try {
+        localStorage.setItem('studio-graph-panel-height', String(graphPanelHeight));
+      } catch (e) {
+        console.warn('Failed to save graph panel height to localStorage:', e);
+      }
+    }
+  }, [graphPanelHeight]);
 
   // Attach grab-to-scroll listeners
   useEffect(() => {
@@ -709,23 +781,45 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   };
 
 
-  const handleSave = async () => {
-    if (!cascadePath) {
-      const path = window.prompt('Save cascade as:', `cascades/${cascade?.cascade_id || 'cascade'}.yaml`);
-      if (path) {
-        await saveCascade(path);
-      }
-    } else {
-      await saveCascade();
-    }
+  // Open save modal (for both new and existing cascades)
+  const handleSave = () => {
+    // Set default path: existing path or cascades/<cascade_id>.yaml
+    const defaultPath = cascadePath || `cascades/${cascade?.cascade_id || 'cascade'}.yaml`;
+    setSaveModalPath(defaultPath);
+    setSaveModalCascadeId(cascade?.cascade_id || '');
+    setShowSaveModal(true);
   };
 
-  const handleSaveAsTool = async () => {
-    const toolName = cascade?.cascade_id?.replace(/[^a-z0-9_]/gi, '_') || 'cascade';
-    const path = `tackle/${toolName}.yaml`;
+  // Execute the actual save with error handling
+  const executeSave = async () => {
+    if (!saveModalPath.trim()) {
+      showToast('Please enter a file path', { type: 'error' });
+      return;
+    }
 
-    if (window.confirm(`Save as tool: ${toolName}?\n\nThis will make it callable from other cascades.`)) {
-      await saveCascade(path);
+    if (!saveModalCascadeId.trim()) {
+      showToast('Please enter a cascade ID', { type: 'error' });
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      // Update cascade_id if it changed
+      if (saveModalCascadeId !== cascade?.cascade_id) {
+        updateCascade({ cascade_id: saveModalCascadeId });
+      }
+
+      // Perform save
+      await saveCascade(saveModalPath);
+
+      showToast(`Saved to ${saveModalPath}`, { type: 'success' });
+      setShowSaveModal(false);
+    } catch (err) {
+      console.error('Failed to save cascade:', err);
+      showToast(`Failed to save: ${err.message}`, { type: 'error', duration: 6000 });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1104,22 +1198,12 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
           <Tooltip label="Save" description="Save cascade changes">
             <Button
-              variant="secondary"
+              variant="tool"
               icon="mdi:content-save"
               onClick={handleSave}
               disabled={!cascadeDirty && cascadePath}
             >
               Save
-            </Button>
-          </Tooltip>
-
-          <Tooltip label="Save as Tool" description="Save to tackle/ as reusable tool">
-            <Button
-              variant="tool"
-              icon="mdi:package"
-              onClick={handleSaveAsTool}
-            >
-              As Tool
             </Button>
           </Tooltip>
 
@@ -1208,6 +1292,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                   onSelect={handleSelectCell}
                   defaultModel={defaultModel}
                   costMetrics={cellCostMetrics[node.cell.name]}
+                  isBlocked={blockedCellName === node.cell.name}
                 />
                 {/* Budget Enforcement Annotation - above node, right-aligned (like cost below) */}
                 {budgetEvents && budgetEvents.filter(e => e.cell_name === node.cell.name).length > 0 && (
@@ -1488,6 +1573,128 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
             onClick={executeNewCascade}
           >
             Create New
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Save Cascade Modal */}
+      <Modal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        size="sm"
+      >
+        <ModalHeader
+          icon="mdi:content-save"
+          title="Save Cascade"
+        />
+        <ModalContent>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Cascade ID field */}
+            <div>
+              <label style={{
+                display: 'block',
+                marginBottom: '6px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 500
+              }}>
+                Cascade ID
+              </label>
+              <input
+                type="text"
+                value={saveModalCascadeId}
+                onChange={(e) => setSaveModalCascadeId(e.target.value)}
+                placeholder="my_cascade"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  backgroundColor: '#0a0818',
+                  border: '1px solid #1e1b4b',
+                  borderRadius: '6px',
+                  color: '#e2e8f0',
+                  fontSize: '14px',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <p style={{
+                marginTop: '4px',
+                color: '#64748b',
+                fontSize: '11px'
+              }}>
+                Unique identifier for this cascade. Change if saving a copy.
+              </p>
+            </div>
+
+            {/* File path field */}
+            <div>
+              <label style={{
+                display: 'block',
+                marginBottom: '6px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 500
+              }}>
+                File Path
+              </label>
+              <input
+                type="text"
+                value={saveModalPath}
+                onChange={(e) => setSaveModalPath(e.target.value)}
+                placeholder="cascades/my_cascade.yaml"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  backgroundColor: '#0a0818',
+                  border: '1px solid #1e1b4b',
+                  borderRadius: '6px',
+                  color: '#e2e8f0',
+                  fontSize: '14px',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <p style={{
+                marginTop: '4px',
+                color: '#64748b',
+                fontSize: '11px'
+              }}>
+                Relative to RVBBIT root. Use <code style={{ color: '#a78bfa' }}>cascades/</code> for cascades or <code style={{ color: '#a78bfa' }}>traits/</code> for reusable tools.
+              </p>
+            </div>
+
+            {/* Warning about duplicate IDs */}
+            {cascadePath && saveModalPath !== cascadePath && (
+              <div style={{
+                padding: '10px 12px',
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                border: '1px solid rgba(251, 191, 36, 0.3)',
+                borderRadius: '6px',
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}>
+                <Icon icon="mdi:alert" style={{ color: '#fbbf24', flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ color: '#fbbf24', fontSize: '12px', margin: 0 }}>
+                  Saving to a different path. Consider changing the Cascade ID to avoid duplicates.
+                </p>
+              </div>
+            )}
+          </div>
+        </ModalContent>
+        <ModalFooter align="right">
+          <Button
+            variant="secondary"
+            onClick={() => setShowSaveModal(false)}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon={isSaving ? "mdi:loading" : "mdi:content-save"}
+            onClick={executeSave}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
           </Button>
         </ModalFooter>
       </Modal>

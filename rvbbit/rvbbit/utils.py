@@ -560,6 +560,192 @@ def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, exten
     path = os.path.join(audio_dir, session_id, cell_name, filename)
     return path
 
+# =============================================================================
+# Video Utilities
+# =============================================================================
+
+# Supported video MIME types and their extensions
+VIDEO_MIME_TO_EXT = {
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-msvideo": "avi",
+    "video/x-matroska": "mkv",
+    "video/ogg": "ogv",
+    "video/mpeg": "mpeg",
+}
+
+VIDEO_EXT_TO_MIME = {v: k for k, v in VIDEO_MIME_TO_EXT.items()}
+
+def get_video_extension_from_mime(mime_type: str) -> str:
+    """Get file extension from video MIME type. Defaults to mp4."""
+    return VIDEO_MIME_TO_EXT.get(mime_type.lower(), "mp4")
+
+def get_video_mime_from_extension(extension: str) -> str:
+    """Get MIME type from video file extension. Defaults to video/mp4."""
+    ext = extension.lower().lstrip(".")
+    return VIDEO_EXT_TO_MIME.get(ext, "video/mp4")
+
+def encode_video_base64(video_path: str) -> str:
+    """
+    Encodes a local video to base64 data URL.
+
+    Args:
+        video_path: Path to video file
+
+    Returns:
+        Base64 data URL string (e.g., "data:video/mp4;base64,...")
+    """
+    if not os.path.exists(video_path):
+        return f"[Error: Video not found at {video_path}]"
+
+    # Determine MIME type from extension
+    ext = os.path.splitext(video_path)[1].lower().lstrip(".")
+    mime_type = get_video_mime_from_extension(ext)
+
+    with open(video_path, "rb") as video_file:
+        encoded_string = base64.b64encode(video_file.read()).decode('utf-8')
+
+    return f"data:{mime_type};base64,{encoded_string}"
+
+def decode_and_save_video(base64_data: str, save_path: str) -> str:
+    """
+    Decodes a base64 data URL and saves video to disk.
+    Returns the saved file path.
+
+    Handles formats:
+    - data:video/mp4;base64,{base64_string}
+    - data:video/webm;base64,{base64_string}
+    - Raw base64 string (without data: prefix)
+    """
+    # Extract base64 content from data URL
+    if base64_data.startswith("data:"):
+        # Format: data:video/mp4;base64,AAAA...
+        base64_content = base64_data.split(",", 1)[1]
+    else:
+        base64_content = base64_data
+
+    # Decode and save
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, "wb") as f:
+        f.write(base64.b64decode(base64_content))
+
+    return save_path
+
+def get_video_extension_from_data_url(data_url: str) -> str:
+    """
+    Extract extension from a video data URL.
+    e.g., "data:video/mp4;base64,..." -> "mp4"
+    """
+    if not data_url.startswith("data:video/"):
+        return "mp4"  # Default
+
+    try:
+        # Extract mime type: data:video/mp4;base64,...
+        mime_part = data_url.split(";")[0]  # data:video/mp4
+        mime_type = mime_part.split(":")[1]  # video/mp4
+        return get_video_extension_from_mime(mime_type)
+    except (IndexError, ValueError):
+        return "mp4"
+
+def get_next_video_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
+    """
+    Find the next available video index for a session/phase directory.
+    Scans existing files to avoid overwriting.
+    If candidate_index is provided, only considers videos for that candidate.
+    """
+    from .config import get_config
+    config = get_config()
+
+    video_dir = config.video_dir
+    phase_dir = os.path.join(video_dir, session_id, cell_name)
+
+    if not os.path.exists(phase_dir):
+        return 0
+
+    # Find all existing video files and extract their indices
+    existing_indices = set()
+    for filename in os.listdir(phase_dir):
+        if candidate_index is not None:
+            # Match pattern: sounding_N_video_M.ext
+            match = re.match(rf'sounding_{candidate_index}_video_(\d+)\.\w+$', filename)
+        else:
+            # Match pattern: video_N.ext (without candidate prefix)
+            match = re.match(r'video_(\d+)\.\w+$', filename)
+        if match:
+            existing_indices.add(int(match.group(1)))
+
+    if not existing_indices:
+        return 0
+
+    # Return next index after the highest existing one
+    return max(existing_indices) + 1
+
+def get_video_save_path(session_id: str, cell_name: str, video_index: int, extension: str = "mp4", candidate_index: int = None) -> str:
+    """
+    Generate standardized path for saving videos.
+    Format: videos/{session_id}/{cell_name}/video_{index}.{ext}
+    Or with candidate: videos/{session_id}/{cell_name}/sounding_{s}_video_{index}.{ext}
+    """
+    from .config import get_config
+    config = get_config()
+
+    # Use configured video_dir
+    video_dir = config.video_dir
+
+    if candidate_index is not None:
+        filename = f"sounding_{candidate_index}_video_{video_index}.{extension}"
+    else:
+        filename = f"video_{video_index}.{extension}"
+
+    path = os.path.join(video_dir, session_id, cell_name, filename)
+    return path
+
+def extract_videos_from_messages(messages: List[Dict]) -> List[Tuple[str, str]]:
+    """
+    Extract video base64 data and URLs from message history.
+    Returns list of (base64_data, description) tuples.
+    """
+    videos = []
+
+    for msg in messages:
+        content = msg.get("content")
+
+        # Handle string content (might have embedded base64)
+        if isinstance(content, str):
+            # Look for data URLs in text
+            data_url_pattern = r'data:video/[^;]+;base64,[A-Za-z0-9+/=]+'
+            matches = re.findall(data_url_pattern, content)
+            for match in matches:
+                videos.append((match, "embedded_video"))
+
+        # Handle multi-modal content (array format)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "video_url":
+                        video_url = item.get("video_url", {})
+                        if isinstance(video_url, dict):
+                            url = video_url.get("url", "")
+                        else:
+                            url = video_url
+
+                        if url.startswith("data:"):
+                            videos.append((url, item.get("description", "video")))
+
+        # Handle 'videos' key in message (like we do for images)
+        videos_list = msg.get("videos", [])
+        if videos_list:
+            for vid in videos_list:
+                if isinstance(vid, dict):
+                    url = vid.get("video_url", {}).get("url", "")
+                    if url.startswith("data:"):
+                        videos.append((url, vid.get("description", "video")))
+                elif isinstance(vid, str) and vid.startswith("data:"):
+                    videos.append((vid, "video"))
+
+    return videos
+
 def python_type_to_json_type(t: Any) -> str:
     if t == str:
         return "string"

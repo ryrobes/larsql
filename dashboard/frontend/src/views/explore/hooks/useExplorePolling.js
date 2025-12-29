@@ -25,6 +25,7 @@ export default function useExplorePolling(sessionId) {
   const [logs, setLogs] = useState([]);
   const [checkpoint, setCheckpoint] = useState(null);
   const [ghostMessages, setGhostMessages] = useState([]);
+  const [toolCounts, setToolCounts] = useState({});  // { tool_name: count }
   const [orchestrationState, setOrchestrationState] = useState({
     currentPhase: null,
     currentModel: null,
@@ -69,6 +70,7 @@ export default function useExplorePolling(sessionId) {
     setLogs([]);
     setCheckpoint(null);
     setGhostMessages([]);
+    setToolCounts({});
     setOrchestrationState({
       currentPhase: null,
       currentModel: null,
@@ -98,10 +100,11 @@ export default function useExplorePolling(sessionId) {
     console.log('[useExplorePolling] State cleared, ready for new session');
   }, [sessionId]);
 
-  // Derive ghost messages from new logs
+  // Derive ghost messages from new logs and track tool calls
   const deriveGhostMessages = useCallback((newLogs) => {
     console.log('[deriveGhostMessages] Processing', newLogs.length, 'new logs');
     const newGhosts = [];
+    const newToolCounts = {};  // Accumulate counts from this batch
 
     for (const log of newLogs) {
       // Parse tool calls from content_json (API returns stringified JSON)
@@ -133,9 +136,22 @@ export default function useExplorePolling(sessionId) {
         }
       }
 
+      // Also check metadata_json for tool info (some logs store it there)
+      if (!toolName && log.metadata_json) {
+        try {
+          const metadata = JSON.parse(log.metadata_json);
+          if (metadata.tool_name) {
+            toolName = metadata.tool_name;
+          }
+        } catch (e) {
+          // Not JSON
+        }
+      }
+
       console.log('[deriveGhostMessages] Log:', {
         role: log.role,
         toolName,
+        node_type: log.node_type,
         hasContent: !!log.content_json,
         message_id: log.message_id
       });
@@ -152,15 +168,26 @@ export default function useExplorePolling(sessionId) {
           timestamp: log.timestamp,
           createdAt: Date.now()
         });
+        // Count tool calls
+        newToolCounts[toolName] = (newToolCounts[toolName] || 0) + 1;
       }
 
-      // Tool results (tool role)
+      // Tool results (tool role) - also count these
       if (log.role === 'tool') {
-        console.log('[deriveGhostMessages] Found tool_result:', toolName || 'unknown');
+        // Try to extract tool name from the result log
+        let resultToolName = toolName || 'tool';
+        if (!toolName && log.metadata_json) {
+          try {
+            const metadata = JSON.parse(log.metadata_json);
+            resultToolName = metadata.tool_name || metadata.name || 'tool';
+          } catch (e) {}
+        }
+
+        console.log('[deriveGhostMessages] Found tool_result:', resultToolName);
         newGhosts.push({
           id: log.message_id || `ghost_${Date.now()}_${Math.random()}`,
           type: 'tool_result',
-          tool: toolName || 'tool',
+          tool: resultToolName,
           result: log.content_json,
           timestamp: log.timestamp,
           createdAt: Date.now()
@@ -173,7 +200,7 @@ export default function useExplorePolling(sessionId) {
           const content = JSON.parse(log.content_json);
           const text = typeof content === 'string' ? content : JSON.stringify(content);
           if (text.length > 50) {
-            console.log('[deriveGhostMessages] Found thinking message');
+            console.log('[deriveGhostMessages] Found thinking message, len:', text.length);
             newGhosts.push({
               id: log.message_id || `ghost_${Date.now()}_${Math.random()}`,
               type: 'thinking',
@@ -183,12 +210,34 @@ export default function useExplorePolling(sessionId) {
             });
           }
         } catch (e) {
-          // Not parseable
+          // Not parseable - try using raw content
+          if (log.content_json.length > 50) {
+            console.log('[deriveGhostMessages] Found raw thinking message');
+            newGhosts.push({
+              id: log.message_id || `ghost_${Date.now()}_${Math.random()}`,
+              type: 'thinking',
+              content: log.content_json,
+              timestamp: log.timestamp,
+              createdAt: Date.now()
+            });
+          }
         }
       }
     }
 
     console.log('[deriveGhostMessages] Created', newGhosts.length, 'new ghosts');
+
+    // Update tool counts (merge with existing)
+    if (Object.keys(newToolCounts).length > 0) {
+      setToolCounts(prev => {
+        const updated = { ...prev };
+        for (const [tool, count] of Object.entries(newToolCounts)) {
+          updated[tool] = (updated[tool] || 0) + count;
+        }
+        console.log('[deriveGhostMessages] Tool counts updated:', updated);
+        return updated;
+      });
+    }
 
     if (newGhosts.length > 0) {
       setGhostMessages(prev => {
@@ -453,6 +502,7 @@ export default function useExplorePolling(sessionId) {
     // Derived state
     ghostMessages,
     orchestrationState,
+    toolCounts,  // { tool_name: count } - real-time tool call tracking
 
     // Session metadata
     sessionStatus,

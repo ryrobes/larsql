@@ -95,6 +95,7 @@ class Config(BaseModel):
     # Multi-modal artifact directories (these stay on disk)
     image_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "images"))
     audio_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "audio"))
+    video_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "videos"))
 
     # Research databases directory (DuckDB files for cascade-specific data)
     research_db_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "research_dbs"))
@@ -170,6 +171,7 @@ def _ensure_directories(config: Config):
         config.state_dir,
         config.image_dir,
         config.audio_dir,
+        config.video_dir,
         config.research_db_dir,  # DuckDB research databases
     ]
     for dir_path in dirs_to_create:

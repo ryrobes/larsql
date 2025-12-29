@@ -218,28 +218,43 @@ def extract_images_from_rendered_text(rendered_text: str) -> tuple[str, list[str
     return clean_text, data_urls
 
 
-def convert_to_multimodal_content(text: str, extract_images: bool = True) -> Union[str, list]:
+def convert_to_multimodal_content(text: str, extract_images: bool = True, extract_videos: bool = True) -> Union[str, list]:
     """
-    Convert a text string with embedded data:image URLs to multimodal content.
+    Convert a text string with embedded data:image/video URLs to multimodal content.
 
     Args:
-        text: Rendered text (possibly with data:image URLs)
+        text: Rendered text (possibly with data:image or data:video URLs)
         extract_images: If True, extract images and return multimodal content
+        extract_videos: If True, extract videos and return multimodal content
 
     Returns:
-        - str: Original text if no images found
-        - list: Multimodal content blocks if images found
+        - str: Original text if no media found
+        - list: Multimodal content blocks if images/videos found
     """
-    if not extract_images:
+    if not extract_images and not extract_videos:
         return text
 
-    clean_text, image_urls = extract_images_from_rendered_text(text)
+    clean_text = text
+    image_urls = []
+    video_urls = []
 
-    if not image_urls:
+    if extract_images:
+        clean_text, image_urls = extract_images_from_rendered_text(clean_text)
+
+    if extract_videos:
+        clean_text, video_urls = extract_videos_from_rendered_text(clean_text)
+
+    if not image_urls and not video_urls:
         return text
 
-    # Build multimodal content: text first, then images
+    # Build multimodal content: text first, then videos, then images
     content = [{"type": "text", "text": clean_text}]
+
+    for url in video_urls:
+        content.append({
+            "type": "video_url",
+            "video_url": {"url": url}
+        })
 
     for url in image_urls:
         content.append({
@@ -248,3 +263,26 @@ def convert_to_multimodal_content(text: str, extract_images: bool = True) -> Uni
         })
 
     return content
+
+
+def extract_videos_from_rendered_text(rendered_text: str) -> tuple[str, list[str]]:
+    """
+    Extract data:video URLs from rendered Jinja text.
+
+    Returns:
+        (clean_text, video_urls) where clean_text has URLs replaced with placeholders
+    """
+    import re
+
+    # Pattern to match data:video URLs
+    pattern = r'data:video/[^;]+;base64,[A-Za-z0-9+/=]+'
+
+    # Find all data URLs
+    data_urls = re.findall(pattern, rendered_text)
+
+    # Replace them with placeholders (so they don't clutter the text)
+    clean_text = rendered_text
+    for i, url in enumerate(data_urls):
+        clean_text = clean_text.replace(url, f'[Video {i}]', 1)
+
+    return clean_text, data_urls

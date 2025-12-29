@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import RichMarkdown from '../../../components/RichMarkdown';
 import DynamicUI from '../../../components/DynamicUI';
+import TagModal from '../../../components/TagModal/TagModal';
+import { TagChipList } from '../../../components/TagChip/TagChip';
 import { ROUTES } from '../../../routes.helpers';
 import './CellDetailModal.css';
 
@@ -353,6 +355,8 @@ const ContentRenderer = ({ content, contentType, images }) => {
  * @param {number} siblingCount - Total number of outputs in this cell group
  * @param {number} currentIndex - Current output index (0-based)
  * @param {function} onNavigate - Navigate to prev/next output ('prev' | 'next')
+ * @param {array} availableTags - List of available tags for the tag modal
+ * @param {function} onRefreshTags - Callback to refresh available tags
  */
 const CellDetailModal = ({
   isOpen,
@@ -362,8 +366,72 @@ const CellDetailModal = ({
   siblingCount = 1,
   currentIndex = 0,
   onNavigate,
+  availableTags = [],
+  onRefreshTags,
 }) => {
   const navigate = useNavigate();
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [outputTags, setOutputTags] = useState([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+
+  // Fetch tags for current output
+  const fetchOutputTags = useCallback(async () => {
+    if (!cellDetail?.message_id) {
+      setOutputTags([]);
+      return;
+    }
+
+    setTagsLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5001/api/outputs/tags/for/${cellDetail.message_id}`);
+      const data = await response.json();
+      if (data.tags) {
+        setOutputTags(data.tags);
+      }
+    } catch (err) {
+      console.error('[CellDetailModal] Error fetching tags:', err);
+    } finally {
+      setTagsLoading(false);
+    }
+  }, [cellDetail?.message_id]);
+
+  // Fetch tags when cellDetail changes
+  useEffect(() => {
+    if (isOpen && cellDetail?.message_id) {
+      fetchOutputTags();
+    }
+  }, [isOpen, cellDetail?.message_id, fetchOutputTags]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setOutputTags([]);
+      setTagModalOpen(false);
+    }
+  }, [isOpen]);
+
+  const handleTagAdded = () => {
+    fetchOutputTags();
+    if (onRefreshTags) {
+      onRefreshTags();
+    }
+  };
+
+  const handleRemoveTag = async (tagId) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/outputs/tags/${tagId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchOutputTags();
+        if (onRefreshTags) {
+          onRefreshTags();
+        }
+      }
+    } catch (err) {
+      console.error('[CellDetailModal] Error removing tag:', err);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -492,6 +560,18 @@ const CellDetailModal = ({
           )}
         </div>
 
+        {/* Tags Display */}
+        {outputTags.length > 0 && (
+          <div className="cell-detail-tags">
+            <TagChipList
+              tags={outputTags}
+              removable
+              onRemove={handleRemoveTag}
+              size="md"
+            />
+          </div>
+        )}
+
         {/* Actions */}
         <div className="cell-detail-actions">
           <button className="action-btn action-secondary" onClick={handleCopyContent}>
@@ -502,12 +582,29 @@ const CellDetailModal = ({
             <Icon icon="mdi:open-in-new" width="16" />
             Open in Studio
           </button>
-          <button className="action-btn action-primary">
-            <Icon icon="mdi:star-outline" width="16" />
-            Promote
+          <button
+            className="action-btn action-primary"
+            onClick={() => setTagModalOpen(true)}
+          >
+            <Icon icon="mdi:tag-plus" width="16" />
+            Tag
           </button>
         </div>
       </div>
+
+      {/* Tag Modal */}
+      <TagModal
+        isOpen={tagModalOpen}
+        onClose={() => setTagModalOpen(false)}
+        outputInfo={cellDetail ? {
+          message_id: cellDetail.message_id,
+          cascade_id: cellDetail.cascade_id,
+          cell_name: cellDetail.cell_name,
+        } : null}
+        availableTags={availableTags}
+        onTagAdded={handleTagAdded}
+        onRefreshTags={onRefreshTags}
+      />
     </div>
   );
 

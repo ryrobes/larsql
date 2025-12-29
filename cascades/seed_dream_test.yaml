@@ -1,4 +1,4 @@
-cascade_id: mm_test123
+cascade_id: seed_dream_test
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
@@ -12,28 +12,47 @@ cells:
 
     {{ input.prompt }}
 
+    Negative Prompt: Smoking.
     '
   model: x-ai/grok-4.1-fast
+  #model: x-ai/grok-4
+  #model: bytedance-seed/seed-1.6
+  #model: cognitivecomputations/dolphin-mistral-24b-venice-edition:free
   rules:
     max_turns: 1
 - name: bytedance_seed_seedream_4_5_raw1
   model: bytedance-seed/seedream-4.5
-  instructions: '{{ input.prompt }}'
+  instructions: '{{ outputs.llm_phase }}'
   image_config:
     width: 1024
     height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output    
 - name: bytedance_seed_seedream_4_5_raw2
   model: bytedance-seed/seedream-4.5
-  instructions: '{{ input.prompt }}'
+  instructions: '{{ outputs.llm_phase }}'
   image_config:
     width: 1024
     height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output    
 - name: bytedance_seed_seedream_4_5_raw3
   model: bytedance-seed/seedream-4.5
-  instructions: '{{ input.prompt }}'
+  instructions: '{{ outputs.llm_phase }}'
   image_config:
     width: 1024
     height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output    
 - name: bytedance_seed_seedream_4_5_remix1
   model: bytedance-seed/seedream-4.5
   instructions: '{{ outputs.llm_phase }}'
@@ -69,7 +88,12 @@ cells:
       - output
 - name: bytedance_seed_seedream_4_5_raw
   model: bytedance-seed/seedream-4.5
-  instructions: '{{ input.prompt }}'
+  instructions: '{{ outputs.llm_phase }}'
   image_config:
     width: 1024
     height: 1024
+  context:
+    from:
+    - cell: llm_phase
+      include:
+      - output    

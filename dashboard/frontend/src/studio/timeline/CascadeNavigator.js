@@ -13,7 +13,8 @@ import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
 import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
 import { Tooltip } from '../../components/RichTooltip';
-import { Button } from '../../components';
+import { Button, useToast } from '../../components';
+import CheckpointModal from '../../components/CheckpointModal';
 import './CascadeNavigator.css';
 
 // Type badge colors (consistent with SchemaTree)
@@ -441,7 +442,23 @@ function RabbitizeArtifactsTree({ cellName, artifacts }) {
 
 // Session tables section
 function SessionTablesSection({ sessionId, cells, cellStates }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-session-tables-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-session-tables-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Get list of materialized tables (cells with successful results)
   const materializedTables = cells
@@ -488,7 +505,23 @@ function SessionTablesSection({ sessionId, cells, cellStates }) {
 
 // Media section - shows image thumbnails from cells
 function MediaSection({ cells, cellStates, onNavigateToCell }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-media-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-media-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Collect all images from cells with their source cell
   const mediaItems = React.useMemo(() => {
@@ -640,7 +673,23 @@ function CellTypeSubsection({ title, icon, cellTypes, defaultExpanded = true }) 
 
 // Cell Types section (draggable palette with organized subsections)
 function CellTypesSection() {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-cell-types-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-cell-types-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Load cell types from store (declarative from YAML files)
   const cellTypesFromStore = useStudioCascadeStore(state => state.cellTypes);
@@ -739,8 +788,24 @@ function CellTypesSection() {
 
 // Connections section (collapsed by default)
 function ConnectionsSection() {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-connections-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
   const { connections } = useStudioQueryStore();
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-connections-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   return (
     <div className="nav-section">
@@ -780,6 +845,7 @@ function CascadeNavigator() {
     cellStates,
     cellAnalytics,
     sessionId,
+    cascadeSessionId,
     isRunningAll,
     runCascadeStandard,
     yamlViewMode,
@@ -793,6 +859,30 @@ function CascadeNavigator() {
   } = useStudioCascadeStore();
 
   const [inputValidationError, setInputValidationError] = useState(null);
+
+  // Checkpoint/interrupt state
+  const [pendingCheckpoint, setPendingCheckpoint] = useState(null);
+  const [showCheckpointModal, setShowCheckpointModal] = useState(false);
+  const { showToast } = useToast();
+
+  // Section collapse state - persisted to localStorage
+  const [cellsSectionExpanded, setCellsSectionExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-cells-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Persist cells section expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-cells-expanded', String(cellsSectionExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [cellsSectionExpanded]);
 
   // YAML editor state
   const [yamlContent, setYamlContent] = useState('');
@@ -814,6 +904,104 @@ function CascadeNavigator() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cascadeInputs]);
+
+  // Poll for pending checkpoints when cascade is running
+  // Use cascadeSessionId (live execution) or replaySessionId (viewing past run)
+  const checkpointSessionId = viewMode === 'replay' ? replaySessionId : cascadeSessionId;
+
+  useEffect(() => {
+    console.log('[CascadeNavigator] Checkpoint polling setup:', { checkpointSessionId, cascadeSessionId, replaySessionId, viewMode });
+
+    if (!checkpointSessionId) {
+      setPendingCheckpoint(null);
+      return;
+    }
+
+    const fetchCheckpoint = async () => {
+      try {
+        const res = await fetch('http://localhost:5001/api/checkpoints');
+        const data = await res.json();
+
+        if (data.error) {
+          console.warn('[CascadeNavigator] Checkpoint fetch error:', data.error);
+          return;
+        }
+
+        // Find pending checkpoint for current session
+        const allPending = (data.checkpoints || []).filter(cp => cp.status === 'pending');
+        console.log('[CascadeNavigator] Checkpoint check:', {
+          checkpointSessionId,
+          pendingCount: allPending.length,
+          pendingSessionIds: allPending.map(cp => cp.session_id),
+          match: allPending.find(cp => cp.session_id === checkpointSessionId)
+        });
+
+        const pending = allPending.find(cp => cp.session_id === checkpointSessionId);
+
+        setPendingCheckpoint(pending || null);
+      } catch (err) {
+        console.warn('[CascadeNavigator] Checkpoint fetch failed:', err);
+      }
+    };
+
+    // Initial fetch
+    fetchCheckpoint();
+
+    // Poll every 2 seconds while running, 5 seconds otherwise
+    const interval = setInterval(fetchCheckpoint, isRunningAll ? 2000 : 5000);
+
+    return () => clearInterval(interval);
+  }, [checkpointSessionId, isRunningAll]);
+
+  // Handle checkpoint response
+  const handleCheckpointResponse = useCallback(async (response) => {
+    if (!pendingCheckpoint) return;
+
+    try {
+      const res = await fetch(`http://localhost:5001/api/checkpoints/${pendingCheckpoint.id}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        showToast(`Failed to respond: ${data.error}`, { type: 'error' });
+        return;
+      }
+
+      showToast('Response submitted', { type: 'success' });
+      setPendingCheckpoint(null);
+      setShowCheckpointModal(false);
+    } catch (err) {
+      showToast(`Error: ${err.message}`, { type: 'error' });
+    }
+  }, [pendingCheckpoint, showToast]);
+
+  // Handle checkpoint cancellation
+  const handleCheckpointCancel = useCallback(async () => {
+    if (!pendingCheckpoint) return;
+
+    try {
+      const res = await fetch(`http://localhost:5001/api/checkpoints/${pendingCheckpoint.id}/cancel`, {
+        method: 'POST',
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        showToast(`Failed to cancel: ${data.error}`, { type: 'error' });
+        return;
+      }
+
+      showToast('Checkpoint cancelled', { type: 'success' });
+      setPendingCheckpoint(null);
+      setShowCheckpointModal(false);
+    } catch (err) {
+      showToast(`Error: ${err.message}`, { type: 'error' });
+    }
+  }, [pendingCheckpoint, showToast]);
 
   // Sync cascade to YAML when cascade changes externally
   // ONLY update if editor is not focused (prevents fighting with user input)
@@ -1114,6 +1302,32 @@ function CascadeNavigator() {
             </div>
           )}
 
+          {/* Pending Checkpoint Alert - High visibility interrupt button */}
+          {pendingCheckpoint && (
+            <div className="nav-interrupt-alert">
+              <div className="nav-interrupt-alert-content">
+                <div className="nav-interrupt-alert-icon">
+                  <Icon icon="mdi:hand-back-right" width="20" />
+                </div>
+                <div className="nav-interrupt-alert-text">
+                  <span className="nav-interrupt-alert-title">Human Input Required</span>
+                  <span className="nav-interrupt-alert-meta">
+                    {pendingCheckpoint.checkpoint_type}
+                    {pendingCheckpoint.cell_name && ` • ${pendingCheckpoint.cell_name}`}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon="mdi:open-in-new"
+                onClick={() => setShowCheckpointModal(true)}
+              >
+                Respond
+              </Button>
+            </div>
+          )}
+
           {/* Quick Access Primitives - Headerless, Always Visible */}
           <div className="nav-quick-access">
             <div className="nav-quick-access-pills">
@@ -1151,45 +1365,55 @@ function CascadeNavigator() {
 
           {/* Cells Section */}
           <div className="nav-section nav-cells-section">
-            <div className="nav-section-header">
+            <div
+              className="nav-section-header"
+              onClick={() => setCellsSectionExpanded(!cellsSectionExpanded)}
+            >
+              <Icon
+                icon={cellsSectionExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+                className="nav-chevron"
+              />
               <Icon icon="mdi:format-list-numbered" className="nav-section-icon" />
               <span className="nav-section-title">Cells</span>
+              <span className="nav-section-count">{cells.length}</span>
             </div>
 
-            <div className="nav-cells-list">
-              {(() => {
-                // Calculate cost metrics
-                const cellCosts = cells.map((cell, index) => {
-                  const cost = cellStates[cell.name]?.cost || 0;
-                  return { cell, index, cost };
-                });
+            {cellsSectionExpanded && (
+              <div className="nav-cells-list">
+                {(() => {
+                  // Calculate cost metrics
+                  const cellCosts = cells.map((cell, index) => {
+                    const cost = cellStates[cell.name]?.cost || 0;
+                    return { cell, index, cost };
+                  });
 
-                const maxCost = Math.max(...cellCosts.map(c => c.cost), 0.0001); // Avoid div by 0
+                  const maxCost = Math.max(...cellCosts.map(c => c.cost), 0.0001); // Avoid div by 0
 
-                // Sort by cost (descending) for "hot cells first"
-                const sortedCells = [...cellCosts].sort((a, b) => b.cost - a.cost);
+                  // Sort by cost (descending) for "hot cells first"
+                  const sortedCells = [...cellCosts].sort((a, b) => b.cost - a.cost);
 
-                return sortedCells.map(({ cell, index, cost }) => {
-                  const barWidth = maxCost > 0 ? (cost / maxCost) * 100 : 0;
-                  // Get pre-computed analytics for this cell
-                  const analytics = cellAnalytics?.[cell.name] || null;
+                  return sortedCells.map(({ cell, index, cost }) => {
+                    const barWidth = maxCost > 0 ? (cost / maxCost) * 100 : 0;
+                    // Get pre-computed analytics for this cell
+                    const analytics = cellAnalytics?.[cell.name] || null;
 
-                  return (
-                    <CellNode
-                      key={cell.name}
-                      cell={cell}
-                      index={index}
-                      cellState={cellStates[cell.name]}
-                      isActive={selectedCellIndex === index}
-                      onNavigate={scrollToCell}
-                      cost={cost}
-                      costBarWidth={barWidth}
-                      analytics={analytics}
-                    />
-                  );
-                });
-              })()}
-            </div>
+                    return (
+                      <CellNode
+                        key={cell.name}
+                        cell={cell}
+                        index={index}
+                        cellState={cellStates[cell.name]}
+                        isActive={selectedCellIndex === index}
+                        onNavigate={scrollToCell}
+                        cost={cost}
+                        costBarWidth={barWidth}
+                        analytics={analytics}
+                      />
+                    );
+                  });
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Session Tables Section */}
@@ -1212,6 +1436,16 @@ function CascadeNavigator() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Checkpoint Modal */}
+      {showCheckpointModal && pendingCheckpoint && (
+        <CheckpointModal
+          checkpoint={pendingCheckpoint}
+          onSubmit={handleCheckpointResponse}
+          onClose={() => setShowCheckpointModal(false)}
+          onCancel={handleCheckpointCancel}
+        />
+      )}
     </div>
   );
 }

@@ -177,8 +177,39 @@ function ModelBrowserPalette() {
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
-  const [isOllamaExpanded, setIsOllamaExpanded] = useState(true); // Ollama expanded by default
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-models-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+  const [isOllamaExpanded, setIsOllamaExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-local-models-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Persist expanded states
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-models-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-local-models-expanded', String(isOllamaExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isOllamaExpanded]);
 
   // Fetch models from backend
   useEffect(() => {

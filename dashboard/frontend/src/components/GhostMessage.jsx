@@ -80,6 +80,53 @@ const GhostMessage = ({ ghost }) => {
   const parsedContent = ghost.arguments || tryParseJSON(ghost.content);
   const displayContent = ghost.content || ghost.result || '';
 
+  // For thinking type, extract text content even from JSON
+  const thinkingText = React.useMemo(() => {
+    if (ghost.type !== 'thinking') return null;
+
+    // First try raw content
+    if (ghost.content) {
+      // If it's a string that looks like plain text, use it
+      if (typeof ghost.content === 'string' && !ghost.content.trim().startsWith('{')) {
+        return ghost.content;
+      }
+      // Try to extract text from JSON
+      try {
+        const parsed = JSON.parse(ghost.content);
+        // Handle various content formats
+        if (typeof parsed === 'string') return parsed;
+        if (parsed.content) return typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content);
+        if (parsed.text) return parsed.text;
+        if (parsed.thinking) return parsed.thinking;
+        if (parsed.message) return parsed.message;
+        // Fall back to stringified version
+        return JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        return ghost.content;
+      }
+    }
+    return displayContent;
+  }, [ghost.type, ghost.content, displayContent]);
+
+  // For tool results, parse and format
+  const toolResultContent = React.useMemo(() => {
+    if (ghost.type !== 'tool_result') return null;
+
+    const result = ghost.result || ghost.content;
+    if (!result) return null;
+
+    try {
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+      // Extract meaningful content from tool results
+      if (parsed.content) return typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content, null, 2);
+      if (parsed.result) return typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result, null, 2);
+      if (parsed.output) return typeof parsed.output === 'string' ? parsed.output : JSON.stringify(parsed.output, null, 2);
+      return JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      return result;
+    }
+  }, [ghost.type, ghost.result, ghost.content]);
+
   return (
     <div
       className={`ghost-message ghost-${ghost.type}`}
@@ -98,26 +145,32 @@ const GhostMessage = ({ ghost }) => {
       </div>
 
       <div className="ghost-content">
-        {/* Tool arguments (if JSON parsed) */}
-        {parsedContent && ghost.type === 'tool_call' && (
-          <details className="ghost-args">
-            <summary>Arguments</summary>
-            <pre>{JSON.stringify(parsedContent, null, 2)}</pre>
-          </details>
+        {/* Tool call: show tool name and arguments */}
+        {ghost.type === 'tool_call' && (
+          <>
+            {parsedContent && (
+              <details className="ghost-args" open>
+                <summary>Arguments</summary>
+                <pre>{JSON.stringify(parsedContent, null, 2)}</pre>
+              </details>
+            )}
+            {!parsedContent && displayContent && (
+              <div className="ghost-text">{truncate(displayContent)}</div>
+            )}
+          </>
         )}
 
-        {/* Content display */}
-        {!parsedContent && (
-          <div className="ghost-text">
-            {truncate(displayContent)}
+        {/* Thinking: always show content */}
+        {ghost.type === 'thinking' && thinkingText && (
+          <div className="ghost-text ghost-thinking-text">
+            {truncate(thinkingText, 500)}
           </div>
         )}
 
-        {/* Tool result (simplified - can add data grid later) */}
-        {ghost.type === 'tool_result' && parsedContent && (
+        {/* Tool result: show formatted result */}
+        {ghost.type === 'tool_result' && (
           <pre className="ghost-result-json">
-            {JSON.stringify(parsedContent, null, 2).substring(0, 300)}
-            {JSON.stringify(parsedContent).length > 300 && '...'}
+            {truncate(toolResultContent || displayContent, 400)}
           </pre>
         )}
       </div>

@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     has_images Bool DEFAULT false,
     has_base64 Bool DEFAULT false,
     has_base64_stripped Bool DEFAULT false,
+    videos_json Nullable(String),
+    has_videos Bool DEFAULT false,
     audio_json Nullable(String),
     has_audio Bool DEFAULT false,
 
@@ -866,6 +868,73 @@ ORDER BY (space_id);
 
 
 # =============================================================================
+# TAG DEFINITIONS TABLE - Tag Metadata
+# =============================================================================
+# Stores tag metadata (name, color, description) for the output tagging system.
+# Uses ReplacingMergeTree for upsert semantics when updating tag properties.
+
+TAG_DEFINITIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tag_definitions (
+    tag_name String,
+    tag_color String DEFAULT '#a78bfa',
+    description Nullable(String),
+    created_at DateTime64(3) DEFAULT now64(3),
+    updated_at DateTime64(3) DEFAULT now64(3),
+
+    -- Indexes
+    INDEX idx_created created_at TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY tag_name;
+"""
+
+
+# =============================================================================
+# OUTPUT TAGS TABLE - Output Tagging Cross-Walk
+# =============================================================================
+# Cross-walk table linking tags to outputs with support for two modes:
+# - instance: Tags a specific message_id (frozen snapshot)
+# - dynamic: Tags latest output from cascade+cell combo (auto-updates)
+#
+# This enables filtering outputs by tags in the UI, marking outputs for
+# review/approval/production, and creating dynamic dashboards.
+
+OUTPUT_TAGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS output_tags (
+    -- Identity
+    tag_id UUID DEFAULT generateUUIDv4(),
+    tag_name String,
+
+    -- Tag Mode: instance = specific message, dynamic = latest from cascade+cell
+    tag_mode Enum8('instance' = 1, 'dynamic' = 2),
+
+    -- Instance Mode: points to specific message
+    message_id Nullable(UUID),
+
+    -- Dynamic Mode: points to latest output from cascade+cell
+    cascade_id Nullable(String),
+    cell_name Nullable(String),
+
+    -- Metadata
+    created_at DateTime64(3) DEFAULT now64(3),
+    created_by Nullable(String),
+    note Nullable(String),
+
+    -- Indexes for common query patterns
+    INDEX idx_tag_name tag_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_message_id message_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cascade_id cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cell_name cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_tag_mode tag_mode TYPE set(2) GRANULARITY 1,
+    INDEX idx_created created_at TYPE minmax GRANULARITY 1
+)
+ENGINE = MergeTree()
+ORDER BY (tag_name, created_at)
+PARTITION BY toYYYYMM(created_at);
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -939,6 +1008,8 @@ def get_all_schemas() -> dict:
         "ui_sql_log": UI_SQL_LOG_SCHEMA,
         "openrouter_models": OPENROUTER_MODELS_SCHEMA,
         "hf_spaces": HF_SPACES_SCHEMA,
+        "tag_definitions": TAG_DEFINITIONS_SCHEMA,
+        "output_tags": OUTPUT_TAGS_SCHEMA,
     }
 
 

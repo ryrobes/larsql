@@ -512,3 +512,10 @@
   color: var(--color-text-primary);
   font-size: var(--font-size-lg);
 }
+
+/* Tags display */
+.cell-detail-tags {
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border-dim);
+  background: rgba(0, 0, 0, 0.2);
+}

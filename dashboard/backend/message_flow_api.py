@@ -677,3 +677,86 @@ def get_running_sessions():
             'traceback': tb,
             'sessions': []
         }), 500
+
+
+@message_flow_bp.route('/api/session/<session_id>/latest-image', methods=['GET'])
+def get_session_latest_image(session_id):
+    """
+    Get the latest image URL for a session.
+    Scans metadata_json and images_json fields for image arrays.
+    Returns the most recent image found.
+    """
+    try:
+        db = get_db()
+
+        # Query for rows with images, ordered by timestamp descending
+        # Check both metadata_json and images_json fields
+        query = """
+        SELECT
+            images_json,
+            metadata_json,
+            timestamp
+        FROM unified_logs
+        WHERE session_id = %(session_id)s
+          AND (
+            images_json IS NOT NULL AND images_json != ''
+            OR metadata_json IS NOT NULL AND metadata_json != ''
+          )
+        ORDER BY timestamp DESC
+        LIMIT 20
+        """
+
+        rows = db.query(query, {'session_id': session_id})
+
+        latest_image = None
+
+        for row in rows:
+            images_json = row.get('images_json')
+            metadata_json = row.get('metadata_json')
+
+            # Try images_json first
+            if images_json:
+                try:
+                    images = json.loads(images_json) if isinstance(images_json, str) else images_json
+                    if images and isinstance(images, list) and len(images) > 0:
+                        # Return the last image in the list (most recent for that message)
+                        latest_image = images[-1]
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            # Try metadata_json.images
+            if metadata_json:
+                try:
+                    metadata = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
+                    if isinstance(metadata, dict) and metadata.get('images'):
+                        images = metadata['images']
+                        if images and isinstance(images, list) and len(images) > 0:
+                            latest_image = images[-1]
+                            break
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        if latest_image:
+            # Ensure the URL has the API prefix if it's a relative path
+            if latest_image.startswith('/') and not latest_image.startswith('/api/'):
+                # Convert local path to API URL
+                latest_image = f'/api{latest_image}'
+
+            return jsonify({
+                'image_url': latest_image,
+                'session_id': session_id
+            })
+        else:
+            return jsonify({
+                'image_url': None,
+                'session_id': session_id
+            })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc(),
+            'image_url': None
+        }), 500

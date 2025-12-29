@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
@@ -113,6 +113,23 @@ function VariableGroup({ title, iconName, variables, defaultOpen = true }) {
  */
 function VariablePalette() {
   const { cascade } = useStudioCascadeStore();
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-variables-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-variables-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Introspect cascade for available variables
   const variables = useMemo(() => {
@@ -185,36 +202,44 @@ function VariablePalette() {
 
   return (
     <div className="nav-section var-palette-section">
-      <div className="nav-section-header">
+      <div
+        className="nav-section-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Icon
+          icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+          className="nav-chevron"
+        />
         <Icon icon="mdi:code-braces" className="nav-section-icon" />
         <span className="nav-section-title">Variables</span>
+        <span className="nav-section-count">{variables.length}</span>
       </div>
 
-      <div className="nav-section-content var-palette-content">
-
-
-        <VariableGroup
-          title="Inputs"
-          iconName="mdi:import"
-          variables={grouped.input}
-        />
-        <VariableGroup
-          title="Previous Cells"
-          iconName="mdi:export-variant"
-          variables={grouped.output}
-        />
-        <VariableGroup
-          title="State"
-          iconName="mdi:database-outline"
-          variables={grouped.state}
-        />
-        <VariableGroup
-          title="Built-ins"
-          iconName="mdi:cog-outline"
-          variables={grouped.builtin}
-          defaultOpen={false}
-        />
-      </div>
+      {isExpanded && (
+        <div className="nav-section-content var-palette-content">
+          <VariableGroup
+            title="Inputs"
+            iconName="mdi:import"
+            variables={grouped.input}
+          />
+          <VariableGroup
+            title="Previous Cells"
+            iconName="mdi:export-variant"
+            variables={grouped.output}
+          />
+          <VariableGroup
+            title="State"
+            iconName="mdi:database-outline"
+            variables={grouped.state}
+          />
+          <VariableGroup
+            title="Built-ins"
+            iconName="mdi:cog-outline"
+            variables={grouped.builtin}
+            defaultOpen={false}
+          />
+        </div>
+      )}
     </div>
   );
 }

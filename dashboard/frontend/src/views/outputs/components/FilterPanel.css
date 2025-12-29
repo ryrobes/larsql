@@ -238,6 +238,79 @@
   padding: 1px 4px;
 }
 
+/* Tags filter */
+.filter-tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.filter-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.filter-tag-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.filter-tag-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--tag-color, var(--color-accent-purple));
+  color: var(--color-text-secondary);
+}
+
+.filter-tag-item input[type="checkbox"] {
+  display: none;
+}
+
+.filter-tag-item .tag-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tag-color, var(--color-accent-purple));
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: all var(--transition-fast);
+}
+
+.filter-tag-item.active .tag-color-dot {
+  opacity: 1;
+  box-shadow: 0 0 6px var(--tag-color, var(--color-accent-purple));
+}
+
+.filter-tag-item .tag-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-tag-item .tag-count {
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.filter-tag-item.active .tag-count {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-secondary);
+}
+
 /* Cascades list */
 .cascades-filter {
   flex: 1;

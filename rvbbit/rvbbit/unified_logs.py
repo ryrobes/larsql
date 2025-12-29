@@ -372,6 +372,9 @@ class UnifiedLogger:
         images: List[str] = None,
         has_base64: bool = False,
 
+        # Videos
+        videos: List[str] = None,
+
         # Audio
         audio: List[str] = None,
 
@@ -405,9 +408,11 @@ class UnifiedLogger:
         elif tokens_out is not None:
             total_tokens = tokens_out
 
-        # Process images and audio
+        # Process images, videos, and audio
         image_paths = images or []
         has_images = len(image_paths) > 0
+        video_paths = videos or []
+        has_videos = len(video_paths) > 0
         audio_paths = audio or []
         has_audio = len(audio_paths) > 0
 
@@ -421,6 +426,7 @@ class UnifiedLogger:
             content=content,
             metadata=metadata,
             images=image_paths,
+            videos=video_paths,
             tool_calls=tool_calls,
             role=role
         )
@@ -515,6 +521,10 @@ class UnifiedLogger:
             "has_images": has_images,
             "has_base64": has_base64,
             "has_base64_stripped": False,
+
+            # Videos
+            "videos_json": safe_json(video_paths),
+            "has_videos": has_videos,
 
             # Audio
             "audio_json": safe_json(audio_paths),

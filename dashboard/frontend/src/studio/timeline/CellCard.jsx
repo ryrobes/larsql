@@ -39,13 +39,14 @@ const formatDuration = (ms) => {
  * - Duration/row count
  * - Quick actions
  */
-const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel, costMetrics }) => {
+const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect, defaultModel, costMetrics, isBlocked = false }) => {
   // Development-only render logging
   if (process.env.NODE_ENV === 'development') {
-    console.log(`[CellCard] Rendering ${cell.name}`, { status: cellState?.status, logsCount: cellLogs.length });
+    console.log(`[CellCard] Rendering ${cell.name}`, { status: cellState?.status, logsCount: cellLogs.length, isBlocked });
   }
 
-  const status = cellState?.status || 'pending';
+  // Blocked state takes precedence over running
+  const status = isBlocked ? 'blocked' : (cellState?.status || 'pending');
   const isCached = cellState?.cached === true;
   const autoFixed = cellState?.autoFixed;
   const hasImages = cellState?.images && cellState.images.length > 0;
@@ -218,6 +219,8 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   // Status icon
   const StatusIcon = () => {
     switch (status) {
+      case 'blocked':
+        return <Icon icon="mdi:hand-back-right" className="cell-card-status-blocked" />;
       case 'running':
         return <span className="cell-card-status-spinner" />;
       case 'success':
@@ -390,6 +393,7 @@ const arePropsEqual = (prevProps, nextProps) => {
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.defaultModel !== nextProps.defaultModel) return false;
   if (prevProps.onSelect !== nextProps.onSelect) return false;
+  if (prevProps.isBlocked !== nextProps.isBlocked) return false;
 
   // Cost metrics - compare by reference first, then by key fields
   // If references differ, check if values actually changed

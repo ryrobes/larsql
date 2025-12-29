@@ -198,7 +198,23 @@ function ToolBrowserPalette() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-traits-expanded');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-traits-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Fetch tools from backend
   useEffect(() => {

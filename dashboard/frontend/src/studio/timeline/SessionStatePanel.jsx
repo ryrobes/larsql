@@ -19,7 +19,23 @@ function SessionStatePanel({ sessionId, isRunning }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedKeys, setExpandedKeys] = useState(new Set());
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-session-state-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  // Persist expanded state
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-session-state-expanded', String(isExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isExpanded]);
 
   // Fetch state from API
   const fetchState = async () => {

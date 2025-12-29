@@ -62,6 +62,7 @@ with open('windlass/migrations/add_callouts_columns.sql') as f:
 - `create_cascade_analytics_table.sql` - Creates `cascade_analytics` table for pre-computed context-aware analytics (2025-12-27)
 - `create_cell_analytics_table.sql` - Creates `cell_analytics` table for per-cell performance metrics (2025-12-27)
 - `add_context_attribution_columns.sql` - Adds context cost attribution columns to expose hidden context injection costs (2025-12-27)
+- `create_output_tags_table.sql` - Creates `tag_definitions` and `output_tags` tables for output tagging system (2025-12-29)
 
 ## Notes
 

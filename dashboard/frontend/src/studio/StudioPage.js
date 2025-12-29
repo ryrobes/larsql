@@ -63,8 +63,25 @@ function StudioPage() {
   // Note: Running sessions and sidebar navigation now handled by AppShell
   // StudioPage just renders the main content area
 
-  // Persist split sizes in state
-  const [timelineSplitSizes, setTimelineSplitSizes] = React.useState([20, 80]);
+  // Persist split sizes in state (with localStorage)
+  const [timelineSplitSizes, setTimelineSplitSizes] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-timeline-split-sizes');
+      return saved ? JSON.parse(saved) : [20, 80];
+    } catch {
+      return [20, 80];
+    }
+  });
+
+  // Save split sizes to localStorage when they change
+  const handleTimelineSplitChange = React.useCallback((sizes) => {
+    setTimelineSplitSizes(sizes);
+    try {
+      localStorage.setItem('studio-timeline-split-sizes', JSON.stringify(sizes));
+    } catch (e) {
+      console.warn('Failed to save split sizes to localStorage:', e);
+    }
+  }, []);
 
   // Track what's being dragged for overlay
   const [activeDragItem, setActiveDragItem] = useState(null);
@@ -681,7 +698,7 @@ function StudioPage() {
             <Split
               className="studio-horizontal-split"
               sizes={timelineSplitSizes}
-              onDragEnd={(sizes) => setTimelineSplitSizes(sizes)}
+              onDragEnd={handleTimelineSplitChange}
               minSize={[180, 400]}
               maxSize={[500, Infinity]}
               gutterSize={6}
