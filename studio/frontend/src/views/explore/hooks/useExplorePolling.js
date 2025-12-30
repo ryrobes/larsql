@@ -423,9 +423,16 @@ export default function useExplorePolling(sessionId) {
       if (!data.error && data.checkpoints && data.checkpoints.length > 0) {
         const pending = data.checkpoints.find(cp => cp.status === 'pending');
         console.log('[pollCheckpoint] Pending checkpoint:', pending ? pending.id : 'none');
-        setCheckpoint(pending || null);
+        // Only update if checkpoint ID changed - prevents re-render that resets form state
+        setCheckpoint(prev => {
+          if (pending?.id !== prev?.id) {
+            return pending || null;
+          }
+          return prev; // Keep same reference to prevent re-render
+        });
       } else {
-        setCheckpoint(null);
+        // Only set to null if we currently have a checkpoint
+        setCheckpoint(prev => prev ? null : prev);
       }
     } catch (err) {
       console.error('[useExplorePolling] Checkpoint poll error:', err);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RVBBIT - Real work, with receipts</title>
+    <title>RVBBIT - Self-evolving AI workflows. Fully auditable.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -18,6 +18,7 @@
         --accent: #f6c445;
         --accent-2: #ff6b3d;
         --accent-3: #2bd9c4;
+        --accent-4: #a78bfa;
         --line: rgba(246, 196, 69, 0.25);
         --glow: rgba(255, 107, 61, 0.25);
         --shadow: 0 25px 70px rgba(0, 0, 0, 0.45);
@@ -115,6 +116,10 @@
         font-size: 0.92rem;
       }
 
+      .nav-links a:hover {
+        color: var(--accent);
+      }
+
       .btn {
         display: inline-flex;
         align-items: center;
@@ -126,6 +131,12 @@
         box-shadow: 0 0 20px rgba(246, 196, 69, 0.25);
         color: var(--ink);
         font-weight: 600;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 30px rgba(246, 196, 69, 0.4);
       }
 
       .btn.secondary {
@@ -136,7 +147,7 @@
       }
 
       .hero {
-        padding: 40px 0 90px;
+        padding: 40px 0 70px;
         display: grid;
         gap: 38px;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -182,20 +193,55 @@
         margin-top: 24px;
       }
 
-      .hero-meta {
+      /* Improved feature highlights - replacing scattered pills */
+      .hero-highlights {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
-        margin-top: 24px;
+        margin-top: 28px;
       }
 
-      .pill {
-        border-radius: 999px;
-        padding: 8px 14px;
+      .highlight-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: var(--radius-sm);
+        background: rgba(17, 24, 38, 0.6);
+        border: 1px solid rgba(246, 196, 69, 0.12);
+      }
+
+      .highlight-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+      }
+
+      .highlight-icon.gold { background: rgba(246, 196, 69, 0.2); }
+      .highlight-icon.teal { background: rgba(43, 217, 196, 0.2); }
+      .highlight-icon.orange { background: rgba(255, 107, 61, 0.2); }
+      .highlight-icon.purple { background: rgba(167, 139, 250, 0.2); }
+
+      .highlight-text {
+        flex: 1;
+      }
+
+      .highlight-title {
         font-size: 0.85rem;
-        color: #e7e2d5;
-        background: rgba(17, 24, 38, 0.7);
-        border: 1px solid rgba(246, 196, 69, 0.2);
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 2px;
+      }
+
+      .highlight-desc {
+        font-size: 0.75rem;
+        color: var(--muted);
+        line-height: 1.4;
       }
 
       .hero-shot {
@@ -261,6 +307,12 @@
         box-shadow: 0 0 0 1px rgba(255, 107, 61, 0.08) inset;
         position: relative;
         overflow: hidden;
+        transition: transform 0.2s, border-color 0.2s;
+      }
+
+      .card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(246, 196, 69, 0.3);
       }
 
       .card::after {
@@ -286,6 +338,21 @@
         color: var(--muted);
         line-height: 1.5;
       }
+
+      .card-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 12px;
+      }
+
+      .card-badge.novel { background: rgba(255, 107, 61, 0.2); color: #ff9a7a; }
+      .card-badge.powerful { background: rgba(167, 139, 250, 0.2); color: #c4b5fd; }
+      .card-badge.unique { background: rgba(43, 217, 196, 0.2); color: #6ee7d8; }
 
       .callout {
         padding: 28px;
@@ -348,8 +415,79 @@
         border-radius: 999px;
         background: var(--accent-3);
         box-shadow: 0 0 12px rgba(43, 217, 196, 0.8);
+        flex-shrink: 0;
       }
 
+      /* Feature showcase section */
+      .feature-showcase {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 24px;
+      }
+
+      .feature-card {
+        background: linear-gradient(150deg, rgba(17, 24, 38, 0.95), rgba(20, 31, 47, 0.82));
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(246, 196, 69, 0.16);
+        padding: 28px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .feature-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+
+      .feature-card.gold::before { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+      .feature-card.teal::before { background: linear-gradient(90deg, var(--accent-3), #0d9488); }
+      .feature-card.purple::before { background: linear-gradient(90deg, var(--accent-4), #7c3aed); }
+      .feature-card.orange::before { background: linear-gradient(90deg, var(--accent-2), #dc2626); }
+
+      .feature-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+      }
+
+      .feature-card.gold .feature-icon { background: rgba(246, 196, 69, 0.15); }
+      .feature-card.teal .feature-icon { background: rgba(43, 217, 196, 0.15); }
+      .feature-card.purple .feature-icon { background: rgba(167, 139, 250, 0.15); }
+      .feature-card.orange .feature-icon { background: rgba(255, 107, 61, 0.15); }
+
+      .feature-card h3 {
+        font-size: 1.3rem;
+        margin: 0 0 8px;
+      }
+
+      .feature-card p {
+        color: var(--muted);
+        line-height: 1.5;
+        margin: 0;
+      }
+
+      .feature-card .tag {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        background: rgba(255, 107, 61, 0.15);
+        color: #ffb59a;
+      }
+
+      /* Stats row */
       .stats {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -373,6 +511,46 @@
         margin: 0;
         color: var(--muted);
         font-size: 0.88rem;
+      }
+
+      .quote {
+        font-size: 1.4rem;
+        font-style: italic;
+        color: var(--accent);
+        border-left: 3px solid var(--accent);
+        padding-left: 20px;
+        margin: 0 0 24px;
+      }
+
+      /* Workflow visualization */
+      .workflow-demo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 24px;
+        background: rgba(10, 14, 22, 0.6);
+        border-radius: var(--radius-md);
+        margin-top: 24px;
+        overflow-x: auto;
+      }
+
+      .workflow-node {
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .workflow-node.sql { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #93c5fd; }
+      .workflow-node.python { background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.4); color: #86efac; }
+      .workflow-node.llm { background: rgba(167, 139, 250, 0.2); border: 1px solid rgba(167, 139, 250, 0.4); color: #c4b5fd; }
+      .workflow-node.js { background: rgba(250, 204, 21, 0.2); border: 1px solid rgba(250, 204, 21, 0.4); color: #fde047; }
+
+      .workflow-arrow {
+        color: var(--muted);
+        font-size: 1.2rem;
       }
 
       footer {
@@ -413,6 +591,10 @@
         .brand span {
           letter-spacing: 0.2em;
         }
+
+        .hero-highlights {
+          grid-template-columns: 1fr;
+        }
       }
 
       @media (max-width: 720px) {
@@ -443,31 +625,57 @@
             <span>RVBBIT</span>
           </div>
           <div class="nav-links">
-            <a href="#core">Core</a>
-            <a href="#reliability">Reliability</a>
-            <a href="#receipts">Receipts</a>
-            <a href="#cta">Get started</a>
+            <a href="#novel">What's Different</a>
+            <a href="#polyglot">Polyglot Workflows</a>
+            <a href="#self-healing">Self-Healing</a>
+            <a href="#studio">Studio</a>
+            <a href="#cta">Get Started</a>
           </div>
         </div>
       </header>
 
       <section class="container hero">
         <div class="reveal">
-          <span class="kicker">Cascades for real work</span>
-          <h1><span class="gradient-text">Programs with receipts</span> for LLMs, tools, and data.</h1>
+          <span class="kicker">Self-evolving AI workflows</span>
+          <h1><span class="gradient-text">Prompts that debug themselves.</span></h1>
           <p>
-            RVBBIT is a workflow engine for long-running work. Parallel candidates, validation wards,
-            and SQL-native pipelines make LLM systems behave like accountable software.
+            RVBBIT is a declarative workflow engine where cells self-heal, humans evaluate parallel attempts,
+            and you can call LLMs directly from SQL. Not another chatbot framework&mdash;a production system
+            for getting work done.
           </p>
           <div class="hero-actions">
             <a class="btn" href="#cta">Open Studio</a>
-            <a class="btn secondary" href="#core">See the story</a>
+            <a class="btn secondary" href="#novel">See what's different</a>
           </div>
-          <div class="hero-meta">
-            <div class="pill">Candidates + evaluator loops</div>
-            <div class="pill">SQL interface to LLMs</div>
-            <div class="pill">Receipts and cost drill-down</div>
-            <div class="pill">Human interrupts</div>
+          <div class="hero-highlights">
+            <div class="highlight-item">
+              <div class="highlight-icon gold">&#x1F9EC;</div>
+              <div class="highlight-text">
+                <div class="highlight-title">Self-Healing Cells</div>
+                <div class="highlight-desc">Failed code auto-debugs with LLM assistance</div>
+              </div>
+            </div>
+            <div class="highlight-item">
+              <div class="highlight-icon teal">&#x1F5C3;</div>
+              <div class="highlight-text">
+                <div class="highlight-title">LLMs in SQL</div>
+                <div class="highlight-desc">rvbbit_udf() calls LLMs from any SQL client</div>
+              </div>
+            </div>
+            <div class="highlight-item">
+              <div class="highlight-icon purple">&#x1F465;</div>
+              <div class="highlight-text">
+                <div class="highlight-title">Human Evaluation</div>
+                <div class="highlight-desc">Humans pick winners from parallel attempts</div>
+              </div>
+            </div>
+            <div class="highlight-item">
+              <div class="highlight-icon orange">&#x1F4AC;</div>
+              <div class="highlight-text">
+                <div class="highlight-title">Calliope Builder</div>
+                <div class="highlight-desc">Build workflows through conversation</div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="hero-shot reveal delay-2">
@@ -475,210 +683,409 @@
         </div>
       </section>
 
-      <section id="core" class="section">
+      <!-- NOVEL FEATURES FIRST -->
+      <section id="novel" class="section">
         <div class="container">
-          <h2 class="reveal">The positioning</h2>
+          <h2 class="reveal">Features you won't find elsewhere</h2>
           <p class="lead reveal delay-1">
-            Chatbot frameworks optimize for short turns. RVBBIT optimizes for results: parallel exploration,
-            data-native execution, and audit-friendly receipts that survive production chaos.
+            Most agent frameworks optimize for chat. RVBBIT optimizes for production: self-healing pipelines,
+            human-in-the-loop evaluation, and LLMs as first-class SQL functions.
           </p>
-          <div class="grid cols-3">
-            <article class="card reveal delay-1">
-              <h3>Reliability is the primitive</h3>
-              <p>Candidates, evaluators, and wards turn retries into explicit, testable behavior.</p>
-            </article>
-            <article class="card reveal delay-2">
-              <h3>Data is first-class</h3>
-              <p>Session DuckDB and polyglot cells keep data flowing without glue code.</p>
-            </article>
-            <article class="card reveal delay-3">
-              <h3>SQL is an interface</h3>
-              <p>Call cascades from SQL, enrich rows, and query execution receipts.</p>
-            </article>
+          <div class="feature-showcase">
+            <div class="feature-card gold reveal delay-1">
+              <div class="tag">Novel</div>
+              <div class="feature-icon">&#x1F527;</div>
+              <h3>Auto-Fix: Self-Healing Cells</h3>
+              <p>
+                When SQL or Python fails, the error becomes context for an LLM that generates a fix and retries.
+                No manual intervention. Your pipeline debugs itself.
+              </p>
+              <pre class="mono" style="margin-top: 16px; font-size: 0.8rem;"><code>on_error: auto_fix
+# or customize:
+on_error:
+  auto_fix:
+    max_attempts: 3
+    model: claude-sonnet-4</code></pre>
+            </div>
+
+            <div class="feature-card teal reveal delay-2">
+              <div class="tag">Novel</div>
+              <div class="feature-icon">&#x1F5C3;</div>
+              <h3>LLMs as SQL Functions</h3>
+              <p>
+                Call LLMs directly from any SQL client&mdash;DBeaver, psql, Tableau. Extract, classify, or
+                run entire workflows per row.
+              </p>
+              <pre class="mono" style="margin-top: 16px; font-size: 0.8rem;"><code>SELECT product_name,
+  rvbbit_udf('Extract brand',
+             product_name) as brand
+FROM products;</code></pre>
+            </div>
+
+            <div class="feature-card purple reveal delay-3">
+              <div class="tag">Novel</div>
+              <div class="feature-icon">&#x1F465;</div>
+              <h3>Human-Evaluated Candidates</h3>
+              <p>
+                Run N attempts in parallel. Instead of an LLM evaluator, humans compare outputs
+                side-by-side, in tournaments, or via ranking. Capture reasoning for training data.
+              </p>
+              <pre class="mono" style="margin-top: 16px; font-size: 0.8rem;"><code>candidates:
+  factor: 5
+  evaluator: human
+  human_eval:
+    presentation: side_by_side
+    capture_for_training: true</code></pre>
+            </div>
+
+            <div class="feature-card orange reveal delay-4">
+              <div class="tag">Novel</div>
+              <div class="feature-icon">&#x1F4AC;</div>
+              <h3>Calliope: Conversational Builder</h3>
+              <p>
+                Describe what you want to build. Calliope constructs the workflow through dialogue,
+                showing a live visualization as your app takes shape. Click to test instantly.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="reliability" class="section">
-        <div class="container grid cols-2">
-          <div class="callout reveal">
-            <strong>Execution model</strong>
-            <div class="labels">
-              <span class="label">Cascade = program</span>
-              <span class="label">Cell = contract</span>
-              <span class="label">Traits = tools</span>
-              <span class="label">Receipts = ops log</span>
-            </div>
-            <p class="lead">
-              Each cell can run LLM calls, deterministic tools, SQL, or sub-cascades. Internally it can
-              parallelize candidates, enforce wards, and pause for human input. Externally it stays a clean step.
-            </p>
-            <div class="timeline">
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Parallel exploration</strong>
-                  <p>Run best-of-N, pick the winner, and refine with reforge steps.</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Wards and repairs</strong>
-                  <p>Block, retry, or auto-fix based on explicit validation rules.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="grid">
-            <article class="card reveal delay-1">
-              <h3>Receipts, not vibes</h3>
-              <p>Costs, context size, cache hits, and candidate outcomes are all queryable.</p>
-            </article>
-            <article class="card reveal delay-2">
-              <h3>Human interrupts</h3>
-              <p>Pause for review, route decisions, and resume with full state.</p>
-            </article>
-            <article class="card reveal delay-3">
-              <h3>Automation plus accountability</h3>
-              <p>Drill from receipts into exact prompt context and tool outputs.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="receipts" class="section">
+      <!-- POLYGLOT SECTION -->
+      <section id="polyglot" class="section">
         <div class="container">
-          <h2 class="reveal">Receipts you can operate</h2>
+          <h2 class="reveal">One workflow, any language</h2>
           <p class="lead reveal delay-1">
-            Every run yields a warehouse of receipts: context weight, cost, latency, and validation outcomes.
-            Traces are available, but receipts are what you manage in production.
+            SQL queries, Python transforms, JavaScript validation, LLM reasoning&mdash;each cell does what it's best at.
+            Session-scoped temp tables flow data between languages with zero copying.
+          </p>
+          <div class="grid cols-2">
+            <div class="callout reveal">
+              <strong>Polyglot cascade: mixed cell types</strong>
+              <pre class="mono"><code>cells:
+  - name: get_customers        # SQL - no LLM
+    tool: sql_data
+    inputs:
+      query: "SELECT * FROM customers"
+      # Creates temp table: _get_customers
+
+  - name: enrich               # Python - no LLM
+    tool: python_data
+    inputs:
+      code: |
+        df = duckdb.sql("SELECT * FROM _get_customers")
+        df['segment'] = classify(df)
+
+  - name: analyze              # LLM reasoning
+    instructions: "Analyze these segments..."
+    context:
+      from: [get_customers, enrich]
+
+  - name: visualize            # JavaScript
+    tool: js_data
+    inputs:
+      code: "return createChart(data);"</code></pre>
+              <div class="workflow-demo">
+                <span class="workflow-node sql">SQL</span>
+                <span class="workflow-arrow">&rarr;</span>
+                <span class="workflow-node python">Python</span>
+                <span class="workflow-arrow">&rarr;</span>
+                <span class="workflow-node llm">LLM</span>
+                <span class="workflow-arrow">&rarr;</span>
+                <span class="workflow-node js">JavaScript</span>
+              </div>
+            </div>
+            <div class="grid">
+              <article class="card reveal delay-1">
+                <h3>Zero-copy temp tables</h3>
+                <p>Each cell output becomes a DuckDB temp table (<code>_cell_name</code>) that downstream cells query directly. No serialization overhead.</p>
+              </article>
+              <article class="card reveal delay-2">
+                <h3>Deterministic cells</h3>
+                <p>Skip LLM mediation when you don't need it. Direct tool invocation for SQL, Python, shell commands. 10x faster, predictable costs.</p>
+              </article>
+              <article class="card reveal delay-3">
+                <h3>Mixed workflows</h3>
+                <p>Combine deterministic data movement with LLM reasoning. Use AI where it matters, skip it where it doesn't.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SELF-HEALING / RELIABILITY -->
+      <section id="self-healing" class="section">
+        <div class="container">
+          <h2 class="reveal">Built-in reliability primitives</h2>
+          <p class="lead reveal delay-1">
+            Retries aren't enough. RVBBIT has first-class support for parallel exploration, validation guards,
+            automatic repair, and intelligent context management.
           </p>
           <div class="stats">
             <div class="stat reveal delay-1">
-              <h4>Context accounting</h4>
-              <p>What got sent, why, and the real token impact.</p>
+              <h4>Candidates</h4>
+              <p>Run N attempts in parallel. LLM or human evaluator picks the winner. Or aggregate all outputs.</p>
             </div>
             <div class="stat reveal delay-2">
-              <h4>Candidate outcomes</h4>
-              <p>Best-of-N comparisons and evaluator rationale.</p>
+              <h4>Wards</h4>
+              <p>Pre/post validation in any language: Python, SQL, JavaScript. Block, retry, or advise.</p>
             </div>
             <div class="stat reveal delay-3">
-              <h4>Cost and latency</h4>
-              <p>Per-cell spend, cache hits, and bottlenecks.</p>
+              <h4>Auto-Fix</h4>
+              <p>Failed cells self-heal. The error becomes context for an LLM that generates fixed code.</p>
+            </div>
+            <div class="stat reveal delay-4">
+              <h4>Auto-Context</h4>
+              <p>Intelligent token management. Older tool results masked, loop retries compressed. 30-70% savings.</p>
+            </div>
+          </div>
+          <div class="callout reveal delay-4" style="margin-top: 28px;">
+            <strong>Polyglot validators: validation in any language</strong>
+            <pre class="mono"><code>wards:
+  - mode: retry
+    max_attempts: 3
+    validator:
+      python: |
+        # Python validation
+        return {"valid": len(output) > 100, "reason": "Too short"}
+
+  - mode: blocking
+    validator:
+      sql: |
+        -- SQL validation
+        SELECT COUNT(*) > 0 as valid FROM parse_json(output)
+        WHERE required_field IS NOT NULL</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTEXT OBSERVABILITY -->
+      <section class="section">
+        <div class="container">
+          <h2 class="reveal">Context-level observability</h2>
+          <p class="lead reveal delay-1">
+            Every LLM call is N context chunks plus your prompt. Most frameworks show total cost.
+            RVBBIT shows what's inside: per-chunk cost, relevance, and lineage tracking.
+          </p>
+          <div class="grid cols-2">
+            <div class="callout reveal">
+              <strong>The Context Inspector</strong>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <span class="dot"></span>
+                  <div>
+                    <strong>Hash-tracked chunks</strong>
+                    <p>Every piece of context has a unique hash. Track it across the entire workflow.</p>
+                  </div>
+                </div>
+                <div class="timeline-item">
+                  <span class="dot"></span>
+                  <div>
+                    <strong>Cost attribution</strong>
+                    <p>"This system prompt is 61% of your cost but 0% relevance." Now you know what to cut.</p>
+                  </div>
+                </div>
+                <div class="timeline-item">
+                  <span class="dot"></span>
+                  <div>
+                    <strong>Tiered context management</strong>
+                    <p>Sliding window, observation masking, loop compression. Never drop information&mdash;just compress what the LLM sees.</p>
+                  </div>
+                </div>
+                <div class="timeline-item">
+                  <span class="dot"></span>
+                  <div>
+                    <strong>Selective context DSL</strong>
+                    <p>Control exactly what context flows between cells: <code>context: {from: [cell_a, cell_c]}</code></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="grid">
+              <article class="card reveal delay-1">
+                <h3>Stop guessing what matters</h3>
+                <p>See which context chunks actually influenced output. Optimize with data, not intuition.</p>
+              </article>
+              <article class="card reveal delay-2">
+                <h3>Token budget enforcement</h3>
+                <p>Set max tokens per phase. Auto-prune strategies: sliding window, summarize with cheap model, or fail with clear error.</p>
+              </article>
+              <article class="card reveal delay-3">
+                <h3>Tool result caching</h3>
+                <p>Content-addressed cache with per-tool TTL. Same SQL query 3 times? Only first hits the database.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STUDIO -->
+      <section id="studio" class="section">
+        <div class="container">
+          <h2 class="reveal">Studio: visual workflow IDE</h2>
+          <p class="lead reveal delay-1">
+            Build, execute, and debug workflows visually. Real-time updates, cost tracking per cell,
+            and a stacked deck visualization inspired by collectible card games.
+          </p>
+          <div class="grid cols-3">
+            <article class="card reveal delay-1">
+              <span class="card-badge novel">Novel UI</span>
+              <h3>Stacked Deck Cards</h3>
+              <p>Candidates display as stacked cards. Expand to see all attempts, winners marked with stars. CCG-inspired rarity frames for complexity levels.</p>
+            </article>
+            <article class="card reveal delay-2">
+              <span class="card-badge powerful">Powerful</span>
+              <h3>Two-Sided Cards</h3>
+              <p>Front shows output and execution state. Flip to back for YAML configuration. Edit in place, see results immediately.</p>
+            </article>
+            <article class="card reveal delay-3">
+              <span class="card-badge unique">Unique</span>
+              <h3>Rabbitize: Visual Browser</h3>
+              <p>Agents that see and navigate the web. Automatic screenshots, video recording, full audit trail. Try 3 navigation strategies in parallel.</p>
+            </article>
+          </div>
+          <div class="grid cols-2" style="margin-top: 22px;">
+            <article class="card reveal delay-2">
+              <h3>Generative UI for Checkpoints</h3>
+              <p>When you call <code>ask_human</code>, the LLM analyzes your question and generates the appropriate UI&mdash;confirmation buttons, choice lists, rating stars, or custom HTMX forms.</p>
+            </article>
+            <article class="card reveal delay-3">
+              <h3>Model Element Colors</h3>
+              <p>Card borders show model family at a glance. Purple for Claude, green for GPT, blue for Gemini. When candidates use multiple models, fanned cards show each color.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- WHERE IT FITS -->
+      <section class="section">
+        <div class="container grid cols-2">
+          <div class="callout reveal">
+            <strong>Where RVBBIT fits</strong>
+            <div class="timeline">
+              <div class="timeline-item">
+                <span class="dot"></span>
+                <div>
+                  <strong>Data enrichment pipelines</strong>
+                  <p>Add AI classification, extraction, or summarization to existing ETL. Self-healing when schemas change.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <span class="dot"></span>
+                <div>
+                  <strong>Document processing</strong>
+                  <p>PDF to structured data to database. Multi-step with validation guards and human checkpoints.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <span class="dot"></span>
+                <div>
+                  <strong>Research workflows</strong>
+                  <p>Multi-step analysis with human evaluation of parallel approaches. Full audit trail.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <span class="dot"></span>
+                <div>
+                  <strong>Batch AI processing</strong>
+                  <p>Same prompt over thousands of rows via <code>rvbbit_udf()</code>. Cost tracking per row.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="callout reveal delay-2">
+            <strong>What RVBBIT is not</strong>
+            <div class="timeline">
+              <div class="timeline-item">
+                <span class="dot" style="background: var(--accent-2); box-shadow: 0 0 12px rgba(255, 107, 61, 0.8);"></span>
+                <div>
+                  <strong>Not a chatbot framework</strong>
+                  <p>Optimized for workflows, not conversations. No "agent personas."</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <span class="dot" style="background: var(--accent-2); box-shadow: 0 0 12px rgba(255, 107, 61, 0.8);"></span>
+                <div>
+                  <strong>Not "autonomous agents"</strong>
+                  <p>Explicit workflows with explicit control. Humans in the loop, not out of it.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <span class="dot" style="background: var(--accent-2); box-shadow: 0 0 12px rgba(255, 107, 61, 0.8);"></span>
+                <div>
+                  <strong>Not DAG spaghetti</strong>
+                  <p>Complexity contained within phases ("separate bowls"). Your cascade stays clean.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       <section class="section">
-        <div class="container grid cols-2">
-          <div class="callout reveal">
-            <strong>YAML cell: candidates + wards</strong>
-            <pre class="mono"><code>cells:
-  - name: classify
-    candidates:
-      factor: 5
-      evaluator_instructions: pick best
-    wards:
-      post:
-        - validator: schema_check
-          mode: retry
-</code></pre>
-          </div>
-          <div class="callout reveal delay-2">
-            <strong>SQL interface: native mapping</strong>
-            <pre class="mono"><code>RVBBIT MAP PARALLEL 5 'traits/extract_brand.yaml' AS brand
-USING (
-  SELECT * FROM (VALUES
-    ('Apple aa iPhone 15'),
-    ('Samsung aa Galaxy S24'),
-    ('Sony aa WH-1000XM5'),
-    ('Google aa Pixel 8'),
-    ('OnePlus aa 12'),
-    ('old teevee afrom toshiba'),
-    ('crustya TI calculator'),
-    ('olda puma shoe')
-  ) AS t(product_name)
-);</code></pre>
-          </div>
+        <div class="container callout reveal">
+          <p class="quote">"Keep the spaghetti in separate bowls."</p>
+          <p class="lead">
+            Traditional frameworks put all complexity in the graph. Your clean 4-node DAG becomes 40 nodes with 100 edges.
+            RVBBIT uses phases as complexity containers: all iteration, retries, and exploration happen INSIDE phases.
+            Your cascade stays linear. The mess stays encapsulated.
+          </p>
         </div>
       </section>
 
+      <!-- ARCHITECTURE (moved down - more "standard" info) -->
       <section class="section">
-        <div class="container grid cols-2">
-          <div class="callout reveal">
-            <strong>Where RVBBIT wins</strong>
-            <div class="timeline">
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Long-running work</strong>
-                  <p>Dashboards, reports, data pipelines, research, and monitoring loops.</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Data-centric teams</strong>
-                  <p>SQL-native interface, row-wise cascades, and warehouse receipts.</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Ops and governance</strong>
-                  <p>Full audit trail with receipts and replayable snapshots.</p>
-                </div>
-              </div>
-            </div>
+        <div class="container">
+          <h2 class="reveal">The architecture</h2>
+          <p class="lead reveal delay-1">
+            No central server required. Each component is independent. Scale by running more processes.
+          </p>
+          <div class="grid cols-3">
+            <article class="card reveal delay-1">
+              <h3>CLI</h3>
+              <p><code>rvbbit run workflow.yaml</code><br>Cron it. CI/CD it. Script it. Each run is independent.</p>
+            </article>
+            <article class="card reveal delay-2">
+              <h3>Studio</h3>
+              <p>Visual workflow builder and execution monitor. Optional&mdash;workflows run fine without it.</p>
+            </article>
+            <article class="card reveal delay-3">
+              <h3>SQL Server</h3>
+              <p>PostgreSQL wire protocol. Connect from DBeaver, use <code>rvbbit_udf()</code> in queries.</p>
+            </article>
           </div>
-          <div class="callout reveal delay-2">
-            <strong>Hero flows</strong>
-            <div class="timeline">
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Quality tournaments</strong>
-                  <p>Parallel candidates, evaluator picks, reforge improvements.</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>SQL enrichment</strong>
-                  <p>Use rvbbit_udf or cascade UDFs inside existing data stacks.</p>
-                </div>
-              </div>
-              <div class="timeline-item">
-                <span class="dot"></span>
-                <div>
-                  <strong>Human gating</strong>
-                  <p>Audibles and checkpoints for approval and steering.</p>
-                </div>
-              </div>
-            </div>
+          <div class="callout reveal delay-4" style="margin-top: 22px;">
+            <p class="lead" style="margin: 0;">
+              All three share the same core modules. No message queues, no Redis, no coordinator.
+              Just <code>pip install</code> and run. Zero infrastructure required.
+            </p>
           </div>
         </div>
       </section>
 
+      <!-- CTA -->
       <section id="cta" class="section">
         <div class="container callout reveal">
-          <h2>Build LLM workflows that behave like real systems.</h2>
+          <h2>Self-evolving workflows. Fully auditable.</h2>
           <p class="lead">
-            RVBBIT combines candidates, wards, data pipelines, and receipts in one runtime.
-            Use the Studio to design cascades that hold up under real workloads.
+            Define workflows in YAML. Mix LLMs with SQL and Python. Watch cells debug themselves.
+            See every token, trace every decision, let humans evaluate the important calls.
           </p>
           <div class="hero-actions">
             <a class="btn" href="#">Open Studio</a>
-            <a class="btn secondary" href="#">View examples</a>
+            <a class="btn secondary" href="#">View on GitHub</a>
+          </div>
+          <div class="labels" style="margin-top: 20px;">
+            <span class="label">pip install rvbbit</span>
+            <span class="label">rvbbit serve studio</span>
+            <span class="label">rvbbit run workflow.yaml</span>
           </div>
         </div>
       </section>
 
       <footer>
         <div class="container">
-          <p>Programs with receipts for LLMs, tools, and data.</p>
+          <p>Self-evolving AI workflows. Fully auditable. Complexity contained.</p>
         </div>
       </footer>
     </div>

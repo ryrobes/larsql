@@ -1,0 +1,238 @@
+cascade_id: feedback_review_app
+description: Professional feedback review application - review items one by one, then
+  see summary statistics
+inputs_schema: {}
+model: claude-sonnet-4-20250514
+cells:
+- name: generate_data
+  tool: python_data
+  inputs:
+    code: "import random\n\ndepartments = ['Engineering', 'Marketing', 'Sales', 'Operations',\
+      \ 'Finance', 'HR']\ncategories = ['Process Improvement', 'Tool Request', 'Policy\
+      \ Change', 'Resource Need', 'Training']\npriorities = ['Critical', 'High', 'Medium',\
+      \ 'Low']\nnames = ['J. Chen', 'M. Rodriguez', 'A. Patel', 'S. Williams', 'K.\
+      \ Thompson', 'R. Garcia', 'L. Kim', 'D. Brown', 'E. Martinez', 'T. Anderson',\
+      \ 'N. Taylor', 'C. Lee']\n\nfeedback_texts = [\n    'Need better CI/CD pipeline\
+      \ monitoring tools',\n    'Request for additional cloud computing budget',\n\
+      \    'Suggest quarterly cross-team knowledge sharing sessions',\n    'Current\
+      \ approval workflow has too many steps',\n    'Need updated security training\
+      \ materials',\n    'Propose flexible work-from-home policy extension',\n   \
+      \ 'Database query performance needs optimization',\n    'Customer support ticket\
+      \ system needs upgrade',\n    'Request for ergonomic office equipment',\n  \
+      \  'Suggest implementing automated testing framework',\n    'Need better documentation\
+      \ standards',\n    'Propose monthly innovation hackathon days'\n]\n\nresult\
+      \ = []\nfor i in range(12):\n    result.append({\n        'id': f'FB-{1000 +\
+      \ i}',\n        'submitter': names[i],\n        'department': random.choice(departments),\n\
+      \        'category': random.choice(categories),\n        'priority': random.choice(priorities),\n\
+      \        'feedback': feedback_texts[i],\n        'submitted': f'2024-01-{random.randint(10,\
+      \ 28):02d}',\n        'status': 'Pending'\n    })"
+  handoffs:
+  - overview_grid
+- name: overview_grid
+  context:
+    from:
+    - generate_data
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 16px; min-height: 100vh;\">\n  <div style=\"\
+    display: flex; justify-content: space-between; align-items: center; margin-bottom:\
+    \ 16px; border-bottom: 1px solid #1e293b; padding-bottom: 12px;\">\n    <div>\n\
+    \      <h1 style=\"margin: 0; font-size: 18px; font-weight: 600; color: #f1f5f9;\"\
+    >Feedback Review Queue</h1>\n      <span style=\"color: #64748b; font-size: 12px;\"\
+    >{{ outputs.generate_data | length }} items pending review</span>\n    </div>\n\
+    \    <div style=\"display: flex; gap: 8px;\">\n      <span style=\"background:\
+    \ #0f172a; border: 1px solid #334155; padding: 4px 10px; border-radius: 4px; font-size:\
+    \ 11px; color: #94a3b8;\">BATCH: {{ outputs.generate_data | length }}</span>\n\
+    \    </div>\n  </div>\n  \n  <div id=\"feedbackGrid\" style=\"height: 400px; width:\
+    \ 100%; border: 1px solid #1e293b;\"></div>\n  \n  <script>\n    const rowData\
+    \ = [\n      {% for item in outputs.generate_data %}\n      {\n        id: '{{\
+    \ item.id }}',\n        submitter: '{{ item.submitter }}',\n        department:\
+    \ '{{ item.department }}',\n        category: '{{ item.category }}',\n       \
+    \ priority: '{{ item.priority }}',\n        feedback: '{{ item.feedback }}',\n\
+    \        submitted: '{{ item.submitted }}',\n        status: '{{ item.status }}'\n\
+    \      }{% if not loop.last %},{% endif %}\n      {% endfor %}\n    ];\n    \n\
+    \    const gridOptions = {\n      theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark).withParams({\n\
+    \        backgroundColor: '#000',\n        foregroundColor: '#e2e8f0',\n     \
+    \   borderColor: '#1e293b',\n        headerBackgroundColor: '#0a0a0a',\n     \
+    \   rowHoverColor: '#0f172a'\n      }),\n      columnDefs: [\n        { field:\
+    \ 'id', headerName: 'ID', width: 90, pinned: 'left' },\n        { field: 'submitter',\
+    \ headerName: 'SUBMITTER', width: 110 },\n        { field: 'department', headerName:\
+    \ 'DEPT', width: 100, filter: true },\n        { field: 'category', headerName:\
+    \ 'CATEGORY', width: 130, filter: true },\n        { field: 'priority', headerName:\
+    \ 'PRI', width: 80, \n          cellStyle: params => {\n            if (params.value\
+    \ === 'Critical') return { color: '#ef4444' };\n            if (params.value ===\
+    \ 'High') return { color: '#f97316' };\n            if (params.value === 'Medium')\
+    \ return { color: '#eab308' };\n            return { color: '#64748b' };\n   \
+    \       }\n        },\n        { field: 'feedback', headerName: 'FEEDBACK', flex:\
+    \ 1, minWidth: 200 },\n        { field: 'submitted', headerName: 'DATE', width:\
+    \ 100 },\n        { field: 'status', headerName: 'STATUS', width: 90 }\n     \
+    \ ],\n      rowData: rowData,\n      defaultColDef: {\n        sortable: true,\n\
+    \        resizable: true,\n        cellStyle: { fontSize: '12px' },\n        headerClass:\
+    \ 'ag-header-cell-small'\n      },\n      rowHeight: 32,\n      headerHeight:\
+    \ 36,\n      suppressCellFocus: true\n    };\n    \n    agGrid.createGrid(document.querySelector('#feedbackGrid'),\
+    \ gridOptions);\n  </script>\n  \n  <form hx-post=\"/checkpoint/respond\" hx-ext=\"\
+    json-enc\" style=\"margin-top: 16px; display: flex; justify-content: space-between;\
+    \ align-items: center; border-top: 1px solid #1e293b; padding-top: 16px;\">\n\
+    \    <span style=\"color: #64748b; font-size: 12px;\">Review each item individually\
+    \ to approve or reject</span>\n    <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"start_review\" \n      style=\"background: linear-gradient(135deg, #00e5ff\
+    \ 0%, #00bcd4 100%); color: #000; border: none; padding: 10px 20px; border-radius:\
+    \ 4px; font-weight: 600; cursor: pointer; font-size: 13px;\">\n      Start Review\
+    \ →\n    </button>\n  </form>\n</div>"
+  handoffs:
+  - review_item
+- name: review_item
+  context:
+    from:
+    - generate_data
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 16px; min-height: 100vh;\">\n  {% set idx = state.current_index\
+    \ | default(0) | int %}\n  {% set items = outputs.generate_data %}\n  {% set current\
+    \ = items[idx] %}\n  {% set total = items | length %}\n  {% set approved = state.approved_ids\
+    \ | default('') %}\n  {% set rejected = state.rejected_ids | default('') %}\n\
+    \  \n  <!-- Header with progress -->\n  <div style=\"display: flex; justify-content:\
+    \ space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px\
+    \ solid #1e293b; padding-bottom: 12px;\">\n    <div>\n      <span style=\"color:\
+    \ #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;\"\
+    >Reviewing</span>\n      <h1 style=\"margin: 4px 0 0 0; font-size: 16px; font-weight:\
+    \ 600; color: #f1f5f9;\">{{ current.id }}</h1>\n    </div>\n    <div style=\"\
+    display: flex; align-items: center; gap: 16px;\">\n      <div style=\"text-align:\
+    \ right;\">\n        <span style=\"color: #22c55e; font-size: 12px;\">✓ {{ approved.split(',')\
+    \ | reject('eq', '') | list | length }}</span>\n        <span style=\"color: #64748b;\
+    \ font-size: 12px; margin: 0 4px;\">|</span>\n        <span style=\"color: #ef4444;\
+    \ font-size: 12px;\">✗ {{ rejected.split(',') | reject('eq', '') | list | length\
+    \ }}</span>\n      </div>\n      <span style=\"background: #0f172a; border: 1px\
+    \ solid #334155; padding: 4px 10px; border-radius: 4px; font-size: 12px; color:\
+    \ #00e5ff;\">{{ idx + 1 }} / {{ total }}</span>\n    </div>\n  </div>\n  \n  <!--\
+    \ Progress bar -->\n  <div style=\"background: #0f172a; height: 3px; border-radius:\
+    \ 2px; margin-bottom: 20px; overflow: hidden;\">\n    <div style=\"background:\
+    \ linear-gradient(90deg, #00e5ff, #a78bfa); height: 100%; width: {{ ((idx) / total\
+    \ * 100) | int }}%; transition: width 0.3s;\"></div>\n  </div>\n  \n  <!-- Item\
+    \ card -->\n  <div style=\"background: #0a0a0a; border: 1px solid #1e293b; border-radius:\
+    \ 6px; padding: 20px; margin-bottom: 20px;\">\n    <div style=\"display: grid;\
+    \ grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;\">\n\
+    \      <div style=\"background: #000; border: 1px solid #1e293b; padding: 10px;\
+    \ border-radius: 4px;\">\n        <span style=\"color: #64748b; font-size: 10px;\
+    \ text-transform: uppercase; display: block;\">Submitter</span>\n        <span\
+    \ style=\"color: #e2e8f0; font-size: 13px; font-weight: 500;\">{{ current.submitter\
+    \ }}</span>\n      </div>\n      <div style=\"background: #000; border: 1px solid\
+    \ #1e293b; padding: 10px; border-radius: 4px;\">\n        <span style=\"color:\
+    \ #64748b; font-size: 10px; text-transform: uppercase; display: block;\">Department</span>\n\
+    \        <span style=\"color: #e2e8f0; font-size: 13px; font-weight: 500;\">{{\
+    \ current.department }}</span>\n      </div>\n      <div style=\"background: #000;\
+    \ border: 1px solid #1e293b; padding: 10px; border-radius: 4px;\">\n        <span\
+    \ style=\"color: #64748b; font-size: 10px; text-transform: uppercase; display:\
+    \ block;\">Category</span>\n        <span style=\"color: #e2e8f0; font-size: 13px;\
+    \ font-weight: 500;\">{{ current.category }}</span>\n      </div>\n      <div\
+    \ style=\"background: #000; border: 1px solid #1e293b; padding: 10px; border-radius:\
+    \ 4px;\">\n        <span style=\"color: #64748b; font-size: 10px; text-transform:\
+    \ uppercase; display: block;\">Priority</span>\n        <span style=\"font-size:\
+    \ 13px; font-weight: 600; {% if current.priority == 'Critical' %}color: #ef4444;{%\
+    \ elif current.priority == 'High' %}color: #f97316;{% elif current.priority ==\
+    \ 'Medium' %}color: #eab308;{% else %}color: #64748b;{% endif %}\">{{ current.priority\
+    \ }}</span>\n      </div>\n    </div>\n    \n    <div style=\"background: #000;\
+    \ border: 1px solid #1e293b; padding: 16px; border-radius: 4px;\">\n      <span\
+    \ style=\"color: #64748b; font-size: 10px; text-transform: uppercase; display:\
+    \ block; margin-bottom: 8px;\">Feedback</span>\n      <p style=\"color: #f1f5f9;\
+    \ font-size: 15px; line-height: 1.6; margin: 0;\">{{ current.feedback }}</p>\n\
+    \    </div>\n    \n    <div style=\"margin-top: 12px; color: #475569; font-size:\
+    \ 11px;\">Submitted: {{ current.submitted }}</div>\n  </div>\n  \n  <!-- Action\
+    \ buttons -->\n  <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\">\n\
+    \    <input type=\"hidden\" name=\"response[current_index]\" value=\"{{ idx +\
+    \ 1 }}\" />\n    <input type=\"hidden\" name=\"response[item_id]\" value=\"{{\
+    \ current.id }}\" />\n    <input type=\"hidden\" id=\"approved_ids\" name=\"response[approved_ids]\"\
+    \ value=\"{{ approved }}\" />\n    <input type=\"hidden\" id=\"rejected_ids\"\
+    \ name=\"response[rejected_ids]\" value=\"{{ rejected }}\" />\n    \n    <div\
+    \ style=\"display: flex; gap: 12px; justify-content: center;\">\n      {% if idx\
+    \ + 1 >= total %}\n      <button type=\"submit\" name=\"response[action]\" value=\"\
+    summary\" onclick=\"addApproved()\" \n        style=\"background: #22c55e; color:\
+    \ #000; border: none; padding: 14px 32px; border-radius: 4px; font-weight: 600;\
+    \ cursor: pointer; font-size: 14px;\">\n        ✓ Approve & Finish\n      </button>\n\
+    \      <button type=\"submit\" name=\"response[action]\" value=\"summary\" onclick=\"\
+    addRejected()\" \n        style=\"background: #ef4444; color: #fff; border: none;\
+    \ padding: 14px 32px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size:\
+    \ 14px;\">\n        ✗ Reject & Finish\n      </button>\n      {% else %}\n   \
+    \   <button type=\"submit\" name=\"response[action]\" value=\"review_item\" onclick=\"\
+    addApproved()\" \n        style=\"background: #22c55e; color: #000; border: none;\
+    \ padding: 14px 32px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size:\
+    \ 14px;\">\n        ✓ Approve\n      </button>\n      <button type=\"submit\"\
+    \ name=\"response[action]\" value=\"review_item\" onclick=\"addRejected()\" \n\
+    \        style=\"background: #ef4444; color: #fff; border: none; padding: 14px\
+    \ 32px; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 14px;\"\
+    >\n        ✗ Reject\n      </button>\n      {% endif %}\n    </div>\n  </form>\n\
+    \  \n  <script>\n    function addApproved() {\n      const input = document.getElementById('approved_ids');\n\
+    \      const current = input.value;\n      input.value = current ? current + ',{{\
+    \ current.id }}' : '{{ current.id }}';\n    }\n    function addRejected() {\n\
+    \      const input = document.getElementById('rejected_ids');\n      const current\
+    \ = input.value;\n      input.value = current ? current + ',{{ current.id }}'\
+    \ : '{{ current.id }}';\n    }\n  </script>\n</div>"
+  handoffs:
+  - review_item
+  - summary
+- name: summary
+  context:
+    from:
+    - generate_data
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 16px; min-height: 100vh;\">\n  {% set approved_list\
+    \ = state.approved_ids | default('') %}\n  {% set rejected_list = state.rejected_ids\
+    \ | default('') %}\n  {% set approved_count = approved_list.split(',') | reject('eq',\
+    \ '') | list | length %}\n  {% set rejected_count = rejected_list.split(',') |\
+    \ reject('eq', '') | list | length %}\n  {% set total = outputs.generate_data\
+    \ | length %}\n  \n  <!-- Header -->\n  <div style=\"text-align: center; margin-bottom:\
+    \ 24px; border-bottom: 1px solid #1e293b; padding-bottom: 16px;\">\n    <span\
+    \ style=\"color: #22c55e; font-size: 24px;\">✓</span>\n    <h1 style=\"margin:\
+    \ 8px 0 4px 0; font-size: 20px; font-weight: 600; color: #f1f5f9;\">Review Complete</h1>\n\
+    \    <span style=\"color: #64748b; font-size: 13px;\">{{ total }} items processed</span>\n\
+    \  </div>\n  \n  <!-- Stats cards -->\n  <div style=\"display: grid; grid-template-columns:\
+    \ repeat(3, 1fr); gap: 12px; margin-bottom: 24px;\">\n    <div style=\"background:\
+    \ #0a0a0a; border: 1px solid #22c55e; border-radius: 6px; padding: 16px; text-align:\
+    \ center;\">\n      <span style=\"color: #64748b; font-size: 11px; text-transform:\
+    \ uppercase; display: block;\">Approved</span>\n      <span style=\"color: #22c55e;\
+    \ font-size: 32px; font-weight: 700;\">{{ approved_count }}</span>\n    </div>\n\
+    \    <div style=\"background: #0a0a0a; border: 1px solid #ef4444; border-radius:\
+    \ 6px; padding: 16px; text-align: center;\">\n      <span style=\"color: #64748b;\
+    \ font-size: 11px; text-transform: uppercase; display: block;\">Rejected</span>\n\
+    \      <span style=\"color: #ef4444; font-size: 32px; font-weight: 700;\">{{ rejected_count\
+    \ }}</span>\n    </div>\n    <div style=\"background: #0a0a0a; border: 1px solid\
+    \ #00e5ff; border-radius: 6px; padding: 16px; text-align: center;\">\n      <span\
+    \ style=\"color: #64748b; font-size: 11px; text-transform: uppercase; display:\
+    \ block;\">Approval Rate</span>\n      <span style=\"color: #00e5ff; font-size:\
+    \ 32px; font-weight: 700;\">{% if total > 0 %}{{ ((approved_count / total) * 100)\
+    \ | int }}%{% else %}0%{% endif %}</span>\n    </div>\n  </div>\n  \n  <!-- Chart\
+    \ -->\n  <div style=\"background: #0a0a0a; border: 1px solid #1e293b; border-radius:\
+    \ 6px; padding: 16px; margin-bottom: 24px;\">\n    <h3 style=\"margin: 0 0 12px\
+    \ 0; font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing:\
+    \ 0.05em;\">Distribution</h3>\n    <div id=\"distributionChart\" style=\"height:\
+    \ 280px;\"></div>\n  </div>\n  \n  <script>\n    const approved = {{ approved_count\
+    \ }};\n    const rejected = {{ rejected_count }};\n    \n    Plotly.newPlot('distributionChart',\
+    \ [{\n      values: [approved, rejected],\n      labels: ['Approved', 'Rejected'],\n\
+    \      type: 'pie',\n      hole: 0.5,\n      marker: {\n        colors: ['#22c55e',\
+    \ '#ef4444'],\n        line: { color: '#000', width: 2 }\n      },\n      textinfo:\
+    \ 'label+value',\n      textfont: { color: '#e2e8f0', size: 13 },\n      hoverinfo:\
+    \ 'label+percent'\n    }], {\n      paper_bgcolor: 'transparent',\n      plot_bgcolor:\
+    \ '#000',\n      font: { color: '#cbd5e1', family: 'Google Sans, system-ui, sans-serif',\
+    \ size: 12 },\n      margin: { t: 20, r: 20, b: 20, l: 20 },\n      showlegend:\
+    \ false,\n      annotations: [{\n        text: '<b>' + (approved + rejected) +\
+    \ '</b><br>Total',\n        showarrow: false,\n        font: { size: 16, color:\
+    \ '#94a3b8' }\n      }]\n    }, { responsive: true, displayModeBar: false });\n\
+    \  </script>\n  \n  <!-- Details -->\n  <div style=\"display: grid; grid-template-columns:\
+    \ 1fr 1fr; gap: 12px; margin-bottom: 24px;\">\n    {% if approved_list %}\n  \
+    \  <div style=\"background: #0a0a0a; border: 1px solid #1e293b; border-radius:\
+    \ 6px; padding: 12px;\">\n      <h4 style=\"margin: 0 0 8px 0; font-size: 12px;\
+    \ color: #22c55e;\">✓ Approved Items</h4>\n      <div style=\"font-size: 12px;\
+    \ color: #94a3b8; font-family: monospace;\">{{ approved_list }}</div>\n    </div>\n\
+    \    {% endif %}\n    {% if rejected_list %}\n    <div style=\"background: #0a0a0a;\
+    \ border: 1px solid #1e293b; border-radius: 6px; padding: 12px;\">\n      <h4\
+    \ style=\"margin: 0 0 8px 0; font-size: 12px; color: #ef4444;\">✗ Rejected Items</h4>\n\
+    \      <div style=\"font-size: 12px; color: #94a3b8; font-family: monospace;\"\
+    >{{ rejected_list }}</div>\n    </div>\n    {% endif %}\n  </div>\n  \n  <!--\
+    \ Action -->\n  <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" style=\"\
+    text-align: center; border-top: 1px solid #1e293b; padding-top: 16px;\">\n   \
+    \ <button type=\"submit\" name=\"response[action]\" value=\"done\" \n      style=\"\
+    background: linear-gradient(135deg, #00e5ff 0%, #00bcd4 100%); color: #000; border:\
+    \ none; padding: 12px 28px; border-radius: 4px; font-weight: 600; cursor: pointer;\
+    \ font-size: 14px;\">\n      Complete Session\n    </button>\n  </form>\n</div>"
+  handoffs: []
+_calliope_metadata:
+  created_at: '2025-12-29T23:12:37.417618'
+  version: 1

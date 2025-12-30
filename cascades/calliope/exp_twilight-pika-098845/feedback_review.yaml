@@ -1,0 +1,230 @@
+cascade_id: feedback_review
+description: Professional feedback review dashboard - approve or reject items one
+  by one with final summary
+inputs_schema:
+  item_count: 'Number of feedback items to generate (default: 15)'
+model: null
+cells:
+- name: generate_data
+  python: "import random\nfrom datetime import datetime, timedelta\n\n# Sample data\
+    \ pools\ncustomers = ['Acme Corp', 'TechFlow Inc', 'DataDyne', 'Nexus Systems',\
+    \ 'CloudByte', 'InfoPulse', 'CoreLogic', 'Streamline Co', 'Pinnacle Group', 'Apex\
+    \ Solutions']\ncategories = ['Product', 'Support', 'Billing', 'Feature Request',\
+    \ 'Bug Report']\nfeedback_templates = [\n    'The {} needs significant improvement\
+    \ in terms of usability.',\n    'Very satisfied with the {} - exceeded expectations.',\n\
+    \    'Encountered issues with {} that need immediate attention.',\n    'Great\
+    \ experience overall, but {} could be better.',\n    'The {} is not meeting our\
+    \ business requirements.',\n    'Impressed by the {} quality and responsiveness.',\n\
+    \    'Frustrating experience with {} - please address.',\n    'The {} works perfectly\
+    \ for our use case.',\n]\ntopics = ['dashboard', 'reporting feature', 'API integration',\
+    \ 'customer service', 'onboarding process', 'billing system', 'mobile app', 'data\
+    \ export']\n\ncount = int(input.get('item_count', 15))\nitems = []\n\nfor i in\
+    \ range(count):\n    days_ago = random.randint(0, 30)\n    items.append({\n  \
+    \      'id': f'FB-{1000 + i}',\n        'timestamp': (datetime.now() - timedelta(days=days_ago)).strftime('%Y-%m-%d\
+    \ %H:%M'),\n        'customer': random.choice(customers),\n        'category':\
+    \ random.choice(categories),\n        'feedback': random.choice(feedback_templates).format(random.choice(topics)),\n\
+    \        'sentiment': round(random.uniform(-1, 1), 2),\n        'priority': random.choice(['Low',\
+    \ 'Medium', 'High', 'Critical'])\n    })\n\n# Sort by timestamp descending\nitems.sort(key=lambda\
+    \ x: x['timestamp'], reverse=True)\n\nresult = {\n    'items': items,\n    'total_count':\
+    \ len(items),\n    'current_index': 0,\n    'decisions': []\n}"
+  instructions: 'Generate exactly {{ input.item_count | default(15) }} fake customer
+    feedback items as JSON. Each item must have: id (FB-1001, FB-1002...), timestamp
+    (YYYY-MM-DD HH:MM format, within last 30 days), customer (company name), category
+    (one of: Product, Support, Billing, Feature Request, Bug Report), feedback (2-3
+    sentence realistic feedback text), sentiment (number between -1 and 1), priority
+    (Low, Medium, High, or Critical). Return ONLY valid JSON array, no markdown or
+    explanation.'
+  output_format: json
+- name: grid_overview
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 8px; min-height: 100vh;\">\n  <div style=\"border-bottom:\
+    \ 1px solid #333; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content:\
+    \ space-between; align-items: center;\">\n    <div>\n      <h1 style=\"margin:\
+    \ 0; font-size: 1.1em; color: #fff; font-weight: 600;\">FEEDBACK REVIEW QUEUE</h1>\n\
+    \      <span style=\"color: #666; font-size: 0.75em;\">{{ state.generate_data\
+    \ | length }} items pending review</span>\n    </div>\n    <div style=\"display:\
+    \ flex; gap: 16px; font-size: 0.75em;\">\n      <span style=\"color: #ef4444;\"\
+    >● CRITICAL: {{ state.generate_data | selectattr('priority', 'equalto', 'Critical')\
+    \ | list | length }}</span>\n      <span style=\"color: #f59e0b;\">● HIGH: {{\
+    \ state.generate_data | selectattr('priority', 'equalto', 'High') | list | length\
+    \ }}</span>\n    </div>\n  </div>\n\n  <div id=\"feedbackGrid\" style=\"height:\
+    \ 400px; width: 100%;\"></div>\n\n  <script>\n    const rowData = {{ state.generate_data\
+    \ | tojson }};\n    \n    const gridOptions = {\n      theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark),\n\
+    \      rowData: rowData,\n      columnDefs: [\n        { field: 'id', headerName:\
+    \ 'ID', width: 90, pinned: 'left' },\n        { field: 'timestamp', headerName:\
+    \ 'Date', width: 130, sort: 'desc' },\n        { field: 'customer', headerName:\
+    \ 'Customer', width: 130 },\n        { field: 'category', headerName: 'Category',\
+    \ width: 110,\n          cellStyle: params => ({\n            background: params.value\
+    \ === 'Bug Report' ? 'rgba(239,68,68,0.2)' : \n                        params.value\
+    \ === 'Feature Request' ? 'rgba(0,229,255,0.2)' : 'transparent'\n          })\n\
+    \        },\n        { field: 'feedback', headerName: 'Feedback', flex: 1, minWidth:\
+    \ 200 },\n        { field: 'sentiment', headerName: 'Sent.', width: 80,\n    \
+    \      cellStyle: params => ({\n            color: params.value > 0.3 ? '#22d399'\
+    \ : params.value < -0.3 ? '#ef4444' : '#f59e0b'\n          }),\n          valueFormatter:\
+    \ params => params.value.toFixed(2)\n        },\n        { field: 'priority',\
+    \ headerName: 'Priority', width: 90,\n          cellStyle: params => ({\n    \
+    \        color: params.value === 'Critical' ? '#ef4444' : \n                 \
+    \  params.value === 'High' ? '#f59e0b' : \n                   params.value ===\
+    \ 'Medium' ? '#00e5ff' : '#666',\n            fontWeight: params.value === 'Critical'\
+    \ ? '700' : '400'\n          })\n        }\n      ],\n      defaultColDef: {\n\
+    \        sortable: true,\n        filter: true,\n        resizable: true\n   \
+    \   },\n      rowHeight: 32,\n      headerHeight: 32,\n      animateRows: true\n\
+    \    };\n    \n    agGrid.createGrid(document.querySelector('#feedbackGrid'),\
+    \ gridOptions);\n  </script>\n\n  <form hx-post=\"/api/checkpoints/{{ checkpoint_id\
+    \ }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\" style=\"margin-top: 16px;\
+    \ border-top: 1px solid #333; padding-top: 12px;\">\n    <input type=\"hidden\"\
+    \ name=\"response[action]\" value=\"start\" id=\"action-input\" />\n    <input\
+    \ type=\"hidden\" name=\"response[current_index]\" value=\"0\" />\n    <div style=\"\
+    display: flex; gap: 12px; justify-content: flex-end;\">\n      <button type=\"\
+    submit\" style=\"padding: 10px 24px; background: #00e5ff; color: #000; border:\
+    \ none; font-weight: 600; cursor: pointer; font-size: 0.9em;\">\n        START\
+    \ REVIEW →\n      </button>\n    </div>\n  </form>\n</div>"
+  handoffs:
+  - review_item
+- name: review_item
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 8px; min-height: 100vh;\">\n  {% set idx = state.current_index\
+    \ | default(0) | int %}\n  {% set items = state.generate_data %}\n  {% set item\
+    \ = items[idx] %}\n  {% set total = items | length %}\n  \n  <div style=\"border-bottom:\
+    \ 1px solid #333; padding-bottom: 8px; margin-bottom: 16px; display: flex; justify-content:\
+    \ space-between; align-items: center;\">\n    <div style=\"display: flex; align-items:\
+    \ center; gap: 12px;\">\n      <span style=\"background: #00e5ff; color: #000;\
+    \ padding: 4px 10px; font-weight: 700; font-size: 0.8em;\">{{ idx + 1 }} / {{\
+    \ total }}</span>\n      <span style=\"color: #666; font-size: 0.75em;\">REVIEWING</span>\n\
+    \    </div>\n    <div style=\"font-size: 0.75em; color: #666;\">\n      {% set\
+    \ approved = state.decisions | default([]) | selectattr('decision', 'equalto',\
+    \ 'approve') | list | length %}\n      {% set rejected = state.decisions | default([])\
+    \ | selectattr('decision', 'equalto', 'reject') | list | length %}\n      <span\
+    \ style=\"color: #22d399;\">✓ {{ approved }}</span>\n      <span style=\"margin:\
+    \ 0 8px;\">|</span>\n      <span style=\"color: #ef4444;\">✗ {{ rejected }}</span>\n\
+    \    </div>\n  </div>\n\n  <div style=\"background: #0a0a0a; border: 1px solid\
+    \ #222; padding: 16px; margin-bottom: 16px;\">\n    <div style=\"display: flex;\
+    \ justify-content: space-between; margin-bottom: 12px;\">\n      <span style=\"\
+    color: #00e5ff; font-weight: 600; font-size: 1.1em;\">{{ item.id }}</span>\n \
+    \     <span style=\"color: {% if item.priority == 'Critical' %}#ef4444{% elif\
+    \ item.priority == 'High' %}#f59e0b{% elif item.priority == 'Medium' %}#00e5ff{%\
+    \ else %}#666{% endif %}; font-weight: {% if item.priority == 'Critical' %}700{%\
+    \ else %}400{% endif %}; font-size: 0.8em; border: 1px solid currentColor; padding:\
+    \ 2px 8px;\">{{ item.priority | upper }}</span>\n    </div>\n    \n    <div style=\"\
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; font-size: 0.8em;\
+    \ margin-bottom: 16px; border-bottom: 1px solid #222; padding-bottom: 12px;\"\
+    >\n      <div><span style=\"color: #666;\">Customer:</span> <span style=\"color:\
+    \ #fff;\">{{ item.customer }}</span></div>\n      <div><span style=\"color: #666;\"\
+    >Category:</span> <span style=\"color: #fff;\">{{ item.category }}</span></div>\n\
+    \      <div><span style=\"color: #666;\">Date:</span> <span style=\"color: #fff;\"\
+    >{{ item.timestamp }}</span></div>\n    </div>\n    \n    <div style=\"margin-bottom:\
+    \ 12px;\">\n      <div style=\"color: #666; font-size: 0.75em; margin-bottom:\
+    \ 4px;\">FEEDBACK</div>\n      <div style=\"color: #fff; font-size: 0.95em; line-height:\
+    \ 1.5;\">{{ item.feedback }}</div>\n    </div>\n    \n    <div style=\"display:\
+    \ flex; align-items: center; gap: 8px;\">\n      <span style=\"color: #666; font-size:\
+    \ 0.75em;\">SENTIMENT:</span>\n      <div style=\"flex: 1; height: 6px; background:\
+    \ #222; position: relative;\">\n        <div style=\"position: absolute; left:\
+    \ 50%; top: 0; bottom: 0; width: 1px; background: #444;\"></div>\n        <div\
+    \ style=\"position: absolute; left: {{ ((item.sentiment + 1) / 2 * 100) | int\
+    \ }}%; top: -2px; width: 10px; height: 10px; border-radius: 50%; background: {%\
+    \ if item.sentiment > 0.3 %}#22d399{% elif item.sentiment < -0.3 %}#ef4444{% else\
+    \ %}#f59e0b{% endif %}; transform: translateX(-50%);\"></div>\n      </div>\n\
+    \      <span style=\"color: {% if item.sentiment > 0.3 %}#22d399{% elif item.sentiment\
+    \ < -0.3 %}#ef4444{% else %}#f59e0b{% endif %}; font-size: 0.8em; font-weight:\
+    \ 600;\">{{ item.sentiment }}</span>\n    </div>\n  </div>\n\n  <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"\
+    outerHTML\">\n    <input type=\"hidden\" name=\"response[item_id]\" value=\"{{\
+    \ item.id }}\" />\n    <input type=\"hidden\" name=\"response[current_index]\"\
+    \ value=\"{{ idx }}\" />\n    <input type=\"hidden\" name=\"response[action]\"\
+    \ value=\"\" id=\"action-input\" />\n    \n    <div style=\"margin-bottom: 12px;\"\
+    >\n      <label style=\"color: #666; font-size: 0.75em; display: block; margin-bottom:\
+    \ 4px;\">NOTES (optional)</label>\n      <input type=\"text\" name=\"response[notes]\"\
+    \ placeholder=\"Add a note about this decision...\" style=\"width: 100%; padding:\
+    \ 8px; background: #0a0a0a; border: 1px solid #333; color: #fff; font-size: 0.85em;\"\
+    \ />\n    </div>\n    \n    <div style=\"display: flex; gap: 12px;\">\n      <button\
+    \ type=\"submit\" onclick=\"document.getElementById('action-input').value='approve'\"\
+    \ style=\"flex: 1; padding: 12px; background: #22d399; color: #000; border: none;\
+    \ font-weight: 600; cursor: pointer; font-size: 0.9em;\">✓ APPROVE</button>\n\
+    \      <button type=\"submit\" onclick=\"document.getElementById('action-input').value='reject'\"\
+    \ style=\"flex: 1; padding: 12px; background: #ef4444; color: #fff; border: none;\
+    \ font-weight: 600; cursor: pointer; font-size: 0.9em;\">✗ REJECT</button>\n \
+    \   </div>\n  </form>\n</div>"
+  handoffs:
+  - review_item
+  - summary
+- name: summary
+  hitl: "<div style=\"font-family: 'Google Sans', system-ui, sans-serif; background:\
+    \ #000; color: #e2e8f0; padding: 8px; min-height: 100vh;\">\n  {% set decisions\
+    \ = state.decisions | default([]) %}\n  {% set approved = decisions | selectattr('decision',\
+    \ 'equalto', 'approve') | list %}\n  {% set rejected = decisions | selectattr('decision',\
+    \ 'equalto', 'reject') | list %}\n  \n  <div style=\"border-bottom: 1px solid\
+    \ #333; padding-bottom: 8px; margin-bottom: 16px;\">\n    <h1 style=\"margin:\
+    \ 0; font-size: 1.1em; color: #fff; font-weight: 600;\">REVIEW COMPLETE</h1>\n\
+    \    <span style=\"color: #666; font-size: 0.75em;\">{{ decisions | length }}\
+    \ items processed</span>\n  </div>\n\n  <div style=\"display: grid; grid-template-columns:\
+    \ 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px;\">\n    <div style=\"background:\
+    \ #0a0a0a; border: 1px solid #222; padding: 16px; text-align: center;\">\n   \
+    \   <div style=\"color: #666; font-size: 0.7em; margin-bottom: 4px;\">TOTAL REVIEWED</div>\n\
+    \      <div style=\"color: #00e5ff; font-size: 2em; font-weight: 700;\">{{ decisions\
+    \ | length }}</div>\n    </div>\n    <div style=\"background: #0a0a0a; border:\
+    \ 1px solid rgba(34,211,153,0.3); padding: 16px; text-align: center;\">\n    \
+    \  <div style=\"color: #666; font-size: 0.7em; margin-bottom: 4px;\">APPROVED</div>\n\
+    \      <div style=\"color: #22d399; font-size: 2em; font-weight: 700;\">{{ approved\
+    \ | length }}</div>\n    </div>\n    <div style=\"background: #0a0a0a; border:\
+    \ 1px solid rgba(239,68,68,0.3); padding: 16px; text-align: center;\">\n     \
+    \ <div style=\"color: #666; font-size: 0.7em; margin-bottom: 4px;\">REJECTED</div>\n\
+    \      <div style=\"color: #ef4444; font-size: 2em; font-weight: 700;\">{{ rejected\
+    \ | length }}</div>\n    </div>\n  </div>\n\n  <div style=\"display: grid; grid-template-columns:\
+    \ 1fr 1fr; gap: 16px; margin-bottom: 20px;\">\n    <div style=\"background: #0a0a0a;\
+    \ border: 1px solid #222; padding: 12px;\">\n      <div style=\"color: #666; font-size:\
+    \ 0.7em; margin-bottom: 8px;\">APPROVAL RATE</div>\n      <div id=\"pieChart\"\
+    \ style=\"height: 200px;\"></div>\n    </div>\n    <div style=\"background: #0a0a0a;\
+    \ border: 1px solid #222; padding: 12px;\">\n      <div style=\"color: #666; font-size:\
+    \ 0.7em; margin-bottom: 8px;\">BY CATEGORY</div>\n      <div id=\"barChart\" style=\"\
+    height: 200px;\"></div>\n    </div>\n  </div>\n\n  <script>\n    const decisions\
+    \ = {{ decisions | tojson }};\n    const items = {{ state.generate_data | tojson\
+    \ }};\n    \n    // Create lookup for decisions\n    const decisionMap = {};\n\
+    \    decisions.forEach(d => decisionMap[d.item_id] = d.decision);\n    \n    //\
+    \ Pie chart\n    const approved = decisions.filter(d => d.decision === 'approve').length;\n\
+    \    const rejected = decisions.filter(d => d.decision === 'reject').length;\n\
+    \    \n    Plotly.newPlot('pieChart', [{\n      values: [approved, rejected],\n\
+    \      labels: ['Approved', 'Rejected'],\n      type: 'pie',\n      marker: {\
+    \ colors: ['#22d399', '#ef4444'] },\n      textinfo: 'value+percent',\n      textfont:\
+    \ { color: '#fff', size: 11 }\n    }], {\n      paper_bgcolor: 'transparent',\n\
+    \      plot_bgcolor: '#000',\n      font: { color: '#cbd5e1', size: 10 },\n  \
+    \    margin: { t: 10, r: 10, b: 10, l: 10 },\n      showlegend: true,\n      legend:\
+    \ { x: 0, y: -0.1, orientation: 'h' }\n    }, { responsive: true, displayModeBar:\
+    \ false });\n    \n    // Bar chart by category\n    const categories = ['Product',\
+    \ 'Support', 'Billing', 'Feature Request', 'Bug Report'];\n    const approvedByCategory\
+    \ = categories.map(cat => \n      items.filter(i => i.category === cat && decisionMap[i.id]\
+    \ === 'approve').length\n    );\n    const rejectedByCategory = categories.map(cat\
+    \ => \n      items.filter(i => i.category === cat && decisionMap[i.id] === 'reject').length\n\
+    \    );\n    \n    Plotly.newPlot('barChart', [\n      { x: categories, y: approvedByCategory,\
+    \ name: 'Approved', type: 'bar', marker: { color: '#22d399' } },\n      { x: categories,\
+    \ y: rejectedByCategory, name: 'Rejected', type: 'bar', marker: { color: '#ef4444'\
+    \ } }\n    ], {\n      paper_bgcolor: 'transparent',\n      plot_bgcolor: '#000',\n\
+    \      font: { color: '#cbd5e1', size: 9 },\n      margin: { t: 10, r: 10, b:\
+    \ 60, l: 30 },\n      barmode: 'group',\n      xaxis: { gridcolor: 'rgba(255,255,255,0.05)',\
+    \ tickangle: -30 },\n      yaxis: { gridcolor: 'rgba(255,255,255,0.05)' },\n \
+    \     showlegend: false\n    }, { responsive: true, displayModeBar: false });\n\
+    \  </script>\n\n  <div style=\"background: #0a0a0a; border: 1px solid #222; padding:\
+    \ 12px; margin-bottom: 16px; max-height: 200px; overflow-y: auto;\">\n    <div\
+    \ style=\"color: #666; font-size: 0.7em; margin-bottom: 8px;\">DECISION LOG</div>\n\
+    \    <table style=\"width: 100%; font-size: 0.75em; border-collapse: collapse;\"\
+    >\n      <thead>\n        <tr style=\"border-bottom: 1px solid #333;\">\n    \
+    \      <th style=\"text-align: left; padding: 4px; color: #666;\">ID</th>\n  \
+    \        <th style=\"text-align: left; padding: 4px; color: #666;\">Decision</th>\n\
+    \          <th style=\"text-align: left; padding: 4px; color: #666;\">Notes</th>\n\
+    \        </tr>\n      </thead>\n      <tbody>\n        {% for d in decisions %}\n\
+    \        <tr style=\"border-bottom: 1px solid #1a1a1a;\">\n          <td style=\"\
+    padding: 4px; color: #00e5ff;\">{{ d.item_id }}</td>\n          <td style=\"padding:\
+    \ 4px; color: {% if d.decision == 'approve' %}#22d399{% else %}#ef4444{% endif\
+    \ %};\">{{ d.decision | upper }}</td>\n          <td style=\"padding: 4px; color:\
+    \ #999;\">{{ d.notes or '-' }}</td>\n        </tr>\n        {% endfor %}\n   \
+    \   </tbody>\n    </table>\n  </div>\n\n  <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <input\
+    \ type=\"hidden\" name=\"response[action]\" value=\"done\" />\n    <button type=\"\
+    submit\" style=\"width: 100%; padding: 12px; background: #00e5ff; color: #000;\
+    \ border: none; font-weight: 600; cursor: pointer; font-size: 0.9em;\">FINISH\
+    \ & EXPORT</button>\n  </form>\n</div>"
+  handoffs: []
+_calliope_metadata:
+  created_at: '2025-12-29T22:56:05.278131'
+  version: 1
+  finalized_at: '2025-12-29T22:57:46.779159'
+  status: ready

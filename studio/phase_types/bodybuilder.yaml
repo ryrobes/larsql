@@ -1,0 +1,18 @@
+type_id: bodybuilder
+display_name: Bodybuilder
+icon: mdi:dumbbell
+color: "#ff6b35"
+name_prefix: bb
+description: "Natural language LLM calls - describe what you want and let OpenRouter pick the right model"
+category: "ai-ml"
+tags:
+  - "quick-start"
+  - "ai-ml"
+  - "advanced"
+  - "novel"
+  - "popular"
+
+template:
+  tool: bodybuilder
+  inputs:
+    request: "Ask a cheap fast model - {{ input.query }}"

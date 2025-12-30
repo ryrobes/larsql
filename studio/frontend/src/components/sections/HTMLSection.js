@@ -278,41 +278,58 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
           console.log('[RVBBIT HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
         }, 100);
 
-        // Auto-resize iframe to full content height (no scrollbars!)
-        let lastHeight = 0;
+        // Auto-resize iframe to content height
+        // FIXED: Prevent "creeping height" bug by:
+        // 1. Measuring actual content bounds (not scrollHeight which includes our padding)
+        // 2. Using a "skip" flag to ignore resize events triggered by our own height changes
+        // 3. Capping max height and reducing resize attempts
+        let lastContentHeight = 0;
         let resizeCount = 0;
-        const MAX_RESIZES = 30; // Stop after 30 resize attempts to prevent infinite loops
+        let skipNextResize = false; // Flag to break feedback loop
+        const MAX_RESIZES = 8;
+        const PADDING = 16;
 
         let resizeTimeout;
         const resizeIframe = () => {
+          // Skip if this resize was triggered by our own height change
+          if (skipNextResize) {
+            skipNextResize = false;
+            return;
+          }
+
           clearTimeout(resizeTimeout);
           resizeTimeout = setTimeout(() => {
             try {
-              // Get the full scrollHeight including all nested content
-              const contentHeight = iframeDocument.body.scrollHeight;
-              // Add generous padding to ensure no scrollbars (40px buffer)
-              const newHeight = Math.max(contentHeight + 40, 100);
+              const body = iframeDocument.body;
 
-              // Only update if height changed by more than 5px (avoid tiny fluctuations)
-              const heightDelta = Math.abs(newHeight - lastHeight);
-              if (heightDelta > 5) {
-                resizeCount++;
+              // Use offsetHeight for more stable measurement
+              // offsetHeight = content + padding + border (no scroll issues)
+              const contentHeight = body.offsetHeight;
 
-                // Stop resizing if we've hit the limit (prevents infinite loops)
-                if (resizeCount > MAX_RESIZES) {
-                  console.warn('[HTMX iframe] Stopped auto-resize after', MAX_RESIZES, 'attempts');
-                  if (resizeObserver) resizeObserver.disconnect();
-                  return;
-                }
-
-                setIframeHeight(`${newHeight}px`);
-                lastHeight = newHeight;
-                //console.log('[HTMX iframe] Resized to', newHeight, 'px (attempt', resizeCount, ')');
+              // Only resize if content height changed significantly (15px threshold)
+              const contentDelta = Math.abs(contentHeight - lastContentHeight);
+              if (contentDelta < 15) {
+                return; // No significant change
               }
+
+              resizeCount++;
+              if (resizeCount > MAX_RESIZES) {
+                console.warn('[HTMX iframe] Max resize attempts reached');
+                if (resizeObserver) resizeObserver.disconnect();
+                return;
+              }
+
+              // Calculate target, capped at reasonable max
+              const targetHeight = Math.min(Math.max(contentHeight + PADDING, 100), 1500);
+
+              // Set flag to skip the resize event this will trigger
+              skipNextResize = true;
+              lastContentHeight = contentHeight;
+              setIframeHeight(`${targetHeight}px`);
             } catch (err) {
               console.warn('[RVBBIT HTMX] Could not resize iframe:', err);
             }
-          }, 50); // Debounce by 50ms
+          }, 150); // Longer debounce for stability
         };
 
         // Initial resize
@@ -323,15 +340,22 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
           setTimeout(resizeIframe, 100); // Delay to let DOM settle
         });
 
-        // Resize on content changes (debounced via ResizeObserver)
+        // Resize on content changes (throttled ResizeObserver)
         let resizeObserver;
+        let lastObserverCall = 0;
+        const OBSERVER_THROTTLE_MS = 300; // Throttle to max 3 calls/second
+
         resizeObserver = new ResizeObserver((entries) => {
-          // Throttle ResizeObserver calls
-          requestAnimationFrame(() => {
-            if (resizeCount < MAX_RESIZES) {
-              resizeIframe();
-            }
-          });
+          const now = Date.now();
+          if (now - lastObserverCall < OBSERVER_THROTTLE_MS) {
+            return; // Throttled
+          }
+          lastObserverCall = now;
+
+          // Only trigger if we haven't hit the limit
+          if (resizeCount < MAX_RESIZES && !skipNextResize) {
+            resizeIframe();
+          }
         });
         resizeObserver.observe(iframeDocument.body);
 
@@ -773,8 +797,17 @@ li {
 
         console.log('[HTMX iframe] Final check - json-enc available:', htmx.ext && htmx.ext['json-enc']);
 
-        // DEBUG: Log all clicks and manually submit if requestSubmit fails
+        // Track which button was clicked (needed for FormData since e.submitter isn't always available)
+        let lastClickedButton = null;
+
+        // DEBUG: Log all clicks and track the clicked button for form submission
         document.addEventListener('click', (e) => {
+          // Track any button or submit input click
+          if (e.target.matches('button, input[type="submit"]')) {
+            lastClickedButton = e.target;
+            console.log('[HTMX iframe] Tracked clicked button:', e.target.name, '=', e.target.value, 'type:', e.target.type);
+          }
+
           if (e.target.tagName === 'BUTTON') {
             console.log('[HTMX iframe] Button clicked:', e.target.textContent.trim(), 'type:', e.target.type);
 
@@ -831,7 +864,26 @@ li {
             }
 
             // Build JSON from form data
-            const formData = new FormData(form);
+            // Use e.submitter if available (native submit), otherwise use tracked button
+            const submitter = e.submitter || lastClickedButton;
+            console.log('[HTMX iframe] Submitter:', submitter?.name, '=', submitter?.value);
+
+            // FormData with submitter to include the clicked button's name/value
+            let formData;
+            try {
+              formData = submitter ? new FormData(form, submitter) : new FormData(form);
+            } catch (err) {
+              // Some browsers don't support FormData with submitter
+              console.log('[HTMX iframe] FormData with submitter failed, using fallback');
+              formData = new FormData(form);
+              // Manually add the submitter if present
+              if (submitter && submitter.name) {
+                formData.append(submitter.name, submitter.value || '');
+              }
+            }
+
+            console.log('[HTMX iframe] FormData entries:', Array.from(formData.entries()));
+
             const params = {};
 
             for (let [key, value] of formData.entries()) {

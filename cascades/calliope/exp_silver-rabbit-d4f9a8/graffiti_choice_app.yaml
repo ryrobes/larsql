@@ -1,0 +1,208 @@
+cascade_id: graffiti_choice_app
+description: Interactive Yes/No app with dark mode and CSS graffiti on Yes path.
+inputs_schema: {}
+model: claude-3-5-sonnet-20240620
+cells:
+- name: welcome_screen
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        * { margin: 0; padding:\
+    \ 0; box-sizing: border-box; }\n        body {\n            background: radial-gradient(circle\
+    \ at center, #1a0033 0%, #000 70%);\n            color: #e2e8f0;\n           \
+    \ font-family: 'Courier New', monospace;\n            min-height: 100vh;\n   \
+    \         display: flex;\n            flex-direction: column;\n            justify-content:\
+    \ center;\n            align-items: center;\n            padding: 2rem;\n    \
+    \        overflow: hidden;\n        }\n        .title {\n            font-size:\
+    \ clamp(2rem, 8vw, 4rem);\n            text-align: center;\n            margin-bottom:\
+    \ 3rem;\n            text-shadow: 0 0 20px #00e5ff, 0 0 40px #00e5ff;\n      \
+    \      animation: glow 2s ease-in-out infinite alternate;\n        }\n       \
+    \ @keyframes glow {\n            from { text-shadow: 0 0 20px #00e5ff, 0 0 30px\
+    \ #00e5ff, 0 0 40px #00e5ff; }\n            to { text-shadow: 0 0 30px #00e5ff,\
+    \ 0 0 40px #00e5ff, 0 0 50px #00e5ff; }\n        }\n        .choices {\n     \
+    \       display: flex;\n            gap: 2rem;\n            flex-wrap: wrap;\n\
+    \            justify-content: center;\n        }\n        button {\n         \
+    \   padding: 1.2rem 2.5rem;\n            font-size: 1.3rem;\n            font-family:\
+    \ inherit;\n            border: none;\n            border-radius: 12px;\n    \
+    \        cursor: pointer;\n            transition: all 0.3s ease;\n          \
+    \  min-width: 140px;\n            font-weight: bold;\n            text-transform:\
+    \ uppercase;\n            letter-spacing: 1px;\n        }\n        .yes-btn {\n\
+    \            background: linear-gradient(145deg, #00b4d8, #0077b6);\n        \
+    \    box-shadow: 0 8px 32px rgba(0, 229, 255, 0.3);\n            color: #fff;\n\
+    \        }\n        .yes-btn:hover {\n            transform: translateY(-4px)\
+    \ scale(1.05);\n            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.6);\n\
+    \            background: linear-gradient(145deg, #00e5ff, #0099cc);\n        }\n\
+    \        .no-btn {\n            background: linear-gradient(145deg, #6b7280, #4b5563);\n\
+    \            box-shadow: 0 8px 32px rgba(156, 163, 175, 0.3);\n            color:\
+    \ #f3f4f6;\n        }\n        .no-btn:hover {\n            transform: translateY(-4px)\
+    \ scale(1.05);\n            box-shadow: 0 12px 40px rgba(156, 163, 175, 0.6);\n\
+    \            background: linear-gradient(145deg, #9ca3af, #6b7280);\n        }\n\
+    \        form {\n            display: contents;\n        }\n        @media (max-width:\
+    \ 600px) {\n            .choices { flex-direction: column; gap: 1.5rem; }\n  \
+    \      }\n    </style>\n</head>\n<body>\n    <h1 class=\"title\">Graffiti?</h1>\n\
+    \    <div class=\"choices\">\n        <form hx-post=\"/checkpoint/respond\" hx-ext=\"\
+    json-enc\" hx-swap=\"outerHTML\">\n            <button class=\"yes-btn\" name=\"\
+    response[action}\" value=\"yes\" type=\"submit\">Yes ✨</button>\n        </form>\n\
+    \        <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" hx-swap=\"\
+    outerHTML\">\n            <button class=\"no-btn\" name=\"response[action}\" value=\"\
+    no\" type=\"submit\">No \U0001F60E</button>\n        </form>\n    </div>\n   \
+    \ <p style=\"margin-top: 4rem; opacity: 0.7; font-size: 0.9rem;\">Choose your\
+    \ vibe...</p>\n</body>\n</html>"
+  handoffs:
+  - graffiti_screen
+  - confirm_no
+- name: graffiti_screen
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        * { margin: 0; padding:\
+    \ 0; box-sizing: border-box; }\n        body {\n            background: radial-gradient(circle\
+    \ at center, #0a001a 0%, #000 60%);\n            color: #00e5ff;\n           \
+    \ font-family: 'Courier New', monospace, sans-serif;\n            min-height:\
+    \ 100vh;\n            display: flex;\n            flex-direction: column;\n  \
+    \          justify-content: center;\n            align-items: center;\n      \
+    \      padding: 2rem;\n            overflow: hidden;\n            position: relative;\n\
+    \        }\n        body::before {\n            content: '';\n            position:\
+    \ absolute;\n            top: 0; left: 0; right: 0; bottom: 0;\n            background:\
+    \ \n                radial-gradient(circle at 20% 80%, rgba(0,229,255,0.1) 0%,\
+    \ transparent 50%),\n                radial-gradient(circle at 80% 20%, rgba(168,85,247,0.1)\
+    \ 0%, transparent 50%),\n                radial-gradient(circle at 40% 40%, rgba(34,197,94,0.05)\
+    \ 0%, transparent 50%);\n            animation: spray 4s ease-in-out infinite;\n\
+    \            pointer-events: none;\n        }\n        @keyframes spray {\n  \
+    \          0%, 100% { opacity: 0.3; transform: scale(1); }\n            50% {\
+    \ opacity: 0.6; transform: scale(1.05); }\n        }\n        .graffiti-title\
+    \ {\n            font-size: clamp(3rem, 12vw, 6rem);\n            font-weight:\
+    \ bold;\n            text-align: center;\n            margin-bottom: 2rem;\n \
+    \           background: linear-gradient(45deg, #00e5ff, #a78bfa, #22d399, #00e5ff);\n\
+    \            -webkit-background-clip: text;\n            -webkit-text-fill-color:\
+    \ transparent;\n            background-clip: text;\n            animation: drip\
+    \ 3s ease-in-out infinite alternate, glitch 0.1s infinite;\n            position:\
+    \ relative;\n        }\n        .graffiti-title::after {\n            content:\
+    \ '\U0001F480✨\U0001F4A5';\n            position: absolute;\n            bottom:\
+    \ -20px; left: 50%; transform: translateX(-50%);\n            font-size: 2rem;\
+    \ animation: bounce 1s infinite;\n        }\n        @keyframes drip {\n     \
+    \       0% { text-shadow: 0 0 20px #00e5ff; transform: skew(0deg); }\n       \
+    \     100% { text-shadow: 0 4px 20px #00e5ff, 0 8px 40px #a78bfa; transform: skew(-2deg);\
+    \ }\n        }\n        @keyframes glitch {\n            0%, 100% { transform:\
+    \ translate(0); }\n            20% { transform: translate(-2px, 2px); }\n    \
+    \        40% { transform: translate(2px, -2px); }\n            60% { transform:\
+    \ translate(-2px, 0); }\n            80% { transform: translate(2px, 2px); }\n\
+    \        }\n        @keyframes bounce {\n            0%, 100% { transform: translateX(-50%)\
+    \ translateY(0); }\n            50% { transform: translateX(-50%) translateY(-10px);\
+    \ }\n        }\n        .tags {\n            display: flex;\n            gap:\
+    \ 1rem;\n            margin-bottom: 3rem;\n            flex-wrap: wrap;\n    \
+    \        justify-content: center;\n        }\n        .tag {\n            padding:\
+    \ 0.8rem 1.5rem;\n            background: rgba(0,229,255,0.15);\n            border:\
+    \ 2px solid rgba(0,229,255,0.4);\n            border-radius: 20px;\n         \
+    \   color: #00e5ff;\n            font-size: 1.1rem;\n            font-weight:\
+    \ bold;\n            animation: tagSlide 2s ease-out forwards;\n            transform:\
+    \ translateY(50px);\n            opacity: 0;\n        }\n        .tag:nth-child(1)\
+    \ { animation-delay: 0.5s; }\n        .tag:nth-child(2) { animation-delay: 1s;\
+    \ }\n        .tag:nth-child(3) { animation-delay: 1.5s; }\n        @keyframes\
+    \ tagSlide {\n            to { transform: translateY(0); opacity: 1; }\n     \
+    \   }\n        .confirm-btn {\n            padding: 1.5rem 3rem;\n           \
+    \ font-size: 1.4rem;\n            background: linear-gradient(145deg, #a78bfa,\
+    \ #7c3aed);\n            color: #fff;\n            border: none;\n           \
+    \ border-radius: 50px;\n            cursor: pointer;\n            font-family:\
+    \ inherit;\n            font-weight: bold;\n            text-transform: uppercase;\n\
+    \            letter-spacing: 2px;\n            box-shadow: 0 10px 40px rgba(167,139,250,0.4);\n\
+    \            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);\n  \
+    \      }\n        .confirm-btn:hover {\n            transform: translateY(-8px)\
+    \ scale(1.08);\n            box-shadow: 0 20px 60px rgba(167,139,250,0.7);\n \
+    \           background: linear-gradient(145deg, #c084fc, #a78bfa);\n        }\n\
+    \        form { display: contents; }\n        @media (max-width: 600px) {\n  \
+    \          .tags { flex-direction: column; align-items: center; }\n        }\n\
+    \    </style>\n</head>\n<body>\n    <h1 class=\"graffiti-title\">YES TO CHAOS</h1>\n\
+    \    <div class=\"tags\">\n        <div class=\"tag\">#SPRAY</div>\n        <div\
+    \ class=\"tag\">#DRIP</div>\n        <div class=\"tag\">#REBEL</div>\n    </div>\n\
+    \    <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\"\
+    >\n        <button class=\"confirm-btn\" name=\"response[action}\" value=\"confirm\"\
+    \ type=\"submit\">Confirm This Vibe \U0001F4A5</button>\n    </form>\n</body>\n\
+    </html>"
+  handoffs:
+  - confirm_yes
+- name: confirm_no
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        * { margin: 0; padding:\
+    \ 0; box-sizing: border-box; }\n        body {\n            background: linear-gradient(135deg,\
+    \ #0f0f23 0%, #1a1a2e 50%, #16213e 100%);\n            color: #a78bfa;\n     \
+    \       font-family: 'Courier New', monospace;\n            min-height: 100vh;\n\
+    \            display: flex;\n            flex-direction: column;\n           \
+    \ justify-content: center;\n            align-items: center;\n            padding:\
+    \ 2rem;\n            position: relative;\n            overflow: hidden;\n    \
+    \    }\n        body::before {\n            content: '';\n            position:\
+    \ absolute;\n            top: 0; left: 0; right: 0; bottom: 0;\n            background:\
+    \ \n                repeating-linear-gradient(45deg, transparent, transparent\
+    \ 10px, rgba(167,139,250,0.03) 10px, rgba(167,139,250,0.03) 20px);\n         \
+    \   animation: subtleShift 10s linear infinite;\n        }\n        @keyframes\
+    \ subtleShift {\n            0% { transform: translateX(0); }\n            100%\
+    \ { transform: check-for-errors translateX(20px); }\n        }\n        .confirm-title\
+    \ {\n            font-size: clamp(2.5rem, 10vw, 5rem);\n            text-align:\
+    \ center;\n            margin-bottom: 1.5rem;\n            text-shadow: 0 0 15px\
+    \ #a78bfa, 0 0 30px #a78bfa;\n            animation: pulse 2s ease-in-out infinite\
+    \ alternate;\n        }\n        @keyframes pulse {\n            from { opacity:\
+    \ 0.8; transform: scale(1); }\n            to { opacity: 1; transform: scale(1.02);\
+    \ }\n        }\n        .message {\n            font-size: 1.4rem;\n         \
+    \   text-align: center;\n            margin-bottom: 3rem;\n            max-width:\
+    \ 600px;\n            line-height: 1.6;\n            opacity: 0.9;\n        }\n\
+    \        .restart-btn {\n            padding: 1.2rem 2.5rem;\n            font-size:\
+    \ 1.2rem;\n            background: linear-gradient(145deg, #6b7280, #4b5563);\n\
+    \            color: #e2e8f0;\n            border: none;\n            border-radius:\
+    \ 50px;\n            cursor: pointer;\n            font-family: inherit;\n   \
+    \         font-weight: bold;\n            text-transform: uppercase;\n       \
+    \     letter-spacing: 1.5px;\n            box-shadow: 0 8px 32px rgba(107,114,128,0.4);\n\
+    \            transition: all 0.3s ease;\n        }\n        .restart-btn:hover\
+    \ {\n            transform: translateY(-5px) scale(1.05);\n            box-shadow:\
+    \ 0 15px 45px rgba(107,114,128,0.7);\n            background: linear-gradient(145deg,\
+    \ #9ca3af, #6b7280);\n        }\n        form { display: contents; }\n    </style>\n\
+    </head>\n<body>\n    <h1 class=\"confirm-title\">No Graffiti</h1>\n    <p class=\"\
+    message\">Choice confirmed. Clean vibes only. \U0001F60E<br><span style=\"opacity:\
+    \ 0.7;\">Peace in the void.</span></p>\n    <form hx-post=\"/checkpoint/respond\"\
+    \ hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n        <button class=\"restart-btn\"\
+    \ name=\"response[action}\" value=\"restart\" type=\"submit\">Play Again?</button>\n\
+    \    </form>\n</body>\n</html>"
+  handoffs:
+  - welcome_screen
+- name: confirm_yes
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        * { margin: 0; padding:\
+    \ 0; box-sizing: border-box; }\n        body {\n            background: radial-gradient(circle\
+    \ at center, #0a001a 0%, #000 70%);\n            color: #00e5ff;\n           \
+    \ font-family: 'Courier New', monospace;\n            min-height: 100vh;\n   \
+    \         display: flex;\n            flex-direction: column;\n            justify-content:\
+    \ center;\n            align-items: center;\n            padding: 2rem;\n    \
+    \        overflow: hidden;\n            position: relative;\n        }\n     \
+    \   body::before {\n            content: '';\n            position: absolute;\n\
+    \            top: 0; left: 0; right: 0; bottom: 0;\n            background: \n\
+    \                radial-gradient(circle at 30% 70%, rgba(0,229,255,0.15) 0%, transparent\
+    \ 50%),\n                radial-gradient(circle at 70% 30%, rgba(168,85,247,0.15)\
+    \ 0%, transparent 50%);\n            animation: fadeSpray 5s ease-in-out infinite;\n\
+    \        }\n        @keyframes fadeSpray {\n            0%, 100% { opacity: 0.4;\
+    \ transform: scale(1); }\n            50% { opacity: 0.7; transform: scale(1.03);\
+    \ }\n        }\n        .confirm-title {\n            font-size: clamp(3rem, 12vw,\
+    \ 6rem);\n            font-weight: bold;\n            text-align: center;\n  \
+    \          margin-bottom: 1.5rem;\n            background: linear-gradient(45deg,\
+    \ #00e5ff, #a78bfa);\n            -webkit-background-clip: text;\n           \
+    \ -webkit-text-fill-color: transparent;\n            background-clip: text;\n\
+    \            text-shadow: 0 0 20px #00e5ff;\n            animation: victoryDrip\
+    \ 2.5s ease-in-out infinite alternate;\n        }\n        @keyframes victoryDrip\
+    \ {\n            0% { transform: skew(0deg); filter: hue-rotate(0deg); }\n   \
+    \         100% { transform: skew(-1deg); filter: hue-rotate(20deg); }\n      \
+    \  }\n        .message {\n            font-size: 1.5rem;\n            text-align:\
+    \ center;\n            margin-bottom: 3rem;\n            max-width: 600px;\n \
+    \           line-height: 1.6;\n            opacity: 0.95;\n        }\n       \
+    \ .restart-btn {\n            padding: 1.5rem 3rem;\n            font-size: 1.3rem;\n\
+    \            background: linear-gradient(145deg, #22d399, #16a34a);\n        \
+    \    color: #fff;\n            border: none;\n            border-radius: 50px;\n\
+    \            cursor: pointer;\n            font-family: inherit;\n           \
+    \ font-weight: bold;\n            text-transform: uppercase;\n            letter-spacing:\
+    \ 2px;\n            box-shadow: 0 10px 40px rgba(34,197,153,0.5);\n          \
+    \  transition: all 0.4s ease;\n        }\n        .restart-btn:hover {\n     \
+    \       transform: translateY(-6px) scale(1.06);\n            box-shadow: 0 18px\
+    \ 50px rgba(34,197,153,0.8);\n            background: linear-gradient(145deg,\
+    \ #22d399, #059669);\n        }\n        form { display: contents; }\n    </style>\n\
+    </head>\n<body>\n    <h1 class=\"confirm-title\">Graffiti Confirmed!</h1>\n  \
+    \  <p class=\"message\">Chaos embraced. Your walls are tagged forever. \U0001F480\
+    ✨<br><span style=\"opacity: 0.8; font-size: 1.1rem;\">Rebel on.</span></p>\n \
+    \   <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\"\
+    >\n        <button class=\"restart-btn\" name=\"response[action}\" value=\"restart\"\
+    \ type=\"submit\">Tag Again? \U0001F680</button>\n    </form>\n</body>\n</html>"
+  handoffs:
+  - welcome_screen
+_calliope_metadata:
+  created_at: '2025-12-29T19:38:25.091488'
+  version: 1
+  finalized_at: '2025-12-29T19:39:34.291242'
+  status: ready

@@ -27,6 +27,7 @@ const ReceiptsView = lazy(() => import('./views/receipts/ReceiptsView'));
 const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
 const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
+const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -112,6 +113,16 @@ export const router = createBrowserRouter([
       {
         path: 'interrupts',
         element: withSuspense(InterruptsView),
+      },
+
+      // Calliope - The Muse of App Building
+      {
+        path: 'calliope',
+        element: withSuspense(CalliopeView),
+      },
+      {
+        path: 'calliope/:sessionId',
+        element: withSuspense(CalliopeView),
       },
 
       // Catch-all - redirect to home

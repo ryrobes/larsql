@@ -1,0 +1,58 @@
+cascade_id: sexy_yesno_app
+description: 'Sexy Yes/No micro-app: Dark theme with floating spooky ghost 👻, Yes/No
+  choice buttons. Yes leads to confetti-bursting confirmation 🎉. No to moody confirmation
+  😈. Pure CSS animations. Loops back on confirm.'
+inputs_schema: {}
+model: claude-3-5-sonnet-20240620
+cells:
+- name: welcome_screen
+  hitl: "\n<div style=\"\n  min-height: 100vh;\n  background: linear-gradient(135deg,\
+    \ #0f0f23 0%, #1a1a2e 50%, #16213e 100%);\n  color: #e2e8f0;\n  font-family: -apple-system,\
+    \ BlinkMacSystemFont, 'Segoe UI', 'Google Sans', sans-serif;\n  display: flex;\n\
+    \  flex-direction: column;\n  justify-content: center;\n  align-items: center;\n\
+    \  padding: 2rem;\n  text-align: center;\n  overflow: hidden;\n  position: relative;\n\
+    \">\n  \n  <div style=\"\n    font-size: clamp(3rem, 12vw, 8rem);\n    animation:\
+    \ float 3s ease-in-out infinite;\n    filter: drop-shadow(0 0 20px rgba(255,255,255,0.3));\n\
+    \    margin-bottom: 2rem;\n  \" class=\"ghost\">\U0001F47B</div>\n  \n  <h1 style=\"\
+    \n    font-size: clamp(1.8rem, 5vw, 3rem);\n    background: linear-gradient(45deg,\
+    \ #00e5ff, #a78bfa);\n    -webkit-background-clip: text;\n    -webkit-text-fill-color:\
+    \ transparent;\n    background-clip: text;\n    margin-bottom: 1rem;\n    text-shadow:\
+    \ 0 0 30px rgba(0,229,255,0.5);\n  \">Will you join the adventure?</h1>\n  \n\
+    \  <p style=\"\n    font-size: 1.3rem;\n    color: #94a3b8;\n    margin-bottom:\
+    \ 3rem;\n    max-width: 500px;\n  \">Choose your path in the shadows...</p>\n\
+    \  \n  <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\"\
+    \ style=\"display: flex; flex-direction: column; gap: 1.5rem; max-width: 400px;\
+    \ width: 100%;\">\n    <div style=\"display: flex; gap: 1rem; justify-content:\
+    \ center; flex-wrap: wrap;\">\n      <button type=\"submit\" name=\"response[action}\"\
+    \ value=\"yes\" style=\"\n        flex: 1;\n        min-width: 140px;\n      \
+    \  background: linear-gradient(45deg, #22d399, #10b981);\n        color: white;\n\
+    \        border: none;\n        padding: 1rem 2rem;\n        border-radius: 50px;\n\
+    \        font-size: 1.2rem;\n        font-weight: bold;\n        cursor: pointer;\n\
+    \        box-shadow: \n          0 8px 25px rgba(34,211,153,0.4),\n          0\
+    \ 0 0 1px rgba(34,211,153,0.3) inset;\n        transition: all 0.3s ease;\n  \
+    \      position: relative;\n        overflow: hidden;\n      \" \n      onmouseover=\"\
+    this.style.boxShadow='0 12px 35px rgba(34,211,153,0.6), 0 0 0 1px rgba(34,211,153,0.5)\
+    \ inset'; this.style.transform='translateY(-2px)';\"\n      onmouseout=\"this.style.boxShadow='0\
+    \ 8px 25px rgba(34,211,153,0.4), 0 0 0 1px rgba(34,211,153,0.3) inset'; this.style.transform='translateY(0)';\"\
+    \n      >YES ✨</button>\n      \n      <button type=\"submit\" name=\"response[action}\"\
+    \ value=\"no\" style=\"\n        flex: 1;\n        min-width: 140px;\n       \
+    \ background: linear-gradient(45deg, #ef4444, #dc2626);\n        color: white;\n\
+    \        border: none;\n        padding: 1rem 2rem;\n        border-radius: 50px;\n\
+    \        font-size: 1.2rem;\n        font-weight: bold;\n        cursor: pointer;\n\
+    \        box-shadow: \n          0 8px 25px rgba(239,68,68,0.4),\n          0\
+    \ 0 0 1px rgba(239,68,68,0.3) inset;\n        transition: all 0.3s ease;\n   \
+    \     position: relative;\n        overflow: hidden;\n      \" \n      onmouseover=\"\
+    this.style.boxShadow='0 12px 35px rgba(239,68,68,0.6), 0 0 0 1px rgba(239,68,68,0.5)\
+    \ inset'; this.style.transform='translateY(-2px)';\"\n      onmouseout=\"this.style.boxShadow='0\
+    \ 8px 25px rgba(239,68,68,0.4), 0 0 0 1px rgba(239,68,68,0.3) inset'; this.style.transform='translateY(0)';\"\
+    \n      >NO \U0001F608</button>\n    </div>\n  </form>\n  \n  <style>\n    @keyframes\
+    \ float {\n      0%, 100% { transform: translateY(0px) rotate(0deg); }\n     \
+    \ 33% { transform: translateY(-20px) rotate(5deg); }\n      66% { transform: translateY(-10px)\
+    \ rotate(-5deg); }\n    }\n    \n    @media (max-width: 480px) {\n      button\
+    \ { font-size: 1rem; padding: 0.9rem 1.5rem; }\n    }\n  </style>\n</div>\n"
+  handoffs:
+  - yes_confirm
+  - no_confirm
+_calliope_metadata:
+  created_at: '2025-12-29T21:25:40.148480'
+  version: 1

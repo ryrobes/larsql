@@ -3992,7 +3992,7 @@ def browse_cascade_files():
 def load_playground_cascade(cascade_id):
     """Load a playground cascade by cascade_id or session_id.
 
-    Searches multiple directories: playground_scratchpad, cascades, examples, tackle.
+    Searches multiple directories: playground_scratchpad, cascades, calliope, examples, tackle.
     Returns the full cascade config including _playground metadata for restoring the graph state.
     """
     try:
@@ -4016,6 +4016,30 @@ def load_playground_cascade(cascade_id):
             if os.path.exists(candidate):
                 filepath = candidate
                 break
+
+        # Also search calliope subdirectories (cascades built by Calliope)
+        if not filepath:
+            calliope_dir = os.path.join(CASCADES_DIR, 'calliope')
+            if os.path.exists(calliope_dir):
+                # Search all session directories, newest first
+                session_dirs = []
+                for d in os.listdir(calliope_dir):
+                    dir_path = os.path.join(calliope_dir, d)
+                    if os.path.isdir(dir_path):
+                        session_dirs.append((dir_path, os.path.getmtime(dir_path)))
+                session_dirs.sort(key=lambda x: x[1], reverse=True)
+
+                for dir_path, _ in session_dirs:
+                    candidate = os.path.join(dir_path, f"{cascade_id}.yaml")
+                    if os.path.exists(candidate):
+                        filepath = candidate
+                        break
+                    candidate = os.path.join(dir_path, f"{cascade_id}.json")
+                    if os.path.exists(candidate):
+                        filepath = candidate
+                        break
+                    if filepath:
+                        break
 
         if not filepath:
             return jsonify({'error': f'Cascade not found: {cascade_id}'}), 404

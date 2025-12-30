@@ -1,0 +1,29 @@
+type_id: hitl_screen
+display_name: HITL Screen
+icon: mdi:monitor-dashboard
+color: "#f97316"
+name_prefix: screen
+description: Human-in-the-Loop screen with custom HTML/HTMX interface for interactive applications
+category: hitl
+content_key: hitl
+tags:
+  - intermediate
+  - hitl
+  - calliope
+  - interactive
+
+template:
+  hitl: |
+    <h2>Screen Title</h2>
+    <p>Description or content here...</p>
+
+    <!-- Use Jinja2 templates for dynamic content -->
+    <p>Hello {{ input.user_name }}</p>
+
+    <!-- Buttons route to other screens via handoffs -->
+    <form hx-post="/checkpoint/respond" hx-ext="json-enc">
+      <button type="submit" name="response[action]" value="next">Continue</button>
+      <button type="submit" name="response[action]" value="back">Go Back</button>
+    </form>
+  handoffs:
+    - next_screen

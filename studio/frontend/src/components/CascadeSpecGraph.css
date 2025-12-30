@@ -53,6 +53,22 @@
   border-radius: 50%;
 }
 
+.legend-dot.pulsing {
+  animation: legend-pulse 1.5s ease-in-out infinite;
+}
+
+.legend-separator {
+  width: 1px;
+  height: 12px;
+  background: #334155;
+  margin: 0 4px;
+}
+
+@keyframes legend-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Scrollable area */
 .spec-graph-scroll {
   overflow: auto;
@@ -118,6 +134,55 @@
 
 .spec-cell-node.has-candidates {
   border-color: #fbbf24;
+}
+
+/* Execution status styles */
+.spec-cell-node.status-completed {
+  border-color: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+}
+
+.spec-cell-node.status-running {
+  border-color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+  animation: pulse-running 1.5s ease-in-out infinite;
+}
+
+.spec-cell-node.status-waiting {
+  border-color: #f97316;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.4);
+  animation: pulse-waiting 2s ease-in-out infinite;
+}
+
+.spec-cell-node.status-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+.spec-cell-node.status-pending {
+  opacity: 0.6;
+}
+
+@keyframes pulse-running {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.4);
+    border-color: #fbbf24;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+    border-color: #fcd34d;
+  }
+}
+
+@keyframes pulse-waiting {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.4);
+    border-color: #f97316;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.6);
+    border-color: #fb923c;
+  }
 }
 
 /* Top row */

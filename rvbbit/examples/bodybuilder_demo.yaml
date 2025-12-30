@@ -1,0 +1,71 @@
+# Bodybuilder Demo - Meta-tool for raw OpenRouter LLM body execution
+#
+# This demonstrates the bodybuilder tool which executes raw OpenRouter
+# API bodies within RVBBIT cascades.
+#
+# Run with:
+#   rvbbit examples/bodybuilder_demo.yaml --input '{"query": "What is 42?"}'
+
+cascade_id: bodybuilder_demo
+description: |
+  Demonstrates the bodybuilder tool which bridges OpenRouter's JSON body
+  format with RVBBIT's execution engine.
+
+inputs_schema:
+  query: "The question to ask the LLM"
+
+cells:
+  # Mode 1: Direct execution with explicit body
+  - name: direct_call
+    tool: bodybuilder
+    inputs:
+      body: |
+        {
+          "model": "google/gemini-2.5-flash-lite",
+          "messages": [
+            {"role": "system", "content": "You are a helpful assistant. Be concise."},
+            {"role": "user", "content": "{{ input.query }}"}
+          ],
+          "temperature": 0.7,
+          "max_tokens": 100
+        }
+    handoffs:
+      - planning_call
+
+  # Mode 2: Planning mode - let bodybuilder pick the model
+  - name: planning_call
+    tool: bodybuilder
+    inputs:
+      request: "Ask a fast cheap model - {{ input.query }}"
+    handoffs:
+      - with_override
+
+  # Mode 3: Using body with model override
+  - name: with_override
+    tool: bodybuilder
+    inputs:
+      body: |
+        {
+          "model": "google/gemini-2.5-flash-lite",
+          "messages": [
+            {"role": "user", "content": "{{ input.query }}"}
+          ]
+        }
+      system_prompt: "You are a pirate. Respond like a pirate would."
+    handoffs:
+      - summary
+
+  # Summarize all results
+  - name: summary
+    instructions: |
+      Summarize the three different LLM responses we got:
+
+      1. Direct call result: {{ outputs.direct_call.content }}
+      2. Planning call result: {{ outputs.planning_call.content }}
+      3. Pirate override result: {{ outputs.with_override.content }}
+
+      Provide a brief comparison of the responses.
+    model: google/gemini-2.5-flash-lite
+    traits: []
+    rules:
+      max_turns: 1

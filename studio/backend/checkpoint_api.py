@@ -284,14 +284,14 @@ def list_checkpoints():
                         has_cards = 'cards' in sec
                         has_options = 'options' in sec
                         #print(f"  Section {i}: type={sec_type}, has_base64={has_base64}, has_src={has_src}, has_cards={has_cards}, has_options={has_options}")
-                        if has_base64:
-                            print(f"    base64 length: {len(sec.get('base64', ''))}")
-                        if has_src:
-                            print(f"    src: {sec.get('src')}")
-                        if has_cards:
-                            print(f"    cards count: {len(sec.get('cards', []))}")
-                        if has_options:
-                            print(f"    options count: {len(sec.get('options', []))}")
+                        # if has_base64:
+                        #     print(f"    base64 length: {len(sec.get('base64', ''))}")
+                        # if has_src:
+                        #     print(f"    src: {sec.get('src')}")
+                        # if has_cards:
+                        #     print(f"    cards count: {len(sec.get('cards', []))}")
+                        # if has_options:
+                        #     print(f"    options count: {len(sec.get('options', []))}")
 
                 # Log sections in columns (two-column layout)
                 if 'columns' in cp.ui_spec:

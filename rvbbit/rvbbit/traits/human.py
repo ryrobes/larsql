@@ -1161,36 +1161,36 @@ def _build_html_decision_ui(html: str, question: str, context: str, severity: st
     # UPDATED: AppShell theme styling (pure black, cyan accents, data-dense)
     extras_html = """
 <!-- System-provided extras (always included, auto-merged with form) -->
-<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0, 229, 255, 0.2);">
-  <div style="margin-bottom: 12px;">
-    <label style="display: block; margin-bottom: 6px; color: #94a3b8; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">
-      💬 Additional Notes (optional)
+<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0, 229, 255, 0.15);">
+  <div style="margin-bottom: 8px;">
+    <label style="display: block; margin-bottom: 4px; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">
+      Additional Notes (optional)
     </label>
     <textarea
       name="response[notes]"
       placeholder="Add context, feedback, or clarifications..."
-      rows="3"
-      style="width: 100%; background: rgba(0, 0, 0, 0.8); border: 1px solid rgba(0, 229, 255, 0.2); color: #cbd5e1; padding: 7px 9px; border-radius: 4px; font-family: 'Google Sans Code', monospace; font-size: 12px; resize: vertical; transition: all 0.15s;"
-      onfocus="this.style.borderColor='#00e5ff'; this.style.boxShadow='0 0 0 2px rgba(0, 229, 255, 0.1)'; this.style.background='#000';"
-      onblur="this.style.borderColor='rgba(0, 229, 255, 0.2)'; this.style.boxShadow='none'; this.style.background='rgba(0, 0, 0, 0.8)';"></textarea>
+      rows="2"
+      style="width: 100%; background: #000; border: 1px solid rgba(0, 229, 255, 0.15); color: #cbd5e1; padding: 6px 8px; border-radius: 4px; font-family: 'Google Sans Code', monospace; font-size: 11px; resize: vertical; transition: all 0.15s;"
+      onfocus="this.style.borderColor='#00e5ff'; this.style.boxShadow='0 0 0 2px rgba(0, 229, 255, 0.1)';"
+      onblur="this.style.borderColor='rgba(0, 229, 255, 0.15)'; this.style.boxShadow='none';"></textarea>
   </div>
 
-  <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-    <label style="display: flex; align-items: center; gap: 8px; color: #94a3b8; font-size: 11px; cursor: pointer;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <label style="display: flex; align-items: center; gap: 6px; color: #94a3b8; font-size: 10px; cursor: pointer;">
       <input
         type="checkbox"
         name="response[include_screenshot]"
         value="true"
-        style="accent-color: #00e5ff; width: 16px; height: 16px; cursor: pointer;">
-      <span>📸 Include screenshot</span>
+        style="accent-color: #00e5ff; width: 14px; height: 14px; cursor: pointer;">
+      <span>Include screenshot</span>
     </label>
 
     <button
       type="submit"
-      style="background: linear-gradient(135deg, #00e5ff 0%, #a78bfa 100%); color: #000; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.15s; white-space: nowrap;"
-      onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 0 20px rgba(0, 229, 255, 0.4)';"
+      style="background: linear-gradient(135deg, #00e5ff 0%, #a78bfa 100%); color: #000; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; transition: all 0.15s; white-space: nowrap;"
+      onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 0 16px rgba(0, 229, 255, 0.4)';"
       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
-      Submit Response
+      Submit
     </button>
   </div>
 </div>
@@ -1296,7 +1296,8 @@ def _build_structured_decision_ui(
         "type": "card_grid",
         "cards": cards,
         "selection_mode": "single",
-        "columns": min(len(cards), 3)
+        "columns": 1,  # Render as rows for data-dense look
+        "gap": 4
     })
 
     if allow_custom:
@@ -1446,28 +1447,29 @@ def _build_screenshot_html(body_html: str) -> str:
 /* RVBBIT AppShell Theme - Data-dense HTMX forms (synced with frontend) */
 :root {
   --bg-darkest: #000000;
-  --bg-dark: #0a0510;
-  --bg-card: rgba(0, 0, 0, 0.6);
-  --border-default: rgba(0, 229, 255, 0.2);
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --text-primary: #cbd5e1;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --bg-dark: #000000;
+  --bg-card: rgba(0, 0, 0, 0.4);
+  --border-default: rgba(0, 229, 255, 0.15);
+  --border-subtle: rgba(0, 229, 255, 0.1);
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
   --accent-cyan: #00e5ff;
   --accent-purple: #a78bfa;
-  --accent-green: #22d399;
-  --accent-red: #ff4757;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
   --accent-yellow: #fbbf24;
 }
 
 body {
   margin: 0;
-  padding: 10px;
+  padding: 8px;
   font-family: 'Google Sans Code', 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  background: var(--bg-dark);  /* Dark background for screenshots - NOT transparent! */
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--bg-dark);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1476,29 +1478,29 @@ body {
 h1, h2, h3, h4, h5, h6 {
   color: var(--accent-cyan);
   font-weight: 700;
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
 
-h1 { font-size: 1.125rem; }
-h2 { font-size: 1rem; }
-h3 { font-size: 0.875rem; }
+h1 { font-size: 13px; }
+h2 { font-size: 12px; }
+h3 { font-size: 11px; }
 
 p {
-  margin: 0 0 8px 0;
-  font-size: 12px;
-  line-height: 1.5;
+  margin: 0 0 6px 0;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 input, select, textarea {
-  background: rgba(0, 0, 0, 0.8);
+  background: #000;
   border: 1px solid var(--border-default);
-  color: var(--text-primary);
-  padding: 7px 9px;
+  color: var(--text-secondary);
+  padding: 6px 8px;
   border-radius: 4px;
   font-family: 'Google Sans Code', monospace;
-  font-size: 12px;
+  font-size: 11px;
   transition: all 0.15s;
 }
 
@@ -1506,32 +1508,31 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent-cyan);
   box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
-  background: #000;
 }
 
 textarea {
   resize: vertical;
-  min-height: 50px;
-  line-height: 1.5;
+  min-height: 40px;
+  line-height: 1.4;
 }
 
 button {
   background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
   color: #000;
   border: none;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 4px;
   cursor: pointer;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   transition: all 0.15s;
 }
 
 button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.4);
 }
 
 button:disabled {
@@ -1542,29 +1543,30 @@ button:disabled {
 
 code, pre {
   font-family: 'Google Sans Code', monospace;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 4px;
 }
 
 code {
-  padding: 2px 4px;
-  font-size: 11px;
+  padding: 1px 4px;
+  font-size: 10px;
   color: var(--accent-purple);
 }
 
 pre {
-  padding: 10px;
+  padding: 8px;
   overflow-x: auto;
   border: 1px solid var(--border-subtle);
-  line-height: 1.5;
+  line-height: 1.4;
+  font-size: 10px;
 }
 
 label {
   display: block;
-  color: var(--text-secondary);
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: 10px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -1572,11 +1574,11 @@ label {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 th, td {
-  padding: 6px 8px;
+  padding: 5px 6px;
   text-align: left;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -1585,12 +1587,12 @@ th {
   color: var(--accent-cyan);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 10px;
+  letter-spacing: 0.4px;
+  font-size: 9px;
 }
 
 tr:hover {
-  background: rgba(0, 229, 255, 0.05);
+  background: rgba(0, 229, 255, 0.03);
 }
 
 a {

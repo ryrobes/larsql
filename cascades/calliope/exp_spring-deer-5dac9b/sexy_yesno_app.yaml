@@ -1,0 +1,130 @@
+cascade_id: sexy_yesno_app
+description: Sexy dark-mode Yes/No micro-app with confetti explosion on Yes confirmation.
+inputs_schema: {}
+model: null
+cells:
+- name: choice_screen
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { margin: 0; padding:\
+    \ 0; background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);\
+    \ min-height: 100vh; display: flex; align-items: center; justify-content: center;\
+    \ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\
+    \ color: #e2e8f0; overflow: hidden; }\n    .container { text-align: center; max-width:\
+    \ 500px; padding: 2rem; }\n    h1 { font-size: 4rem; margin-bottom: 2rem; background:\
+    \ linear-gradient(45deg, #00d4ff, #a78bfa, #22d399); -webkit-background-clip:\
+    \ text; -webkit-text-fill-color: transparent; background-clip: text; text-shadow:\
+    \ 0 0 30px rgba(0,212,255,0.5); animation: glow 2s ease-in-out infinite alternate;\
+    \ }\n    @keyframes glow { from { filter: drop-shadow(0 0 20px #00d4ff); } to\
+    \ { filter: drop-shadow(0 0 30px #a78bfa); } }\n    .buttons { display: flex;\
+    \ gap: 2rem; justify-content: center; flex-wrap: wrap; }\n    button { padding:\
+    \ 1.2rem 2.5rem; font-size: 1.8rem; font-weight: bold; border: none; border-radius:\
+    \ 50px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.5);\
+    \ min-width: 180px; }\n    .yes-btn { background: linear-gradient(45deg, #00d4ff,\
+    \ #22d399); color: #000; box-shadow: 0 0 40px rgba(0,212,255,0.6); }\n    .yes-btn:hover\
+    \ { transform: translateY(-5px) scale(1.05); box-shadow: 0 15px 50px rgba(0,212,255,0.8);\
+    \ }\n    .no-btn { background: linear-gradient(45deg, #64748b, #334155); color:\
+    \ #e2e8f0; box-shadow: 0 0 40px rgba(100,116,139,0.6); }\n    .no-btn:hover {\
+    \ transform: translateY(-5px) scale(1.05); box-shadow: 0 15px 50px rgba(100,116,139,0.8);\
+    \ }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h1>Choose\
+    \ Your Path</h1>\n    <p style=\"font-size: 1.3rem; margin-bottom: 3rem; opacity:\
+    \ 0.9;\">One decision, infinite possibilities...</p>\n    <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    \
+    \  <div class=\"buttons\">\n        <button class=\"yes-btn\" type=\"submit\"\
+    \ name=\"response[action]\" value=\"yes_confirm\">✨ YES ✨</button>\n        <button\
+    \ class=\"no-btn\" type=\"submit\" name=\"response[action]\" value=\"no_confirm\"\
+    >❌ NO ❌</button>\n      </div>\n    </form>\n  </div>\n</body>\n</html>"
+  handoffs:
+  - yes_confirm
+  - no_confirm
+- name: yes_confirm
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { margin: 0; padding:\
+    \ 0; background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);\
+    \ min-height: 100vh; display: flex; align-items: center; justify-content: center;\
+    \ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\
+    \ color: #e2e8f0; overflow: hidden; }\n    .container { text-align: center; max-width:\
+    \ 500px; padding: 2rem; }\n    h1 { font-size: 3.5rem; margin-bottom: 1rem; background:\
+    \ linear-gradient(45deg, #00d4ff, #22d399); -webkit-background-clip: text; -webkit-text-fill-color:\
+    \ transparent; background-clip: text; text-shadow: 0 0 30px rgba(0,212,255,0.5);\
+    \ animation: pulse 1.5s ease-in-out infinite; }\n    @keyframes pulse { 0%, 100%\
+    \ { opacity: 1; } 50% { opacity: 0.8; } }\n    p { font-size: 1.4rem; margin-bottom:\
+    \ 3rem; opacity: 0.9; }\n    .buttons { display: flex; flex-direction: column;\
+    \ gap: 1.5rem; align-items: center; }\n    button { padding: 1.2rem 3rem; font-size:\
+    \ 1.6rem; font-weight: bold; border: none; border-radius: 50px; cursor: pointer;\
+    \ transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width:\
+    \ 250px; }\n    .confirm-btn { background: linear-gradient(45deg, #22d399, #00d4ff);\
+    \ color: #000; box-shadow: 0 0 40px rgba(34,211,153,0.7); }\n    .confirm-btn:hover\
+    \ { transform: translateY(-8px) scale(1.05); box-shadow: 0 20px 60px rgba(34,211,153,0.9);\
+    \ }\n    .back-btn { background: linear-gradient(45deg, #64748b, #334155); color:\
+    \ #e2e8f0; box-shadow: 0 0 30px rgba(100,116,139,0.5); }\n    .back-btn:hover\
+    \ { transform: translateY(-5px); box-shadow: 0 15px 40px rgba(100,116,139,0.7);\
+    \ }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h1>✨ YES!\
+    \ ✨</h1>\n    <p style=\"font-size: 1.5rem;\">Confirm your ecstatic choice and\
+    \ let the magic burst forth!</p>\n    <form hx-post=\"/api/checkpoints/{{ checkpoint_id\
+    \ }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n      <div class=\"\
+    buttons\">\n        <button class=\"confirm-btn\" type=\"submit\" name=\"response[action]\"\
+    \ value=\"choice_screen\" onclick=\"canvasConfetti()\">\U0001F389 CONFIRM & EXPLODE\
+    \ \U0001F389</button>\n        <button class=\"back-btn\" type=\"submit\" name=\"\
+    response[action]\" value=\"choice_screen\">↩️ Back to Choice</button>\n      </div>\n\
+    \    </form>\n    <script>\n      function canvasConfetti() {\n        const canvas\
+    \ = document.createElement('canvas');\n        canvas.style.position = 'fixed';\n\
+    \        canvas.style.top = '0';\n        canvas.style.left = '0';\n        canvas.style.pointerEvents\
+    \ = 'none';\n        canvas.style.zIndex = '9999';\n        canvas.width = window.innerWidth;\n\
+    \        canvas.height = window.innerHeight;\n        document.body.appendChild(canvas);\n\
+    \        const ctx = canvas.getContext('2d');\n        const colors = ['#00d4ff',\
+    \ '#a78bfa', '#22d399', '#fbbf24', '#ef4444', '#f59e0b'];\n        const particles\
+    \ = [];\n        const particleCount = 150;\n        for (let i = 0; i < particleCount;\
+    \ i++) {\n          particles.push({\n            x: Math.random() * canvas.width,\n\
+    \            y: canvas.height + 10,\n            vx: (Math.random() - 0.5) * 15,\n\
+    \            vy: Math.random() * -20 - 10,\n            color: colors[Math.floor(Math.random()\
+    \ * colors.length)],\n            size: Math.random() * 6 + 3,\n            rotation:\
+    \ Math.random() * 360,\n            rotSpeed: (Math.random() - 0.5) * 20,\n  \
+    \          life: 1.0\n          });\n        }\n        const animate = () =>\
+    \ {\n          ctx.clearRect(0, 0, canvas.width, canvas.height);\n          particles.forEach((p,\
+    \ idx) => {\n            p.x += p.vx;\n            p.y += p.vy;\n            p.vy\
+    \ += 0.15;\n            p.rotation += p.rotSpeed;\n            p.life -= 0.015;\n\
+    \            if (p.life > 0) {\n              ctx.save();\n              ctx.globalAlpha\
+    \ = p.life;\n              ctx.translate(p.x, p.y);\n              ctx.rotate(p.rotation\
+    \ * Math.PI / 180);\n              ctx.fillStyle = p.color;\n              ctx.fillRect(-p.size\
+    \ / 2, -p.size / 2, p.size, p.size);\n              ctx.fillStyle = p.color;\n\
+    \              ctx.font = 'bold ' + (p.size * 2) + 'px Arial';\n             \
+    \ ctx.fillText('✨', -p.size / 2, p.size / 2);\n              ctx.restore();\n\
+    \            } else {\n              particles.splice(idx, 1);\n            }\n\
+    \          });\n          if (particles.length > 0) {\n            requestAnimationFrame(animate);\n\
+    \          } else {\n            canvas.remove();\n          }\n        };\n \
+    \       animate();\n      }\n    </script>\n  </div>\n</body>\n</html>"
+  handoffs:
+  - choice_screen
+- name: no_confirm
+  hitl: "\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { margin: 0; padding:\
+    \ 0; background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);\
+    \ min-height: 100vh; display: flex; align-items: center; justify-content: center;\
+    \ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\
+    \ color: #e2e8f0; overflow: hidden; }\n    .container { text-align: center; max-width:\
+    \ 500px; padding: 2rem; }\n    h1 { font-size: 3.5rem; margin-bottom: 1rem; background:\
+    \ linear-gradient(45deg, #64748b, #334155); -webkit-background-clip: text; -webkit-text-fill-color:\
+    \ transparent; background-clip: text; text-shadow: 0 0 30px rgba(100,116,139,0.5);\
+    \ animation: subtleGlow 2s ease-in-out infinite alternate; }\n    @keyframes subtleGlow\
+    \ { from { filter: drop-shadow(0 0 10px #64748b); } to { filter: drop-shadow(0\
+    \ 0 20px #334155); } }\n    p { font-size: 1.5rem; margin-bottom: 3rem; opacity:\
+    \ 0.9; }\n    .buttons { display: flex; flex-direction: column; gap: 1.5rem; align-items:\
+    \ center; }\n    button { padding: 1.2rem 3rem; font-size: 1.6rem; font-weight:\
+    \ bold; border: none; border-radius: 50px; cursor: pointer; transition: all 0.3s\
+    \ ease; box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width: 250px; }\n    .confirm-btn\
+    \ { background: linear-gradient(45deg, #64748b, #475569); color: #e2e8f0; box-shadow:\
+    \ 0 0 40px rgba(100,116,139,0.6); }\n    .confirm-btn:hover { transform: translateY(-8px)\
+    \ scale(1.05); box-shadow: 0 20px 60px rgba(100,116,139,0.8); }\n    .back-btn\
+    \ { background: linear-gradient(45deg, #94a3b8, #64748b); color: #000; box-shadow:\
+    \ 0 0 30px rgba(148,163,184,0.5); }\n    .back-btn:hover { transform: translateY(-5px);\
+    \ box-shadow: 0 15px 40px rgba(148,163,184,0.7); }\n  </style>\n</head>\n<body>\n\
+    \  <div class=\"container\">\n    <h1>❌ NO ❌</h1>\n    <p style=\"font-size: 1.5rem;\"\
+    >Confirm your decisive choice. Path declined with grace.</p>\n    <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"\
+    outerHTML\">\n      <div class=\"buttons\">\n        <button class=\"confirm-btn\"\
+    \ type=\"submit\" name=\"response[action]\" value=\"choice_screen\">✅ CONFIRM\
+    \ DECLINE</button>\n        <button class=\"back-btn\" type=\"submit\" name=\"\
+    response[action]\" value=\"choice_screen\">↩️ Back to Choice</button>\n      </div>\n\
+    \    </form>\n  </div>\n</body>\n</html>"
+  handoffs:
+  - choice_screen
+_calliope_metadata:
+  created_at: '2025-12-29T21:02:47.695013'
+  version: 1

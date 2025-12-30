@@ -28,6 +28,8 @@ from .traits.research_sessions import (
 )
 from .traits.state_tools import set_state
 from .traits.system import spawn_cascade, map_cascade
+from .traits.cascade_builder import cascade_write, cascade_read
+from .traits.bodybuilder import bodybuilder, execute_body, plan_and_execute
 from .traits.research_db import research_query, research_execute
 from .traits.chart import create_chart, create_vega_lite, create_plotly
 from .traits.filesystem import read_file, write_file, append_file, list_files, file_info
@@ -53,6 +55,9 @@ register_trait("get_research_session", get_research_session)
 register_trait("set_state", set_state)
 register_trait("spawn_cascade", spawn_cascade)
 register_trait("map_cascade", map_cascade)
+register_trait("cascade_write", cascade_write)
+register_trait("cascade_read", cascade_read)
+register_trait("bodybuilder", bodybuilder)
 register_trait("research_query", research_query)
 register_trait("research_execute", research_execute)
 register_trait("create_chart", create_chart)
@@ -177,4 +182,8 @@ __all__ = [
     "close_browser_session",
     "close_all_browser_sessions",
     "get_browser_manager",
+    # Bodybuilder - meta-tool for raw LLM body execution
+    "bodybuilder",
+    "execute_body",
+    "plan_and_execute",
 ]

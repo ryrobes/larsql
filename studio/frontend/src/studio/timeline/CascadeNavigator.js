@@ -235,8 +235,11 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     windlass_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches
     linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
+    hitl_screen: { icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
-  const cellType = cell.tool || (cell.instructions ? 'llm_cell' : 'python_data');
+  // Determine cell type - check for hitl key first (HTMX screens)
+  const cellType = cell.hitl ? 'hitl_screen' :
+    (cell.tool || (cell.instructions ? 'llm_cell' : 'python_data'));
   const { icon: toolIcon, color: toolColor } = toolStyles[cellType] || toolStyles.python_data;
 
   return (
@@ -1382,6 +1385,7 @@ function CascadeNavigator() {
           <div className="nav-quick-access">
             <div className="nav-quick-access-pills">
               <CellTypePill type="llm_phase" icon="mdi:brain" label="LLM" color="#a78bfa" />
+              <CellTypePill type="bodybuilder" icon="mdi:dumbbell" label="Bodybuilder" color="#ff6b35" />
               <CellTypePill type="image_gen" icon="mdi:image-auto" label="Image" color="#ff006e" />
               <InputPill />
               <CellTypePill type="python_data" icon="mdi:language-python" label="Python" color="#fbbf24" />

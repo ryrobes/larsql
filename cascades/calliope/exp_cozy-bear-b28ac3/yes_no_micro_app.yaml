@@ -1,0 +1,184 @@
+cascade_id: yes_no_micro_app
+description: 'A delightful micro-app: dark-mode Yes/No choice screen leading to themed
+  confirmation screens, with celebratory CSS confetti burst on Yes + Confirm.'
+inputs_schema: {}
+model: null
+cells:
+- name: welcome_screen
+  hitl: "\n<style>\n  body {\n    background: linear-gradient(135deg, #0f0f23 0%,\
+    \ #1a1a2e 50%, #16213e 100%);\n    color: #e2e8f0;\n    font-family: 'Google Sans',\
+    \ -apple-system, BlinkMacSystemFont, sans-serif;\n    margin: 0;\n    padding:\
+    \ 40px;\n    min-height: 100vh;\n    display: flex;\n    flex-direction: column;\n\
+    \    align-items: center;\n    justify-content: center;\n  }\n  .container {\n\
+    \    max-width: 500px;\n    text-align: center;\n  }\n  h1 {\n    font-size: 3rem;\n\
+    \    background: linear-gradient(45deg, #00e5ff, #a78bfa);\n    -webkit-background-clip:\
+    \ text;\n    -webkit-text-fill-color: transparent;\n    background-clip: text;\n\
+    \    margin-bottom: 20px;\n  }\n  p.subtitle {\n    font-size: 1.2rem;\n    margin-bottom:\
+    \ 50px;\n    opacity: 0.9;\n  }\n  .choice-btn {\n    display: block;\n    width:\
+    \ 280px;\n    height: 90px;\n    margin: 25px auto;\n    font-size: 1.9rem;\n\
+    \    font-weight: 600;\n    border: none;\n    border-radius: 25px;\n    cursor:\
+    \ pointer;\n    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);\n \
+    \   box-shadow: 0 15px 35px rgba(0,0,0,0.4);\n    position: relative;\n    overflow:\
+    \ hidden;\n  }\n  .choice-btn::before {\n    content: '';\n    position: absolute;\n\
+    \    top: 0;\n    left: -100%;\n    width: 100%;\n    height: 100%;\n    background:\
+    \ linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);\n \
+    \   transition: left 0.6s;\n  }\n  .choice-btn:hover::before {\n    left: 100%;\n\
+    \  }\n  .yes-btn {\n    background: linear-gradient(135deg, #22d399, #00e5ff);\n\
+    \    color: white;\n    box-shadow: 0 15px 35px rgba(34,211,153,0.4);\n  }\n \
+    \ .yes-btn:hover {\n    transform: translateY(-8px) scale(1.05);\n    box-shadow:\
+    \ 0 25px 50px rgba(34,211,153,0.6);\n  }\n  .no-btn {\n    background: linear-gradient(135deg,\
+    \ #ef4444, #f97316);\n    color: white;\n    box-shadow: 0 15px 35px rgba(239,68,68,0.4);\n\
+    \  }\n  .no-btn:hover {\n    transform: translateY(-8px) scale(1.05);\n    box-shadow:\
+    \ 0 25px 50px rgba(239,68,68,0.6);\n  }\n  form {\n    display: flex;\n    flex-direction:\
+    \ column;\n    align-items: center;\n  }\n</style>\n<div class=\"container\">\n\
+    \  <h1>✨ Choose Your Path</h1>\n  <p class=\"subtitle\">A simple decision... with\
+    \ delightful surprises ahead.</p>\n  <form hx-post=\"/api/checkpoints/{{ checkpoint_id\
+    \ }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <button class=\"\
+    choice-btn yes-btn\" type=\"submit\" name=\"response[action}\" value=\"yes_confirm\"\
+    >\U0001F31F Yes</button>\n    <button class=\"choice-btn no-btn\" type=\"submit\"\
+    \ name=\"response[action}\" value=\"no_confirm\">❌ No</button>\n  </form>\n</div>\n"
+  handoffs:
+  - yes_confirm
+  - no_confirm
+- name: yes_confirm
+  hitl: "\n<style>\n  body {\n    background: linear-gradient(135deg, #0f0f23 0%,\
+    \ #1a1a2e 50%, #16213e 100%);\n    color: #e2e8f0;\n    font-family: 'Google Sans',\
+    \ -apple-system, BlinkMacSystemFont, sans-serif;\n    margin: 0;\n    padding:\
+    \ 40px;\n    min-height: 100vh;\n    display: flex;\n    flex-direction: column;\n\
+    \    align-items: center;\n    justify-content: center;\n    overflow: hidden;\n\
+    \  }\n  .container {\n    max-width: 600px;\n    text-align: center;\n    z-index:\
+    \ 10;\n    position: relative;\n  }\n  h1 {\n    font-size: 4rem;\n    background:\
+    \ linear-gradient(45deg, #22d399, #00e5ff, #a78bfa);\n    -webkit-background-clip:\
+    \ text;\n    -webkit-text-fill-color: transparent;\n    background-clip: text;\n\
+    \    margin-bottom: 20px;\n    animation: glow 2s ease-in-out infinite alternate;\n\
+    \  }\n  @keyframes glow {\n    from { filter: drop-shadow(0 0 20px #00e5ff); }\n\
+    \    to { filter: drop-shadow(0 0 30px #22d399); }\n  }\n  p {\n    font-size:\
+    \ 1.5rem;\n    margin-bottom: 50px;\n    opacity: 0.95;\n  }\n  .btn {\n    display:\
+    \ inline-block;\n    padding: 15px 40px;\n    font-size: 1.3rem;\n    font-weight:\
+    \ 600;\n    border: none;\n    border-radius: 25px;\n    cursor: pointer;\n  \
+    \  transition: all 0.3s ease;\n    box-shadow: 0 10px 30px rgba(0,0,0,0.4);\n\
+    \    margin: 0 10px;\n  }\n  .confirm-btn {\n    background: linear-gradient(135deg,\
+    \ #22d399, #00e5ff);\n    color: white;\n  }\n  .confirm-btn:hover {\n    transform:\
+    \ translateY(-5px);\n    box-shadow: 0 20px 40px rgba(34,211,153,0.6);\n  }\n\
+    \  .back-btn {\n    background: linear-gradient(135deg, #6b7280, #9ca3af);\n \
+    \   color: white;\n  }\n  .back-btn:hover {\n    transform: translateY(-5px);\n\
+    \    box-shadow: 0 20px 40px rgba(107,114,128,0.6);\n  }\n  #confetti-canvas {\n\
+    \    position: fixed;\n    top: 0;\n    left: 0;\n    pointer-events: none;\n\
+    \    z-index: 5;\n  }\n</style>\n<div class=\"container\">\n  <h1>\U0001F389 You\
+    \ Chose YES!</h1>\n  <p>A burst of celebration for your positive path! ✨</p>\n\
+    \  <form hx-post=\"/api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\"\
+    \ hx-swap=\"outerHTML\">\n    <button class=\"btn confirm-btn\" type=\"submit\"\
+    \ name=\"response[action}\" value=\"celebrate\">Confirm & Celebrate</button>\n\
+    \    <button class=\"btn back-btn\" type=\"submit\" name=\"response[action}\"\
+    \ value=\"welcome_screen\">Back to Choice</button>\n  </form>\n</div>\n<canvas\
+    \ id=\"confetti-canvas\"></canvas>\n<script>\n  function createConfetti() {\n\
+    \    const canvas = document.getElementById('confetti-canvas');\n    const ctx\
+    \ = canvas.getContext('2d');\n    canvas.width = window.innerWidth;\n    canvas.height\
+    \ = window.innerHeight;\n\n    const confetti = [];\n    const colors = ['#ff6b6b',\
+    \ '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe',\
+    \ '#00e5ff', '#22d399'];\n\n    for (let i = 0; i < 200; i++) {\n      confetti.push({\n\
+    \        x: Math.random() * canvas.width,\n        y: Math.random() * canvas.height\
+    \ - canvas.height,\n        r: Math.random() * 6 + 2,\n        d: Math.random()\
+    \ * 200 + 100,\n        color: colors[Math.floor(Math.random() * colors.length)],\n\
+    \        tilt: Math.random() * 10 - 5,\n        tiltAngle: 0\n      });\n    }\n\
+    \n    function draw() {\n      ctx.clearRect(0, 0, canvas.width, canvas.height);\n\
+    \      confetti.forEach((c, i) => {\n        c.tiltAngle += 0.1;\n        c.y\
+    \ += (Math.cos(c.d) + 3 + c.r / 2) / 2;\n        c.tilt = Math.sin(c.tiltAngle)\
+    \ * 15;\n\n        if (c.y > canvas.height) c.y = -10;\n\n        ctx.beginPath();\n\
+    \        ctx.lineWidth = c.r;\n        ctx.strokeStyle = c.color;\n        ctx.moveTo(c.x\
+    \ + c.tilt + c.r / 4, c.y);\n        ctx.lineTo(c.x + c.tilt, c.y + c.tilt + c.r\
+    \ / 4);\n        ctx.stroke();\n      });\n      requestAnimationFrame(draw);\n\
+    \    }\n    draw();\n  }\n\n  // Trigger confetti on load\n  window.addEventListener('load',\
+    \ createConfetti);\n</script>\n"
+  handoffs:
+  - celebrate
+  - welcome_screen
+- name: no_confirm
+  hitl: "\n<style>\n  body {\n    background: linear-gradient(135deg, #0f0f23 0%,\
+    \ #1a1a2e 50%, #16213e 100%);\n    color: #e2e8f0;\n    font-family: 'Google Sans',\
+    \ -apple-system, BlinkMacSystemFont, sans-serif;\n    margin: 0;\n    padding:\
+    \ 40px;\n    min-height: 100vh;\n    display: flex;\n    flex-direction: column;\n\
+    \    align-items: center;\n    justify-content: center;\n  }\n  .container {\n\
+    \    max-width: 600px;\n    text-align: center;\n  }\n  h1 {\n    font-size: 4rem;\n\
+    \    background: linear-gradient(45deg, #ef4444, #f97316);\n    -webkit-background-clip:\
+    \ text;\n    -webkit-text-fill-color: transparent;\n    background-clip: text;\n\
+    \    margin-bottom: 20px;\n  }\n  p {\n    font-size: 1.5rem;\n    margin-bottom:\
+    \ 50px;\n    opacity: 0.95;\n  }\n  .btn {\n    display: inline-block;\n    padding:\
+    \ 15px 40px;\n    font-size: 1.3rem;\n    font-weight: 600;\n    border: none;\n\
+    \    border-radius: 25px;\n    cursor: pointer;\n    transition: all 0.3s ease;\n\
+    \    box-shadow: 0 10px 30px rgba(0,0,0,0.4);\n    margin: 0 10px;\n  }\n  .confirm-btn\
+    \ {\n    background: linear-gradient(135deg, #6b7280, #9ca3af);\n    color: white;\n\
+    \  }\n  .confirm-btn:hover {\n    transform: translateY(-5px);\n    box-shadow:\
+    \ 0 20px 40px rgba(107,114,128,0.6);\n  }\n  .back-btn {\n    background: linear-gradient(135deg,\
+    \ #22d399, #00e5ff);\n    color: white;\n  }\n  .back-btn:hover {\n    transform:\
+    \ translateY(-5px);\n    box-shadow: 0 20px 40px rgba(34,211,153,0.6);\n  }\n\
+    </style>\n<div class=\"container\">\n  <h1>❌ You Chose NO</h1>\n  <p>A calm and\
+    \ resolute path ahead. Choice confirmed. \U0001F30C</p>\n  <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <button\
+    \ class=\"btn confirm-btn\" type=\"submit\" name=\"response[action}\" value=\"\
+    welcome_screen\">Choice Confirmed - Restart</button>\n    <button class=\"btn\
+    \ back-btn\" type=\"submit\" name=\"response[action}\" value=\"welcome_screen\"\
+    >Back to Choice</button>\n  </form>\n</div>\n"
+  handoffs:
+  - welcome_screen
+- name: celebrate
+  hitl: "\n<style>\n  body {\n    background: linear-gradient(135deg, #0f0f23 0%,\
+    \ #1a1a2e 50%, #16213e 100%);\n    color: #e2e8f0;\n    font-family: 'Google Sans',\
+    \ -apple-system, BlinkMacSystemFont, sans-serif;\n    margin: 0;\n    padding:\
+    \ 40px;\n    min-height: 100vh;\n    display: flex;\n    flex-direction: column;\n\
+    \    align-items: center;\n    justify-content: center;\n    overflow: hidden;\n\
+    \  }\n  .container {\n    max-width: 700px;\n    text-align: center;\n    z-index:\
+    \ 10;\n    position: relative;\n  }\n  h1 {\n    font-size: 5rem;\n    background:\
+    \ linear-gradient(45deg, #22d399, #00e5ff, #a78bfa, #ff6b6b);\n    -webkit-background-clip:\
+    \ text;\n    -webkit-text-fill-color: transparent;\n    background-clip: text;\n\
+    \    margin-bottom: 30px;\n    animation: rainbowGlow 3s ease-in-out infinite;\n\
+    \  }\n  @keyframes rainbowGlow {\n    0%, 100% { filter: drop-shadow(0 0 20px\
+    \ #00e5ff); }\n    33% { filter: drop-shadow(0 0 30px #22d399); }\n    66% { filter:\
+    \ drop-shadow(0 0 30px #a78bfa); }\n  }\n  p {\n    font-size: 1.8rem;\n    margin-bottom:\
+    \ 60px;\n    opacity: 0.98;\n  }\n  .restart-btn {\n    display: inline-block;\n\
+    \    padding: 20px 50px;\n    font-size: 1.5rem;\n    font-weight: 700;\n    border:\
+    \ none;\n    border-radius: 30px;\n    cursor: pointer;\n    transition: all 0.4s\
+    \ ease;\n    box-shadow: 0 15px 40px rgba(0,0,0,0.5);\n    background: linear-gradient(135deg,\
+    \ #22d399, #00e5ff);\n    color: white;\n  }\n  .restart-btn:hover {\n    transform:\
+    \ translateY(-10px) scale(1.08);\n    box-shadow: 0 30px 60px rgba(34,211,153,0.7);\n\
+    \  }\n  #confetti-canvas {\n    position: fixed;\n    top: 0;\n    left: 0;\n\
+    \    pointer-events: none;\n    z-index: 5;\n  }\n</style>\n<div class=\"container\"\
+    >\n  <h1>\U0001F38A YES CONFIRMED! \U0001F38A</h1>\n  <p>Celebration unlocked!\
+    \ A universe of possibilities bursts forth. ✨\U0001F30C</p>\n  <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"\
+    outerHTML\">\n    <button class=\"restart-btn\" type=\"submit\" name=\"response[action}\"\
+    \ value=\"welcome_screen\">Play Again ✨</button>\n  </form>\n</div>\n<canvas id=\"\
+    confetti-canvas\"></canvas>\n<script>\n  function epicConfettiBurst() {\n    const\
+    \ canvas = document.getElementById('confetti-canvas');\n    const ctx = canvas.getContext('2d');\n\
+    \    canvas.width = window.innerWidth;\n    canvas.height = window.innerHeight;\n\
+    \n    const confetti = [];\n    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1',\
+    \ '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7', '#a29bfe', '#00e5ff', '#22d399',\
+    \ '#fdcb6e', '#fd79a8'];\n\n    // Burst from center\n    const centerX = canvas.width\
+    \ / 2;\n    const centerY = canvas.height / 2;\n\n    for (let i = 0; i < 500;\
+    \ i++) {  // More confetti!\n      const angle = (Math.PI * 2 * i) / 500;\n  \
+    \    const velocity = 200 + Math.random() * 300;\n      confetti.push({\n    \
+    \    x: centerX,\n        y: centerY,\n        vx: Math.cos(angle) * velocity,\n\
+    \        vy: Math.sin(angle) * velocity,\n        r: Math.random() * 8 + 3,\n\
+    \        d: Math.random() * 500,\n        color: colors[Math.floor(Math.random()\
+    \ * colors.length)],\n        tilt: Math.random() * 10 - 5,\n        tiltAngle:\
+    \ Math.random() * Math.PI * 2\n      });\n    }\n\n    function draw() {\n   \
+    \   ctx.clearRect(0, 0, canvas.width, canvas.height);\n      let active = false;\n\
+    \      confetti.forEach((c, i) => {\n        c.x += c.vx * 0.02;\n        c.y\
+    \ += c.vy * 0.02;\n        c.vx *= 0.98;\n        c.vy *= 0.98;\n        c.tiltAngle\
+    \ += 0.2;\n        c.tilt = Math.sin(c.tiltAngle) * 15;\n\n        if (Math.abs(c.vx)\
+    \ > 0.1 || Math.abs(c.vy) > 0.1) {\n          active = true;\n        }\n\n  \
+    \      ctx.beginPath();\n        ctx.lineWidth = c.r;\n        ctx.strokeStyle\
+    \ = c.color;\n        ctx.moveTo(c.x + c.tilt + c.r / 4, c.y);\n        ctx.lineTo(c.x\
+    \ + c.tilt, c.y + c.tilt + c.r / 4);\n        ctx.stroke();\n      });\n     \
+    \ if (active) {\n        requestAnimationFrame(draw);\n      } else {\n      \
+    \  // Continuous gentle fall after burst\n        createGentleConfetti();\n  \
+    \    }\n    }\n    draw();\n  }\n\n  function createGentleConfetti() {\n    const\
+    \ canvas = document.getElementById('confetti-canvas');\n    const ctx = canvas.getContext('2d');\n\
+    \    // ... (reuse the gentle falling confetti from yes_confirm if needed, but\
+    \ burst is main)\n    // For now, burst is enough\n  }\n\n  window.addEventListener('load',\
+    \ epicConfettiBurst);\n</script>\n"
+  handoffs:
+  - welcome_screen
+_calliope_metadata:
+  created_at: '2025-12-29T20:57:27.451294'
+  version: 1

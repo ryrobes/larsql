@@ -961,8 +961,28 @@ class SqlMappingConfig(BaseModel):
 class CellConfig(BaseModel):
     name: str
 
-    # ===== SQL-Native Mapping (NEW) =====
+    # ===== SQL-Native Mapping =====
     for_each_row: Optional[SqlMappingConfig] = None  # SQL table row fan-out
+
+    # ===== HITL Screen Cell (Calliope) =====
+    # For HITL screens, hitl contains raw HTML/HTMX that gets displayed and blocks for user input.
+    # This is deterministic (no LLM needed) - the HTML is rendered directly.
+    # Forms should use: hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc"
+    # Jinja2 templating supported: {{ input.* }}, {{ state.* }}, {{ outputs.cell_name.* }}
+    #
+    # Example:
+    #   - name: review_screen
+    #     hitl: |
+    #       <h2>Review Items</h2>
+    #       <div id="items">{{ outputs.load_data.result | tojson }}</div>
+    #       <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+    #         <button name="response[action]" value="approve">Approve</button>
+    #         <button name="response[action]" value="reject">Reject</button>
+    #       </form>
+    #     handoffs: [process_approved, review_screen]
+    hitl: Optional[str] = None
+    hitl_title: Optional[str] = None  # Title shown in checkpoint header
+    hitl_description: Optional[str] = None  # Description/context shown above the HTML
 
     # ===== LLM Phase Fields (existing) =====
     # For LLM phases, instructions is required and defines the agent's task
@@ -1058,23 +1078,34 @@ class CellConfig(BaseModel):
     intra_context: Optional[IntraPhaseContextConfig] = None
 
     def is_deterministic(self) -> bool:
-        """Check if this phase is deterministic (tool-based) vs LLM-based."""
-        return self.tool is not None
+        """Check if this phase is deterministic (tool-based or hitl) vs LLM-based."""
+        return self.tool is not None or self.hitl is not None
+
+    def is_hitl_screen(self) -> bool:
+        """Check if this phase is a HITL screen (direct HTML rendering)."""
+        return self.hitl is not None
 
     def model_post_init(self, __context) -> None:
         """Validate phase configuration after initialization."""
-        # Must have either tool (deterministic), instructions (LLM), or for_each_row (SQL mapping)
+        # Must have exactly one of: tool, instructions, for_each_row, or hitl
         has_tool = bool(self.tool)
         has_instructions = bool(self.instructions)
         has_for_each_row = bool(self.for_each_row)
+        has_hitl = bool(self.hitl)
 
-        execution_types = sum([has_tool, has_instructions, has_for_each_row])
+        execution_types = sum([has_tool, has_instructions, has_for_each_row, has_hitl])
 
         if execution_types == 0:
-            raise ValueError(f"Cell '{self.name}' must have either 'tool' (deterministic), 'instructions' (LLM), or 'for_each_row' (SQL mapping)")
+            raise ValueError(
+                f"Cell '{self.name}' must have exactly one of: "
+                "'tool' (deterministic), 'instructions' (LLM), 'for_each_row' (SQL mapping), or 'hitl' (screen)"
+            )
 
         if execution_types > 1:
-            raise ValueError(f"Cell '{self.name}' can only have ONE of: 'tool', 'instructions', or 'for_each_row'")
+            raise ValueError(
+                f"Cell '{self.name}' can only have ONE of: "
+                "'tool', 'instructions', 'for_each_row', or 'hitl'"
+            )
 
 
 # ===== Trigger Configuration =====

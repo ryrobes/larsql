@@ -57,8 +57,13 @@ InputsNode.displayName = 'InputsNode';
 
 /**
  * CellNode - Simplified read-only cell card
+ *
+ * @param {Object} cell - Cell definition
+ * @param {boolean} isBranch - Cell branches to multiple targets
+ * @param {boolean} isMerge - Cell receives from multiple sources
+ * @param {string} status - Execution status: 'completed', 'running', 'waiting', 'error', 'pending'
  */
-const CellNode = React.memo(({ cell, isBranch, isMerge }) => {
+const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
   // Type info - check for tool field or if it's a regular LLM cell
   const typeInfo = {
     sql_data: { label: 'SQL', icon: 'mdi:database', color: '#60a5fa' },
@@ -69,10 +74,12 @@ const CellNode = React.memo(({ cell, isBranch, isMerge }) => {
     windlass_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
     linux_shell_dangerous: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
+    hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
 
-  // Determine cell type
-  const cellType = cell.tool || cell.deterministic_tool || (cell.instructions ? 'llm_cell' : 'python_data');
+  // Determine cell type - check for hitl key first (HTMX screens)
+  const cellType = cell.hitl ? 'hitl_screen' :
+    (cell.tool || cell.deterministic_tool || (cell.instructions ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.llm_cell;
 
   // Check for candidates/soundings
@@ -85,9 +92,12 @@ const CellNode = React.memo(({ cell, isBranch, isMerge }) => {
   // Check for loop_until
   const hasLoopUntil = cell.has_loop_until;
 
+  // Build class names including status
+  const statusClass = status ? `status-${status}` : '';
+
   return (
     <div
-      className={`spec-cell-node ${hasCandidates ? 'has-candidates' : ''}`}
+      className={`spec-cell-node ${hasCandidates ? 'has-candidates' : ''} ${statusClass}`}
       title={cell.name}
     >
       {/* Top row: Type + badges */}
@@ -257,6 +267,7 @@ EdgesSVG.displayName = 'EdgesSVG';
  * @param {Array} cells - Array of cell definitions (phases)
  * @param {Object} inputsSchema - Input parameter schema
  * @param {string} cascadeId - Cascade identifier for display
+ * @param {Object} cellStatus - Map of cell name to status: { cellName: 'completed' | 'running' | 'waiting' | 'error' | 'pending' }
  * @param {number} maxHeight - Maximum height constraint (optional)
  */
 // Height threshold for switching between linear and graph mode
@@ -265,7 +276,7 @@ const DEFAULT_HEIGHT = 140;
 const MIN_HEIGHT = 140; // Same as default - perfect for single row of nodes
 const MAX_HEIGHT = 500;
 
-const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId }) => {
+const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) => {
   const containerRef = useRef(null);
   const [isGrabbing, setIsGrabbing] = useState(false);
   const grabStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
@@ -473,6 +484,24 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId }) => {
           </button>
         </div>
         <div className="spec-graph-legend">
+          {/* Execution status legend - only show if any cells have status */}
+          {Object.keys(cellStatus).length > 0 && (
+            <>
+              <div className="legend-item">
+                <div className="legend-dot status-dot" style={{ backgroundColor: '#22c55e' }} />
+                <span>Done</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-dot status-dot pulsing" style={{ backgroundColor: '#fbbf24' }} />
+                <span>Running</span>
+              </div>
+              <div className="legend-item">
+                <div className="legend-dot status-dot pulsing" style={{ backgroundColor: '#f97316' }} />
+                <span>Waiting</span>
+              </div>
+              <div className="legend-separator" />
+            </>
+          )}
           <div className="legend-item">
             <div className="legend-dot" style={{ backgroundColor: '#fbbf24', border: '1px dashed #fbbf24' }} />
             <span>Input</span>
@@ -556,6 +585,7 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId }) => {
                 cell={node.cell}
                 isBranch={node.isBranch}
                 isMerge={node.isMerge}
+                status={cellStatus[node.cell.name]}
               />
             </div>
           ))}

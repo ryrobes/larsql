@@ -576,8 +576,8 @@ def _generate_medium_ui(
             has_base64 = 'base64' in sec
             has_cards = 'cards' in sec
             print(f"  [{i}] type={sec_type}, has_base64={has_base64}, has_cards={has_cards}")
-            if has_cards:
-                print(f"      cards count: {len(sec.get('cards', []))}")
+            # if has_cards:
+            #     print(f"      cards count: {len(sec.get('cards', []))}")
         return result
 
     elif use_two_column:

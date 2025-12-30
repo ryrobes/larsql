@@ -463,8 +463,8 @@ def execute_deterministic_phase(
             original_error=e
         )
 
-    # Inject context for ALL data tools (sql_data, python_data, js_data, clojure_data, rvbbit_data, bash_data)
-    if phase.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data"):
+    # Inject context for ALL data tools (sql_data, python_data, js_data, clojure_data, rvbbit_data, bash_data, bodybuilder)
+    if phase.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder"):
         rendered_inputs["_cell_name"] = phase.name
         rendered_inputs["_session_id"] = echo.session_id
 
@@ -518,3 +518,235 @@ def execute_deterministic_phase(
         console.print(f"{indent}  [magenta]→ Routing to: {next_cell}[/magenta]")
 
     return result, next_cell
+
+
+# =============================================================================
+# HITL Screen Execution (Calliope)
+# =============================================================================
+
+def execute_hitl_phase(
+    phase: CellConfig,
+    input_data: Dict[str, Any],
+    echo: Any,  # Echo object
+    session_id: str,
+    trace: Any = None,  # TraceNode
+    depth: int = 0
+) -> Tuple[Any, Optional[str]]:
+    """
+    Execute a HITL screen phase - render HTML and block for user response.
+
+    This is deterministic execution (no LLM) - the HTML template is rendered
+    directly using Jinja2 and displayed via the checkpoint system.
+
+    Args:
+        phase: Phase configuration with hitl field containing HTML/HTMX
+        input_data: Input data for the cascade
+        echo: Echo object with state/history
+        session_id: Current session ID
+        trace: Optional TraceNode for logging
+        depth: Execution depth (for logging indentation)
+
+    Returns:
+        Tuple of (response_dict, next_cell_name)
+
+    The response from the user is stored in echo.state[phase.name] and
+    can be used for routing via the response[action] or response[selected] fields.
+    """
+    from .checkpoints import get_checkpoint_manager, CheckpointType
+
+    indent = "  " * depth
+
+    console.print(f"\n{indent}[bold magenta]📺 HITL Screen: {phase.name}[/bold magenta]")
+
+    # Build render context
+    outputs = {}
+    for item in echo.lineage:
+        output = item.get("output")
+        if isinstance(output, dict):
+            outputs[item["cell"]] = output
+
+    render_context = {
+        "input": input_data,
+        "state": echo.state,
+        "outputs": outputs,
+        "lineage": echo.lineage,
+        "history": echo.history,
+        "session_id": session_id,
+    }
+
+    # Render the HITL HTML template
+    try:
+        rendered_html = render_instruction(phase.hitl, render_context)
+        console.print(f"{indent}  [dim]HTML template rendered ({len(rendered_html)} chars)[/dim]")
+    except Exception as e:
+        console.print(f"{indent}  [red]✗ Template rendering failed: {e}[/red]")
+        return {"error": f"Template rendering failed: {e}", "_timeout": False}, None
+
+    # Build UI spec compatible with request_decision format
+    ui_spec = _build_hitl_ui_spec(
+        html=rendered_html,
+        title=phase.hitl_title or phase.name,
+        description=phase.hitl_description,
+    )
+
+    # Create checkpoint
+    checkpoint_manager = get_checkpoint_manager()
+
+    # Determine timeout from phase config or default
+    timeout_seconds = 3600  # 1 hour default
+    if phase.timeout:
+        parsed = parse_timeout(phase.timeout)
+        if parsed:
+            timeout_seconds = int(parsed)
+
+    cascade_id = trace.name if trace else echo.cascade_id if hasattr(echo, 'cascade_id') else "unknown"
+
+    checkpoint = checkpoint_manager.create_checkpoint(
+        session_id=session_id,
+        cascade_id=cascade_id,
+        cell_name=phase.name,
+        checkpoint_type=CheckpointType.DECISION,
+        phase_output=phase.hitl_description or f"Screen: {phase.name}",
+        ui_spec=ui_spec,
+        echo_snapshot={},
+        timeout_seconds=timeout_seconds,
+    )
+
+    console.print(f"{indent}  [cyan]⏳ Waiting for user response (checkpoint: {checkpoint.id[:8]}...)[/cyan]")
+
+    # Block for response
+    response = checkpoint_manager.wait_for_response(
+        checkpoint_id=checkpoint.id,
+        timeout=timeout_seconds,
+        poll_interval=0.5,
+    )
+
+    if response is None:
+        console.print(f"{indent}  [yellow]⚠ No response received (timeout)[/yellow]")
+        result = {"error": "No response received (timeout)", "_timeout": True}
+    else:
+        console.print(f"{indent}  [green]✓ Response received[/green]")
+
+        # Wrap response in consistent format
+        if isinstance(response, dict):
+            result = response
+        else:
+            result = {"response": response}
+
+        # Log response preview
+        response_preview = str(result)[:100] + "..." if len(str(result)) > 100 else str(result)
+        console.print(f"{indent}  [dim]Response: {response_preview}[/dim]")
+
+    # Store response in echo state for downstream phases
+    echo.state[phase.name] = result
+
+    # Determine next phase (routing)
+    # HITL screens use response["action"] or response["selected"] for routing
+    handoffs = phase.handoffs or []
+    next_cell = _determine_hitl_routing(result, phase.routing, handoffs)
+
+    if next_cell:
+        console.print(f"{indent}  [magenta]→ Routing to: {next_cell}[/magenta]")
+
+    return result, next_cell
+
+
+def _build_hitl_ui_spec(
+    html: str,
+    title: str,
+    description: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Build UI spec for HITL cell, matching request_decision format.
+
+    The UI spec structure allows the frontend to render the HITL screen
+    using the same components as request_decision.
+    """
+    sections = []
+
+    if title:
+        sections.append({
+            "type": "header",
+            "text": title,
+            "level": 2,
+        })
+
+    if description:
+        sections.append({
+            "type": "text",
+            "content": description,
+        })
+
+    # Main HTML content
+    sections.append({
+        "type": "html",
+        "content": html,
+        "allow_forms": True,
+    })
+
+    return {
+        "layout": "vertical",
+        "title": title,
+        "sections": sections,
+        "_meta": {
+            "type": "hitl_screen",
+            "generated_by": "deterministic",
+        }
+    }
+
+
+def _determine_hitl_routing(
+    result: Dict[str, Any],
+    routing_config: Optional[Dict[str, str]],
+    handoffs: list
+) -> Optional[str]:
+    """
+    Determine next phase based on HITL response and routing config.
+
+    HITL routing uses these fields from the response (in priority order):
+    1. response["action"] - Common for button selections
+    2. response["selected"] - Common for card/option selections
+    3. response["_route"] - Explicit routing directive
+
+    Args:
+        result: The HITL response from the user
+        routing_config: Maps response values to handoff targets
+        handoffs: List of valid handoff targets
+
+    Returns:
+        Name of the next phase, or None if no routing
+    """
+    # Extract route key from response
+    route_key = None
+
+    if isinstance(result, dict):
+        # Check common HITL response fields
+        route_key = (
+            result.get("action") or
+            result.get("selected") or
+            result.get("_route") or
+            result.get("response", {}).get("action") if isinstance(result.get("response"), dict) else None
+        )
+
+    # If routing config exists, use it
+    if routing_config and route_key:
+        if route_key in routing_config:
+            return routing_config[route_key]
+        # Check for default/fallback
+        if "default" in routing_config:
+            return routing_config["default"]
+
+    # If single handoff, use it
+    if len(handoffs) == 1:
+        if isinstance(handoffs[0], str):
+            return handoffs[0]
+        return handoffs[0].target
+
+    # If multiple handoffs but no routing, try to match route_key to handoff name
+    if route_key:
+        for handoff in handoffs:
+            handoff_name = handoff if isinstance(handoff, str) else handoff.target
+            if handoff_name == route_key:
+                return handoff_name
+
+    return None

@@ -82,6 +82,14 @@ export const views = {
     enabled: true,
   },
 
+  calliope: {
+    component: lazy(() => import('./calliope/CalliopeView')),
+    icon: 'mdi:account-heart',
+    label: 'Calliope',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

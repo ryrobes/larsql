@@ -5,6 +5,7 @@ import uuid
 from typing import Optional, List, Dict, Any, Union
 from ..tracing import get_current_trace, TraceNode
 from ..config import get_config
+from .state_tools import get_current_session_id
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -21,14 +22,100 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
         parent_session_id: The session_id of the parent cascade.
         candidate_index: The candidate index if spawned from within a candidate.
     """
-    # Resolve path. Assume cascade_ref is either absolute or relative to the project root.
-    resolved_cascade_ref = cascade_ref
-    if not os.path.isabs(cascade_ref):
-        # Assume cascade_ref is relative to the project root (where run_cascade is called)
-        resolved_cascade_ref = os.path.join(os.getcwd(), cascade_ref)
+    # Get parent session ID from context if not explicitly provided
+    if not parent_session_id:
+        parent_session_id = get_current_session_id()
+        if parent_session_id:
+            print(f"[spawn_cascade] Using current session context: {parent_session_id}")
 
-    if not os.path.exists(resolved_cascade_ref) and os.path.exists(resolved_cascade_ref + ".json"):
-         resolved_cascade_ref = resolved_cascade_ref + ".json"
+    # Resolve path relative to RVBBIT_ROOT (not cwd, which may be the studio backend)
+    cfg = get_config()
+    resolved_cascade_ref = None
+
+    # If it's an absolute path, use it directly
+    if os.path.isabs(cascade_ref):
+        resolved_cascade_ref = cascade_ref
+    else:
+        # Smart search for the cascade file
+        # Build list of candidate paths to check
+        candidates = []
+
+        # 1. Direct path relative to RVBBIT_ROOT
+        candidates.append(os.path.join(cfg.root_dir, cascade_ref))
+
+        # 2. With common extensions
+        for ext in ['.yaml', '.yml', '.json']:
+            candidates.append(os.path.join(cfg.root_dir, cascade_ref + ext))
+
+        # 3. In cascades directory
+        candidates.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref))
+        for ext in ['.yaml', '.yml', '.json']:
+            candidates.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref + ext))
+
+        # 4. In calliope subdirectories - PRIORITIZE current session's directory
+        # This ensures we find the cascade being built in the current session, not an older one
+        calliope_dir = os.path.join(cfg.root_dir, 'cascades', 'calliope')
+        if os.path.exists(calliope_dir):
+            try:
+                # First, check the parent session's calliope directory (if we're spawned from Calliope)
+                if parent_session_id:
+                    parent_calliope_dir = os.path.join(calliope_dir, parent_session_id)
+                    if os.path.isdir(parent_calliope_dir):
+                        for ext in ['', '.yaml', '.yml', '.json']:
+                            candidates.append(os.path.join(parent_calliope_dir, cascade_ref + ext))
+                        print(f"[spawn_cascade] Prioritizing parent session directory: {parent_calliope_dir}")
+
+                # Then search all session directories, sorted by modification time (newest first)
+                session_dirs = []
+                for d in os.listdir(calliope_dir):
+                    dir_path = os.path.join(calliope_dir, d)
+                    if os.path.isdir(dir_path):
+                        # Skip the parent session dir (already added above)
+                        if parent_session_id and d == parent_session_id:
+                            continue
+                        session_dirs.append((dir_path, os.path.getmtime(dir_path)))
+                session_dirs.sort(key=lambda x: x[1], reverse=True)  # Newest first
+
+                for dir_path, _ in session_dirs:
+                    # Try the cascade name in this session directory
+                    for ext in ['', '.yaml', '.yml', '.json']:
+                        candidates.append(os.path.join(dir_path, cascade_ref + ext))
+            except Exception as e:
+                print(f"[spawn_cascade] Error scanning calliope dirs: {e}")
+
+        # 5. In traits directory
+        candidates.append(os.path.join(cfg.root_dir, 'traits', cascade_ref))
+        for ext in ['.yaml', '.yml', '.json']:
+            candidates.append(os.path.join(cfg.root_dir, 'traits', cascade_ref + ext))
+
+        # Find first existing file
+        for candidate in candidates:
+            if os.path.exists(candidate) and os.path.isfile(candidate):
+                resolved_cascade_ref = candidate
+                print(f"[spawn_cascade] Found cascade at: {resolved_cascade_ref}")
+                break
+
+        if not resolved_cascade_ref:
+            # Fall back to the basic resolution
+            resolved_cascade_ref = os.path.join(cfg.root_dir, cascade_ref)
+            print(f"[spawn_cascade] WARNING: Could not find cascade '{cascade_ref}'")
+            print(f"[spawn_cascade] Searched {len(candidates)} locations")
+
+    # Debug: Log what we're about to spawn and verify file contents
+    if os.path.exists(resolved_cascade_ref):
+        try:
+            import yaml
+            with open(resolved_cascade_ref, 'r') as f:
+                content = yaml.safe_load(f)
+            cell_count = len(content.get('cells', [])) if content else 0
+            print(f"[spawn_cascade] Loading {resolved_cascade_ref}")
+            print(f"[spawn_cascade] Found {cell_count} cells in file")
+            if cell_count > 0:
+                print(f"[spawn_cascade] Cell names: {[c.get('name') for c in content.get('cells', [])]}")
+        except Exception as e:
+            print(f"[spawn_cascade] Failed to read cascade file: {e}")
+    else:
+        print(f"[spawn_cascade] WARNING: File does not exist: {resolved_cascade_ref}")
 
     # Generate unique session ID (include candidate index if provided)
     if candidate_index is not None:
@@ -121,10 +208,11 @@ def map_cascade(
         except ValueError:
             timeout = None
 
-    # Resolve cascade path
+    # Resolve cascade path relative to RVBBIT_ROOT (not cwd)
+    cfg = get_config()
     resolved_cascade_ref = cascade
     if not os.path.isabs(cascade):
-        resolved_cascade_ref = os.path.join(os.getcwd(), cascade)
+        resolved_cascade_ref = os.path.join(cfg.root_dir, cascade)
 
     # Add .yaml or .json extension if needed
     if not os.path.exists(resolved_cascade_ref):

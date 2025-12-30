@@ -210,10 +210,14 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
     windlass_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    bodybuilder: { label: 'Bodybuilder', icon: 'mdi:dumbbell', color: '#ff6b35' },
     linux_shell: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize
     linux_shell_dangerous: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize (host)
+    hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
-  const cellType = cell.tool || (cell.instructions ? 'llm_cell' : 'python_data');
+  // Determine cell type - check for hitl key first (HTMX screens)
+  const cellType = cell.hitl ? 'hitl_screen' :
+    (cell.tool || (cell.instructions ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Status icon

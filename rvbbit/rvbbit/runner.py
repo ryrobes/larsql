@@ -8574,6 +8574,10 @@ Refinement directive: {reforge_config.honing_prompt}
             if phase.for_each_row:
                 return self._execute_sql_mapping_phase(phase, input_data, trace)
 
+            # Check if this is a HITL screen phase (direct HTML rendering, no LLM)
+            if phase.is_hitl_screen():
+                return self._execute_hitl_phase(phase, input_data, trace)
+
             # Check if this is a deterministic (tool-based) phase
             if phase.is_deterministic():
                 return self._execute_deterministic_phase(phase, input_data, trace)
@@ -9670,6 +9674,127 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     return self._execute_phase_internal(fallback_phase, input_data, fallback_trace)
 
             # No error handler - re-raise
+            raise
+
+    def _execute_hitl_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
+        """
+        Execute a HITL screen phase - render HTML and block for user response.
+
+        This is deterministic execution (no LLM) - the HTML template is rendered
+        directly using Jinja2 and displayed via the checkpoint system.
+        """
+        from .deterministic import execute_hitl_phase
+        from .unified_logs import log_unified
+        import time
+
+        indent = "  " * self.depth
+        start_time = time.time()
+
+        # Compute species hash for this cell execution
+        try:
+            from .utils import compute_species_hash
+
+            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
+            phase_species_hash = compute_species_hash(phase_config, input_data)
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Could not compute species_hash for HITL {phase.name}: {e}")
+            phase_species_hash = "unknown_species"
+
+        # Log phase start
+        log_message(self.session_id, "phase_start", phase.name,
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="hitl_screen",
+                    depth=self.depth, parent_session_id=self.parent_session_id,
+                    cell_name=phase.name, cascade_id=self.config.cascade_id,
+                    species_hash=phase_species_hash,
+                    metadata={"phase_type": "hitl_screen"})
+
+        # Update phase progress
+        update_phase_progress(
+            self.session_id, self.config.cascade_id, phase.name, self.depth,
+            stage="hitl_screen"
+        )
+
+        try:
+            # Execute the HITL screen cell
+            result, next_cell = execute_hitl_phase(
+                phase,
+                input_data=input_data,
+                echo=self.echo,
+                session_id=self.session_id,
+                trace=trace,
+                depth=self.depth
+            )
+
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Update echo state with result
+            self.echo.state[f"output_{phase.name}"] = result
+
+            # Add to lineage
+            self.echo.lineage.append({
+                "cell": phase.name,
+                "output": result,
+                "type": "hitl_screen",
+                "duration_ms": duration_ms
+            })
+
+            # Log to unified logs
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                parent_session_id=self.parent_session_id,
+                node_type="hitl_screen",
+                role="user",  # User provided the response
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                cascade_file=self.config_path if isinstance(self.config_path, str) else None,
+                cell_name=phase.name,
+                species_hash=phase_species_hash,
+                content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
+                duration_ms=duration_ms,
+                metadata={
+                    "phase_type": "hitl_screen",
+                    "next_cell": next_cell,
+                    "timeout": result.get("_timeout", False) if isinstance(result, dict) else False
+                }
+            )
+
+            # Hook: Phase Complete
+            self.hooks.on_phase_complete(phase.name, self.session_id, {
+                "output": result,
+                "duration_ms": duration_ms,
+            })
+
+            # Return next phase name or result
+            if next_cell:
+                return next_cell
+            return result
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            # Log error
+            log_unified(
+                session_id=self.session_id,
+                trace_id=trace.id,
+                parent_id=trace.parent_id,
+                node_type="error",
+                role="error",
+                depth=self.depth,
+                cascade_id=self.config.cascade_id,
+                cell_name=phase.name,
+                content=f"HITL screen failed: {str(e)}",
+                duration_ms=duration_ms,
+                metadata={
+                    "phase_type": "hitl_screen",
+                    "error": str(e)
+                }
+            )
+
+            # Re-raise
             raise
 
     def _execute_phase_internal(self, phase: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:

@@ -38,13 +38,15 @@ function CardGridSection({ spec, value, onChange }) {
     }
   };
 
+  const isRowLayout = columns === 1;
+
   return (
-    <div className="ui-section card-grid-section">
+    <div className={`ui-section card-grid-section ${isRowLayout ? 'row-layout' : ''}`}>
       <div
-        className="card-grid"
+        className={`card-grid ${isRowLayout ? 'card-grid-rows' : ''}`}
         style={{
           gridTemplateColumns: `repeat(${columns}, 1fr)`,
-          gap: `${spec.gap || 16}px`
+          gap: `${spec.gap || (isRowLayout ? 4 : 8)}px`
         }}
       >
         {cards.map((card) => (
@@ -55,6 +57,8 @@ function CardGridSection({ spec, value, onChange }) {
               ${selectionMode !== 'none' ? 'selectable' : ''}
               ${isSelected(card.id) ? 'selected' : ''}
               ${card.disabled ? 'disabled' : ''}
+              ${card.recommended ? 'recommended' : ''}
+              ${card.variant === 'danger' ? 'danger' : ''}
             `}
             onClick={() => !card.disabled && handleSelect(card.id)}
           >

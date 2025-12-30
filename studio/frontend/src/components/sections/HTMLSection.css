@@ -1,67 +1,71 @@
-/* HTMLSection - Styles for HTMX iframe wrapper */
+/* HTMLSection - RVBBIT AppShell Theme
+   Data-dense HTMX iframe wrapper */
 
 .html-section-wrapper {
-  position: relative; /* Required for annotation overlay positioning */
-  margin: 1rem 0;
+  position: relative;
+  margin: 6px 0;
 }
 
 /* Security warning banner */
 .html-section-dev-warning {
-  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
-  color: #0a0a0a;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 1rem;
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  color: var(--color-accent-red, #f87171);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  margin-bottom: 6px;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 10px;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  box-shadow: 0 2px 4px rgba(248, 113, 113, 0.3);
+  gap: 6px;
 }
 
 /* Iframe container */
 .html-section-iframe {
-  background: #121212;
-  border-radius: 8px;
+  background: var(--color-bg-card, #000000);
+  border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.15));
+  border-radius: var(--radius-sm, 4px);
   overflow: hidden;
-  transition: height 0.2s ease-out;
+  transition: height 0.15s ease-out;
 }
 
 /* Error display */
 .html-section-error {
-  background: #1a1a1a;
-  border: 2px solid #f87171;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin: 1rem 0;
+  background: var(--color-bg-card, #000000);
+  border: 1px solid var(--color-accent-red, #f87171);
+  border-radius: var(--radius-sm, 4px);
+  padding: 10px;
+  margin: 6px 0;
 }
 
 .html-section-error h3 {
-  color: #f87171;
-  margin: 0 0 0.5rem 0;
-  font-size: 1rem;
-  font-weight: 600;
+  color: var(--color-accent-red, #f87171);
+  margin: 0 0 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .html-section-error p {
-  color: #e5e7eb;
-  margin: 0 0 1rem 0;
-  font-size: 0.875rem;
+  color: var(--color-text-secondary, #cbd5e1);
+  margin: 0 0 8px 0;
+  font-size: 11px;
 }
 
 .html-section-error details {
-  margin-top: 1rem;
+  margin-top: 8px;
 }
 
 .html-section-error summary {
-  color: #a78bfa;
+  color: var(--color-accent-purple, #a78bfa);
   cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  padding: 0.5rem;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 6px;
   background: rgba(167, 139, 250, 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius-sm, 4px);
   user-select: none;
 }
 
@@ -70,14 +74,14 @@
 }
 
 .html-section-error pre {
-  background: #0a0a0a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.1));
+  border-radius: var(--radius-sm, 4px);
+  padding: 8px;
   overflow-x: auto;
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-top: 0.5rem;
+  font-size: 10px;
+  color: var(--color-text-muted, #94a3b8);
+  margin-top: 6px;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -116,45 +120,45 @@
 /* Annotate button - shown when annotation mode is available */
 .annotate-toggle-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid #333;
-  background: rgba(26, 26, 26, 0.95);
-  color: #e5e7eb;
-  font-size: 0.8rem;
-  font-weight: 500;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.15));
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--color-text-secondary, #cbd5e1);
+  font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   backdrop-filter: blur(4px);
 }
 
 .annotate-toggle-btn:hover {
-  border-color: #a78bfa;
-  color: #a78bfa;
+  border-color: var(--color-accent-purple, #a78bfa);
+  color: var(--color-accent-purple, #a78bfa);
   background: rgba(167, 139, 250, 0.1);
 }
 
 .annotate-toggle-btn.active {
-  border-color: #a78bfa;
+  border-color: var(--color-accent-purple, #a78bfa);
   background: rgba(167, 139, 250, 0.2);
-  color: #a78bfa;
+  color: var(--color-accent-purple, #a78bfa);
 }
 
 .annotate-toggle-btn.has-annotations {
-  border-color: #10b981;
-  color: #10b981;
+  border-color: var(--color-accent-green, #34d399);
+  color: var(--color-accent-green, #34d399);
 }
 
 .annotate-toggle-btn.screenshot-saved {
-  border-color: #10b981;
-  background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  border-color: var(--color-accent-green, #34d399);
+  background: rgba(52, 211, 153, 0.2);
+  color: var(--color-accent-green, #34d399);
 }
 
 .html-section-wrapper.has-saved-screenshot {
@@ -169,31 +173,31 @@
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 0 24px 24px 0;
-  border-color: transparent #10b981 transparent transparent;
-  border-radius: 0 8px 0 0;
+  border-width: 0 16px 16px 0;
+  border-color: transparent var(--color-accent-green, #34d399) transparent transparent;
+  border-radius: 0 var(--radius-sm, 4px) 0 0;
 }
 
 .annotation-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  margin-left: 4px;
-  border-radius: 9px;
-  background: #10b981;
-  color: white;
-  font-size: 0.7rem;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  margin-left: 3px;
+  border-radius: 7px;
+  background: var(--color-accent-green, #34d399);
+  color: #000;
+  font-size: 9px;
   font-weight: 700;
-  font-family: 'Google Sans Code', monospace;
+  font-family: var(--font-mono, 'Google Sans Code', monospace);
 }
 
 /* Annotation mode indicator */
 .html-section-wrapper.annotating {
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.5);
-  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--color-accent-purple, #a78bfa);
+  border-radius: var(--radius-sm, 4px);
 }
 
 /* Responsive */

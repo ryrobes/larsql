@@ -110,19 +110,30 @@ def rvbbit_udf_impl(
     """
     Core implementation of rvbbit_udf.
 
+    Uses the bodybuilder tool with request mode, which allows the instructions
+    to specify which model to use. The bodybuilder's planner converts natural
+    language requests to API bodies and executes them.
+
+    Examples of model-aware instructions:
+        - "Use Claude to extract the brand name" -> picks Claude
+        - "Ask a cheap Gemini model to classify this" -> picks Gemini Flash Lite
+        - "Extract brand name" -> uses planner's default model selection
+
     Args:
         instructions: What to ask the LLM (e.g., "Extract brand name from this product")
+                     Can include model hints like "Use Claude to..." or "Ask a fast model to..."
         input_value: The data to process (e.g., "Apple iPhone 15 Pro")
-        model: Optional model override (default: uses RVBBIT_DEFAULT_MODEL)
-        temperature: LLM temperature (default: 0.0 for deterministic)
-        max_tokens: Max tokens in response
+        model: Optional model override (ignored - use instructions to specify model)
+        temperature: LLM temperature (currently not passed to bodybuilder)
+        max_tokens: Max tokens in response (currently not passed to bodybuilder)
         use_cache: Whether to use cache (default: True)
         cache_ttl: Cache TTL (e.g., '1d', '2h', '30m') or None for infinite
 
     Returns:
-        LLM response as string (or None on error)
+        LLM response as string (or error message on failure)
     """
     # Check cache first (TTL-aware)
+    # Note: Cache key now ignores model param since model is determined by bodybuilder
     if use_cache:
         cache_key = _make_cache_key(instructions, input_value, model)
         cached_value = _cache_get(_udf_cache, cache_key)
@@ -130,50 +141,59 @@ def rvbbit_udf_impl(
             return cached_value
 
     try:
-        # Import locally to avoid circular dependencies
-        from ..agent import Agent
-        from ..config import get_config
+        # Import bodybuilder tool and session naming
+        from ..traits.bodybuilder import bodybuilder
+        from ..session_naming import generate_woodland_id
+        from rich.console import Console
 
-        # Get config for model and API settings
-        config_obj = get_config()
+        console = Console()
 
-        # Get model (use default if not specified)
-        if model is None:
-            model = config_obj.default_model
+        # Generate proper session_id using woodland naming system
+        woodland_id = generate_woodland_id()
+        session_id = f"sql-udf-{woodland_id}"
 
-        # Build prompt
-        system_prompt = f"{instructions}\n\nInput: {input_value}\n\nReturn ONLY the result, no explanation or markdown."
+        # Generate a unique cell name for logging
+        import uuid
+        cell_name = f"udf_rvbbit_{uuid.uuid4().hex[:8]}"
 
-        # Create agent with system prompt and API config
-        agent = Agent(
-            system_prompt=system_prompt,
-            model=model,
-            tools=[],
-            base_url=config_obj.provider_base_url,
-            api_key=config_obj.provider_api_key
+        # Consistent cascade_id for all SQL UDF calls
+        cascade_id = "sql_udf"
+
+        # Build the request string combining instructions and input
+        # The format "instructions - input" allows bodybuilder's planner to:
+        # 1. Parse the task description from instructions
+        # 2. Select an appropriate model based on hints in instructions
+        # 3. Format the actual query to include the input data
+        request = f"{instructions} - {input_value}"
+
+        # Add instruction to return only the result (no explanation)
+        request = f"{request}\n\nReturn ONLY the result, no explanation or markdown."
+
+        # Console log for visibility
+        input_preview = input_value[:50] + "..." if len(input_value) > 50 else input_value
+        console.print(f"[dim]🔧 rvbbit()[/dim] [cyan]{session_id}[/cyan] [dim]|[/dim] {instructions[:40]}... [dim]|[/dim] {input_preview}")
+
+        # Call bodybuilder in request mode
+        # This executes as a deterministic cell:
+        #   - name: udf_rvbbit_<id>
+        #     tool: bodybuilder
+        #     inputs:
+        #       request: <instructions - input>
+        response = bodybuilder(
+            request=request,
+            _session_id=session_id,
+            _cell_name=cell_name,
+            _cascade_id=cascade_id,
         )
 
-        # Run LLM - agent.run() just takes input_message and context_messages
-        response = agent.run(
-            input_message="Process the input above.",
-            context_messages=[]
-        )
+        # Extract result from bodybuilder response
+        if response.get("_route") == "error":
+            error_msg = response.get("error", "Unknown error")
+            console.print(f"[red]✗ rvbbit() error:[/red] {error_msg[:50]}")
+            return f"ERROR: {str(error_msg)[:50]}"
 
-        # Extract text from response (handle different response formats)
-        if isinstance(response, list) and len(response) > 0:
-            # Response is a list of messages - take the last assistant message
-            for msg in reversed(response):
-                if isinstance(msg, dict) and msg.get("role") == "assistant":
-                    result = msg.get("content", "")
-                    break
-            else:
-                result = str(response)
-        elif isinstance(response, dict) and "content" in response:
-            result = response["content"]
-        elif isinstance(response, str):
-            result = response
-        else:
-            result = str(response)
+        # Get the result content
+        result = response.get("result") or response.get("content") or ""
 
         # Strip whitespace
         result = result.strip()
@@ -181,6 +201,11 @@ def rvbbit_udf_impl(
         # Never return empty string - DuckDB treats it as NULL in some contexts
         if not result:
             result = "N/A"
+
+        # Console log completion
+        result_preview = result[:50] + "..." if len(result) > 50 else result
+        model_used = response.get("model", "unknown")
+        console.print(f"[green]✓[/green] [dim]{model_used}[/dim] → {result_preview}")
 
         # Cache result with TTL
         if use_cache:

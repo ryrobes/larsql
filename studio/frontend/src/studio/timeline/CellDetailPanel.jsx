@@ -159,19 +159,24 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const isJs = cell.tool === 'js_data';
   const isClojure = cell.tool === 'clojure_data';
   const isWindlass = cell.tool === 'windlass_data';
-  const isLLMCell = !cell.tool && cell.instructions;
+  const isHitl = !!cell.hitl;
+  const isLLMCell = !cell.tool && !cell.hitl && cell.instructions;
 
   const typeInfo = {
     sql_data: { language: 'sql', codeKey: 'query', source: 'inputs' },
     python_data: { language: 'python', codeKey: 'code', source: 'inputs' },
     js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
-    llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' }, 
+    llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
     windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
+    bodybuilder: { language: 'markdown', codeKey: 'request', source: 'inputs' }, // Natural language LLM request
     linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
     linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
+    hitl_screen: { language: 'html', codeKey: 'hitl', source: 'cell' }, // HTMX screen content
   };
-  const cellType = cell.tool || (isLLMCell ? 'llm_cell' : 'python_data');
+  // Determine cell type - check for hitl key first (HTMX screens)
+  const cellType = isHitl ? 'hitl_screen' :
+    (cell.tool || (isLLMCell ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Detect custom editors for this cell

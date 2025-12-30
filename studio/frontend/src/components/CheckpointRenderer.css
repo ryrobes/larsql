@@ -5,17 +5,17 @@
 .checkpoint-renderer {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 /* Error state */
 .checkpoint-renderer-error {
-  padding: 16px;
-  background: rgba(255, 71, 87, 0.1);
-  border: 1px solid rgba(255, 71, 87, 0.3);
-  border-radius: 6px;
-  color: var(--color-accent-red);
-  font-size: var(--font-size-sm);
+  padding: 10px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-accent-red, #f87171);
+  font-size: var(--font-size-sm, 11px);
 }
 
 /* ============================================
@@ -34,10 +34,10 @@
 
 /* Modal (overlay) - card-like */
 .checkpoint-renderer-modal {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-dim);
-  border-radius: var(--radius-lg);
-  padding: 16px;
+  background: var(--color-bg-card, #000000);
+  border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.15));
+  border-radius: var(--radius-md, 6px);
+  padding: 10px;
 }
 
 /* Page (dedicated view) - full width */
@@ -50,25 +50,25 @@
    ============================================ */
 
 .checkpoint-phase-output {
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid var(--color-border-dim);
-  border-radius: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.1));
+  border-radius: var(--radius-sm, 4px);
 }
 
 .phase-output-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-dim);
+  font-size: var(--font-size-xs, 10px);
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--color-text-dim, #64748b);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
 }
 
 .phase-output-text {
-  font-size: var(--font-size-md);
-  color: var(--color-text-primary);
-  line-height: 1.6;
+  font-size: var(--font-size-sm, 11px);
+  color: var(--color-text-secondary, #cbd5e1);
+  line-height: 1.4;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -88,25 +88,25 @@
 .checkpoint-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border-dim);
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-dim, rgba(0, 229, 255, 0.1));
 }
 
 .checkpoint-cancel-btn {
-  padding: 6px 14px;
+  padding: 5px 12px;
   background: transparent;
-  border: 1px solid var(--color-border-medium);
-  border-radius: 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  border: 1px solid var(--color-border-medium, rgba(0, 229, 255, 0.25));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-text-secondary, #cbd5e1);
+  font-size: var(--font-size-xs, 10px);
+  font-weight: var(--font-weight-semibold, 600);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-fast, 0.1s ease);
 }
 
 .checkpoint-cancel-btn:hover {
-  border-color: var(--color-accent-red);
-  color: var(--color-accent-red);
-  background: rgba(255, 71, 87, 0.1);
+  border-color: var(--color-accent-red, #f87171);
+  color: var(--color-accent-red, #f87171);
+  background: rgba(248, 113, 113, 0.1);
 }

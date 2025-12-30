@@ -41,6 +41,10 @@ export const ROUTES = {
   // Interrupts
   INTERRUPTS: '/interrupts',
 
+  // Calliope - The Muse
+  CALLIOPE: '/calliope',
+  calliopeWithSession: (sessionId) => `/calliope/${encodeURIComponent(sessionId)}`,
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -85,6 +89,7 @@ export function getViewFromPath(pathname) {
     'explore': 'explore',
     'evolution': 'evolution',
     'interrupts': 'interrupts',
+    'calliope': 'calliope',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -117,6 +122,7 @@ export function getRouteForView(viewId) {
     'explore': ROUTES.EXPLORE,
     'evolution': ROUTES.EVOLUTION,
     'interrupts': ROUTES.INTERRUPTS,
+    'calliope': ROUTES.CALLIOPE,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,
