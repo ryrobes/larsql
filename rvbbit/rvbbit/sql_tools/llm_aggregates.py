@@ -562,6 +562,136 @@ Data ({len(values)} items):
 
 
 # ============================================================================
+# Scalar LLM Functions (per-row, not aggregates)
+# ============================================================================
+
+def llm_matches_impl(
+    criteria: str,
+    text: str,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """
+    Check if text matches semantic criteria. Returns boolean.
+
+    Use in WHERE clauses for semantic filtering:
+
+        SELECT * FROM products
+        WHERE llm_matches('is eco-friendly or sustainable', description);
+
+    Args:
+        criteria: What to check for (e.g., "mentions quality issues")
+        text: The text to evaluate
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        True if text matches criteria, False otherwise
+    """
+    if not text or not text.strip():
+        return False
+
+    text = _sanitize_text(str(text))
+    criteria = _sanitize_text(str(criteria))
+
+    if not text or not criteria:
+        return False
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        cache_key = _agg_cache_key("matches", criteria, text[:200])
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached.lower() == "true"
+
+    prompt = f"""Does the following text match this criteria: "{criteria}"?
+
+Text: {text[:2000]}
+
+Answer with ONLY "yes" or "no", nothing else."""
+
+    result = _call_llm_direct(prompt, model=model, max_tokens=10)
+    result_lower = result.strip().lower()
+
+    # Parse yes/no
+    is_match = result_lower in ("yes", "true", "1", "y")
+
+    # Cache result
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
+
+    return is_match
+
+
+def llm_score_impl(
+    criteria: str,
+    text: str,
+    model: str = None,
+    use_cache: bool = True
+) -> float:
+    """
+    Score how well text matches semantic criteria. Returns 0.0-1.0.
+
+    Use for ranking or threshold filtering:
+
+        SELECT *, llm_score('relevance to sustainability', description) as score
+        FROM products
+        WHERE llm_score('relevance to sustainability', description) > 0.7
+        ORDER BY score DESC;
+
+    Args:
+        criteria: What to score against (e.g., "relevance to machine learning")
+        text: The text to evaluate
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        Float between 0.0 (no match) and 1.0 (perfect match)
+    """
+    if not text or not text.strip():
+        return 0.0
+
+    text = _sanitize_text(str(text))
+    criteria = _sanitize_text(str(criteria))
+
+    if not text or not criteria:
+        return 0.0
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        cache_key = _agg_cache_key("score", criteria, text[:200])
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            try:
+                return float(cached)
+            except ValueError:
+                pass
+
+    prompt = f"""Score how well the following text matches this criteria: "{criteria}"
+
+Text: {text[:2000]}
+
+Return ONLY a decimal number between 0.0 (no match) and 1.0 (perfect match), nothing else."""
+
+    result = _call_llm_direct(prompt, model=model, max_tokens=10)
+
+    # Parse score
+    try:
+        score = float(result.strip())
+        score = max(0.0, min(1.0, score))  # Clamp to valid range
+    except ValueError:
+        score = 0.0
+
+    # Cache result
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, str(score), ttl=None)
+
+    return score
+
+
+# ============================================================================
 # Map-Reduce for Large Collections
 # ============================================================================
 
@@ -724,6 +854,30 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
         connection.create_function("llm_agg_2", agg_2, return_type="VARCHAR")
     except Exception as e:
         log.warning(f"Could not register llm_agg_2: {e}")
+
+    # ========== SCALAR LLM FUNCTIONS ==========
+    # These go directly to DuckDB (no rewriter), so we register both
+    # canonical (llm_*) and short (matches, score) names
+
+    # LLM_MATCHES / MATCHES - semantic boolean filter
+    def matches_2(criteria: str, text: str) -> bool:
+        return llm_matches_impl(criteria, text)
+
+    for name in ["llm_matches", "matches"]:
+        try:
+            connection.create_function(name, matches_2, return_type="BOOLEAN")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # LLM_SCORE / SCORE - semantic scoring (0.0-1.0)
+    def score_2(criteria: str, text: str) -> float:
+        return llm_score_impl(criteria, text)
+
+    for name in ["llm_score", "score"]:
+        try:
+            connection.create_function(name, score_2, return_type="DOUBLE")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
 
 
 def clear_agg_cache():

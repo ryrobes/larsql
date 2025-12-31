@@ -22,11 +22,20 @@ Output:
 The key insight: We don't need true DuckDB aggregate UDFs. We use LIST()
 to collect values, cast to VARCHAR (JSON), and call our scalar implementation
 functions. This gives us aggregate semantics with minimal complexity.
+
+Annotation Syntax:
+    -- @ instructions for the next LLM function
+    -- @ model: anthropic/claude-haiku
+    -- @ max_tokens: 100
+    SUMMARIZE(review_text) as summary
+
+Annotations use `-- @` prefix and apply to the NEXT LLM function in the query.
+Lines with `:` are key-value options, lines without are prompt text.
 """
 
 import re
 from typing import Optional, List, Tuple, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 # ============================================================================
@@ -88,15 +97,164 @@ LLM_AGG_FUNCTIONS = {
 }
 
 
+# Short aliases for cleaner SQL (map to canonical names)
+# These are rewritten before DuckDB sees them, so reserved words don't matter
+LLM_AGG_ALIASES = {
+    "SUMMARIZE": "LLM_SUMMARIZE",
+    "CLASSIFY": "LLM_CLASSIFY",
+    "SENTIMENT": "LLM_SENTIMENT",
+    "THEMES": "LLM_THEMES",
+    # Note: AGG is intentionally omitted - too generic
+}
+
+
+def _resolve_alias(name: str) -> str:
+    """Resolve alias to canonical function name."""
+    upper = name.upper()
+    return LLM_AGG_ALIASES.get(upper, upper)
+
+
+# ============================================================================
+# Annotation Parsing
+# ============================================================================
+
+@dataclass
+class LLMAnnotation:
+    """Parsed annotation for an LLM function."""
+    prompt: Optional[str] = None          # Custom prompt/instructions
+    model: Optional[str] = None           # Model override
+    max_tokens: Optional[int] = None      # Token limit
+    start_pos: int = 0                    # Start position in query
+    end_pos: int = 0                      # End position in query
+
+
+def _parse_annotations(query: str) -> List[Tuple[int, LLMAnnotation]]:
+    """
+    Parse all -- @ annotations from query.
+
+    Returns list of (end_position, annotation) tuples.
+    The end_position is where the annotation block ends, used to
+    associate with the next LLM function.
+
+    Supports:
+        -- @ Free-form prompt text
+        -- @ More prompt text (consecutive lines merge)
+        -- @ model: anthropic/claude-haiku
+        -- @ max_tokens: 100
+    """
+    annotations = []
+
+    # Find all annotation comment blocks
+    # Pattern: consecutive lines starting with -- @
+    lines = query.split('\n')
+
+    current_annotation = None
+    current_start = 0
+    current_pos = 0
+    prompt_lines = []
+
+    for line in lines:
+        line_start = current_pos
+        line_end = current_pos + len(line)
+
+        # Check if this line is an annotation
+        stripped = line.strip()
+        if stripped.startswith('-- @'):
+            # Extract content after -- @
+            content = stripped[4:].strip()
+
+            if current_annotation is None:
+                current_annotation = LLMAnnotation(start_pos=line_start)
+                prompt_lines = []
+
+            # Check for key: value pattern
+            if ':' in content:
+                key, _, value = content.partition(':')
+                key = key.strip().lower()
+                value = value.strip()
+
+                if key == 'model':
+                    current_annotation.model = value
+                elif key == 'max_tokens':
+                    try:
+                        current_annotation.max_tokens = int(value)
+                    except ValueError:
+                        pass
+                elif key == 'prompt':
+                    # Explicit prompt key
+                    prompt_lines.append(value)
+                else:
+                    # Unknown key, treat as prompt text
+                    prompt_lines.append(content)
+            else:
+                # No colon, it's prompt text
+                prompt_lines.append(content)
+
+            current_annotation.end_pos = line_end
+
+        else:
+            # Not an annotation line
+            if current_annotation is not None:
+                # Finish current annotation block
+                if prompt_lines:
+                    current_annotation.prompt = ' '.join(prompt_lines)
+                annotations.append((current_annotation.end_pos, current_annotation))
+                current_annotation = None
+                prompt_lines = []
+
+        current_pos = line_end + 1  # +1 for newline
+
+    # Handle annotation at end of query
+    if current_annotation is not None:
+        if prompt_lines:
+            current_annotation.prompt = ' '.join(prompt_lines)
+        annotations.append((current_annotation.end_pos, current_annotation))
+
+    return annotations
+
+
+def _find_annotation_for_position(
+    annotations: List[Tuple[int, LLMAnnotation]],
+    func_start: int
+) -> Optional[LLMAnnotation]:
+    """
+    Find the annotation that applies to a function at the given position.
+
+    An annotation applies if it ends before the function starts and
+    there's no other LLM function between them.
+    """
+    # Find the closest annotation that ends before this function
+    best = None
+    best_end = -1
+
+    for end_pos, annotation in annotations:
+        # Annotation must end before function starts
+        if end_pos < func_start:
+            # And be closer than any previous match
+            if end_pos > best_end:
+                best = annotation
+                best_end = end_pos
+
+    return best
+
+
 # ============================================================================
 # Detection
 # ============================================================================
 
 def has_llm_aggregates(query: str) -> bool:
-    """Check if query contains any LLM aggregate functions."""
+    """Check if query contains any LLM aggregate functions or aliases."""
     query_upper = query.upper()
-    return any(f"LLM_{name.split('_')[1]}(" in query_upper or f"{name}(" in query_upper
-               for name in LLM_AGG_FUNCTIONS.keys())
+    # Check canonical names
+    for name in LLM_AGG_FUNCTIONS.keys():
+        if f"{name}(" in query_upper:
+            return True
+    # Check aliases
+    for alias in LLM_AGG_ALIASES.keys():
+        # Use word boundary to avoid matching e.g. "SUMMARIZED"
+        if re.search(rf'\b{alias}\s*\(', query_upper):
+            return True
+    return False
 
 
 def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
@@ -104,13 +262,17 @@ def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
     Find all LLM aggregate function calls in query.
 
     Returns list of (start_pos, end_pos, func_name, args)
+    where func_name is the CANONICAL name (aliases are resolved).
     """
     results = []
 
-    for func_name in LLM_AGG_FUNCTIONS.keys():
+    # Build list of all names to search for (canonical + aliases)
+    all_names = list(LLM_AGG_FUNCTIONS.keys()) + list(LLM_AGG_ALIASES.keys())
+
+    for search_name in all_names:
         # Case-insensitive search for function calls
         pattern = re.compile(
-            rf'\b({func_name})\s*\(',
+            rf'\b({search_name})\s*\(',
             re.IGNORECASE
         )
 
@@ -137,11 +299,20 @@ def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
             args_str = query[func_start + 1:end - 1]
             args = _split_args(args_str)
 
-            results.append((start, end, match.group(1).upper(), args))
+            # Resolve alias to canonical name
+            canonical_name = _resolve_alias(match.group(1))
+            results.append((start, end, canonical_name, args))
 
     # Sort by position (reverse order for safe replacement)
-    results.sort(key=lambda x: x[0], reverse=True)
-    return results
+    # Also deduplicate in case both alias and canonical matched
+    seen_positions = set()
+    deduped = []
+    for item in sorted(results, key=lambda x: x[0], reverse=True):
+        if item[0] not in seen_positions:
+            seen_positions.add(item[0])
+            deduped.append(item)
+
+    return deduped
 
 
 def _split_args(args_str: str) -> List[str]:
@@ -200,12 +371,23 @@ def rewrite_llm_aggregates(query: str) -> str:
         LLM_AGG('What are complaints?', review_text)
     Into:
         llm_agg_impl('What are complaints?', LIST(review_text)::VARCHAR)
+
+    Also supports annotation syntax:
+        -- @ Summarize focusing on complaints
+        -- @ model: anthropic/claude-haiku
+        SUMMARIZE(review_text)
     """
     if not has_llm_aggregates(query):
         return query
 
+    # Parse annotations first
+    annotations = _parse_annotations(query)
+
     # Find all LLM aggregate calls
     calls = _find_llm_agg_calls(query)
+
+    # Track which annotations have been used (for cleanup)
+    used_annotations = set()
 
     # Replace in reverse order (to preserve positions)
     result = query
@@ -214,26 +396,54 @@ def rewrite_llm_aggregates(query: str) -> str:
         if not func_def:
             continue
 
-        # Validate arg count
+        # Find annotation for this function (if any)
+        annotation = _find_annotation_for_position(annotations, start)
+        if annotation:
+            used_annotations.add(annotation.start_pos)
+
+        # Validate arg count (annotation can add args, so check after merge)
         if len(args) < func_def.min_args:
             raise ValueError(
                 f"{func_name} requires at least {func_def.min_args} argument(s), got {len(args)}"
             )
-        if len(args) > func_def.max_args:
+        if len(args) > func_def.max_args and annotation is None:
             raise ValueError(
                 f"{func_name} accepts at most {func_def.max_args} argument(s), got {len(args)}"
             )
 
-        # Build replacement
-        replacement = _build_replacement(func_def, args)
+        # Build replacement (with annotation if present)
+        replacement = _build_replacement(func_def, args, annotation)
 
         # Replace in query
         result = result[:start] + replacement + result[end:]
 
+    # Clean up ALL annotation comments from the result
+    # (They've been incorporated into function calls, so remove them)
+    result = _remove_all_annotations(result)
+
     return result
 
 
-def _build_replacement(func_def: LLMAggFunction, args: List[str]) -> str:
+def _remove_all_annotations(query: str) -> str:
+    """Remove all -- @ annotation lines from query."""
+    lines = query.split('\n')
+    result_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        # Skip lines that are pure annotations
+        if stripped.startswith('-- @'):
+            continue
+        result_lines.append(line)
+
+    return '\n'.join(result_lines)
+
+
+def _build_replacement(
+    func_def: LLMAggFunction,
+    args: List[str],
+    annotation: Optional[LLMAnnotation] = None
+) -> str:
     """
     Build the replacement function call.
 
@@ -242,42 +452,78 @@ def _build_replacement(func_def: LLMAggFunction, args: List[str]) -> str:
       - llm_summarize_1(values)
       - llm_summarize_2(values, prompt)
       - llm_summarize_3(values, prompt, max_items)
+
+    If an annotation is provided, its prompt/model/max_tokens are injected
+    as additional arguments.
     """
+    # Helper to quote a string for SQL
+    def sql_quote(s: str) -> str:
+        # Escape single quotes by doubling them
+        escaped = s.replace("'", "''")
+        return f"'{escaped}'"
 
     if func_def.name == "LLM_AGG":
         # Special case: LLM_AGG has prompt first, column second
-        # Always 2 args -> llm_agg_2
         prompt = args[0]
         col = args[1]
+        # Annotation can override or enhance the prompt
+        if annotation and annotation.prompt:
+            # Prepend annotation to existing prompt
+            existing = prompt.strip("'\"")
+            combined = f"{annotation.prompt} {existing}"
+            prompt = sql_quote(combined)
         return f"llm_agg_2({prompt}, LIST({col})::VARCHAR)"
 
     elif func_def.name == "LLM_SUMMARIZE":
         col = args[0]
-        if len(args) == 1:
+        # Determine prompt: explicit arg > annotation > none
+        prompt_arg = args[1] if len(args) >= 2 else None
+        if prompt_arg is None and annotation and annotation.prompt:
+            prompt_arg = sql_quote(annotation.prompt)
+
+        # Determine max_items: explicit arg > annotation > none
+        max_items_arg = args[2] if len(args) >= 3 else None
+        if max_items_arg is None and annotation and annotation.max_tokens:
+            # max_tokens in annotation maps to max_items (sample size)
+            max_items_arg = str(annotation.max_tokens)
+
+        if prompt_arg is None:
             return f"llm_summarize_1(LIST({col})::VARCHAR)"
-        elif len(args) == 2:
-            return f"llm_summarize_2(LIST({col})::VARCHAR, {args[1]})"
-        else:  # 3 args
-            return f"llm_summarize_3(LIST({col})::VARCHAR, {args[1]}, {args[2]})"
+        elif max_items_arg is None:
+            return f"llm_summarize_2(LIST({col})::VARCHAR, {prompt_arg})"
+        else:
+            return f"llm_summarize_3(LIST({col})::VARCHAR, {prompt_arg}, {max_items_arg})"
 
     elif func_def.name == "LLM_CLASSIFY":
         col = args[0]
         categories = args[1]
-        if len(args) == 2:
+        # Prompt is optional 3rd arg
+        prompt_arg = args[2] if len(args) >= 3 else None
+        if prompt_arg is None and annotation and annotation.prompt:
+            prompt_arg = sql_quote(annotation.prompt)
+
+        if prompt_arg is None:
             return f"llm_classify_2(LIST({col})::VARCHAR, {categories})"
-        else:  # 3 args
-            return f"llm_classify_3(LIST({col})::VARCHAR, {categories}, {args[2]})"
+        else:
+            return f"llm_classify_3(LIST({col})::VARCHAR, {categories}, {prompt_arg})"
 
     elif func_def.name == "LLM_SENTIMENT":
         col = args[0]
+        # Sentiment doesn't take additional args, but we could add prompt support later
         return f"llm_sentiment_1(LIST({col})::VARCHAR)"
 
     elif func_def.name == "LLM_THEMES":
         col = args[0]
-        if len(args) == 1:
+        # Max themes is optional 2nd arg
+        max_themes_arg = args[1] if len(args) >= 2 else None
+        if max_themes_arg is None and annotation and annotation.max_tokens:
+            # Use max_tokens as max_themes hint
+            max_themes_arg = str(min(annotation.max_tokens, 20))  # Cap at 20 themes
+
+        if max_themes_arg is None:
             return f"llm_themes_1(LIST({col})::VARCHAR)"
-        else:  # 2 args
-            return f"llm_themes_2(LIST({col})::VARCHAR, {args[1]})"
+        else:
+            return f"llm_themes_2(LIST({col})::VARCHAR, {max_themes_arg})"
 
     else:
         # Generic fallback - use arg count suffix
@@ -484,5 +730,108 @@ FROM reviews
 GROUP BY category
 HAVING COUNT(*) > 10
 ORDER BY sentiment DESC;
+```
+
+## Short Aliases (cleaner SQL)
+
+All aggregate functions have short aliases without the LLM_ prefix:
+
+```sql
+-- These are equivalent:
+SELECT SUMMARIZE(review_text) FROM reviews GROUP BY category;
+SELECT LLM_SUMMARIZE(review_text) FROM reviews GROUP BY category;
+
+-- Clean, readable queries
+SELECT
+  category,
+  SUMMARIZE(review_text) as summary,
+  SENTIMENT(review_text) as mood,
+  THEMES(review_text, 3) as topics
+FROM reviews
+GROUP BY category;
+```
+
+Available aliases:
+- SUMMARIZE → LLM_SUMMARIZE
+- CLASSIFY → LLM_CLASSIFY
+- SENTIMENT → LLM_SENTIMENT
+- THEMES → LLM_THEMES
+- (LLM_AGG has no alias - use full name)
+
+## Annotation Syntax (-- @)
+
+Use `-- @` comments to provide instructions without cluttering function args:
+
+```sql
+-- Single-line instruction
+-- @ Focus on quality complaints only
+SUMMARIZE(review_text) as complaints
+
+-- Multi-line instructions (consecutive lines merge)
+-- @ Summarize customer feedback with emphasis on:
+-- @ - Product quality issues
+-- @ - Shipping problems
+-- @ - Customer service interactions
+SUMMARIZE(review_text) as summary
+
+-- With metadata options
+-- @ Focus on negative feedback only
+-- @ max_tokens: 50
+SUMMARIZE(review_text) as issues
+
+-- Per-column annotations
+SELECT
+  category,
+  -- @ Focus on complaints
+  SUMMARIZE(negative_reviews) as complaints,
+  -- @ Focus on praise
+  SUMMARIZE(positive_reviews) as praise
+FROM reviews
+GROUP BY category;
+```
+
+Supported annotation options:
+- Free text: Becomes the prompt/instructions
+- `max_tokens: N`: Limits output or sample size
+- `model: name`: Model override (future)
+
+Note: Explicit function arguments take precedence over annotations.
+
+## Scalar Functions (per-row, no GROUP BY)
+
+### MATCHES / LLM_MATCHES
+Semantic boolean filter for WHERE clauses:
+
+```sql
+-- Find rows matching semantic criteria
+SELECT * FROM products
+WHERE matches('eco-friendly or sustainable', description);
+
+-- Find complaints
+SELECT * FROM reviews
+WHERE llm_matches('mentions defects or quality issues', review_text);
+```
+
+### SCORE / LLM_SCORE
+Semantic scoring (0.0-1.0) for ranking or threshold filtering:
+
+```sql
+-- Rank by relevance
+SELECT title, score('machine learning related', description) as relevance
+FROM articles
+ORDER BY relevance DESC
+LIMIT 10;
+
+-- Filter with threshold
+SELECT * FROM bigfoot
+WHERE llm_score('credibility of sighting', title) > 0.7;
+
+-- Combine scoring with aggregates
+SELECT
+  classification,
+  SUMMARIZE(title) as summary
+FROM bigfoot
+WHERE score('dramatic encounter', title) > 0.5
+GROUP BY classification;
 ```
 """
