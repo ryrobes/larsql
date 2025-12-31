@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS context_cards (
     -- Metadata for selection
     estimated_tokens UInt32 DEFAULT 0,      -- Token count of original message
     role LowCardinality(String),            -- user/assistant/tool/system
-    cell_name Nullable(String),            -- Phase this message belongs to
-    turn_number Nullable(UInt32),           -- Turn within phase
+    cell_name Nullable(String),            -- Cell this message belongs to
+    turn_number Nullable(UInt32),           -- Turn within cell
 
     -- Importance markers
     is_anchor Bool DEFAULT false,           -- Always include in context
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS context_cards (
     -- Indexes for common query patterns
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
-    INDEX idx_phase cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
     INDEX idx_content_hash content_hash TYPE bloom_filter GRANULARITY 1,
     INDEX idx_is_anchor is_anchor TYPE set(2) GRANULARITY 1,
     INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1,

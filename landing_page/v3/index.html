@@ -908,7 +908,7 @@ FROM products;</code></pre>
               </article>
               <article class="card reveal delay-2">
                 <h3>Token budget enforcement</h3>
-                <p>Set max tokens per phase. Auto-prune strategies: sliding window, summarize with cheap model, or fail with clear error.</p>
+                <p>Set max tokens per cell. Auto-prune strategies: sliding window, summarize with cheap model, or fail with clear error.</p>
               </article>
               <article class="card reveal delay-3">
                 <h3>Tool result caching</h3>
@@ -1014,7 +1014,7 @@ FROM products;</code></pre>
                 <span class="dot" style="background: var(--accent-2); box-shadow: 0 0 12px rgba(255, 107, 61, 0.8);"></span>
                 <div>
                   <strong>Not DAG spaghetti</strong>
-                  <p>Complexity contained within phases ("separate bowls"). Your cascade stays clean.</p>
+                  <p>Complexity contained within cells ("separate bowls"). Your cascade stays clean.</p>
                 </div>
               </div>
             </div>
@@ -1027,7 +1027,7 @@ FROM products;</code></pre>
           <p class="quote">"Keep the spaghetti in separate bowls."</p>
           <p class="lead">
             Traditional frameworks put all complexity in the graph. Your clean 4-node DAG becomes 40 nodes with 100 edges.
-            RVBBIT uses phases as complexity containers: all iteration, retries, and exploration happen INSIDE phases.
+            RVBBIT uses cells as complexity containers: all iteration, retries, and exploration happen INSIDE cells.
             Your cascade stays linear. The mess stays encapsulated.
           </p>
         </div>

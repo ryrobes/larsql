@@ -12,17 +12,17 @@ def main():
     
     config_path = os.path.join(os.path.dirname(__file__), "context_demo_parent.json")
     # Seed input
-    input_data = {"secret_code": "BLUE_OCEAN"} # In real run this might come from phase 1 logic updating state
+    input_data = {"secret_code": "BLUE_OCEAN"} # In real run this might come from cell 1 logic updating state
     
     print("Running Context Demo...")
-    # Note: In the JSON I removed the logic to *set* the state in phase 1 because the agent can't update state yet explicitly unless we give it a tool.
+    # Note: In the JSON I removed the logic to *set* the state in cell 1 because the agent can't update state yet explicitly unless we give it a tool.
     # For this demo, I'm passing the secret code in input_data which `context_in=True` should pass to child.
     
     result = run_cascade(config_path, input_data, session_id="context_session")
     
     print("\n--- Final State ---")
     # We can't easily see the 'child_status' in the result dict unless the child *outputted* it or we inspect the Echo object deeper.
-    # The 'verify' phase in parent should mention it if it worked (if we had a shared memory tool).
+    # The 'verify' cell in parent should mention it if it worked (if we had a shared memory tool).
     # Currently "state" is immutable-ish unless tools update it.
     # But `echo.state` accumulates?
     # `runner.py`: `self.echo.update_state("input", input_data)`

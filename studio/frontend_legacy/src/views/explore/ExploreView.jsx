@@ -14,7 +14,7 @@ import './ExploreView.css';
  * Features:
  * - Live "ghost messages" showing tool calls/results in real-time
  * - Inline checkpoint rendering (no modals - clean Perplexity loop)
- * - Real-time orchestration stats (cost, phase, status)
+ * - Real-time orchestration stats (cost, cell, status)
  * - Pure polling (no SSE complexity)
  *
  * Flow:
@@ -324,7 +324,7 @@ const ExploreView = ({ params, navigate }) => {
                   checkpoint={checkpoint}
                   onSubmit={handleCheckpointRespond}
                   variant="inline"
-                  showPhaseOutput={true}
+                  showCellOutput={true}
                 />
               </motion.div>
             )}

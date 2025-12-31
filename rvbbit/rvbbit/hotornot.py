@@ -421,7 +421,7 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
     """
     db = _get_db()
 
-    # First, get all evaluated session+phase combos from evaluations table
+    # First, get all evaluated session+cell combos from evaluations table
     evaluated_set = set()
     try:
         eval_result = db.query(
@@ -474,9 +474,9 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def get_phase_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
+def get_cell_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
     """
-    Get all images for a session/phase from the filesystem, grouped by candidate index.
+    Get all images for a session/cell from the filesystem, grouped by candidate index.
 
     Returns dict mapping candidate_index -> list of image info dicts.
     Images without candidate prefix go under key -1 (or None).
@@ -484,13 +484,13 @@ def get_phase_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
     import re
     config = get_config()
     image_dir = config.image_dir
-    phase_dir = os.path.join(image_dir, session_id, cell_name)
+    cell_dir = os.path.join(image_dir, session_id, cell_name)
 
     # Group images by candidate index
     images_by_sounding = {}
 
-    if os.path.exists(phase_dir):
-        for filename in sorted(os.listdir(phase_dir)):
+    if os.path.exists(cell_dir):
+        for filename in sorted(os.listdir(cell_dir)):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                 # Check for candidate prefix: sounding_N_image_M.ext
                 match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', filename)
@@ -513,7 +513,7 @@ def get_phase_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
 
 def get_sounding_group(session_id: str, cell_name: str) -> Dict:
     """
-    Get all candidate attempts for a specific session+phase.
+    Get all candidate attempts for a specific session+cell.
 
     Returns:
         Dict with:
@@ -522,7 +522,7 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
         - cascade_id
         - cascade_file
         - soundings: List of candidate outputs with index, content, is_winner, etc.
-        - images: List of image URLs from filesystem for this phase
+        - images: List of image URLs from filesystem for this cell
         - system_winner_index: Which one the evaluator picked
     """
     config = get_config()
@@ -553,8 +553,8 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
         if df.empty:
             return None
 
-        # Get images from filesystem for this phase
-        phase_images = get_phase_images(session_id, cell_name)
+        # Get images from filesystem for this cell
+        cell_images = get_cell_images(session_id, cell_name)
 
         soundings = []
         system_winner = None
@@ -595,10 +595,10 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
             sounding_idx = int(row['candidate_index'])
 
             # Get images for this specific candidate
-            sounding_images = phase_images.get(sounding_idx, [])
+            sounding_images = cell_images.get(sounding_idx, [])
             # Also include non-candidate images (legacy) if no candidate-specific ones
-            if not sounding_images and None in phase_images:
-                sounding_images = phase_images.get(None, [])
+            if not sounding_images and None in cell_images:
+                sounding_images = cell_images.get(None, [])
 
             sounding_data = {
                 "index": sounding_idx,

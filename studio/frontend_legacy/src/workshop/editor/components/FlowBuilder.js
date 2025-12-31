@@ -3,11 +3,11 @@ import { Icon } from '@iconify/react';
 import './FlowBuilder.css';
 
 /**
- * FlowBuilder - Visual UI for configuring phase flow and handoffs
+ * FlowBuilder - Visual UI for configuring cell flow and handoffs
  *
  * Flow modes:
- * - Terminal: Phase ends cascade (no handoffs)
- * - Linear: Single next phase (automatic transition)
+ * - Terminal: Cell ends cascade (no handoffs)
+ * - Linear: Single next cell (automatic transition)
  * - Branching: Multiple targets with route_to tool (LLM decides)
  *
  * Also supports:
@@ -17,8 +17,8 @@ import './FlowBuilder.css';
 function FlowBuilder({
   value, // { handoffs, sub_cascades, async_cascades }
   onChange,
-  allPhases = [],
-  currentPhaseName,
+  allCells = [],
+  currentCellName,
   availableCascades = []
 }) {
   const [expandedHandoff, setExpandedHandoff] = useState(null);
@@ -41,12 +41,12 @@ function FlowBuilder({
     return 'branching';
   }, [handoffs]);
 
-  // Available phases for handoffs (excluding current)
-  const availablePhases = useMemo(() => {
+  // Available cells for handoffs (excluding current)
+  const availableCells = useMemo(() => {
     const usedTargets = handoffs.map(h => h.target);
-    return allPhases
-      .filter(p => p !== currentPhaseName && !usedTargets.includes(p));
-  }, [allPhases, currentPhaseName, handoffs]);
+    return allCells
+      .filter(p => p !== currentCellName && !usedTargets.includes(p));
+  }, [allCells, currentCellName, handoffs]);
 
   // Update handlers
   const updateHandoffs = (newHandoffs) => {
@@ -82,11 +82,11 @@ function FlowBuilder({
 
       case 'linear':
         if (handoffs.length === 0) {
-          // No handoffs - add first available phase
-          if (availablePhases.length > 0) {
-            onChange({ ...value, handoffs: [availablePhases[0]] });
+          // No handoffs - add first available cell
+          if (availableCells.length > 0) {
+            onChange({ ...value, handoffs: [availableCells[0]] });
           }
-          // If no phases available, do nothing (can't create linear without a target)
+          // If no cells available, do nothing (can't create linear without a target)
         } else if (handoffs.length === 1) {
           // Already one handoff - ensure no description (makes it linear)
           onChange({ ...value, handoffs: [handoffs[0].target] });
@@ -98,11 +98,11 @@ function FlowBuilder({
 
       case 'branching':
         if (handoffs.length === 0) {
-          // No handoffs - add first available phase with description
-          if (availablePhases.length > 0) {
-            onChange({ ...value, handoffs: [{ target: availablePhases[0], description: 'Default path' }] });
+          // No handoffs - add first available cell with description
+          if (availableCells.length > 0) {
+            onChange({ ...value, handoffs: [{ target: availableCells[0], description: 'Default path' }] });
           }
-          // If no phases available, do nothing
+          // If no cells available, do nothing
         } else if (handoffs.length === 1 && !handoffs[0].description) {
           // One handoff without description - add description to make it branching
           onChange({ ...value, handoffs: [{ target: handoffs[0].target, description: 'Primary path' }] });
@@ -138,7 +138,7 @@ function FlowBuilder({
       <div className="drawer-intro">
         <Icon icon="mdi:information-outline" width="14" />
         <p>
-          <strong>Flow</strong> determines where execution goes after this phase.
+          <strong>Flow</strong> determines where execution goes after this cell.
           <strong>Terminal</strong> ends the cascade, <strong>linear</strong> auto-proceeds, <strong>branching</strong> lets the LLM choose via <code>route_to</code>.
         </p>
       </div>
@@ -154,7 +154,7 @@ function FlowBuilder({
           <button
             className={`mode-btn ${flowMode === 'terminal' ? 'active' : ''}`}
             onClick={() => setFlowMode('terminal')}
-            title="Phase ends the cascade"
+            title="Cell ends the cascade"
           >
             <Icon icon="mdi:stop-circle-outline" width="16" />
             <span>Terminal</span>
@@ -163,10 +163,10 @@ function FlowBuilder({
           <button
             className={`mode-btn ${flowMode === 'linear' ? 'active' : ''}`}
             onClick={() => setFlowMode('linear')}
-            disabled={availablePhases.length === 0 && handoffs.length === 0}
-            title={availablePhases.length === 0 && handoffs.length === 0
-              ? "Add more phases to enable linear flow"
-              : "Automatically proceed to next phase"
+            disabled={availableCells.length === 0 && handoffs.length === 0}
+            title={availableCells.length === 0 && handoffs.length === 0
+              ? "Add more cells to enable linear flow"
+              : "Automatically proceed to next cell"
             }
           >
             <Icon icon="mdi:arrow-right" width="16" />
@@ -176,9 +176,9 @@ function FlowBuilder({
           <button
             className={`mode-btn ${flowMode === 'branching' ? 'active' : ''}`}
             onClick={() => setFlowMode('branching')}
-            disabled={availablePhases.length === 0 && handoffs.length === 0}
-            title={availablePhases.length === 0 && handoffs.length === 0
-              ? "Add more phases to enable branching flow"
+            disabled={availableCells.length === 0 && handoffs.length === 0}
+            title={availableCells.length === 0 && handoffs.length === 0
+              ? "Add more cells to enable branching flow"
               : "LLM decides which path using route_to tool"
             }
           >
@@ -193,13 +193,13 @@ function FlowBuilder({
           {flowMode === 'terminal' && (
             <>
               <Icon icon="mdi:information-outline" width="14" />
-              <span>This phase will end the cascade. No subsequent phases will execute.</span>
+              <span>This cell will end the cascade. No subsequent cells will execute.</span>
             </>
           )}
           {flowMode === 'linear' && (
             <>
               <Icon icon="mdi:arrow-right-circle" width="14" />
-              <span>Execution automatically proceeds to the next phase after completion.</span>
+              <span>Execution automatically proceeds to the next cell after completion.</span>
             </>
           )}
           {flowMode === 'branching' && (
@@ -291,7 +291,7 @@ function FlowBuilder({
             ))}
 
             {/* Add handoff */}
-            {availablePhases.length > 0 && (
+            {availableCells.length > 0 && (
               <div className="add-handoff">
                 <select
                   value=""
@@ -301,17 +301,17 @@ function FlowBuilder({
                   className="add-handoff-select"
                 >
                   <option value="">+ Add handoff target...</option>
-                  {availablePhases.map(p => (
+                  {availableCells.map(p => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
               </div>
             )}
 
-            {availablePhases.length === 0 && handoffs.length === 0 && (
-              <div className="no-phases-hint">
+            {availableCells.length === 0 && handoffs.length === 0 && (
+              <div className="no-cells-hint">
                 <Icon icon="mdi:information-outline" width="14" />
-                <span>Add more phases to the cascade to create handoffs.</span>
+                <span>Add more cells to the cascade to create handoffs.</span>
               </div>
             )}
           </div>
@@ -372,7 +372,7 @@ function FlowBuilder({
           <div className="preview-diagram">
             <div className="preview-node current">
               <Icon icon="mdi:circle" width="8" />
-              <span>{currentPhaseName}</span>
+              <span>{currentCellName}</span>
             </div>
             <div className={`preview-arrows ${flowMode}`}>
               {flowMode === 'linear' ? (

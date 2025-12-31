@@ -11,7 +11,7 @@ import threading
 @dataclass
 class Event:
     """Event emitted by the framework during execution"""
-    type: str  # "cascade_start", "cascade_complete", "phase_start", "phase_complete", etc.
+    type: str  # "cascade_start", "cascade_complete", "cell_start", "cell_complete", etc.
     session_id: str
     timestamp: str  # ISO format
     data: Dict[str, Any]

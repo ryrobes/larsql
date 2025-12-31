@@ -7,7 +7,7 @@ import './SessionStatePanel.css';
  *
  * Shows:
  * - All state key-value pairs from cascade_state table
- * - Which phase set each value
+ * - Which cell set each value
  * - Timestamp of last update
  * - Type indicator (string, number, object, array)
  * - Expandable JSON for complex values
@@ -194,7 +194,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
                   <span className="state-type-badge">{latest.value_type}</span>
                 </div>
                 <div className="state-meta">
-                  <span className="state-phase">{latest.cell_name}</span>
+                  <span className="state-cell">{latest.cell_name}</span>
                   <span className="state-time">{formatTimestamp(latest.created_at)}</span>
                 </div>
               </div>
@@ -235,7 +235,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
                       {entries.map((entry, idx) => (
                         <div key={idx} className="state-history-item">
                           <span className="state-history-time">{formatTimestamp(entry.created_at)}</span>
-                          <span className="state-history-phase">{entry.cell_name}</span>
+                          <span className="state-history-cell">{entry.cell_name}</span>
                           {entry.value_type === 'string' && (
                             <span className="state-history-value">"{entry.value_parsed}"</span>
                           )}

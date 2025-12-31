@@ -292,14 +292,14 @@ class ScreenshotService:
         Capture screenshot of HTMX render.
 
         Path strategy:
-        - With unique_id: /images/{session}/{phase}/{render_type}_{unique_id}.png (unique, never overwrites)
-        - With candidate (no unique_id): /images/{session}/{phase}/{render_type}_s{N}.png (overwrites per candidate)
-        - No candidate, no unique_id: /images/{session}/{phase}/{render_type}_latest.png (overwrites)
+        - With unique_id: /images/{session}/{cell}/{render_type}_{unique_id}.png (unique, never overwrites)
+        - With candidate (no unique_id): /images/{session}/{cell}/{render_type}_s{N}.png (overwrites per candidate)
+        - No candidate, no unique_id: /images/{session}/{cell}/{render_type}_latest.png (overwrites)
 
         Args:
             html: Complete HTML document to render
             session_id: Session identifier
-            cell_name: Phase/cell name
+            cell_name: Cell/cell name
             candidate_index: Optional candidate index for parallel candidates
             render_type: Type prefix for filename (default "htmx")
             unique_id: Optional unique identifier (e.g., checkpoint_id) for persistent screenshots

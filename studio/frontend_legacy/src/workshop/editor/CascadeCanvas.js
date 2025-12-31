@@ -2,7 +2,7 @@ import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
-import PhasesRail from './CellsRail';
+import CellsRail from './CellsRail';
 import './CascadeCanvas.css';
 
 /**
@@ -12,7 +12,7 @@ import './CascadeCanvas.css';
  * - Cascade header (cascade_id, description, memory)
  * - Inputs schema slot (future)
  * - Validators slot (future)
- * - Phases rail (sortable list of phases)
+ * - Cells rail (sortable list of cells)
  */
 function CascadeCanvas() {
   const [isHeaderExpanded, setIsHeaderExpanded] = React.useState(false);
@@ -195,14 +195,14 @@ function CascadeCanvas() {
         )}
       </div>
 
-      {/* Phases Rail */}
-      <div className="phases-section">
-        <div className="phases-header">
+      {/* Cells Rail */}
+      <div className="cells-section">
+        <div className="cells-header">
           <Icon icon="mdi:view-sequential" width="20" />
-          <span>Phases</span>
-          <span className="phases-count">{cascade.cells?.length || 0} phases</span>
+          <span>Cells</span>
+          <span className="cells-count">{cascade.cells?.length || 0} cells</span>
         </div>
-        <PhasesRail />
+        <CellsRail />
       </div>
     </div>
   );

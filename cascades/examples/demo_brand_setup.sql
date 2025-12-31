@@ -92,7 +92,7 @@ ORDER BY id;
 /*
 SELECT
   session_id,
-  phase_name,
+  cell_name,
   cost,
   tokens_in,
   tokens_out,

@@ -102,7 +102,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
         for (const row of validRows) {
           if (!row.message_id) {
             // No message_id (some system messages) - skip to avoid duplicates
-            // These are typically phase_start/phase_complete events already in logs
+            // These are typically cell_start/cell_complete events already in logs
             continue;
           }
 

@@ -119,7 +119,7 @@ def save_research_session(
         "total_input_tokens": metrics['total_input_tokens'],
         "total_output_tokens": metrics['total_output_tokens'],
         "duration_seconds": metrics['duration_seconds'],
-        "phases_visited": json.dumps(metrics['phases_visited']),
+        "cells_visited": json.dumps(metrics['cells_visited']),
         "tools_used": json.dumps(metrics['tools_used']),
 
         # Taxonomy
@@ -251,7 +251,7 @@ def get_research_session(research_session_id: str) -> dict:
 
         # Parse JSON fields
         json_fields = ['context_snapshot', 'checkpoints_data', 'entries_snapshot',
-                      'screenshots', 'phases_visited', 'tools_used', 'tags']
+                      'screenshots', 'cells_visited', 'tools_used', 'tags']
 
         for field in json_fields:
             value = session.get(field)
@@ -322,7 +322,7 @@ def _fetch_checkpoints_for_session(session_id: str) -> list:
         result = db.query(f"""
             SELECT
                 id, cell_name, checkpoint_type,
-                phase_output, ui_spec,
+                cell_output, ui_spec,
                 response, responded_at,
                 created_at, status
             FROM checkpoints
@@ -369,7 +369,7 @@ def _compute_session_metrics(entries: list) -> dict:
             'total_input_tokens': 0,
             'total_output_tokens': 0,
             'duration_seconds': 0.0,
-            'phases_visited': [],
+            'cells_visited': [],
             'tools_used': []
         }
 
@@ -394,8 +394,8 @@ def _compute_session_metrics(entries: list) -> dict:
         last_dt = datetime.fromisoformat(str(last_ts).replace('Z', '+00:00'))
         duration_seconds = (last_dt - first_dt).total_seconds()
 
-    # Phases visited
-    phases_visited = list(dict.fromkeys([
+    # Cells visited
+    cells_visited = list(dict.fromkeys([
         e.get('cell_name') for e in entries
         if e.get('cell_name')
     ]))
@@ -420,7 +420,7 @@ def _compute_session_metrics(entries: list) -> dict:
         'total_input_tokens': total_input_tokens,
         'total_output_tokens': total_output_tokens,
         'duration_seconds': duration_seconds,
-        'phases_visited': phases_visited,
+        'cells_visited': cells_visited,
         'tools_used': tools_used
     }
 
@@ -448,7 +448,7 @@ def _generate_title_from_checkpoints(checkpoints: list, cascade_id: str) -> str:
 
     # Get first checkpoint question as title basis
     first_checkpoint = checkpoints[0]
-    question = first_checkpoint.get('phase_output', '')
+    question = first_checkpoint.get('cell_output', '')
 
     if question:
         # Truncate to reasonable length

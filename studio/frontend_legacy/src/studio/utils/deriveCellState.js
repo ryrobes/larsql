@@ -36,14 +36,14 @@ export function deriveCellState(logs, cellName) {
     const role = row.role;
 
     // Cell running
-    if (role === 'phase_start' || role === 'structure') {
+    if (role === 'cell_start' || role === 'structure') {
       //console.log('[deriveCellState]', cellName, 'Setting status to running (role:', role, ')');
       status = 'running';
     }
 
     // Cell complete
-    if (role === 'phase_complete') {
-      //console.log('[deriveCellState]', cellName, 'Setting status to SUCCESS (found phase_complete)');
+    if (role === 'cell_complete') {
+      //console.log('[deriveCellState]', cellName, 'Setting status to SUCCESS (found cell_complete)');
       status = 'success';
     }
 

@@ -9,17 +9,17 @@ import usePlaygroundStore from '../stores/playgroundStore';
 import { useSessionStream } from '../execution/useSessionStream';
 import PromptNode from './nodes/PromptNode';
 import ImageNode from './nodes/ImageNode';
-import PhaseCard from './nodes/CellCard';
+import CellCard from './nodes/CellCard';
 import 'reactflow/dist/style.css';
 import './PlaygroundCanvas.css';
 
 // Register custom node types
-// PhaseCard replaces PhaseNode - all phases are now two-sided cards
+// CellCard replaces CellNode - all cells are now two-sided cards
 const nodeTypes = {
   prompt: PromptNode,
   image: ImageNode,
-  phase: PhaseCard,  // Two-sided card with flip animation, stacked deck for soundings
-  card: PhaseCard,   // Alias for backwards compatibility
+  cell: CellCard,  // Two-sided card with flip animation, stacked deck for soundings
+  card: CellCard,   // Alias for backwards compatibility
 };
 
 /**
@@ -48,14 +48,14 @@ function PlaygroundCanvas() {
   } = usePlaygroundStore();
 
   // Use session stream polling for real-time execution state
-  const { phaseStates, isPolling } = useSessionStream(sessionId);
+  const { cellStates, isPolling } = useSessionStream(sessionId);
 
-  // Update store with derived phase states
+  // Update store with derived cell states
   useEffect(() => {
-    if (phaseStates && Object.keys(phaseStates).length > 0) {
-      setSessionStreamStates(phaseStates);
+    if (cellStates && Object.keys(cellStates).length > 0) {
+      setSessionStreamStates(cellStates);
     }
-  }, [phaseStates, setSessionStreamStates]);
+  }, [cellStates, setSessionStreamStates]);
 
   // Handle node changes from React Flow
   const onNodesChange = useCallback((changes) => {
@@ -137,9 +137,9 @@ function PlaygroundCanvas() {
     // Add the node based on type
     if (type === 'prompt') {
       addPromptNode(position);
-    } else if (nodeType === 'phase') {
-      // Phase node - use addPhaseNode from store
-      usePlaygroundStore.getState().addPhaseNode(position);
+    } else if (nodeType === 'cell') {
+      // Cell node - use addCellNode from store
+      usePlaygroundStore.getState().addCellNode(position);
     } else if (nodeType === 'card') {
       // Card node - new two-sided card with flip animation
       usePlaygroundStore.getState().addCardNode(position);
@@ -206,7 +206,7 @@ function PlaygroundCanvas() {
         <MiniMap
           nodeColor={(node) => {
             if (node.type === 'prompt') return '#10b981';
-            if (node.type === 'phase') return '#06b6d4';
+            if (node.type === 'cell') return '#06b6d4';
             if (node.type === 'card') return '#8B5CF6';  // Purple for card nodes
             if (node.data?.paletteColor) return node.data.paletteColor;
             return 'var(--ocean-primary)';

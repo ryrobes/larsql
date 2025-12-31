@@ -73,7 +73,7 @@ def transcribe(
         session_id: Session ID for logging (auto-generated if None)
         trace_id: Trace ID for logging (auto-generated if None)
         parent_id: Parent trace ID for hierarchy
-        cell_name: Phase name for cascade context
+        cell_name: Cell name for cascade context
         cascade_id: Cascade ID for cascade context
 
     Returns:

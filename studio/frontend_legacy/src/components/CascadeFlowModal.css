@@ -2,8 +2,8 @@
  * CascadeFlowModal Styles
  *
  * Two visual modes:
- * - Spec View: Ghost/translucent appearance for unexecuted phases
- * - Execution View: Solid appearance for executed phases, with path highlighting
+ * - Spec View: Ghost/translucent appearance for unexecuted cells
+ * - Execution View: Solid appearance for executed cells, with path highlighting
  */
 
 /* ============================================
@@ -232,10 +232,10 @@
 }
 
 /* ============================================
-   PHASE NODE
+   CELL NODE
    ============================================ */
 
-.flow-phase-node {
+.flow-cell-node {
   width: 320px;
   min-height: 80px;
   background: #1a1a1a;
@@ -249,33 +249,33 @@
 }
 
 /* Ghost (spec-only, not executed) */
-.flow-phase-node.ghost {
+.flow-cell-node.ghost {
   opacity: 0.6;
   border-style: dashed;
   border-color: #4a5568;
   background: rgba(26, 26, 26, 0.7);
 }
 
-.flow-phase-node.ghost:hover {
+.flow-cell-node.ghost:hover {
   opacity: 0.8;
   border-color: #666;
 }
 
 /* Executed */
-.flow-phase-node.executed {
+.flow-cell-node.executed {
   opacity: 1;
   border-color: #4a5568;
   background: #1a1a1a;
 }
 
 /* On execution path */
-.flow-phase-node.on-path {
+.flow-cell-node.on-path {
   border-color: #34d399;
   box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.3);
 }
 
 /* Status states */
-.flow-phase-node.running {
+.flow-cell-node.running {
   border-color: #fbbf24;
   animation: pulse-running 1.5s ease-in-out infinite;
 }
@@ -285,28 +285,28 @@
   50% { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0); }
 }
 
-.flow-phase-node.error {
+.flow-cell-node.error {
   border-color: #f87171;
   background: rgba(248, 113, 113, 0.1);
 }
 
-.flow-phase-node.completed {
+.flow-cell-node.completed {
   border-color: #34d399;
 }
 
-.flow-phase-node.selected {
+.flow-cell-node.selected {
   box-shadow: 0 0 0 2px #60a5fa;
 }
 
-/* Phase Header */
-.phase-node-header {
+/* Cell Header */
+.cell-node-header {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
 }
 
-.phase-node-header .phase-index {
+.cell-node-header .cell-index {
   width: 22px;
   height: 22px;
   display: flex;
@@ -320,12 +320,12 @@
   flex-shrink: 0;
 }
 
-.flow-phase-node.on-path .phase-index {
+.flow-cell-node.on-path .cell-index {
   background: rgba(52, 211, 153, 0.2);
   color: #34d399;
 }
 
-.phase-node-header .phase-name {
+.cell-node-header .cell-name {
   flex: 1;
   min-width: 0;
   font-size: 14px;
@@ -336,16 +336,16 @@
   text-overflow: ellipsis;
 }
 
-.phase-node-header .status-icon {
+.cell-node-header .status-icon {
   font-size: 16px;
   flex-shrink: 0;
 }
 
-.phase-node-header .status-icon.completed {
+.cell-node-header .status-icon.completed {
   color: #34d399;
 }
 
-.phase-node-header .status-icon.running {
+.cell-node-header .status-icon.running {
   color: #fbbf24;
   animation: spin 1s linear infinite;
 }
@@ -355,12 +355,12 @@
   to { transform: rotate(360deg); }
 }
 
-.phase-node-header .status-icon.error {
+.cell-node-header .status-icon.error {
   color: #f87171;
 }
 
 /* Expand button */
-.phase-node-header .expand-btn {
+.cell-node-header .expand-btn {
   width: 20px;
   height: 20px;
   display: flex;
@@ -377,35 +377,35 @@
   flex-shrink: 0;
 }
 
-.phase-node-header .expand-btn:hover {
+.cell-node-header .expand-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #e0e0e0;
 }
 
-.flow-phase-node.has-complexity .expand-btn {
+.flow-cell-node.has-complexity .expand-btn {
   color: #fbbf24;
   border-color: rgba(251, 191, 36, 0.3);
 }
 
-.flow-phase-node.has-complexity .expand-btn:hover {
+.flow-cell-node.has-complexity .expand-btn:hover {
   background: rgba(251, 191, 36, 0.2);
   color: #fbbf24;
 }
 
 /* Expanded node state */
-.flow-phase-node.expanded {
+.flow-cell-node.expanded {
   width: 360px;
   min-height: 180px;
 }
 
 /* Feature Badges */
-.phase-node-badges {
+.cell-node-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.phase-node-badges .badge {
+.cell-node-badges .badge {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -415,115 +415,115 @@
   font-weight: 500;
 }
 
-.phase-node-badges .badge.soundings {
+.cell-node-badges .badge.soundings {
   background: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
 
-.phase-node-badges .badge.reforge {
+.cell-node-badges .badge.reforge {
   background: rgba(167, 139, 250, 0.15);
   color: #a78bfa;
 }
 
-.phase-node-badges .badge.wards {
+.cell-node-badges .badge.wards {
   background: rgba(96, 165, 250, 0.15);
   color: #60a5fa;
 }
 
-.phase-node-badges .badge.tackle {
+.cell-node-badges .badge.tackle {
   background: rgba(52, 211, 153, 0.15);
   color: #34d399;
 }
 
-.phase-node-badges .badge.handoffs {
+.cell-node-badges .badge.handoffs {
   background: rgba(244, 114, 182, 0.15);
   color: #f472b6;
 }
 
 /* Rules badges */
-.phase-node-badges .badge.turns {
+.cell-node-badges .badge.turns {
   background: rgba(139, 92, 246, 0.15);
   color: #8b5cf6;
 }
 
-.phase-node-badges .badge.loop {
+.cell-node-badges .badge.loop {
   background: rgba(236, 72, 153, 0.15);
   color: #ec4899;
 }
 
-.phase-node-badges .badge.schema {
+.cell-node-badges .badge.schema {
   background: rgba(14, 165, 233, 0.15);
   color: #0ea5e9;
 }
 
 /* Deterministic & routing badges */
-.phase-node-badges .badge.deterministic {
+.cell-node-badges .badge.deterministic {
   background: rgba(251, 146, 60, 0.15);
   color: #fb923c;
 }
 
-.phase-node-badges .badge.routing {
+.cell-node-badges .badge.routing {
   background: rgba(251, 146, 60, 0.15);
   color: #fb923c;
 }
 
 /* Tool category badges */
-.phase-node-badges .badge.manifest {
+.cell-node-badges .badge.manifest {
   background: rgba(52, 211, 153, 0.2);
   color: #34d399;
   font-weight: 600;
 }
 
-.phase-node-badges .badge.hitl {
+.cell-node-badges .badge.hitl {
   background: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
 
-.phase-node-badges .badge.rabbitize {
+.cell-node-badges .badge.rabbitize {
   background: rgba(96, 165, 250, 0.15);
   color: #60a5fa;
 }
 
-.phase-node-badges .badge.code {
+.cell-node-badges .badge.code {
   background: rgba(167, 139, 250, 0.15);
   color: #a78bfa;
 }
 
-.phase-node-badges .badge.sql {
+.cell-node-badges .badge.sql {
   background: rgba(45, 212, 191, 0.15);
   color: #2dd4bf;
 }
 
 /* Sub-cascade & error handling badges */
-.phase-node-badges .badge.subcascade {
+.cell-node-badges .badge.subcascade {
   background: rgba(244, 114, 182, 0.15);
   color: #f472b6;
 }
 
-.phase-node-badges .badge.onerror {
+.cell-node-badges .badge.onerror {
   background: rgba(248, 113, 113, 0.15);
   color: #f87171;
 }
 
 /* Deterministic node styling */
-.flow-phase-node.deterministic {
+.flow-cell-node.deterministic {
   border-style: dotted;
   border-color: #fb923c;
   background: linear-gradient(135deg, #1a1a1a 0%, rgba(251, 146, 60, 0.05) 100%);
 }
 
-.flow-phase-node.deterministic .phase-index {
+.flow-cell-node.deterministic .cell-index {
   background: rgba(251, 146, 60, 0.2);
   color: #fb923c;
 }
 
-.flow-phase-node.deterministic .deterministic-icon {
+.flow-cell-node.deterministic .deterministic-icon {
   color: #fb923c;
   flex-shrink: 0;
 }
 
 /* Prompt Snippet */
-.phase-node-prompt {
+.cell-node-prompt {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -538,20 +538,20 @@
   cursor: help;
 }
 
-.phase-node-prompt .prompt-icon {
+.cell-node-prompt .prompt-icon {
   color: #666;
   flex-shrink: 0;
   margin-top: 1px;
 }
 
-.phase-node-prompt .prompt-text {
+.cell-node-prompt .prompt-text {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
 /* Deterministic Inputs */
-.phase-node-deterministic {
+.cell-node-deterministic {
   margin-top: 4px;
   padding: 6px 8px;
   background: rgba(251, 146, 60, 0.05);
@@ -559,7 +559,7 @@
   border-radius: 4px;
 }
 
-.phase-node-deterministic .deterministic-header {
+.cell-node-deterministic .deterministic-header {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -571,13 +571,13 @@
   letter-spacing: 0.5px;
 }
 
-.phase-node-deterministic .deterministic-inputs {
+.cell-node-deterministic .deterministic-inputs {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.phase-node-deterministic .input-mapping {
+.cell-node-deterministic .input-mapping {
   display: flex;
   align-items: baseline;
   gap: 4px;
@@ -585,13 +585,13 @@
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
 }
 
-.phase-node-deterministic .input-key {
+.cell-node-deterministic .input-key {
   font-size: 9px;
   color: #a78bfa;
   flex-shrink: 0;
 }
 
-.phase-node-deterministic .input-value {
+.cell-node-deterministic .input-value {
   font-size: 9px;
   color: #888;
   word-break: break-all;
@@ -599,12 +599,12 @@
 }
 
 /* Jinja template highlighting in values */
-.phase-node-deterministic .input-value::before {
+.cell-node-deterministic .input-value::before {
   content: '';
 }
 
 /* Execution Stats */
-.phase-node-stats {
+.cell-node-stats {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -612,7 +612,7 @@
   border-top: 1px solid #2a2a2a;
 }
 
-.phase-node-stats .stat {
+.cell-node-stats .stat {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -620,20 +620,20 @@
   color: #888;
 }
 
-.phase-node-stats .stat.cost {
+.cell-node-stats .stat.cost {
   color: #34d399;
 }
 
-.phase-node-stats .stat.winner {
+.cell-node-stats .stat.winner {
   color: #fbbf24;
 }
 
-.phase-node-stats .stat.tokens {
+.cell-node-stats .stat.tokens {
   color: #60a5fa;
 }
 
 /* Execution Output Preview */
-.phase-node-output {
+.cell-node-output {
   margin-top: 6px;
   padding: 6px 8px;
   background: rgba(52, 211, 153, 0.08);
@@ -641,7 +641,7 @@
   border-radius: 4px;
 }
 
-.phase-node-output .output-header {
+.cell-node-output .output-header {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -653,7 +653,7 @@
   letter-spacing: 0.5px;
 }
 
-.phase-node-output .output-content {
+.cell-node-output .output-content {
   font-size: 10px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   color: #aaa;
@@ -666,7 +666,7 @@
 }
 
 /* Execution Images */
-.phase-node-images {
+.cell-node-images {
   margin-top: 6px;
   padding: 6px 8px;
   background: rgba(167, 139, 250, 0.08);
@@ -674,7 +674,7 @@
   border-radius: 4px;
 }
 
-.phase-node-images .images-header {
+.cell-node-images .images-header {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -686,13 +686,13 @@
   letter-spacing: 0.5px;
 }
 
-.phase-node-images .images-thumbnails {
+.cell-node-images .images-thumbnails {
   display: flex;
   gap: 6px;
   align-items: center;
 }
 
-.phase-node-images .image-thumb {
+.cell-node-images .image-thumb {
   width: 32px;
   height: 32px;
   display: flex;
@@ -704,13 +704,13 @@
   color: #a78bfa;
 }
 
-.phase-node-images .more-images {
+.cell-node-images .more-images {
   font-size: 10px;
   color: #a78bfa;
 }
 
 /* Model Badge */
-.phase-node-model {
+.cell-node-model {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -719,29 +719,29 @@
   margin-top: auto;
 }
 
-.phase-node-model.different {
+.cell-node-model.different {
   color: #fbbf24;
 }
 
-.phase-node-model .model-configured {
+.cell-node-model .model-configured {
   font-size: 8px;
   color: #555;
   font-style: italic;
 }
 
 /* React Flow Handles */
-.flow-phase-node .react-flow__handle {
+.flow-cell-node .react-flow__handle {
   width: 8px;
   height: 8px;
   background: #4a5568;
   border: 2px solid #1a1a1a;
 }
 
-.flow-phase-node.on-path .react-flow__handle {
+.flow-cell-node.on-path .react-flow__handle {
   background: #34d399;
 }
 
-.flow-phase-node.ghost .react-flow__handle {
+.flow-cell-node.ghost .react-flow__handle {
   opacity: 0.5;
 }
 

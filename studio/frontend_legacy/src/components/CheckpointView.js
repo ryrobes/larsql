@@ -9,7 +9,7 @@ import './CheckpointView.css';
  *
  * Features:
  * - Timeout countdown
- * - DynamicUI for phase input checkpoints
+ * - DynamicUI for cell input checkpoints
  * - SoundingComparison for sounding evaluation checkpoints
  * - Reasoning capture
  * - Confidence rating
@@ -191,7 +191,7 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
         <div className="checkpoint-breadcrumb">
           <span className="cascade-name">{checkpoint?.cascade_id}</span>
           <span className="separator">→</span>
-          <span className="phase-name">{checkpoint?.cell_name}</span>
+          <span className="cell-name">{checkpoint?.cell_name}</span>
         </div>
         <div className="checkpoint-type-badge">
           {isSoundingEval ? (
@@ -233,7 +233,7 @@ function CheckpointView({ checkpointId, onComplete, onBack }) {
         ) : (
           <DynamicUI
             spec={uiSpec}
-            phaseOutput={checkpoint?.phase_output}
+            cellOutput={checkpoint?.cell_output}
             onSubmit={handleSubmit}
             isLoading={submitting}
             checkpointId={checkpointId}

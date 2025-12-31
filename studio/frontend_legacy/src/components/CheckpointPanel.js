@@ -4,15 +4,15 @@ import VoiceInputSection from './VoiceInputSection';
 import './CheckpointPanel.css';
 
 /**
- * Parse phase output to extract actual option content.
+ * Parse cell output to extract actual option content.
  * Looks for patterns like "**Option A**\nActual title here" or "Option A: Title here"
  */
-function extractOptionsFromOutput(phaseOutput, options) {
-  if (!phaseOutput || !options || options.length === 0) {
+function extractOptionsFromOutput(cellOutput, options) {
+  if (!cellOutput || !options || options.length === 0) {
     return options;
   }
 
-  const output = phaseOutput;
+  const output = cellOutput;
 
   // Build a map of option values to their extracted text
   const extractedText = {};
@@ -409,9 +409,9 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
   };
 
   const renderChoiceInput = (section, checkpoint, key) => {
-    const phaseOutput = checkpoint.phase_output_preview || checkpoint.phase_output || '';
+    const cellOutput = checkpoint.cell_output_preview || checkpoint.cell_output || '';
     const rawOptions = section.options || [];
-    const options = extractOptionsFromOutput(phaseOutput, rawOptions);
+    const options = extractOptionsFromOutput(cellOutput, rawOptions);
     const selected = responses[checkpoint.id];
     const isSubmitting = submitting[checkpoint.id];
 
@@ -470,9 +470,9 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
   };
 
   const renderMultiChoiceInput = (section, checkpoint, key) => {
-    const phaseOutput = checkpoint.phase_output_preview || checkpoint.phase_output || '';
+    const cellOutput = checkpoint.cell_output_preview || checkpoint.cell_output || '';
     const rawOptions = section.options || [];
-    const options = extractOptionsFromOutput(phaseOutput, rawOptions);
+    const options = extractOptionsFromOutput(cellOutput, rawOptions);
     const selected = responses[checkpoint.id] || [];
     const isSubmitting = submitting[checkpoint.id];
 
@@ -744,11 +744,11 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
 
     return (
       <div className="checkpoint-layout vertical legacy">
-        {/* Phase output preview */}
+        {/* Cell output preview */}
         <div className="checkpoint-output">
-          <div className="output-label">Phase Output:</div>
+          <div className="output-label">Cell Output:</div>
           <div className="output-content">
-            {checkpoint.phase_output_preview || checkpoint.phase_output || 'No output available'}
+            {checkpoint.cell_output_preview || checkpoint.cell_output || 'No output available'}
           </div>
         </div>
 
@@ -773,7 +773,7 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
    */
   const renderLegacyInputUI = (checkpoint, type, isSubmitting) => {
     // Confirmation type (default)
-    if (type === 'confirmation' || type === 'simple' || type === 'phase_input') {
+    if (type === 'confirmation' || type === 'simple' || type === 'cell_input') {
       return (
         <div className="checkpoint-input confirmation">
           <div className="checkpoint-buttons">
@@ -848,7 +848,7 @@ function CheckpointPanel({ checkpoints, onRespond, onCancel, onDismiss }) {
             >
               <div className="checkpoint-info">
                 <span className="checkpoint-cascade">{checkpoint.cascade_id}</span>
-                <span className="checkpoint-phase">Phase: {checkpoint.cell_name}</span>
+                <span className="checkpoint-cell">Cell: {checkpoint.cell_name}</span>
               </div>
               <span className="checkpoint-expand">
                 {expandedCheckpoint === checkpoint.id ? '▼' : '▶'}

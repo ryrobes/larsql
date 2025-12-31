@@ -659,7 +659,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
-Available: `data.cell_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+Available: `data.cell_name` for prior cell outputs, `pd` (pandas), `np` (numpy).
 
 Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -673,7 +673,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (array of objects, object, or scalar).
-Available: `data.cell_name` for prior phase outputs (arrays of objects), `state`, `input`.
+Available: `data.cell_name` for prior cell outputs (arrays of objects), `state`, `input`.
 
 Return ONLY the corrected JavaScript code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -687,8 +687,8 @@ Original code:
 ```
 
 The code should evaluate to the result (vector of maps for dataframes, or other Clojure values).
-Available: `(:phase-name data)` for prior phase outputs (vectors of maps), `state`, `input`.
-Note: Phase names use kebab-case (e.g., raw-customers instead of raw_customers).
+Available: `(:cell-name data)` for prior cell outputs (vectors of maps), `state`, `input`.
+Note: Cell names use kebab-case (e.g., raw-customers instead of raw_customers).
 
 Return ONLY the corrected Clojure code. No explanations, no markdown code blocks, just the raw code."""
 }
@@ -920,7 +920,7 @@ def list_notebooks():
     List all available data cascade notebooks.
 
     Scans traits/, cascades/, and examples/ directories for YAML/JSON files
-    that only contain deterministic phases.
+    that only contain deterministic cells.
 
     Returns:
         JSON with list of notebooks and their metadata
@@ -1048,7 +1048,7 @@ def run_notebook():
         - inputs: Input values for the notebook
 
     Returns:
-        JSON with execution results for each phase
+        JSON with execution results for each cell
     """
     try:
         data = request.json
@@ -1070,14 +1070,14 @@ def run_notebook():
         try:
             result = run_cascade(temp_path, inputs, session_id=session_id)
 
-            phases = {}
+            cells = {}
             for entry in result.get('lineage', []):
-                cell_name = entry.get('phase')
+                cell_name = entry.get('cell')
                 output = entry.get('output')
                 duration = entry.get('duration_ms')
 
                 if isinstance(output, dict):
-                    phases[cell_name] = {
+                    cells[cell_name] = {
                         'result': sanitize_for_json(output),
                         'duration_ms': duration,
                         'error': output.get('error') if output.get('_route') == 'error' else None
@@ -1085,8 +1085,8 @@ def run_notebook():
 
             return jsonify({
                 'session_id': session_id,
-                'phases': phases,
-                'final_output': sanitize_for_json(result.get('state', {}).get(f'output_{notebook["phases"][-1]["name"]}')),
+                'cells': cells,
+                'final_output': sanitize_for_json(result.get('state', {}).get(f'output_{notebook["cells"][-1]["name"]}')),
                 'has_errors': result.get('has_errors', False)
             })
 
@@ -1108,7 +1108,7 @@ def run_cell():
     Run a single notebook cell with optional auto-fix.
 
     Request body:
-        - cell: Cell definition (phase object)
+        - cell: Cell definition (cell object)
         - inputs: Input values for the notebook
         - prior_outputs: Outputs from prior cells
         - session_id: Session ID for temp table persistence
@@ -1158,8 +1158,8 @@ def run_cell():
             else:
                 rendered_inputs[key] = value
 
-        # Check if this is a regular LLM phase
-        is_llm_phase = not tool and cell.get('instructions')
+        # Check if this is a regular LLM cell
+        is_llm_cell = not tool and cell.get('instructions')
 
         original_code = rendered_inputs.get('query') if tool == 'sql_data' else rendered_inputs.get('code', '')
 
@@ -1167,7 +1167,7 @@ def run_cell():
         result = None
 
         try:
-            if is_llm_phase:
+            if is_llm_cell:
                 instructions = cell.get('instructions', '')
                 if instructions and isinstance(instructions, str):
                     try:
@@ -1183,8 +1183,8 @@ def run_cell():
 
                 mini_cascade = {
                     'cascade_id': f'notebook_{cell_name}',
-                    'description': 'Notebook LLM phase',
-                    'phases': [rendered_cell]
+                    'description': 'Notebook LLM cell',
+                    'cells': [rendered_cell]
                 }
 
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
@@ -1243,7 +1243,7 @@ def run_cell():
                 )
             elif tool == 'rvbbit_data':
                 result = rvbbit_data(
-                    phase_yaml=rendered_inputs.get('code', ''),
+                    cell_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,
@@ -1395,17 +1395,17 @@ def get_session_state(session_id):
         }), 500
 
 
-@studio_bp.route('/phase-messages/<session_id>/<cell_name>', methods=['GET'])
-def get_phase_messages(session_id, cell_name):
+@studio_bp.route('/cell-messages/<session_id>/<cell_name>', methods=['GET'])
+def get_cell_messages(session_id, cell_name):
     """
-    Get all messages/tool calls for a specific phase in a session.
+    Get all messages/tool calls for a specific cell in a session.
 
     Fetches from unified_logs showing all interactions (user, assistant, tool, system).
     Results are ordered by timestamp.
 
     Args:
         session_id: Session ID
-        cell_name: Phase name
+        cell_name: Cell name
 
     Returns:
         List of messages with role, content, tool_calls, timestamps
@@ -1575,9 +1575,9 @@ def get_session_cascade(session_id):
         cell_names = [row['cell_name'] for row in rows_fallback if row.get('cell_name')]
 
         # Build a minimal cascade structure
-        phases = []
+        cells = []
         for name in cell_names:
-            phases.append({
+            cells.append({
                 'name': name,
                 'tool': 'unknown',  # We don't know the tool type from logs
                 'inputs': {}
@@ -1586,7 +1586,7 @@ def get_session_cascade(session_id):
         reconstructed_cascade = {
             'cascade_id': cascade_id,
             'description': f'Historical run (reconstructed from session {session_id})',
-            'phases': phases,
+            'cells': cells,
             '_reconstructed': True,
             '_session_id': session_id
         }
@@ -1595,7 +1595,7 @@ def get_session_cascade(session_id):
             'cascade': reconstructed_cascade,
             'input_data': {},
             'source': 'reconstructed_from_logs',
-            'warning': 'This cascade was reconstructed from logs. Original phase configurations and inputs are not available. Run the migration to enable full replay for future runs.'
+            'warning': 'This cascade was reconstructed from logs. Original cell configurations and inputs are not available. Run the migration to enable full replay for future runs.'
         })
 
     except Exception as e:
@@ -1898,27 +1898,28 @@ def get_tools():
         }), 500
 
 
-@studio_bp.route('/phase-types', methods=['GET'])
-def get_phase_types():
+@studio_bp.route('/cell-types', methods=['GET'])
+@studio_bp.route('/cell-types', methods=['GET'])  # Legacy alias
+def get_cell_types():
     """
-    Load declarative phase type definitions from phase_types/ directory
-    Returns list of phase types with metadata and templates
+    Load declarative cell type definitions from cell_types/ directory
+    Returns list of cell types with metadata and templates
     """
     try:
-        phase_types_dir = Path(__file__).parent.parent / 'phase_types'
+        cell_types_dir = Path(__file__).parent.parent / 'cell_types'
 
-        if not phase_types_dir.exists():
+        if not cell_types_dir.exists():
             return jsonify([])
 
-        phase_types = []
+        cell_types = []
 
-        for yaml_file in sorted(phase_types_dir.glob('*.yaml')):
+        for yaml_file in sorted(cell_types_dir.glob('*.yaml')):
             try:
                 with open(yaml_file, 'r') as f:
                     type_def = yaml.safe_load(f)
 
                 if type_def and 'type_id' in type_def:
-                    phase_types.append({
+                    cell_types.append({
                         'type_id': type_def['type_id'],
                         'display_name': type_def.get('display_name', type_def['type_id']),
                         'icon': type_def.get('icon', 'mdi:cog'),
@@ -1930,10 +1931,10 @@ def get_phase_types():
                         'template': type_def.get('template', {}),
                     })
             except Exception as e:
-                print(f"Warning: Could not load phase type {yaml_file}: {e}")
+                print(f"Warning: Could not load cell type {yaml_file}: {e}")
                 continue
 
-        return jsonify(phase_types)
+        return jsonify(cell_types)
 
     except Exception as e:
         import traceback

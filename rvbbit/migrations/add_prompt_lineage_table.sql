@@ -1,6 +1,6 @@
 -- Migration: Add prompt_lineage table for prompt evolution tracking
 -- Date: 2025-12-10
--- Description: Phase 3 of Sextant evolution - tracks prompt lineage across generations
+-- Description: Cell 3 of Sextant evolution - tracks prompt lineage across generations
 --
 -- This table enables:
 -- - Tracking prompt "family trees" (base → mutation → reforge)

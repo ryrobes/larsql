@@ -6,7 +6,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import useTimelinePolling from '../hooks/useTimelinePolling';
 import CellCard from './CellCard';
 import CellDetailPanel from './CellDetailPanel';
-import { CellAnatomyPanel } from '../phase-anatomy';
+import { CellAnatomyPanel } from '../cell-anatomy';
 import SessionMessagesLog from '../components/SessionMessagesLog';
 import { Tooltip } from '../../components/RichTooltip';
 import { Button, Modal, ModalHeader, ModalContent, ModalFooter } from '../../components';
@@ -760,7 +760,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const [scrollOffset, setScrollOffset] = useState({ x: 0, y: 0 });
   const [timelineOffset, setTimelineOffset] = useState({ left: 0, top: 0 });
   const [timelineHeight, setTimelineHeight] = useState(0); // Actual measured height for clipping
-  const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Phase anatomy visualization
+  const [showAnatomyPanel, setShowAnatomyPanel] = useState(false); // Cell anatomy visualization
 
   // Split panel resize state
   const [graphPanelHeight, setGraphPanelHeight] = useState(null); // null = use default heights
@@ -778,7 +778,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     if (e.button !== 0) return;
     const target = e.target;
     // Don't grab if clicking on a card, button, input, or other interactive element
-    if (target.closest('.phase-card, button, input, textarea, .cascade-drop-zone')) return;
+    if (target.closest('.cell-card, button, input, textarea, .cascade-drop-zone')) return;
 
     const strip = timelineRef.current;
     if (!strip) return;
@@ -1161,15 +1161,15 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
     [cells, inputsSchema, layoutMode, cellCostMetrics]
   );
 
-  // Count messages by role, filtering out system messages (phase_*)
+  // Count messages by role, filtering out system messages (cell_*)
   let messageCounts = null;
   if (logs && logs.length > 0) {
     const counts = {};
     let total = 0;
     for (const log of logs) {
       const role = log.role;
-      // Skip system messages (phase_start, phase_complete, etc.)
-      if (role && !role.startsWith('phase_')) {
+      // Skip system messages (cell_start, cell_complete, etc.)
+      if (role && !role.startsWith('cell_')) {
         counts[role] = (counts[role] || 0) + 1;
         total++;
       }

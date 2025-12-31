@@ -20,8 +20,8 @@ echo ""
 # =============================================================================
 echo "[1/8] Updating class names..."
 
-# PhaseConfig → CellConfig
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bPhaseConfig\b/CellConfig/g' {} +
+# CellConfig → CellConfig
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bCellConfig\b/CellConfig/g' {} +
 
 # SoundingsConfig → CandidatesConfig
 find rvbbit -name "*.py" -type f -exec sed -i 's/\bSoundingsConfig\b/CandidatesConfig/g' {} +
@@ -45,8 +45,8 @@ find rvbbit -name "*.py" -type f -exec sed -i 's/\bget_tackle\b/get_trait/g' {} 
 # list_tackle → list_traits
 find rvbbit -name "*.py" -type f -exec sed -i 's/\blist_tackle\b/list_traits/g' {} +
 
-# run_phase → run_cell
-find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_phase\b/run_cell/g' {} +
+# run_cell → run_cell
+find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_cell\b/run_cell/g' {} +
 
 # run_soundings → run_candidates
 find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_soundings\b/run_candidates/g' {} +
@@ -58,17 +58,17 @@ echo "✓ Function names updated"
 # =============================================================================
 echo "[3/8] Updating field names..."
 
-# "phases": → "cells":
-find rvbbit -name "*.py" -type f -exec sed -i 's/"phases":/"cells":/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'phases':/'cells':/g" {} +
+# "cells": → "cells":
+find rvbbit -name "*.py" -type f -exec sed -i 's/"cells":/"cells":/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'cells':/'cells':/g" {} +
 
-# "phase_name" → "cell_name"
-find rvbbit -name "*.py" -type f -exec sed -i 's/"phase_name"/"cell_name"/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'phase_name'/'cell_name'/g" {} +
+# "cell_name" → "cell_name"
+find rvbbit -name "*.py" -type f -exec sed -i 's/"cell_name"/"cell_name"/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'cell_name'/'cell_name'/g" {} +
 
-# "phase_json" → "cell_json"
-find rvbbit -name "*.py" -type f -exec sed -i 's/"phase_json"/"cell_json"/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'phase_json'/'cell_json'/g" {} +
+# "cell_json" → "cell_json"
+find rvbbit -name "*.py" -type f -exec sed -i 's/"cell_json"/"cell_json"/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'cell_json'/'cell_json'/g" {} +
 
 # "tackle": → "traits":
 find rvbbit -name "*.py" -type f -exec sed -i 's/"tackle":/"traits":/g' {} +
@@ -97,19 +97,19 @@ echo "✓ Field names updated"
 # =============================================================================
 echo "[4/8] Updating variable names..."
 
-# phase = → cell =
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bphase = /cell = /g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bphase=/cell=/g' {} +
+# cell = → cell =
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcell = /cell = /g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcell=/cell=/g' {} +
 
-# phases = → cells =
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bphases = /cells = /g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bphases=/cells=/g' {} +
+# cells = → cells =
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcells = /cells = /g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcells=/cells=/g' {} +
 
-# current_phase → current_cell
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bcurrent_phase\b/current_cell/g' {} +
+# current_cell → current_cell
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcurrent_cell\b/current_cell/g' {} +
 
-# next_phase → next_cell
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bnext_phase\b/next_cell/g' {} +
+# next_cell → next_cell
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bnext_cell\b/next_cell/g' {} +
 
 # tackle_name → trait_name
 find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_name\b/trait_name/g' {} +
@@ -129,8 +129,8 @@ echo "✓ Variable names updated"
 echo "[5/8] Updating SQL column references..."
 
 # This will update column names in SQL queries within Python strings
-find rvbbit -name "*.py" -type f -exec sed -i 's/phase_name/cell_name/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/phase_json/cell_json/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/cell_name/cell_name/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/cell_json/cell_json/g' {} +
 find rvbbit -name "*.py" -type f -exec sed -i 's/sounding_index/candidate_index/g' {} +
 find rvbbit -name "*.py" -type f -exec sed -i 's/winning_sounding_index/winning_candidate_index/g' {} +
 
@@ -178,7 +178,7 @@ echo "=== Refactoring Complete ==="
 echo "✓ All $total_py_files Python files processed"
 echo ""
 echo "Changes made:"
-echo "  - Phase → Cell (classes, variables, fields)"
+echo "  - Cell → Cell (classes, variables, fields)"
 echo "  - Tackle → Traits (functions, variables, fields)"
 echo "  - Soundings → Candidates (classes, variables, fields)"
 echo "  - Windlass → RVBBIT (strings, comments)"

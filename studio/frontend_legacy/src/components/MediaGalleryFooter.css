@@ -39,15 +39,15 @@
   gap: 16px;
 }
 
-/* Phase group */
-.media-phase-group {
+/* Cell group */
+.media-cell-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex-shrink: 0;
 }
 
-.media-phase-badge {
+.media-cell-badge {
   font-size: 9px;
   font-weight: 600;
   color: #0a0a0a;
@@ -57,7 +57,7 @@
   align-self: flex-start;
 }
 
-.media-phase-content {
+.media-cell-content {
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -326,7 +326,7 @@
   gap: 8px;
 }
 
-.media-modal-phase {
+.media-modal-cell {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -463,7 +463,7 @@
   max-width: 280px;
 }
 
-.media-phase-badge.small {
+.media-cell-badge.small {
   font-size: 8px;
   padding: 1px 5px;
   flex-shrink: 0;

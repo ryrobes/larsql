@@ -2,18 +2,18 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import RichMarkdown from '../../components/RichMarkdown';
-import './PhaseExplosionView.css';
+import './CellExplosionView.css';
 
 /**
- * PhaseExplosionView - Fullscreen 3D explosion of soundings/reforge cards
+ * CellExplosionView - Fullscreen 3D explosion of soundings/reforge cards
  *
  * Animates cards from their canvas origin position toward the user,
  * then spreads them out spatially to show the full decision tree.
  *
  * Uses CSS 3D transforms for skeuomorphic "lifting" effect.
  */
-function PhaseExplosionView({ phaseData, originRect, onClose }) {
-  const [animationPhase, setAnimationPhase] = useState('lifting'); // lifting → spreading → settled
+function CellExplosionView({ cellData, originRect, onClose }) {
+  const [animationCell, setAnimationCell] = useState('lifting'); // lifting → spreading → settled
   const containerRef = useRef(null);
 
   // Extract data
@@ -27,15 +27,15 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
     totalReforgeSteps = 0,
     evaluatorReasoning = '',
     aggregatorReasoning = '',
-    parsedPhase = {},
-  } = phaseData;
+    parsedCell = {},
+  } = cellData;
 
   const soundingsFactor = soundingsProgress.length;
   const hasReforge = totalReforgeSteps > 0 && Object.keys(reforgeOutputs).length > 0;
-  const isAggregate = parsedPhase?.soundings?.mode === 'aggregate';
+  const isAggregate = parsedCell?.soundings?.mode === 'aggregate';
 
   // Debug logging
-  console.log('[PhaseExplosion] Data:', {
+  console.log('[CellExplosion] Data:', {
     name,
     soundingsFactor,
     soundingsProgress,
@@ -46,12 +46,12 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
     currentReforgeStep,
     winnerIndex,
     evaluatorReasoning,
-    liveLog: phaseData.liveLog
+    liveLog: cellData.liveLog
   });
 
   // Debug reforge specifically
   if (totalReforgeSteps > 0) {
-    console.log('[PhaseExplosion] REFORGE DEBUG:', {
+    console.log('[CellExplosion] REFORGE DEBUG:', {
       totalReforgeSteps,
       currentReforgeStep,
       reforgeOutputsKeys: Object.keys(reforgeOutputs),
@@ -62,10 +62,10 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
 
   // Animation sequence
   useEffect(() => {
-    // Phase 1: Lifting (0-500ms)
-    const liftTimer = setTimeout(() => setAnimationPhase('spreading'), 500);
-    // Phase 2: Spreading (500-1200ms)
-    const spreadTimer = setTimeout(() => setAnimationPhase('settled'), 1200);
+    // Cell 1: Lifting (0-500ms)
+    const liftTimer = setTimeout(() => setAnimationCell('spreading'), 500);
+    // Cell 2: Spreading (500-1200ms)
+    const spreadTimer = setTimeout(() => setAnimationCell('settled'), 1200);
 
     return () => {
       clearTimeout(liftTimer);
@@ -192,7 +192,7 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
 
   return createPortal(
     <div
-      className={`phase-explosion-overlay phase-${animationPhase}`}
+      className={`cell-explosion-overlay cell-${animationCell}`}
       onClick={onClose}
       ref={containerRef}
     >
@@ -221,7 +221,7 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
               card={card}
               originX={originX}
               originY={originY}
-              animationPhase={animationPhase}
+              animationCell={animationCell}
               delay={i * 100}
             />
           ))}
@@ -268,7 +268,7 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
                 card={card}
                 originX={originX}
                 originY={originY}
-                animationPhase={animationPhase}
+                animationCell={animationCell}
                 delay={600 + i * 150}
               />
             );
@@ -284,18 +284,18 @@ function PhaseExplosionView({ phaseData, originRect, onClose }) {
 /**
  * Individual sounding card with animation
  */
-function SoundingCard({ card, originX, originY, animationPhase, delay }) {
+function SoundingCard({ card, originX, originY, animationCell, delay }) {
   const { index, x, y, width, height, data, output, isWinner, isEliminated } = card;
 
   // Animation styles
   const getTransform = () => {
-    if (animationPhase === 'lifting') {
+    if (animationCell === 'lifting') {
       return {
         transform: `translate(${originX - x - width/2}px, ${originY - y - height/2}px) scale(0.3) translateZ(0px)`,
         opacity: 0,
       };
     }
-    if (animationPhase === 'spreading') {
+    if (animationCell === 'spreading') {
       return {
         transform: `translate(0, 0) scale(1) translateZ(100px)`,
         opacity: 1,
@@ -371,17 +371,17 @@ function SoundingCard({ card, originX, originY, animationPhase, delay }) {
 /**
  * Reforge step card with animation
  */
-function ReforgeCard({ card, originX, originY, animationPhase, delay }) {
+function ReforgeCard({ card, originX, originY, animationCell, delay }) {
   const { step, x, y, width, height, output, isCurrentStep, isComplete } = card;
 
   const getTransform = () => {
-    if (animationPhase === 'lifting') {
+    if (animationCell === 'lifting') {
       return {
         transform: `translate(${originX - x - width/2}px, ${originY - y - height/2}px) scale(0.3) translateZ(0px)`,
         opacity: 0,
       };
     }
-    if (animationPhase === 'spreading') {
+    if (animationCell === 'spreading') {
       return {
         transform: `translate(0, 0) scale(1) translateZ(100px)`,
         opacity: 1,
@@ -442,4 +442,4 @@ function ReforgeCard({ card, originX, originY, animationPhase, delay }) {
   );
 }
 
-export default PhaseExplosionView;
+export default CellExplosionView;

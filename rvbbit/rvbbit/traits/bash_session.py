@@ -2,7 +2,7 @@
 Persistent bash sessions for cascade executions.
 
 Each cascade gets a long-running bash process that maintains state
-(environment variables, working directory, shell functions) across phases.
+(environment variables, working directory, shell functions) across cells.
 
 Similar to how session_db.py manages DuckDB connections, this manages
 bash processes.
@@ -32,7 +32,7 @@ class BashSession:
     """
     A persistent bash process for a cascade execution.
 
-    The bash process stays alive between phase executions, maintaining:
+    The bash process stays alive between cell executions, maintaining:
     - Environment variables (export FOO=bar)
     - Working directory (cd /path)
     - Shell functions (function foo() { ... })

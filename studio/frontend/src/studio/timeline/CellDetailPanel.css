@@ -1,5 +1,5 @@
 /* ============================================
-   PHASE DETAIL PANEL - Bottom Panel
+   CELL DETAIL PANEL - Bottom Panel
    ============================================ */
 
 .cell-detail-panel {
@@ -194,7 +194,7 @@
   flex-direction: column;
 }
 
-/* Mode label (for non-LLM phases) */
+/* Mode label (for non-LLM cells) */
 .cell-detail-mode-label {
   display: flex;
   align-items: center;

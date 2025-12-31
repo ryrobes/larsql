@@ -3,10 +3,10 @@ import { Icon } from '@iconify/react';
 import { getSequentialColor } from './CascadeBar';
 import './CellBar.css';
 
-function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, runningSoundingsSet = new Set(), onPhaseClick = null, onSoundingClick = null }) {
+function CellBar({ cell, maxCost, status = null, onClick, cellIndex = null, runningSoundingsSet = new Set(), onCellClick = null, onSoundingClick = null }) {
   // Calculate bar width based on cost (relative to max)
   // Apply logarithmic scaling to prevent extreme ratios
-  const costPercent = maxCost > 0 ? (phase.avg_cost / maxCost) * 100 : 10;
+  const costPercent = maxCost > 0 ? (cell.avg_cost / maxCost) * 100 : 10;
 
   // Use square root scaling for better visual distribution
   // This prevents tiny bars when costs vary widely
@@ -15,7 +15,7 @@ function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, ru
   const barWidth = Math.max(scaledPercent, 10); // Minimum 10% for visibility
 
   // Determine bar color based on status (for instances) or default (for definitions)
-  let barClass = 'phase-bar-fill';
+  let barClass = 'cell-bar-fill';
   if (status) {
     barClass += ` status-${status}`;
   }
@@ -29,14 +29,14 @@ function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, ru
     return `$${cost.toFixed(2)}`;
   };
 
-  // Get phase color for the legend indicator
-  const phaseColor = cellIndex !== null ? getSequentialColor(cellIndex) : null;
+  // Get cell color for the legend indicator
+  const cellColor = cellIndex !== null ? getSequentialColor(cellIndex) : null;
 
-  // Handle phase header click - scroll to phase start
-  const handlePhaseHeaderClick = (e) => {
+  // Handle cell header click - scroll to cell start
+  const handleCellHeaderClick = (e) => {
     e.stopPropagation();
-    if (onPhaseClick) {
-      onPhaseClick(phase.name);
+    if (onCellClick) {
+      onCellClick(cell.name);
     } else if (onClick) {
       onClick();
     }
@@ -46,39 +46,39 @@ function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, ru
   const handleSoundingClick = (e, soundingIndex) => {
     e.stopPropagation();
     if (onSoundingClick) {
-      onSoundingClick(phase.name, soundingIndex);
+      onSoundingClick(cell.name, soundingIndex);
     }
   };
 
   return (
-    <div className="phase-bar-container" onClick={onClick}>
+    <div className="cell-bar-container" onClick={onClick}>
       <div
-        className={`phase-bar-header ${onPhaseClick ? 'clickable' : ''}`}
-        onClick={handlePhaseHeaderClick}
-        title={onPhaseClick ? `Click to scroll to ${phase.name}` : undefined}
+        className={`cell-bar-header ${onCellClick ? 'clickable' : ''}`}
+        onClick={handleCellHeaderClick}
+        title={onCellClick ? `Click to scroll to ${cell.name}` : undefined}
       >
-        <div className="phase-title">
-          {phaseColor && (
+        <div className="cell-title">
+          {cellColor && (
             <span
-              className="phase-color-indicator"
-              style={{ backgroundColor: phaseColor }}
-              title={`Phase ${cellIndex + 1}`}
+              className="cell-color-indicator"
+              style={{ backgroundColor: cellColor }}
+              title={`Cell ${cellIndex + 1}`}
             />
           )}
-          <span className="phase-name">{phase.name}</span>
+          <span className="cell-name">{cell.name}</span>
         </div>
-        <div className="phase-metrics">
-          {phase.message_count > 0 && (
-            <span className="phase-message-count" title={`${phase.message_count} messages`}>
-              {phase.message_count} msg
+        <div className="cell-metrics">
+          {cell.message_count > 0 && (
+            <span className="cell-message-count" title={`${cell.message_count} messages`}>
+              {cell.message_count} msg
             </span>
           )}
-          <span className="phase-cost">{formatCost(phase.avg_cost)}</span>
+          <span className="cell-cost">{formatCost(cell.avg_cost)}</span>
           {status && <StatusIndicator status={status} />}
         </div>
       </div>
 
-      <div className="phase-bar-track">
+      <div className="cell-bar-track">
         <div
           className={barClass}
           style={{ width: `${barWidth}%` }}
@@ -86,12 +86,12 @@ function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, ru
       </div>
 
       {/* Individual sounding bars - normalized view */}
-      {phase.sounding_attempts && phase.sounding_attempts.length > 1 && (
+      {cell.sounding_attempts && cell.sounding_attempts.length > 1 && (
         <div className="individual-soundings">
           {(() => {
             // Deduplicate by index
             const uniqueAttempts = Array.from(
-              new Map(phase.sounding_attempts.map(a => [a.index, a])).values()
+              new Map(cell.sounding_attempts.map(a => [a.index, a])).values()
             ).sort((a, b) => a.index - b.index);
 
             // Find max cost for normalization
@@ -159,7 +159,7 @@ function PhaseBar({ phase, maxCost, status = null, onClick, cellIndex = null, ru
               const isWinner = attempt.is_winner;
               // Sounding is running if:
               // 1. SSE event says it's running (runningSoundingsSet from App.js) - most reliable
-              // 2. OR fallback: phase is running AND no sounding_attempt row seen yet
+              // 2. OR fallback: cell is running AND no sounding_attempt row seen yet
               const isRunningFromSSE = runningSoundingsSet.has(attempt.index);
               const isComplete = attempt.is_complete === true;
               const isRunning = isRunningFromSSE || (status === 'running' && !isComplete && !isWinner);
@@ -267,4 +267,4 @@ function StatusIndicator({ status }) {
   );
 }
 
-export default PhaseBar;
+export default CellBar;

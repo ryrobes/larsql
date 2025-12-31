@@ -126,7 +126,7 @@ def show_ui(
             title="Filtered Results"
         )
 
-    Pro tip: Call show_ui multiple times in a phase to build progressive visual narratives!
+    Pro tip: Call show_ui multiple times in a cell to build progressive visual narratives!
     """
     from ..echo import get_echo
     from ..tracing import get_current_trace

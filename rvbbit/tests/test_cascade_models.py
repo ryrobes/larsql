@@ -69,40 +69,40 @@ class TestMinimalCascade:
             cascade_id="minimal",
             cells=[
                 CellConfig(
-                    name="single_phase",
+                    name="single_cell",
                     instructions="Do something."
                 )
             ]
         )
         assert config.cascade_id == "minimal"
         assert len(config.cells) == 1
-        assert config.cells[0].name == "single_phase"
+        assert config.cells[0].name == "single_cell"
 
     def test_minimal_cascade_from_dict(self):
         """Parse from dict (as would come from JSON)."""
         data = {
             "cascade_id": "from_dict",
             "cells": [
-                {"name": "phase1", "instructions": "Do work."}
+                {"name": "cell1", "instructions": "Do work."}
             ]
         }
         config = CascadeConfig(**data)
         assert config.cascade_id == "from_dict"
         assert config.cells[0].instructions == "Do work."
 
-    def test_two_phase_with_handoff(self):
-        """Basic two-phase cascade with handoff."""
+    def test_two_cell_with_handoff(self):
+        """Basic two-cell cascade with handoff."""
         config = CascadeConfig(
-            cascade_id="two_phase",
+            cascade_id="two_cell",
             cells=[
                 CellConfig(
                     name="first",
-                    instructions="Phase 1",
+                    instructions="Cell 1",
                     handoffs=["second"]
                 ),
                 CellConfig(
                     name="second",
-                    instructions="Phase 2",
+                    instructions="Cell 2",
                     context=ContextConfig(from_=["previous"])
                 )
             ]
@@ -112,86 +112,86 @@ class TestMinimalCascade:
 
 
 # =============================================================================
-# PHASE CONFIG VALIDATION
+# CELL CONFIG VALIDATION
 # =============================================================================
 
 class TestCellConfig:
     """Test CellConfig validation and defaults."""
 
-    def test_phase_defaults(self):
+    def test_cell_defaults(self):
         """Verify all default values are set correctly."""
-        phase = CellConfig(name="test", instructions="Test")
+        cell = CellConfig(name="test", instructions="Test")
 
         # Tackle defaults to empty list
-        assert phase.traits == []
+        assert cell.traits == []
 
         # Manifest context defaults
-        assert phase.manifest_context == "current"
+        assert cell.manifest_context == "current"
 
         # Model override defaults to None
-        assert phase.model is None
+        assert cell.model is None
 
         # Use native tools defaults to False
-        assert phase.use_native_tools is False
+        assert cell.use_native_tools is False
 
         # Rules defaults to empty RuleConfig
-        assert isinstance(phase.rules, RuleConfig)
-        assert phase.rules.max_turns is None
+        assert isinstance(cell.rules, RuleConfig)
+        assert cell.rules.max_turns is None
 
         # Collections default to empty
-        assert phase.handoffs == []
-        assert phase.sub_cascades == []
-        assert phase.async_cascades == []
+        assert cell.handoffs == []
+        assert cell.sub_cascades == []
+        assert cell.async_cascades == []
 
         # Optional configs default to None
-        assert phase.candidates is None
-        assert phase.output_schema is None
-        assert phase.wards is None
-        assert phase.rag is None
-        assert phase.context is None
-        assert phase.human_input is None
-        assert phase.audibles is None
-        assert phase.callouts is None
+        assert cell.candidates is None
+        assert cell.output_schema is None
+        assert cell.wards is None
+        assert cell.rag is None
+        assert cell.context is None
+        assert cell.human_input is None
+        assert cell.audibles is None
+        assert cell.callouts is None
 
-    def test_phase_with_tools(self):
-        """Phase with traits (tools) specified."""
-        phase = CellConfig(
+    def test_cell_with_tools(self):
+        """Cell with traits (tools) specified."""
+        cell = CellConfig(
             name="with_tools",
             instructions="Use tools",
             traits=["linux_shell", "run_code", "smart_sql_run"]
         )
-        assert phase.traits == ["linux_shell", "run_code", "smart_sql_run"]
+        assert cell.traits == ["linux_shell", "run_code", "smart_sql_run"]
 
-    def test_phase_with_manifest_traits(self):
-        """Phase using manifest (Quartermaster) for tool selection."""
-        phase = CellConfig(
+    def test_cell_with_manifest_traits(self):
+        """Cell using manifest (Quartermaster) for tool selection."""
+        cell = CellConfig(
             name="with_manifest",
             instructions="Auto-select tools",
             traits="manifest"
         )
-        assert phase.traits == "manifest"
+        assert cell.traits == "manifest"
 
-    def test_phase_with_model_override(self):
-        """Phase overriding the default model."""
-        phase = CellConfig(
+    def test_cell_with_model_override(self):
+        """Cell overriding the default model."""
+        cell = CellConfig(
             name="custom_model",
             instructions="Use Claude",
             model="anthropic/claude-sonnet-4"
         )
-        assert phase.model == "anthropic/claude-sonnet-4"
+        assert cell.model == "anthropic/claude-sonnet-4"
 
     def test_handoffs_as_strings(self):
         """Handoffs specified as simple strings."""
-        phase = CellConfig(
+        cell = CellConfig(
             name="router",
-            instructions="Route to next phase",
-            handoffs=["phase_a", "phase_b", "phase_c"]
+            instructions="Route to next cell",
+            handoffs=["cell_a", "cell_b", "cell_c"]
         )
-        assert phase.handoffs == ["phase_a", "phase_b", "phase_c"]
+        assert cell.handoffs == ["cell_a", "cell_b", "cell_c"]
 
     def test_handoffs_as_configs(self):
         """Handoffs with HandoffConfig for descriptions."""
-        phase = CellConfig(
+        cell = CellConfig(
             name="router",
             instructions="Route",
             handoffs=[
@@ -199,9 +199,9 @@ class TestCellConfig:
                 HandoffConfig(target="failure", description="When task fails"),
             ]
         )
-        assert len(phase.handoffs) == 2
-        assert phase.handoffs[0].target == "success"
-        assert phase.handoffs[0].description == "When task succeeds"
+        assert len(cell.handoffs) == 2
+        assert cell.handoffs[0].target == "success"
+        assert cell.handoffs[0].description == "When task succeeds"
 
 
 # =============================================================================
@@ -209,7 +209,7 @@ class TestCellConfig:
 # =============================================================================
 
 class TestRuleConfig:
-    """Test RuleConfig for phase execution rules."""
+    """Test RuleConfig for cell execution rules."""
 
     def test_rule_defaults(self):
         """All rule values default to None/False."""
@@ -223,7 +223,7 @@ class TestRuleConfig:
         assert rules.turn_prompt is None
 
     def test_max_turns(self):
-        """Set max turns for phase execution."""
+        """Set max turns for cell execution."""
         rules = RuleConfig(max_turns=5)
         assert rules.max_turns == 5
 
@@ -244,11 +244,11 @@ class TestRuleConfig:
         )
         assert "{{ turn_number }}" in rules.turn_prompt
 
-    def test_phase_with_rules(self):
-        """Phase with full rules configuration."""
-        phase = CellConfig(
+    def test_cell_with_rules(self):
+        """Cell with full rules configuration."""
+        cell = CellConfig(
             name="with_rules",
-            instructions="Iterative phase",
+            instructions="Iterative cell",
             rules=RuleConfig(
                 max_turns=10,
                 max_attempts=3,
@@ -256,8 +256,8 @@ class TestRuleConfig:
                 retry_instructions="Please try again with better quality."
             )
         )
-        assert phase.rules.max_turns == 10
-        assert phase.rules.loop_until == "quality_check"
+        assert cell.rules.max_turns == 10
+        assert cell.rules.loop_until == "quality_check"
 
 
 # =============================================================================
@@ -268,7 +268,7 @@ class TestContextConfig:
     """Test selective context configuration."""
 
     def test_context_from_previous(self):
-        """Context from previous phase only."""
+        """Context from previous cell only."""
         # Note: Must use dict syntax for 'from' alias to work
         ctx = ContextConfig(**{"from": ["previous"]})
         assert ctx.from_ == ["previous"]
@@ -279,13 +279,13 @@ class TestContextConfig:
         ctx = ContextConfig(**{"from": ["all"]})
         assert ctx.from_ == ["all"]
 
-    def test_context_from_specific_phases(self):
-        """Context from specific named phases."""
-        ctx = ContextConfig(**{"from": ["phase_a", "phase_c"]})
-        assert ctx.from_ == ["phase_a", "phase_c"]
+    def test_context_from_specific_cells(self):
+        """Context from specific named cells."""
+        ctx = ContextConfig(**{"from": ["cell_a", "cell_c"]})
+        assert ctx.from_ == ["cell_a", "cell_c"]
 
     def test_context_with_exclusions(self):
-        """All context except specific phases."""
+        """All context except specific cells."""
         ctx = ContextConfig(**{
             "from": ["all"],
             "exclude": ["verbose_debug", "internal_processing"]
@@ -324,7 +324,7 @@ class TestContextConfig:
         """The 'from' alias works in JSON parsing."""
         data = {
             "from": ["all"],
-            "exclude": ["phase_x"],
+            "exclude": ["cell_x"],
             "include_input": False
         }
         ctx = ContextConfig(**data)
@@ -512,16 +512,16 @@ class TestWardsConfig:
         assert len(wards.post) == 2
         assert len(wards.turn) == 1
 
-    def test_phase_with_wards(self):
-        """Phase with ward configuration."""
-        phase = CellConfig(
+    def test_cell_with_wards(self):
+        """Cell with ward configuration."""
+        cell = CellConfig(
             name="validated",
             instructions="Generate JSON",
             wards=WardsConfig(
                 post=[WardConfig(validator="json_valid", mode="retry", max_attempts=3)]
             )
         )
-        assert phase.wards.post[0].validator == "json_valid"
+        assert cell.wards.post[0].validator == "json_valid"
 
 
 # =============================================================================
@@ -533,12 +533,12 @@ class TestHumanInputConfig:
 
     def test_simple_confirmation(self):
         """Simple boolean human_input flag."""
-        phase = CellConfig(
+        cell = CellConfig(
             name="needs_approval",
             instructions="Do something",
             human_input=True
         )
-        assert phase.human_input is True
+        assert cell.human_input is True
 
     def test_detailed_human_input(self):
         """Detailed HumanInputConfig."""
@@ -619,14 +619,14 @@ class TestRagConfig:
         assert rag.chunk_chars == 2000
         assert rag.chunk_overlap == 400
 
-    def test_phase_with_rag(self):
-        """Phase with RAG configuration."""
-        phase = CellConfig(
+    def test_cell_with_rag(self):
+        """Cell with RAG configuration."""
+        cell = CellConfig(
             name="rag_search",
             instructions="Search the documentation for {{ input.query }}",
             rag=RagConfig(directory="docs", recursive=True)
         )
-        assert phase.rag.directory == "docs"
+        assert cell.rag.directory == "docs"
 
 
 # =============================================================================
@@ -655,16 +655,16 @@ class TestTokenBudgetConfig:
         assert budget.max_total == 50000
         assert budget.strategy == "prune_oldest"
 
-    def test_phase_overrides(self):
-        """Per-phase token budget overrides."""
+    def test_cell_overrides(self):
+        """Per-cell token budget overrides."""
         budget = TokenBudgetConfig(
             max_total=100000,
-            phase_overrides={
+            cell_overrides={
                 "synthesis": 50000,
                 "quick_task": 10000
             }
         )
-        assert budget.phase_overrides["synthesis"] == 50000
+        assert budget.cell_overrides["synthesis"] == 50000
 
 
 # =============================================================================
@@ -771,12 +771,12 @@ class TestCalloutsConfig:
 
     def test_callout_shorthand(self):
         """String shorthand for callouts."""
-        phase = CellConfig(
+        cell = CellConfig(
             name="tagged",
             instructions="Do work",
             callouts="Key Result"
         )
-        assert phase.callouts == "Key Result"
+        assert cell.callouts == "Key Result"
 
     def test_callout_full_config(self):
         """Full CalloutsConfig."""
@@ -815,9 +815,9 @@ class TestSubCascadeRefs:
         )
         assert ref.trigger == "on_start"
 
-    def test_phase_with_sub_cascades(self):
-        """Phase with sub-cascade references."""
-        phase = CellConfig(
+    def test_cell_with_sub_cascades(self):
+        """Cell with sub-cascade references."""
+        cell = CellConfig(
             name="orchestrator",
             instructions="Coordinate sub-tasks",
             sub_cascades=[
@@ -825,7 +825,7 @@ class TestSubCascadeRefs:
                 SubCascadeRef(ref="task_b.json", context_in=False)
             ]
         )
-        assert len(phase.sub_cascades) == 2
+        assert len(cell.sub_cascades) == 2
 
 
 # =============================================================================
@@ -1044,16 +1044,16 @@ class TestInvalidConfigurations:
             CascadeConfig(cells=[CellConfig(name="x", instructions="y")])
         assert "cascade_id" in str(exc_info.value)
 
-    def test_missing_phases(self):
-        """Cascade without phases should fail."""
+    def test_missing_cells(self):
+        """Cascade without cells should fail."""
         with pytest.raises(ValidationError) as exc_info:
-            CascadeConfig(cascade_id="no_phases")
-        assert "phases" in str(exc_info.value)
+            CascadeConfig(cascade_id="no_cells")
+        assert "cells" in str(exc_info.value)
 
     def test_empty_cells(self):
-        """Cascade with empty phases list is allowed by Pydantic.
+        """Cascade with empty cells list is allowed by Pydantic.
 
-        Note: While structurally valid, an empty phases cascade
+        Note: While structurally valid, an empty cells cascade
         is semantically meaningless. Runtime validation could
         catch this if desired.
         """
@@ -1061,14 +1061,14 @@ class TestInvalidConfigurations:
         config = CascadeConfig(cascade_id="empty_cells", cells=[])
         assert config.cells == []
 
-    def test_phase_missing_name(self):
-        """Phase without name should fail."""
+    def test_cell_missing_name(self):
+        """Cell without name should fail."""
         with pytest.raises(ValidationError) as exc_info:
             CellConfig(instructions="No name provided")
         assert "name" in str(exc_info.value)
 
-    def test_phase_missing_instructions(self):
-        """Phase without instructions should fail."""
+    def test_cell_missing_instructions(self):
+        """Cell without instructions should fail."""
         with pytest.raises(ValidationError) as exc_info:
             CellConfig(name="no_instructions")
         assert "instructions" in str(exc_info.value)
@@ -1088,7 +1088,7 @@ class TestInvalidConfigurations:
         """Invalid include type in context source should fail."""
         with pytest.raises(ValidationError):
             ContextSourceConfig(
-                phase="test",
+                cell="test",
                 include=["invalid_type"]
             )
 

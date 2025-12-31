@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     cascade_json Nullable(String) CODEC(ZSTD(3)),
     cell_name Nullable(String),
     cell_json Nullable(String) CODEC(ZSTD(3)),
-    species_hash Nullable(String),  -- Hash of phase template DNA for prompt evolution tracking
+    species_hash Nullable(String),  -- Hash of cell template DNA for prompt evolution tracking
 
     -- LLM Provider
     model Nullable(String),                        -- Resolved model name (from API response, e.g. "openai/gpt-4.1-2025-04-14")
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 
     -- Type classification
     checkpoint_type Enum8(
-        'phase_input' = 1,
+        'cell_input' = 1,
         'sounding_eval' = 2,
         'free_text' = 3,
         'choice' = 4,
@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 
     -- Context for resume
     echo_snapshot String DEFAULT '{}',
-    phase_output Nullable(String),
+    cell_output Nullable(String),
     trace_context Nullable(String),
 
     -- For candidate evaluation
@@ -427,7 +427,7 @@ CREATE TABLE IF NOT EXISTS cascade_template_vectors (
     cascade_id String,
     cascade_file String,
     description String,
-    phase_count UInt8,
+    cell_count UInt8,
 
     -- Aggregated Metrics
     run_count UInt32 DEFAULT 0,
@@ -481,7 +481,7 @@ CREATE TABLE IF NOT EXISTS signals (
     payload_json Nullable(String),
 
     -- Routing info (where to go after signal fires)
-    target_phase Nullable(String),
+    target_cell Nullable(String),
     inputs_json Nullable(String),
 
     -- Metadata
@@ -560,7 +560,7 @@ CREATE TABLE IF NOT EXISTS session_state (
 
     -- Error details (populated when status = 'error')
     error_message Nullable(String),
-    error_phase Nullable(String),
+    error_cell Nullable(String),
 
     -- Recovery/Resume
     last_checkpoint_id Nullable(String),
@@ -623,7 +623,7 @@ CREATE TABLE IF NOT EXISTS research_sessions (
     total_input_tokens UInt64,
     total_output_tokens UInt64,
     duration_seconds Float64,
-    phases_visited String,  -- JSON array of phase names
+    cells_visited String,  -- JSON array of cell names
     tools_used String,  -- JSON array of tool names
 
     -- Taxonomy
@@ -653,7 +653,7 @@ PARTITION BY toYYYYMM(frozen_at);
 # =============================================================================
 # Stores message summaries and embeddings for intelligent context management.
 # Joined with unified_logs via (session_id, content_hash) for original content retrieval.
-# Used by the auto-context system for intra-phase and inter-phase context selection.
+# Used by the auto-context system for intra-cell and inter-cell context selection.
 
 CONTEXT_CARDS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS context_cards (
@@ -673,8 +673,8 @@ CREATE TABLE IF NOT EXISTS context_cards (
     -- Metadata for selection
     estimated_tokens UInt32 DEFAULT 0,      -- Token count of original message
     role LowCardinality(String),            -- user/assistant/tool/system
-    cell_name Nullable(String),            -- Phase this message belongs to
-    turn_number Nullable(UInt32),           -- Turn within phase
+    cell_name Nullable(String),            -- Cell this message belongs to
+    turn_number Nullable(UInt32),           -- Turn within cell
 
     -- Importance markers
     is_anchor Bool DEFAULT false,           -- Always include in context
@@ -694,7 +694,7 @@ CREATE TABLE IF NOT EXISTS context_cards (
     -- Indexes for common query patterns
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
-    INDEX idx_phase cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
     INDEX idx_content_hash content_hash TYPE bloom_filter GRANULARITY 1,
     INDEX idx_is_anchor is_anchor TYPE set(2) GRANULARITY 1,
     INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1,
@@ -1028,10 +1028,10 @@ PARTITION BY toYYYYMM(created_at);
 
 
 # =============================================================================
-# INTRA-CONTEXT SHADOW ASSESSMENTS TABLE - Intra-Phase Context Analysis
+# INTRA-CONTEXT SHADOW ASSESSMENTS TABLE - Intra-Cell Context Analysis
 # =============================================================================
-# Shadow assessment of intra-phase context management across multiple config scenarios.
-# Intra-phase context management controls HOW messages within a cell's turn loop are
+# Shadow assessment of intra-cell context management across multiple config scenarios.
+# Intra-cell context management controls HOW messages within a cell's turn loop are
 # compressed/masked. This is purely local computation (no LLM calls), so we can cheaply
 # evaluate many config scenarios to suggest optimal settings.
 #
@@ -1040,7 +1040,7 @@ PARTITION BY toYYYYMM(created_at);
 #   - mask_observations_after: [2, 3, 5, 7] - when to start masking tool results
 #   - min_masked_size: [100, 200, 500] - minimum chars before masking
 #
-# Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (same as inter-phase)
+# Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (same as inter-cell)
 
 INTRA_CONTEXT_SHADOW_ASSESSMENTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (

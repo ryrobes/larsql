@@ -29,8 +29,8 @@ export const deduplicateEntries = (entries) => {
 };
 
 export const isStructural = (entry) => {
-  const structuralTypes = ['cascade', 'phase', 'turn', 'soundings'];
-  const structuralRoles = ['structure', 'phase_start', 'soundings_start', 'turn_start'];
+  const structuralTypes = ['cascade', 'cell', 'turn', 'soundings'];
+  const structuralRoles = ['structure', 'cell_start', 'soundings_start', 'turn_start'];
 
   return structuralTypes.includes(entry.node_type) ||
          structuralRoles.includes(entry.role);
@@ -46,7 +46,7 @@ export const isConversational = (entry) => {
     }
   }
 
-  // Filter out "Initialization" phase entries (duplicates logged before phase assignment)
+  // Filter out "Initialization" cell entries (duplicates logged before cell assignment)
   if (entry.cell_name === 'Initialization' || entry.cell_name === null) {
     // Allow structural messages, but not conversation messages from Initialization
     const conversationalTypes = ['user', 'agent', 'assistant', 'tool_call', 'tool_result', 'system'];
@@ -86,25 +86,25 @@ export const filterEntriesByViewMode = (entries, viewMode, showStructural = fals
   return entries;
 };
 
-export const groupEntriesByPhase = (entries) => {
+export const groupEntriesByCell = (entries) => {
   const grouped = [];
-  let currentPhase = null;
+  let currentCell = null;
   let currentSoundingIndex = null;
   let currentGroup = null;
 
   entries.forEach((entry, idx) => {
-    const phaseName = entry.cell_name || 'Initialization';
+    const cellName = entry.cell_name || 'Initialization';
     const soundingIndex = entry.candidate_index;
 
-    // Start new phase group when EITHER phase name OR sounding index changes
-    if (phaseName !== currentPhase || soundingIndex !== currentSoundingIndex) {
+    // Start new cell group when EITHER cell name OR sounding index changes
+    if (cellName !== currentCell || soundingIndex !== currentSoundingIndex) {
       if (currentGroup) {
         grouped.push(currentGroup);
       }
-      currentPhase = phaseName;
+      currentCell = cellName;
       currentSoundingIndex = soundingIndex;
       currentGroup = {
-        phase: phaseName,
+        cell: cellName,
         entries: [],
         totalCost: 0,
         soundingIndex: soundingIndex
@@ -185,9 +185,9 @@ export const getNodeIcon = (nodeType) => {
       return 'mdi:image-multiple';
     case 'system':
       return 'mdi:cog';
-    case 'phase_start':
+    case 'cell_start':
       return 'mdi:play-circle';
-    case 'phase_complete':
+    case 'cell_complete':
       return 'mdi:check-circle-outline';
     case 'error':
       return 'mdi:alert-circle';
@@ -239,8 +239,8 @@ export const getNodeColor = (nodeType) => {
       return '#34d399'; // Green (images injected into context)
     case 'system':
       return '#666'; // Gray
-    case 'phase_start':
-    case 'phase_complete':
+    case 'cell_start':
+    case 'cell_complete':
       return '#34d399'; // Green
     case 'error':
     case 'validation_error':

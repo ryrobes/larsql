@@ -5,16 +5,16 @@ import PromptPhylogeny from './PromptPhylogeny';
 import './CellTypeBadges.css';
 
 /**
- * PhaseSpeciesBadges - Compact per-phase species training info
+ * CellSpeciesBadges - Compact per-cell species training info
  *
- * Shows for each phase:
- * - Phase name
+ * Shows for each cell:
+ * - Cell name
  * - DNA icon
  * - Training generation (Gen X/Y)
  * - Hash preview on hover
  * - Click to open evolution modal
  */
-export default function PhaseSpeciesBadges({ sessionId }) {
+export default function CellSpeciesBadges({ sessionId }) {
   const [speciesData, setSpeciesData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showEvolution, setShowEvolution] = useState(false);
@@ -51,32 +51,32 @@ export default function PhaseSpeciesBadges({ sessionId }) {
 
   if (loading || !speciesData || !speciesData.cells) return null;
 
-  // Check if any phase has evolution (Gen 2+)
+  // Check if any cell has evolution (Gen 2+)
   const hasEvolution = speciesData.cells.some(p => p.evolution_depth > 1);
 
   return (
     <>
-      <div className="phase-species-badges">
-        {speciesData.cells.map((phase, idx) => {
-          const isNewSpecies = phase.current_generation === 1;
-          const hasTraining = phase.evolution_depth > 1;
+      <div className="cell-species-badges">
+        {speciesData.cells.map((cell, idx) => {
+          const isNewSpecies = cell.current_generation === 1;
+          const hasTraining = cell.evolution_depth > 1;
 
           return (
             <div
               key={idx}
-              className={`phase-species-badge ${isNewSpecies ? 'new-species' : ''} ${hasEvolution ? 'clickable' : ''}`}
+              className={`cell-species-badge ${isNewSpecies ? 'new-species' : ''} ${hasEvolution ? 'clickable' : ''}`}
               onClick={(e) => {
                 if (hasEvolution) {
                   e.stopPropagation();
                   setShowEvolution(true);
                 }
               }}
-              title={`Species: ${phase.species_hash}\nPhase: ${phase.cell_name}\nEvolution: Gen ${phase.current_generation}/${phase.evolution_depth}\n${hasTraining ? `Trained on ${phase.evolution_depth - 1} previous run${phase.evolution_depth > 2 ? 's' : ''}` : 'First generation - no training'}${hasEvolution ? '\n\nClick to view evolution tree' : ''}`}
+              title={`Species: ${cell.species_hash}\nCell: ${cell.cell_name}\nEvolution: Gen ${cell.current_generation}/${cell.evolution_depth}\n${hasTraining ? `Trained on ${cell.evolution_depth - 1} previous run${cell.evolution_depth > 2 ? 's' : ''}` : 'First generation - no training'}${hasEvolution ? '\n\nClick to view evolution tree' : ''}`}
             >
               <Icon icon="mdi:dna" width="11" className="dna-icon" />
-              <span className="phase-name">{phase.cell_name}</span>
+              <span className="cell-name">{cell.cell_name}</span>
               <span className={`gen-info ${isNewSpecies ? 'new' : ''}`}>
-                {phase.current_generation}/{phase.evolution_depth}
+                {cell.current_generation}/{cell.evolution_depth}
               </span>
             </div>
           );

@@ -178,7 +178,7 @@ function DraggableModelBlock({ model }) {
     <div
       ref={setNodeRef}
       className={`palette-model tier-${getTierColor(model.tier)} ${isDragging ? 'dragging' : ''}`}
-      title={`Drag ${model.id} to a phase`}
+      title={`Drag ${model.id} to a cell`}
       {...attributes}
       {...listeners}
     >
@@ -193,7 +193,7 @@ function DraggableModelBlock({ model }) {
  * BlockPalette - Draggable block templates and models
  *
  * Categories:
- * - Core: Phase, Validator, Input Parameter
+ * - Core: Cell, Validator, Input Parameter
  * - Config: Soundings, Reforge, Rules, Ward
  * - Flow: Handoff, Sub-Cascade
  * - Models: Searchable list from OpenRouter
@@ -304,13 +304,13 @@ function BlockPalette() {
     {
       name: 'Core',
       blocks: [
-        { id: 'phase', label: 'Phase', icon: 'mdi:view-sequential', color: 'ocean' },
+        { id: 'cell', label: 'Cell', icon: 'mdi:view-sequential', color: 'ocean' },
         { id: 'validator', label: 'Validator', icon: 'mdi:check-decagram', color: 'teal' },
         { id: 'input', label: 'Input Param', icon: 'mdi:form-textbox', color: 'gray' },
       ],
     },
     {
-      name: 'Phase Config',
+      name: 'Cell Config',
       blocks: [
         { id: 'soundings', label: 'Soundings', icon: 'mdi:source-branch', color: 'slate' },
         { id: 'reforge', label: 'Reforge', icon: 'mdi:hammer-wrench', color: 'slate' },

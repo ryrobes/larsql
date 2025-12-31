@@ -59,7 +59,7 @@ USING (SELECT product_name FROM products LIMIT 100);
 -- → Query Plan:
 --   ├─ Input Rows: 100
 --   ├─ Cascade: traits/extract_brand.yaml
---   │  ├─ Phases: 1
+--   │  ├─ Cells: 1
 --   │  ├─ Model: google/gemini-2.5-flash-lite
 --   │  ├─ Cost Estimate: $0.000704 per row → $0.07 total
 --   ├─ Cache Hit Rate: 0% (first run)

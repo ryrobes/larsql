@@ -70,7 +70,7 @@ function NgramBar({ ngram }) {
  *
  * Props:
  * - cascadeId: Cascade to analyze
- * - cellName: Cell/phase name
+ * - cellName: Cell/cell name
  * - speciesHash: Optional species filter
  */
 const NgramAnalysis = ({ cascadeId, cellName, speciesHash }) => {

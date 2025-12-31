@@ -9,7 +9,7 @@ import {
   isStructural,
   isConversational,
   filterEntriesByViewMode,
-  groupEntriesByPhase,
+  groupEntriesByCell,
   formatCost,
   formatTimestamp,
   getDirectionBadge,
@@ -44,7 +44,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
       setEntries(deduplicated);
 
       const filtered = filterEntriesByViewMode(deduplicated, viewMode, showStructural);
-      const grouped = groupEntriesByPhase(filtered);
+      const grouped = groupEntriesByCell(filtered);
       setGroupedEntries(grouped);
       setLoading(false);
     } catch (err) {
@@ -66,7 +66,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
   useEffect(() => {
     if (entries.length > 0) {
       const filtered = filterEntriesByViewMode(entries, viewMode, showStructural);
-      const grouped = groupEntriesByPhase(filtered);
+      const grouped = groupEntriesByCell(filtered);
       setGroupedEntries(grouped);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -179,21 +179,21 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
           )}
 
           {!loading && !error && groupedEntries.map((group, groupIdx) => (
-            <div key={groupIdx} className="phase-group">
-              <div className="phase-header">
-                <div className="phase-title">
+            <div key={groupIdx} className="cell-group">
+              <div className="cell-header">
+                <div className="cell-title">
                   <Icon icon="mdi:layers" width="20" />
-                  <span className="phase-name">{group.phase}</span>
+                  <span className="cell-name">{group.cell}</span>
                   {group.soundingIndex !== null && group.soundingIndex !== undefined && (
                     <span className="sounding-badge">Sounding #{group.soundingIndex}</span>
                   )}
                 </div>
-                <div className="phase-cost">
+                <div className="cell-cost">
                   {formatCost(group.totalCost)}
                 </div>
               </div>
 
-              <div className="phase-entries">
+              <div className="cell-entries">
                 {group.entries.map((entry, entryIdx) => (
                   <React.Fragment key={entryIdx}>
                     {/* Time gap indicator */}
@@ -264,7 +264,7 @@ function DebugModal({ sessionId, onClose, lastUpdate = null }) {
               <strong>{structuralCount}</strong> structural
             </span>
             <span className="stat">
-              <strong>{groupedEntries.length}</strong> phases
+              <strong>{groupedEntries.length}</strong> cells
             </span>
             <span className="stat">
               <strong>{formatCost(groupedEntries.reduce((sum, g) => sum + g.totalCost, 0))}</strong> total cost

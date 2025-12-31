@@ -228,7 +228,7 @@ function StudioPage({
         return;
       }
 
-      // Drop on canvas → Create new llm_phase with this model
+      // Drop on canvas → Create new llm_cell with this model
       if (dropTarget?.type === 'canvas-background') {
         // Sanitize model name for cell name
         const sanitizeName = (modelId) => {
@@ -251,7 +251,7 @@ function StudioPage({
           counter++;
         }
 
-        // Create llm_phase cell
+        // Create llm_cell cell
         const newCell = {
           name: cellName,
           instructions: "{{ input.prompt }}",
@@ -292,7 +292,7 @@ function StudioPage({
         return;
       }
 
-      // Drop on canvas → Create new llm_phase with this trait
+      // Drop on canvas → Create new llm_cell with this trait
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
@@ -305,7 +305,7 @@ function StudioPage({
           counter++;
         }
 
-        // Create llm_phase cell with trait
+        // Create llm_cell cell with trait
         const newCell = {
           name: cellName,
           instructions: "{{ input.prompt }}",
@@ -344,7 +344,7 @@ function StudioPage({
         return { inputName, updatedInputsSchema };
       };
 
-      // Drop on canvas → Create llm_phase with input placeholder
+      // Drop on canvas → Create llm_cell with input placeholder
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
@@ -360,7 +360,7 @@ function StudioPage({
           counter++;
         }
 
-        // Create llm_phase cell with input reference
+        // Create llm_cell cell with input reference
         const newCell = {
           name: cellName,
           instructions: `Process this data:\n\n{{ input.${inputName} }}`,
@@ -487,7 +487,7 @@ function StudioPage({
     }
   };
 
-  // Fetch connections, default model, and phase types on mount
+  // Fetch connections, default model, and cell types on mount
   useEffect(() => {
     fetchConnections();
     fetchDefaultModel();

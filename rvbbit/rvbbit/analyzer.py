@@ -38,7 +38,7 @@ class SoundingAnalyzer:
             min_confidence: Minimum win rate for dominant candidate (default: 60%)
 
         Returns:
-            Analysis with suggestions for each phase
+            Analysis with suggestions for each cell
         """
         print(f"Analyzing cascade: {cascade_file}")
         print(f"Minimum runs: {min_runs}, Confidence threshold: {min_confidence*100}%")
@@ -72,12 +72,12 @@ class SoundingAnalyzer:
 
         print(f"Found {len(sessions)} runs")
 
-        # Analyze each phase that has soundings
+        # Analyze each cell that has soundings
         suggestions = []
 
-        # Get phases with soundings (use cell_name column directly)
+        # Get cells with soundings (use cell_name column directly)
         # Search by both cascade_file and cascade_id
-        phases_query = f"""
+        cells_query = f"""
             SELECT DISTINCT cell_name
             FROM unified_logs
             WHERE (cascade_file = '{cascade_file}'
@@ -88,17 +88,17 @@ class SoundingAnalyzer:
         """
 
         try:
-            result = self.db.query(phases_query, output_format="dict")
+            result = self.db.query(cells_query, output_format="dict")
             cells = set(r['cell_name'] for r in result if r['cell_name'])
         except Exception as e:
-            print(f"Error querying phases: {e}")
+            print(f"Error querying cells: {e}")
             cells = set()
 
-        print(f"Analyzing {len(phases)} phase(s) with soundings data...")
+        print(f"Analyzing {len(cells)} cell(s) with soundings data...")
         print()
 
-        for cell_name in phases:
-            suggestion = self._analyze_phase(
+        for cell_name in cells:
+            suggestion = self._analyze_cell(
                 cascade_file,
                 cascade_id,
                 cell_name,
@@ -115,14 +115,14 @@ class SoundingAnalyzer:
             "suggestions": suggestions
         }
 
-    def _analyze_phase(
+    def _analyze_cell(
         self,
         cascade_file: str,
         cascade_id: str,
         cell_name: str,
         min_confidence: float
     ) -> Optional[Dict[str, Any]]:
-        """Analyze a single phase's candidate patterns."""
+        """Analyze a single cell's candidate patterns."""
 
         # Query unified_logs table directly for candidate data
         # Search by both cascade_file and cascade_id
@@ -238,7 +238,7 @@ class SoundingAnalyzer:
         patterns = self._extract_patterns(dominant_data["content"][:10])  # Sample first 10
 
         return {
-            "phase": cell_name,
+            "cell": cell_name,
             "dominant_sounding": dominant_index,
             "win_rate": win_rate,
             "total_attempts": total_competitions,  # Number of competitions (sessions with winners)
@@ -338,7 +338,7 @@ Return ONLY the improved instruction, no explanation.
         suggested_instruction = response.get("content", "").strip()
 
         return {
-            "phase": analysis["phase"],
+            "cell": analysis["cell"],
             "current_instruction": current_instruction,
             "suggested_instruction": suggested_instruction,
             "rationale": patterns_text,
@@ -383,7 +383,7 @@ class PromptSuggestionManager:
 
         Args:
             cascade_file: Path to cascade JSON
-            cell_name: Which phase to update
+            cell_name: Which cell to update
             new_instruction: New instruction text
             auto_commit: Whether to auto-commit to git
 
@@ -396,13 +396,13 @@ class PromptSuggestionManager:
 
         # Find and update the cell
         updated = False
-        for phase in cascade.get("cells", []):
-            if phase.get("name") == cell_name:
-                old_instruction = phase.get("instructions", "")
-                phase["instructions"] = new_instruction
+        for cell in cascade.get("cells", []):
+            if cell.get("name") == cell_name:
+                old_instruction = cell.get("instructions", "")
+                cell["instructions"] = new_instruction
                 updated = True
 
-                print(f"Updated phase: {cell_name}")
+                print(f"Updated cell: {cell_name}")
                 print()
                 print("Diff:")
                 print(f"- {old_instruction[:80]}...")
@@ -411,7 +411,7 @@ class PromptSuggestionManager:
                 break
 
         if not updated:
-            print(f"Phase '{cell_name}' not found in cascade")
+            print(f"Cell '{cell_name}' not found in cascade")
             return False
 
         # Write back
@@ -453,7 +453,7 @@ def analyze_and_suggest(
 
     Args:
         cascade_file: Path to cascade JSON
-        cell_name: Specific phase to analyze (None = all phases)
+        cell_name: Specific cell to analyze (None = all cells)
         min_runs: Minimum runs needed
 
     Returns:
@@ -470,18 +470,18 @@ def analyze_and_suggest(
     with open(cascade_file) as f:
         cascade = json.load(f)
 
-    # Generate suggestions for each phase
+    # Generate suggestions for each cell
     for suggestion in analysis["suggestions"]:
-        cell = suggestion["phase"]
+        cell = suggestion["cell"]
 
-        # Skip if we're only analyzing a specific phase
-        if cell_name and phase != cell_name:
+        # Skip if we're only analyzing a specific cell
+        if cell_name and cell != cell_name:
             continue
 
         # Find current instruction
         current_instruction = None
         for p in cascade.get("cells", []):
-            if p.get("name") == phase:
+            if p.get("name") == cell:
                 current_instruction = p.get("instructions", "")
                 break
 

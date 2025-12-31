@@ -382,7 +382,7 @@
   font-size: 0.75rem;
 }
 
-.cost-phase {
+.cost-cell {
   color: #9ca3af;
   font-weight: 500;
   overflow: hidden;
@@ -439,7 +439,7 @@
   white-space: nowrap;
 }
 
-.overview-value.phase-value {
+.overview-value.cell-value {
   color: #a78bfa;
   font-family: 'Google Sans Code', monospace;
 }
@@ -504,13 +504,13 @@
   grid-column: 1 / -1;  /* Span both columns */
 }
 
-/* Phase Timeline */
+/* Cell Timeline */
 .history-section {
   background: linear-gradient(135deg, rgba(74, 158, 221, 0.05), rgba(74, 158, 221, 0.02));
   border-color: rgba(74, 158, 221, 0.2);
 }
 
-.phase-timeline {
+.cell-timeline {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -518,7 +518,7 @@
   padding-left: 20px;
 }
 
-.phase-timeline::before {
+.cell-timeline::before {
   content: '';
   position: absolute;
   left: 4px;
@@ -528,14 +528,14 @@
   background: linear-gradient(180deg, #4A9EDD, rgba(74, 158, 221, 0.2));
 }
 
-.phase-timeline-item {
+.cell-timeline-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   position: relative;
 }
 
-.phase-timeline-dot {
+.cell-timeline-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -548,18 +548,18 @@
   box-shadow: 0 0 8px rgba(74, 158, 221, 0.6);
 }
 
-.phase-timeline-content {
+.cell-timeline-content {
   flex: 1;
 }
 
-.phase-timeline-name {
+.cell-timeline-name {
   font-size: 0.875rem;
   font-weight: 600;
   color: #e5e7eb;
   font-family: 'Google Sans Code', monospace;
 }
 
-.phase-timeline-model {
+.cell-timeline-model {
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 2px;

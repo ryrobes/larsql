@@ -7,7 +7,7 @@ import './AudibleModal.css';
 const API_BASE_URL = 'http://localhost:5050/api';
 
 /**
- * AudibleModal - Modal for submitting audible feedback mid-phase
+ * AudibleModal - Modal for submitting audible feedback mid-cell
  *
  * Features:
  * - Shows current output from the agent

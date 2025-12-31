@@ -12,7 +12,7 @@ import QueryResultsGrid from './components/QueryResultsGrid';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import { CascadeNavigator } from './timeline';
 import CascadeTimeline from './timeline/CascadeTimeline';
-import Header from '../components/Header';
+// Header component removed - using AppShell's navigation instead
 import CascadeBrowserModal from './components/CascadeBrowserModal';
 import ContextExplorerSidebar from './components/ContextExplorerSidebar';
 import './editors'; // Initialize cell editor registry
@@ -237,7 +237,7 @@ function StudioPage() {
         return;
       }
 
-      // Drop on canvas → Create new llm_phase with this model
+      // Drop on canvas → Create new llm_cell with this model
       if (dropTarget?.type === 'canvas-background') {
         // Sanitize model name for cell name
         const sanitizeName = (modelId) => {
@@ -260,7 +260,7 @@ function StudioPage() {
           counter++;
         }
 
-        // Create llm_phase cell
+        // Create llm_cell cell
         const newCell = {
           name: cellName,
           instructions: "{{ input.prompt }}",
@@ -301,7 +301,7 @@ function StudioPage() {
         return;
       }
 
-      // Drop on canvas → Create new llm_phase with this trait
+      // Drop on canvas → Create new llm_cell with this trait
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
@@ -314,7 +314,7 @@ function StudioPage() {
           counter++;
         }
 
-        // Create llm_phase cell with trait
+        // Create llm_cell cell with trait
         const newCell = {
           name: cellName,
           instructions: "{{ input.prompt }}",
@@ -353,7 +353,7 @@ function StudioPage() {
         return { inputName, updatedInputsSchema };
       };
 
-      // Drop on canvas → Create llm_phase with input placeholder
+      // Drop on canvas → Create llm_cell with input placeholder
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
@@ -369,7 +369,7 @@ function StudioPage() {
           counter++;
         }
 
-        // Create llm_phase cell with input reference
+        // Create llm_cell cell with input reference
         const newCell = {
           name: cellName,
           instructions: `Process this data:\n\n{{ input.${inputName} }}`,
@@ -496,7 +496,7 @@ function StudioPage() {
     }
   };
 
-  // Fetch connections, default model, and phase types on mount
+  // Fetch connections, default model, and cell types on mount
   useEffect(() => {
     fetchConnections();
     fetchDefaultModel();
@@ -779,39 +779,7 @@ function StudioPage() {
             )}
           </DragOverlay>
         </DndContext>
-      ) : (
-        <>
-          <Header
-            centerContent={
-              <>
-                <Icon icon="mdi:database-search" width="24" />
-                <span className="header-stat">SQL Query IDE</span>
-                <span className="header-divider">·</span>
-
-                {/* Mode Toggle */}
-                <div className="sql-mode-toggle">
-                  <button
-                    className={`sql-mode-btn ${mode === 'query' ? 'active' : ''}`}
-                    onClick={() => setMode('query')}
-                  >
-                    Query
-                  </button>
-                  <button
-                    className={`sql-mode-btn ${mode === 'timeline' ? 'active' : ''}`}
-                    onClick={() => setMode('timeline')}
-                    title="Horizontal cascade builder (experimental)"
-                  >
-                    Timeline
-                  </button>
-                </div>
-
-                <span className="header-divider">·</span>
-                <span className="header-stat">{connections.length} <span className="stat-dim">connections</span></span>
-              </>
-            }
-          />
-        </>
-      )}
+      ) : null}
 
       {mode === 'timeline' ? null : (
         /* Query Mode (original) */

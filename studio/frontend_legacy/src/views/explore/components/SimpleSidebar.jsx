@@ -10,11 +10,11 @@ import './SimpleSidebar.css';
  * Displays:
  * - Status badge (thinking, tool_running, waiting_human, idle)
  * - Total cost (prominent display)
- * - Session info (cascade, phase, model)
+ * - Session info (cascade, cell, model)
  * - END button (if running)
  *
  * Extension points:
- * - Phase timeline (commented out for Iteration 2)
+ * - Cell timeline (commented out for Iteration 2)
  * - Research tree (commented out for Iteration 2)
  * - Previous sessions (commented out for Iteration 2)
  */
@@ -81,8 +81,8 @@ const SimpleSidebar = ({
       {/* Execution Info - Compact grid */}
       <div className="execution-grid">
         <div className="exec-item">
-          <div className="exec-label">Phase</div>
-          <div className="exec-value">{orchestrationState.currentPhase || '-'}</div>
+          <div className="exec-label">Cell</div>
+          <div className="exec-value">{orchestrationState.currentCell || '-'}</div>
         </div>
         <div className="exec-item">
           <div className="exec-label">Model</div>
@@ -92,11 +92,11 @@ const SimpleSidebar = ({
         </div>
       </div>
 
-      {/* EXTENSION POINT: Phase Timeline */}
-      {/* {orchestrationState.phaseHistory && (
+      {/* EXTENSION POINT: Cell Timeline */}
+      {/* {orchestrationState.cellHistory && (
         <div className="sidebar-section">
-          <div className="sidebar-label">Recent Phases</div>
-          <PhaseTimeline phases={orchestrationState.phaseHistory} />
+          <div className="sidebar-label">Recent Cells</div>
+          <CellTimeline cells={orchestrationState.cellHistory} />
         </div>
       )} */}
 

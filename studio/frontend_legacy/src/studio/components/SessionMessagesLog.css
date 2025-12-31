@@ -117,7 +117,7 @@
   letter-spacing: 0.3px;
 }
 
-/* Phase link */
+/* Cell link */
 .sml-cell-link {
   background: none;
   border: none;
@@ -338,13 +338,13 @@
   color: var(--chip-color, #a78bfa);
 }
 
-.sml-filter-chip-phase {
+.sml-filter-chip-cell {
   width: 100%;
   justify-content: flex-start;
   font-size: 11px;
 }
 
-.sml-filter-chip-phase.active {
+.sml-filter-chip-cell.active {
   background-color: rgba(167, 139, 250, 0.1);
   border-color: #a78bfa;
   color: #cbd5e1;
@@ -525,7 +525,7 @@
   color: #334155;
 }
 
-.sml-detail-phase {
+.sml-detail-cell {
   font-size: 12px;
   color: #a78bfa;
   font-weight: 500;

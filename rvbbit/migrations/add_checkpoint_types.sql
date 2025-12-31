@@ -3,7 +3,7 @@
 
 ALTER TABLE checkpoints
 MODIFY COLUMN checkpoint_type Enum8(
-    'phase_input' = 1,
+    'cell_input' = 1,
     'sounding_eval' = 2,
     'free_text' = 3,
     'choice' = 4,

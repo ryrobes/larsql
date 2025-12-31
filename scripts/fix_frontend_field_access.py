@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fix frontend field accesses to use new RVBBIT terminology
-Only updates field accesses (object.phases → object.cells)
+Only updates field accesses (object.cells → object.cells)
 Does NOT change variable names or function parameters
 """
 import re
@@ -11,10 +11,10 @@ def fix_field_accesses(content: str) -> str:
     """Fix field accesses in JavaScript/JSX code"""
 
     # Fix object field accesses (with dot notation)
-    # Match: <something>.phases where <something> is not a keyword
+    # Match: <something>.cells where <something> is not a keyword
     patterns = [
-        # .phases → .cells (but not in function params or declarations)
-        (r'(\w+)\.phases\b', r'\1.cells'),
+        # .cells → .cells (but not in function params or declarations)
+        (r'(\w+)\.cells\b', r'\1.cells'),
 
         # .soundings → .candidates
         (r'(\w+)\.soundings\b', r'\1.candidates'),
@@ -23,18 +23,18 @@ def fix_field_accesses(content: str) -> str:
         (r'(\w+)\.tackle\b', r'\1.traits'),
 
         # String literals in object keys
-        (r'["\']phases["\']\s*:', '"cells":'),
+        (r'["\']cells["\']\s*:', '"cells":'),
         (r'["\']soundings["\']\s*:', '"candidates":'),
         (r'["\']tackle["\']\s*:', '"traits":'),
 
         # Object destructuring with quotes
-        (r'\["phases"\]', '["cells"]'),
+        (r'\["cells"\]', '["cells"]'),
         (r'\["soundings"\]', '["candidates"]'),
         (r'\["tackle"\]', '["traits"]'),
 
         # Common patterns
-        (r'phase_name', 'cell_name'),
-        (r'phaseIndex', 'cellIndex'),
+        (r'cell_name', 'cell_name'),
+        (r'cellIndex', 'cellIndex'),
         (r'\.sounding_index\b', '.candidate_index'),
     ]
 

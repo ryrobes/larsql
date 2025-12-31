@@ -3,7 +3,7 @@ Human-in-the-Loop (HITL) Checkpoint Management for RVBBIT.
 
 This module handles cascade suspension and resume for human input.
 Checkpoints can be:
-1. Phase-level input: Pause after a phase for human confirmation/input
+1. Cell-level input: Pause after a cell for human confirmation/input
 2. Sounding evaluation: Present multiple candidate attempts for human selection
 
 Key features:
@@ -36,14 +36,14 @@ class CheckpointStatus(str, Enum):
 
 class CheckpointType(str, Enum):
     """Type of checkpoint."""
-    PHASE_INPUT = "phase_input"      # Phase-level HITL config
+    CELL_INPUT = "cell_input"      # Cell-level HITL config
     SOUNDING_EVAL = "sounding_eval"  # Sounding evaluation
     FREE_TEXT = "free_text"          # Free-form text input (ask_human tool)
     CHOICE = "choice"                # Single choice selection (radio buttons)
     MULTI_CHOICE = "multi_choice"    # Multiple choice selection (checkboxes)
     CONFIRMATION = "confirmation"    # Yes/no confirmation
     RATING = "rating"                # Star rating (1-5)
-    AUDIBLE = "audible"              # Real-time feedback injection mid-phase
+    AUDIBLE = "audible"              # Real-time feedback injection mid-cell
     DECISION = "decision"            # LLM-generated decision point (<decision> block)
 
 
@@ -58,7 +58,7 @@ class TraceContext:
     trace_id: str              # Current trace ID at suspension
     parent_id: Optional[str]   # Parent trace ID for reconstruction
     cascade_trace_id: str      # Root cascade trace ID
-    phase_trace_id: str        # Phase trace ID where suspended
+    cell_trace_id: str        # Cell trace ID where suspended
     depth: int                 # Trace depth at suspension
     node_type: str             # Node type of suspended trace
     name: str                  # Name of suspended trace node
@@ -68,7 +68,7 @@ class TraceContext:
             "trace_id": self.trace_id,
             "parent_id": self.parent_id,
             "cascade_trace_id": self.cascade_trace_id,
-            "phase_trace_id": self.phase_trace_id,
+            "cell_trace_id": self.cell_trace_id,
             "depth": self.depth,
             "node_type": self.node_type,
             "name": self.name
@@ -80,7 +80,7 @@ class TraceContext:
             trace_id=data.get("trace_id", ""),
             parent_id=data.get("parent_id"),
             cascade_trace_id=data.get("cascade_trace_id", ""),
-            phase_trace_id=data.get("phase_trace_id", ""),
+            cell_trace_id=data.get("cell_trace_id", ""),
             depth=data.get("depth", 0),
             node_type=data.get("node_type", "unknown"),
             name=data.get("name", "unknown")
@@ -98,7 +98,7 @@ class Checkpoint:
     status: CheckpointStatus
     ui_spec: Dict[str, Any]
     echo_snapshot: Dict[str, Any]
-    phase_output: str
+    cell_output: str
     cascade_config: Optional[Dict[str, Any]] = None  # Full cascade config for resume
     trace_context: Optional[TraceContext] = None  # Trace hierarchy for proper resume linkage
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -125,7 +125,7 @@ class Checkpoint:
             "status": self.status.value,
             "ui_spec": self.ui_spec,
             "echo_snapshot": self.echo_snapshot,
-            "phase_output": self.phase_output,
+            "cell_output": self.cell_output,
             "cascade_config": self.cascade_config,
             "trace_context": self.trace_context.to_dict() if self.trace_context else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -195,7 +195,7 @@ class CheckpointManager:
         checkpoint_type: CheckpointType,
         ui_spec: Dict[str, Any],
         echo_snapshot: Dict[str, Any],
-        phase_output: str,
+        cell_output: str,
         cascade_config: Optional[Dict[str, Any]] = None,
         trace_context: Optional[TraceContext] = None,
         sounding_outputs: Optional[List[str]] = None,
@@ -208,11 +208,11 @@ class CheckpointManager:
         Args:
             session_id: Current cascade session ID
             cascade_id: Cascade identifier
-            cell_name: Name of the phase creating this checkpoint
-            checkpoint_type: Type of checkpoint (phase_input or sounding_eval)
+            cell_name: Name of the cell creating this checkpoint
+            checkpoint_type: Type of checkpoint (cell_input or sounding_eval)
             ui_spec: UI specification for rendering the checkpoint
             echo_snapshot: Full Echo state snapshot for resume
-            phase_output: Output from the phase (for preview)
+            cell_output: Output from the cell (for preview)
             cascade_config: Full cascade configuration JSON for resume
             trace_context: Trace hierarchy context for proper resume linkage
             sounding_outputs: List of candidate outputs (for sounding_eval type)
@@ -235,7 +235,7 @@ class CheckpointManager:
             status=CheckpointStatus.PENDING,
             ui_spec=ui_spec,
             echo_snapshot=echo_snapshot,
-            phase_output=phase_output,
+            cell_output=cell_output,
             cascade_config=cascade_config,
             trace_context=trace_context,
             sounding_outputs=sounding_outputs,
@@ -267,7 +267,7 @@ class CheckpointManager:
                 "cell_name": cell_name,
                 "checkpoint_type": checkpoint_type.value,
                 "ui_spec": ui_spec,
-                "preview": phase_output[:1500] if phase_output else None,
+                "preview": cell_output[:1500] if cell_output else None,
                 "timeout_at": timeout_at.isoformat() if timeout_at else None,
                 "num_soundings": len(sounding_outputs) if sounding_outputs else None,
                 # Include candidate data for cross-process checkpoint sharing
@@ -278,7 +278,7 @@ class CheckpointManager:
         ))
 
         # Generate summary asynchronously (non-blocking)
-        self._generate_summary_async(checkpoint_id, session_id, phase_output)
+        self._generate_summary_async(checkpoint_id, session_id, cell_output)
 
         # Call hooks if available (for auto-save etc.)
         try:
@@ -287,7 +287,7 @@ class CheckpointManager:
             if hooks and hasattr(hooks, 'on_checkpoint_suspended'):
                 hooks.on_checkpoint_suspended(
                     session_id, checkpoint_id, checkpoint_type.value, cell_name,
-                    phase_output[:500] if phase_output else None,
+                    cell_output[:500] if cell_output else None,
                     cascade_id=cascade_id  # Pass cascade_id for auto-save
                 )
         except Exception as hook_err:
@@ -511,7 +511,7 @@ class CheckpointManager:
             from .session_state import set_session_blocked, set_session_unblocked, BlockedType
             # Map checkpoint type to blocked type
             blocked_type_map = {
-                CheckpointType.PHASE_INPUT: BlockedType.HITL,
+                CheckpointType.CELL_INPUT: BlockedType.HITL,
                 CheckpointType.SOUNDING_EVAL: BlockedType.HITL,
                 CheckpointType.DECISION: BlockedType.DECISION,
                 CheckpointType.FREE_TEXT: BlockedType.HITL,
@@ -706,7 +706,7 @@ class CheckpointManager:
                     'checkpoint_type': checkpoint.checkpoint_type.value,
                     'ui_spec': json.dumps(checkpoint.ui_spec),  # JSON string, properly escaped by insert_rows
                     'echo_snapshot': json.dumps(checkpoint.echo_snapshot),
-                    'phase_output': checkpoint.phase_output,
+                    'cell_output': checkpoint.cell_output,
                     'sounding_outputs': json.dumps(checkpoint.sounding_outputs) if checkpoint.sounding_outputs else None,
                     'sounding_metadata': json.dumps(checkpoint.sounding_metadata) if checkpoint.sounding_metadata else None,
                     'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None,
@@ -754,7 +754,7 @@ class CheckpointManager:
         except Exception as e:
             print(f"[RVBBIT] Warning: Could not update checkpoint in DB: {e}")
 
-    def _generate_summary_async(self, checkpoint_id: str, session_id: str, phase_output: str):
+    def _generate_summary_async(self, checkpoint_id: str, session_id: str, cell_output: str):
         """
         Generate AI summary for checkpoint asynchronously (non-blocking).
         Uses a cheap model (gemini-flash-lite) to create a one-sentence summary.
@@ -768,8 +768,8 @@ class CheckpointManager:
 
                 config = get_config()
 
-                # Truncate phase_output if too long (keep first 1500 chars for context)
-                truncated = phase_output[:1500] if phase_output else "No content"
+                # Truncate cell_output if too long (keep first 1500 chars for context)
+                truncated = cell_output[:1500] if cell_output else "No content"
 
                 # Create agent with proper OpenRouter config
                 agent = Agent(
@@ -862,7 +862,7 @@ class CheckpointManager:
                         status=CheckpointStatus(row["status"]),
                         ui_spec=json.loads(row["ui_spec"]),
                         echo_snapshot=json.loads(row["echo_snapshot"]),
-                        phase_output=row["phase_output"],
+                        cell_output=row["cell_output"],
                         trace_context=trace_context,
                         created_at=row["created_at"],
                         timeout_at=row.get("timeout_at"),
@@ -929,7 +929,7 @@ class CheckpointManager:
                             status=CheckpointStatus(row["status"]),
                             ui_spec=json.loads(row["ui_spec"]),
                             echo_snapshot=json.loads(row["echo_snapshot"]),
-                            phase_output=row["phase_output"],
+                            cell_output=row["cell_output"],
                             trace_context=trace_context,
                             created_at=row["created_at"],
                             timeout_at=row.get("timeout_at"),
@@ -996,7 +996,7 @@ class CheckpointManager:
                             status=CheckpointStatus(row["status"]),
                             ui_spec=json.loads(row["ui_spec"]),
                             echo_snapshot=json.loads(row["echo_snapshot"]),
-                            phase_output=row["phase_output"],
+                            cell_output=row["cell_output"],
                             trace_context=trace_context,
                             created_at=row["created_at"],
                             timeout_at=row.get("timeout_at"),

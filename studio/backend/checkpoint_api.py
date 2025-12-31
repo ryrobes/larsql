@@ -120,10 +120,10 @@ def resolve_image_paths_to_urls(ui_spec, session_id):
     Recursively resolve file paths to API URLs in a UI spec.
 
     Transforms:
-    - Absolute paths like /path/to/images/session_id/phase/image_0.png
-    - Relative paths like phase/image_0.png
+    - Absolute paths like /path/to/images/session_id/cell/image_0.png
+    - Relative paths like cell/image_0.png
 
-    To API URLs like /api/images/session_id/phase/image_0.png
+    To API URLs like /api/images/session_id/cell/image_0.png
     """
     if not ui_spec or not isinstance(ui_spec, dict):
         return ui_spec
@@ -322,8 +322,8 @@ def list_checkpoints():
                 "created_at": cp.created_at.isoformat() if cp.created_at else None,
                 "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
                 "ui_spec": resolved_ui_spec,
-                "phase_output": cp.phase_output,  # Full phase output for display
-                "phase_output_preview": cp.phase_output[:500] if cp.phase_output else None,
+                "cell_output": cp.cell_output,  # Full cell output for display
+                "cell_output_preview": cp.cell_output[:500] if cp.cell_output else None,
                 "response": cp.response,  # User response for display in timeline
                 "summary": cp.summary,  # AI-generated summary
                 "num_soundings": len(cp.sounding_outputs) if cp.sounding_outputs else None
@@ -368,7 +368,7 @@ def get_checkpoint(checkpoint_id):
                 "timeout_at": cp.timeout_at.isoformat() if cp.timeout_at else None,
                 "responded_at": cp.responded_at.isoformat() if cp.responded_at else None,
                 "ui_spec": resolved_ui_spec,
-                "phase_output": cp.phase_output,
+                "cell_output": cp.cell_output,
                 "sounding_outputs": cp.sounding_outputs,
                 "sounding_metadata": cp.sounding_metadata,
                 "response": cp.response,
@@ -518,7 +518,7 @@ def cancel_checkpoint(checkpoint_id):
 @checkpoint_bp.route('/api/audible/signal/<session_id>', methods=['POST'])
 def signal_audible(session_id):
     """
-    Signal that the user wants to call an audible (inject feedback mid-phase).
+    Signal that the user wants to call an audible (inject feedback mid-cell).
 
     The cascade runner will check this signal and create an AUDIBLE checkpoint
     at the next safe point (after current tool/turn completes).

@@ -5,7 +5,7 @@
 -- Background:
 -- When running cascades with explicit context (mode: "explicit"), we still want to
 -- understand what auto-context WOULD have done. This table logs per-message relevance
--- assessments from all strategies (heuristic, semantic, LLM) for every phase transition.
+-- assessments from all strategies (heuristic, semantic, LLM) for every cell transition.
 --
 -- This enables:
 -- 1. Comparing explicit vs auto-context decisions visually
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     -- ASSESSMENT METADATA
     -- ============================================
     assessment_duration_ms UInt32,        -- Time to assess this message
-    assessment_batch_id String,           -- Groups assessments from same phase transition
+    assessment_batch_id String,           -- Groups assessments from same cell transition
 
     -- ============================================
     -- INDEXES

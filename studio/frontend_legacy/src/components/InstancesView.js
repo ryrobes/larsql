@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
-// PhaseBar removed - now only shown in SplitDetailView
+// CellBar removed - now only shown in SplitDetailView
 import CascadeBar from './CascadeBar';
 import DebugModal from './DebugModal';
 import SoundingsExplorer from './CandidatesExplorer';
@@ -12,7 +12,7 @@ import VideoSpinner from './VideoSpinner';
 import TokenSparkline from './TokenSparkline';
 import ModelCostBar, { ModelTags } from './ModelCostBar';
 import RunPercentile from './RunPercentile';
-import PhaseSpeciesBadges from './CellTypeBadges';
+import CellSpeciesBadges from './CellTypeBadges';
 import Header from './Header';
 import windlassErrorImg from '../assets/windlass-error.png';
 import './InstancesView.css';
@@ -240,12 +240,12 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
         const checkCompletion = (instance) => {
           if (finalizingSessions.has(instance.session_id)) {
             // Check if this instance is REALLY done
-            const allPhasesComplete = instance.cells?.every(p =>
+            const allCellsComplete = instance.cells?.every(p =>
               p.status === 'completed' || p.status === 'error'
             );
             const hasData = instance.total_cost > 0 || instance.cells?.length > 0;
 
-            if (allPhasesComplete && hasData) {
+            if (allCellsComplete && hasData) {
               console.log(`[SQL] Instance ${instance.session_id} is truly complete, notifying parent`);
               // SQL data is ready! Trigger completion callback
               onInstanceComplete(instance.session_id);
@@ -372,7 +372,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             const structuralTypes = [
               'cascade', 'cascade_start', 'cascade_complete', 'cascade_completed',
               'cascade_error', 'cascade_failed', 'cascade_killed',
-              'phase', 'phase_start', 'phase_complete',
+              'cell', 'cell_start', 'cell_complete',
               'turn', 'turn_start', 'turn_input',
               'cost_update', 'checkpoint_start', 'checkpoint_complete'
             ];
@@ -437,9 +437,9 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                 metaParts.push(`$${entry.cost.toFixed(6)}`);
               }
 
-              // Add phase name if available
+              // Add cell name if available
               if (entry.cell_name) {
-                metaParts.push(`phase: ${entry.cell_name}`);
+                metaParts.push(`cell: ${entry.cell_name}`);
               }
 
               newMessages[sessionId] = {
@@ -509,7 +509,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
     return `${diffDays}d ago`;
   };
 
-  const getPhaseStatusColor = (status) => {
+  const getCellStatusColor = (status) => {
     switch (status) {
       case 'completed':
         return '#34d399';  // Green pastel
@@ -1005,7 +1005,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               <span className="timestamp-compact" title={formatTimestamp(instance.start_time)}>
                 {formatTimeAgo(instance.start_time)}
               </span>
-              <PhaseSpeciesBadges sessionId={instance.session_id} />
+              <CellSpeciesBadges sessionId={instance.session_id} />
             </div>
 
             {/* Sparkline positioned to align with cascade bar */}
@@ -1042,7 +1042,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                   modelCosts={instance.model_costs}
                   totalCost={instance.total_cost}
                   winnerModel={
-                    // Compute winner models from phases with soundings
+                    // Compute winner models from cells with soundings
                     instance.cells
                       ?.filter(p => p.sounding_total > 1)
                       .flatMap(p => (p.sounding_attempts || []).filter(a => a.is_winner && a.model).map(a => a.model))
@@ -1056,7 +1056,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
             <div className="cascade-section-compact">
               {instance.cells && instance.cells.length > 1 && (
                 <CascadeBar
-                  phases={instance.cells}
+                  cells={instance.cells}
                   totalCost={instance.total_cost}
                   isRunning={isSessionRunning || hasRunning}
                 />
@@ -1246,7 +1246,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
               };
 
               // Group instances by compound species signature
-              // Multi-phase cascades have multiple species_hashes (one per phase with soundings)
+              // Multi-cell cascades have multiple species_hashes (one per cell with soundings)
               const groups = new Map();
               instances.forEach((instance) => {
                 // Create compound key from sorted species_hashes array
@@ -1275,7 +1275,7 @@ function InstancesView({ cascadeId, onBack, onSelectInstance, onFreezeInstance, 
                     {!isNoSpecies && (
                       <div className="species-group-header">
                         <div className="species-info">
-                          {/* Show multiple DNA icons for multi-phase cascades */}
+                          {/* Show multiple DNA icons for multi-cell cascades */}
                           {speciesHash.split('+').map((hash, idx) => (
                             <React.Fragment key={hash}>
                               <Icon icon="mdi:dna" width="14" className="species-icon" />

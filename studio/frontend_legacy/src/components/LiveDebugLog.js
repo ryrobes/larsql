@@ -10,9 +10,9 @@ import {
 } from '../utils/debugUtils';
 import './LiveDebugLog.css';
 
-function LiveDebugLog({ sessionId, groupedEntries, activePhase, onPhaseChange, isRunning }) {
+function LiveDebugLog({ sessionId, groupedEntries, activeCell, onCellChange, isRunning }) {
   const containerRef = useRef(null);
-  const scrollToPhaseRef = useRef(null);
+  const scrollToCellRef = useRef(null);
   const userScrolledRef = useRef(false);
   const lastScrollTop = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -27,25 +27,25 @@ function LiveDebugLog({ sessionId, groupedEntries, activePhase, onPhaseChange, i
     }
   }, [groupedEntries, isRunning]);
 
-  // Scroll to phase when clicked from Mermaid
+  // Scroll to cell when clicked from Mermaid
   useEffect(() => {
-    if (scrollToPhaseRef.current && activePhase) {
-      const phaseElement = document.getElementById(`phase-group-${activePhase}`);
-      if (phaseElement && containerRef.current) {
+    if (scrollToCellRef.current && activeCell) {
+      const cellElement = document.getElementById(`cell-group-${activeCell}`);
+      if (cellElement && containerRef.current) {
         const container = containerRef.current;
         const containerTop = container.getBoundingClientRect().top;
-        const elementTop = phaseElement.getBoundingClientRect().top;
+        const elementTop = cellElement.getBoundingClientRect().top;
         const scrollOffset = elementTop - containerTop + container.scrollTop - 20; // 20px padding
 
         programmaticScrollRef.current = true; // Mark as programmatic
         container.scrollTo({ top: scrollOffset, behavior: 'smooth' });
-        scrollToPhaseRef.current = false;
+        scrollToCellRef.current = false;
         setTimeout(() => { programmaticScrollRef.current = false; }, 500); // Clear after smooth scroll
       }
     }
-  }, [activePhase]);
+  }, [activeCell]);
 
-  // Track which phase is visible based on scroll position
+  // Track which cell is visible based on scroll position
   const handleScroll = (e) => {
     // Ignore programmatic scrolls
     if (programmaticScrollRef.current) {
@@ -69,29 +69,29 @@ function LiveDebugLog({ sessionId, groupedEntries, activePhase, onPhaseChange, i
     }
     lastScrollTop.current = scrollTop;
 
-    // Determine visible phase (only for user scrolls)
-    const phaseElements = document.querySelectorAll('.phase-group');
-    let visiblePhase = null;
+    // Determine visible cell (only for user scrolls)
+    const cellElements = document.querySelectorAll('.cell-group');
+    let visibleCell = null;
 
-    phaseElements.forEach(el => {
+    cellElements.forEach(el => {
       const rect = el.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
 
-      // Check if phase header is in viewport
+      // Check if cell header is in viewport
       if (rect.top >= containerRect.top && rect.top <= containerRect.top + 200) {
-        visiblePhase = el.getAttribute('data-phase-name');
+        visibleCell = el.getAttribute('data-cell-name');
       }
     });
 
-    if (visiblePhase && visiblePhase !== activePhase) {
-      onPhaseChange(visiblePhase);
+    if (visibleCell && visibleCell !== activeCell) {
+      onCellChange(visibleCell);
     }
   };
 
-  // Trigger scroll when activePhase changes externally (from Mermaid click)
+  // Trigger scroll when activeCell changes externally (from Mermaid click)
   useEffect(() => {
-    scrollToPhaseRef.current = true;
-  }, [activePhase]);
+    scrollToCellRef.current = true;
+  }, [activeCell]);
 
   return (
     <div className="live-debug-log" ref={containerRef} onScroll={handleScroll}>
@@ -104,24 +104,24 @@ function LiveDebugLog({ sessionId, groupedEntries, activePhase, onPhaseChange, i
         groupedEntries.map((group, groupIdx) => (
           <div
             key={groupIdx}
-            id={`phase-group-${group.phase}`}
-            className={`phase-group ${activePhase === group.phase ? 'active' : ''}`}
-            data-phase-name={group.phase}
+            id={`cell-group-${group.cell}`}
+            className={`cell-group ${activeCell === group.cell ? 'active' : ''}`}
+            data-cell-name={group.cell}
           >
-            <div className="phase-header">
-              <div className="phase-title">
+            <div className="cell-header">
+              <div className="cell-title">
                 <Icon icon="mdi:layers" width="20" />
-                <span className="phase-name">{group.phase}</span>
+                <span className="cell-name">{group.cell}</span>
                 {group.soundingIndex !== null && group.soundingIndex !== undefined && (
                   <span className="sounding-badge">Sounding #{group.soundingIndex}</span>
                 )}
               </div>
-              <div className="phase-cost">
+              <div className="cell-cost">
                 {formatCost(group.totalCost)}
               </div>
             </div>
 
-            <div className="phase-entries">
+            <div className="cell-entries">
               {group.entries.map((entry, entryIdx) => (
                 <React.Fragment key={entryIdx}>
                   {/* Time gap indicator */}

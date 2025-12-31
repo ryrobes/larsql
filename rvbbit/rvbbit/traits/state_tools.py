@@ -5,8 +5,8 @@ from contextvars import ContextVar
 # ContextVar to track current session context safely
 current_session_context = ContextVar("current_session_context", default=None)
 
-# ContextVar to track current phase name
-current_phase_context = ContextVar("current_phase_context", default=None)
+# ContextVar to track current cell name
+current_cell_context = ContextVar("current_cell_context", default=None)
 
 # ContextVar to track current cascade ID
 current_cascade_context = ContextVar("current_cascade_context", default=None)
@@ -27,10 +27,10 @@ def get_current_session_id():
     return current_session_context.get()
 
 def set_current_cell_name(cell_name):
-    return current_phase_context.set(cell_name)
+    return current_cell_context.set(cell_name)
 
 def get_current_cell_name():
-    return current_phase_context.get()
+    return current_cell_context.get()
 
 def set_current_cascade_id(cascade_id):
     return current_cascade_context.set(cascade_id)
@@ -84,7 +84,7 @@ def set_state(key: str, value: str) -> str:
     - Survives cascade completion
 
     Use this to:
-    - Store insights/conclusions for later phases
+    - Store insights/conclusions for later cells
     - Build incremental state across runs
     - Enable LLM memory (query past state)
     - Track metrics/KPIs over time
@@ -98,7 +98,7 @@ def set_state(key: str, value: str) -> str:
         return "Error: No active session context found."
 
     cascade_id = current_cascade_context.get()
-    cell_name = current_phase_context.get()
+    cell_name = current_cell_context.get()
 
     # Update Echo state (backward compatibility)
     echo = get_echo(session_id)
@@ -177,7 +177,7 @@ def append_state(key: str, value) -> str:
         return "Error: No active session context found."
 
     cascade_id = current_cascade_context.get()
-    cell_name = current_phase_context.get()
+    cell_name = current_cell_context.get()
 
     # Get current state
     echo = get_echo(session_id)

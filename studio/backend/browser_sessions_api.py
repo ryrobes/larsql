@@ -270,7 +270,7 @@ def _list_sessions() -> list:
                 "browser_session_path": browser_session_path,
                 "latest_screenshot": latest_screenshot,
                 "current_url": current_state.get("initialUrl") if current_state else None,
-                "phase": current_state.get("phase") if current_state else None,
+                "cell": current_state.get("cell") if current_state else None,
                 "is_processing": current_state.get("isProcessing", False) if current_state else False,
                 "queue_length": current_state.get("queueLength", 0) if current_state else 0,
                 "seconds_running": current_state.get("secondsRunning", 0) if current_state else 0,

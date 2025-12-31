@@ -19,17 +19,17 @@ echo ""
 # =============================================================================
 echo "[1/5] Updating imports and component references..."
 
-# Phase* → Cell* (component names)
+# Cell* → Cell* (component names)
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/\bPhaseAnatomyPanel\b/CellAnatomyPanel/g
-    s/\bPhaseCard\b/CellCard/g
-    s/\bPhaseDetailPanel\b/CellDetailPanel/g
-    s/\bPhaseNode\b/CellNode/g
-    s/\bPhaseBar\b/CellBar/g
-    s/\bPhaseInnerDiagram\b/CellInnerDiagram/g
-    s/\bPhaseSpeciesBadges\b/CellTypeBadges/g
-    s/\bPhaseBlock\b/CellBlock/g
-    s/\bPhasesRail\b/CellsRail/g
+    s/\bCellAnatomyPanel\b/CellAnatomyPanel/g
+    s/\bCellCard\b/CellCard/g
+    s/\bCellDetailPanel\b/CellDetailPanel/g
+    s/\bCellNode\b/CellNode/g
+    s/\bCellBar\b/CellBar/g
+    s/\bCellInnerDiagram\b/CellInnerDiagram/g
+    s/\bCellSpeciesBadges\b/CellTypeBadges/g
+    s/\bCellBlock\b/CellBlock/g
+    s/\bCellsRail\b/CellsRail/g
 ' {} +
 
 # Soundings* → Candidates*
@@ -55,11 +55,11 @@ echo "✓ Component names updated"
 echo "[2/5] Updating props and variable names..."
 
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/\bphaseName\b/cellName/g
-    s/\bphaseConfig\b/cellConfig/g
-    s/\bphaseData\b/cellData/g
-    s/\bcurrentPhase\b/currentCell/g
-    s/\bselectedPhase\b/selectedCell/g
+    s/\bcellName\b/cellName/g
+    s/\bcellConfig\b/cellConfig/g
+    s/\bcellData\b/cellData/g
+    s/\bcurrentCell\b/currentCell/g
+    s/\bselectedCell\b/selectedCell/g
     s/\btackleList\b/traitList/g
     s/\bsoundingIndex\b/candidateIndex/g
     s/\bsoundingFactor\b/candidateFactor/g
@@ -75,10 +75,10 @@ echo "[3/5] Updating API endpoint references..."
 # Note: We're keeping API route paths the same per user request
 # But updating field names in requests/responses
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/"phase_name"/"cell_name"/g
-    s/'\''phase_name'\''/'\''cell_name'\''/g
-    s/"phases"/"cells"/g
-    s/'\''phases'\''/'\''cells'\''/g
+    s/"cell_name"/"cell_name"/g
+    s/'\''cell_name'\''/'\''cell_name'\''/g
+    s/"cells"/"cells"/g
+    s/'\''cells'\''/'\''cells'\''/g
     s/"tackle"/"traits"/g
     s/'\''tackle'\''/'\''traits'\''/g
     s/"soundings"/"candidates"/g
@@ -93,9 +93,9 @@ echo "✓ API field names updated"
 echo "[4/5] Updating CSS class names..."
 
 find src -type f -name "*.css" -exec sed -i '
-    s/\.phase-card/.cell-card/g
-    s/\.phase-anatomy/.cell-anatomy/g
-    s/\.phase-detail/.cell-detail/g
+    s/\.cell-card/.cell-card/g
+    s/\.cell-anatomy/.cell-anatomy/g
+    s/\.cell-detail/.cell-detail/g
     s/\.soundings-explorer/.candidates-explorer/g
     s/\.sounding-lane/.candidate-lane/g
     s/\.tackle-pill/.trait-pill/g
@@ -103,8 +103,8 @@ find src -type f -name "*.css" -exec sed -i '
 
 # Update class names in JSX/JS files
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/className="phase-/className="cell-/g
-    s/className='\''phase-/className='\''cell-/g
+    s/className="cell-/className="cell-/g
+    s/className='\''cell-/className='\''cell-/g
     s/className="soundings-/className="candidates-/g
     s/className="tackle-/className="trait-/g
 ' {} +
@@ -117,13 +117,13 @@ echo "✓ CSS class names updated"
 echo "[5/5] Updating UI text strings..."
 
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/>Phase</>Cell</g
-    s/>Phases</>Cells</g
+    s/>Cell</>Cell</g
+    s/>Cells</>Cells</g
     s/>Soundings</>Candidates</g
     s/>Tackle</>Traits</g
-    s/"Phase "/"Cell "/g
-    s/"Phases "/"Cells "/g
-    s/'\''Phase '\''/'\''Cell '\''/g
+    s/"Cell "/"Cell "/g
+    s/"Cells "/"Cells "/g
+    s/'\''Cell '\''/'\''Cell '\''/g
 ' {} +
 
 echo "✓ UI text updated"
@@ -137,5 +137,5 @@ echo "✓ All $total_files files processed"
 echo ""
 echo "Note: File renames must be done separately"
 echo "Run this to rename component files:"
-echo '  find src -name "*Phase*.jsx" -o -name "*Phase*.js" -o -name "*Phase*.css"'
+echo '  find src -name "*Cell*.jsx" -o -name "*Cell*.js" -o -name "*Cell*.css"'
 echo ""

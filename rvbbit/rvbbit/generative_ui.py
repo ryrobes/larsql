@@ -1,7 +1,7 @@
 """
 Smart UI Generator for Generative UI System.
 
-This module implements the two-phase UI generation approach:
+This module implements the two-cell UI generation approach:
 1. Intent Analysis - Fast/cheap model determines what UI is needed
 2. UI Spec Generation - Template or LLM-based spec generation based on complexity
 
@@ -128,7 +128,7 @@ def analyze_ui_intent(
     cell_name: Optional[str] = None,
 ) -> UIIntent:
     """
-    Phase 1: Analyze what UI components are needed.
+    Cell 1: Analyze what UI components are needed.
 
     Uses a fast/cheap model (gemini-2.5-flash-lite by default) to understand
     the question and available content, then determines:
@@ -139,7 +139,7 @@ def analyze_ui_intent(
 
     Args:
         question: The question being asked
-        context: Text context (phase output, etc.)
+        context: Text context (cell output, etc.)
         images: List of image paths/URLs
         data: Structured data dict
         options: List of option dicts for selection
@@ -307,7 +307,7 @@ def generate_ui_spec_from_intent(
     cell_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Phase 2: Generate actual UI spec based on intent.
+    Cell 2: Generate actual UI spec based on intent.
 
     Routes to different generation strategies based on complexity:
     - Low: Template-based (fast, no LLM)
@@ -829,7 +829,7 @@ def generate_ui_with_fallback(
     This is the function that should be called from ask_human_custom.
     It handles:
     - Fast path when ui_hint is provided
-    - Two-phase generation (intent -> spec)
+    - Two-cell generation (intent -> spec)
     - Fallback to simple UI on any errors
 
     Args:
@@ -852,7 +852,7 @@ def generate_ui_with_fallback(
             from .human_ui import _generate_from_hint
             return _generate_from_hint(question, context, ui_hint)
 
-        # Phase 1: Analyze intent
+        # Cell 1: Analyze intent
         intent = analyze_ui_intent(
             question=question,
             context=context,
@@ -877,7 +877,7 @@ def generate_ui_with_fallback(
                 intent.layout_hint = "tabs"
                 intent.complexity = "high"
 
-        # Phase 2: Generate spec based on complexity
+        # Cell 2: Generate spec based on complexity
         return generate_ui_spec_from_intent(
             intent=intent,
             question=question,

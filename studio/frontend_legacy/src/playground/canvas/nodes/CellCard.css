@@ -1,10 +1,10 @@
-/* PhaseCard - Two-sided card with CCG-inspired styling */
+/* CellCard - Two-sided card with CCG-inspired styling */
 
 /* =============================================================================
    CSS Custom Properties (Model Elements & Rarity)
    ============================================================================= */
 
-.phase-card {
+.cell-card {
   /* Model element colors (border/frame) */
   --element-anthropic: #8B5CF6;  /* Purple */
   --element-openai: #10B981;     /* Green */
@@ -33,12 +33,12 @@
 }
 
 /* Model element border colors */
-.phase-card.model-anthropic { --frame-color: var(--element-anthropic); --frame-color-light: #A78BFA; }
-.phase-card.model-openai { --frame-color: var(--element-openai); --frame-color-light: #34D399; }
-.phase-card.model-google { --frame-color: var(--element-google); --frame-color-light: #60A5FA; }
-.phase-card.model-mistral { --frame-color: var(--element-mistral); --frame-color-light: #FBBF24; }
-.phase-card.model-xai { --frame-color: var(--element-xai); --frame-color-light: #F87171; }
-.phase-card.model-local { --frame-color: var(--element-local); --frame-color-light: #9CA3AF; }
+.cell-card.model-anthropic { --frame-color: var(--element-anthropic); --frame-color-light: #A78BFA; }
+.cell-card.model-openai { --frame-color: var(--element-openai); --frame-color-light: #34D399; }
+.cell-card.model-google { --frame-color: var(--element-google); --frame-color-light: #60A5FA; }
+.cell-card.model-mistral { --frame-color: var(--element-mistral); --frame-color-light: #FBBF24; }
+.cell-card.model-xai { --frame-color: var(--element-xai); --frame-color-light: #F87171; }
+.cell-card.model-local { --frame-color: var(--element-local); --frame-color-light: #9CA3AF; }
 
 /* =============================================================================
    Stacked Deck Edges
@@ -187,47 +187,47 @@
    ============================================================================= */
 
 /* Soundings fan: cards spread right with rotation like a peacock tail */
-.phase-card.is-fanned .sounding-card.stack-edge-1  { transform: translate(55px, -8px) rotate(6deg);   opacity: 0.85; }
-.phase-card.is-fanned .sounding-card.stack-edge-2  { transform: translate(105px, -12px) rotate(11deg); opacity: 0.8; }
-.phase-card.is-fanned .sounding-card.stack-edge-3  { transform: translate(150px, -14px) rotate(15deg); opacity: 0.75; }
-.phase-card.is-fanned .sounding-card.stack-edge-4  { transform: translate(190px, -14px) rotate(18deg); opacity: 0.7; }
-.phase-card.is-fanned .sounding-card.stack-edge-5  { transform: translate(225px, -12px) rotate(20deg); opacity: 0.65; }
-.phase-card.is-fanned .sounding-card.stack-edge-6  { transform: translate(255px, -8px) rotate(21deg);  opacity: 0.6; }
-.phase-card.is-fanned .sounding-card.stack-edge-7  { transform: translate(280px, -2px) rotate(21deg);  opacity: 0.55; }
-.phase-card.is-fanned .sounding-card.stack-edge-8  { transform: translate(300px, 6px) rotate(20deg);   opacity: 0.5; }
-.phase-card.is-fanned .sounding-card.stack-edge-9  { transform: translate(315px, 16px) rotate(18deg);  opacity: 0.45; }
-.phase-card.is-fanned .sounding-card.stack-edge-10 { transform: translate(325px, 28px) rotate(15deg);  opacity: 0.4; }
+.cell-card.is-fanned .sounding-card.stack-edge-1  { transform: translate(55px, -8px) rotate(6deg);   opacity: 0.85; }
+.cell-card.is-fanned .sounding-card.stack-edge-2  { transform: translate(105px, -12px) rotate(11deg); opacity: 0.8; }
+.cell-card.is-fanned .sounding-card.stack-edge-3  { transform: translate(150px, -14px) rotate(15deg); opacity: 0.75; }
+.cell-card.is-fanned .sounding-card.stack-edge-4  { transform: translate(190px, -14px) rotate(18deg); opacity: 0.7; }
+.cell-card.is-fanned .sounding-card.stack-edge-5  { transform: translate(225px, -12px) rotate(20deg); opacity: 0.65; }
+.cell-card.is-fanned .sounding-card.stack-edge-6  { transform: translate(255px, -8px) rotate(21deg);  opacity: 0.6; }
+.cell-card.is-fanned .sounding-card.stack-edge-7  { transform: translate(280px, -2px) rotate(21deg);  opacity: 0.55; }
+.cell-card.is-fanned .sounding-card.stack-edge-8  { transform: translate(300px, 6px) rotate(20deg);   opacity: 0.5; }
+.cell-card.is-fanned .sounding-card.stack-edge-9  { transform: translate(315px, 16px) rotate(18deg);  opacity: 0.45; }
+.cell-card.is-fanned .sounding-card.stack-edge-10 { transform: translate(325px, 28px) rotate(15deg);  opacity: 0.4; }
 
 /* =============================================================================
    Fan Out Animation - Reforge (Vertical Slide Down)
    ============================================================================= */
 
 /* Reforge fan: cards slide down to reveal their tops (evolution preview) */
-.phase-card.is-fanned .reforge-card.stack-edge-1  { transform: translate(-5px, 45px);  opacity: 0.9; }
-.phase-card.is-fanned .reforge-card.stack-edge-2  { transform: translate(-8px, 88px);  opacity: 0.85; }
-.phase-card.is-fanned .reforge-card.stack-edge-3  { transform: translate(-10px, 128px); opacity: 0.8; }
-.phase-card.is-fanned .reforge-card.stack-edge-4  { transform: translate(-11px, 165px); opacity: 0.75; }
-.phase-card.is-fanned .reforge-card.stack-edge-5  { transform: translate(-11px, 200px); opacity: 0.7; }
-.phase-card.is-fanned .reforge-card.stack-edge-6  { transform: translate(-10px, 232px); opacity: 0.65; }
-.phase-card.is-fanned .reforge-card.stack-edge-7  { transform: translate(-8px, 262px);  opacity: 0.6; }
-.phase-card.is-fanned .reforge-card.stack-edge-8  { transform: translate(-5px, 290px);  opacity: 0.55; }
-.phase-card.is-fanned .reforge-card.stack-edge-9  { transform: translate(-2px, 315px);  opacity: 0.5; }
-.phase-card.is-fanned .reforge-card.stack-edge-10 { transform: translate(0px, 338px);   opacity: 0.45; }
+.cell-card.is-fanned .reforge-card.stack-edge-1  { transform: translate(-5px, 45px);  opacity: 0.9; }
+.cell-card.is-fanned .reforge-card.stack-edge-2  { transform: translate(-8px, 88px);  opacity: 0.85; }
+.cell-card.is-fanned .reforge-card.stack-edge-3  { transform: translate(-10px, 128px); opacity: 0.8; }
+.cell-card.is-fanned .reforge-card.stack-edge-4  { transform: translate(-11px, 165px); opacity: 0.75; }
+.cell-card.is-fanned .reforge-card.stack-edge-5  { transform: translate(-11px, 200px); opacity: 0.7; }
+.cell-card.is-fanned .reforge-card.stack-edge-6  { transform: translate(-10px, 232px); opacity: 0.65; }
+.cell-card.is-fanned .reforge-card.stack-edge-7  { transform: translate(-8px, 262px);  opacity: 0.6; }
+.cell-card.is-fanned .reforge-card.stack-edge-8  { transform: translate(-5px, 290px);  opacity: 0.55; }
+.cell-card.is-fanned .reforge-card.stack-edge-9  { transform: translate(-2px, 315px);  opacity: 0.5; }
+.cell-card.is-fanned .reforge-card.stack-edge-10 { transform: translate(0px, 338px);   opacity: 0.45; }
 
 /* Main card lifts slightly when fanned */
-.phase-card.is-fanned .card-scene {
+.cell-card.is-fanned .card-scene {
   transform: translateY(-8px);
   box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 /* Hide handles during fan */
-.phase-card.is-fanned .card-handle {
+.cell-card.is-fanned .card-handle {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
 /* Stack cards become more visible when fanned */
-.phase-card.is-fanned .stack-edge {
+.cell-card.is-fanned .stack-edge {
   pointer-events: auto;
   cursor: pointer;
 }
@@ -237,31 +237,31 @@
    ============================================================================= */
 
 /* Common - Plain border (on card-face to preserve 3D flip) */
-.phase-card.rarity-common .card-face {
+.cell-card.rarity-common .card-face {
   border: 2px solid var(--frame-color);
 }
 
 /* Uncommon - Slightly brighter border */
-.phase-card.rarity-uncommon .card-face {
+.cell-card.rarity-uncommon .card-face {
   border: 2px solid var(--frame-color-light);
 }
 
 /* Rare - Purple border */
-.phase-card.rarity-rare .card-face {
+.cell-card.rarity-rare .card-face {
   border: 2px solid #8B5CF6;
 }
 
 /* Legendary - Gold border */
-.phase-card.rarity-legendary .card-face {
+.cell-card.rarity-legendary .card-face {
   border: 2px solid #FFD700;
 }
 
 /* Broken - Red border */
-.phase-card.rarity-broken .card-face {
+.cell-card.rarity-broken .card-face {
   border: 2px solid #EF4444;
 }
 
-.phase-card.rarity-broken::after {
+.cell-card.rarity-broken::after {
   content: '';
   position: absolute;
   top: 0;
@@ -303,44 +303,44 @@
 }
 
 /* Hide handles during flip animation */
-.phase-card.is-flipping .card-handle {
+.cell-card.is-flipping .card-handle {
   opacity: 0;
   transition: opacity 0.08s ease;
 }
 
-.phase-card:not(.is-flipping) .card-handle {
+.cell-card:not(.is-flipping) .card-handle {
   opacity: 1;
   transition: opacity 0.12s ease 0.5s; /* Reappear after flip settles */
 }
 
 /* Hide resize handle during animations (flip or tilt) - use !important to override hover */
-.phase-card.is-flipping .card-resize-handle,
-.phase-card.is-tilted .card-resize-handle,
-.phase-card.is-fanned .card-resize-handle {
+.cell-card.is-flipping .card-resize-handle,
+.cell-card.is-tilted .card-resize-handle,
+.cell-card.is-fanned .card-resize-handle {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
-.phase-card:not(.is-flipping):not(.is-tilted):not(.is-fanned) .card-resize-handle {
+.cell-card:not(.is-flipping):not(.is-tilted):not(.is-fanned) .card-resize-handle {
   transition: opacity 0.15s ease 0.3s;
 }
 
 /* Suppress border glow effects during flip */
-.phase-card.is-flipping .card-face {
+.cell-card.is-flipping .card-face {
   box-shadow: none !important;
   border-color: transparent !important;
   transition: box-shadow 0.1s ease, border-color 0.1s ease;
 }
 
-.phase-card:not(.is-flipping) .card-face {
+.cell-card:not(.is-flipping) .card-face {
   transition: box-shadow 0.15s ease 0.5s, border-color 0.15s ease 0.5s;
 }
 
-.phase-card:hover .card-flipper {
+.cell-card:hover .card-flipper {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.phase-card.selected .card-face {
+.cell-card.selected .card-face {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
 }
 
@@ -884,7 +884,7 @@
   opacity: 0;
 }
 
-.phase-card:hover .card-delete-button {
+.cell-card:hover .card-delete-button {
   opacity: 1;
 }
 
@@ -941,7 +941,7 @@
   pointer-events: none;
 }
 
-.phase-card:hover .card-resize-handle {
+.cell-card:hover .card-resize-handle {
   opacity: 1;
 }
 
@@ -950,17 +950,17 @@
    ============================================================================= */
 
 /* Pending = Muted border */
-.phase-card.status-pending .card-face {
+.cell-card.status-pending .card-face {
   border-color: var(--text-muted);
 }
 
 /* Main card stays untapped - only stack edges animate */
-.phase-card {
+.cell-card {
   transform: rotate(0deg);
 }
 
 /* Running = Cyan pulsing glow (cyberpunk style) */
-.phase-card.status-running .card-face {
+.cell-card.status-running .card-face {
   border-color: #00e5ff;
   box-shadow:
     0 0 8px rgba(0, 229, 255, 0.4),
@@ -982,7 +982,7 @@
 }
 
 /* Completed = Green border with settle glow */
-.phase-card.status-completed .card-face {
+.cell-card.status-completed .card-face {
   border-color: #10b981;
   box-shadow:
     0 0 6px rgba(16, 185, 129, 0.4),
@@ -1006,7 +1006,7 @@
 }
 
 /* Error = Shocking pink glow */
-.phase-card.status-error .card-face {
+.cell-card.status-error .card-face {
   border-color: #ff006e;
   box-shadow:
     0 0 8px rgba(255, 0, 110, 0.4),
@@ -1049,32 +1049,32 @@
 }
 
 /* Brighten grip indicator when tilted */
-.phase-card.is-tilted .card-tilt-zone::after {
+.cell-card.is-tilted .card-tilt-zone::after {
   opacity: 0.9;
   background: var(--text-primary);
 }
 
 /* Tilt transform - bottom lifts toward viewer for peeking underneath */
-.phase-card.is-tilted .card-scene {
+.cell-card.is-tilted .card-scene {
   transform: rotateX(25deg);
   box-shadow: 0 -20px 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 /* Stack edges tilt with the card */
-.phase-card .stack-edge {
+.cell-card .stack-edge {
   transition: transform 0.35s cubic-bezier(0.4, 0.0, 0.2, 1);
   transform-origin: center top;
 }
 
-.phase-card.is-tilted .stack-edge-1 {
+.cell-card.is-tilted .stack-edge-1 {
   transform: translate(4px, 4px) rotateX(25deg);
 }
 
-.phase-card.is-tilted .stack-edge-2 {
+.cell-card.is-tilted .stack-edge-2 {
   transform: translate(8px, 8px) rotateX(25deg);
 }
 
-.phase-card.is-tilted .stack-edge-3 {
+.cell-card.is-tilted .stack-edge-3 {
   transform: translate(12px, 12px) rotateX(25deg);
 }
 
@@ -1096,7 +1096,7 @@
   pointer-events: none;
 }
 
-.phase-card.is-tilted .card-actions-tray {
+.cell-card.is-tilted .card-actions-tray {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -1149,8 +1149,8 @@
 }
 
 /* Hide tilt zone and actions during flip */
-.phase-card.is-flipping .card-tilt-zone,
-.phase-card.is-flipping .card-actions-tray {
+.cell-card.is-flipping .card-tilt-zone,
+.cell-card.is-flipping .card-actions-tray {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -1173,7 +1173,7 @@
    ============================================================================= */
 
 /* Main card stays stable, yellow border indicates soundings active */
-.phase-card.status-soundings_running .card-face {
+.cell-card.status-soundings_running .card-face {
   border-color: #fbbf24;
 }
 
@@ -1346,7 +1346,7 @@
    ============================================================================= */
 
 /* Evaluating = indigo border */
-.phase-card.status-evaluating .card-face {
+.cell-card.status-evaluating .card-face {
   border-color: #6366f1;
 }
 
@@ -1373,7 +1373,7 @@
    ============================================================================= */
 
 /* Winner has green border */
-.phase-card.status-winner_selected .card-face {
+.cell-card.status-winner_selected .card-face {
   border-color: #10b981;
 }
 
@@ -1396,7 +1396,7 @@
    ============================================================================= */
 
 /* Reforge = purple border */
-.phase-card.status-reforge_running .card-face {
+.cell-card.status-reforge_running .card-face {
   border-color: #a78bfa;
 }
 
@@ -1405,7 +1405,7 @@
    ============================================================================= */
 
 /* Aggregate = gold border */
-.phase-card.status-aggregate_running .card-face {
+.cell-card.status-aggregate_running .card-face {
   border-color: #FFD700;
 }
 

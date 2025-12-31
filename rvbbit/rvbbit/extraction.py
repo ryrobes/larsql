@@ -2,7 +2,7 @@
 Output extraction for structured content capture.
 
 Enables scratchpad patterns where reasoning is captured in tags
-and extracted to state variables for cleaner phase handoffs.
+and extracted to state variables for cleaner cell handoffs.
 """
 
 import re
@@ -19,7 +19,7 @@ class ExtractionError(Exception):
 
 
 class OutputExtractor:
-    """Extract structured content from phase outputs."""
+    """Extract structured content from cell outputs."""
 
     def extract(self, content: str, config) -> Optional[Any]:
         """

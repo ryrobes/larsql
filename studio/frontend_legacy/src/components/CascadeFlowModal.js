@@ -26,7 +26,7 @@ import ReactFlow, {
 } from 'reactflow';
 import dagre from 'dagre';
 import { Icon } from '@iconify/react';
-import PhaseInnerDiagram from './CellInnerDiagram';
+import CellInnerDiagram from './CellInnerDiagram';
 import 'reactflow/dist/style.css';
 import './CascadeFlowModal.css';
 import './CellInnerDiagram.css';
@@ -132,14 +132,14 @@ function categorizeTackle(tackle) {
 }
 
 /**
- * PhaseNode - Custom node for rendering a phase
+ * CellNode - Custom node for rendering a cell
  */
-function PhaseNode({ data, selected }) {
+function CellNode({ data, selected }) {
   const {
     name,
     index,
-    // Full phase spec for inner diagram
-    phaseSpec,
+    // Full cell spec for inner diagram
+    cellSpec,
     // Spec data (summary)
     hasSoundings,
     soundingsFactor,
@@ -198,7 +198,7 @@ function PhaseNode({ data, selected }) {
   const tackleInfo = categorizeTackle(tackle);
 
   const nodeClasses = [
-    'flow-phase-node',
+    'flow-cell-node',
     isGhost ? 'ghost' : 'executed',
     isOnPath ? 'on-path' : '',
     status === 'running' ? 'running' : '',
@@ -221,13 +221,13 @@ function PhaseNode({ data, selected }) {
     <div className={nodeClasses}>
       <Handle type="target" position={Position.Left} />
 
-      {/* Phase Header */}
-      <div className="phase-node-header">
-        <span className="phase-index">{index + 1}</span>
+      {/* Cell Header */}
+      <div className="cell-node-header">
+        <span className="cell-index">{index + 1}</span>
         {isDeterministic && (
           <Icon icon="mdi:cog" className="deterministic-icon" width="14" title="Deterministic (tool-only, no LLM)" />
         )}
-        <span className="phase-name" title={name}>{name}</span>
+        <span className="cell-name" title={name}>{name}</span>
         {executed && status === 'completed' && (
           <Icon icon="mdi:check-circle" className="status-icon completed" />
         )}
@@ -245,7 +245,7 @@ function PhaseNode({ data, selected }) {
       </div>
 
       {/* Feature Badges - Row 1: Execution patterns */}
-      <div className="phase-node-badges">
+      <div className="cell-node-badges">
         {hasSoundings && (
           <span className="badge soundings" title={`${soundingsFactor}x soundings${soundingsMode === 'aggregate' ? ' (aggregate)' : ''}${hasMultiModel ? ' (multi-model)' : ''}`}>
             <Icon icon={soundingsMode === 'aggregate' ? 'mdi:call-merge' : 'mdi:source-branch'} width="12" />
@@ -284,7 +284,7 @@ function PhaseNode({ data, selected }) {
       </div>
 
       {/* Feature Badges - Row 2: Tools & integrations */}
-      <div className="phase-node-badges">
+      <div className="cell-node-badges">
         {isDeterministic && (
           <span className="badge deterministic" title={`Direct tool: ${deterministicTool}`}>
             <Icon icon="mdi:function" width="12" />
@@ -346,17 +346,17 @@ function PhaseNode({ data, selected }) {
         )}
       </div>
 
-      {/* Prompt Snippet (for LLM phases) */}
+      {/* Prompt Snippet (for LLM cells) */}
       {!isDeterministic && instructions && (
-        <div className="phase-node-prompt" title={instructions}>
+        <div className="cell-node-prompt" title={instructions}>
           <Icon icon="mdi:text" width="10" className="prompt-icon" />
           <span className="prompt-text">{instructions.length > 80 ? instructions.slice(0, 80) + '...' : instructions}</span>
         </div>
       )}
 
-      {/* Deterministic Inputs (for tool-only phases) */}
+      {/* Deterministic Inputs (for tool-only cells) */}
       {isDeterministic && deterministicInputs && (
-        <div className="phase-node-deterministic">
+        <div className="cell-node-deterministic">
           <div className="deterministic-header">
             <Icon icon="mdi:arrow-right-bold" width="10" />
             <span>Inputs</span>
@@ -377,9 +377,9 @@ function PhaseNode({ data, selected }) {
       )}
 
       {/* Inner Diagram (show when has complexity, expandable for detail) */}
-      {hasInnerComplexity && phaseSpec && (
-        <PhaseInnerDiagram
-          phase={phaseSpec}
+      {hasInnerComplexity && cellSpec && (
+        <CellInnerDiagram
+          cell={cellSpec}
           executionData={executionDetails}
           expanded={isExpanded}
         />
@@ -387,7 +387,7 @@ function PhaseNode({ data, selected }) {
 
       {/* Execution Output Preview (when executed and has output) */}
       {executed && executionOutput && (
-        <div className="phase-node-output">
+        <div className="cell-node-output">
           <div className="output-header">
             <Icon icon="mdi:text-box-check" width="10" />
             <span>Output</span>
@@ -400,7 +400,7 @@ function PhaseNode({ data, selected }) {
 
       {/* Execution Images (thumbnails) */}
       {executed && executionImages && executionImages.length > 0 && (
-        <div className="phase-node-images">
+        <div className="cell-node-images">
           <div className="images-header">
             <Icon icon="mdi:image-multiple" width="10" />
             <span>{executionImages.length} image{executionImages.length > 1 ? 's' : ''}</span>
@@ -420,7 +420,7 @@ function PhaseNode({ data, selected }) {
 
       {/* Execution Stats (if available) */}
       {executed && (
-        <div className="phase-node-stats">
+        <div className="cell-node-stats">
           {cost !== undefined && cost > 0 && (
             <span className="stat cost">
               <Icon icon="mdi:currency-usd" width="12" />
@@ -456,7 +456,7 @@ function PhaseNode({ data, selected }) {
 
       {/* Model Badge - show actual model used if different from configured */}
       {(model || executionModel) && (
-        <div className={`phase-node-model ${executionModel && model && executionModel !== model ? 'different' : ''}`}>
+        <div className={`cell-node-model ${executionModel && model && executionModel !== model ? 'different' : ''}`}>
           <Icon icon="mdi:brain" width="10" />
           <span title={executionModel || model}>
             {(executionModel || model).split('/').pop()}
@@ -475,7 +475,7 @@ function PhaseNode({ data, selected }) {
 }
 
 const nodeTypes = {
-  phase: PhaseNode,
+  cell: CellNode,
 };
 
 /**
@@ -485,35 +485,35 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
   const nodes = [];
   const edges = [];
 
-  const phases = cascade.cells || [];
+  const cells = cascade.cells || [];
 
-  // Create nodes for each phase
-  phases.forEach((phase, index) => {
-    const soundings = phase.candidates || {};
+  // Create nodes for each cell
+  cells.forEach((cell, index) => {
+    const soundings = cell.candidates || {};
     const reforge = soundings.reforge || {};
-    const wards = phase.wards || {};
+    const wards = cell.wards || {};
     const wardCount =
       (wards.pre?.length || 0) +
       (wards.post?.length || 0) +
       (wards.turn?.length || 0);
 
-    // Check if we have execution data for this phase
-    const phaseExecution = executionData?.phases?.[phase.name];
-    const isOnPath = executionData?.executedPath?.includes(phase.name);
-    const isExpanded = expandedNodes[phase.name] || false;
+    // Check if we have execution data for this cell
+    const cellExecution = executionData?.cells?.[cell.name];
+    const isOnPath = executionData?.executedPath?.includes(cell.name);
+    const isExpanded = expandedNodes[cell.name] || false;
 
-    // Determine if this is a deterministic (tool-only) phase
-    const isDeterministic = phase.is_deterministic || (phase.deterministic_tool && !phase.instructions);
+    // Determine if this is a deterministic (tool-only) cell
+    const isDeterministic = cell.is_deterministic || (cell.deterministic_tool && !cell.instructions);
 
     nodes.push({
-      id: phase.name,
-      type: 'phase',
+      id: cell.name,
+      type: 'cell',
       position: { x: 0, y: 0 }, // Will be set by layout
       data: {
-        name: phase.name,
+        name: cell.name,
         index,
-        // Full phase spec for inner diagram
-        phaseSpec: phase,
+        // Full cell spec for inner diagram
+        cellSpec: cell,
         // Spec data (summary)
         hasSoundings: soundings.factor > 1,
         soundingsFactor: soundings.factor || 1,
@@ -521,47 +521,47 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
         reforgeSteps: reforge.steps || 0,
         hasWards: wardCount > 0,
         wardCount,
-        hasHandoffs: phase.handoffs?.length > 0,
-        handoffCount: phase.handoffs?.length || 0,
-        tackle: phase.traits,
-        tackleCount: Array.isArray(phase.traits) ? phase.traits.length : (phase.traits ? 1 : 0),
-        model: phase.model,
+        hasHandoffs: cell.handoffs?.length > 0,
+        handoffCount: cell.handoffs?.length || 0,
+        tackle: cell.traits,
+        tackleCount: Array.isArray(cell.traits) ? cell.traits.length : (cell.traits ? 1 : 0),
+        model: cell.model,
         // Rules
-        maxTurns: phase.max_turns || 1,
-        maxAttempts: phase.max_attempts,
-        hasLoopUntil: phase.has_loop_until || !!phase.loop_until,
-        hasTurnPrompt: phase.has_turn_prompt,
-        // Deterministic phases
+        maxTurns: cell.max_turns || 1,
+        maxAttempts: cell.max_attempts,
+        hasLoopUntil: cell.has_loop_until || !!cell.loop_until,
+        hasTurnPrompt: cell.has_turn_prompt,
+        // Deterministic cells
         isDeterministic,
-        deterministicTool: phase.deterministic_tool || phase.tool,
-        deterministicInputs: phase.deterministic_inputs || phase.inputs,
-        hasRouting: !!phase.routing,
+        deterministicTool: cell.deterministic_tool || cell.tool,
+        deterministicInputs: cell.deterministic_inputs || cell.inputs,
+        hasRouting: !!cell.routing,
         // Prompt snippet
-        instructions: phase.instructions,
+        instructions: cell.instructions,
         // Features
-        hasOutputSchema: !!phase.output_schema,
-        hasSubCascades: !!phase.sub_cascades?.length,
-        hasAsyncCascades: !!phase.async_cascades?.length,
-        hasOnError: !!phase.on_error,
+        hasOutputSchema: !!cell.output_schema,
+        hasSubCascades: !!cell.sub_cascades?.length,
+        hasAsyncCascades: !!cell.async_cascades?.length,
+        hasOnError: !!cell.on_error,
         // Soundings details
         soundingsMode: soundings.mode,
         hasMultiModel: !!soundings.models?.length,
         hasMutations: soundings.mutate || !!soundings.mutations?.length,
         // Execution data
-        executed: !!phaseExecution,
+        executed: !!cellExecution,
         isOnPath,
-        status: phaseExecution?.status,
-        cost: phaseExecution?.cost,
-        duration: phaseExecution?.duration,
-        soundingWinner: phaseExecution?.soundingWinner,
-        turnCount: phaseExecution?.turnCount,
-        executionDetails: phaseExecution?.details,
+        status: cellExecution?.status,
+        cost: cellExecution?.cost,
+        duration: cellExecution?.duration,
+        soundingWinner: cellExecution?.soundingWinner,
+        turnCount: cellExecution?.turnCount,
+        executionDetails: cellExecution?.details,
         // Rich execution data
-        executionOutput: phaseExecution?.output,
-        executionImages: phaseExecution?.images || [],
-        executionModel: phaseExecution?.model,
-        executionTokensIn: phaseExecution?.tokensIn,
-        executionTokensOut: phaseExecution?.tokensOut,
+        executionOutput: cellExecution?.output,
+        executionImages: cellExecution?.images || [],
+        executionModel: cellExecution?.model,
+        executionTokensIn: cellExecution?.tokensIn,
+        executionTokensOut: cellExecution?.tokensOut,
         // UI state
         isExpanded,
         onToggleExpand,
@@ -570,8 +570,8 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
   });
 
   // Helper to format context label for an edge
-  const getContextLabel = (targetPhase, sourcePhase) => {
-    const context = targetPhase.context;
+  const getContextLabel = (targetCell, sourceCell) => {
+    const context = targetCell.context;
     // No explicit context config means default snowball (all previous context)
     if (!context) return { label: '← auto', title: 'Default context (snowball)', dim: true };
 
@@ -580,7 +580,7 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
 
     // Check if this edge's source is in the context.from
     // Handle both simple format: ["previous", "cell_name", "all"]
-    // And complex format: [{"phase": "name", "include": ["output"]}]
+    // And complex format: [{"cell": "name", "include": ["output"]}]
     let isFromAll = false;
     let isFromPrevious = false;
     let isFromSpecific = false;
@@ -590,9 +590,9 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
       if (typeof entry === 'string') {
         if (entry === 'all') isFromAll = true;
         else if (entry === 'previous') isFromPrevious = true;
-        else if (entry === sourcePhase.name) isFromSpecific = true;
-      } else if (typeof entry === 'object' && entry.phase) {
-        if (entry.phase === sourcePhase.name) {
+        else if (entry === sourceCell.name) isFromSpecific = true;
+      } else if (typeof entry === 'object' && entry.cell) {
+        if (entry.cell === sourceCell.name) {
           isFromSpecific = true;
           specificInclude = entry.include;
         }
@@ -601,7 +601,7 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
 
     if (!isFromAll && !isFromPrevious && !isFromSpecific) {
       // This source isn't in the target's context - show "no context" indicator
-      return { label: '⊘', title: 'No context passed from this phase', dim: true };
+      return { label: '⊘', title: 'No context passed from this cell', dim: true };
     }
 
     // Determine the include type
@@ -614,32 +614,32 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
     }
 
     if (isFromAll) {
-      return { label: `← all${includeLabel}`, title: 'Context from all phases' };
+      return { label: `← all${includeLabel}`, title: 'Context from all cells' };
     } else if (isFromPrevious) {
-      return { label: `← prev${includeLabel}`, title: 'Context from previous phase' };
+      return { label: `← prev${includeLabel}`, title: 'Context from previous cell' };
     } else if (isFromSpecific) {
-      return { label: `← ctx${includeLabel}`, title: `Selective context from ${sourcePhase.name}` };
+      return { label: `← ctx${includeLabel}`, title: `Selective context from ${sourceCell.name}` };
     }
 
     return null;
   };
 
-  // Create a map of phases by name for quick lookup
-  const phasesByName = {};
-  phases.forEach(p => { phasesByName[p.name] = p; });
+  // Create a map of cells by name for quick lookup
+  const cellsByName = {};
+  cells.forEach(p => { cellsByName[p.name] = p; });
 
   // Create edges
-  phases.forEach((phase, index) => {
-    if (phase.handoffs && phase.handoffs.length > 0) {
+  cells.forEach((cell, index) => {
+    if (cell.handoffs && cell.handoffs.length > 0) {
       // Explicit handoffs
-      phase.handoffs.forEach((target, hIndex) => {
-        const isExecutedEdge = executionData?.executedHandoffs?.[phase.name] === target;
-        const targetPhase = phasesByName[target];
-        const contextInfo = targetPhase ? getContextLabel(targetPhase, phase) : null;
+      cell.handoffs.forEach((target, hIndex) => {
+        const isExecutedEdge = executionData?.executedHandoffs?.[cell.name] === target;
+        const targetCell = cellsByName[target];
+        const contextInfo = targetCell ? getContextLabel(targetCell, cell) : null;
 
         edges.push({
-          id: `${phase.name}-${target}-${hIndex}`,
-          source: phase.name,
+          id: `${cell.name}-${target}-${hIndex}`,
+          source: cell.name,
           target,
           type: 'smoothstep',
           animated: isExecutedEdge,
@@ -667,18 +667,18 @@ function specToFlow(cascade, executionData = null, expandedNodes = {}, onToggleE
           labelBgBorderRadius: 4,
         });
       });
-    } else if (index < phases.length - 1) {
-      // Default: connect to next phase
-      const nextPhase = phases[index + 1];
+    } else if (index < cells.length - 1) {
+      // Default: connect to next cell
+      const nextCell = cells[index + 1];
       const isExecutedEdge =
-        executionData?.executedPath?.includes(phase.name) &&
-        executionData?.executedPath?.includes(nextPhase.name);
-      const contextInfo = getContextLabel(nextPhase, phase);
+        executionData?.executedPath?.includes(cell.name) &&
+        executionData?.executedPath?.includes(nextCell.name);
+      const contextInfo = getContextLabel(nextCell, cell);
 
       edges.push({
-        id: `${phase.name}-${nextPhase.name}`,
-        source: phase.name,
-        target: nextPhase.name,
+        id: `${cell.name}-${nextCell.name}`,
+        source: cell.name,
+        target: nextCell.name,
         type: 'smoothstep',
         animated: isExecutedEdge,
         style: {
@@ -720,13 +720,13 @@ function CascadeFlowModal({ cascade, executionData, sessionId, onClose }) {
   // Initialize expanded nodes - expand all nodes with complexity by default
   const getInitialExpandedState = useCallback((cascade) => {
     const expanded = {};
-    (cascade?.phases || []).forEach(phase => {
-      const soundings = phase.candidates || {};
-      const wards = phase.wards || {};
+    (cascade?.cells || []).forEach(cell => {
+      const soundings = cell.candidates || {};
+      const wards = cell.wards || {};
       const hasComplexity = (soundings.factor > 1) ||
         ((wards.pre?.length || 0) + (wards.post?.length || 0) + (wards.turn?.length || 0) > 0);
       if (hasComplexity) {
-        expanded[phase.name] = true;
+        expanded[cell.name] = true;
       }
     });
     return expanded;
@@ -878,7 +878,7 @@ function CascadeFlowModal({ cascade, executionData, sessionId, onClose }) {
             </span>
             <span className="footer-stat">
               <Icon icon="mdi:counter" width="14" />
-              {executionData.summary.phaseCount} phases
+              {executionData.summary.cellCount} cells
             </span>
             <span className="footer-stat">
               <Icon icon="mdi:currency-usd" width="14" />

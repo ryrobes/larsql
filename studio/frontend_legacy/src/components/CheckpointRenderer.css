@@ -27,7 +27,7 @@
   background: transparent;
 }
 
-.checkpoint-renderer-inline .checkpoint-phase-output {
+.checkpoint-renderer-inline .checkpoint-cell-output {
   background: rgba(0, 0, 0, 0.4);
   border-left: 3px solid var(--color-accent-cyan);
 }
@@ -46,17 +46,17 @@
 }
 
 /* ============================================
-   PHASE OUTPUT
+   CELL OUTPUT
    ============================================ */
 
-.checkpoint-phase-output {
+.checkpoint-cell-output {
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.6);
   border: 1px solid var(--color-border-dim);
   border-radius: 4px;
 }
 
-.phase-output-label {
+.cell-output-label {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-dim);
@@ -65,7 +65,7 @@
   margin-bottom: 6px;
 }
 
-.phase-output-text {
+.cell-output-text {
   font-size: var(--font-size-md);
   color: var(--color-text-primary);
   line-height: 1.6;

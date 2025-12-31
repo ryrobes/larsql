@@ -1,7 +1,7 @@
 """
-Demo tools for deterministic phase examples.
+Demo tools for deterministic cell examples.
 
-These are simple tools that can be used directly in deterministic phases
+These are simple tools that can be used directly in deterministic cells
 without LLM mediation.
 """
 

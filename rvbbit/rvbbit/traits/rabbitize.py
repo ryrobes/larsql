@@ -15,12 +15,12 @@ Integration with RVBBIT:
 - Session state tracked in Echo
 - Screenshots automatically flow through multi-modal vision protocol
 - Metadata exposed for agent reasoning
-- Auto-cleanup on errors and phase completion
+- Auto-cleanup on errors and cell completion
 
 Managed Mode (First-Class):
-- When a phase has `browser` config, runner spawns a dedicated subprocess
+- When a cell has `browser` config, runner spawns a dedicated subprocess
 - Tools automatically use the managed session via echo.state["_browser_session_id"]
-- No external server needed - subprocess per phase
+- No external server needed - subprocess per cell
 
 Legacy Mode (Backwards Compatible):
 - Use RABBITIZE_SERVER_URL env var to point to external server
@@ -49,7 +49,7 @@ def _get_managed_session_info() -> Optional[Dict[str, Any]]:
     """
     Check if there's a managed browser session from runner's browser config.
 
-    When a phase has `browser` config, the runner spawns a subprocess and stores:
+    When a cell has `browser` config, the runner spawns a subprocess and stores:
     - _browser_session_id: Session ID
     - _browser_port: Port number
     - _browser_base_url: HTTP base URL (http://localhost:{port})
@@ -618,9 +618,9 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
     The browser session persists across commands until you call rabbitize_close().
     Automatically captures screenshots and starts video recording.
 
-    NOTE: If this phase has `browser` config, the session is ALREADY started by the
+    NOTE: If this cell has `browser` config, the session is ALREADY started by the
     runner. This tool will confirm the session is ready and return the initial state.
-    For phases with browser config, you typically don't need to call this tool at all.
+    For cells with browser config, you typically don't need to call this tool at all.
 
     Args:
         url: URL to navigate to
@@ -649,7 +649,7 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
                 screenshot = _get_latest_screenshot(session_id)
 
         content = f"✅ Browser session active (managed): {session_id}\n"
-        content += f"📍 Session started by phase browser config\n"
+        content += f"📍 Session started by cell browser config\n"
         content += f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}\n"
         content += f"🎥 Video: {artifacts.get('video', 'N/A')}\n"
         content += f"\nUse rabbitize_execute() to interact with the browser."
@@ -674,7 +674,7 @@ def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
                 "content": f"❌ Rabbitize server is not running.\n\n" +
                           f"Please start it with: npx rabbitize\n\n" +
                           f"Or enable auto-start: export RABBITIZE_AUTO_START=true\n\n" +
-                          f"Or add `browser` config to your phase for automatic management.\n\n" +
+                          f"Or add `browser` config to your cell for automatic management.\n\n" +
                           f"Server should be running at: {RABBITIZE_SERVER_URL}"
             }
 
@@ -994,8 +994,8 @@ def rabbitize_close() -> str:
     This saves the video file and cleans up resources.
     Always call this when you're done navigating!
 
-    NOTE: For managed sessions (phases with `browser` config), the runner handles
-    cleanup automatically when the phase ends. Calling this tool is not required
+    NOTE: For managed sessions (cells with `browser` config), the runner handles
+    cleanup automatically when the cell ends. Calling this tool is not required
     and will just return status information.
 
     Returns:
@@ -1014,8 +1014,8 @@ def rabbitize_close() -> str:
                    metadata={"tool": "rabbitize_close", "session_id": session_id, "managed": True})
 
         artifacts = managed.get("artifacts", {})
-        result = f"ℹ️  Browser session is managed by phase config: {session_id}\n"
-        result += f"📝 Session will be automatically closed when phase ends.\n"
+        result = f"ℹ️  Browser session is managed by cell config: {session_id}\n"
+        result += f"📝 Session will be automatically closed when cell ends.\n"
         result += f"🎥 Video will be saved to: {artifacts.get('video', 'N/A')}\n"
         result += f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}\n"
         result += f"\nNo action needed - runner handles cleanup."
@@ -1083,7 +1083,7 @@ def get_browser_status() -> dict:
 
     if not session_id:
         return {
-            "content": "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin, or add `browser` config to your phase."
+            "content": "ℹ️  No active Rabbitize session.\nUse rabbitize_start(url) to begin, or add `browser` config to your cell."
         }
 
     try:
@@ -1099,7 +1099,7 @@ def get_browser_status() -> dict:
                 lines.append(f"📂 Artifacts: {artifacts.get('base_path', 'N/A')}")
                 lines.append(f"📸 Screenshots: {artifacts.get('screenshots', 'N/A')}")
                 lines.append(f"🎥 Video: {artifacts.get('video', 'N/A')}")
-            lines.append(f"🔄 Lifecycle: Managed by runner (auto-cleanup on phase end)")
+            lines.append(f"🔄 Lifecycle: Managed by runner (auto-cleanup on cell end)")
         else:
             lines.append(f"🌐 Active Session (legacy): {session_id}")
             lines.append(f"📡 Server: {RABBITIZE_SERVER_URL}")

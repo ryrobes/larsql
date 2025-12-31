@@ -15,7 +15,7 @@ Configuration in cascade JSON:
 {
     "narrator": {
         "enabled": true,
-        "on_events": ["phase_complete", "cascade_complete"],
+        "on_events": ["cell_complete", "cascade_complete"],
         "instructions": "Optional custom instructions for the narrator LLM",
         "min_interval_seconds": 10.0
     }

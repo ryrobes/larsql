@@ -413,7 +413,7 @@ function SessionsView({
                       <Icon icon="mdi:sitemap" width="12" />
                       <span className="cascade-id">{session.cascade_id}</span>
                       {session.cell_name && (
-                        <span className="phase-name"> / {session.cell_name}</span>
+                        <span className="cell-name"> / {session.cell_name}</span>
                       )}
                     </div>
                   )}
@@ -580,7 +580,7 @@ function SessionsView({
                     <span>{selectedSession.cascade_id}</span>
                   </div>
                   <div className="info-row">
-                    <label>Phase</label>
+                    <label>Cell</label>
                     <span>{selectedSession.cell_name || '-'}</span>
                   </div>
                   <div className="info-row">

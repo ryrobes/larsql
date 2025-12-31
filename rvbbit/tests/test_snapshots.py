@@ -39,7 +39,7 @@ def test_cascade_snapshot(snapshot_file):
     Validate a cascade snapshot test.
 
     This validates a frozen execution has correct structure and expectations.
-    Phase 1: Structure validation. Phase 2: Full LLM-mocked replay.
+    Cell 1: Structure validation. Cell 2: Full LLM-mocked replay.
     """
     validator = SnapshotValidator()
     snapshot_name = snapshot_file.stem

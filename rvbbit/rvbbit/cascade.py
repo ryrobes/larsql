@@ -29,7 +29,7 @@ class HumanInputOption(BaseModel):
 
 class HumanInputConfig(BaseModel):
     """
-    Configuration for human input at phase level.
+    Configuration for human input at cell level.
 
     Usage:
     Simple: {"human_input": true}
@@ -129,13 +129,13 @@ class HumanSoundingEvalConfig(BaseModel):
 
 class BrowserConfig(BaseModel):
     """
-    Configuration for browser automation in a phase.
+    Configuration for browser automation in a cell.
 
-    When a phase has browser config, RVBBIT will:
+    When a cell has browser config, RVBBIT will:
     1. Spawn a dedicated browser subprocess on an available port
     2. Initialize the browser and navigate to the specified URL
-    3. Inject browser tools (control_browser, extract_page_content, etc.) into the phase
-    4. Clean up the browser session when the phase completes
+    3. Inject browser tools (control_browser, extract_page_content, etc.) into the cell
+    4. Clean up the browser session when the cell completes
 
     Usage:
         {
@@ -256,7 +256,7 @@ class CandidatesConfig(BaseModel):
     # Aggregate mode - combine all outputs instead of picking one winner
     mode: Literal["evaluate", "aggregate"] = "evaluate"  # "evaluate" picks best, "aggregate" combines all
     aggregator_instructions: Optional[str] = None  # LLM instructions for combining outputs (if None, simple concatenation)
-    aggregator_model: Optional[str] = None  # Model to use for aggregation (defaults to phase model)
+    aggregator_model: Optional[str] = None  # Model to use for aggregation (defaults to cell model)
 
     # Pre-evaluation validator - filters soundings before evaluator sees them
     # Useful for code execution (only evaluate code that runs) or format validation
@@ -265,14 +265,14 @@ class CandidatesConfig(BaseModel):
     #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
     validator: Optional[Union[str, "PolyglotValidatorConfig"]] = None
 
-    # Multi-model soundings (Phase 1: Simple Model Pool)
+    # Multi-model soundings (Cell 1: Simple Model Pool)
     models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
     model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across soundings
 
-    # Cost-aware evaluation (Phase 2: Cost-Aware Evaluation)
+    # Cost-aware evaluation (Cell 2: Cost-Aware Evaluation)
     cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model soundings
 
-    # Pareto frontier analysis (Phase 3: Pareto Frontier Analysis)
+    # Pareto frontier analysis (Cell 3: Pareto Frontier Analysis)
     pareto_frontier: Optional[ParetoFrontier] = None  # Enable Pareto frontier computation and selection
 
     # Human evaluation options (HITL)
@@ -289,7 +289,7 @@ class CandidatesConfig(BaseModel):
 
 class RagConfig(BaseModel):
     """
-    RAG configuration for a phase.
+    RAG configuration for a cell.
 
     Minimal usage:
     {
@@ -328,7 +328,7 @@ class TokenBudgetConfig(BaseModel):
     reserve_for_output: int = 4000  # Always leave room for response
     strategy: Literal["sliding_window", "prune_oldest", "summarize", "fail"] = "sliding_window"
     warning_threshold: float = 0.8  # Warn at 80% capacity
-    phase_overrides: Optional[Dict[str, int]] = None  # Per-phase budgets
+    cell_overrides: Optional[Dict[str, int]] = None  # Per-cell budgets
     summarizer: Optional[Dict[str, Any]] = None  # Config for summarize strategy
 
 class ToolCachePolicy(BaseModel):
@@ -359,7 +359,7 @@ class ToolCachingConfig(BaseModel):
 
 class OutputExtractionConfig(BaseModel):
     """
-    Extract structured data from phase output.
+    Extract structured data from cell output.
 
     Usage:
     {
@@ -375,12 +375,12 @@ class OutputExtractionConfig(BaseModel):
     format: Literal["text", "json", "code"] = "text"  # Parse extracted content
 
 
-class IntraPhaseContextConfig(BaseModel):
+class IntraCellContextConfig(BaseModel):
     """
-    Configuration for intra-phase auto-context (per-turn context management).
+    Configuration for intra-cell auto-context (per-turn context management).
 
-    This controls how context is managed within a single phase's turn loop.
-    The goal is to prevent context explosion in long-running phases by:
+    This controls how context is managed within a single cell's turn loop.
+    The goal is to prevent context explosion in long-running cells by:
     - Keeping recent turns in full fidelity (sliding window)
     - Masking older tool results with placeholders
     - Compressing loop retry contexts
@@ -402,7 +402,7 @@ class IntraPhaseContextConfig(BaseModel):
         }
     }
 
-    Typical savings: 40-60% token reduction in long phases.
+    Typical savings: 40-60% token reduction in long cells.
     """
     enabled: bool = True
     window: int = 5                      # Last N turns in full fidelity
@@ -425,13 +425,13 @@ class AnchorConfig(BaseModel):
     {
         "anchors": {
             "window": 3,
-            "from_phases": ["previous"],
+            "from_cells": ["previous"],
             "include": ["output", "callouts", "input"]
         }
     }
     """
-    window: int = 3  # Last N turns from current phase
-    from_phases: List[str] = Field(default_factory=lambda: ["previous"])
+    window: int = 3  # Last N turns from current cell
+    from_cells: List[str] = Field(default_factory=lambda: ["previous"])
     include: List[Literal["output", "callouts", "input", "errors"]] = Field(
         default_factory=lambda: ["output", "callouts", "input"]
     )
@@ -473,12 +473,12 @@ class SelectionConfig(BaseModel):
     similarity_threshold: float = 0.5
 
 
-class InterPhaseContextConfig(BaseModel):
+class InterCellContextConfig(BaseModel):
     """
-    Configuration for inter-phase auto-context (between phases).
+    Configuration for inter-cell auto-context (between cells).
 
     This controls how context is automatically selected when moving
-    between phases. Instead of manually specifying context.from,
+    between cells. Instead of manually specifying context.from,
     the system intelligently selects relevant prior messages.
 
     Usage (enable with defaults):
@@ -493,7 +493,7 @@ class InterPhaseContextConfig(BaseModel):
         "context": {
             "mode": "auto",
             "anchors": {
-                "from_phases": ["research", "analysis"],
+                "from_cells": ["research", "analysis"],
                 "include": ["output", "callouts"]
             },
             "selection": {
@@ -503,7 +503,7 @@ class InterPhaseContextConfig(BaseModel):
         }
     }
 
-    Typical savings: 50-70% token reduction between phases.
+    Typical savings: 50-70% token reduction between cells.
     """
     enabled: bool = True
     anchors: AnchorConfig = Field(default_factory=AnchorConfig)
@@ -514,17 +514,17 @@ class AutoContextConfig(BaseModel):
     """
     Top-level auto-context configuration for a cascade.
 
-    Controls both intra-phase (per-turn) and inter-phase (between phases)
-    context management. Phase-level configs override these defaults.
+    Controls both intra-cell (per-turn) and inter-cell (between cells)
+    context management. Cell-level configs override these defaults.
 
     Usage:
     {
         "auto_context": {
-            "intra_phase": {
+            "intra_cell": {
                 "enabled": true,
                 "window": 5
             },
-            "inter_phase": {
+            "inter_cell": {
                 "enabled": true,
                 "selection": {
                     "strategy": "hybrid"
@@ -533,17 +533,17 @@ class AutoContextConfig(BaseModel):
         }
     }
     """
-    intra_phase: Optional[IntraPhaseContextConfig] = None
-    inter_phase: Optional[InterPhaseContextConfig] = None
+    intra_cell: Optional[IntraCellContextConfig] = None
+    inter_cell: Optional[InterCellContextConfig] = None
 
 
 class AudibleConfig(BaseModel):
     """
     Configuration for real-time feedback injection (Audible system).
 
-    Audibles allow users to steer cascades mid-phase by injecting feedback.
+    Audibles allow users to steer cascades mid-cell by injecting feedback.
     The feedback becomes a message in the conversation, and the remaining
-    turns see it and adjust naturally. Phase encapsulation handles cleanup.
+    turns see it and adjust naturally. Cell encapsulation handles cleanup.
 
     Usage:
     {
@@ -555,7 +555,7 @@ class AudibleConfig(BaseModel):
     }
     """
     enabled: bool = True
-    budget: int = 3  # Max audibles per phase execution
+    budget: int = 3  # Max audibles per cell execution
     allow_retry: bool = True  # Allow retry mode (redo current turn)
     timeout_seconds: Optional[int] = 120  # Feedback collection timeout
 
@@ -583,10 +583,10 @@ class NarratorConfig(BaseModel):
     - Proper logging: All narrator activity tracked in unified_logs
 
     Available Jinja2 template variables in 'instructions':
-    - {{ input.cell_name }}        - Current phase name
+    - {{ input.cell_name }}        - Current cell name
     - {{ input.event_type }}        - Event type ("history_changed" in poll mode)
-    - {{ input.turn_number }}       - Current turn number within phase
-    - {{ input.max_turns }}         - Maximum turns configured for phase
+    - {{ input.turn_number }}       - Current turn number within cell
+    - {{ input.max_turns }}         - Maximum turns configured for cell
     - {{ input.tools_used }}        - List of tools called recently
     - {{ input.context }}           - Detailed summary of recent activity (ALL messages in poll mode)
     - {{ input.message_count }}     - Number of messages in context (poll mode only)
@@ -611,8 +611,8 @@ class NarratorConfig(BaseModel):
         "narrator": {
             "enabled": true,
             "mode": "event",
-            "on_events": ["phase_complete", "cascade_complete"],
-            "instructions": "Phase: {{ input.cell_name }}. Context: {{ input.context }}. Call say()."
+            "on_events": ["cell_complete", "cascade_complete"],
+            "instructions": "Cell: {{ input.cell_name }}. Context: {{ input.context }}. Call say()."
         }
     }
     """
@@ -623,11 +623,11 @@ class NarratorConfig(BaseModel):
     cascade: Optional[str] = None  # Path to custom narrator cascade (uses built-in if not specified)
 
     # Events to narrate on - renamed from "triggers" for clarity
-    # Valid values: "turn", "phase_start", "phase_complete", "tool_call", "cascade_complete"
-    on_events: Optional[List[Literal["turn", "phase_start", "phase_complete", "tool_call", "cascade_complete"]]] = None
+    # Valid values: "turn", "cell_start", "cell_complete", "tool_call", "cascade_complete"
+    on_events: Optional[List[Literal["turn", "cell_start", "cell_complete", "tool_call", "cascade_complete"]]] = None
 
     # Backwards compatibility: 'triggers' is an alias for 'on_events'
-    triggers: Optional[List[Literal["turn", "phase_start", "phase_complete", "tool_call"]]] = Field(
+    triggers: Optional[List[Literal["turn", "cell_start", "cell_complete", "tool_call"]]] = Field(
         default=None,
         description="DEPRECATED: Use 'on_events' instead. Kept for backwards compatibility."
     )
@@ -652,7 +652,7 @@ class NarratorConfig(BaseModel):
             return list(self.on_events)
         if self.triggers:
             return list(self.triggers)
-        return ["phase_complete"]  # Default
+        return ["cell_complete"]  # Default
 
 
 # ===== Decision Point Configuration (Dynamic HITL) =====
@@ -664,7 +664,7 @@ class DecisionPointUIConfig(BaseModel):
     Controls how the decision UI is presented when the LLM outputs
     a <decision> block requesting human input.
     """
-    present_output: bool = True      # Show phase output above decision
+    present_output: bool = True      # Show cell output above decision
     allow_text_fallback: bool = True  # Always allow "Other" with text input
     max_options: int = 6              # Maximum options to display
     layout: Literal["cards", "list", "buttons"] = "cards"  # How to render options
@@ -672,17 +672,17 @@ class DecisionPointUIConfig(BaseModel):
 
 class DecisionPointRoutingAction(BaseModel):
     """Single routing action for decision points."""
-    to: Optional[str] = None          # Phase name, "self", or "next"
+    to: Optional[str] = None          # Cell name, "self", or "next"
     fail: bool = False                # If true, fails the cascade
     inject: Optional[Literal["choice", "feedback", "context"]] = None  # How to inject response
 
 
 # Note: Routing config is a Dict[str, Union[str, DecisionPointRoutingAction]]
 # Special keys (use strings in JSON, e.g., "_continue"):
-# - "_continue": Default for unknown actions (continues to next phase)
-# - "_retry": Retry current phase with decision injected
+# - "_continue": Default for unknown actions (continues to next cell)
+# - "_retry": Retry current cell with decision injected
 # - "_abort": Fail the cascade
-# Custom action IDs from <decision> options map to phase names or routing actions
+# Custom action IDs from <decision> options map to cell names or routing actions
 
 
 class DecisionPointConfig(BaseModel):
@@ -809,25 +809,25 @@ class ContextSourceConfig(BaseModel):
     # Injection format
     as_role: Literal["user", "system"] = "user"  # Role for injected messages
 
-    # Conditional injection (Phase 4)
+    # Conditional injection (Cell 4)
     condition: Optional[str] = None  # Jinja2 condition for conditional injection
 
 
 class ContextConfig(BaseModel):
     """
-    Context configuration for a phase (selective-by-default).
+    Context configuration for a cell (selective-by-default).
 
-    Phases without a context config receive NO prior context (clean slate).
-    Use context.from to explicitly declare what context this phase needs.
+    Cells without a context config receive NO prior context (clean slate).
+    Use context.from to explicitly declare what context this cell needs.
 
     Modes:
         - "explicit": Traditional mode - manually specify context.from (default)
-        - "auto": Auto-context mode - LLM selects relevant context from prior phases
+        - "auto": Auto-context mode - LLM selects relevant context from prior cells
 
     Keywords (for explicit mode):
-        - "all": All prior phases (explicit snowball)
-        - "first": First executed phase
-        - "previous" / "prev": Most recently completed phase
+        - "all": All prior cells (explicit snowball)
+        - "first": First executed cell
+        - "previous" / "prev": Most recently completed cell
 
     Usage (explicit mode - default):
     {
@@ -840,8 +840,8 @@ class ContextConfig(BaseModel):
     Or selective:
     {
         "context": {
-            "from": ["first", "previous"],  // Only specific phases
-            "exclude": ["verbose_phase"],   // Skip these from "all"
+            "from": ["first", "previous"],  // Only specific cells
+            "exclude": ["verbose_cell"],   // Skip these from "all"
             "include_input": false
         }
     }
@@ -851,7 +851,7 @@ class ContextConfig(BaseModel):
         "context": {
             "mode": "auto",
             "anchors": {
-                "from_phases": ["research"],
+                "from_cells": ["research"],
                 "include": ["output", "callouts"]
             },
             "selection": {
@@ -869,7 +869,7 @@ class ContextConfig(BaseModel):
         default_factory=list,
         alias="from"
     )
-    exclude: List[str] = Field(default_factory=list)  # Phases to exclude (useful with "all")
+    exclude: List[str] = Field(default_factory=list)  # Cells to exclude (useful with "all")
     include_input: bool = True  # Include original cascade input
 
     # Auto mode fields
@@ -877,7 +877,7 @@ class ContextConfig(BaseModel):
     selection: Optional[SelectionConfig] = None
 
 class RetryConfig(BaseModel):
-    """Retry configuration for deterministic phases."""
+    """Retry configuration for deterministic cells."""
     max_attempts: int = 3
     backoff: Literal["none", "linear", "exponential"] = "linear"
     backoff_base_seconds: float = 1.0
@@ -885,7 +885,7 @@ class RetryConfig(BaseModel):
 
 class AutoFixConfig(BaseModel):
     """
-    Auto-fix configuration for self-healing deterministic phases.
+    Auto-fix configuration for self-healing deterministic cells.
 
     When a tool execution fails, uses an LLM to analyze the error and
     generate a fixed version of the code, then re-runs the tool.
@@ -916,13 +916,13 @@ class AutoFixConfig(BaseModel):
 
 class ImageConfig(BaseModel):
     """
-    Configuration for image generation phases.
+    Configuration for image generation cells.
 
-    When a phase uses an image generation model (FLUX, SDXL, etc.),
+    When a cell uses an image generation model (FLUX, SDXL, etc.),
     this config controls the image parameters.
 
     Usage:
-        phases:
+        cells:
           - name: generate_banner
             model: black-forest-labs/FLUX-1-schnell
             instructions: "{{ input.prompt }}"
@@ -952,7 +952,7 @@ class SqlMappingConfig(BaseModel):
     """
     table: str  # Temp table name (e.g., "_customers")
     cascade: Optional[str] = None  # Cascade to spawn per row
-    instructions: Optional[str] = None  # Or use instructions for LLM phase per row
+    instructions: Optional[str] = None  # Or use instructions for LLM cell per row
     inputs: Optional[Dict[str, str]] = None  # Jinja2 templates for cascade inputs ({{ row.column_name }})
     max_parallel: int = 5
     result_table: Optional[str] = None  # Optional: collect results into temp table
@@ -1003,8 +1003,8 @@ class CellConfig(BaseModel):
     #   - await_input: false → Show htmx but continue automatically
     await_input: Optional[bool] = None
 
-    # ===== LLM Phase Fields (existing) =====
-    # For LLM phases, instructions is required and defines the agent's task
+    # ===== LLM Cell Fields (existing) =====
+    # For LLM cells, instructions is required and defines the agent's task
     instructions: Optional[str] = None
     traits: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
@@ -1019,8 +1019,8 @@ class CellConfig(BaseModel):
     rag: Optional[RagConfig] = None
     output_extraction: Optional[OutputExtractionConfig] = None  # Extract structured content from output
 
-    # ===== Deterministic Phase Fields (new) =====
-    # For deterministic phases, tool is required and specifies what to execute directly
+    # ===== Deterministic Cell Fields (new) =====
+    # For deterministic cells, tool is required and specifies what to execute directly
     # Supported formats:
     #   - "tool_name" - registered tool from traits registry
     #   - "python:module.path.function" - direct Python function import
@@ -1036,12 +1036,12 @@ class CellConfig(BaseModel):
     # Example: {"success": "next_cell", "error": "error_handler"}
     routing: Optional[Dict[str, str]] = None
 
-    # Error handling for deterministic phases
+    # Error handling for deterministic cells
     # Can be:
-    #   - "cell_name": Route to error handler phase
+    #   - "cell_name": Route to error handler cell
     #   - "auto_fix": Enable auto-fix with LLM (uses defaults)
     #   - {"auto_fix": {...}}: Customized auto-fix config
-    #   - {"instructions": "..."}: Inline LLM fallback phase
+    #   - {"instructions": "..."}: Inline LLM fallback cell
     on_error: Optional[Union[str, Dict[str, Any]]] = None
 
     # Retry configuration for transient errors
@@ -1050,13 +1050,13 @@ class CellConfig(BaseModel):
     # Timeout for tool execution (e.g., "30s", "5m", "1h")
     timeout: Optional[str] = None
 
-    # ===== Common Fields (both phase types) =====
+    # ===== Common Fields (both cell types) =====
     handoffs: List[Union[str, HandoffConfig]] = Field(default_factory=list)
     sub_cascades: List[SubCascadeRef] = Field(default_factory=list)
     async_cascades: List[AsyncCascadeRef] = Field(default_factory=list)
 
     # Context System - Selective by default
-    # Phases without context config get clean slate (no prior context)
+    # Cells without context config get clean slate (no prior context)
     # Use context.from: ["all"] for explicit snowball behavior
     context: Optional[ContextConfig] = None
 
@@ -1065,7 +1065,7 @@ class CellConfig(BaseModel):
     human_input: Optional[Union[bool, HumanInputConfig]] = None
 
     # Audible configuration for real-time feedback injection
-    # Allows users to steer cascades mid-phase by injecting feedback
+    # Allows users to steer cascades mid-cell by injecting feedback
     audibles: Optional[AudibleConfig] = None
 
     # Decision points configuration for LLM-generated HITL decisions
@@ -1082,19 +1082,19 @@ class CellConfig(BaseModel):
     ui_mode: Optional[Literal['research_cockpit']] = None
 
     # Narrator configuration for async voice commentary
-    # Generates spoken synopses of phase activity without blocking execution
+    # Generates spoken synopses of cell activity without blocking execution
     # Use bool to enable/disable (inherits cascade config), or NarratorConfig for override
     narrator: Optional[Union[bool, NarratorConfig]] = None
 
     # Browser automation configuration
-    # When set, RVBBIT spawns a dedicated Rabbitize browser subprocess for this phase
-    # The browser lifecycle is tied to the phase - starts on phase start, ends on phase end
+    # When set, RVBBIT spawns a dedicated Rabbitize browser subprocess for this cell
+    # The browser lifecycle is tied to the cell - starts on cell start, ends on cell end
     browser: Optional[BrowserConfig] = None
 
-    # Intra-phase auto-context configuration
-    # Controls per-turn context management within this phase
-    # Overrides cascade-level auto_context.intra_phase settings
-    intra_context: Optional[IntraPhaseContextConfig] = None
+    # Intra-cell auto-context configuration
+    # Controls per-turn context management within this cell
+    # Overrides cascade-level auto_context.intra_cell settings
+    intra_context: Optional[IntraCellContextConfig] = None
 
     @property
     def effective_htmx(self) -> Optional[str]:
@@ -1124,15 +1124,15 @@ class CellConfig(BaseModel):
         return False
 
     def is_deterministic(self) -> bool:
-        """Check if this phase is deterministic (tool-based or htmx) vs LLM-based."""
+        """Check if this cell is deterministic (tool-based or htmx) vs LLM-based."""
         return self.tool is not None or self.has_ui
 
     def is_hitl_screen(self) -> bool:
-        """Check if this phase is a screen cell (direct HTML rendering)."""
+        """Check if this cell is a screen cell (direct HTML rendering)."""
         return self.has_ui
 
     def model_post_init(self, __context) -> None:
-        """Validate phase configuration after initialization."""
+        """Validate cell configuration after initialization."""
         # Normalize hitl to htmx for internal consistency
         if self.hitl and not self.htmx:
             # hitl is just an alias - copy to htmx
@@ -1286,7 +1286,7 @@ class PolyglotValidatorConfig(BaseModel):
 
     For SQL:
         - Query should return a single row with `valid` (boolean) and `reason` (string) columns
-        - Can reference temp tables from prior phases via `_cell_name`
+        - Can reference temp tables from prior cells via `_cell_name`
 
     For Bash:
         - Receives content via $CONTENT and original input via $ORIGINAL_INPUT (JSON)
@@ -1304,7 +1304,7 @@ class PolyglotValidatorConfig(BaseModel):
 
         validator:
           sql: |
-            SELECT COUNT(*) > 0 as valid, 'Has data' as reason FROM _previous_phase
+            SELECT COUNT(*) > 0 as valid, 'Has data' as reason FROM _previous_cell
 
         validator:
           bash: |
@@ -1369,7 +1369,7 @@ ValidatorSpec = Union[str, PolyglotValidatorConfig]
 
 class InlineValidatorConfig(BaseModel):
     """
-    Inline validator definition - a simplified single-phase cascade for validation.
+    Inline validator definition - a simplified single-cell cascade for validation.
 
     Validators receive {"content": "...", "original_input": {...}} as input
     and must return {"valid": true/false, "reason": "..."}.
@@ -1382,7 +1382,7 @@ class InlineValidatorConfig(BaseModel):
               Check if output contains a clear question.
               Return {"valid": true, "reason": "..."} or {"valid": false, "reason": "..."}
 
-        phases:
+        cells:
           - name: discover_question
             rules:
               loop_until: question_formulated  # References inline validator
@@ -1419,12 +1419,12 @@ class CascadeConfig(BaseModel):
 
     # Narrator configuration for async voice commentary during cascade execution
     # Generates spoken synopses of activity without blocking the main execution flow
-    # Can be overridden at phase level
+    # Can be overridden at cell level
     narrator: Optional[NarratorConfig] = None
 
     # Auto-context configuration for intelligent context management
-    # Controls both intra-phase (per-turn) and inter-phase (between phases) context
-    # Phase-level configs override these cascade-level defaults
+    # Controls both intra-cell (per-turn) and inter-cell (between cells) context
+    # Cell-level configs override these cascade-level defaults
     auto_context: Optional[AutoContextConfig] = None
 
 # Rebuild models to resolve forward references for PolyglotValidatorConfig

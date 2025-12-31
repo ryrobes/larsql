@@ -1,6 +1,6 @@
-/* PhaseExplosionView - 3D Card Explosion */
+/* CellExplosionView - 3D Card Explosion */
 
-.phase-explosion-overlay {
+.cell-explosion-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -23,8 +23,8 @@
   transition: background 0.3s ease, backdrop-filter 0.3s ease;
 }
 
-.phase-explosion-overlay.phase-spreading,
-.phase-explosion-overlay.phase-settled {
+.cell-explosion-overlay.cell-spreading,
+.cell-explosion-overlay.cell-settled {
   background: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
 }

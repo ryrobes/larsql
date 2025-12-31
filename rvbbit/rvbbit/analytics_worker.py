@@ -877,7 +877,7 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
 
                 # Cell type detection
                 'cell_type': 'llm' if cell['model_count'] > 0 else 'deterministic',
-                'tool': None,  # Would need to query phase_config
+                'tool': None,  # Would need to query cell_config
                 'model': cell.get('primary_model'),
 
                 # Raw metrics

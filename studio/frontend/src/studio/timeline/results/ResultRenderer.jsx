@@ -106,7 +106,7 @@ const detailGridTheme = themeQuartz.withParams({
 });
 
 /**
- * ResultRenderer - Displays phase execution results
+ * ResultRenderer - Displays cell execution results
  *
  * Handles multiple result types:
  * - Errors

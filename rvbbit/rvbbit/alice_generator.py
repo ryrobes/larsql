@@ -195,7 +195,7 @@ def generate_cell_status_block(cell: CellInfo, cascade_id: str, session_id: Opti
     else:
         session_filter = f"session_id IN (SELECT session_id FROM all_data WHERE cascade_id = '{cascade_id}' ORDER BY timestamp DESC LIMIT 1)"
 
-    sql_query = f"SELECT MAX(CASE WHEN role='phase_complete' THEN 1 ELSE 0 END) as completed, MAX(CASE WHEN role='phase_start' THEN 1 ELSE 0 END) as started, round(COALESCE(SUM(cost), 0), 4) as cost FROM all_data WHERE {session_filter} AND cell_name = '{cell_name}'"
+    sql_query = f"SELECT MAX(CASE WHEN role='cell_complete' THEN 1 ELSE 0 END) as completed, MAX(CASE WHEN role='cell_start' THEN 1 ELSE 0 END) as started, round(COALESCE(SUM(cost), 0), 4) as cost FROM all_data WHERE {session_filter} AND cell_name = '{cell_name}'"
 
     return {
         'block_id': f'status_{cell_name}',
@@ -335,7 +335,7 @@ def generate_polling_block(cascade_id: str, session_id: Optional[str], refresh_i
         session_filter = f"session_id IN (SELECT session_id FROM all_data WHERE cascade_id = '{cascade_id}' ORDER BY timestamp DESC LIMIT 1)"
 
     # SQL query to get cell execution state (single line to avoid escaping issues)
-    sql_query = f"SELECT cell_name, MAX(CASE WHEN node_type='phase_complete' OR role='phase_complete' THEN 1 ELSE 0 END) as completed, MAX(CASE WHEN node_type='phase_start' OR role='phase_start' THEN 1 ELSE 0 END) as started, round(COALESCE(SUM(cost), 0), 4) as cost, COALESCE(SUM(total_tokens), 0) as tokens FROM all_data WHERE {session_filter} GROUP BY cell_name"
+    sql_query = f"SELECT cell_name, MAX(CASE WHEN node_type='cell_complete' OR role='cell_complete' THEN 1 ELSE 0 END) as completed, MAX(CASE WHEN node_type='cell_start' OR role='cell_start' THEN 1 ELSE 0 END) as started, round(COALESCE(SUM(cost), 0), 4) as cost, COALESCE(SUM(total_tokens), 0) as tokens FROM all_data WHERE {session_filter} GROUP BY cell_name"
 
     return {
         'block_id': 'execution_state',
@@ -369,7 +369,7 @@ def generate_log_block(cascade_id: str, session_id: Optional[str], x: int, y: in
         session_filter = f"session_id IN (SELECT session_id FROM all_data WHERE cascade_id = '{cascade_id}' ORDER BY timestamp DESC LIMIT 1)"
 
     # Use substring(toString()) instead of formatDateTime to avoid % escaping issues
-    sql_query = f"SELECT substring(toString(timestamp), 12, 8) as time, cell_name, role, substring(content, 1, 60) as preview FROM all_data WHERE {session_filter} AND role IN ('phase_start', 'phase_complete', 'assistant', 'tool') ORDER BY timestamp DESC LIMIT 15"
+    sql_query = f"SELECT substring(toString(timestamp), 12, 8) as time, cell_name, role, substring(content, 1, 60) as preview FROM all_data WHERE {session_filter} AND role IN ('cell_start', 'cell_complete', 'assistant', 'tool') ORDER BY timestamp DESC LIMIT 15"
 
     return {
         'block_id': 'execution_log',

@@ -5,18 +5,18 @@ import './RabbitizeRecorderEditor.css';
 /**
  * Rabbitize Recorder Editor (Studio-embedded version)
  *
- * Simplified browser automation recorder for embedding in PhaseDetailPanel.
+ * Simplified browser automation recorder for embedding in CellDetailPanel.
  * Records user interactions with live MJPEG stream and builds batch command arrays.
  *
  * Props:
- * - phase: Current phase object (for reading initial state)
- * - onChange: (updatedPhase) => void - Called when commands change
- * - phaseName: string - Phase name (for session ID)
+ * - cell: Current cell object (for reading initial state)
+ * - onChange: (updatedCell) => void - Called when commands change
+ * - cellName: string - Cell name (for session ID)
  */
-function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
-  // Extract initial state from phase (parse npx rabbitize command)
-  const extractFromPhase = (phase) => {
-    const command = phase?.inputs?.command || '';
+function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
+  // Extract initial state from cell (parse npx rabbitize command)
+  const extractFromCell = (cell) => {
+    const command = cell?.inputs?.command || '';
 
     // Parse --batch-url "..."
     const urlMatch = command.match(/--batch-url\s+"([^"]+)"/);
@@ -40,12 +40,12 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
 
     // Parse --test-id "..."
     const testIdMatch = command.match(/--test-id\s+"([^"]+)"/);
-    const testId = testIdMatch ? testIdMatch[1] : `${phase.name}.studio`;
+    const testId = testIdMatch ? testIdMatch[1] : `${cell.name}.studio`;
 
     return { initialUrl, commands, clientId, testId };
   };
 
-  const { initialUrl: extractedUrl, commands: extractedCommands, clientId: extractedClientId, testId: extractedTestId } = extractFromPhase(phase);
+  const { initialUrl: extractedUrl, commands: extractedCommands, clientId: extractedClientId, testId: extractedTestId } = extractFromCell(cell);
 
   // State
   const [sessionActive, setSessionActive] = useState(false);
@@ -57,8 +57,8 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
   const [url, setUrl] = useState(extractedUrl);
   const [currentUrl, setCurrentUrl] = useState(extractedUrl);
   const [commands, setCommands] = useState(extractedCommands);
-  const [clientId] = useState(extractedClientId); // Preserve from phase
-  const [testId] = useState(extractedTestId); // Preserve from phase
+  const [clientId] = useState(extractedClientId); // Preserve from cell
+  const [testId] = useState(extractedTestId); // Preserve from cell
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [clickPos, setClickPos] = useState(null);
@@ -100,13 +100,13 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
     }
   };
 
-  // Update parent phase when commands change
-  const updatePhaseCommands = useCallback((newCommands, newUrl) => {
-    const updatedPhase = {
-      ...phase,
+  // Update parent cell when commands change
+  const updateCellCommands = useCallback((newCommands, newUrl) => {
+    const updatedCell = {
+      ...cell,
       tool: 'linux_shell_dangerous', // Run on host, not in Docker
       inputs: {
-        ...phase.inputs,
+        ...cell.inputs,
         command: `npx rabbitize \\
   --client-id "${clientId}" \\
   --test-id "${testId}" \\
@@ -117,8 +117,8 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
       }
     };
 
-    onChange(updatedPhase);
-  }, [phase, onChange, clientId, testId, currentUrl]);
+    onChange(updatedCell);
+  }, [cell, onChange, clientId, testId, currentUrl]);
 
   // Start recording session
   const startSession = useCallback(async (navigateUrl) => {
@@ -127,7 +127,7 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
     setLoading(true);
     setError(null);
 
-    const newDashboardSessionId = `studio_recorder_${phaseName}_${Date.now()}`;
+    const newDashboardSessionId = `studio_recorder_${cellName}_${Date.now()}`;
 
     try {
       const response = await fetch(`${apiUrl}/api/rabbitize/session/start`, {
@@ -158,7 +158,7 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, phaseName, clientId, testId]);
+  }, [apiUrl, cellName, clientId, testId]);
 
   // Stop recording session
   const stopSession = useCallback(async () => {
@@ -213,14 +213,14 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
       // Add to commands and update parent
       const newCommands = [...commands, commandArray];
       setCommands(newCommands);
-      updatePhaseCommands(newCommands, currentUrl);
+      updateCellCommands(newCommands, currentUrl);
 
     } catch (err) {
       setError(err.message);
     } finally {
       setExecuting(false);
     }
-  }, [sessionActive, apiUrl, dashboardSessionId, port, commands, currentUrl, updatePhaseCommands]);
+  }, [sessionActive, apiUrl, dashboardSessionId, port, commands, currentUrl, updateCellCommands]);
 
   // Handle viewport click
   const handleViewportClick = (e) => {
@@ -362,14 +362,14 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
   // Clear all commands
   const clearCommands = () => {
     setCommands([]);
-    updatePhaseCommands([], currentUrl);
+    updateCellCommands([], currentUrl);
   };
 
   // Remove command
   const removeCommand = (index) => {
     const newCommands = commands.filter((_, i) => i !== index);
     setCommands(newCommands);
-    updatePhaseCommands(newCommands, currentUrl);
+    updateCellCommands(newCommands, currentUrl);
   };
 
   // Undo last command
@@ -377,7 +377,7 @@ function RabbitizeRecorderEditor({ phase, onChange, phaseName }) {
     if (commands.length === 0) return;
     const newCommands = commands.slice(0, -1);
     setCommands(newCommands);
-    updatePhaseCommands(newCommands, currentUrl);
+    updateCellCommands(newCommands, currentUrl);
   };
 
   // Cleanup on unmount

@@ -27,7 +27,7 @@ from .config import get_config
 class ExecutionNode:
     """Represents a node in the execution tree."""
     id: str
-    node_type: str  # cascade, phase, turn, tool, soundings, reforge, etc.
+    node_type: str  # cascade, cell, turn, tool, soundings, reforge, etc.
     name: str
     role: str = ""
     content: str = ""
@@ -280,7 +280,7 @@ def load_sub_cascade_mermaid(sub_session_id: str, graph_dir: Optional[str] = Non
     """
     Load the mermaid diagram for a sub-cascade session and extract the meaningful content.
 
-    Returns the phase flow portion without style definitions, ready to be embedded.
+    Returns the cell flow portion without style definitions, ready to be embedded.
     Returns None if the file doesn't exist or can't be parsed.
 
     Args:
@@ -389,16 +389,16 @@ def extract_metadata(entry: Dict) -> Dict:
 
 def extract_routing_choices(lineage: List[Dict]) -> Dict[str, str]:
     """
-    Extract which phase dynamically routed to which target.
+    Extract which cell dynamically routed to which target.
 
-    Parses lineage entries like "Dynamically routed to: target_phase"
+    Parses lineage entries like "Dynamically routed to: target_cell"
 
     Returns:
-        Dict mapping source_phase -> target_phase for dynamic routing decisions
+        Dict mapping source_cell -> target_cell for dynamic routing decisions
     """
     routing_choices = {}
     for item in lineage:
-        cell = item.get("phase")
+        cell = item.get("cell")
         output = item.get("output", "")
         if isinstance(output, str) and output.startswith("Dynamically routed to: "):
             target = output.replace("Dynamically routed to: ", "")
@@ -408,9 +408,9 @@ def extract_routing_choices(lineage: List[Dict]) -> Dict[str, str]:
 
 def extract_ward_retries(history: List[Dict]) -> Dict[str, Dict]:
     """
-    Extract ward retry information per phase.
+    Extract ward retry information per cell.
 
-    Identifies phases where retry-mode wards failed and triggered re-execution.
+    Identifies cells where retry-mode wards failed and triggered re-execution.
 
     Returns:
         Dict: cell_name -> {
@@ -459,9 +459,9 @@ def extract_ward_retries(history: List[Dict]) -> Dict[str, Dict]:
 
 def extract_validation_retries(history: List[Dict]) -> Dict[str, Dict]:
     """
-    Extract validation retry (loop_until) information per phase.
+    Extract validation retry (loop_until) information per cell.
 
-    When max_attempts > 1 and validation fails, the phase re-executes.
+    When max_attempts > 1 and validation fails, the cell re-executes.
     This tracks those retry loops separately from ward retries.
 
     Returns:
@@ -533,7 +533,7 @@ def extract_validation_retries(history: List[Dict]) -> Dict[str, Dict]:
 
 def extract_errors(history: List[Dict]) -> Dict[str, List[Dict]]:
     """
-    Extract error nodes per phase.
+    Extract error nodes per cell.
 
     Returns:
         Dict: cell_name -> [
@@ -564,7 +564,7 @@ def extract_errors(history: List[Dict]) -> Dict[str, List[Dict]]:
 
 def extract_quartermaster_selections(history: List[Dict]) -> Dict[str, Dict]:
     """
-    Extract Quartermaster (manifest) tool selections per phase.
+    Extract Quartermaster (manifest) tool selections per cell.
 
     Returns:
         Dict: cell_name -> {
@@ -592,7 +592,7 @@ def extract_quartermaster_selections(history: List[Dict]) -> Dict[str, Dict]:
 
 def extract_turns(history: List[Dict]) -> Dict[str, List[Dict]]:
     """
-    Extract turn information per phase for detailed visualization.
+    Extract turn information per cell for detailed visualization.
 
     Returns:
         Dict: cell_name -> [
@@ -634,7 +634,7 @@ def extract_turns(history: List[Dict]) -> Dict[str, List[Dict]]:
 
 def extract_tool_calls(history: List[Dict]) -> Dict[str, List[Dict]]:
     """
-    Extract detailed tool call information per phase.
+    Extract detailed tool call information per cell.
 
     Returns:
         Dict: cell_name -> [
@@ -678,9 +678,9 @@ def extract_tool_calls(history: List[Dict]) -> Dict[str, List[Dict]]:
     return tool_calls
 
 
-def extract_blocked_phases(history: List[Dict]) -> Dict[str, Dict]:
+def extract_blocked_cells(history: List[Dict]) -> Dict[str, Dict]:
     """
-    Extract phases that were blocked by blocking-mode wards.
+    Extract cells that were blocked by blocking-mode wards.
 
     Returns:
         Dict: cell_name -> {
@@ -712,7 +712,7 @@ def extract_blocked_phases(history: List[Dict]) -> Dict[str, Dict]:
 
 def extract_state_changes(history: List[Dict]) -> Dict[str, List[str]]:
     """
-    Extract set_state calls to show state flow between phases.
+    Extract set_state calls to show state flow between cells.
 
     Returns:
         Dict: cell_name -> [list of state keys set]
@@ -799,7 +799,7 @@ def get_live_session_state(session_id: str) -> dict:
     Get the live running state for a session.
 
     Returns:
-        Dict with status, current_cell, phase_progress, or None if not found.
+        Dict with status, current_cell, cell_progress, or None if not found.
     """
     try:
         from .state import get_session_state
@@ -808,11 +808,11 @@ def get_live_session_state(session_id: str) -> dict:
         return None
 
 
-def format_phase_progress_indicator(phase_progress: dict) -> str:
+def format_cell_progress_indicator(cell_progress: dict) -> str:
     """
-    Format a compact indicator string showing current position within a phase.
+    Format a compact indicator string showing current position within a cell.
 
-    Uses phase_progress from state.json to show exactly where execution is:
+    Uses cell_progress from state.json to show exactly where execution is:
     - Stage: pre_ward, main, post_ward
     - Turn: T1/3 (turn 1 of 3)
     - Attempt: A2/5 (attempt 2 of 5 for validation)
@@ -823,34 +823,34 @@ def format_phase_progress_indicator(phase_progress: dict) -> str:
 
     Returns compact indicator like: "T2/3 🔧run_code" or "S3/5 ⚖️eval"
     """
-    if not phase_progress:
+    if not cell_progress:
         return ""
 
     parts = []
 
     # Stage indicator (only if not 'main')
-    stage = phase_progress.get("stage", "main")
+    stage = cell_progress.get("stage", "main")
     if stage == "pre_ward":
         parts.append("⏵pre")
     elif stage == "post_ward":
         parts.append("⏵post")
 
     # Turn info
-    turn_info = phase_progress.get("turn", {})
+    turn_info = cell_progress.get("turn", {})
     current_turn = turn_info.get("current", 0)
     max_turns = turn_info.get("max", 1)
     if current_turn > 0:
         parts.append(f"T{current_turn}/{max_turns}")
 
     # Attempt info (validation retries)
-    attempt_info = phase_progress.get("attempt", {})
+    attempt_info = cell_progress.get("attempt", {})
     current_attempt = attempt_info.get("current", 0)
     max_attempts = attempt_info.get("max", 1)
     if current_attempt > 0 and max_attempts > 1:
         parts.append(f"A{current_attempt}/{max_attempts}")
 
     # Sounding info
-    sounding_info = phase_progress.get("candidate")
+    sounding_info = cell_progress.get("candidate")
     if sounding_info:
         sounding_idx = sounding_info.get("index")
         sounding_factor = sounding_info.get("factor", 1)
@@ -861,7 +861,7 @@ def format_phase_progress_indicator(phase_progress: dict) -> str:
             parts.append(f"{stage_icon}S{sounding_idx + 1}/{sounding_factor}")
 
     # Reforge info
-    reforge_info = phase_progress.get("reforge")
+    reforge_info = cell_progress.get("reforge")
     if reforge_info:
         reforge_step = reforge_info.get("step")
         total_steps = reforge_info.get("total_steps", 1)
@@ -869,7 +869,7 @@ def format_phase_progress_indicator(phase_progress: dict) -> str:
             parts.append(f"🔨R{reforge_step}/{total_steps}")
 
     # Ward info
-    ward_info = phase_progress.get("ward")
+    ward_info = cell_progress.get("ward")
     if ward_info and ward_info.get("name"):
         ward_name = ward_info.get("name", "")
         ward_type = ward_info.get("type", "post")
@@ -881,7 +881,7 @@ def format_phase_progress_indicator(phase_progress: dict) -> str:
         parts.append(f"{type_icon}{short_name}({ward_idx}/{total_wards})")
 
     # Tool info
-    tool_info = phase_progress.get("tool", {})
+    tool_info = cell_progress.get("tool", {})
     current_tool = tool_info.get("current")
     if current_tool:
         # Truncate tool name
@@ -889,43 +889,43 @@ def format_phase_progress_indicator(phase_progress: dict) -> str:
         parts.append(f"🔧{short_tool}")
 
     # Timing info (optional - elapsed time)
-    timing = phase_progress.get("timing", {})
-    phase_elapsed = timing.get("phase_elapsed_ms", 0)
-    if phase_elapsed > 1000:  # Only show if > 1 second
-        seconds = phase_elapsed // 1000
+    timing = cell_progress.get("timing", {})
+    cell_elapsed = timing.get("cell_elapsed_ms", 0)
+    if cell_elapsed > 1000:  # Only show if > 1 second
+        seconds = cell_elapsed // 1000
         parts.append(f"⏱{seconds}s")
 
     return " ".join(parts) if parts else ""
 
 
-def get_running_internal_node_id(phase_progress: dict, pid: str) -> Optional[str]:
+def get_running_internal_node_id(cell_progress: dict, pid: str) -> Optional[str]:
     """
-    Determine which internal node ID within a composite phase is currently executing.
+    Determine which internal node ID within a composite cell is currently executing.
 
     Returns the Mermaid node ID that should be highlighted, or None if not determinable.
     """
-    if not phase_progress:
+    if not cell_progress:
         return None
 
-    stage = phase_progress.get("stage", "main")
+    stage = cell_progress.get("stage", "main")
 
     # Pre-ward stage
     if stage == "pre_ward":
-        ward_info = phase_progress.get("ward")
+        ward_info = cell_progress.get("ward")
         if ward_info:
             ward_idx = ward_info.get("index", 1) - 1  # 0-indexed
             return f"{pid}_pre{ward_idx}"
 
     # Post-ward stage
     elif stage == "post_ward":
-        ward_info = phase_progress.get("ward")
+        ward_info = cell_progress.get("ward")
         if ward_info:
             ward_idx = ward_info.get("index", 1) - 1  # 0-indexed
             return f"{pid}_post{ward_idx}"
 
     # Main stage - could be turn, candidate, or reforge
     elif stage == "main":
-        sounding_info = phase_progress.get("candidate")
+        sounding_info = cell_progress.get("candidate")
         if sounding_info:
             sounding_idx = sounding_info.get("index")
             sounding_stage = sounding_info.get("stage")
@@ -935,14 +935,14 @@ def get_running_internal_node_id(phase_progress: dict, pid: str) -> Optional[str
             elif sounding_idx is not None:
                 return f"{pid}_a{sounding_idx}"
 
-        reforge_info = phase_progress.get("reforge")
+        reforge_info = cell_progress.get("reforge")
         if reforge_info:
             reforge_step = reforge_info.get("step")
             if reforge_step is not None:
                 return f"{pid}_rf{reforge_step}"
 
         # Turn-based progress
-        turn_info = phase_progress.get("turn", {})
+        turn_info = cell_progress.get("turn", {})
         current_turn = turn_info.get("current", 0)
         if current_turn > 0:
             return f"{pid}_t{current_turn - 1}"
@@ -1000,7 +1000,7 @@ def build_execution_tree(echo: Echo) -> Tuple[List[ExecutionNode], Dict[str, Exe
         node = ExecutionNode(
             id=trace_id,
             node_type=entry.get("node_type", "msg"),
-            name=entry.get("content", "")[:30] if entry.get("node_type") in ("cascade", "phase") else "",
+            name=entry.get("content", "")[:30] if entry.get("node_type") in ("cascade", "cell") else "",
             role=entry.get("role", ""),
             content=entry.get("content", ""),
             parent_id=entry.get("parent_id"),
@@ -1021,23 +1021,23 @@ def build_execution_tree(echo: Echo) -> Tuple[List[ExecutionNode], Dict[str, Exe
     return root_nodes, nodes_map
 
 
-def collect_phases(nodes_map: Dict[str, ExecutionNode]) -> List[ExecutionNode]:
-    """Collect all phase nodes in order of appearance."""
+def collect_cells(nodes_map: Dict[str, ExecutionNode]) -> List[ExecutionNode]:
+    """Collect all cell nodes in order of appearance."""
     cells = []
     seen = set()
     for node in nodes_map.values():
-        if node.node_type == "phase" and node.id not in seen:
-            phases.append(node)
+        if node.node_type == "cell" and node.id not in seen:
+            cells.append(node)
             seen.add(node.id)
-    return phases
+    return cells
 
 
-def collect_soundings(nodes_map: Dict[str, ExecutionNode], phase_id: str) -> Dict[int, List[ExecutionNode]]:
-    """Collect candidate attempts for a phase, grouped by candidate_index."""
+def collect_soundings(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
+    """Collect candidate attempts for a cell, grouped by candidate_index."""
     soundings: Dict[int, List[ExecutionNode]] = {}
 
     for node in nodes_map.values():
-        if node.parent_id == phase_id or (node.parent_id and nodes_map.get(node.parent_id, ExecutionNode("", "", "")).parent_id == phase_id):
+        if node.parent_id == cell_id or (node.parent_id and nodes_map.get(node.parent_id, ExecutionNode("", "", "")).parent_id == cell_id):
             if node.candidate_index is not None:
                 if node.candidate_index not in soundings:
                     soundings[node.candidate_index] = []
@@ -1046,8 +1046,8 @@ def collect_soundings(nodes_map: Dict[str, ExecutionNode], phase_id: str) -> Dic
     return soundings
 
 
-def collect_reforge_steps(nodes_map: Dict[str, ExecutionNode], phase_id: str) -> Dict[int, List[ExecutionNode]]:
-    """Collect reforge steps for a phase, grouped by reforge_step."""
+def collect_reforge_steps(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
+    """Collect reforge steps for a cell, grouped by reforge_step."""
     reforge_steps: Dict[int, List[ExecutionNode]] = {}
 
     for node in nodes_map.values():
@@ -1117,18 +1117,18 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
     cells = []
     for item in echo.lineage:
         cells.append({
-            "cell": item.get("phase"),  # Note: lineage still uses "phase" key internally
+            "cell": item.get("cell"),  # Note: lineage still uses "cell" key internally
             "trace_id": item.get("trace_id"),
             "output_preview": str(item.get("output", ""))[:100]
         })
 
-    # Build phase connections from history
-    phase_nodes = [n for n in nodes if n["node_type"] == "phase"]
-    for i in range(len(phase_nodes) - 1):
+    # Build cell connections from history
+    cell_nodes = [n for n in nodes if n["node_type"] == "cell"]
+    for i in range(len(cell_nodes) - 1):
         edges.append({
-            "source": phase_nodes[i]["trace_id"],
-            "target": phase_nodes[i+1]["trace_id"],
-            "edge_type": "phase_sequence"
+            "source": cell_nodes[i]["trace_id"],
+            "target": cell_nodes[i+1]["trace_id"],
+            "edge_type": "cell_sequence"
         })
 
     # Collect candidates info
@@ -1183,8 +1183,8 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             except Exception:
                 pass  # Gracefully handle missing/corrupt files
 
-            # Build mermaid node ID by checking which phase has this candidate
-            # For now, we need to infer the phase name from the mermaid structure
+            # Build mermaid node ID by checking which cell has this candidate
+            # For now, we need to infer the cell name from the mermaid structure
             # Since we're generating this mapping AFTER mermaid is generated,
             # we can scan the actual mermaid content for the node IDs
 
@@ -1271,8 +1271,8 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
         y_offset += y_spacing
 
         # Determine node type for custom rendering
-        if node.node_type == "phase":
-            rf_type = "phaseNode"
+        if node.node_type == "cell":
+            rf_type = "cellNode"
         elif node.node_type == "cascade":
             rf_type = "cascadeNode"
         elif node.node_type in ("sounding_attempt", "soundings"):
@@ -1324,9 +1324,9 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
             elif node.candidate_index is not None:
                 edge_style = {"stroke": "#fab005", "strokeDasharray": "5 5"}
                 edge_type = "candidate"
-            elif node.node_type == "phase":
+            elif node.node_type == "cell":
                 edge_style = {"stroke": "#1c7ed6", "strokeWidth": 2}
-                edge_type = "phase"
+                edge_type = "cell"
 
             rf_edge = {
                 "id": f"e_{node.parent_id}_{trace_id}",
@@ -1342,17 +1342,17 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
 
             rf_edges.append(rf_edge)
 
-    # Add phase sequence edges
+    # Add cell sequence edges
     cells = [item.get("trace_id") for item in echo.lineage if item.get("trace_id")]
-    for i in range(len(phases) - 1):
+    for i in range(len(cells) - 1):
         rf_edges.append({
-            "id": f"seq_{phases[i]}_{phases[i+1]}",
-            "source": phases[i],
-            "target": phases[i+1],
-            "type": "phase_sequence",
+            "id": f"seq_{cells[i]}_{cells[i+1]}",
+            "source": cells[i],
+            "target": cells[i+1],
+            "type": "cell_sequence",
             "animated": True,
             "style": {"stroke": "#1c7ed6", "strokeWidth": 2},
-            "data": {"edge_type": "phase_sequence"}
+            "data": {"edge_type": "cell_sequence"}
         })
 
     # Output React Flow format
@@ -1378,7 +1378,7 @@ def generate_mermaid_string(echo: Echo) -> str:
 
     The diagram shows:
     - Cascade as the outer container
-    - Phases as nodes connected by handoffs
+    - Cells as nodes connected by handoffs
     - Soundings as parallel branches with winner highlighting
     - Reforge as sequential refinement steps
     - Sub-cascades as nested groups
@@ -1399,8 +1399,8 @@ def generate_mermaid_string(echo: Echo) -> str:
     lines.extend([
         "    %% Node Styles - Midnight Fjord Dark Theme",
         "    classDef cascade fill:#16202A,stroke:#2C3B4B,stroke-width:2px,color:#F0F4F8;",
-        "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
-        "    classDef phase_active fill:#1a2a3a,stroke:#2DD4BF,stroke-width:3px,color:#F0F4F8;",
+        "    classDef cell fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
+        "    classDef cell_active fill:#1a2a3a,stroke:#2DD4BF,stroke-width:3px,color:#F0F4F8;",
         "    classDef system fill:#16202A,stroke:#60a5fa,color:#F0F4F8;",
         "    classDef user fill:#16202A,stroke:#D9A553,color:#F0F4F8;",
         "    classDef tool fill:#16202A,stroke:#f472b6,color:#F0F4F8;",
@@ -1419,7 +1419,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         "",
     ])
 
-    # Collect sub-cascade trace IDs to filter out their phases from top-level rendering
+    # Collect sub-cascade trace IDs to filter out their cells from top-level rendering
     sub_cascade_trace_ids = set()
     for sub_echo in sub_echoes:
         sub_history = sub_echo.get("history", [])
@@ -1429,7 +1429,7 @@ def generate_mermaid_string(echo: Echo) -> str:
 
     # Collect structural entries from history with their metadata
     cascade_entry = None
-    phase_entries = []
+    cell_entries = []
     soundings_entries = []
     sounding_attempts = []
     evaluator_entries = []
@@ -1445,11 +1445,11 @@ def generate_mermaid_string(echo: Echo) -> str:
             if entry.get("trace_id") in sub_cascade_trace_ids:
                 continue
             cascade_entry = entry
-        elif node_type == "phase":
-            # Skip phases that belong to sub-cascades
+        elif node_type == "cell":
+            # Skip cells that belong to sub-cascades
             if entry.get("parent_id") in sub_cascade_trace_ids:
                 continue
-            phase_entries.append(entry)
+            cell_entries.append(entry)
         elif node_type == "candidates":
             soundings_entries.append(entry)
         elif node_type == "sounding_attempt":
@@ -1462,8 +1462,8 @@ def generate_mermaid_string(echo: Echo) -> str:
             quartermaster_entries.append(entry)
         elif node_type in ("validation", "schema_validation"):
             # Collect validation entries (loop_until and output_schema)
-            # We'll render these inline in the phase
-            pass  # Handled via phase messages below
+            # We'll render these inline in the cell
+            pass  # Handled via cell messages below
         elif node_type == "validation_retry":
             # Retry messages are already captured as user messages
             pass
@@ -1480,52 +1480,52 @@ def generate_mermaid_string(echo: Echo) -> str:
             # Cascade soundings result/winner
             pass  # Collected separately below
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
-            # Reforge entries - collected separately by phase
+            # Reforge entries - collected separately by cell
             pass
 
-    # Extract phase order from lineage
-    phase_order = [item.get("phase") for item in echo.lineage]
+    # Extract cell order from lineage
+    cell_order = [item.get("cell") for item in echo.lineage]
 
-    # Sort phases by lineage order if available
-    if phase_order:
-        def phase_sort_key(entry):
+    # Sort cells by lineage order if available
+    if cell_order:
+        def cell_sort_key(entry):
             content = entry.get("content", "")
-            name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+            name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
             try:
-                return phase_order.index(name)
+                return cell_order.index(name)
             except ValueError:
                 return 999
-        phase_entries.sort(key=phase_sort_key)
+        cell_entries.sort(key=cell_sort_key)
 
     # Note: Removed cascade container wrapper for cleaner visualization
-    # Diagram renders phases directly without outer border box
+    # Diagram renders cells directly without outer border box
 
-    # Group candidate attempts by phase
-    soundings_by_phase: Dict[str, List[Dict]] = {}
+    # Group candidate attempts by cell
+    soundings_by_cell: Dict[str, List[Dict]] = {}
     for sa in sounding_attempts:
         meta = extract_metadata(sa)
         cell_name = meta.get("cell_name", "unknown")
-        if cell_name not in soundings_by_phase:
-            soundings_by_phase[cell_name] = []
-        soundings_by_phase[cell_name].append(sa)
+        if cell_name not in soundings_by_cell:
+            soundings_by_cell[cell_name] = []
+        soundings_by_cell[cell_name].append(sa)
 
-    # Group evaluator entries by phase
-    evaluators_by_phase: Dict[str, Dict] = {}
+    # Group evaluator entries by cell
+    evaluators_by_cell: Dict[str, Dict] = {}
     for ev in evaluator_entries:
         meta = extract_metadata(ev)
         cell_name = meta.get("cell_name", "unknown")
-        evaluators_by_phase[cell_name] = ev
+        evaluators_by_cell[cell_name] = ev
 
-    # Group quartermaster entries by phase
-    quartermaster_by_phase: Dict[str, Dict] = {}
+    # Group quartermaster entries by cell
+    quartermaster_by_cell: Dict[str, Dict] = {}
     for qm in quartermaster_entries:
         meta = extract_metadata(qm)
         cell_name = meta.get("cell_name", "unknown")
-        quartermaster_by_phase[cell_name] = qm
+        quartermaster_by_cell[cell_name] = qm
 
-    # Group reforge entries by phase and step
+    # Group reforge entries by cell and step
     # Structure: {cell_name: {step: {steps: [], attempts: [], evaluator: None, winner: None}}}
-    reforge_by_phase: Dict[str, Dict[int, Dict]] = {}
+    reforge_by_cell: Dict[str, Dict[int, Dict]] = {}
     for entry in history:
         node_type = entry.get("node_type")
         if node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
@@ -1533,10 +1533,10 @@ def generate_mermaid_string(echo: Echo) -> str:
             cell_name = meta.get("cell_name", "unknown")
             step = meta.get("reforge_step", 1)
 
-            if cell_name not in reforge_by_phase:
-                reforge_by_phase[cell_name] = {}
-            if step not in reforge_by_phase[cell_name]:
-                reforge_by_phase[cell_name][step] = {
+            if cell_name not in reforge_by_cell:
+                reforge_by_cell[cell_name] = {}
+            if step not in reforge_by_cell[cell_name]:
+                reforge_by_cell[cell_name][step] = {
                     "step_entry": None,
                     "attempts": [],
                     "evaluator": None,
@@ -1544,49 +1544,49 @@ def generate_mermaid_string(echo: Echo) -> str:
                 }
 
             if node_type == "reforge_step":
-                reforge_by_phase[cell_name][step]["step_entry"] = entry
+                reforge_by_cell[cell_name][step]["step_entry"] = entry
             elif node_type == "reforge_attempt":
-                reforge_by_phase[cell_name][step]["attempts"].append(entry)
+                reforge_by_cell[cell_name][step]["attempts"].append(entry)
             elif node_type == "reforge_evaluator":
-                reforge_by_phase[cell_name][step]["evaluator"] = entry
+                reforge_by_cell[cell_name][step]["evaluator"] = entry
             elif node_type == "reforge_winner":
-                reforge_by_phase[cell_name][step]["winner"] = entry
+                reforge_by_cell[cell_name][step]["winner"] = entry
 
-    # Group wards by phase (using parent_id to trace to phase)
-    wards_by_phase: Dict[str, Dict[str, List[Dict]]] = {}  # cell_name -> {pre: [...], post: [...]}
-    phase_trace_to_name = {pe.get("trace_id"): pe.get("content", "").replace("Phase: ", "") for pe in phase_entries}
+    # Group wards by cell (using parent_id to trace to cell)
+    wards_by_cell: Dict[str, Dict[str, List[Dict]]] = {}  # cell_name -> {pre: [...], post: [...]}
+    cell_trace_to_name = {pe.get("trace_id"): pe.get("content", "").replace("Cell: ", "") for pe in cell_entries}
 
     for ward in ward_entries:
         ward_meta = extract_metadata(ward)
         parent_id = ward.get("parent_id")
-        cell_name = phase_trace_to_name.get(parent_id, "unknown")
+        cell_name = cell_trace_to_name.get(parent_id, "unknown")
 
-        if cell_name not in wards_by_phase:
-            wards_by_phase[cell_name] = {"pre": [], "post": []}
+        if cell_name not in wards_by_cell:
+            wards_by_cell[cell_name] = {"pre": [], "post": []}
 
         ward_type = ward_meta.get("ward_type", "")
         if ward_type == "pre":
-            wards_by_phase[cell_name]["pre"].append(ward)
+            wards_by_cell[cell_name]["pre"].append(ward)
         elif ward_type == "post":
-            wards_by_phase[cell_name]["post"].append(ward)
+            wards_by_cell[cell_name]["post"].append(ward)
 
-    # Determine phase completion status
-    # A phase is complete if it appears in lineage
-    completed_phases = {item.get("phase") for item in echo.lineage}
+    # Determine cell completion status
+    # A cell is complete if it appears in lineage
+    completed_cells = {item.get("cell") for item in echo.lineage}
 
-    # Check which phases have any activity (messages logged)
-    active_phases = set()
+    # Check which cells have any activity (messages logged)
+    active_cells = set()
     for entry in history:
         meta = extract_metadata(entry)
         cell_name = meta.get("cell_name")
         if cell_name:
-            active_phases.add(cell_name)
+            active_cells.add(cell_name)
 
-    def get_phase_status(cell_name: str) -> str:
-        """Get status icon for a phase."""
-        if cell_name in completed_phases:
+    def get_cell_status(cell_name: str) -> str:
+        """Get status icon for a cell."""
+        if cell_name in completed_cells:
             return "+"  # Completed
-        elif cell_name in active_phases:
+        elif cell_name in active_cells:
             return ">"  # In progress (has activity but not in lineage yet)
         else:
             return "-"  # Pending
@@ -1608,7 +1608,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         elif node_type == "cascade_soundings_result":
             cascade_soundings_result = entry
 
-    # Render cascade-level soundings if present (appears before phases)
+    # Render cascade-level soundings if present (appears before cells)
     cascade_soundings_node_id = None
     if cascade_soundings_start and cascade_sounding_attempts:
         cs_meta = extract_metadata(cascade_soundings_start)
@@ -1628,15 +1628,15 @@ def generate_mermaid_string(echo: Echo) -> str:
             result_meta = extract_metadata(cascade_soundings_result)
             winner_index = result_meta.get("winner_index")
 
-        # Group phases by candidate_index for cascade-level soundings
-        phases_by_sounding: Dict[int, List[Dict]] = {}
-        for phase_entry in phase_entries:
-            phase_meta = extract_metadata(phase_entry)
-            sounding_idx = phase_meta.get("candidate_index")
+        # Group cells by candidate_index for cascade-level soundings
+        cells_by_sounding: Dict[int, List[Dict]] = {}
+        for cell_entry in cell_entries:
+            cell_meta = extract_metadata(cell_entry)
+            sounding_idx = cell_meta.get("candidate_index")
             if sounding_idx is not None:
-                if sounding_idx not in phases_by_sounding:
-                    phases_by_sounding[sounding_idx] = []
-                phases_by_sounding[sounding_idx].append(phase_entry)
+                if sounding_idx not in cells_by_sounding:
+                    cells_by_sounding[sounding_idx] = []
+                cells_by_sounding[sounding_idx].append(cell_entry)
 
         for attempt in sorted(cascade_sounding_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
             a_meta = extract_metadata(attempt)
@@ -1668,30 +1668,30 @@ def generate_mermaid_string(echo: Echo) -> str:
                 else:
                     lines.append(f"                class {attempt_id} loser")
             else:
-                # Fallback: Try to reconstruct from phases in parent history
-                sounding_phases = phases_by_sounding.get(idx, [])
+                # Fallback: Try to reconstruct from cells in parent history
+                sounding_cells = cells_by_sounding.get(idx, [])
 
-                if sounding_phases:
-                    # Render as subgraph containing the phases
+                if sounding_cells:
+                    # Render as subgraph containing the cells
                     winner_mark = " ✓" if is_winner else ""
                     lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                     lines.append("                direction TB")
 
-                    # Render each phase in this candidate
-                    for j, phase_entry in enumerate(sounding_phases):
-                        phase_content = phase_entry.get("content", "")
-                        cell_name = phase_content.replace("Phase: ", "") if phase_content.startswith("Phase: ") else phase_content
-                        phase_id = f"{attempt_id}_p{j}"
+                    # Render each cell in this candidate
+                    for j, cell_entry in enumerate(sounding_cells):
+                        cell_content = cell_entry.get("content", "")
+                        cell_name = cell_content.replace("Cell: ", "") if cell_content.startswith("Cell: ") else cell_content
+                        cell_id = f"{attempt_id}_p{j}"
 
-                        # Simple phase node
-                        phase_label = sanitize_label(cell_name, 25)
-                        lines.append(f'                    {phase_id}["{phase_label}"]')
-                        lines.append(f"                    class {phase_id} phase")
+                        # Simple cell node
+                        cell_label = sanitize_label(cell_name, 25)
+                        lines.append(f'                    {cell_id}["{cell_label}"]')
+                        lines.append(f"                    class {cell_id} cell")
 
-                        # Connect phases sequentially within the candidate
+                        # Connect cells sequentially within the candidate
                         if j > 0:
-                            prev_phase_id = f"{attempt_id}_p{j-1}"
-                            lines.append(f"                    {prev_phase_id} --> {phase_id}")
+                            prev_cell_id = f"{attempt_id}_p{j-1}"
+                            lines.append(f"                    {prev_cell_id} --> {cell_id}")
 
                     lines.append("                end")
                     if is_winner:
@@ -1738,37 +1738,37 @@ def generate_mermaid_string(echo: Echo) -> str:
         lines.append("        end")
         lines.append(f"        class {cs_id} soundings_group")
 
-    # Render phases and their connections
-    phase_ids = []
-    phase_id_map = {}
+    # Render cells and their connections
+    cell_ids = []
+    cell_id_map = {}
 
-    for i, phase_entry in enumerate(phase_entries):
-        meta = extract_metadata(phase_entry)
+    for i, cell_entry in enumerate(cell_entries):
+        meta = extract_metadata(cell_entry)
 
-        # Skip phases that belong to cascade-level soundings (they're already rendered inside candidate boxes)
+        # Skip cells that belong to cascade-level soundings (they're already rendered inside candidate boxes)
         if meta.get("candidate_index") is not None:
             continue
 
-        content = phase_entry.get("content", "")
-        cell_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
-        phase_id = safe_id(phase_entry.get("trace_id", f"phase_{i}"))
-        phase_ids.append(phase_id)
-        phase_id_map[cell_name] = phase_id
+        content = cell_entry.get("content", "")
+        cell_name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
+        cell_id = safe_id(cell_entry.get("trace_id", f"cell_{i}"))
+        cell_ids.append(cell_id)
+        cell_id_map[cell_name] = cell_id
 
-        # Get phase status
-        status_icon = get_phase_status(cell_name)
+        # Get cell status
+        status_icon = get_cell_status(cell_name)
 
-        has_soundings = meta.get("has_soundings", False) or cell_name in soundings_by_phase
-        has_wards = meta.get("has_wards", False) or cell_name in wards_by_phase
-        phase_wards = wards_by_phase.get(cell_name, {"pre": [], "post": []})
+        has_soundings = meta.get("has_soundings", False) or cell_name in soundings_by_cell
+        has_wards = meta.get("has_wards", False) or cell_name in wards_by_cell
+        cell_wards = wards_by_cell.get(cell_name, {"pre": [], "post": []})
 
-        if has_soundings and cell_name in soundings_by_phase:
+        if has_soundings and cell_name in soundings_by_cell:
             # Render soundings group
-            lines.append(f'        subgraph {phase_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
+            lines.append(f'        subgraph {cell_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
             lines.append("        direction TB")
 
-            # Get candidate attempts for this phase
-            attempts = soundings_by_phase[cell_name]
+            # Get candidate attempts for this cell
+            attempts = soundings_by_cell[cell_name]
             winner_index = None
 
             # Build attempts info with content
@@ -1783,39 +1783,39 @@ def generate_mermaid_string(echo: Echo) -> str:
                     winner_index = idx
 
             # Get evaluator content if available
-            eval_entry = evaluators_by_phase.get(cell_name, {})
+            eval_entry = evaluators_by_cell.get(cell_name, {})
             eval_content = eval_entry.get("content", "") if eval_entry else ""
 
-            # Try to load sub-cascade mermaid diagram (for phases with sub_cascades config)
+            # Try to load sub-cascade mermaid diagram (for cells with sub_cascades config)
             # Sub-cascades get rendered to {session_id}_sub.mmd
             sub_cascade_mermaid = load_sub_cascade_mermaid(f"{echo.session_id}_sub")
 
-            # Also group sub-cascade phases by candidate_index as fallback
-            # (happens when phase has both soundings + sub_cascades)
-            phases_by_sounding_idx: Dict[int, List[Dict]] = {}
-            for pe in phase_entries:
+            # Also group sub-cascade cells by candidate_index as fallback
+            # (happens when cell has both soundings + sub_cascades)
+            cells_by_sounding_idx: Dict[int, List[Dict]] = {}
+            for pe in cell_entries:
                 pe_meta = extract_metadata(pe)
                 pe_sounding_idx = pe_meta.get("candidate_index")
-                # Check if this phase belongs to a candidate of the current phase we're rendering
+                # Check if this cell belongs to a candidate of the current cell we're rendering
                 if pe_sounding_idx is not None and pe_meta.get("cell_name") != cell_name:
-                    # This is a sub-cascade phase inside a candidate
-                    if pe_sounding_idx not in phases_by_sounding_idx:
-                        phases_by_sounding_idx[pe_sounding_idx] = []
-                    phases_by_sounding_idx[pe_sounding_idx].append(pe)
+                    # This is a sub-cascade cell inside a candidate
+                    if pe_sounding_idx not in cells_by_sounding_idx:
+                        cells_by_sounding_idx[pe_sounding_idx] = []
+                    cells_by_sounding_idx[pe_sounding_idx].append(pe)
 
             # Render parallel attempts
             if attempts_info:
-                lines.append(f'            subgraph {phase_id}_attempts["Attempts"]')
+                lines.append(f'            subgraph {cell_id}_attempts["Attempts"]')
                 lines.append("            direction LR")
 
                 attempt_ids = []
                 for idx in sorted(attempts_info.keys()):
                     info = attempts_info[idx]
-                    attempt_id = f"{phase_id}_a{idx}"
+                    attempt_id = f"{cell_id}_a{idx}"
                     attempt_ids.append(attempt_id)
 
                     # Priority 1: Try to embed the complete sub-cascade diagram
-                    # Priority 2: Reconstruct from phases in parent history
+                    # Priority 2: Reconstruct from cells in parent history
                     # Priority 3: Simple box
 
                     if sub_cascade_mermaid:
@@ -1836,30 +1836,30 @@ def generate_mermaid_string(echo: Echo) -> str:
                         else:
                             lines.append(f"                class {attempt_id} loser")
                     else:
-                        # Fallback: Check if this candidate has sub-cascade phases to render
-                        sounding_phases = phases_by_sounding_idx.get(idx, [])
+                        # Fallback: Check if this candidate has sub-cascade cells to render
+                        sounding_cells = cells_by_sounding_idx.get(idx, [])
 
-                        if sounding_phases:
-                            # Render as subgraph containing the sub-cascade phases
+                        if sounding_cells:
+                            # Render as subgraph containing the sub-cascade cells
                             winner_mark = " ✓" if info["is_winner"] else ""
                             lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                             lines.append("                direction TB")
 
-                            # Render each sub-cascade phase in this candidate
-                            for j, sub_phase_entry in enumerate(sounding_phases):
-                                sub_phase_content = sub_phase_entry.get("content", "")
-                                sub_cell_name = sub_phase_content.replace("Phase: ", "") if sub_phase_content.startswith("Phase: ") else sub_phase_content
-                                sub_phase_id = f"{attempt_id}_p{j}"
+                            # Render each sub-cascade cell in this candidate
+                            for j, sub_cell_entry in enumerate(sounding_cells):
+                                sub_cell_content = sub_cell_entry.get("content", "")
+                                sub_cell_name = sub_cell_content.replace("Cell: ", "") if sub_cell_content.startswith("Cell: ") else sub_cell_content
+                                sub_cell_id = f"{attempt_id}_p{j}"
 
-                                # Simple phase node
-                                sub_phase_label = sanitize_label(sub_cell_name, 25)
-                                lines.append(f'                    {sub_phase_id}["{sub_phase_label}"]')
-                                lines.append(f"                    class {sub_phase_id} phase")
+                                # Simple cell node
+                                sub_cell_label = sanitize_label(sub_cell_name, 25)
+                                lines.append(f'                    {sub_cell_id}["{sub_cell_label}"]')
+                                lines.append(f"                    class {sub_cell_id} cell")
 
-                                # Connect phases sequentially within the candidate
+                                # Connect cells sequentially within the candidate
                                 if j > 0:
-                                    prev_phase_id = f"{attempt_id}_p{j-1}"
-                                    lines.append(f"                    {prev_phase_id} --> {sub_phase_id}")
+                                    prev_cell_id = f"{attempt_id}_p{j-1}"
+                                    lines.append(f"                    {prev_cell_id} --> {sub_cell_id}")
 
                             lines.append("                end")
                             if info["is_winner"]:
@@ -1885,7 +1885,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                 lines.append("            end")
 
                 # Add evaluator node with content preview
-                eval_id = f"{phase_id}_eval"
+                eval_id = f"{cell_id}_eval"
                 if eval_content:
                     eval_preview = sanitize_label(eval_content, 35)
                     lines.append(f'            {eval_id}{{"Eval: {eval_preview}"}}')
@@ -1900,7 +1900,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                 # Add winner output
                 last_node_id = eval_id
                 if winner_index is not None:
-                    winner_out = f"{phase_id}_winner"
+                    winner_out = f"{cell_id}_winner"
                     winner_content = attempts_info.get(winner_index, {}).get("content", "")
                     if winner_content:
                         winner_preview = sanitize_label(winner_content, 30)
@@ -1912,10 +1912,10 @@ def generate_mermaid_string(echo: Echo) -> str:
                     last_node_id = winner_out
 
                 # Render reforge steps if present
-                phase_reforge = reforge_by_phase.get(cell_name, {})
-                if phase_reforge:
-                    for step_num in sorted(phase_reforge.keys()):
-                        step_data = phase_reforge[step_num]
+                cell_reforge = reforge_by_cell.get(cell_name, {})
+                if cell_reforge:
+                    for step_num in sorted(cell_reforge.keys()):
+                        step_data = cell_reforge[step_num]
                         rf_step_entry = step_data.get("step_entry")
                         rf_attempts = step_data.get("attempts", [])
                         rf_evaluator = step_data.get("evaluator")
@@ -1924,7 +1924,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                         # Render if we have any reforge data (step entry, attempts, winner, or evaluator)
                         if rf_step_entry or rf_attempts or rf_evaluator or rf_winner:
                             # Create reforge step subgraph
-                            rf_step_id = f"{phase_id}_rf{step_num}"
+                            rf_step_id = f"{cell_id}_rf{step_num}"
                             lines.append(f'            subgraph {rf_step_id}["Reforge Step {step_num}"]')
                             lines.append("            direction TB")
 
@@ -1990,23 +1990,23 @@ def generate_mermaid_string(echo: Echo) -> str:
                             last_node_id = rf_step_winner if rf_winner_index is not None else rf_eval_id
 
             lines.append("        end")
-            lines.append(f"        class {phase_id} soundings_group")
+            lines.append(f"        class {cell_id} soundings_group")
 
-        elif phase_wards["pre"] or phase_wards["post"]:
-            # Phase with wards - render as subgraph with checkpoints
-            lines.append(f'        subgraph {phase_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
+        elif cell_wards["pre"] or cell_wards["post"]:
+            # Cell with wards - render as subgraph with checkpoints
+            lines.append(f'        subgraph {cell_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
             lines.append("        direction TB")
 
             internal_nodes = []
 
             # Pre-wards
-            for j, ward in enumerate(phase_wards["pre"]):
+            for j, ward in enumerate(cell_wards["pre"]):
                 ward_meta = extract_metadata(ward)
                 validator = ward_meta.get("validator", "validator")
                 valid = ward_meta.get("valid", True)
                 mode = ward_meta.get("mode", "blocking")
 
-                ward_id = f"{phase_id}_pre{j}"
+                ward_id = f"{cell_id}_pre{j}"
                 internal_nodes.append(ward_id)
 
                 mode_label = "[B]" if mode == "blocking" else ("[R]" if mode == "retry" else "[A]")
@@ -2017,20 +2017,20 @@ def generate_mermaid_string(echo: Echo) -> str:
                 style = "ward_pre" if valid else "ward_fail"
                 lines.append(f"            class {ward_id} {style}")
 
-            # Main phase execution node
-            exec_id = f"{phase_id}_exec"
+            # Main cell execution node
+            exec_id = f"{cell_id}_exec"
             internal_nodes.append(exec_id)
             lines.append(f'            {exec_id}["{sanitize_label(cell_name, 25)}"]')
-            lines.append(f"            class {exec_id} phase")
+            lines.append(f"            class {exec_id} cell")
 
             # Post-wards
-            for j, ward in enumerate(phase_wards["post"]):
+            for j, ward in enumerate(cell_wards["post"]):
                 ward_meta = extract_metadata(ward)
                 validator = ward_meta.get("validator", "validator")
                 valid = ward_meta.get("valid", True)
                 mode = ward_meta.get("mode", "blocking")
 
-                ward_id = f"{phase_id}_post{j}"
+                ward_id = f"{cell_id}_post{j}"
                 internal_nodes.append(ward_id)
 
                 mode_label = "[B]" if mode == "blocking" else ("[R]" if mode == "retry" else "[A]")
@@ -2046,24 +2046,24 @@ def generate_mermaid_string(echo: Echo) -> str:
                 lines.append(f"            {internal_nodes[k]} --> {internal_nodes[k+1]}")
 
             lines.append("        end")
-            lines.append(f"        class {phase_id} phase")
+            lines.append(f"        class {cell_id} cell")
 
         else:
-            # Phase with messages - render as subgraph containing message nodes
-            phase_trace_id = phase_entry.get("trace_id")
+            # Cell with messages - render as subgraph containing message nodes
+            cell_trace_id = cell_entry.get("trace_id")
 
-            # Collect all turn traces under this phase
+            # Collect all turn traces under this cell
             turn_traces = set()
             for entry in history:
-                if entry.get("parent_id") == phase_trace_id and entry.get("node_type") == "turn":
+                if entry.get("parent_id") == cell_trace_id and entry.get("node_type") == "turn":
                     turn_traces.add(entry.get("trace_id"))
 
-            # Check for sub-cascades under this phase
+            # Check for sub-cascades under this cell
             # Sub-cascades are stored as sub_echo entries after merge
             sub_cascade_entries = []
-            phase_meta = extract_metadata(phase_entry)
-            if phase_meta.get('has_sub_cascades'):
-                # Look for sub_echo entries that contain cascade entries for this phase
+            cell_meta = extract_metadata(cell_entry)
+            if cell_meta.get('has_sub_cascades'):
+                # Look for sub_echo entries that contain cascade entries for this cell
                 for sub_echo in sub_echoes:
                     sub_history = sub_echo.get("history", [])
                     # Find the cascade entry in the sub_echo's history
@@ -2081,49 +2081,49 @@ def generate_mermaid_string(echo: Echo) -> str:
                 if entry.get("parent_id") in turn_traces and entry.get("node_type") == "tool":
                     tool_traces.add(entry.get("trace_id"))
 
-            # Collect messages belonging to this phase
-            phase_messages = []
+            # Collect messages belonging to this cell
+            cell_messages = []
             for entry in history:
                 entry_parent = entry.get("parent_id")
                 entry_type = entry.get("node_type", "")
                 entry_content = entry.get("content", "")
 
-                # Direct children of phase (system, user, injection, validation, validation_retry)
-                if entry_parent == phase_trace_id:
+                # Direct children of cell (system, user, injection, validation, validation_retry)
+                if entry_parent == cell_trace_id:
                     if entry_type in ("system", "user", "injection", "validation", "schema_validation", "validation_retry"):
-                        phase_messages.append(entry)
+                        cell_messages.append(entry)
                 # Children of turn traces (turn_output, turn_input, follow_up)
                 elif entry_parent in turn_traces:
                     if entry_type == "turn_output":
                         # Skip empty turn_output (tool call without text response)
                         if entry_content and entry_content.strip():
-                            phase_messages.append(entry)
+                            cell_messages.append(entry)
                     elif entry_type in ("turn_input", "follow_up"):
-                        phase_messages.append(entry)
+                        cell_messages.append(entry)
                 # Tool results under tool traces
                 elif entry_parent in tool_traces:
                     if entry_type == "tool_result":
-                        phase_messages.append(entry)
+                        cell_messages.append(entry)
                 # Grandchildren (tool results under tool traces under turns) - fallback
                 elif entry_parent and entry_parent in nodes_map:
                     grandparent_id = nodes_map[entry_parent].parent_id
                     if grandparent_id in turn_traces:
                         if entry_type in ("tool_result", "injection"):
-                            phase_messages.append(entry)
+                            cell_messages.append(entry)
 
-            # Check for quartermaster result for this phase
-            qm_entry = quartermaster_by_phase.get(cell_name)
+            # Check for quartermaster result for this cell
+            qm_entry = quartermaster_by_cell.get(cell_name)
 
             # If we have messages, sub-cascades, or quartermaster, render as subgraph
-            if phase_messages or sub_cascade_entries or qm_entry:
-                lines.append(f'        subgraph {phase_id}["{status_icon} {sanitize_label(cell_name, 32)}"]')
+            if cell_messages or sub_cascade_entries or qm_entry:
+                lines.append(f'        subgraph {cell_id}["{status_icon} {sanitize_label(cell_name, 32)}"]')
                 lines.append("        direction TB")
 
                 all_node_ids = []
 
                 # Render quartermaster decision node first (if present)
                 if qm_entry:
-                    qm_id = f"{phase_id}_qm"
+                    qm_id = f"{cell_id}_qm"
                     all_node_ids.append(qm_id)
                     qm_content = qm_entry.get("content", "")
                     qm_meta = extract_metadata(qm_entry)
@@ -2139,9 +2139,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                     lines.append(f'            {qm_id}{{"{sanitize_label(qm_label, 35)}"}}')
                     lines.append(f"            class {qm_id} evaluator")
 
-                # Render phase messages
-                for j, msg in enumerate(phase_messages):
-                    msg_id = f"{phase_id}_m{j}"
+                # Render cell messages
+                for j, msg in enumerate(cell_messages):
+                    msg_id = f"{cell_id}_m{j}"
                     all_node_ids.append(msg_id)
 
                     msg_type = msg.get("node_type", "msg")
@@ -2194,7 +2194,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                         label = f"{icon}: {preview}" if preview else "Retry"
                     else:
                         icon = "•"
-                        style = "phase"
+                        style = "cell"
                         label = f"{icon} {msg_type}"
 
                     lines.append(f'            {msg_id}["{label}"]')
@@ -2207,33 +2207,33 @@ def generate_mermaid_string(echo: Echo) -> str:
                     sc_trace_id = sc_entry.get("trace_id")
                     sc_content = sc_entry.get("content", "")
                     sc_name = sc_content.replace("Cascade: ", "") if sc_content.startswith("Cascade: ") else sc_content
-                    sc_id = f"{phase_id}_sc{sc_idx}"
+                    sc_id = f"{cell_id}_sc{sc_idx}"
                     all_node_ids.append(sc_id)
 
-                    # Find phases under this sub-cascade from its history
-                    sc_phase_entries = []
+                    # Find cells under this sub-cascade from its history
+                    sc_cell_entries = []
                     for entry in sc_history:
-                        if entry.get("parent_id") == sc_trace_id and entry.get("node_type") == "phase":
-                            sc_phase_entries.append(entry)
+                        if entry.get("parent_id") == sc_trace_id and entry.get("node_type") == "cell":
+                            sc_cell_entries.append(entry)
 
                     lines.append(f'            subgraph {sc_id}["Sub: {sanitize_label(sc_name, 25)}"]')
                     lines.append("            direction TB")
 
-                    sc_phase_ids = []
-                    for sp_idx, sp_entry in enumerate(sc_phase_entries):
+                    sc_cell_ids = []
+                    for sp_idx, sp_entry in enumerate(sc_cell_entries):
                         sp_trace_id = sp_entry.get("trace_id")
                         sp_content = sp_entry.get("content", "")
-                        sp_name = sp_content.replace("Phase: ", "") if sp_content.startswith("Phase: ") else sp_content
+                        sp_name = sp_content.replace("Cell: ", "") if sp_content.startswith("Cell: ") else sp_content
                         sp_id = f"{sc_id}_p{sp_idx}"
-                        sc_phase_ids.append(sp_id)
+                        sc_cell_ids.append(sp_id)
 
-                        # Find turn traces for this sub-phase (from sub-cascade's history)
+                        # Find turn traces for this sub-cell (from sub-cascade's history)
                         sp_turn_traces = set()
                         for entry in sc_history:
                             if entry.get("parent_id") == sp_trace_id and entry.get("node_type") == "turn":
                                 sp_turn_traces.add(entry.get("trace_id"))
 
-                        # Collect messages for this sub-phase (from sub-cascade's history)
+                        # Collect messages for this sub-cell (from sub-cascade's history)
                         sp_messages = []
                         for entry in sc_history:
                             entry_parent = entry.get("parent_id")
@@ -2276,25 +2276,25 @@ def generate_mermaid_string(echo: Echo) -> str:
                                     label = f"{icon}: {preview}"
                                 else:
                                     icon = "-"
-                                    style = "phase"
+                                    style = "cell"
                                     label = f"{icon} {msg_type}"
 
                                 lines.append(f'                    {sp_msg_id}["{label}"]')
                                 lines.append(f"                    class {sp_msg_id} {style}")
 
-                            # Connect sub-phase messages
+                            # Connect sub-cell messages
                             for k in range(len(sp_msg_ids) - 1):
                                 lines.append(f"                    {sp_msg_ids[k]} --> {sp_msg_ids[k+1]}")
 
                             lines.append("                end")
-                            lines.append(f"                class {sp_id} phase")
+                            lines.append(f"                class {sp_id} cell")
                         else:
                             lines.append(f'                {sp_id}["{sanitize_label(sp_name, 20)}"]')
-                            lines.append(f"                class {sp_id} phase")
+                            lines.append(f"                class {sp_id} cell")
 
-                    # Connect sub-cascade phases
-                    for k in range(len(sc_phase_ids) - 1):
-                        lines.append(f"                {sc_phase_ids[k]} --> {sc_phase_ids[k+1]}")
+                    # Connect sub-cascade cells
+                    for k in range(len(sc_cell_ids) - 1):
+                        lines.append(f"                {sc_cell_ids[k]} --> {sc_cell_ids[k+1]}")
 
                     lines.append("            end")
                     lines.append(f"            class {sc_id} sub_cascade")
@@ -2304,47 +2304,47 @@ def generate_mermaid_string(echo: Echo) -> str:
                     lines.append(f"            {all_node_ids[k]} --> {all_node_ids[k+1]}")
 
                 lines.append("        end")
-                lines.append(f"        class {phase_id} phase")
+                lines.append(f"        class {cell_id} cell")
             else:
-                # No messages found, just render phase name with status
-                lines.append(f'        {phase_id}["{status_icon} {sanitize_label(cell_name, 35)}"]')
-                lines.append(f"        class {phase_id} phase")
+                # No messages found, just render cell name with status
+                lines.append(f'        {cell_id}["{status_icon} {sanitize_label(cell_name, 35)}"]')
+                lines.append(f"        class {cell_id} cell")
 
-    # If we have cascade soundings, connect the winner to the first phase
-    if cascade_soundings_node_id and phase_ids:
-        lines.append(f"        {cascade_soundings_node_id} ==> {phase_ids[0]}")
+    # If we have cascade soundings, connect the winner to the first cell
+    if cascade_soundings_node_id and cell_ids:
+        lines.append(f"        {cascade_soundings_node_id} ==> {cell_ids[0]}")
 
-    # Connect phases using handoffs from metadata, or in order
-    # Only connect phases that were actually rendered (not filtered out)
-    for i in range(len(phase_ids)):
-        # Find the corresponding phase_entry for this phase_id
-        # (skip phases that were filtered out due to candidate_index)
-        rendered_phase_idx = 0
-        phase_entry = None
-        for pe in phase_entries:
+    # Connect cells using handoffs from metadata, or in order
+    # Only connect cells that were actually rendered (not filtered out)
+    for i in range(len(cell_ids)):
+        # Find the corresponding cell_entry for this cell_id
+        # (skip cells that were filtered out due to candidate_index)
+        rendered_cell_idx = 0
+        cell_entry = None
+        for pe in cell_entries:
             meta = extract_metadata(pe)
             if meta.get("candidate_index") is not None:
-                continue  # Skip filtered phases
-            if rendered_phase_idx == i:
-                phase_entry = pe
+                continue  # Skip filtered cells
+            if rendered_cell_idx == i:
+                cell_entry = pe
                 break
-            rendered_phase_idx += 1
+            rendered_cell_idx += 1
 
-        if not phase_entry:
+        if not cell_entry:
             continue
 
-        meta = extract_metadata(phase_entry)
+        meta = extract_metadata(cell_entry)
         handoffs = meta.get("handoffs", [])
-        current_id = phase_ids[i]
+        current_id = cell_ids[i]
 
         if handoffs:
             # Use explicit handoffs
             for target in handoffs:
-                if target in phase_id_map:
-                    lines.append(f"        {current_id} --> {phase_id_map[target]}")
-        elif i + 1 < len(phase_ids):
-            # Default: connect to next phase
-            lines.append(f"        {current_id} --> {phase_ids[i+1]}")
+                if target in cell_id_map:
+                    lines.append(f"        {current_id} --> {cell_id_map[target]}")
+        elif i + 1 < len(cell_ids):
+            # Default: connect to next cell
+            lines.append(f"        {current_id} --> {cell_ids[i+1]}")
 
     # Note: Cascade container removed for cleaner visualization without outer border
     # The structural diagram focuses on flow; use logs/lineage for content details.
@@ -2459,27 +2459,27 @@ def generate_state_diagram_string(echo: Echo) -> str:
         return '\n'.join(lines)
 
     # Helper to get status icon
-    def status_icon(cell_name: str, completed_phases: set) -> str:
-        if is_running and cell_name == running_phase:
+    def status_icon(cell_name: str, completed_cells: set) -> str:
+        if is_running and cell_name == running_cell:
             return "▶"  # Currently running
-        elif cell_name in completed_phases:
+        elif cell_name in completed_cells:
             return "✓"  # Completed
         else:
             return "○"  # Pending
 
     # Collect data structures
-    completed_phases = {item.get("phase") for item in echo.lineage}
+    completed_cells = {item.get("cell") for item in echo.lineage}
 
-    # Extract routing choices (which phase dynamically routed to which target)
+    # Extract routing choices (which cell dynamically routed to which target)
     routing_choices = extract_routing_choices(echo.lineage)
 
     # Extract ward retry information
     ward_retries = extract_ward_retries(history)
 
-    # Extract phases blocked by blocking wards
-    blocked_phases = extract_blocked_phases(history)
+    # Extract cells blocked by blocking wards
+    blocked_cells = extract_blocked_cells(history)
 
-    # Extract state changes (set_state calls per phase)
+    # Extract state changes (set_state calls per cell)
     state_changes = extract_state_changes(history)
 
     # Extract candidate mutations
@@ -2488,38 +2488,38 @@ def generate_state_diagram_string(echo: Echo) -> str:
     # Extract validation retries (loop_until / max_attempts > 1)
     validation_retries = extract_validation_retries(history)
 
-    # Extract errors per phase
-    errors_by_phase = extract_errors(history)
+    # Extract errors per cell
+    errors_by_cell = extract_errors(history)
 
     # Extract Quartermaster tool selections
     qm_selections = extract_quartermaster_selections(history)
 
-    # Extract detailed turn info per phase
+    # Extract detailed turn info per cell
     turns_detail = extract_turns(history)
 
-    # Extract detailed tool call info per phase
+    # Extract detailed tool call info per cell
     tool_calls_detail = extract_tool_calls(history)
 
     # Get live session state for running indicator
     live_state = get_live_session_state(echo.session_id)
-    running_phase = None
+    running_cell = None
     is_running = False
-    phase_progress = None
+    cell_progress = None
     progress_indicator = ""
     running_internal_node = None
 
     if live_state:
         is_running = live_state.get("status") == "running"
-        running_phase = live_state.get("current_cell")
-        phase_progress = live_state.get("phase_progress")
+        running_cell = live_state.get("current_cell")
+        cell_progress = live_state.get("cell_progress")
 
-        # Generate compact progress indicator from phase_progress
-        if phase_progress and is_running:
-            progress_indicator = format_phase_progress_indicator(phase_progress)
+        # Generate compact progress indicator from cell_progress
+        if cell_progress and is_running:
+            progress_indicator = format_cell_progress_indicator(cell_progress)
 
     # Build lookup maps
     sub_cascade_trace_ids = set()
-    sub_cascades_by_phase: Dict[str, List[Dict]] = {}  # phase_trace_id -> [sub_echo_data]
+    sub_cascades_by_cell: Dict[str, List[Dict]] = {}  # cell_trace_id -> [sub_echo_data]
 
     for sub_echo in sub_echoes:
         sub_history = sub_echo.get("history", [])
@@ -2528,13 +2528,13 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 sub_cascade_trace_ids.add(entry.get("trace_id"))
 
     # Collect all entries by type
-    phase_entries = []
-    soundings_by_phase: Dict[str, List[Dict]] = {}
-    reforge_by_phase: Dict[str, Dict[int, Dict]] = {}
-    wards_by_phase: Dict[str, Dict[str, List[Dict]]] = {}
-    tools_by_phase: Dict[str, List[str]] = {}
-    turns_by_phase: Dict[str, int] = {}
-    handoffs_by_phase: Dict[str, List[str]] = {}  # cell_name -> list of available handoff targets
+    cell_entries = []
+    soundings_by_cell: Dict[str, List[Dict]] = {}
+    reforge_by_cell: Dict[str, Dict[int, Dict]] = {}
+    wards_by_cell: Dict[str, Dict[str, List[Dict]]] = {}
+    tools_by_cell: Dict[str, List[str]] = {}
+    turns_by_cell: Dict[str, int] = {}
+    handoffs_by_cell: Dict[str, List[str]] = {}  # cell_name -> list of available handoff targets
     cascade_sounding_attempts = []
     cascade_soundings_result = None
     checkpoint_entries: List[Dict] = []  # checkpoint_created entries
@@ -2544,48 +2544,48 @@ def generate_state_diagram_string(echo: Echo) -> str:
         node_type = entry.get("node_type", "")
         meta = extract_metadata(entry)
 
-        if node_type == "phase":
-            # Only collect top-level phases (not sub-cascade phases)
+        if node_type == "cell":
+            # Only collect top-level cells (not sub-cascade cells)
             if entry.get("parent_id") not in sub_cascade_trace_ids:
-                phase_entries.append(entry)
-                # Also capture handoffs for this phase
+                cell_entries.append(entry)
+                # Also capture handoffs for this cell
                 content = entry.get("content", "")
-                cell_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+                cell_name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
                 handoffs = meta.get("handoffs", [])
                 if handoffs:
-                    handoffs_by_phase[cell_name] = handoffs
+                    handoffs_by_cell[cell_name] = handoffs
 
         elif node_type == "sounding_attempt":
             cell_name = meta.get("cell_name", "unknown")
-            if cell_name not in soundings_by_phase:
-                soundings_by_phase[cell_name] = []
-            soundings_by_phase[cell_name].append(entry)
+            if cell_name not in soundings_by_cell:
+                soundings_by_cell[cell_name] = []
+            soundings_by_cell[cell_name].append(entry)
 
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
             cell_name = meta.get("cell_name", "unknown")
             step = meta.get("reforge_step", 1)
-            if cell_name not in reforge_by_phase:
-                reforge_by_phase[cell_name] = {}
-            if step not in reforge_by_phase[cell_name]:
-                reforge_by_phase[cell_name][step] = {"attempts": [], "winner": None}
+            if cell_name not in reforge_by_cell:
+                reforge_by_cell[cell_name] = {}
+            if step not in reforge_by_cell[cell_name]:
+                reforge_by_cell[cell_name][step] = {"attempts": [], "winner": None}
 
             if node_type == "reforge_attempt":
-                reforge_by_phase[cell_name][step]["attempts"].append(entry)
+                reforge_by_cell[cell_name][step]["attempts"].append(entry)
             elif node_type == "reforge_winner":
-                reforge_by_phase[cell_name][step]["winner"] = entry
+                reforge_by_cell[cell_name][step]["winner"] = entry
 
         elif node_type in ("pre_ward", "post_ward"):
             cell_name = meta.get("cell_name", "unknown")
-            if cell_name not in wards_by_phase:
-                wards_by_phase[cell_name] = {"pre": [], "post": []}
+            if cell_name not in wards_by_cell:
+                wards_by_cell[cell_name] = {"pre": [], "post": []}
             ward_type = meta.get("ward_type", "")
             if ward_type in ("pre", "post"):
-                wards_by_phase[cell_name][ward_type].append(entry)
+                wards_by_cell[cell_name][ward_type].append(entry)
 
         elif node_type == "tool_result":
             cell_name = meta.get("cell_name", "unknown")
-            if cell_name not in tools_by_phase:
-                tools_by_phase[cell_name] = []
+            if cell_name not in tools_by_cell:
+                tools_by_cell[cell_name] = []
             # Extract tool name from metadata (preferred) or content
             tool_name = meta.get("tool_name")
             if not tool_name:
@@ -2595,12 +2595,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     match = re.search(r"Tool Result \((\w+)\)", content)
                     if match:
                         tool_name = match.group(1)
-            if tool_name and tool_name not in tools_by_phase[cell_name]:
-                tools_by_phase[cell_name].append(tool_name)
+            if tool_name and tool_name not in tools_by_cell[cell_name]:
+                tools_by_cell[cell_name].append(tool_name)
 
         elif node_type == "turn":
             cell_name = meta.get("cell_name", "unknown")
-            turns_by_phase[cell_name] = turns_by_phase.get(cell_name, 0) + 1
+            turns_by_cell[cell_name] = turns_by_cell.get(cell_name, 0) + 1
 
         elif node_type == "cascade_sounding_attempt":
             cascade_sounding_attempts.append(entry)
@@ -2614,68 +2614,68 @@ def generate_state_diagram_string(echo: Echo) -> str:
         elif node_type == "checkpoint_resume":
             checkpoint_resume_entries.append(entry)
 
-    # Map phase trace_id to phase data for ward lookup
-    phase_trace_to_name = {}
-    phase_trace_to_entry = {}
-    for pe in phase_entries:
+    # Map cell trace_id to cell data for ward lookup
+    cell_trace_to_name = {}
+    cell_trace_to_entry = {}
+    for pe in cell_entries:
         content = pe.get("content", "")
-        name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
-        phase_trace_to_name[pe.get("trace_id")] = name
-        phase_trace_to_entry[pe.get("trace_id")] = pe
+        name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
+        cell_trace_to_name[pe.get("trace_id")] = name
+        cell_trace_to_entry[pe.get("trace_id")] = pe
 
-    # Re-process wards with correct phase names (using parent_id lookup)
-    wards_by_phase = {}
+    # Re-process wards with correct cell names (using parent_id lookup)
+    wards_by_cell = {}
     for entry in history:
         node_type = entry.get("node_type", "")
         if node_type in ("pre_ward", "post_ward"):
             parent_id = entry.get("parent_id")
-            cell_name = phase_trace_to_name.get(parent_id, "unknown")
+            cell_name = cell_trace_to_name.get(parent_id, "unknown")
             meta = extract_metadata(entry)
-            if cell_name not in wards_by_phase:
-                wards_by_phase[cell_name] = {"pre": [], "post": []}
+            if cell_name not in wards_by_cell:
+                wards_by_cell[cell_name] = {"pre": [], "post": []}
             ward_type = meta.get("ward_type", "")
             if ward_type in ("pre", "post"):
-                wards_by_phase[cell_name][ward_type].append(entry)
+                wards_by_cell[cell_name][ward_type].append(entry)
 
-    # Map sub-cascades to their parent phases
+    # Map sub-cascades to their parent cells
     sub_cascades_by_cell_name: Dict[str, List[Dict]] = {}
     for sub_echo in sub_echoes:
         sub_history = sub_echo.get("history", [])
-        # Find cascade entry and its phases
+        # Find cascade entry and its cells
         cascade_entry = None
-        sub_phases = []
+        sub_cells = []
         for entry in sub_history:
             if entry.get("node_type") == "cascade":
                 cascade_entry = entry
-            elif entry.get("node_type") == "phase":
-                sub_phases.append(entry)
+            elif entry.get("node_type") == "cell":
+                sub_cells.append(entry)
 
         if cascade_entry:
-            # Find which parent phase this belongs to
-            # Look for has_sub_cascades metadata in phase entries
-            for pe in phase_entries:
+            # Find which parent cell this belongs to
+            # Look for has_sub_cascades metadata in cell entries
+            for pe in cell_entries:
                 pe_meta = extract_metadata(pe)
                 if pe_meta.get("has_sub_cascades"):
-                    cell_name = phase_trace_to_name.get(pe.get("trace_id"), "unknown")
+                    cell_name = cell_trace_to_name.get(pe.get("trace_id"), "unknown")
                     if cell_name not in sub_cascades_by_cell_name:
                         sub_cascades_by_cell_name[cell_name] = []
                     sub_cascades_by_cell_name[cell_name].append({
                         "cascade": cascade_entry,
-                        "cells": sub_phases,
+                        "cells": sub_cells,
                         "sub_echo": sub_echo.get("sub_echo", "sub")
                     })
 
-    # Sort phases by lineage order
-    phase_order = [item.get("phase") for item in echo.lineage]
-    if phase_order:
-        def phase_sort_key(entry):
+    # Sort cells by lineage order
+    cell_order = [item.get("cell") for item in echo.lineage]
+    if cell_order:
+        def cell_sort_key(entry):
             content = entry.get("content", "")
-            name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+            name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
             try:
-                return phase_order.index(name)
+                return cell_order.index(name)
             except ValueError:
                 return 999
-        phase_entries.sort(key=phase_sort_key)
+        cell_entries.sort(key=cell_sort_key)
 
     # =========================================================================
     # BUILD THE STATE DIAGRAM
@@ -2696,9 +2696,9 @@ def generate_state_diagram_string(echo: Echo) -> str:
     lines.append("    classDef checkpoint_resumed fill:#1a2a2a,stroke:#60a5fa,stroke-width:3px,color:#60a5fa")
     lines.append("")
 
-    # Track which phase IDs need styling classes applied
-    running_phase_ids = []
-    failed_phase_ids = []
+    # Track which cell IDs need styling classes applied
+    running_cell_ids = []
+    failed_cell_ids = []
 
     # Cascade-level soundings (if present)
     first_state = None
@@ -2765,51 +2765,51 @@ def generate_state_diagram_string(echo: Echo) -> str:
         first_state = "cascade_soundings"
 
     # =========================================================================
-    # RENDER EACH PHASE
+    # RENDER EACH CELL
     # =========================================================================
 
-    phase_ids = []
+    cell_ids = []
 
-    for phase_entry in phase_entries:
-        content = phase_entry.get("content", "")
-        cell_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+    for cell_entry in cell_entries:
+        content = cell_entry.get("content", "")
+        cell_name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
         pid = sid(cell_name)
-        phase_ids.append(pid)
-        phase_trace_id = phase_entry.get("trace_id")
+        cell_ids.append(pid)
+        cell_trace_id = cell_entry.get("trace_id")
 
-        meta = extract_metadata(phase_entry)
-        status = status_icon(cell_name, completed_phases)
+        meta = extract_metadata(cell_entry)
+        status = status_icon(cell_name, completed_cells)
 
-        # Determine what complexity this phase has
-        has_soundings = cell_name in soundings_by_phase
-        has_reforge = cell_name in reforge_by_phase
-        has_wards = cell_name in wards_by_phase and (wards_by_phase[cell_name]["pre"] or wards_by_phase[cell_name]["post"])
+        # Determine what complexity this cell has
+        has_soundings = cell_name in soundings_by_cell
+        has_reforge = cell_name in reforge_by_cell
+        has_wards = cell_name in wards_by_cell and (wards_by_cell[cell_name]["pre"] or wards_by_cell[cell_name]["post"])
         has_sub_cascades = cell_name in sub_cascades_by_cell_name
-        turn_count = turns_by_phase.get(cell_name, 0)
+        turn_count = turns_by_cell.get(cell_name, 0)
         has_retries = cell_name in ward_retries
-        is_blocked = cell_name in blocked_phases
+        is_blocked = cell_name in blocked_cells
         has_validation_retries = cell_name in validation_retries
-        has_errors = cell_name in errors_by_phase
+        has_errors = cell_name in errors_by_cell
         has_qm_selection = cell_name in qm_selections
         detailed_turns = turns_detail.get(cell_name, [])
         has_multi_turns = len(detailed_turns) > 1
 
-        # Get tool calls detail for this phase
-        phase_tool_calls = tool_calls_detail.get(cell_name, [])
-        has_many_tool_calls = len(phase_tool_calls) >= 3  # Show composite if 3+ tool calls
+        # Get tool calls detail for this cell
+        cell_tool_calls = tool_calls_detail.get(cell_name, [])
+        has_many_tool_calls = len(cell_tool_calls) >= 3  # Show composite if 3+ tool calls
 
-        # Get tools and state changes for this phase
-        phase_tools = tools_by_phase.get(cell_name, [])
-        phase_state_changes = state_changes.get(cell_name, [])
+        # Get tools and state changes for this cell
+        cell_tools = tools_by_cell.get(cell_name, [])
+        cell_state_changes = state_changes.get(cell_name, [])
 
-        # Build annotation string for simple phases
+        # Build annotation string for simple cells
         annotations = []
         # Show tool names (up to 3) instead of just count
-        if phase_tools:
-            if len(phase_tools) <= 3:
-                tool_str = ",".join(phase_tools)
+        if cell_tools:
+            if len(cell_tools) <= 3:
+                tool_str = ",".join(cell_tools)
             else:
-                tool_str = ",".join(phase_tools[:2]) + f"+{len(phase_tools)-2}"
+                tool_str = ",".join(cell_tools[:2]) + f"+{len(cell_tools)-2}"
             annotations.append(f"🔧{tool_str}")
         if turn_count > 1:
             annotations.append(f"↻{turn_count}")
@@ -2828,22 +2828,22 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 max_attempts = vr.get('max_attempts', retry_count + 1)
                 loop_icon = "✓" if passed else "✗"
                 annotations.append(f"⟳{retry_count+1}/{max_attempts}{loop_icon}")
-        # Show blocked indicator if phase was blocked
+        # Show blocked indicator if cell was blocked
         if is_blocked:
             annotations.append("⛔")
         # Show error indicator if errors occurred
         if has_errors:
-            error_count = len(errors_by_phase[cell_name])
+            error_count = len(errors_by_cell[cell_name])
             annotations.append(f"❌{error_count}")
         # Show Quartermaster (manifest) indicator
         if has_qm_selection:
             qm_tools = qm_selections[cell_name].get('selected_tools', [])
             annotations.append(f"🧭{len(qm_tools)}")
         # Show state changes (keys set)
-        if phase_state_changes:
-            state_keys = ",".join(phase_state_changes[:2])  # Limit to 2 keys
-            if len(phase_state_changes) > 2:
-                state_keys += f"+{len(phase_state_changes)-2}"
+        if cell_state_changes:
+            state_keys = ",".join(cell_state_changes[:2])  # Limit to 2 keys
+            if len(cell_state_changes) > 2:
+                state_keys += f"+{len(cell_state_changes)-2}"
             annotations.append(f"📝{state_keys}")
         annotation_str = " " + " ".join(annotations) if annotations else ""
 
@@ -2853,31 +2853,31 @@ def generate_state_diagram_string(echo: Echo) -> str:
         elif has_errors:
             status = "✗"  # Failed but not blocked
 
-        # Track running, blocked, and failed phases for styling
-        is_phase_running = is_running and cell_name == running_phase
-        phase_running_internal_node = None
+        # Track running, blocked, and failed cells for styling
+        is_cell_running = is_running and cell_name == running_cell
+        cell_running_internal_node = None
 
-        if is_phase_running:
-            running_phase_ids.append(pid)
+        if is_cell_running:
+            running_cell_ids.append(pid)
             # Calculate which internal node is currently executing
-            if phase_progress:
-                phase_running_internal_node = get_running_internal_node_id(phase_progress, pid)
+            if cell_progress:
+                cell_running_internal_node = get_running_internal_node_id(cell_progress, pid)
 
-        # Track phases with errors for red styling (use outer-scope list)
+        # Track cells with errors for red styling (use outer-scope list)
         if has_errors and not is_blocked:
-            failed_phase_ids.append(pid)
+            failed_cell_ids.append(pid)
 
-        # Decide if phase needs composite state
-        # Note: errors alone don't force composite - show as simple failed phase
+        # Decide if cell needs composite state
+        # Note: errors alone don't force composite - show as simple failed cell
         # Only render composite if there's meaningful internal structure to show
         needs_composite = (has_soundings or has_reforge or has_wards or has_sub_cascades
                           or has_multi_turns or has_qm_selection or has_many_tool_calls)
 
         if not needs_composite:
-            # Simple phase - single state
-            # Add progress indicator if this phase is currently running
+            # Simple cell - single state
+            # Add progress indicator if this cell is currently running
             progress_str = ""
-            if is_phase_running and progress_indicator:
+            if is_cell_running and progress_indicator:
                 progress_str = f" [{progress_indicator}]"
             lines.append(f'    state "{status} {sanitize_label(cell_name, 28)}{annotation_str}{progress_str}" as {pid}')
 
@@ -2885,30 +2885,30 @@ def generate_state_diagram_string(echo: Echo) -> str:
             # Composite state
             lines.append(f"    state {pid} {{")
 
-            # Phase label with status
+            # Cell label with status
             label_parts = [status, sanitize_label(cell_name, 25)]
             if has_soundings:
-                factor = len(soundings_by_phase[cell_name])
+                factor = len(soundings_by_cell[cell_name])
                 label_parts.append(f"🔱{factor}")
             if has_reforge:
-                steps = len(reforge_by_phase[cell_name])
+                steps = len(reforge_by_cell[cell_name])
                 label_parts.append(f"🔨{steps}")
             if has_sub_cascades:
                 count = len(sub_cascades_by_cell_name[cell_name])
                 label_parts.append(f"📦{count}")
-            # Show tool names for composite phases
-            if phase_tools:
-                if len(phase_tools) <= 2:
-                    tool_str = ",".join(phase_tools)
+            # Show tool names for composite cells
+            if cell_tools:
+                if len(cell_tools) <= 2:
+                    tool_str = ",".join(cell_tools)
                 else:
-                    tool_str = ",".join(phase_tools[:2]) + f"+{len(phase_tools)-2}"
+                    tool_str = ",".join(cell_tools[:2]) + f"+{len(cell_tools)-2}"
                 label_parts.append(f"🔧{tool_str}")
-            # Add ward retry annotation for composite phases
+            # Add ward retry annotation for composite cells
             if has_retries:
                 retry_count = ward_retries[cell_name].get('retry_count', 0)
                 if retry_count > 0:
                     label_parts.append(f"🔄{retry_count}")
-            # Add validation retry (loop_until) annotation for composite phases
+            # Add validation retry (loop_until) annotation for composite cells
             if has_validation_retries:
                 vr = validation_retries[cell_name]
                 retry_count = vr.get('retry_count', 0)
@@ -2917,23 +2917,23 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     max_attempts = vr.get('max_attempts', retry_count + 1)
                     loop_icon = "✓" if passed else "✗"
                     label_parts.append(f"⟳{retry_count+1}/{max_attempts}{loop_icon}")
-            # Add error indicator for composite phases
+            # Add error indicator for composite cells
             if has_errors:
-                error_count = len(errors_by_phase[cell_name])
+                error_count = len(errors_by_cell[cell_name])
                 label_parts.append(f"❌{error_count}")
-            # Add Quartermaster indicator for composite phases
+            # Add Quartermaster indicator for composite cells
             if has_qm_selection:
                 qm_tool_count = len(qm_selections[cell_name].get('selected_tools', []))
                 label_parts.append(f"🧭{qm_tool_count}")
-            # Add state changes for composite phases
-            if phase_state_changes:
-                state_keys = ",".join(phase_state_changes[:2])
-                if len(phase_state_changes) > 2:
-                    state_keys += f"+{len(phase_state_changes)-2}"
+            # Add state changes for composite cells
+            if cell_state_changes:
+                state_keys = ",".join(cell_state_changes[:2])
+                if len(cell_state_changes) > 2:
+                    state_keys += f"+{len(cell_state_changes)-2}"
                 label_parts.append(f"📝{state_keys}")
 
-            # Add progress indicator for running composite phases
-            if is_phase_running and progress_indicator:
+            # Add progress indicator for running composite cells
+            if is_cell_running and progress_indicator:
                 label_parts.append(f"[{progress_indicator}]")
 
             lines.append(f"        {pid}_label : {' '.join(label_parts)}")
@@ -2945,8 +2945,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
             # Track internal nodes that need running style
             running_internal_nodes = []
-            if phase_running_internal_node:
-                running_internal_nodes.append(phase_running_internal_node)
+            if cell_running_internal_node:
+                running_internal_nodes.append(cell_running_internal_node)
 
             # QUARTERMASTER SELECTION (show which tools were auto-selected)
             if has_qm_selection:
@@ -2967,8 +2967,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = qm_id
 
             # PRE-WARDS
-            if has_wards and wards_by_phase[cell_name]["pre"]:
-                for j, ward in enumerate(wards_by_phase[cell_name]["pre"]):
+            if has_wards and wards_by_cell[cell_name]["pre"]:
+                for j, ward in enumerate(wards_by_cell[cell_name]["pre"]):
                     ward_meta = extract_metadata(ward)
                     validator = ward_meta.get("validator", "check")
                     valid = ward_meta.get("valid", True)
@@ -2988,7 +2988,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
             # SOUNDINGS
             if has_soundings:
-                attempts = soundings_by_phase[cell_name]
+                attempts = soundings_by_cell[cell_name]
                 attempts_info = {}
                 winner_index = None
 
@@ -3010,13 +3010,13 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     first_internal = fork_id
 
                 # Attempts - include mutation info if available
-                phase_mutations = sounding_mutations.get(cell_name, {})
+                cell_mutations = sounding_mutations.get(cell_name, {})
                 for idx in sorted(attempts_info.keys()):
                     info = attempts_info[idx]
                     marker = " ✓" if info["is_winner"] else ""
 
                     # Check for mutation info
-                    mutation_info = phase_mutations.get(idx, {})
+                    mutation_info = cell_mutations.get(idx, {})
                     mutation_applied = mutation_info.get('mutation_applied')
 
                     # Determine mutation label (shortened)
@@ -3031,7 +3031,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         mutation_label = " [baseline]"
 
                     # Always try to load sub-cascade diagram for this candidate attempt
-                    # For phase-level soundings with sub-cascades, the session ID pattern is:
+                    # For cell-level soundings with sub-cascades, the session ID pattern is:
                     # {parent_session_id}_sub_{candidate_index}
                     sub_session_id = f"{echo.session_id}_sub_{idx}"
                     sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
@@ -3081,8 +3081,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
                 # REFORGE (chains after soundings)
                 if has_reforge:
-                    for step_num in sorted(reforge_by_phase[cell_name].keys()):
-                        step_data = reforge_by_phase[cell_name][step_num]
+                    for step_num in sorted(reforge_by_cell[cell_name].keys()):
+                        step_data = reforge_by_cell[cell_name][step_num]
                         rf_attempts = step_data.get("attempts", [])
                         rf_winner = step_data.get("winner")
 
@@ -3152,26 +3152,26 @@ def generate_state_diagram_string(echo: Echo) -> str:
                                 lines.append(f"            {line}")
                     elif sc_cells:
                         # Fallback: Render sub-cascade cells as simple nodes
-                        sc_phase_ids = []
+                        sc_cell_ids = []
                         for sp_idx, sp_entry in enumerate(sc_cells):
                             sp_content = sp_entry.get("content", "")
-                            sp_name = sp_content.replace("Phase: ", "") if sp_content.startswith("Phase: ") else sp_content
+                            sp_name = sp_content.replace("Cell: ", "") if sp_content.startswith("Cell: ") else sp_content
                             sp_id = f"{sc_id}_p{sp_idx}"
-                            sc_phase_ids.append(sp_id)
+                            sc_cell_ids.append(sp_id)
 
-                            # Check if sub-phase is complete (in parent lineage or has output)
-                            sp_status = "✓" if sp_name in completed_phases else "○"
+                            # Check if sub-cell is complete (in parent lineage or has output)
+                            sp_status = "✓" if sp_name in completed_cells else "○"
                             lines.append(f"            {sp_id} : {sp_status} {sanitize_label(sp_name, 18)}")
 
-                        # Connect sub-phases
-                        if sc_phase_ids:
-                            lines.append(f"            [*] --> {sc_phase_ids[0]}")
-                            for k in range(len(sc_phase_ids) - 1):
-                                lines.append(f"            {sc_phase_ids[k]} --> {sc_phase_ids[k+1]}")
-                            lines.append(f"            {sc_phase_ids[-1]} --> [*]")
+                        # Connect sub-cells
+                        if sc_cell_ids:
+                            lines.append(f"            [*] --> {sc_cell_ids[0]}")
+                            for k in range(len(sc_cell_ids) - 1):
+                                lines.append(f"            {sc_cell_ids[k]} --> {sc_cell_ids[k+1]}")
+                            lines.append(f"            {sc_cell_ids[-1]} --> [*]")
                     else:
                         # Empty sub-cascade placeholder
-                        lines.append(f"            {sc_id}_empty : (no phases)")
+                        lines.append(f"            {sc_id}_empty : (no cells)")
                         lines.append(f"            [*] --> {sc_id}_empty")
                         lines.append(f"            {sc_id}_empty --> [*]")
 
@@ -3185,8 +3185,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = sc_id
 
             # POST-WARDS
-            if has_wards and wards_by_phase[cell_name]["post"]:
-                for j, ward in enumerate(wards_by_phase[cell_name]["post"]):
+            if has_wards and wards_by_cell[cell_name]["post"]:
+                for j, ward in enumerate(wards_by_cell[cell_name]["post"]):
                     ward_meta = extract_metadata(ward)
                     validator = ward_meta.get("validator", "check")
                     valid = ward_meta.get("valid", True)
@@ -3204,7 +3204,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         first_internal = ward_id
                     last_node = ward_id
 
-            # TURNS (show individual turn progression for multi-turn phases)
+            # TURNS (show individual turn progression for multi-turn cells)
             if has_multi_turns and not has_soundings:  # Don't show turns if soundings handles it
                 lines.append("")
                 lines.append(f"        %% Turn progression")
@@ -3237,12 +3237,12 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         lines.append(f"        {turn_ids[k]} --> {turn_ids[k+1]}")
                     last_node = turn_ids[-1]
 
-            # TOOL CALLS (show individual tool calls for phases with many tools but not multi-turn)
+            # TOOL CALLS (show individual tool calls for cells with many tools but not multi-turn)
             if has_many_tool_calls and not has_multi_turns and not has_soundings:
                 lines.append("")
                 lines.append(f"        %% Tool calls")
                 tool_ids = []
-                for tc_idx, tc_info in enumerate(phase_tool_calls):
+                for tc_idx, tc_info in enumerate(cell_tool_calls):
                     tool_name = tc_info.get('tool_name', 'tool')
                     success = tc_info.get('success', True)
                     tc_id = f"{pid}_tc{tc_idx}"
@@ -3268,7 +3268,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
             if has_errors:
                 lines.append("")
                 lines.append(f"        %% Errors")
-                for e_idx, error_info in enumerate(errors_by_phase[cell_name]):
+                for e_idx, error_info in enumerate(errors_by_cell[cell_name]):
                     error_type = error_info.get('error_type', 'error')
                     error_msg = sanitize_label(error_info.get('message', 'Error'), 25)
                     e_id = f"{pid}_err{e_idx}"
@@ -3312,49 +3312,49 @@ def generate_state_diagram_string(echo: Echo) -> str:
         lines.append("")
 
     # =========================================================================
-    # CONNECT PHASES
+    # CONNECT CELLS
     # =========================================================================
 
     # Build cell_name -> pid mapping
     cell_name_to_pid = {}
-    for phase_entry in phase_entries:
-        content = phase_entry.get("content", "")
-        pname = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+    for cell_entry in cell_entries:
+        content = cell_entry.get("content", "")
+        pname = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
         cell_name_to_pid[pname] = sid(pname)
 
-    if first_state is None and phase_ids:
-        first_state = phase_ids[0]
+    if first_state is None and cell_ids:
+        first_state = cell_ids[0]
         lines.append(f"    [*] --> {first_state}")
-    elif first_state and phase_ids:
-        lines.append(f"    {first_state} --> {phase_ids[0]}")
+    elif first_state and cell_ids:
+        lines.append(f"    {first_state} --> {cell_ids[0]}")
 
-    # Track which phases were actually executed (from lineage)
-    executed_phases = [item.get("phase") for item in echo.lineage]
+    # Track which cells were actually executed (from lineage)
+    executed_cells = [item.get("cell") for item in echo.lineage]
 
-    # Phase-to-phase transitions with routing differentiation
-    for i, phase_entry in enumerate(phase_entries):
-        content = phase_entry.get("content", "")
-        cell_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
-        pid = phase_ids[i]
+    # Cell-to-cell transitions with routing differentiation
+    for i, cell_entry in enumerate(cell_entries):
+        content = cell_entry.get("content", "")
+        cell_name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
+        pid = cell_ids[i]
 
-        # Check if this phase was blocked
-        if cell_name in blocked_phases:
+        # Check if this cell was blocked
+        if cell_name in blocked_cells:
             # Add blocked terminal state
             blocked_id = f"{pid}_blocked"
-            validator = blocked_phases[cell_name].get('validator', 'ward')
-            reason_short = sanitize_label(blocked_phases[cell_name].get('reason', 'blocked')[:20], 20)
+            validator = blocked_cells[cell_name].get('validator', 'ward')
+            reason_short = sanitize_label(blocked_cells[cell_name].get('reason', 'blocked')[:20], 20)
             lines.append(f'    state "{reason_short}" as {blocked_id}')
             lines.append(f"    {pid} --> {blocked_id} : ⛔ {validator}")
-            # No further transitions from blocked phase
+            # No further transitions from blocked cell
             continue
 
-        # Get handoffs for this phase
-        phase_handoffs = handoffs_by_phase.get(cell_name, [])
+        # Get handoffs for this cell
+        cell_handoffs = handoffs_by_cell.get(cell_name, [])
         routing_target = routing_choices.get(cell_name)
 
-        if phase_handoffs and len(phase_handoffs) > 1:
+        if cell_handoffs and len(cell_handoffs) > 1:
             # Multiple handoff options - show routing choices
-            for target in phase_handoffs:
+            for target in cell_handoffs:
                 target_pid = cell_name_to_pid.get(target)
                 if target_pid:
                     if routing_target == target:
@@ -3364,25 +3364,25 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         # Available but not taken - note syntax for dashed (Mermaid state diagrams don't support dashed, so we use note)
                         # Use different notation to indicate not-taken
                         lines.append(f"    {pid} --> {target_pid} : ○ available")
-        elif phase_handoffs and len(phase_handoffs) == 1:
+        elif cell_handoffs and len(cell_handoffs) == 1:
             # Single handoff - show taken path
-            target = phase_handoffs[0]
+            target = cell_handoffs[0]
             target_pid = cell_name_to_pid.get(target)
             if target_pid:
                 lines.append(f"    {pid} --> {target_pid}")
-        elif i + 1 < len(phase_ids):
-            # Default sequential - connect to next phase
-            lines.append(f"    {phase_ids[i]} --> {phase_ids[i+1]}")
+        elif i + 1 < len(cell_ids):
+            # Default sequential - connect to next cell
+            lines.append(f"    {cell_ids[i]} --> {cell_ids[i+1]}")
 
     # =========================================================================
     # SELF-LOOP ARROWS FOR VALIDATION RETRIES
     # =========================================================================
-    # Add self-loop arrows for phases that had validation retries (loop_until / max_attempts)
+    # Add self-loop arrows for cells that had validation retries (loop_until / max_attempts)
     lines.append("")
     lines.append("    %% Validation retry loops")
-    for phase_entry in phase_entries:
-        content = phase_entry.get("content", "")
-        pname = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+    for cell_entry in cell_entries:
+        content = cell_entry.get("content", "")
+        pname = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
         pid = cell_name_to_pid.get(pname)
 
         if pname in validation_retries and pid:
@@ -3403,23 +3403,23 @@ def generate_state_diagram_string(echo: Echo) -> str:
         lines.append("")
         lines.append("    %% Checkpoint nodes (Human-in-the-Loop)")
 
-        # Map phase trace IDs to checkpoint info
-        checkpoints_by_phase: Dict[str, List[Dict]] = {}
+        # Map cell trace IDs to checkpoint info
+        checkpoints_by_cell: Dict[str, List[Dict]] = {}
         for cp_entry in checkpoint_entries:
             cp_meta = extract_metadata(cp_entry)
-            # Find the phase this checkpoint belongs to by parent_id
+            # Find the cell this checkpoint belongs to by parent_id
             parent_id = cp_entry.get("parent_id")
-            cell_name = phase_trace_to_name.get(parent_id, "unknown")
-            if cell_name not in checkpoints_by_phase:
-                checkpoints_by_phase[cell_name] = []
-            checkpoints_by_phase[cell_name].append(cp_entry)
+            cell_name = cell_trace_to_name.get(parent_id, "unknown")
+            if cell_name not in checkpoints_by_cell:
+                checkpoints_by_cell[cell_name] = []
+            checkpoints_by_cell[cell_name].append(cp_entry)
 
         # Track checkpoint IDs for styling
         checkpoint_node_ids = []
         resume_node_ids = []
 
-        # Render checkpoint nodes for phases that have them
-        for cell_name, cp_list in checkpoints_by_phase.items():
+        # Render checkpoint nodes for cells that have them
+        for cell_name, cp_list in checkpoints_by_cell.items():
             pid = cell_name_to_pid.get(cell_name)
             if not pid:
                 continue
@@ -3427,7 +3427,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
             for cp_idx, cp_entry in enumerate(cp_list):
                 cp_meta = extract_metadata(cp_entry)
                 checkpoint_id = cp_meta.get("checkpoint_id", f"cp_{cp_idx}")
-                checkpoint_type = cp_meta.get("checkpoint_type", "phase_input")
+                checkpoint_type = cp_meta.get("checkpoint_type", "cell_input")
                 cp_node_id = f"{pid}_cp{cp_idx}"
                 checkpoint_node_ids.append(cp_node_id)
 
@@ -3444,10 +3444,10 @@ def generate_state_diagram_string(echo: Echo) -> str:
         for resume_entry in checkpoint_resume_entries:
             r_meta = extract_metadata(resume_entry)
             checkpoint_id = r_meta.get("checkpoint_id", "unknown")
-            original_phase_trace = r_meta.get("original_trace_id")
+            original_cell_trace = r_meta.get("original_trace_id")
 
-            # Find which phase this connects back to
-            original_cell_name = phase_trace_to_name.get(original_phase_trace, None)
+            # Find which cell this connects back to
+            original_cell_name = cell_trace_to_name.get(original_cell_trace, None)
             if original_cell_name:
                 original_pid = cell_name_to_pid.get(original_cell_name)
                 if original_pid:
@@ -3456,7 +3456,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     resume_node_ids.append(resume_node_id)
                     lines.append(f'    state "▶️ Resumed" as {resume_node_id}')
 
-                    # Find checkpoint node for this phase
+                    # Find checkpoint node for this cell
                     for cp_node_id in checkpoint_node_ids:
                         if cp_node_id.startswith(f"{original_pid}_cp"):
                             lines.append(f"    {cp_node_id} --> {resume_node_id} : human response")
@@ -3472,31 +3472,31 @@ def generate_state_diagram_string(echo: Echo) -> str:
             for r_id in resume_node_ids:
                 lines.append(f"    class {r_id} checkpoint_resumed")
 
-    # End state - only connect if last phase wasn't blocked
-    if phase_ids:
-        last_phase_entry = phase_entries[-1] if phase_entries else None
-        if last_phase_entry:
-            last_content = last_phase_entry.get("content", "")
-            last_cell_name = last_content.replace("Phase: ", "") if last_content.startswith("Phase: ") else last_content
-            if last_cell_name not in blocked_phases:
-                lines.append(f"    {phase_ids[-1]} --> [*]")
+    # End state - only connect if last cell wasn't blocked
+    if cell_ids:
+        last_cell_entry = cell_entries[-1] if cell_entries else None
+        if last_cell_entry:
+            last_content = last_cell_entry.get("content", "")
+            last_cell_name = last_content.replace("Cell: ", "") if last_content.startswith("Cell: ") else last_content
+            if last_cell_name not in blocked_cells:
+                lines.append(f"    {cell_ids[-1]} --> [*]")
 
     # =========================================================================
     # APPLY STYLING CLASSES
     # =========================================================================
 
-    # Apply running class to running phases (thick green border)
-    if running_phase_ids:
+    # Apply running class to running cells (thick green border)
+    if running_cell_ids:
         lines.append("")
-        lines.append("    %% Apply running style to active phases")
-        for pid in running_phase_ids:
+        lines.append("    %% Apply running style to active cells")
+        for pid in running_cell_ids:
             lines.append(f"    class {pid} running")
 
-    # Apply failed class to phases with errors (red border)
-    if failed_phase_ids:
+    # Apply failed class to cells with errors (red border)
+    if failed_cell_ids:
         lines.append("")
-        lines.append("    %% Apply failed style to phases with errors")
-        for pid in failed_phase_ids:
+        lines.append("    %% Apply failed style to cells with errors")
+        for pid in failed_cell_ids:
             lines.append(f"    class {pid} failed")
 
     return "\n".join(lines)
@@ -3512,7 +3512,7 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
     The metadata dict contains:
     - node_map: Maps Mermaid node IDs to trace_ids and metadata
     - session_id: The session this diagram represents
-    - phases: List of phase info with trace_ids
+    - cells: List of cell info with trace_ids
     - click_handlers: If enabled, adds click callbacks to the Mermaid
 
     This enables:
@@ -3531,24 +3531,24 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
         s = s.replace("(", "").replace(")", "").replace(":", "").replace("/", "_")
         return s
 
-    # Collect phase info with trace_ids
-    phases_info = []
+    # Collect cell info with trace_ids
+    cells_info = []
     for entry in history:
-        if entry.get("node_type") == "phase":
+        if entry.get("node_type") == "cell":
             content = entry.get("content", "")
-            cell_name = content.replace("Phase: ", "") if content.startswith("Phase: ") else content
+            cell_name = content.replace("Cell: ", "") if content.startswith("Cell: ") else content
             trace_id = entry.get("trace_id", "")
             pid = sid(cell_name)
 
-            phase_info = {
+            cell_info = {
                 "node_id": pid,
                 "cell_name": cell_name,
                 "trace_id": trace_id,
                 "parent_id": entry.get("parent_id"),
-                "node_type": "phase"
+                "node_type": "cell"
             }
-            phases_info.append(phase_info)
-            node_map[pid] = phase_info
+            cells_info.append(cell_info)
+            node_map[pid] = cell_info
 
     # Collect turn info
     for entry in history:
@@ -3673,25 +3673,25 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
     live_state = get_live_session_state(echo.session_id)
     running_info = None
     if live_state and live_state.get("status") == "running":
-        running_phase = live_state.get("current_cell")
-        phase_progress = live_state.get("phase_progress")
-        progress_indicator = format_phase_progress_indicator(phase_progress) if phase_progress else ""
+        running_cell = live_state.get("current_cell")
+        cell_progress = live_state.get("cell_progress")
+        progress_indicator = format_cell_progress_indicator(cell_progress) if cell_progress else ""
 
         running_info = {
-            "running_phase": running_phase,
-            "phase_progress": phase_progress,
+            "running_cell": running_cell,
+            "cell_progress": cell_progress,
             "progress_indicator": progress_indicator,
             "running_internal_node": get_running_internal_node_id(
-                phase_progress,
-                sid(running_phase) if running_phase else ""
-            ) if phase_progress else None
+                cell_progress,
+                sid(running_cell) if running_cell else ""
+            ) if cell_progress else None
         }
 
     # Build metadata structure
     metadata = {
         "session_id": echo.session_id,
         "node_map": node_map,
-        "cells": phases_info,
+        "cells": cells_info,
         "lineage": echo.lineage,
         "node_count": len(node_map),
         "has_click_handlers": include_click_handlers,
@@ -3725,7 +3725,7 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
     Generate a Mermaid state diagram from Echo history and write to file.
 
     The diagram shows:
-    - Phases as composite states with internal complexity
+    - Cells as composite states with internal complexity
     - Soundings as fork/join parallel branches with winner highlighting
     - Reforge as nested refinement states
     - Sub-cascades as nested composite states
@@ -3782,7 +3782,7 @@ def generate_mermaid_string_from_config(config: Any) -> str:
     # Styles - Midnight Fjord Dark Theme
     lines.extend([
         "    %% Static Structure Styles - Midnight Fjord Dark Theme",
-        "    classDef phase fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
+        "    classDef cell fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
         "    classDef deterministic fill:#16202A,stroke:#6366f1,stroke-width:2px,color:#F0F4F8;",
         "    classDef candidates fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef reforge fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
@@ -3794,18 +3794,18 @@ def generate_mermaid_string_from_config(config: Any) -> str:
     lines.append(f"    [*] --> {config.cells[0].name.replace('-', '_').replace(' ', '_')}")
     lines.append("")
 
-    phase_ids = []
+    cell_ids = []
 
-    for phase in config.cells:
-        phase_id = f"{phase.name.replace('-', '_').replace(' ', '_')}"
-        phase_ids.append(phase_id)
+    for cell in config.cells:
+        cell_id = f"{cell.name.replace('-', '_').replace(' ', '_')}"
+        cell_ids.append(cell_id)
 
-        # Determine phase type and decorations
-        is_deterministic = phase.is_deterministic()
+        # Determine cell type and decorations
+        is_deterministic = cell.is_deterministic()
         has_candidates = cell.candidates and cell.candidates.factor > 1
         has_reforge = has_candidates and cell.candidates.reforge
-        has_sub_cascades = bool(phase.sub_cascades)
-        has_wards = phase.wards and (phase.wards.pre or phase.wards.post)
+        has_sub_cascades = bool(cell.sub_cascades)
+        has_wards = cell.wards and (cell.wards.pre or cell.wards.post)
 
         # Build label with icons
         icons = []
@@ -3818,9 +3818,9 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         if has_wards:
             icons.append("🛡️W")
         if is_deterministic:
-            icons.append(f"⚡{phase.tool.split(':')[0] if ':' in phase.tool else phase.tool}")
+            icons.append(f"⚡{cell.tool.split(':')[0] if ':' in cell.tool else cell.tool}")
 
-        label = f"{phase.name}"
+        label = f"{cell.name}"
         if icons:
             label += f" [{', '.join(icons)}]"
 
@@ -3834,31 +3834,31 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         elif is_deterministic:
             style = "deterministic"
         else:
-            style = "phase"
+            style = "cell"
 
         # Create state with description
-        lines.append(f"    state \"{sanitize_label(label, 60)}\" as {phase_id}")
-        lines.append(f"    class {phase_id} {style}")
+        lines.append(f"    state \"{sanitize_label(label, 60)}\" as {cell_id}")
+        lines.append(f"    class {cell_id} {style}")
 
-        # Add note with phase details
+        # Add note with cell details
         details = []
         if is_deterministic:
-            details.append(f"Tool: {phase.tool}")
-            if phase.routing:
-                routes = ", ".join(f"{k}→{v}" for k, v in phase.routing.items())
+            details.append(f"Tool: {cell.tool}")
+            if cell.routing:
+                routes = ", ".join(f"{k}→{v}" for k, v in cell.routing.items())
                 details.append(f"Routes: {routes}")
         else:
-            if phase.traits:
-                if phase.traits == "manifest":
+            if cell.traits:
+                if cell.traits == "manifest":
                     details.append("Traits: Auto (Quartermaster)")
                 else:
-                    tools = ", ".join(phase.traits[:3])
-                    if len(phase.traits) > 3:
-                        tools += f"... (+{len(phase.traits) - 3})"
+                    tools = ", ".join(cell.traits[:3])
+                    if len(cell.traits) > 3:
+                        tools += f"... (+{len(cell.traits) - 3})"
                     details.append(f"Tools: {tools}")
 
-        if phase.rules and phase.rules.max_turns:
-            details.append(f"Max turns: {phase.rules.max_turns}")
+        if cell.rules and cell.rules.max_turns:
+            details.append(f"Max turns: {cell.rules.max_turns}")
 
         if has_candidates:
             details.append(f"Candidates: {cell.candidates.factor}x")
@@ -3867,25 +3867,25 @@ def generate_mermaid_string_from_config(config: Any) -> str:
 
         if details:
             note_text = "\\n".join(details)
-            lines.append(f"    note right of {phase_id}")
+            lines.append(f"    note right of {cell_id}")
             for detail in details:
                 lines.append(f"        {sanitize_label(detail, 80)}")
             lines.append(f"    end note")
 
         lines.append("")
 
-    # Connect phases (handoffs and routing)
-    for i, phase in enumerate(config.cells):
-        current_id = phase_ids[i]
+    # Connect cells (handoffs and routing)
+    for i, cell in enumerate(config.cells):
+        current_id = cell_ids[i]
 
         # Check for explicit handoffs
-        if phase.handoffs:
-            for handoff in phase.handoffs:
+        if cell.handoffs:
+            for handoff in cell.handoffs:
                 target = handoff.target if hasattr(handoff, 'target') else handoff
-                # Find target phase
+                # Find target cell
                 for j, p in enumerate(config.cells):
                     if p.name == target:
-                        target_id = phase_ids[j]
+                        target_id = cell_ids[j]
                         # Label the edge if there's a description
                         if hasattr(handoff, 'description') and handoff.description:
                             label = sanitize_label(handoff.description, 30)
@@ -3894,22 +3894,22 @@ def generate_mermaid_string_from_config(config: Any) -> str:
                             lines.append(f"    {current_id} --> {target_id}")
                         break
         # Check for deterministic routing
-        elif phase.routing:
-            for route_key, target_name in phase.routing.items():
-                # Find target phase
+        elif cell.routing:
+            for route_key, target_name in cell.routing.items():
+                # Find target cell
                 for j, p in enumerate(config.cells):
                     if p.name == target_name:
-                        target_id = phase_ids[j]
+                        target_id = cell_ids[j]
                         lines.append(f"    {current_id} --> {target_id} : {route_key}")
                         break
         # Default sequential connection
-        elif i + 1 < len(phase_ids):
-            lines.append(f"    {current_id} --> {phase_ids[i+1]}")
+        elif i + 1 < len(cell_ids):
+            lines.append(f"    {current_id} --> {cell_ids[i+1]}")
 
-    # Add final state if last phase has no handoffs
-    last_phase = config.cells[-1]
-    last_id = phase_ids[-1]
-    if not last_phase.handoffs and not last_phase.routing:
+    # Add final state if last cell has no handoffs
+    last_cell = config.cells[-1]
+    last_id = cell_ids[-1]
+    if not last_cell.handoffs and not last_cell.routing:
         lines.append(f"    {last_id} --> [*]")
 
     return "\n".join(lines)

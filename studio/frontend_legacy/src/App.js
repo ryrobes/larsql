@@ -81,7 +81,7 @@ function App() {
   const [sessionStartTimes, setSessionStartTimes] = useState({}); // Track cascade start times for live duration (session_id -> ISO timestamp)
   const [completedSessions, setCompletedSessions] = useState(new Set()); // Track sessions we've already shown completion toast for
   const [pendingCheckpoints, setPendingCheckpoints] = useState([]); // HITL checkpoints waiting for human input
-  const [runningSoundings, setRunningSoundings] = useState({}); // Track running soundings: { sessionId: { phaseName: Set([index]) } }
+  const [runningSoundings, setRunningSoundings] = useState({}); // Track running soundings: { sessionId: { cellName: Set([index]) } }
   const [blockedCount, setBlockedCount] = useState(0); // Count of blocked sessions for badge
 
   const showToast = (message, type = 'success', duration = null, cascadeData = null) => {
@@ -639,8 +639,8 @@ function App() {
             setRefreshTrigger(prev => prev + 1);
             break;
 
-          case 'phase_start':
-          case 'phase_complete':
+          case 'cell_start':
+          case 'cell_complete':
             // Timeline uses polling, not SSE - just refresh for other views
             setRefreshTrigger(prev => prev + 1);
             if (event.session_id) {
@@ -779,7 +779,7 @@ function App() {
               cell_name: event.data.cell_name,
               checkpoint_type: event.data.checkpoint_type,
               ui_spec: event.data.ui_spec,
-              phase_output_preview: event.data.preview,
+              cell_output_preview: event.data.preview,
               timeout_at: event.data.timeout_at,
               num_soundings: event.data.num_soundings
             };
@@ -841,13 +841,13 @@ function App() {
               // console.log('[SSE] Sounding start:', sessionId, cell_name, sounding_index);
               setRunningSoundings(prev => {
                 const sessionSoundings = prev[sessionId] || {};
-                const phaseSoundings = new Set(sessionSoundings[cell_name] || []);
-                phaseSoundings.add(sounding_index);
+                const cellSoundings = new Set(sessionSoundings[cell_name] || []);
+                cellSoundings.add(sounding_index);
                 return {
                   ...prev,
                   [sessionId]: {
                     ...sessionSoundings,
-                    [cell_name]: phaseSoundings
+                    [cell_name]: cellSoundings
                   }
                 };
               });
@@ -866,13 +866,13 @@ function App() {
               // console.log('[SSE] Sounding complete:', sessionId, cell_name, sounding_index);
               setRunningSoundings(prev => {
                 const sessionSoundings = prev[sessionId] || {};
-                const phaseSoundings = new Set(sessionSoundings[cell_name] || []);
-                phaseSoundings.delete(sounding_index);
+                const cellSoundings = new Set(sessionSoundings[cell_name] || []);
+                cellSoundings.delete(sounding_index);
                 return {
                   ...prev,
                   [sessionId]: {
                     ...sessionSoundings,
-                    [cell_name]: phaseSoundings
+                    [cell_name]: cellSoundings
                   }
                 };
               });

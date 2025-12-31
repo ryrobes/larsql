@@ -503,7 +503,7 @@
   font-size: 1.5rem;
 }
 
-.soundings-phase-name {
+.soundings-cell-name {
   color: #4A9EDD;
   font-size: 1.1rem;
   font-weight: 700;
@@ -984,7 +984,7 @@
   font-size: 1.2rem;
 }
 
-.reforge-phase-name {
+.reforge-cell-name {
   color: #8B9FCC;
   font-size: 1.1rem;
   font-weight: 700;
@@ -1057,7 +1057,7 @@
   gap: 0.5rem;
 }
 
-.phase-reforge-badge {
+.cell-reforge-badge {
   display: inline-flex;
   align-items: center;
   color: #8B9FCC;
@@ -1096,15 +1096,15 @@
   gap: 1.5rem;
 }
 
-/* Phase Group Styling */
-.phase-group {
+/* Cell Group Styling */
+.cell-group {
   background: rgba(22, 32, 42, 0.4);
   border: 1px solid rgba(90, 141, 196, 0.2);
   border-radius: 16px;
   overflow: hidden;
 }
 
-.phase-group-header {
+.cell-group-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1114,11 +1114,11 @@
   flex-wrap: wrap;
 }
 
-.phase-group-icon {
+.cell-group-icon {
   font-size: 1.1rem;
 }
 
-.phase-group-name {
+.cell-group-name {
   color: #60A5FA;
   font-size: 1rem;
   font-weight: 700;
@@ -1126,7 +1126,7 @@
   letter-spacing: -0.01em;
 }
 
-.phase-group-stats {
+.cell-group-stats {
   color: #9AA5B1;
   font-size: 0.8rem;
   font-weight: 500;
@@ -1136,19 +1136,19 @@
   margin-left: auto;
 }
 
-.phase-group-stats .phase-cost {
+.cell-group-stats .cell-cost {
   color: #4A9EDD;
   font-weight: 700;
   font-family: 'Google Sans Code', monospace;
 }
 
-.phase-group-stats .phase-tokens {
+.cell-group-stats .cell-tokens {
   color: #6B7FBB;
   font-weight: 600;
   font-family: 'Google Sans Code', monospace;
 }
 
-.phase-soundings-badge {
+.cell-soundings-badge {
   background: rgba(74, 158, 221, 0.15);
   color: #4A9EDD;
   padding: 4px 10px;
@@ -1158,25 +1158,25 @@
   font-family: 'Google Sans Code', monospace;
 }
 
-.phase-group-content {
+.cell-group-content {
   padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.phase-group-content .inline-soundings-block {
+.cell-group-content .inline-soundings-block {
   margin: 0.5rem 0;
 }
 
-/* Phase group hover effect */
-.phase-group:hover {
+/* Cell group hover effect */
+.cell-group:hover {
   border-color: rgba(90, 141, 196, 0.35);
 }
 
-/* Phaseless messages - system status messages without a phase association */
-/* These appear inline in their chronological position without a phase container */
-.phaseless-messages {
+/* Cellless messages - system status messages without a cell association */
+/* These appear inline in their chronological position without a cell container */
+.cellless-messages {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1186,18 +1186,18 @@
   padding-left: 1rem;
 }
 
-.phaseless-messages .message {
+.cellless-messages .message {
   opacity: 0.75;
   border-style: dashed;
   border-color: rgba(128, 128, 128, 0.3);
   background: rgba(30, 30, 30, 0.3);
 }
 
-.phaseless-messages .message:hover {
+.cellless-messages .message:hover {
   opacity: 1;
 }
 
-.phase-group:hover .phase-group-header {
+.cell-group:hover .cell-group-header {
   background: linear-gradient(135deg, rgba(90, 141, 196, 0.15) 0%, rgba(22, 32, 42, 0.9) 100%);
 }
 
@@ -1800,7 +1800,7 @@
   font-size: 0.85rem;
 }
 
-.message-image-modal-phase {
+.message-image-modal-cell {
   color: #4A9EDD;
 }
 
@@ -2646,8 +2646,8 @@
   contain-intrinsic-size: auto 100px;
 }
 
-/* Phase groups - can be large containers */
-.phase-group {
+/* Cell groups - can be large containers */
+.cell-group {
   content-visibility: auto;
   contain-intrinsic-size: auto 400px;
 }

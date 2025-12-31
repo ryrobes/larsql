@@ -13,7 +13,7 @@ import { JinjaEditor, getAvailableVariables } from '../jinja-editor';
 import './CellBlock.css';
 
 /**
- * PhaseBlock - Individual phase container with collapsible drawers
+ * CellBlock - Individual cell container with collapsible drawers
  *
  * Features:
  * - Drag handle for reordering
@@ -22,10 +22,10 @@ import './CellBlock.css';
  * - Visual indicators for configured sections
  * - Droppable target for models
  */
-function PhaseBlock({ phase, index, isSelected, onSelect }) {
+function CellBlock({ cell, index, isSelected, onSelect }) {
   const {
-    updatePhase,
-    removePhase,
+    updateCell,
+    removeCell,
     expandedDrawers,
     toggleDrawer,
     cascade,
@@ -33,7 +33,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [isContextDragOver, setIsContextDragOver] = useState(false);
-  const [contextDropPicker, setContextDropPicker] = useState(null); // { phaseName, position }
+  const [contextDropPicker, setContextDropPicker] = useState(null); // { cellName, position }
 
   // Get available variables for the Jinja editor
   const availableVariables = useMemo(
@@ -41,7 +41,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     [cascade, index]
   );
 
-  // Sortable setup for reordering phases
+  // Sortable setup for reordering cells
   const {
     attributes,
     listeners,
@@ -49,15 +49,15 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `phase-${phase.name}` });
+  } = useSortable({ id: `cell-${cell.name}` });
 
   // Droppable setup for accepting models and config blocks
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
-    id: `phase-${phase.name}`,
+    id: `cell-${cell.name}`,
     data: {
-      type: 'phase',
+      type: 'cell',
       cellIndex: index,
-      phaseName: phase.name,
+      cellName: cell.name,
     },
   });
 
@@ -74,15 +74,15 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
   };
 
   // Check which configs are present
-  const hasSoundings = phase.candidates && phase.candidates.factor > 1;
-  const hasReforge = phase.candidates?.reforge?.steps > 0;
-  const hasRules = phase.rules && (phase.rules.max_turns || phase.rules.loop_until);
-  const hasContext = phase.context && phase.context.from?.length > 0;
-  const hasWards = phase.wards && (phase.wards.pre?.length > 0 || phase.wards.post?.length > 0);
-  const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
-  const hasTackle = phase.traits && phase.traits.length > 0;
+  const hasSoundings = cell.candidates && cell.candidates.factor > 1;
+  const hasReforge = cell.candidates?.reforge?.steps > 0;
+  const hasRules = cell.rules && (cell.rules.max_turns || cell.rules.loop_until);
+  const hasContext = cell.context && cell.context.from?.length > 0;
+  const hasWards = cell.wards && (cell.wards.pre?.length > 0 || cell.wards.post?.length > 0);
+  const hasHandoffs = cell.handoffs && cell.handoffs.length > 0;
+  const hasTackle = cell.traits && cell.traits.length > 0;
 
-  // Drawer expansion state for this phase
+  // Drawer expansion state for this cell
   const isDrawerOpen = (drawer) => expandedDrawers[index]?.includes(drawer);
 
   const handleNameChange = (e) => {
@@ -90,21 +90,21 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '_')
       .replace(/_+/g, '_');
-    updatePhase(index, { name: value });
+    updateCell(index, { name: value });
   };
 
   const handleInstructionsChange = (e) => {
-    updatePhase(index, { instructions: e.target.value });
+    updateCell(index, { instructions: e.target.value });
   };
 
   const handleDelete = (e) => {
     e.stopPropagation();
-    if (window.confirm(`Delete phase "${phase.name}"?`)) {
-      removePhase(index);
+    if (window.confirm(`Delete cell "${cell.name}"?`)) {
+      removeCell(index);
     }
   };
 
-  // Handle dropping a phase output variable onto the Context drawer toggle
+  // Handle dropping a cell output variable onto the Context drawer toggle
   const handleContextDragOver = (e) => {
     // Check if this is a variable we can accept (outputs.*)
     const types = e.dataTransfer.types;
@@ -134,14 +134,14 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       return;
     }
 
-    // Extract the phase name from "outputs.cell_name"
-    const sourcePhaseName = variablePath.replace('outputs.', '');
+    // Extract the cell name from "outputs.cell_name"
+    const sourceCellName = variablePath.replace('outputs.', '');
 
     // Check if already present
-    const currentContext = phase.context || {};
+    const currentContext = cell.context || {};
     const currentFrom = currentContext.from || [];
     const alreadyPresent = currentFrom.some(
-      (s) => (typeof s === 'string' ? s === sourcePhaseName : s.phase === sourcePhaseName)
+      (s) => (typeof s === 'string' ? s === sourceCellName : s.cell === sourceCellName)
     );
 
     if (alreadyPresent) {
@@ -154,7 +154,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
     // Show the picker at the drop position
     setContextDropPicker({
-      phaseName: sourcePhaseName,
+      cellName: sourceCellName,
       position: { x: e.clientX, y: e.clientY },
     });
   };
@@ -163,17 +163,17 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
   const handleContextPickerSelect = useCallback((includeOptions) => {
     if (!contextDropPicker) return;
 
-    const { phaseName: sourcePhaseName } = contextDropPicker;
-    const currentContext = phase.context || {};
+    const { cellName: sourceCellName } = contextDropPicker;
+    const currentContext = cell.context || {};
     const currentFrom = currentContext.from || [];
 
     // Build the source config
     const sourceConfig = {
-      phase: sourcePhaseName,
+      cell: sourceCellName,
       include: includeOptions,
     };
 
-    // If currently set to "all", switch to custom mode with the dropped phase
+    // If currently set to "all", switch to custom mode with the dropped cell
     let newFrom;
     if (currentFrom.includes('all')) {
       newFrom = [sourceConfig];
@@ -181,7 +181,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       newFrom = [...currentFrom, sourceConfig];
     }
 
-    updatePhase(index, {
+    updateCell(index, {
       context: { ...currentContext, from: newFrom },
     });
 
@@ -190,7 +190,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
     if (!isDrawerOpen('context')) {
       toggleDrawer(index, 'context');
     }
-  }, [contextDropPicker, phase.context, index, updatePhase, isDrawerOpen, toggleDrawer]);
+  }, [contextDropPicker, cell.context, index, updateCell, isDrawerOpen, toggleDrawer]);
 
   const handleContextPickerCancel = useCallback(() => {
     setContextDropPicker(null);
@@ -198,7 +198,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
   // Drawer toggle handlers
   const drawerConfigs = [
-    { id: 'execution', label: 'Execution', icon: 'mdi:cog', hasContent: hasTackle || phase.model },
+    { id: 'execution', label: 'Execution', icon: 'mdi:cog', hasContent: hasTackle || cell.model },
     { id: 'soundings', label: 'Soundings', icon: 'mdi:source-branch', hasContent: hasSoundings },
     { id: 'rules', label: 'Rules', icon: 'mdi:repeat', hasContent: hasRules },
     { id: 'validation', label: 'Validation', icon: 'mdi:check-decagram', hasContent: hasWards },
@@ -208,7 +208,7 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 
   // Build class names
   const classNames = [
-    'phase-block',
+    'cell-block',
     isSelected && 'selected',
     isDragging && 'dragging',
     isOver && 'drop-over',
@@ -221,25 +221,25 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       className={classNames}
       onClick={onSelect}
     >
-      {/* Phase Header */}
-      <div className="phase-header">
+      {/* Cell Header */}
+      <div className="cell-header">
         {/* Drag Handle */}
         <div className="drag-handle" {...attributes} {...listeners}>
           <Icon icon="mdi:drag-vertical" width="20" />
         </div>
 
-        {/* Phase Number */}
-        <div className="phase-number">
+        {/* Cell Number */}
+        <div className="cell-number">
           {index + 1}
         </div>
 
-        {/* Phase Name */}
-        <div className="phase-name-container">
+        {/* Cell Name */}
+        <div className="cell-name-container">
           {isEditing ? (
             <input
               type="text"
-              className="phase-name-input"
-              value={phase.name}
+              className="cell-name-input"
+              value={cell.name}
               onChange={handleNameChange}
               onBlur={() => setIsEditing(false)}
               onKeyDown={(e) => e.key === 'Enter' && setIsEditing(false)}
@@ -248,11 +248,11 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
             />
           ) : (
             <span
-              className="phase-name"
+              className="cell-name"
               onDoubleClick={() => setIsEditing(true)}
               title="Double-click to edit"
             >
-              {phase.name || 'unnamed_phase'}
+              {cell.name || 'unnamed_cell'}
             </span>
           )}
         </div>
@@ -262,45 +262,45 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
           {hasSoundings && (
             <span
               className={`indicator soundings ${hasReforge ? 'with-reforge' : ''}`}
-              title={`Soundings: ${phase.candidates.factor}x${hasReforge ? ` + Reforge: ${phase.candidates.reforge.steps} steps` : ''}`}
+              title={`Soundings: ${cell.candidates.factor}x${hasReforge ? ` + Reforge: ${cell.candidates.reforge.steps} steps` : ''}`}
             >
               <Icon icon="mdi:source-branch" width="14" />
-              {phase.candidates.factor}
+              {cell.candidates.factor}
               {hasReforge && (
                 <>
                   <Icon icon="mdi:hammer-wrench" width="12" className="reforge-icon" />
-                  {phase.candidates.reforge.steps}
+                  {cell.candidates.reforge.steps}
                 </>
               )}
             </span>
           )}
-          {hasRules && phase.rules.loop_until && (
-            <span className="indicator rules" title={`Loop until: ${phase.rules.loop_until}`}>
+          {hasRules && cell.rules.loop_until && (
+            <span className="indicator rules" title={`Loop until: ${cell.rules.loop_until}`}>
               <Icon icon="mdi:repeat" width="14" />
             </span>
           )}
           {hasHandoffs && (
-            <span className="indicator handoffs" title={`Handoffs: ${phase.handoffs.join(', ')}`}>
+            <span className="indicator handoffs" title={`Handoffs: ${cell.handoffs.join(', ')}`}>
               <Icon icon="mdi:arrow-decision" width="14" />
-              {phase.handoffs.length}
+              {cell.handoffs.length}
             </span>
           )}
         </div>
 
         {/* Delete Button */}
-        <button className="phase-delete-btn" onClick={handleDelete} title="Delete phase">
+        <button className="cell-delete-btn" onClick={handleDelete} title="Delete cell">
           <Icon icon="mdi:close" width="16" />
         </button>
       </div>
 
       {/* Instructions Field */}
-      <div className="phase-instructions">
+      <div className="cell-instructions">
         <label className="instructions-label">Instructions</label>
         <JinjaEditor
-          value={phase.instructions || ''}
-          onChange={(text) => updatePhase(index, { instructions: text })}
+          value={cell.instructions || ''}
+          onChange={(text) => updateCell(index, { instructions: text })}
           availableVariables={availableVariables}
-          placeholder="Enter phase instructions..."
+          placeholder="Enter cell instructions..."
           showPalette={true}
           className="compact"
         />
@@ -344,29 +344,29 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
       {/* Drawer Contents */}
       <div className="drawer-contents">
         {isDrawerOpen('execution') && (
-          <ExecutionDrawer phase={phase} index={index} />
+          <ExecutionDrawer cell={cell} index={index} />
         )}
         {isDrawerOpen('soundings') && (
-          <SoundingsDrawer phase={phase} index={index} />
+          <SoundingsDrawer cell={cell} index={index} />
         )}
         {isDrawerOpen('rules') && (
-          <RulesDrawer phase={phase} index={index} />
+          <RulesDrawer cell={cell} index={index} />
         )}
         {isDrawerOpen('validation') && (
-          <ValidationDrawer phase={phase} index={index} />
+          <ValidationDrawer cell={cell} index={index} />
         )}
         {isDrawerOpen('context') && (
-          <ContextDrawer phase={phase} index={index} />
+          <ContextDrawer cell={cell} index={index} />
         )}
         {isDrawerOpen('flow') && (
-          <FlowDrawer phase={phase} index={index} />
+          <FlowDrawer cell={cell} index={index} />
         )}
       </div>
 
       {/* Context Drop Picker (shown when dropping an output variable on Context toggle) */}
       {contextDropPicker && (
         <ContextDropPicker
-          phaseName={contextDropPicker.phaseName}
+          cellName={contextDropPicker.cellName}
           position={contextDropPicker.position}
           onSelect={handleContextPickerSelect}
           onCancel={handleContextPickerCancel}
@@ -379,16 +379,16 @@ function PhaseBlock({ phase, index, isSelected, onSelect }) {
 /**
  * ExecutionDrawer - Tackle and model configuration
  */
-function ExecutionDrawer({ phase, index }) {
-  const { updatePhase } = useWorkshopStore();
+function ExecutionDrawer({ cell, index }) {
+  const { updateCell } = useWorkshopStore();
 
   const handleTackleChange = (tackle) => {
-    updatePhase(index, { tackle });
+    updateCell(index, { tackle });
   };
 
   const handleModelChange = (value) => {
-    // Setting undefined will delete the key from the phase
-    updatePhase(index, { model: value || undefined });
+    // Setting undefined will delete the key from the cell
+    updateCell(index, { model: value || undefined });
   };
 
   return (
@@ -396,7 +396,7 @@ function ExecutionDrawer({ phase, index }) {
       <div className="drawer-intro">
         <Icon icon="mdi:information-outline" width="14" />
         <p>
-          <strong>Tackle</strong> are tools the LLM can use during this phase.
+          <strong>Tackle</strong> are tools the LLM can use during this cell.
           Drag from the palette or type <code>manifest</code> for auto-selection.
           Override the <strong>model</strong> for specialized tasks.
         </p>
@@ -408,7 +408,7 @@ function ExecutionDrawer({ phase, index }) {
           Tackle (tools)
         </label>
         <TacklePills
-          value={phase.traits || []}
+          value={cell.traits || []}
           onChange={handleTackleChange}
           cellIndex={index}
         />
@@ -423,13 +423,13 @@ function ExecutionDrawer({ phase, index }) {
           Model (optional)
         </label>
         <ModelSelect
-          value={phase.model || ''}
+          value={cell.model || ''}
           onChange={handleModelChange}
           placeholder="Use default model"
           allowClear={true}
         />
         <span className="field-hint">
-          Override default model for this phase - drag from palette or select below
+          Override default model for this cell - drag from palette or select below
         </span>
       </div>
     </div>
@@ -439,26 +439,26 @@ function ExecutionDrawer({ phase, index }) {
 /**
  * SoundingsDrawer - Tree of Thought configuration
  */
-function SoundingsDrawer({ phase, index }) {
-  const { updatePhaseField, cascade } = useWorkshopStore();
+function SoundingsDrawer({ cell, index }) {
+  const { updateCellField, cascade } = useWorkshopStore();
   const [isReforgeExpanded, setIsReforgeExpanded] = React.useState(false);
 
-  const soundings = phase.candidates || {};
+  const soundings = cell.candidates || {};
   const reforge = soundings.reforge || {};
   const hasReforge = reforge.steps > 0;
 
   const handleChange = (field, value) => {
-    updatePhaseField(index, `soundings.${field}`, value);
+    updateCellField(index, `soundings.${field}`, value);
   };
 
   const handleReforgeChange = (field, value) => {
-    updatePhaseField(index, `soundings.reforge.${field}`, value);
+    updateCellField(index, `soundings.reforge.${field}`, value);
   };
 
   const handleEnableReforge = (enabled) => {
     if (enabled) {
       // Initialize with defaults
-      updatePhaseField(index, 'soundings.reforge', {
+      updateCellField(index, 'soundings.reforge', {
         steps: 2,
         honing_prompt: '',
         factor_per_step: 2,
@@ -466,7 +466,7 @@ function SoundingsDrawer({ phase, index }) {
       setIsReforgeExpanded(true);
     } else {
       // Remove reforge config
-      updatePhaseField(index, 'soundings.reforge', undefined);
+      updateCellField(index, 'soundings.reforge', undefined);
     }
   };
 
@@ -481,7 +481,7 @@ function SoundingsDrawer({ phase, index }) {
       <div className="drawer-intro">
         <Icon icon="mdi:information-outline" width="14" />
         <p>
-          Run multiple parallel attempts of this phase.
+          Run multiple parallel attempts of this cell.
           An evaluator picks the best result or combines all outputs.
         </p>
       </div>
@@ -720,13 +720,13 @@ function SoundingsDrawer({ phase, index }) {
 /**
  * RulesDrawer - Execution rules configuration
  */
-function RulesDrawer({ phase, index }) {
-  const { updatePhaseField } = useWorkshopStore();
+function RulesDrawer({ cell, index }) {
+  const { updateCellField } = useWorkshopStore();
 
-  const rules = phase.rules || {};
+  const rules = cell.rules || {};
 
   const handleChange = (field, value) => {
-    updatePhaseField(index, `rules.${field}`, value);
+    updateCellField(index, `rules.${field}`, value);
   };
 
   const maxTurns = rules.max_turns || 0;
@@ -737,7 +737,7 @@ function RulesDrawer({ phase, index }) {
       <div className="drawer-intro">
         <Icon icon="mdi:information-outline" width="14" />
         <p>
-          Constrain phase execution with turn limits or retry validators.
+          Constrain cell execution with turn limits or retry validators.
         </p>
       </div>
 
@@ -798,38 +798,38 @@ function RulesDrawer({ phase, index }) {
 /**
  * FlowDrawer - Handoffs and sub-cascades configuration using FlowBuilder
  */
-function FlowDrawer({ phase, index }) {
-  const { updatePhase, cascade } = useWorkshopStore();
+function FlowDrawer({ cell, index }) {
+  const { updateCell, cascade } = useWorkshopStore();
 
-  // Get all phase names for handoff selection
-  const allPhases = (cascade.cells || []).map(p => p.name);
+  // Get all cell names for handoff selection
+  const allCells = (cascade.cells || []).map(p => p.name);
 
   const handleFlowChange = (updates) => {
-    // Merge flow-related updates into the phase
-    const phaseUpdates = {};
+    // Merge flow-related updates into the cell
+    const cellUpdates = {};
     if ('handoffs' in updates) {
-      phaseUpdates.handoffs = updates.handoffs;
+      cellUpdates.handoffs = updates.handoffs;
     }
     if ('sub_cascades' in updates) {
-      phaseUpdates.sub_cascades = updates.sub_cascades;
+      cellUpdates.sub_cascades = updates.sub_cascades;
     }
     if ('async_cascades' in updates) {
-      phaseUpdates.async_cascades = updates.async_cascades;
+      cellUpdates.async_cascades = updates.async_cascades;
     }
-    updatePhase(index, phaseUpdates);
+    updateCell(index, cellUpdates);
   };
 
   return (
     <div className="drawer-content flow-drawer">
       <FlowBuilder
         value={{
-          handoffs: phase.handoffs,
-          sub_cascades: phase.sub_cascades,
-          async_cascades: phase.async_cascades,
+          handoffs: cell.handoffs,
+          sub_cascades: cell.sub_cascades,
+          async_cascades: cell.async_cascades,
         }}
         onChange={handleFlowChange}
-        allPhases={allPhases}
-        currentPhaseName={phase.name}
+        allCells={allCells}
+        currentCellName={cell.name}
         availableCascades={[]} // Could be populated from API
       />
     </div>
@@ -839,22 +839,22 @@ function FlowDrawer({ phase, index }) {
 /**
  * ValidationDrawer - Wards configuration (pre/post/turn validation)
  */
-function ValidationDrawer({ phase, index }) {
-  const { updatePhaseField, cascade } = useWorkshopStore();
+function ValidationDrawer({ cell, index }) {
+  const { updateCellField, cascade } = useWorkshopStore();
 
-  const wards = phase.wards || {};
+  const wards = cell.wards || {};
 
   // Get list of validators from cascade
   const validatorNames = Object.keys(cascade.validators || {});
 
   const handleAddWard = (wardType) => {
     const existing = wards[wardType] || [];
-    updatePhaseField(index, `wards.${wardType}`, [...existing, { validator: '', mode: 'blocking' }]);
+    updateCellField(index, `wards.${wardType}`, [...existing, { validator: '', mode: 'blocking' }]);
   };
 
   const handleRemoveWard = (wardType, wardIndex) => {
     const existing = wards[wardType] || [];
-    updatePhaseField(index, `wards.${wardType}`, existing.filter((_, i) => i !== wardIndex));
+    updateCellField(index, `wards.${wardType}`, existing.filter((_, i) => i !== wardIndex));
   };
 
   const renderWardSection = (wardType, label, description) => {
@@ -874,7 +874,7 @@ function ValidationDrawer({ phase, index }) {
               onChange={(e) => {
                 const newWards = [...wardList];
                 newWards[wardIndex] = { ...ward, validator: e.target.value };
-                updatePhaseField(index, `wards.${wardType}`, newWards);
+                updateCellField(index, `wards.${wardType}`, newWards);
               }}
               className="ward-validator"
             >
@@ -897,7 +897,7 @@ function ValidationDrawer({ phase, index }) {
                   onClick={() => {
                     const newWards = [...wardList];
                     newWards[wardIndex] = { ...ward, mode: value };
-                    updatePhaseField(index, `wards.${wardType}`, newWards);
+                    updateCellField(index, `wards.${wardType}`, newWards);
                   }}
                   title={label}
                 >
@@ -935,7 +935,7 @@ function ValidationDrawer({ phase, index }) {
         <Icon icon="mdi:information-outline" width="14" />
         <p>
           <strong>Wards</strong> are validation checkpoints.
-          <strong>Pre</strong> runs before the phase, <strong>post</strong> after completion, <strong>turn</strong> after each LLM response.
+          <strong>Pre</strong> runs before the cell, <strong>post</strong> after completion, <strong>turn</strong> after each LLM response.
           Modes: <code>blocking</code> (halt), <code>retry</code> (try again), <code>advisory</code> (warn only).
         </p>
       </div>
@@ -947,8 +947,8 @@ function ValidationDrawer({ phase, index }) {
         </div>
       )}
 
-      {renderWardSection('pre', 'Pre-execution', 'Run before the phase starts')}
-      {renderWardSection('post', 'Post-execution', 'Run after phase completes')}
+      {renderWardSection('pre', 'Pre-execution', 'Run before the cell starts')}
+      {renderWardSection('post', 'Post-execution', 'Run after cell completes')}
       {renderWardSection('turn', 'Per-turn', 'Run after each LLM turn')}
     </div>
   );
@@ -957,28 +957,28 @@ function ValidationDrawer({ phase, index }) {
 /**
  * ContextDrawer - Selective context configuration using ContextBuilder
  */
-function ContextDrawer({ phase, index }) {
-  const { updatePhase, cascade } = useWorkshopStore();
+function ContextDrawer({ cell, index }) {
+  const { updateCell, cascade } = useWorkshopStore();
 
-  // Get list of other phase names (for the builder to show available sources)
-  const otherPhases = (cascade.cells || [])
+  // Get list of other cell names (for the builder to show available sources)
+  const otherCells = (cascade.cells || [])
     .map((p) => p.name)
-    .filter((name) => name !== phase.name);
+    .filter((name) => name !== cell.name);
 
   const handleContextChange = (newContext) => {
-    updatePhase(index, { context: newContext });
+    updateCell(index, { context: newContext });
   };
 
   return (
     <div className="drawer-content context-drawer">
       <ContextBuilder
-        value={phase.context}
+        value={cell.context}
         onChange={handleContextChange}
-        otherPhases={otherPhases}
-        phaseName={phase.name}
+        otherCells={otherCells}
+        cellName={cell.name}
       />
     </div>
   );
 }
 
-export default PhaseBlock;
+export default CellBlock;

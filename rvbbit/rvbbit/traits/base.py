@@ -6,13 +6,13 @@ from ..logs import log_message
 def create_eddy(config: Dict[str, Any], tools: Dict[str, Callable]) -> Callable:
     """
     Creates a smart tool (Eddy) from a config.
-    The config defines a mini-loop/phases for the tool execution.
+    The config defines a mini-loop/cells for the tool execution.
     """
     # This is a simplified version. A full Eddy might need a mini-runner.
     # For now, let's assume an Eddy is a function that tries to achieve a goal
     # using a list of sub-tools (traits) and retry logic.
     
-    # Note: To fully implement the prompt's "phases" within an Eddy, 
+    # Note: To fully implement the prompt's "cells" within an Eddy, 
     # we effectively need a mini-Cascade runner. 
     # For simplicity/efficiency, we'll implement a retry-loop wrapper here.
     
@@ -31,9 +31,9 @@ def create_eddy(config: Dict[str, Any], tools: Dict[str, Callable]) -> Callable:
         # If 'traits' is a list of names, we might need to know which one to call 
         # or if this Eddy *is* the composition.
         # Let's assume this wrapper wraps a single primary function for now, 
-        # or executes the defined phases if we pass the runner context.
+        # or executes the defined cells if we pass the runner context.
         
-        # TO DO: Full implementation of declarative Eddy phases.
+        # TO DO: Full implementation of declarative Eddy cells.
         # For this prototype, we will implement a simple retry wrapper.
         pass 
         

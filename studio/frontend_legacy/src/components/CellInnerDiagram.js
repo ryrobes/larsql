@@ -1,7 +1,7 @@
 /**
- * PhaseInnerDiagram - Visualize inner phase complexity
+ * CellInnerDiagram - Visualize inner cell complexity
  *
- * Shows the internal structure of a phase:
+ * Shows the internal structure of a cell:
  * - Soundings: Parallel attempts → Evaluator → Winner
  * - Reforge: Sequential refinement iterations
  * - Wards: Pre/Post validation checkpoints
@@ -16,12 +16,12 @@ import { Icon } from '@iconify/react';
 import './CellInnerDiagram.css';
 
 /**
- * Extract inner complexity config from phase spec
+ * Extract inner complexity config from cell spec
  */
-function extractPhaseComplexity(phase) {
-  const soundings = phase.candidates || {};
+function extractCellComplexity(cell) {
+  const soundings = cell.candidates || {};
   const reforge = soundings.reforge || {};
-  const wards = phase.wards || {};
+  const wards = cell.wards || {};
 
   return {
     // Soundings
@@ -279,10 +279,10 @@ function WardsVisual({ preWards, postWards, executionData, isGhost }) {
 }
 
 /**
- * Main PhaseInnerDiagram component
+ * Main CellInnerDiagram component
  */
-function PhaseInnerDiagram({ phase, executionData, expanded = false }) {
-  const complexity = extractPhaseComplexity(phase);
+function CellInnerDiagram({ cell, executionData, expanded = false }) {
+  const complexity = extractCellComplexity(cell);
   const isGhost = !executionData;
 
   // Don't render if no inner complexity
@@ -293,7 +293,7 @@ function PhaseInnerDiagram({ phase, executionData, expanded = false }) {
   // Collapsed view - just show complexity summary
   if (!expanded) {
     return (
-      <div className="phase-inner-collapsed">
+      <div className="cell-inner-collapsed">
         {complexity.hasSoundings && (
           <span className="complexity-chip soundings">
             <Icon icon="mdi:source-branch" width="12" />
@@ -313,7 +313,7 @@ function PhaseInnerDiagram({ phase, executionData, expanded = false }) {
 
   // Expanded view - full diagram
   return (
-    <div className={`phase-inner-diagram ${isGhost ? 'ghost' : 'executed'}`}>
+    <div className={`cell-inner-diagram ${isGhost ? 'ghost' : 'executed'}`}>
       {/* Pre-wards */}
       {complexity.preWards.length > 0 && (
         <WardsVisual
@@ -360,5 +360,5 @@ function PhaseInnerDiagram({ phase, executionData, expanded = false }) {
   );
 }
 
-export default PhaseInnerDiagram;
-export { extractPhaseComplexity };
+export default CellInnerDiagram;
+export { extractCellComplexity };

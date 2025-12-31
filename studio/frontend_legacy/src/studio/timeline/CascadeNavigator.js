@@ -994,7 +994,7 @@ function CascadeNavigator() {
               />
             </Tooltip>
 
-            <Tooltip label={inputValidationError || "Run all phases"}>
+            <Tooltip label={inputValidationError || "Run all cells"}>
               <Button
                 variant="primary"
                 size="sm"
@@ -1109,7 +1109,7 @@ function CascadeNavigator() {
           {/* Quick Access Primitives - Headerless, Always Visible */}
           <div className="nav-quick-access">
             <div className="nav-quick-access-pills">
-              <CellTypePill type="llm_phase" icon="mdi:brain" label="LLM" color="#a78bfa" />
+              <CellTypePill type="llm_cell" icon="mdi:brain" label="LLM" color="#a78bfa" />
               <CellTypePill type="image_gen" icon="mdi:image-auto" label="Image" color="#ff006e" />
               <InputPill />
               <CellTypePill type="python_data" icon="mdi:language-python" label="Python" color="#fbbf24" />

@@ -132,7 +132,7 @@ function ContextMatrixView({
             hash: h,
             role: hashRoles[h] || 'default',
             msgRole: msg.role,
-            phase: msg.cell_name
+            cell: msg.cell_name
           });
         }
       });
@@ -149,7 +149,7 @@ function ContextMatrixView({
       const msgIndex = sourceMsg?._index !== undefined ? sourceMsg._index : data.all_messages.indexOf(sourceMsg);
       hashInfo[h] = {
         role: sourceMsg?.role || 'unknown',
-        phase: sourceMsg?.cell_name || 'unknown',
+        cell: sourceMsg?.cell_name || 'unknown',
         index: msgIndex,
         estimated_tokens: tokens,
         preview: typeof sourceMsg?.content === 'string'
@@ -583,7 +583,7 @@ function ContextMatrixView({
             </div>
             <div className="tooltip-row">
               <span className="tooltip-label">Source:</span>
-              <span>{hoveredCell.hashInfo?.role} @ {hoveredCell.hashInfo?.phase}</span>
+              <span>{hoveredCell.hashInfo?.role} @ {hoveredCell.hashInfo?.cell}</span>
             </div>
             {hoveredCell.hashInfo?.estimated_tokens > 0 && (
               <div className="tooltip-row tooltip-tokens">

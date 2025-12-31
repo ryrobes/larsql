@@ -39,7 +39,7 @@ def example_agent_call_integration():
         "role": response.get("role", "assistant"),
         "content": response.get("content", ""),
     }
-    echo.add_history(msg_dict, trace_id=turn_trace.id, parent_id=phase_trace.id)
+    echo.add_history(msg_dict, trace_id=turn_trace.id, parent_id=cell_trace.id)
 
 
     # AFTER (with echo logging):
@@ -63,18 +63,18 @@ def example_agent_call_integration():
     request_id = response.get("id")
 
     # 4. Existing logging (keep as-is)
-    echo.add_history(msg_dict, trace_id=turn_trace.id, parent_id=phase_trace.id, node_type="agent")
-    log_message(session_id, "agent", msg_dict["content"], {}, turn_trace.id, phase_trace.id, "agent")
+    echo.add_history(msg_dict, trace_id=turn_trace.id, parent_id=cell_trace.id, node_type="agent")
+    log_message(session_id, "agent", msg_dict["content"], {}, turn_trace.id, cell_trace.id, "agent")
 
     # 5. NEW: Comprehensive echo logging
     log_echo(
         session_id=session_id,
         trace_id=turn_trace.id,
-        parent_id=phase_trace.id,
+        parent_id=cell_trace.id,
         node_type="agent",
         role="assistant",
         depth=depth,
-        cell_name=phase.name,
+        cell_name=cell.name,
         cascade_id=cascade_config.cascade_id,
         cascade_file=config_path if isinstance(config_path, str) else None,
         duration_ms=timer.get_duration_ms(),
@@ -144,7 +144,7 @@ def example_tool_execution_integration():
         node_type="tool_result",
         role="tool",
         depth=depth,
-        cell_name=phase.name,
+        cell_name=cell.name,
         cascade_id=cascade_config.cascade_id,
         duration_ms=timer.get_duration_ms(),
         content=result,  # Full result (dict/str/etc - not stringified!)
@@ -178,7 +178,7 @@ def example_image_injection_integration():
             {"type": "image_url", "image_url": {"url": img_data_url}}
         ]
     }
-    echo.add_history(injection_msg, trace_id=injection_trace.id, parent_id=phase_trace.id, node_type="injection")
+    echo.add_history(injection_msg, trace_id=injection_trace.id, parent_id=cell_trace.id, node_type="injection")
 
 
     # AFTER (with echo logging):
@@ -196,17 +196,17 @@ def example_image_injection_integration():
     }
 
     # 3. Existing logging (keep as-is)
-    echo.add_history(injection_msg, trace_id=injection_trace.id, parent_id=phase_trace.id, node_type="injection")
+    echo.add_history(injection_msg, trace_id=injection_trace.id, parent_id=cell_trace.id, node_type="injection")
 
     # 4. NEW: Comprehensive echo logging
     log_echo(
         session_id=session_id,
         trace_id=injection_trace.id,
-        parent_id=phase_trace.id,
+        parent_id=cell_trace.id,
         node_type="image_injection",
         role="user",
         depth=depth,
-        cell_name=phase.name,
+        cell_name=cell.name,
         content=injection_msg["content"],  # Full multi-modal content
         has_base64=detect_base64_in_content(injection_msg["content"]),  # Auto-detect base64
         images=[image_path] if isinstance(image_path, str) else image_path,  # Link to original
@@ -221,14 +221,14 @@ def example_soundings_integration():
     """
     Shows how to log soundings with index tracking.
 
-    Location in runner.py: Around line 885 (phase soundings)
+    Location in runner.py: Around line 885 (cell soundings)
     """
 
     # BEFORE (existing code):
     # ----------------------
     for i in range(factor):
         # Run candidate attempt
-        output = self._run_phase_logic(...)
+        output = self._run_cell_logic(...)
 
         log_message(session_id, "sounding_complete", f"Sounding {i+1} completed",
                    {"attempt": i}, sounding_trace.id, soundings_trace.id, "candidate",
@@ -241,7 +241,7 @@ def example_soundings_integration():
     for i in range(factor):
         # Run candidate attempt with timing
         with TimingContext() as timer:
-            output = self._run_phase_logic(...)
+            output = self._run_cell_logic(...)
 
         # Existing logging (keep as-is)
         log_message(session_id, "sounding_complete", f"Sounding {i+1} completed",
@@ -258,7 +258,7 @@ def example_soundings_integration():
             depth=depth,
             candidate_index=i,  # Track which attempt
             is_winner=False,   # Updated later when winner selected
-            cell_name=phase.name,
+            cell_name=cell.name,
             cascade_id=cascade_config.cascade_id,
             duration_ms=timer.get_duration_ms(),
             content=output,  # Full candidate output
@@ -282,74 +282,74 @@ def example_soundings_integration():
 
 
 # ============================================================================
-# EXAMPLE 5: Phase Lifecycle Events
+# EXAMPLE 5: Cell Lifecycle Events
 # ============================================================================
 
-def example_phase_lifecycle_integration():
+def example_cell_lifecycle_integration():
     """
-    Shows how to log phase start/end events.
+    Shows how to log cell start/end events.
 
-    Location in runner.py: Around line 1470 (phase start), end of phase execution
+    Location in runner.py: Around line 1470 (cell start), end of cell execution
     """
 
     # BEFORE (existing code):
     # ----------------------
-    log_message(session_id, "system", f"Phase {phase.name} starting", {},
-               phase_trace.id, cascade_trace.id, "phase", depth)
+    log_message(session_id, "system", f"Cell {cell.name} starting", {},
+               cell_trace.id, cascade_trace.id, "cell", depth)
 
-    # ... phase execution ...
+    # ... cell execution ...
 
-    log_message(session_id, "system", f"Phase {phase.name} complete", {},
-               phase_trace.id, cascade_trace.id, "phase", depth)
+    log_message(session_id, "system", f"Cell {cell.name} complete", {},
+               cell_trace.id, cascade_trace.id, "cell", depth)
 
 
     # AFTER (with echo logging):
     # -------------------------
 
-    # Phase start
-    phase_start_time = time.time()
+    # Cell start
+    cell_start_time = time.time()
 
-    log_message(session_id, "system", f"Phase {phase.name} starting", {},
-               phase_trace.id, cascade_trace.id, "phase", depth)
+    log_message(session_id, "system", f"Cell {cell.name} starting", {},
+               cell_trace.id, cascade_trace.id, "cell", depth)
 
-    # NEW: Echo logging for phase start
+    # NEW: Echo logging for cell start
     log_echo(
         session_id=session_id,
-        trace_id=phase_trace.id,
+        trace_id=cell_trace.id,
         parent_id=cascade_trace.id,
-        node_type="phase_start",
+        node_type="cell_start",
         role="system",
         depth=depth,
-        cell_name=phase.name,
+        cell_name=cell.name,
         cascade_id=cascade_config.cascade_id,
-        content=f"Starting phase: {phase.name}",
+        content=f"Starting cell: {cell.name}",
         metadata={
             "instructions": rendered_instruction,
-            "traits": phase.traits,
-            "max_turns": phase.rules.max_turns if phase.rules else None,
+            "traits": cell.traits,
+            "max_turns": cell.rules.max_turns if cell.rules else None,
         }
     )
 
-    # ... phase execution ...
+    # ... cell execution ...
 
-    # Phase end
-    phase_duration_ms = (time.time() - phase_start_time) * 1000
+    # Cell end
+    cell_duration_ms = (time.time() - cell_start_time) * 1000
 
-    log_message(session_id, "system", f"Phase {phase.name} complete", {},
-               phase_trace.id, cascade_trace.id, "phase", depth)
+    log_message(session_id, "system", f"Cell {cell.name} complete", {},
+               cell_trace.id, cascade_trace.id, "cell", depth)
 
-    # NEW: Echo logging for phase complete
+    # NEW: Echo logging for cell complete
     log_echo(
         session_id=session_id,
-        trace_id=phase_trace.id,
+        trace_id=cell_trace.id,
         parent_id=cascade_trace.id,
-        node_type="phase_complete",
+        node_type="cell_complete",
         role="system",
         depth=depth,
-        cell_name=phase.name,
+        cell_name=cell.name,
         cascade_id=cascade_config.cascade_id,
-        duration_ms=phase_duration_ms,  # Total phase duration
-        content=final_output,  # Phase output
+        duration_ms=cell_duration_ms,  # Total cell duration
+        content=final_output,  # Cell output
         metadata={
             "total_turns": total_turns,
             "handoff_target": handoff_target if handoff else None,

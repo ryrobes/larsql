@@ -1,29 +1,29 @@
-/* PhasesRail - Sortable Phase List */
+/* CellsRail - Sortable Cell List */
 
-.phases-rail {
+.cells-rail {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.phases-list {
+.cells-list {
   display: flex;
   flex-direction: column;
   position: relative;
 }
 
 /* ============================================
-   PHASE WRAPPER & CONNECTORS
+   CELL WRAPPER & CONNECTORS
    ============================================ */
 
-.phase-wrapper {
+.cell-wrapper {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   position: relative;
 }
 
-.phase-connector {
+.cell-connector {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -46,10 +46,10 @@
 }
 
 /* ============================================
-   ADD PHASE BUTTON
+   ADD CELL BUTTON
    ============================================ */
 
-.add-phase-btn {
+.add-cell-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -65,13 +65,13 @@
   transition: all 0.15s ease;
 }
 
-.add-phase-btn:hover {
+.add-cell-btn:hover {
   background: rgba(74, 158, 221, 0.1);
   border-color: var(--ocean-primary);
   color: var(--ocean-primary);
 }
 
-.add-phase-btn:active {
+.add-cell-btn:active {
   transform: scale(0.98);
 }
 
@@ -79,7 +79,7 @@
    EMPTY STATE
    ============================================ */
 
-.phases-empty {
+.cells-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -89,12 +89,12 @@
   color: var(--mist-gray);
 }
 
-.phases-empty p {
+.cells-empty p {
   margin: 8px 0 0 0;
   font-size: 16px;
 }
 
-.phases-empty .empty-hint {
+.cells-empty .empty-hint {
   font-size: 13px;
   opacity: 0.7;
 }
@@ -103,7 +103,7 @@
    DROP ZONE STATES
    ============================================ */
 
-.phases-list.drop-active {
+.cells-list.drop-active {
   border: 2px dashed var(--ocean-primary);
   border-radius: 12px;
   background: rgba(74, 158, 221, 0.05);

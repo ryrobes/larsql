@@ -25,9 +25,9 @@ def main():
     result = run_cascade(config_path, {{}}, session_id="hitl_session")
     
     print("\nFinal Assessment:")
-    # Find the output of the assessment phase
+    # Find the output of the assessment cell
     for item in result["lineage"]:
-        if item["phase"] == "assessment":
+        if item["cell"] == "assessment":
             print(item["output"])
 
 if __name__ == "__main__":

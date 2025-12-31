@@ -369,7 +369,7 @@ class MemorySystem:
             if len(content) > 300:
                 content = content[:300] + "..."
 
-            excerpts.append(f"[{role} in {phase}]: {content}")
+            excerpts.append(f"[{role} in {cell}]: {content}")
 
         excerpts_str = "\n\n".join(excerpts)
 

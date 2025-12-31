@@ -81,7 +81,7 @@ def test_cascade_with_triggers():
     config = CascadeConfig(
         cascade_id="test_cascade",
         cells=[
-            CellConfig(name="phase1", instructions="Do something")
+            CellConfig(name="cell1", instructions="Do something")
         ],
         triggers=[
             CronTrigger(name="daily", schedule="0 6 * * *"),

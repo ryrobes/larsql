@@ -388,7 +388,7 @@ def create_artifact_endpoint():
     {
         "session_id": "session_123",
         "cascade_id": "my_cascade",
-        "cell_name": "decision_phase",
+        "cell_name": "decision_cell",
         "title": "Market Analysis Decision",
         "artifact_type": "decision",
         "description": "User decision on market strategy",
@@ -661,7 +661,7 @@ def _generate_index_html(artifacts):
                     <h3 class="artifact-title">{title}</h3>
                     <p class="artifact-description">{description}</p>
                     <div class="artifact-meta">
-                        <span class="phase-name">{cell_name}</span>
+                        <span class="cell-name">{cell_name}</span>
                     </div>
                 </a>
             '''
@@ -809,13 +809,13 @@ def _generate_index_html(artifacts):
             color: var(--text-secondary);
         }}
 
-        .phase-name {{
+        .cell-name {{
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
         }}
 
-        .phase-name::before {{
+        .cell-name::before {{
             content: "⬡";
             font-size: 0.7rem;
         }}

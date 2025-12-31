@@ -1,13 +1,13 @@
-/* Phase Species Badges - Compact per-phase training info */
+/* Cell Species Badges - Compact per-cell training info */
 
-.phase-species-badges {
+.cell-species-badges {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   flex-wrap: wrap;
 }
 
-.phase-species-badge {
+.cell-species-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -23,35 +23,35 @@
   user-select: none;
 }
 
-.phase-species-badge:hover {
+.cell-species-badge:hover {
   background: rgba(102, 126, 234, 0.2);
   border-color: rgba(102, 126, 234, 0.4);
   transform: translateY(-1px);
 }
 
-.phase-species-badge.clickable {
+.cell-species-badge.clickable {
   cursor: pointer;
 }
 
-.phase-species-badge.clickable:hover {
+.cell-species-badge.clickable:hover {
   background: rgba(102, 126, 234, 0.25);
   border-color: rgba(102, 126, 234, 0.5);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-.phase-species-badge.clickable:active {
+.cell-species-badge.clickable:active {
   transform: translateY(-1px);
 }
 
 /* New species (Gen 1/1) - different color to show species break */
-.phase-species-badge.new-species {
+.cell-species-badge.new-species {
   background: rgba(251, 146, 60, 0.12);
   border-color: rgba(251, 146, 60, 0.25);
   color: #fb923c;
 }
 
-.phase-species-badge.new-species:hover {
+.cell-species-badge.new-species:hover {
   background: rgba(251, 146, 60, 0.2);
   border-color: rgba(251, 146, 60, 0.4);
 }
@@ -61,7 +61,7 @@
   flex-shrink: 0;
 }
 
-.phase-name {
+.cell-name {
   font-weight: 500;
   letter-spacing: 0.02em;
   max-width: 120px;
@@ -83,9 +83,9 @@
   color: #fbbf24;
 }
 
-/* Responsive - hide phase name on small screens */
+/* Responsive - hide cell name on small screens */
 @media (max-width: 1024px) {
-  .phase-name {
+  .cell-name {
     max-width: 80px;
   }
 }

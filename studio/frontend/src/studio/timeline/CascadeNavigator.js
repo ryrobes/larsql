@@ -11,7 +11,7 @@ import ToolBrowserPalette from './ToolBrowserPalette';
 import VariablePalette from './VariablePalette';
 import RecentRunsSection from './RecentRunsSection';
 import SessionStatePanel from './SessionStatePanel';
-import MonacoYamlEditor from '../../workshop/editor/MonacoYamlEditor';
+import MonacoYamlEditor from '../components/MonacoYamlEditor';
 import { Tooltip } from '../../components/RichTooltip';
 import { Button, useToast } from '../../components';
 import CheckpointModal from '../../components/CheckpointModal';
@@ -696,7 +696,8 @@ function CellTypesSection() {
   }, [isExpanded]);
 
   // Load cell types from store (declarative from YAML files)
-  const cellTypesFromStore = useStudioCascadeStore(state => state.cellTypes);
+  const cellTypesRaw = useStudioCascadeStore(state => state.cellTypes);
+  const cellTypesFromStore = Array.isArray(cellTypesRaw) ? cellTypesRaw : [];
 
   const cellTypes = cellTypesFromStore.map(pt => ({
     type: pt.type_id,
@@ -1253,7 +1254,7 @@ function CascadeNavigator() {
                 </Button>
               </Tooltip>
             ) : (
-              <Tooltip label={inputValidationError || "Run all phases"}>
+              <Tooltip label={inputValidationError || "Run all cells"}>
                 <Button
                   variant="primary"
                   size="sm"
@@ -1384,7 +1385,7 @@ function CascadeNavigator() {
           {/* Quick Access Primitives - Headerless, Always Visible */}
           <div className="nav-quick-access">
             <div className="nav-quick-access-pills">
-              <CellTypePill type="llm_phase" icon="mdi:brain" label="LLM" color="#a78bfa" />
+              <CellTypePill type="llm_cell" icon="mdi:brain" label="LLM" color="#a78bfa" />
               <CellTypePill type="bodybuilder" icon="mdi:dumbbell" label="Bodybuilder" color="#ff6b35" />
               <CellTypePill type="image_gen" icon="mdi:image-auto" label="Image" color="#ff006e" />
               <InputPill />

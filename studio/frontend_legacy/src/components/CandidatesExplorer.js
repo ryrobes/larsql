@@ -132,15 +132,15 @@ function PromptViewer({ prompt, mutationType, mutationApplied, mutationTemplate 
 /**
  * SoundingsExplorer Modal
  *
- * Full-screen visualization of all soundings across all phases in a cascade execution.
+ * Full-screen visualization of all soundings across all cells in a cascade execution.
  * Shows decision tree, winner path, eval reasoning, and drill-down into individual attempts.
  */
 function SoundingsExplorer({ sessionId, onClose }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [expandedAttempt, setExpandedAttempt] = useState(null); // {phaseIdx, soundingIdx}
-  const [reforgeExpanded, setReforgeExpanded] = useState({}); // {phaseIdx: boolean}
-  const [expandedRefinement, setExpandedRefinement] = useState(null); // {phaseIdx, stepIdx, refIdx}
+  const [expandedAttempt, setExpandedAttempt] = useState(null); // {cellIdx, soundingIdx}
+  const [reforgeExpanded, setReforgeExpanded] = useState({}); // {cellIdx: boolean}
+  const [expandedRefinement, setExpandedRefinement] = useState(null); // {cellIdx, stepIdx, refIdx}
   const [paretoData, setParetoData] = useState(null); // Pareto frontier data for multi-model soundings
   const [paretoExpanded, setParetoExpanded] = useState(true); // Pareto section expanded by default
   const [modelFilters, setModelFilters] = useState([]); // Model filter events
@@ -155,9 +155,9 @@ function SoundingsExplorer({ sessionId, onClose }) {
   // Poll for updates while the modal is open
   // This ensures is_winner highlighting appears in real-time without manual refresh
   useEffect(() => {
-    // Check if any phase has a winner - if not, keep polling
-    const hasAnyWinner = data?.phases?.some(phase =>
-      phase.candidates?.some(s => s.is_winner)
+    // Check if any cell has a winner - if not, keep polling
+    const hasAnyWinner = data?.cells?.some(cell =>
+      cell.candidates?.some(s => s.is_winner)
     );
 
     // Poll while no winner is determined yet (cascade still running)
@@ -175,7 +175,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
     try {
       if (!silent) setLoading(true);
       // TODO: Add backend endpoint /api/soundings-tree/<session_id>
-      // Returns: { phases: [{name, soundings: [{index, cost, turns, is_winner, messages, eval}]}], winner_path: [...] }
+      // Returns: { cells: [{name, soundings: [{index, cost, turns, is_winner, messages, eval}]}], winner_path: [...] }
       const response = await fetch(`http://localhost:5050/api/soundings-tree/${sessionId}`);
       const result = await response.json();
       setData(result);
@@ -237,30 +237,30 @@ function SoundingsExplorer({ sessionId, onClose }) {
     }
   };
 
-  const handleAttemptClick = (phaseIdx, soundingIdx) => {
+  const handleAttemptClick = (cellIdx, soundingIdx) => {
     // Toggle expansion
-    if (expandedAttempt?.phaseIdx === phaseIdx && expandedAttempt?.soundingIdx === soundingIdx) {
+    if (expandedAttempt?.cellIdx === cellIdx && expandedAttempt?.soundingIdx === soundingIdx) {
       setExpandedAttempt(null);
     } else {
-      setExpandedAttempt({ phaseIdx, soundingIdx });
+      setExpandedAttempt({ cellIdx, soundingIdx });
     }
   };
 
-  const toggleReforgeExpanded = (phaseIdx) => {
+  const toggleReforgeExpanded = (cellIdx) => {
     setReforgeExpanded(prev => ({
       ...prev,
-      [phaseIdx]: !prev[phaseIdx]
+      [cellIdx]: !prev[cellIdx]
     }));
   };
 
-  const handleRefinementClick = (phaseIdx, stepIdx, refIdx) => {
+  const handleRefinementClick = (cellIdx, stepIdx, refIdx) => {
     // Toggle expansion
-    if (expandedRefinement?.phaseIdx === phaseIdx &&
+    if (expandedRefinement?.cellIdx === cellIdx &&
         expandedRefinement?.stepIdx === stepIdx &&
         expandedRefinement?.refIdx === refIdx) {
       setExpandedRefinement(null);
     } else {
-      setExpandedRefinement({ phaseIdx, stepIdx, refIdx });
+      setExpandedRefinement({ cellIdx, stepIdx, refIdx });
     }
   };
 
@@ -325,47 +325,47 @@ function SoundingsExplorer({ sessionId, onClose }) {
           </div>
         </div>
 
-        {/* Phase Timeline */}
-        <div className="phase-timeline">
-          {data.cells.map((phase, phaseIdx) => {
-            if (!phase.candidates || phase.candidates.length <= 1) {
-              return null; // Skip phases without soundings
+        {/* Cell Timeline */}
+        <div className="cell-timeline">
+          {data.cells.map((cell, cellIdx) => {
+            if (!cell.candidates || cell.candidates.length <= 1) {
+              return null; // Skip cells without soundings
             }
 
-            const maxCost = Math.max(...phase.candidates.map(s => s.cost || 0), 0.001);
+            const maxCost = Math.max(...cell.candidates.map(s => s.cost || 0), 0.001);
 
-            // Check if this phase has Pareto data
-            const phaseHasPareto = paretoData &&
+            // Check if this cell has Pareto data
+            const cellHasPareto = paretoData &&
                                    paretoData.has_pareto &&
-                                   paretoData.cell_name === phase.name;
+                                   paretoData.cell_name === cell.name;
 
             return (
-              <div key={phaseIdx} className="phase-section">
-                <div className="phase-header">
-                  <h3>Phase {phaseIdx + 1}: {phase.name}</h3>
-                  <div className="phase-header-right">
-                    {phaseHasPareto && (
+              <div key={cellIdx} className="cell-section">
+                <div className="cell-header">
+                  <h3>Cell {cellIdx + 1}: {cell.name}</h3>
+                  <div className="cell-header-right">
+                    {cellHasPareto && (
                       <span className="pareto-indicator" title="Multi-model Pareto analysis available">
                         <Icon icon="mdi:chart-scatter-plot" width="14" />
                         Pareto
                       </span>
                     )}
-                    <span className="phase-meta">
-                      {phase.candidates.length} soundings
+                    <span className="cell-meta">
+                      {cell.candidates.length} soundings
                     </span>
                   </div>
                 </div>
 
-                {/* Model Filter Banner - show if models were filtered for this phase */}
+                {/* Model Filter Banner - show if models were filtered for this cell */}
                 {modelFilters && modelFilters.length > 0 && (
                   (() => {
-                    const phaseFilter = modelFilters.find(f => f.cell_name === phase.name);
-                    return phaseFilter ? <ModelFilterBanner filterData={phaseFilter} /> : null;
+                    const cellFilter = modelFilters.find(f => f.cell_name === cell.name);
+                    return cellFilter ? <ModelFilterBanner filterData={cellFilter} /> : null;
                   })()
                 )}
 
-                {/* Pareto Frontier Chart - shown inline for phases with multi-model analysis */}
-                {phaseHasPareto && (
+                {/* Pareto Frontier Chart - shown inline for cells with multi-model analysis */}
+                {cellHasPareto && (
                   <div className="pareto-inline-section">
                     <div
                       className="pareto-inline-header"
@@ -388,18 +388,18 @@ function SoundingsExplorer({ sessionId, onClose }) {
 
                 {/* Sounding Attempts - Horizontal Layout */}
                 <div className="soundings-grid">
-                  {phase.candidates.map((sounding, soundingIdx) => {
+                  {cell.candidates.map((sounding, soundingIdx) => {
                     const isWinner = sounding.is_winner;
                     const hasFailed = sounding.failed || false;
                     const costPercent = (sounding.cost / maxCost) * 100;
-                    const isExpanded = expandedAttempt?.phaseIdx === phaseIdx &&
+                    const isExpanded = expandedAttempt?.cellIdx === cellIdx &&
                                        expandedAttempt?.soundingIdx === soundingIdx;
 
                     return (
                       <div
                         key={soundingIdx}
                         className={`sounding-card ${isWinner ? 'winner' : ''} ${hasFailed ? 'failed' : ''} ${isExpanded ? 'expanded' : ''}`}
-                        onClick={() => handleAttemptClick(phaseIdx, soundingIdx)}
+                        onClick={() => handleAttemptClick(cellIdx, soundingIdx)}
                       >
                         {/* Card Header */}
                         <div className="card-header">
@@ -553,37 +553,37 @@ function SoundingsExplorer({ sessionId, onClose }) {
                 </div>
 
                 {/* Evaluator Reasoning */}
-                {phase.eval_reasoning && (
+                {cell.eval_reasoning && (
                   <div className="eval-section">
                     <div className="eval-header">
                       <Icon icon="mdi:gavel" width="18" />
                       <span>Evaluator Reasoning</span>
                     </div>
                     <div className="eval-content">
-                      <RichMarkdown>{phase.eval_reasoning}</RichMarkdown>
+                      <RichMarkdown>{cell.eval_reasoning}</RichMarkdown>
                     </div>
                   </div>
                 )}
 
                 {/* Reforge Section */}
-                {phase.reforge_steps && phase.reforge_steps.length > 0 && (
+                {cell.reforge_steps && cell.reforge_steps.length > 0 && (
                   <div className="reforge-container">
                     <div
                       className="reforge-header"
-                      onClick={() => toggleReforgeExpanded(phaseIdx)}
+                      onClick={() => toggleReforgeExpanded(cellIdx)}
                     >
                       <Icon icon="mdi:hammer-wrench" width="18" />
                       <span>Reforge: Winner Refinement</span>
-                      <span className="step-count">{phase.reforge_steps.length} step{phase.reforge_steps.length > 1 ? 's' : ''}</span>
+                      <span className="step-count">{cell.reforge_steps.length} step{cell.reforge_steps.length > 1 ? 's' : ''}</span>
                       <Icon
-                        icon={reforgeExpanded[phaseIdx] ? "mdi:chevron-up" : "mdi:chevron-down"}
+                        icon={reforgeExpanded[cellIdx] ? "mdi:chevron-up" : "mdi:chevron-down"}
                         width="20"
                       />
                     </div>
 
-                    {reforgeExpanded[phaseIdx] && (
+                    {reforgeExpanded[cellIdx] && (
                       <div className="reforge-steps">
-                        {phase.reforge_steps.map((step, stepIdx) => {
+                        {cell.reforge_steps.map((step, stepIdx) => {
                           const maxCost = Math.max(...step.refinements.map(r => r.cost || 0), 0.001);
 
                           return (
@@ -606,7 +606,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                   const isWinner = refinement.is_winner;
                                   const hasFailed = refinement.failed || false;
                                   const costPercent = (refinement.cost / maxCost) * 100;
-                                  const isExpanded = expandedRefinement?.phaseIdx === phaseIdx &&
+                                  const isExpanded = expandedRefinement?.cellIdx === cellIdx &&
                                                      expandedRefinement?.stepIdx === stepIdx &&
                                                      expandedRefinement?.refIdx === refIdx;
 
@@ -614,7 +614,7 @@ function SoundingsExplorer({ sessionId, onClose }) {
                                     <div
                                       key={refIdx}
                                       className={`refinement-card ${isWinner ? 'winner' : ''} ${hasFailed ? 'failed' : ''} ${isExpanded ? 'expanded' : ''}`}
-                                      onClick={() => handleRefinementClick(phaseIdx, stepIdx, refIdx)}
+                                      onClick={() => handleRefinementClick(cellIdx, stepIdx, refIdx)}
                                     >
                                       {/* Card Header */}
                                       <div className="card-header">

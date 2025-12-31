@@ -373,7 +373,7 @@
   font-family: var(--font-mono);
 }
 
-.session-phase {
+.session-cell {
   font-size: var(--font-size-xs);
   color: var(--color-accent-purple);
   font-family: var(--font-mono);

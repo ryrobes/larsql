@@ -8,7 +8,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
 import ResultRenderer from './results/ResultRenderer';
 import HTMLSection from '../../components/sections/HTMLSection';
 import SessionMessagesLog from '../components/SessionMessagesLog';
-import { detectPhaseEditors } from '../editors';
+import { detectCellEditors } from '../editors';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount} from '../utils/monacoTheme';
 import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../components';
 import useSpecValidation from '../../hooks/useSpecValidation';
@@ -180,7 +180,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Detect custom editors for this cell
-  const customEditors = useMemo(() => detectPhaseEditors(cell), [cell]);
+  const customEditors = useMemo(() => detectCellEditors(cell), [cell]);
   const hasCustomEditors = customEditors.length > 0;
 
   const code = info.source === 'inputs'
@@ -737,7 +737,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
 
     // Tag-based decisions (<decision> in message) have no checkpoint - can't submit
     if (checkpointData.source === 'decision_tag') {
-      console.log('[PhaseDetailPanel] Decision tag detected - no checkpoint to submit to, read-only');
+      console.log('[CellDetailPanel] Decision tag detected - no checkpoint to submit to, read-only');
       return false;
     }
 
@@ -1262,12 +1262,12 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                   <div className="cell-detail-results-tabs">
                     {/* Decision tab - appears FIRST if present (blocking interaction) */}
                     {checkpointData && (() => {
-                      console.log('[PhaseDetailPanel] Rendering Decision tab button');
+                      console.log('[CellDetailPanel] Rendering Decision tab button');
                       return (
                         <button
                           className={`cell-detail-results-tab cell-detail-results-tab-decision ${activeOutputTab === 'decision' ? 'active' : ''}`}
                           onClick={() => {
-                            console.log('[PhaseDetailPanel] Decision tab clicked');
+                            console.log('[CellDetailPanel] Decision tab clicked');
                             setActiveOutputTab('decision');
                           }}
                           title={isLiveDecision ? "Human decision required (LIVE)" : "Decision UI (replay)"}
@@ -1358,7 +1358,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                 </div>
                 <div className="cell-detail-results-content">
                   {activeOutputTab === 'decision' && checkpointData && (() => {
-                    console.log('[PhaseDetailPanel] Rendering decision content:', {
+                    console.log('[CellDetailPanel] Rendering decision content:', {
                       source: checkpointData.source,
                       hasUiSpec: !!checkpointData.uiSpec,
                       sections: checkpointData.uiSpec?.sections?.length,
@@ -1366,7 +1366,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                     });
 
                     const htmlSection = checkpointData.uiSpec?.sections?.find(s => s.type === 'html');
-                    console.log('[PhaseDetailPanel] HTML section:', {
+                    console.log('[CellDetailPanel] HTML section:', {
                       found: !!htmlSection,
                       contentLength: htmlSection?.content?.length
                     });

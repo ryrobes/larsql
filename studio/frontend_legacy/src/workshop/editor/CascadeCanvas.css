@@ -189,16 +189,16 @@
 }
 
 /* ============================================
-   PHASES SECTION
+   CELLS SECTION
    ============================================ */
 
-.phases-section {
+.cells-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.phases-header {
+.cells-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -208,7 +208,7 @@
   color: var(--text-primary);
 }
 
-.phases-count {
+.cells-count {
   margin-left: auto;
   font-size: 12px;
   font-weight: 400;

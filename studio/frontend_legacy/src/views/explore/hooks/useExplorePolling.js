@@ -26,12 +26,12 @@ export default function useExplorePolling(sessionId) {
   const [checkpoint, setCheckpoint] = useState(null);
   const [ghostMessages, setGhostMessages] = useState([]);
   const [orchestrationState, setOrchestrationState] = useState({
-    currentPhase: null,
+    currentCell: null,
     currentModel: null,
     totalCost: 0,
     status: 'idle',
     cascadeId: null,
-    phaseHistory: [],
+    cellHistory: [],
     turnCount: 0
   });
   const [sessionStatus, setSessionStatus] = useState(null);
@@ -70,12 +70,12 @@ export default function useExplorePolling(sessionId) {
     setCheckpoint(null);
     setGhostMessages([]);
     setOrchestrationState({
-      currentPhase: null,
+      currentCell: null,
       currentModel: null,
       totalCost: 0,
       status: 'idle',
       cascadeId: null,
-      phaseHistory: [],
+      cellHistory: [],
       turnCount: 0
     });
     setSessionStatus(null);
@@ -214,7 +214,7 @@ export default function useExplorePolling(sessionId) {
   const updateOrchestrationState = useCallback((allLogs, apiData) => {
     console.log('[updateOrchestrationState] Processing', allLogs.length, 'logs');
 
-    // Find latest log with cell/phase info
+    // Find latest log with cell/cell info
     const latestLog = [...allLogs].reverse().find(log =>
       log.cell_name || log.model
     );
@@ -239,7 +239,7 @@ export default function useExplorePolling(sessionId) {
     }
 
     const newState = {
-      currentPhase: latestLog?.cell_name || null,
+      currentCell: latestLog?.cell_name || null,
       currentModel: latestLog?.model || null,
       totalCost: apiData?.total_cost || 0,
       status: status,

@@ -26,7 +26,7 @@ from datetime import datetime
 # System identifiers for embedding cost tracking
 EMBEDDING_SESSION_ID = "rvbbit_system_embedding"
 EMBEDDING_CASCADE_ID = "system_embedding_worker"
-EMBEDDING_PHASE_NAME = "embed_content"
+EMBEDDING_CELL_NAME = "embed_content"
 
 
 class EmbeddingWorker:
@@ -163,7 +163,7 @@ class EmbeddingWorker:
                   role IN ('assistant', 'user')
                   OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up')
               )
-              AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'phase', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+              AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
             ORDER BY timestamp DESC
             LIMIT {self.batch_size}
         """
@@ -226,7 +226,7 @@ class EmbeddingWorker:
                 session_id=EMBEDDING_SESSION_ID,
                 trace_id=trace_id,
                 cascade_id=EMBEDDING_CASCADE_ID,
-                cell_name=EMBEDDING_PHASE_NAME,
+                cell_name=EMBEDDING_CELL_NAME,
             )
         except Exception as e:
             print(f"[Embedding Worker] Embed API error: {e}")
@@ -309,7 +309,7 @@ def embed_texts_now(
         texts: List of texts to embed
         session_id: Session ID for cost tracking (default: system session)
         cascade_id: Cascade ID for cost tracking (default: system cascade)
-        cell_name: Phase name for cost tracking
+        cell_name: Cell name for cost tracking
 
     Returns:
         Dict with 'embeddings', 'model', 'dim', etc.

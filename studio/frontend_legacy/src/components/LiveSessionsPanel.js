@@ -172,7 +172,7 @@ function LiveSessionsPanel({ onSelectSession, currentSessionId, compact = false 
                       width="8"
                       className={session.has_browser_session ? 'active' : 'idle'}
                     />
-                    {session.phase || 'idle'}
+                    {session.cell || 'idle'}
                   </span>
                 </div>
                 {session.current_url && (

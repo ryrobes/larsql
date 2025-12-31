@@ -16,7 +16,7 @@ def monitor_loop():
             table = Table(title="Active RVBBIT Cascades")
             table.add_column("Session ID", style="cyan")
             table.add_column("Cascade", style="magenta")
-            table.add_column("Phase", style="green")
+            table.add_column("Cell", style="green")
             table.add_column("Status", style="blue")
             table.add_column("Last Update", style="yellow")
 

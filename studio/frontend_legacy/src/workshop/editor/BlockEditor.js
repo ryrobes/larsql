@@ -73,7 +73,7 @@ function DragOverlayContent({ activeData }) {
  * - YamlPanel (collapsible preview)
  */
 function BlockEditor() {
-  const { yamlPanelOpen, addPhase, toggleDrawer } = useWorkshopStore();
+  const { yamlPanelOpen, addCell, toggleDrawer } = useWorkshopStore();
   const [paletteOpen, setPaletteOpen] = useState(true);
   const [activeData, setActiveData] = useState(null);
 
@@ -138,19 +138,19 @@ function BlockEditor() {
         return;
       }
 
-      // Handle PHASE drops
-      if (blockType === 'phase') {
-        if (over.id === 'phases-drop-zone' || over.id.startsWith('phase-')) {
-          addPhase();
+      // Handle CELL drops
+      if (blockType === 'cell') {
+        if (over.id === 'cells-drop-zone' || over.id.startsWith('cell-')) {
+          addCell();
         }
         return;
       }
 
-      // Handle CONFIG block drops (soundings, rules, etc.) - must drop on a specific phase
-      if (over.id.startsWith('phase-')) {
-        const phaseName = over.id.replace('phase-', '');
-        const phases = store.cascade.cells;
-        const cellIndex = phases.findIndex(p => p.name === phaseName);
+      // Handle CONFIG block drops (soundings, rules, etc.) - must drop on a specific cell
+      if (over.id.startsWith('cell-')) {
+        const cellName = over.id.replace('cell-', '');
+        const cells = store.cascade.cells;
+        const cellIndex = cells.findIndex(p => p.name === cellName);
         if (cellIndex >= 0) {
           // Map block types to drawer names
           const drawerMap = {
@@ -176,13 +176,13 @@ function BlockEditor() {
       const store = useWorkshopStore.getState();
       console.log('[DnD] Model drop:', { modelId, overId: over.id });
 
-      if (modelId && over.id.startsWith('phase-')) {
-        const phaseName = over.id.replace('phase-', '');
-        const phases = store.cascade.cells;
-        const cellIndex = phases.findIndex(p => p.name === phaseName);
-        console.log('[DnD] Updating phase:', { phaseName, cellIndex });
+      if (modelId && over.id.startsWith('cell-')) {
+        const cellName = over.id.replace('cell-', '');
+        const cells = store.cascade.cells;
+        const cellIndex = cells.findIndex(p => p.name === cellName);
+        console.log('[DnD] Updating cell:', { cellName, cellIndex });
         if (cellIndex >= 0) {
-          store.updatePhase(cellIndex, { model: modelId });
+          store.updateCell(cellIndex, { model: modelId });
         }
       }
       return;
@@ -194,22 +194,22 @@ function BlockEditor() {
       const store = useWorkshopStore.getState();
       console.log('[DnD] Tool drop:', { toolName, overId: over.id });
 
-      // Find the target phase - can drop on phase or tackle drop zone
+      // Find the target cell - can drop on cell or tackle drop zone
       let cellIndex = -1;
-      if (over.id.startsWith('phase-')) {
-        const phaseName = over.id.replace('phase-', '');
-        cellIndex = store.cascade.cells.findIndex(p => p.name === phaseName);
+      if (over.id.startsWith('cell-')) {
+        const cellName = over.id.replace('cell-', '');
+        cellIndex = store.cascade.cells.findIndex(p => p.name === cellName);
       } else if (over.id.startsWith('tackle-zone-')) {
         cellIndex = parseInt(over.id.replace('tackle-zone-', ''), 10);
       }
 
       if (toolName && cellIndex >= 0) {
-        const phase = store.cascade.cells[cellIndex];
-        const currentTackle = phase.traits || [];
+        const cell = store.cascade.cells[cellIndex];
+        const currentTackle = cell.traits || [];
 
         // Special handling for "manifest" - replaces all other tools
         if (toolName === 'manifest') {
-          store.updatePhase(cellIndex, { tackle: ['manifest'] });
+          store.updateCell(cellIndex, { tackle: ['manifest'] });
         }
         // Special handling for "memory" - prompt for bank name
         else if (toolName === 'memory') {
@@ -226,19 +226,19 @@ function BlockEditor() {
             const sanitizedName = bankName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
             if (!currentTackle.includes(sanitizedName)) {
               if (currentTackle.includes('manifest')) {
-                store.updatePhase(cellIndex, { tackle: [sanitizedName] });
+                store.updateCell(cellIndex, { tackle: [sanitizedName] });
               } else {
-                store.updatePhase(cellIndex, { tackle: [...currentTackle, sanitizedName] });
+                store.updateCell(cellIndex, { tackle: [...currentTackle, sanitizedName] });
               }
             }
           }
         } else {
           // If manifest is already there, replace it with the new tool
           if (currentTackle.includes('manifest')) {
-            store.updatePhase(cellIndex, { tackle: [toolName] });
+            store.updateCell(cellIndex, { tackle: [toolName] });
           } else if (!currentTackle.includes(toolName)) {
             // Add tool if not already present
-            store.updatePhase(cellIndex, { tackle: [...currentTackle, toolName] });
+            store.updateCell(cellIndex, { tackle: [...currentTackle, toolName] });
           }
         }
 
@@ -250,14 +250,14 @@ function BlockEditor() {
       return;
     }
 
-    // Handle phase reordering (sortable items)
-    if (active.id !== over.id && active.id.startsWith('phase-') && over.id.startsWith('phase-')) {
-      const phases = useWorkshopStore.getState().cascade.cells;
-      const oldIndex = phases.findIndex((p) => `phase-${p.name}` === active.id);
-      const newIndex = phases.findIndex((p) => `phase-${p.name}` === over.id);
+    // Handle cell reordering (sortable items)
+    if (active.id !== over.id && active.id.startsWith('cell-') && over.id.startsWith('cell-')) {
+      const cells = useWorkshopStore.getState().cascade.cells;
+      const oldIndex = cells.findIndex((p) => `cell-${p.name}` === active.id);
+      const newIndex = cells.findIndex((p) => `cell-${p.name}` === over.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
-        useWorkshopStore.getState().reorderPhases(oldIndex, newIndex);
+        useWorkshopStore.getState().reorderCells(oldIndex, newIndex);
       }
     }
   };

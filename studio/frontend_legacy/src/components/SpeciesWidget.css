@@ -244,8 +244,8 @@
   text-align: right;
 }
 
-/* Multi-phase Note */
-.multi-phase-note {
+/* Multi-cell Note */
+.multi-cell-note {
   margin-top: 12px;
   padding: 10px 12px;
   background: rgba(59, 130, 246, 0.1);

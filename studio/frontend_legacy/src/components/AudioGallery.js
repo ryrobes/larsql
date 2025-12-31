@@ -5,9 +5,9 @@ import './AudioGallery.css';
 /**
  * AudioGallery - Displays audio players for audio files generated during a cascade session.
  * Uses SSE events for real-time updates. Caches audio for completed sessions.
- * @param {string} phaseName - Optional: filter to only show audio from this phase
+ * @param {string} cellName - Optional: filter to only show audio from this cell
  */
-function AudioGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
+function AudioGallery({ sessionId, isRunning, sessionUpdate, cellName }) {
   const [audioFiles, setAudioFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [cachedForSession, setCachedForSession] = useState(null);
@@ -77,9 +77,9 @@ function AudioGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
     return null;
   }
 
-  // Filter audio by phase if phaseName is provided
-  const filteredAudio = phaseName
-    ? audioFiles.filter(audio => audio.cell_name === phaseName)
+  // Filter audio by cell if cellName is provided
+  const filteredAudio = cellName
+    ? audioFiles.filter(audio => audio.cell_name === cellName)
     : audioFiles;
 
   if (filteredAudio.length === 0 && !loading) {

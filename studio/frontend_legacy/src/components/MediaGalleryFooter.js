@@ -6,10 +6,10 @@ import './MediaGalleryFooter.css';
 
 /**
  * MediaGalleryFooter - Fixed footer showing all media (images, audio, human inputs)
- * from a session with clear phase and sounding attribution.
+ * from a session with clear cell and sounding attribution.
  * Only renders if there is media to show.
  */
-function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
+function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, cells }) {
   const [images, setImages] = useState([]);
   const [audioFiles, setAudioFiles] = useState([]);
   const [humanInputs, setHumanInputs] = useState([]);
@@ -76,25 +76,25 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUpdate]);
 
-  // Build phase index map for colors
+  // Build cell index map for colors
   const cellIndexMap = useMemo(() => {
     const map = {};
-    (phases || []).forEach((phase, idx) => {
-      map[phase.name] = idx;
+    (cells || []).forEach((cell, idx) => {
+      map[cell.name] = idx;
     });
     return map;
-  }, [phases]);
+  }, [cells]);
 
-  // Group images by phase, then by sounding/reforge
+  // Group images by cell, then by sounding/reforge
   const groupedImages = useMemo(() => {
-    const byPhase = {};
+    const byCell = {};
 
     images.forEach(image => {
-      const phaseName = image.cell_name || 'Unknown';
-      if (!byPhase[phaseName]) {
-        byPhase[phaseName] = {
-          phaseName,
-          cellIndex: cellIndexMap[phaseName] ?? -1,
+      const cellName = image.cell_name || 'Unknown';
+      if (!byCell[cellName]) {
+        byCell[cellName] = {
+          cellName,
+          cellIndex: cellIndexMap[cellName] ?? -1,
           soundings: {},
           reforges: [],
           main: [],
@@ -106,32 +106,32 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
       const hasSounding = image.candidate_index !== null && image.candidate_index !== undefined;
 
       if (hasReforge) {
-        byPhase[phaseName].reforges.push(image);
+        byCell[cellName].reforges.push(image);
       } else if (hasSounding) {
         const idx = image.candidate_index;
-        if (!byPhase[phaseName].soundings[idx]) {
-          byPhase[phaseName].soundings[idx] = {
+        if (!byCell[cellName].soundings[idx]) {
+          byCell[cellName].soundings[idx] = {
             index: idx,
             images: [],
             isWinner: false
           };
         }
-        byPhase[phaseName].soundings[idx].images.push(image);
+        byCell[cellName].soundings[idx].images.push(image);
         if (image.sounding_is_winner) {
-          byPhase[phaseName].soundings[idx].isWinner = true;
-          byPhase[phaseName].soundingWinnerIndex = idx;
+          byCell[cellName].soundings[idx].isWinner = true;
+          byCell[cellName].soundingWinnerIndex = idx;
         }
       } else {
-        byPhase[phaseName].main.push(image);
+        byCell[cellName].main.push(image);
       }
     });
 
     // Use API-provided winner if available
     if (apiSoundingWinner !== null) {
-      Object.values(byPhase).forEach(phase => {
-        if (phase.candidates[apiSoundingWinner]) {
-          phase.soundingWinnerIndex = apiSoundingWinner;
-          Object.values(phase.candidates).forEach(s => {
+      Object.values(byCell).forEach(cell => {
+        if (cell.candidates[apiSoundingWinner]) {
+          cell.soundingWinnerIndex = apiSoundingWinner;
+          Object.values(cell.candidates).forEach(s => {
             s.isWinner = s.index === apiSoundingWinner;
           });
         }
@@ -139,28 +139,28 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
     }
 
     // Sort reforges by step
-    Object.values(byPhase).forEach(phase => {
-      phase.reforges.sort((a, b) => (a.reforge_step || 0) - (b.reforge_step || 0));
+    Object.values(byCell).forEach(cell => {
+      cell.reforges.sort((a, b) => (a.reforge_step || 0) - (b.reforge_step || 0));
     });
 
-    return Object.values(byPhase).sort((a, b) => a.cellIndex - b.cellIndex);
+    return Object.values(byCell).sort((a, b) => a.cellIndex - b.cellIndex);
   }, [images, cellIndexMap, apiSoundingWinner]);
 
-  // Group audio by phase
+  // Group audio by cell
   const groupedAudio = useMemo(() => {
-    const byPhase = {};
+    const byCell = {};
     audioFiles.forEach(audio => {
-      const phaseName = audio.cell_name || 'Unknown';
-      if (!byPhase[phaseName]) {
-        byPhase[phaseName] = {
-          phaseName,
-          cellIndex: cellIndexMap[phaseName] ?? -1,
+      const cellName = audio.cell_name || 'Unknown';
+      if (!byCell[cellName]) {
+        byCell[cellName] = {
+          cellName,
+          cellIndex: cellIndexMap[cellName] ?? -1,
           files: []
         };
       }
-      byPhase[phaseName].files.push(audio);
+      byCell[cellName].files.push(audio);
     });
-    return Object.values(byPhase).sort((a, b) => a.cellIndex - b.cellIndex);
+    return Object.values(byCell).sort((a, b) => a.cellIndex - b.cellIndex);
   }, [audioFiles, cellIndexMap]);
 
   // Flatten human inputs interactions
@@ -223,35 +223,35 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
               <span>{images.length}</span>
             </div>
             <div className="media-section-content">
-              {groupedImages.map((phaseGroup) => {
-                const phaseColor = phaseGroup.cellIndex >= 0
-                  ? getSequentialColor(phaseGroup.cellIndex)
+              {groupedImages.map((cellGroup) => {
+                const cellColor = cellGroup.cellIndex >= 0
+                  ? getSequentialColor(cellGroup.cellIndex)
                   : '#6B7280';
 
-                const soundingIndices = Object.keys(phaseGroup.candidates)
+                const soundingIndices = Object.keys(cellGroup.candidates)
                   .map(k => parseInt(k))
                   .sort((a, b) => a - b);
 
-                const hasContent = phaseGroup.main.length > 0 ||
+                const hasContent = cellGroup.main.length > 0 ||
                   soundingIndices.length > 0 ||
-                  phaseGroup.reforges.length > 0;
+                  cellGroup.reforges.length > 0;
 
                 if (!hasContent) return null;
 
-                const ultimateWinner = phaseGroup.reforges.find(img => img.reforge_is_winner);
+                const ultimateWinner = cellGroup.reforges.find(img => img.reforge_is_winner);
 
                 return (
-                  <div key={phaseGroup.phaseName} className="media-phase-group">
-                    <div className="media-phase-badge" style={{ backgroundColor: phaseColor }}>
-                      {phaseGroup.phaseName}
+                  <div key={cellGroup.cellName} className="media-cell-group">
+                    <div className="media-cell-badge" style={{ backgroundColor: cellColor }}>
+                      {cellGroup.cellName}
                     </div>
 
-                    <div className="media-phase-content">
+                    <div className="media-cell-content">
                       {/* Main images */}
-                      {phaseGroup.main.length > 0 && (
+                      {cellGroup.main.length > 0 && (
                         <div className="media-sounding-group">
                           <div className="media-images-row">
-                            {phaseGroup.main.map((image) => (
+                            {cellGroup.main.map((image) => (
                               <MediaThumbnail
                                 key={image.path}
                                 image={image}
@@ -264,7 +264,7 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
 
                       {/* Sounding groups */}
                       {soundingIndices.map(idx => {
-                        const sounding = phaseGroup.candidates[idx];
+                        const sounding = cellGroup.candidates[idx];
                         const isWinner = sounding.isWinner;
 
                         return (
@@ -291,17 +291,17 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
                       })}
 
                       {/* Reforge groups */}
-                      {phaseGroup.reforges.length > 0 && (
+                      {cellGroup.reforges.length > 0 && (
                         <div className="media-reforge-section">
                           <div className="media-reforge-header">
                             <Icon icon="mdi:auto-fix" width="12" />
                             <span>Reforges</span>
-                            {phaseGroup.soundingWinnerIndex !== null && (
-                              <span className="media-refined-from">from S{phaseGroup.soundingWinnerIndex}</span>
+                            {cellGroup.soundingWinnerIndex !== null && (
+                              <span className="media-refined-from">from S{cellGroup.soundingWinnerIndex}</span>
                             )}
                           </div>
                           <div className="media-images-row">
-                            {phaseGroup.reforges.map((image) => {
+                            {cellGroup.reforges.map((image) => {
                               const isUltimate = ultimateWinner && image.path === ultimateWinner.path;
                               return (
                                 <div key={image.path} className={`media-reforge-item ${isUltimate ? 'is-ultimate' : ''}`}>
@@ -336,18 +336,18 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
               <span>{audioFiles.length}</span>
             </div>
             <div className="media-section-content">
-              {groupedAudio.map((phaseGroup) => {
-                const phaseColor = phaseGroup.cellIndex >= 0
-                  ? getSequentialColor(phaseGroup.cellIndex)
+              {groupedAudio.map((cellGroup) => {
+                const cellColor = cellGroup.cellIndex >= 0
+                  ? getSequentialColor(cellGroup.cellIndex)
                   : '#6B7280';
 
                 return (
-                  <div key={phaseGroup.phaseName} className="media-phase-group">
-                    <div className="media-phase-badge" style={{ backgroundColor: phaseColor }}>
-                      {phaseGroup.phaseName}
+                  <div key={cellGroup.cellName} className="media-cell-group">
+                    <div className="media-cell-badge" style={{ backgroundColor: cellColor }}>
+                      {cellGroup.cellName}
                     </div>
                     <div className="media-audio-list">
-                      {phaseGroup.files.map((audio) => {
+                      {cellGroup.files.map((audio) => {
                         const isPlaying = playingAudio === audio.path;
                         return (
                           <div key={audio.path} className={`media-audio-item ${isPlaying ? 'playing' : ''}`}>
@@ -383,13 +383,13 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
             </div>
             <div className="media-section-content">
               {allHumanInteractions.map((interaction, idx) => {
-                const phaseColor = interaction.cellIndex >= 0
+                const cellColor = interaction.cellIndex >= 0
                   ? getSequentialColor(interaction.cellIndex)
                   : '#6B7280';
 
                 return (
                   <div key={idx} className="media-human-item">
-                    <div className="media-phase-badge small" style={{ backgroundColor: phaseColor }}>
+                    <div className="media-cell-badge small" style={{ backgroundColor: cellColor }}>
                       {interaction.cell_name}
                     </div>
                     <div className="media-human-content">
@@ -426,7 +426,7 @@ function MediaGalleryFooter({ sessionId, isRunning, sessionUpdate, phases }) {
               <span className="media-modal-filename">{selectedImage.filename}</span>
               <div className="media-modal-badges">
                 {selectedImage.cell_name && (
-                  <span className="media-modal-phase">
+                  <span className="media-modal-cell">
                     <Icon icon="mdi:layers" width="12" />
                     {selectedImage.cell_name}
                   </span>

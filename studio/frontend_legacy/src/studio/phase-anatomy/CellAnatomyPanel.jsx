@@ -84,7 +84,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
 
       // For non-candidate cells (factor=1), logs won't have candidate_index
       // Use index 0 as fallback for relevant execution logs
-      const isExecutionLog = ['assistant', 'tool_call', 'structure', 'tool', 'phase_complete', 'error'].includes(log.role) ||
+      const isExecutionLog = ['assistant', 'tool_call', 'structure', 'tool', 'cell_complete', 'error'].includes(log.role) ||
                              ['agent', 'turn', 'tool_call', 'tool_result'].includes(log.node_type);
       if ((candidateIdx === null || candidateIdx === undefined) && isExecutionLog) {
         candidateIdx = 0; // Virtual candidate for non-candidate cells
@@ -222,13 +222,13 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose }) => {
         // Accumulate cost
         if (log.cost) candidate.cost += parseFloat(log.cost);
 
-        // Track completion from sounding_attempt or phase_complete
+        // Track completion from sounding_attempt or cell_complete
         if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
           // Mark all turns as complete
           candidate.status = 'complete';
           candidate.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
         }
-        if (log.role === 'phase_complete') {
+        if (log.role === 'cell_complete') {
           candidate.status = 'complete';
         }
         if (log.role === 'error') {

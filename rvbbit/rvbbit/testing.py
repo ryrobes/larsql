@@ -7,9 +7,9 @@ Workflow:
 3. Freeze as test: rvbbit test freeze test_001 --name my_test
 4. Validate anytime: rvbbit test run
 
-Note: For Phase 1, we do VALIDATION not full replay. We verify the snapshot
+Note: For Cell 1, we do VALIDATION not full replay. We verify the snapshot
 captured the execution correctly and can be loaded. Full LLM mocking replay
-coming in Phase 2.
+coming in Cell 2.
 """
 import json
 from pathlib import Path
@@ -83,8 +83,8 @@ class SnapshotCapture:
 
         print(f"\n✓ Snapshot frozen: {snapshot_file}")
         print(f"  Cascade: {snapshot.get('cascade_file', 'unknown')}")
-        print(f"  Phases: {', '.join(p['name'] for p in snapshot['execution']['phases'])}")
-        print(f"  Total turns: {sum(len(p['turns']) for p in snapshot['execution']['phases'])}")
+        print(f"  Cells: {', '.join(p['name'] for p in snapshot['execution']['cells'])}")
+        print(f"  Total turns: {sum(len(p['turns']) for p in snapshot['execution']['cells'])}")
         print(f"\nValidate with: rvbbit test validate {snapshot_name}")
 
         return snapshot_file
@@ -116,8 +116,8 @@ class SnapshotCapture:
             }
         }
 
-        # Track phases - role types we care about: phase_start, agent, tool_result
-        phases_map = {}
+        # Track cells - role types we care about: cell_start, agent, tool_result
+        cells_map = {}
         current_cell_name = None
         current_turn = None
         error_count = 0
@@ -159,27 +159,27 @@ class SnapshotCapture:
             if role == "error" or node_type == "error":
                 error_count += 1
 
-            # Track phase starts using node_type (more reliable than role)
-            if node_type == "phase_start" or role == "phase_start":
+            # Track cell starts using node_type (more reliable than role)
+            if node_type == "cell_start" or role == "cell_start":
                 # Use cell_name column if available, otherwise parse from content
                 pname = cell_name
                 if not pname and content:
                     pname = str(content).strip().replace("...", "")
                 pname = pname or "unknown"
 
-                if pname not in phases_map:
-                    phases_map[pname] = {
+                if pname not in cells_map:
+                    cells_map[pname] = {
                         "name": pname,
                         "turns": []
                     }
 
                 current_cell_name = pname
                 current_turn = {
-                    "turn_number": len(phases_map[pname]["turns"]) + 1,
+                    "turn_number": len(cells_map[pname]["turns"]) + 1,
                     "agent_response": None,
                     "tool_results": []
                 }
-                phases_map[pname]["turns"].append(current_turn)
+                cells_map[pname]["turns"].append(current_turn)
 
             # Track agent responses
             elif (role == "assistant" or node_type == "agent") and current_turn is not None:
@@ -197,8 +197,8 @@ class SnapshotCapture:
                 })
 
         # Add cells to snapshot
-        snapshot["execution"]["cells"] = list(phases_map.values())
-        snapshot["expectations"]["cells_executed"] = list(phases_map.keys())
+        snapshot["execution"]["cells"] = list(cells_map.values())
+        snapshot["expectations"]["cells_executed"] = list(cells_map.keys())
         snapshot["expectations"]["error_count"] = error_count
 
         if error_count > 0:
@@ -234,8 +234,8 @@ class SnapshotValidator:
         """
         Validate a snapshot file is well-formed and contains expected data.
 
-        Phase 1 implementation: Just validates structure, doesn't replay.
-        Full replay with LLM mocking coming in Phase 2.
+        Cell 1 implementation: Just validates structure, doesn't replay.
+        Full replay with LLM mocking coming in Cell 2.
 
         Args:
             snapshot_name: Name of the snapshot to validate

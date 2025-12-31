@@ -231,7 +231,7 @@ def rvbbit_cascade_udf_impl(
     """
     Run a complete cascade as a SQL UDF.
 
-    This enables multi-phase LLM workflows per database row with full validation,
+    This enables multi-cell LLM workflows per database row with full validation,
     soundings, wards, and all cascade features. Particularly powerful for:
     - Complex multi-step reasoning per row
     - Validated outputs (wards + output_schema)
@@ -288,9 +288,9 @@ def rvbbit_cascade_udf_impl(
                 if return_field:
                     result_obj = json.loads(cached_result)
                     # Try to extract from outputs first, then state
-                    for phase_output in result_obj.get("outputs", {}).values():
-                        if isinstance(phase_output, dict) and return_field in phase_output:
-                            return str(phase_output[return_field])
+                    for cell_output in result_obj.get("outputs", {}).values():
+                        if isinstance(cell_output, dict) and return_field in cell_output:
+                            return str(cell_output[return_field])
                     # Fallback: search in state
                     if return_field in result_obj.get("state", {}):
                         return str(result_obj["state"][return_field])
@@ -338,11 +338,11 @@ def rvbbit_cascade_udf_impl(
         # Serialize relevant outputs as JSON
         # We want to return something useful for SQL queries
         outputs = {}
-        for phase_item in result.get("lineage", []):
-            cell_name = phase_item.get("phase")
-            phase_output = phase_item.get("output")
+        for cell_item in result.get("lineage", []):
+            cell_name = cell_item.get("cell")
+            cell_output = cell_item.get("output")
             if cell_name:
-                outputs[cell_name] = phase_output
+                outputs[cell_name] = cell_output
 
         json_result = json.dumps({
             "outputs": outputs,
@@ -363,9 +363,9 @@ def rvbbit_cascade_udf_impl(
         # Extract specific field if requested
         if return_field:
             result_obj = json.loads(json_result)
-            for phase_output in result_obj.get("outputs", {}).values():
-                if isinstance(phase_output, dict) and return_field in phase_output:
-                    return str(phase_output[return_field])
+            for cell_output in result_obj.get("outputs", {}).values():
+                if isinstance(cell_output, dict) and return_field in cell_output:
+                    return str(cell_output[return_field])
             if return_field in result_obj.get("state", {}):
                 return str(result_obj["state"][return_field])
             # Field not found, return NULL
@@ -628,7 +628,7 @@ def rvbbit_map_parallel_exec(
                 result_obj = json_module.loads(result_json)
 
                 # Extract meaningful result
-                # Priority: state.output_extract > last phase output > full result
+                # Priority: state.output_extract > last cell output > full result
                 state = result_obj.get("state", {})
                 outputs = result_obj.get("outputs", {})
 
@@ -859,7 +859,7 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_materialize_table: {e}")
 
-    # TODO Phase 2B: Register parallel batch UDF when threading is implemented
+    # TODO Cell 2B: Register parallel batch UDF when threading is implemented
     # try:
     #     connection.create_function(
     #         "rvbbit_run_parallel_batch",

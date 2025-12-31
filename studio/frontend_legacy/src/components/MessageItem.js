@@ -299,7 +299,7 @@ const MessageItem = React.memo(function MessageItem({
   // Image click handler
   const handleImageClick = useCallback((img) => {
     if (onImageClick) {
-      onImageClick({ ...img, phase: msg.cell_name, messageIndex: globalIndex });
+      onImageClick({ ...img, cell: msg.cell_name, messageIndex: globalIndex });
     }
   }, [onImageClick, msg.cell_name, globalIndex]);
 
@@ -620,7 +620,7 @@ const ExpandedFullRequest = React.memo(function ExpandedFullRequest({
                           alt={`LLM message ${i} attachment ${imgIdx + 1}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onImageClick({ url: img.url, phase: msg.cell_name, index: globalIndex, direction: 'in' });
+                            onImageClick({ url: img.url, cell: msg.cell_name, index: globalIndex, direction: 'in' });
                           }}
                         />
                       ) : (

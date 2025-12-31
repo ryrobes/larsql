@@ -1,5 +1,5 @@
 """
-Tests for deterministic phase execution.
+Tests for deterministic cell execution.
 """
 
 import pytest
@@ -8,24 +8,24 @@ from unittest.mock import MagicMock, patch
 
 # Test the cascade model changes
 def test_cell_config_deterministic_detection():
-    """Test that CellConfig correctly detects deterministic vs LLM phases."""
+    """Test that CellConfig correctly detects deterministic vs LLM cells."""
     from rvbbit.cascade import CellConfig
 
-    # LLM phase (has instructions)
-    llm_phase = CellConfig(
-        name="llm_phase",
+    # LLM cell (has instructions)
+    llm_cell = CellConfig(
+        name="llm_cell",
         instructions="Analyze the data"
     )
-    assert not llm_phase.is_deterministic()
-    assert llm_phase.instructions == "Analyze the data"
+    assert not llm_cell.is_deterministic()
+    assert llm_cell.instructions == "Analyze the data"
 
-    # Deterministic phase (has tool)
-    det_phase = CellConfig(
-        name="det_phase",
+    # Deterministic cell (has tool)
+    det_cell = CellConfig(
+        name="det_cell",
         tool="python:mymodule.myfunc"
     )
-    assert det_phase.is_deterministic()
-    assert det_phase.tool == "python:mymodule.myfunc"
+    assert det_cell.is_deterministic()
+    assert det_cell.tool == "python:mymodule.myfunc"
 
 
 def test_cell_config_validation():
@@ -34,12 +34,12 @@ def test_cell_config_validation():
 
     # Should fail: neither tool nor instructions
     with pytest.raises(ValueError, match="must have either"):
-        CellConfig(name="bad_phase")
+        CellConfig(name="bad_cell")
 
     # Should fail: both tool and instructions
     with pytest.raises(ValueError, match="can only have ONE of"):
         CellConfig(
-            name="bad_phase",
+            name="bad_cell",
             tool="mytool",
             instructions="Do something"
         )
@@ -49,7 +49,7 @@ def test_cell_config_with_inputs():
     """Test CellConfig with tool_inputs (alias: inputs)."""
     from rvbbit.cascade import CellConfig
 
-    phase = CellConfig(
+    cell = CellConfig(
         name="transform",
         tool="python:etl.transform",
         inputs={
@@ -58,8 +58,8 @@ def test_cell_config_with_inputs():
         }
     )
 
-    assert phase.is_deterministic()
-    assert phase.tool_inputs == {
+    assert cell.is_deterministic()
+    assert cell.tool_inputs == {
         "data": "{{ outputs.previous.data }}",
         "mode": "{{ input.mode }}"
     }
@@ -69,18 +69,18 @@ def test_cell_config_with_routing():
     """Test CellConfig with routing configuration."""
     from rvbbit.cascade import CellConfig
 
-    phase = CellConfig(
+    cell = CellConfig(
         name="validate",
         tool="python:validators.check_schema",
         routing={
-            "valid": "next_phase",
+            "valid": "next_cell",
             "invalid": "error_handler"
         },
-        handoffs=["next_phase", "error_handler"]
+        handoffs=["next_cell", "error_handler"]
     )
 
-    assert phase.routing == {
-        "valid": "next_phase",
+    assert cell.routing == {
+        "valid": "next_cell",
         "invalid": "error_handler"
     }
 
@@ -175,8 +175,8 @@ def test_determine_routing_with_route_key():
     routing = {"success": "next", "error": "handler"}
     handoffs = []
 
-    next_phase = determine_routing(result, routing, handoffs)
-    assert next_phase == "next"
+    next_cell = determine_routing(result, routing, handoffs)
+    assert next_cell == "next"
 
 
 def test_determine_routing_with_status():
@@ -187,8 +187,8 @@ def test_determine_routing_with_status():
     routing = {"success": "next", "failed": "error_handler"}
     handoffs = []
 
-    next_phase = determine_routing(result, routing, handoffs)
-    assert next_phase == "error_handler"
+    next_cell = determine_routing(result, routing, handoffs)
+    assert next_cell == "error_handler"
 
 
 def test_determine_routing_default():
@@ -199,8 +199,8 @@ def test_determine_routing_default():
     routing = {"success": "next", "default": "fallback"}
     handoffs = []
 
-    next_phase = determine_routing(result, routing, handoffs)
-    assert next_phase == "fallback"
+    next_cell = determine_routing(result, routing, handoffs)
+    assert next_cell == "fallback"
 
 
 def test_determine_routing_single_handoff():
@@ -209,10 +209,10 @@ def test_determine_routing_single_handoff():
 
     result = {"data": "test"}
     routing = None
-    handoffs = ["next_phase"]
+    handoffs = ["next_cell"]
 
-    next_phase = determine_routing(result, routing, handoffs)
-    assert next_phase == "next_phase"
+    next_cell = determine_routing(result, routing, handoffs)
+    assert next_cell == "next_cell"
 
 
 def test_parse_timeout():
@@ -335,13 +335,13 @@ def test_load_deterministic_cascade():
         config = load_cascade_config(config_path)
         assert config.cascade_id == "deterministic_demo"
 
-        # Check phases
-        validate_phase = config.phases[0]
-        assert validate_phase.name == "validate_query"
-        assert validate_phase.is_deterministic()
-        assert validate_phase.tool == "python:windlass.demo_tools.validate_sql"
+        # Check cells
+        validate_cell = config.cells[0]
+        assert validate_cell.name == "validate_query"
+        assert validate_cell.is_deterministic()
+        assert validate_cell.tool == "python:windlass.demo_tools.validate_sql"
 
-        fix_phase = config.phases[1]
-        assert fix_phase.name == "fix_query"
-        assert not fix_phase.is_deterministic()
-        assert fix_phase.instructions is not None
+        fix_cell = config.cells[1]
+        assert fix_cell.name == "fix_query"
+        assert not fix_cell.is_deterministic()
+        assert fix_cell.instructions is not None

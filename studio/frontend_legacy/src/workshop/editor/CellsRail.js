@@ -6,94 +6,94 @@ import {
 } from '@dnd-kit/sortable';
 import { Icon } from '@iconify/react';
 import useWorkshopStore from '../stores/workshopStore';
-import PhaseBlock from './blocks/CellBlock';
+import CellBlock from './blocks/CellBlock';
 import './CellsRail.css';
 
 /**
- * PhasesRail - Sortable vertical list of phases in the editor
+ * CellsRail - Sortable vertical list of cells in the editor
  *
  * Features:
- * - Drag to reorder phases
- * - Drop zone for new phases from palette
- * - Add new phase button
- * - Visual connection lines between phases
+ * - Drag to reorder cells
+ * - Drop zone for new cells from palette
+ * - Add new cell button
+ * - Visual connection lines between cells
  *
  * Note: Ghost visualization (preview of execution) is shown in ExecutionNotebook,
- * not here. This is purely the editor view for configuring phases.
+ * not here. This is purely the editor view for configuring cells.
  */
-function PhasesRail() {
+function CellsRail() {
   const {
     cascade,
-    selectedPhaseIndex,
-    setSelectedPhase,
-    addPhase,
+    selectedCellIndex,
+    setSelectedCell,
+    addCell,
   } = useWorkshopStore();
 
-  const phases = cascade.cells || [];
+  const cells = cascade.cells || [];
 
-  // Droppable zone for new phases from palette
+  // Droppable zone for new cells from palette
   const { setNodeRef: setDropZoneRef, isOver } = useDroppable({
-    id: 'phases-drop-zone',
+    id: 'cells-drop-zone',
     data: {
-      accepts: ['phase'],
+      accepts: ['cell'],
     },
   });
 
-  const handleAddPhase = () => {
-    addPhase();
+  const handleAddCell = () => {
+    addCell();
   };
 
-  const phaseIds = phases.map((p) => `phase-${p.name}`);
+  const cellIds = cells.map((p) => `cell-${p.name}`);
 
   return (
-    <div className="phases-rail" ref={setDropZoneRef}>
-      <SortableContext items={phaseIds} strategy={verticalListSortingStrategy}>
-        <div className={`phases-list ${isOver ? 'drop-active' : ''}`}>
-          {phases.map((phase, index) => (
-            <div key={`phase-${phase.name}`} className="phase-wrapper">
-              {/* Connection line from previous phase */}
+    <div className="cells-rail" ref={setDropZoneRef}>
+      <SortableContext items={cellIds} strategy={verticalListSortingStrategy}>
+        <div className={`cells-list ${isOver ? 'drop-active' : ''}`}>
+          {cells.map((cell, index) => (
+            <div key={`cell-${cell.name}`} className="cell-wrapper">
+              {/* Connection line from previous cell */}
               {index > 0 && (
-                <div className="phase-connector">
+                <div className="cell-connector">
                   <div className="connector-line" />
                   <Icon icon="mdi:chevron-down" width="16" className="connector-arrow" />
                 </div>
               )}
 
-              <PhaseBlock
-                phase={phase}
+              <CellBlock
+                cell={cell}
                 index={index}
-                isSelected={selectedPhaseIndex === index}
-                onSelect={() => setSelectedPhase(index)}
+                isSelected={selectedCellIndex === index}
+                onSelect={() => setSelectedCell(index)}
               />
             </div>
           ))}
 
-          {/* Drop indicator when dragging phase over */}
+          {/* Drop indicator when dragging cell over */}
           {isOver && (
             <div className="drop-indicator">
               <Icon icon="mdi:plus-circle" width="24" />
-              <span>Drop to add phase</span>
+              <span>Drop to add cell</span>
             </div>
           )}
         </div>
       </SortableContext>
 
-      {/* Add Phase Button */}
-      <button className="add-phase-btn" onClick={handleAddPhase}>
+      {/* Add Cell Button */}
+      <button className="add-cell-btn" onClick={handleAddCell}>
         <Icon icon="mdi:plus" width="20" />
-        <span>Add Phase</span>
+        <span>Add Cell</span>
       </button>
 
       {/* Empty state */}
-      {phases.length === 0 && !isOver && (
-        <div className="phases-empty">
+      {cells.length === 0 && !isOver && (
+        <div className="cells-empty">
           <Icon icon="mdi:view-sequential-outline" width="48" />
-          <p>No phases yet</p>
-          <p className="empty-hint">Drag a Phase block here or click "Add Phase"</p>
+          <p>No cells yet</p>
+          <p className="empty-hint">Drag a Cell block here or click "Add Cell"</p>
         </div>
       )}
     </div>
   );
 }
 
-export default PhasesRail;
+export default CellsRail;

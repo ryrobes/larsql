@@ -15,8 +15,8 @@ export function useExecutionSSE() {
   const executionStatus = useWorkshopStore((state) => state.executionStatus);
 
   // Get handlers directly from store (stable references)
-  const handlePhaseStart = useWorkshopStore((state) => state.handlePhaseStart);
-  const handlePhaseComplete = useWorkshopStore((state) => state.handlePhaseComplete);
+  const handleCellStart = useWorkshopStore((state) => state.handleCellStart);
+  const handleCellComplete = useWorkshopStore((state) => state.handleCellComplete);
   const handleSoundingStart = useWorkshopStore((state) => state.handleSoundingStart);
   const handleSoundingComplete = useWorkshopStore((state) => state.handleSoundingComplete);
   const handleTurnStart = useWorkshopStore((state) => state.handleTurnStart);
@@ -44,16 +44,16 @@ export function useExecutionSSE() {
           console.log('[SSE] Cascade started:', event.session_id);
           break;
 
-        case 'phase_start':
-          handlePhaseStart(
+        case 'cell_start':
+          handleCellStart(
             data.cell_name,
             data.candidate_index
           );
           break;
 
-        case 'phase_complete':
-          console.log('[SSE] Phase complete:', data.cell_name, 'result:', data.result);
-          handlePhaseComplete(
+        case 'cell_complete':
+          console.log('[SSE] Cell complete:', data.cell_name, 'result:', data.result);
+          handleCellComplete(
             data.cell_name,
             data.result || {},
             data.candidate_index
@@ -134,7 +134,7 @@ export function useExecutionSSE() {
           console.log('[SSE] Unknown event type:', event.type, event);
       }
     },
-    [sessionId, handlePhaseStart, handlePhaseComplete, handleSoundingStart,
+    [sessionId, handleCellStart, handleCellComplete, handleSoundingStart,
      handleSoundingComplete, handleTurnStart, handleToolCall, handleToolResult,
      handleCostUpdate, handleCascadeComplete, handleCascadeError]
   );

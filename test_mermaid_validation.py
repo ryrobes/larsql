@@ -13,9 +13,9 @@ def test_validation():
     # Test 1: Valid diagram
     print("Test 1: Valid diagram")
     valid_mermaid = """stateDiagram-v2
-    [*] --> Phase1
-    Phase1 --> Phase2
-    Phase2 --> [*]
+    [*] --> Cell1
+    Cell1 --> Cell2
+    Cell2 --> [*]
 """
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.mmd', delete=False) as f:
@@ -30,10 +30,10 @@ def test_validation():
     # Test 2: Invalid diagram (unbalanced brackets)
     print("Test 2: Invalid diagram (unbalanced brackets)")
     invalid_mermaid = """stateDiagram-v2
-    [*] --> Phase1
-    state Phase1 [
+    [*] --> Cell1
+    state Cell1 [
         This is broken
-    Phase1 --> Phase2
+    Cell1 --> Cell2
 """
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.mmd', delete=False) as f:

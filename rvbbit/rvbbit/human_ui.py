@@ -26,7 +26,7 @@ class UIGenerator:
         HumanInputType.CONFIRMATION: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "confirmation",
                     "prompt": "{{ prompt or 'Proceed?' }}",
@@ -38,7 +38,7 @@ class UIGenerator:
         HumanInputType.CHOICE: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "choice",
                     "prompt": "{{ prompt or 'Select an option' }}",
@@ -49,7 +49,7 @@ class UIGenerator:
         HumanInputType.MULTI_CHOICE: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "multi_choice",
                     "prompt": "{{ prompt or 'Select options' }}",
@@ -60,7 +60,7 @@ class UIGenerator:
         HumanInputType.RATING: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "rating",
                     "prompt": "{{ prompt or 'Rate this output' }}",
@@ -72,7 +72,7 @@ class UIGenerator:
         HumanInputType.TEXT: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "text",
                     "prompt": "{{ prompt or 'Your input' }}",
@@ -84,7 +84,7 @@ class UIGenerator:
         HumanInputType.FORM: {
             "layout": "vertical",
             "sections": [
-                {"type": "preview", "source": "phase_output", "render": "auto"},
+                {"type": "preview", "source": "cell_output", "render": "auto"},
                 {
                     "type": "form",
                     "fields": "{{ fields }}"
@@ -96,7 +96,7 @@ class UIGenerator:
             "sections": [
                 {
                     "type": "preview",
-                    "source": "phase_output",
+                    "source": "cell_output",
                     "render": "markdown",
                     "collapsible": False,
                     "max_height": 600
@@ -121,34 +121,34 @@ class UIGenerator:
     def generate(
         self,
         config: HumanInputConfig,
-        phase_output: str,
+        cell_output: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Generate UI specification based on config and context.
 
         Args:
-            config: HumanInputConfig from phase
-            phase_output: Output from the phase
+            config: HumanInputConfig from cell
+            cell_output: Output from the cell
             context: Additional context (cascade_id, cell_name, lineage, state)
 
         Returns:
             UI specification dict for frontend rendering
         """
         if config.type == HumanInputType.AUTO:
-            return self._auto_generate(phase_output, context, config.hint)
+            return self._auto_generate(cell_output, context, config.hint)
 
         elif config.type == HumanInputType.HTMX:
-            return self._generate_htmx(phase_output, context, config.generator_prompt)
+            return self._generate_htmx(cell_output, context, config.generator_prompt)
 
         else:
             # Use built-in template
-            return self._render_template(config, phase_output, context)
+            return self._render_template(config, cell_output, context)
 
     def _render_template(
         self,
         config: HumanInputConfig,
-        phase_output: str,
+        cell_output: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Render a built-in template with config values."""
@@ -157,13 +157,13 @@ class UIGenerator:
         # Deep copy to avoid modifying the template
         ui_spec = json.loads(json.dumps(template))
 
-        # Inject phase output
+        # Inject cell output
         for section in ui_spec.get("sections", []):
-            if section.get("source") == "phase_output":
-                section["content"] = phase_output
+            if section.get("source") == "cell_output":
+                section["content"] = cell_output
                 # Auto-detect render type
                 if section.get("render") == "auto":
-                    section["render"] = self._detect_render_type(phase_output)
+                    section["render"] = self._detect_render_type(cell_output)
 
         # Inject config values
         ui_spec["prompt"] = config.prompt
@@ -207,14 +207,14 @@ class UIGenerator:
 
     def _auto_generate(
         self,
-        phase_output: str,
+        cell_output: str,
         context: Dict[str, Any],
         hint: Optional[str]
     ) -> Dict[str, Any]:
         """
         Use LLM to generate appropriate UI specification.
 
-        This creates a contextually-appropriate UI based on the phase output
+        This creates a contextually-appropriate UI based on the cell output
         and any hints provided in the configuration.
         """
         from .agent import Agent
@@ -222,14 +222,14 @@ class UIGenerator:
         prompt = f"""You are a UI designer for a workflow system. Given the following output and context, generate an appropriate UI specification for collecting human input.
 
 OUTPUT TO PRESENT:
-{phase_output[:2000]}
+{cell_output[:2000]}
 
 CONTEXT HINT: {hint or 'General feedback needed'}
 
 ADDITIONAL CONTEXT:
 - Cascade: {context.get('cascade_id')}
-- Phase: {context.get('cell_name')}
-- Previous phases: {context.get('lineage', [])}
+- Cell: {context.get('cell_name')}
+- Previous cells: {context.get('lineage', [])}
 
 Generate a JSON UI specification with this structure:
 {{
@@ -276,7 +276,7 @@ Return ONLY the JSON, no explanation."""
             return {
                 "layout": "vertical",
                 "sections": [
-                    {"type": "preview", "content": phase_output, "render": "text"},
+                    {"type": "preview", "content": cell_output, "render": "text"},
                     {"type": "confirmation", "prompt": hint or "How would you like to proceed?"}
                 ],
                 "_meta": {"type": "auto", "fallback": True, "error": str(e)}
@@ -284,7 +284,7 @@ Return ONLY the JSON, no explanation."""
 
     def _generate_htmx(
         self,
-        phase_output: str,
+        cell_output: str,
         context: Dict[str, Any],
         generator_prompt: str
     ) -> Dict[str, Any]:
@@ -301,7 +301,7 @@ Return ONLY the JSON, no explanation."""
 TASK: {generator_prompt}
 
 OUTPUT TO PRESENT:
-{phase_output[:2000]}
+{cell_output[:2000]}
 
 CONTEXT:
 - Checkpoint ID will be available as {{{{ checkpoint_id }}}}
@@ -393,7 +393,7 @@ Return the HTML template only, no explanation."""
                         <h3 class="card-title">Output</h3>
                     </div>
                     <div class="card-content">
-                        <pre class="whitespace-pre-wrap text-sm">{phase_output[:500]}</pre>
+                        <pre class="whitespace-pre-wrap text-sm">{cell_output[:500]}</pre>
                     </div>
                     <div class="card-footer">
                         <form hx-post="/api/checkpoints/{{{{ checkpoint_id }}}}/respond"
@@ -472,7 +472,7 @@ Return the HTML template only, no explanation."""
         }
 
 
-def generate_simple_ui(phase_output: str, prompt: Optional[str] = None) -> Dict[str, Any]:
+def generate_simple_ui(cell_output: str, prompt: Optional[str] = None) -> Dict[str, Any]:
     """
     Generate a simple confirmation UI.
 
@@ -480,7 +480,7 @@ def generate_simple_ui(phase_output: str, prompt: Optional[str] = None) -> Dict[
     human_input: true
 
     Args:
-        phase_output: The phase output to display
+        cell_output: The cell output to display
         prompt: Optional prompt text
 
     Returns:
@@ -491,7 +491,7 @@ def generate_simple_ui(phase_output: str, prompt: Optional[str] = None) -> Dict[
         "sections": [
             {
                 "type": "preview",
-                "content": phase_output,
+                "content": cell_output,
                 "render": "auto"
             },
             {
@@ -515,7 +515,7 @@ def normalize_human_input_config(config: Union[bool, HumanInputConfig, Dict[str,
     - HumanInputConfig -> pass through
 
     Args:
-        config: Raw human_input value from phase config
+        config: Raw human_input value from cell config
 
     Returns:
         Normalized HumanInputConfig
@@ -601,9 +601,9 @@ def _classify_question(question: str, context: str = None, session_id: str = Non
 
     Args:
         question: The question being asked
-        context: Optional context (phase output, etc.)
+        context: Optional context (cell output, etc.)
         session_id: Session ID for logging (auto-detected if not provided)
-        cell_name: Phase name for logging (auto-detected if not provided)
+        cell_name: Cell name for logging (auto-detected if not provided)
 
     Returns:
         Classification dict with type, options, labels, reasoning
@@ -832,7 +832,7 @@ def _build_ui_for_classification(
     Args:
         classification: Result from _classify_question()
         question: Original question text
-        context: Phase output or other context
+        context: Cell output or other context
 
     Returns:
         Complete ui_spec for DynamicUI
@@ -840,7 +840,7 @@ def _build_ui_for_classification(
     ui_type = classification.get("type", "text")
     sections = []
 
-    # Always show context/phase output if available and substantial
+    # Always show context/cell output if available and substantial
     if context and len(context.strip()) > 0:
         sections.append({
             "type": "preview",
@@ -946,7 +946,7 @@ def _generate_from_hint(question: str, context: str, ui_hint: str) -> Dict[str, 
 
     Args:
         question: The question text
-        context: Phase output or other context
+        context: Cell output or other context
         ui_hint: Explicit UI type hint
 
     Returns:
@@ -986,9 +986,9 @@ def generate_ask_human_ui(
 
     Args:
         question: The question being asked
-        context: Phase output or other context to display
+        context: Cell output or other context to display
         ui_hint: Optional explicit hint ("confirmation", "choice", "rating", "text")
-        cell_name: Current phase name for metadata
+        cell_name: Current cell name for metadata
         cascade_id: Current cascade ID for metadata
         session_id: Session ID for cost tracking (auto-detected if not provided)
 

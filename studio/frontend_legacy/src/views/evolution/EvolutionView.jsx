@@ -149,10 +149,10 @@ const EvolutionView = ({ params, navigate }) => {
 
         <div className="evolution-header-right">
           {phylogenyMetadata ? (
-            // Show actual evolution graph stats (per-phase)
+            // Show actual evolution graph stats (per-cell)
             <div className="evolution-stats">
               {phylogenyMetadata.cell_name && (
-                <div className="stat-item phase-name">
+                <div className="stat-item cell-name">
                   <Icon icon="mdi:hexagon-outline" width="16" />
                   <span>{phylogenyMetadata.cell_name}</span>
                 </div>
@@ -173,7 +173,7 @@ const EvolutionView = ({ params, navigate }) => {
           ) : selectedCascadeData ? (
             // Show cascade-wide stats as fallback
             <div className="evolution-stats">
-              <div className="stat-item cascade-wide" title="Cascade-wide stats (all phases)">
+              <div className="stat-item cascade-wide" title="Cascade-wide stats (all cells)">
                 <Icon icon="mdi:information-outline" width="14" />
                 <span style={{ fontSize: '11px', opacity: 0.7 }}>Cascade-wide:</span>
               </div>

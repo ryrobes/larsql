@@ -10,7 +10,7 @@ inputs_schema:
   transaction_amount: "Transaction amount"
   customer_name: "Customer company name"
 
-phases:
+cells:
   - name: assess_risk
     instructions: |
       You are a fraud detection expert analyzing a transaction.

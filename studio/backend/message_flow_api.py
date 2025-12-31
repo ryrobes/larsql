@@ -29,7 +29,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
         - 'evaluator': Evaluator reasoning (soundings, reforge)
         - 'quartermaster': Tool selection reasoning
         - 'ward': Validation checks (pre/post wards)
-        - 'lifecycle': Cascade/phase/turn start/complete events
+        - 'lifecycle': Cascade/cell/turn start/complete events
         - 'metadata': Sounding attempts, cost updates, context injection, etc.
         - 'error': Error messages
 
@@ -42,10 +42,10 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
         full_request.get('messages')
     )
 
-    # Lifecycle events (internal - cascade/phase/turn markers)
+    # Lifecycle events (internal - cascade/cell/turn markers)
     lifecycle_types = {
         'cascade', 'cascade_start', 'cascade_complete', 'cascade_completed',
-        'phase', 'phase_start', 'phase_complete',
+        'cell', 'cell_start', 'cell_complete',
         'turn', 'turn_start'
     }
 
@@ -167,16 +167,16 @@ def get_message_flow(session_id):
 
         # Build structured response
         messages = []
-        soundings_by_phase = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
+        soundings_by_cell = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
         reforge_steps = {}  # reforge_step -> {messages: []} (flat, for backward compat)
-        reforge_by_phase = {}  # cell_name -> {reforge_step -> {messages: [], is_winner: bool}}
+        reforge_by_cell = {}  # cell_name -> {reforge_step -> {messages: [], is_winner: bool}}
 
-        # Track evaluators by phase for later attachment to soundings blocks
-        evaluators_by_phase = {}  # cell_name -> evaluator message
+        # Track evaluators by cell for later attachment to soundings blocks
+        evaluators_by_cell = {}  # cell_name -> evaluator message
 
-        # Track the most recent phase that had soundings - reforges inherit this
+        # Track the most recent cell that had soundings - reforges inherit this
         # (Reforge is always the refinement step after soundings complete)
-        last_sounding_phase = None
+        last_sounding_cell = None
 
         for row in result:
             (timestamp, role, node_type, candidate_index, reforge_step, turn_number,
@@ -246,14 +246,14 @@ def get_message_flow(session_id):
                 'estimated_tokens': int(estimated_tokens) if estimated_tokens else 0
             }
 
-            # Track evaluator messages by phase (for phase-level soundings)
-            # Also track reforge_evaluator using inherited phase
+            # Track evaluator messages by cell (for cell-level soundings)
+            # Also track reforge_evaluator using inherited cell
             if node_type in ('evaluator', 'reforge_evaluator'):
-                evaluator_phase = cell_name or last_sounding_phase
-                if evaluator_phase:
+                evaluator_cell = cell_name or last_sounding_cell
+                if evaluator_cell:
                     # Update message's cell_name so it groups correctly in frontend
-                    if not cell_name and evaluator_phase:
-                        msg['cell_name'] = evaluator_phase
+                    if not cell_name and evaluator_cell:
+                        msg['cell_name'] = evaluator_cell
 
                     # Build comprehensive evaluator data including input observability
                     evaluator_data = {
@@ -284,43 +284,43 @@ def get_message_flow(session_id):
                         'quality_scores': metadata.get('quality_scores') if metadata else None,
                         'winner_quality': metadata.get('winner_quality') if metadata else None,
                     }
-                    evaluators_by_phase[evaluator_phase] = evaluator_data
+                    evaluators_by_cell[evaluator_cell] = evaluator_data
 
             # Categorize message for parallel branch visualization
             # Use int() to normalize candidate_index (may be returned as float for nullable int)
             if candidate_index is not None:
                 sounding_key = int(candidate_index)
-                phase_key = cell_name or '_unknown_'
+                cell_key = cell_name or '_unknown_'
 
-                # Track the phase for soundings - reforges will inherit this
+                # Track the cell for soundings - reforges will inherit this
                 if cell_name:
-                    last_sounding_phase = cell_name
+                    last_sounding_cell = cell_name
 
-                if phase_key not in soundings_by_phase:
-                    soundings_by_phase[phase_key] = {}
+                if cell_key not in soundings_by_cell:
+                    soundings_by_cell[cell_key] = {}
 
-                if sounding_key not in soundings_by_phase[phase_key]:
-                    soundings_by_phase[phase_key][sounding_key] = {
+                if sounding_key not in soundings_by_cell[cell_key]:
+                    soundings_by_cell[cell_key][sounding_key] = {
                         'index': sounding_key,
-                        'cell_name': phase_key,
+                        'cell_name': cell_key,
                         'messages': [],
                         'is_winner': False,
                         'first_timestamp': timestamp  # Track when this sounding started
                     }
-                soundings_by_phase[phase_key][sounding_key]['messages'].append(msg)
+                soundings_by_cell[cell_key][sounding_key]['messages'].append(msg)
                 if is_winner:
-                    soundings_by_phase[phase_key][sounding_key]['is_winner'] = True
+                    soundings_by_cell[cell_key][sounding_key]['is_winner'] = True
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
-                # Reforges inherit phase from their parent sounding when cell_name is NULL
+                # Reforges inherit cell from their parent sounding when cell_name is NULL
                 # (Reforge is always the final refinement step after soundings complete)
-                inherited_phase = cell_name or last_sounding_phase
-                phase_key = inherited_phase or '_unknown_'
+                inherited_cell = cell_name or last_sounding_cell
+                cell_key = inherited_cell or '_unknown_'
 
                 # Update message's cell_name so it groups correctly in frontend
-                if not cell_name and inherited_phase:
-                    msg['cell_name'] = inherited_phase
+                if not cell_name and inherited_cell:
+                    msg['cell_name'] = inherited_cell
 
                 # Flat structure for backward compat
                 if reforge_key not in reforge_steps:
@@ -330,39 +330,39 @@ def get_message_flow(session_id):
                     }
                 reforge_steps[reforge_key]['messages'].append(msg)
 
-                # Phase-organized structure (like soundings)
-                if phase_key not in reforge_by_phase:
-                    reforge_by_phase[phase_key] = {}
-                if reforge_key not in reforge_by_phase[phase_key]:
-                    reforge_by_phase[phase_key][reforge_key] = {
+                # Cell-organized structure (like soundings)
+                if cell_key not in reforge_by_cell:
+                    reforge_by_cell[cell_key] = {}
+                if reforge_key not in reforge_by_cell[cell_key]:
+                    reforge_by_cell[cell_key][reforge_key] = {
                         'step': reforge_key,
-                        'cell_name': phase_key,
+                        'cell_name': cell_key,
                         'messages': [],
                         'is_winner': False,
                         'first_timestamp': timestamp
                     }
-                reforge_by_phase[phase_key][reforge_key]['messages'].append(msg)
+                reforge_by_cell[cell_key][reforge_key]['messages'].append(msg)
                 if is_winner:
-                    reforge_by_phase[phase_key][reforge_key]['is_winner'] = True
+                    reforge_by_cell[cell_key][reforge_key]['is_winner'] = True
 
             messages.append(msg)
 
-        # Convert soundings_by_phase to structured list with phase info
-        # Each phase gets a soundings block with all its parallel attempts
+        # Convert soundings_by_cell to structured list with cell info
+        # Each cell gets a soundings block with all its parallel attempts
         soundings_blocks = []
-        for phase_key in soundings_by_phase:
-            phase_soundings = soundings_by_phase[phase_key]
-            sorted_soundings = [phase_soundings[k] for k in sorted(phase_soundings.keys())]
+        for cell_key in soundings_by_cell:
+            cell_soundings = soundings_by_cell[cell_key]
+            sorted_soundings = [cell_soundings[k] for k in sorted(cell_soundings.keys())]
 
-            # Find first timestamp across all soundings in this phase (for ordering)
+            # Find first timestamp across all soundings in this cell (for ordering)
             timestamps = [s['first_timestamp'] for s in sorted_soundings if s.get('first_timestamp')]
             first_ts = min(timestamps) if timestamps else 0
 
-            # Get evaluator for this phase if present
-            evaluator = evaluators_by_phase.get(phase_key)
+            # Get evaluator for this cell if present
+            evaluator = evaluators_by_cell.get(cell_key)
 
             soundings_blocks.append({
-                'cell_name': phase_key,
+                'cell_name': cell_key,
                 'soundings': sorted_soundings,
                 'first_timestamp': first_ts,
                 'winner_index': next((s['index'] for s in sorted_soundings if s['is_winner']), None),
@@ -375,18 +375,18 @@ def get_message_flow(session_id):
         # Convert reforge steps to list (flat, for backward compat)
         reforge_list = [reforge_steps[k] for k in sorted(reforge_steps.keys())]
 
-        # Convert reforge_by_phase to structured list (like soundings_blocks)
+        # Convert reforge_by_cell to structured list (like soundings_blocks)
         reforge_blocks = []
-        for phase_key in reforge_by_phase:
-            phase_reforges = reforge_by_phase[phase_key]
-            sorted_reforges = [phase_reforges[k] for k in sorted(phase_reforges.keys())]
+        for cell_key in reforge_by_cell:
+            cell_reforges = reforge_by_cell[cell_key]
+            sorted_reforges = [cell_reforges[k] for k in sorted(cell_reforges.keys())]
 
-            # Find first timestamp across all reforge steps in this phase
+            # Find first timestamp across all reforge steps in this cell
             timestamps = [r['first_timestamp'] for r in sorted_reforges if r.get('first_timestamp')]
             first_ts = min(timestamps) if timestamps else 0
 
             reforge_blocks.append({
-                'cell_name': phase_key,
+                'cell_name': cell_key,
                 'reforge_steps': sorted_reforges,
                 'first_timestamp': first_ts,
                 'winner_step': next((r['step'] for r in sorted_reforges if r['is_winner']), None)
@@ -395,7 +395,7 @@ def get_message_flow(session_id):
         # Sort reforge blocks by first_timestamp to maintain chronological order
         reforge_blocks.sort(key=lambda x: x['first_timestamp'])
 
-        # Identify winner sounding phases and indexes
+        # Identify winner sounding cells and indexes
         winner_sounding_keys = set()  # (cell_name, candidate_index) tuples
         for block in soundings_blocks:
             for s in block['soundings']:
@@ -410,18 +410,18 @@ def get_message_flow(session_id):
         # (non-winners are shown in the soundings blocks section)
         main_flow = []
         for msg in messages:
-            # Normalize cell_name to match how we store it in soundings_by_phase
-            msg_phase_key = msg['cell_name'] or '_unknown_'
+            # Normalize cell_name to match how we store it in soundings_by_cell
+            msg_cell_key = msg['cell_name'] or '_unknown_'
 
             # Include message if:
             # 1. Not in any sounding/reforge (pre/post branching messages)
             # 2. OR it's in a winner sounding (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
-            # Note: Non-winner soundings are shown separately in soundings_by_phase blocks
+            # Note: Non-winner soundings are shown separately in soundings_by_cell blocks
             if msg['candidate_index'] is None and msg['reforge_step'] is None:
                 # Pre/post branching messages - always in main flow
                 main_flow.append(msg)
-            elif msg['candidate_index'] is not None and (msg_phase_key, msg['candidate_index']) in winner_sounding_keys:
+            elif msg['candidate_index'] is not None and (msg_cell_key, msg['candidate_index']) in winner_sounding_keys:
                 # All messages from winner sounding branch
                 main_flow.append(msg)
             elif msg['reforge_step'] is not None and msg['reforge_step'] in winner_reforge_steps:
@@ -496,9 +496,9 @@ def get_message_flow(session_id):
             'session_id': session_id,
             'total_messages': len(messages),
             'soundings': all_soundings_flat,  # Backward compatible flat list
-            'soundings_by_phase': soundings_blocks,  # New: organized by phase with timestamps
+            'soundings_by_cell': soundings_blocks,  # New: organized by cell with timestamps
             'reforge_steps': reforge_list,  # Backward compatible flat list
-            'reforge_by_phase': reforge_blocks,  # New: organized by phase with timestamps
+            'reforge_by_cell': reforge_blocks,  # New: organized by cell with timestamps
             'main_flow': main_flow,
             'all_messages': messages,
             'hash_index': hash_index,  # Map of content_hash -> [message indices]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Migrate ALL cascade files to new RVBBIT terminology
-Updates: phases → cells, tackle → traits, soundings → candidates
+Updates: cells → cells, tackle → traits, soundings → candidates
 """
 import json
 import yaml
@@ -15,13 +15,13 @@ def migrate_dict(data: Union[Dict, list, Any]) -> Union[Dict, list, Any]:
         for key, value in data.items():
             # Rename keys
             new_key = key
-            if key == 'phases':
+            if key == 'cells':
                 new_key = 'cells'
             elif key == 'tackle':
                 new_key = 'traits'
             elif key == 'soundings':
                 new_key = 'candidates'
-            elif key == 'phase_name':
+            elif key == 'cell_name':
                 new_key = 'cell_name'
             elif key == 'sounding_index':
                 new_key = 'candidate_index'

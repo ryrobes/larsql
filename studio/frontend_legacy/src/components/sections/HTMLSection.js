@@ -882,7 +882,7 @@ li {
               alert('Failed to submit: ' + err.message);
             });
           }
-        }, true); // Use capture phase to intercept before HTMX
+        }, true); // Use capture cell to intercept before HTMX
 
         // CRITICAL: Convert relative URLs to absolute AND handle JSON conversion
         document.addEventListener('htmx:configRequest', (e) => {

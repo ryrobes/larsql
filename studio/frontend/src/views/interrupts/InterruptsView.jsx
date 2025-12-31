@@ -291,7 +291,7 @@ const InterruptsView = () => {
                   checkpoint={selectedCheckpoint}
                   onSubmit={(response) => handleResponse(selectedCheckpoint.id, response)}
                   variant="page"
-                  showPhaseOutput={true}
+                  showCellOutput={true}
                 />
               </div>
             </>

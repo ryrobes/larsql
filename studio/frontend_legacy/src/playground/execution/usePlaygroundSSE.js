@@ -20,8 +20,8 @@ export function usePlaygroundSSE() {
   const executionStatus = usePlaygroundStore((state) => state.executionStatus);
 
   // Get handlers directly from store (stable references)
-  const handlePhaseStart = usePlaygroundStore((state) => state.handlePhaseStart);
-  const handlePhaseComplete = usePlaygroundStore((state) => state.handlePhaseComplete);
+  const handleCellStart = usePlaygroundStore((state) => state.handleCellStart);
+  const handleCellComplete = usePlaygroundStore((state) => state.handleCellComplete);
   const handleCascadeComplete = usePlaygroundStore((state) => state.handleCascadeComplete);
   const handleCascadeError = usePlaygroundStore((state) => state.handleCascadeError);
   const handleCostUpdate = usePlaygroundStore((state) => state.handleCostUpdate);
@@ -36,15 +36,15 @@ export function usePlaygroundSSE() {
         console.log('[Playground SSE] Cascade started:', event.session_id);
         break;
 
-      case 'phase_start':
-        console.log('[Playground SSE] Phase start:', data.cell_name);
-        handlePhaseStart(data.cell_name);
+      case 'cell_start':
+        console.log('[Playground SSE] Cell start:', data.cell_name);
+        handleCellStart(data.cell_name);
         break;
 
-      case 'phase_complete':
-        console.log('[Playground SSE] Phase complete:', data.cell_name, 'result:', data.result);
+      case 'cell_complete':
+        console.log('[Playground SSE] Cell complete:', data.cell_name, 'result:', data.result);
         console.log('[Playground SSE] Images in result:', data.result?.images);
-        handlePhaseComplete(data.cell_name, data.result || {});
+        handleCellComplete(data.cell_name, data.result || {});
         break;
 
       case 'cascade_complete':
@@ -56,7 +56,7 @@ export function usePlaygroundSSE() {
         break;
 
       case 'cost_update':
-        // Cost data arrives asynchronously after phase completion
+        // Cost data arrives asynchronously after cell completion
         if (data.cell_name && data.cost !== undefined) {
           console.log('[Playground SSE] Cost update:', data.cell_name, 'cost:', data.cost);
           handleCostUpdate(data.cell_name, data.cost);
@@ -69,7 +69,7 @@ export function usePlaygroundSSE() {
           console.log('[Playground SSE] Event:', event.type);
         }
     }
-  }, [handlePhaseStart, handlePhaseComplete, handleCascadeComplete, handleCascadeError, handleCostUpdate, updateNodeData]);
+  }, [handleCellStart, handleCellComplete, handleCascadeComplete, handleCascadeError, handleCostUpdate, updateNodeData]);
 
   // Process buffered events when sessionId becomes known
   useEffect(() => {

@@ -5,7 +5,7 @@ The narrator service subscribes to cascade events and spawns background
 narrator cascades that use the 'say' tool to provide voice commentary.
 
 Key design principles:
-1. Event-driven: Subscribes to phase_complete, cascade_complete, etc.
+1. Event-driven: Subscribes to cell_complete, cascade_complete, etc.
 2. Singleton per session: Only one narrator cascade runs at a time
 3. Latest-wins: If events stack up, only the most recent gets processed
 4. Proper logging: All activity tracked via unified_logs
@@ -46,7 +46,7 @@ DEFAULT_NARRATOR_CASCADE = {
         "name": "speak",
         "instructions": """You are a concise narrator providing real-time voice updates during an AI workflow.
 
-Current phase: {{ input.cell_name }}
+Current cell: {{ input.cell_name }}
 Event: {{ input.event_type }}
 {% if input.cascade_complete %}
 The workflow has completed.
@@ -141,8 +141,8 @@ class NarratorService:
 
         # Map event types to our internal names
         self._event_map = {
-            "phase_start": "phase_start",
-            "phase_complete": "phase_complete",
+            "cell_start": "cell_start",
+            "cell_complete": "cell_complete",
             "cascade_start": "cascade_start",
             "cascade_complete": "cascade_complete",
             "turn_complete": "turn",
@@ -152,14 +152,14 @@ class NarratorService:
         # Which events we care about (from config.effective_on_events) - for event mode only
         self._subscribed_events: Set[str] = set()
         if self._mode == 'event':
-            events_to_subscribe = config.effective_on_events if hasattr(config, 'effective_on_events') else ["phase_complete"]
+            events_to_subscribe = config.effective_on_events if hasattr(config, 'effective_on_events') else ["cell_complete"]
             for evt in events_to_subscribe:
                 # Map our config names to event bus names
                 if evt == "turn":
                     self._subscribed_events.add("turn_complete")
                 elif evt == "tool_call":
                     self._subscribed_events.add("tool_complete")
-                elif evt in ("phase_start", "phase_complete", "cascade_start", "cascade_complete"):
+                elif evt in ("cell_start", "cell_complete", "cascade_start", "cascade_complete"):
                     self._subscribed_events.add(evt)
 
     def start(self, event_bus: EventBus):
@@ -544,7 +544,7 @@ class NarratorService:
             content = entry.get("content", "")
             metadata = entry.get("metadata", {})
 
-            # Extract phase/turn info from metadata
+            # Extract cell/turn info from metadata
             if "cell_name" in metadata:
                 current_cell = metadata["cell_name"]
             if "turn_number" in metadata:
@@ -558,7 +558,7 @@ class NarratorService:
 
             # Show ALL other message types with their full content
             if role == "system":
-                # System messages (usually phase instructions)
+                # System messages (usually cell instructions)
                 content_preview = str(content)[:150]
                 summary_parts.append(f"📋 System: {content_preview}")
 
@@ -623,10 +623,10 @@ class NarratorService:
 
         cell_name = data.get("cell_name", "unknown")
 
-        if event.type == "phase_start":
-            summary_parts.append(f"Starting phase '{cell_name}'")
-        elif event.type == "phase_complete":
-            summary_parts.append(f"Completed phase '{cell_name}'")
+        if event.type == "cell_start":
+            summary_parts.append(f"Starting cell '{cell_name}'")
+        elif event.type == "cell_complete":
+            summary_parts.append(f"Completed cell '{cell_name}'")
             if data.get("output"):
                 output = str(data["output"])[:300]
                 summary_parts.append(f"Output: {output}")
@@ -662,7 +662,7 @@ class NarratorService:
                         summary_parts.append(f"Tool result: {result_preview}")
             else:
                 # Fallback to basic summary if no history provided
-                summary_parts.append(f"Turn {turn}/{max_turns} in phase '{cell_name}'")
+                summary_parts.append(f"Turn {turn}/{max_turns} in cell '{cell_name}'")
                 if data.get("assistant_response"):
                     response = str(data["assistant_response"])[:200]
                     summary_parts.append(f"Assistant said: {response}")

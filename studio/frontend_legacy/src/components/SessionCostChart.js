@@ -16,8 +16,8 @@ import './SessionCostChart.css';
 function SessionCostChart({ messages = [], isRunning = false, onBarClick = null }) {
   const [hoveredBar, setHoveredBar] = useState(null);
 
-  // Build phase color map based on order of first appearance
-  const phaseColorMap = useMemo(() => {
+  // Build cell color map based on order of first appearance
+  const cellColorMap = useMemo(() => {
     if (!messages || messages.length === 0) return {};
 
     const map = {};
@@ -27,9 +27,9 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
     const sorted = [...messages].sort((a, b) => a.timestamp - b.timestamp);
 
     sorted.forEach(msg => {
-      const phaseName = msg.cell_name || '_unknown_';
-      if (!(phaseName in map)) {
-        map[phaseName] = getSequentialColor(colorIndex);
+      const cellName = msg.cell_name || '_unknown_';
+      if (!(cellName in map)) {
+        map[cellName] = getSequentialColor(colorIndex);
         colorIndex++;
       }
     });
@@ -61,9 +61,9 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
       const messageDuration = index === 0 ? 0 : msg.timestamp - prevTimestamp;
       prevTimestamp = msg.timestamp;
 
-      // Get phase color from our map (matches CascadeBar colors)
-      const phaseName = msg.cell_name || '_unknown_';
-      let barColor = phaseColorMap[phaseName] || '#2DD4BF';
+      // Get cell color from our map (matches CascadeBar colors)
+      const cellName = msg.cell_name || '_unknown_';
+      let barColor = cellColorMap[cellName] || '#2DD4BF';
 
       // Dim non-winner soundings slightly
       const isDimmed = msg.candidate_index !== null && !msg.is_winner;
@@ -90,7 +90,7 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         cost: msg.cost || 0,
         cumulativeCost,
         duration: messageDuration, // Time this message took (delta from previous)
-        phase: phaseName,
+        cell: cellName,
         role: msg.role,
         nodeType: msg.node_type,
         tokens: (msg.tokens_in || 0) + (msg.tokens_out || 0),
@@ -101,7 +101,7 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         isDimmed
       };
     });
-  }, [messages, phaseColorMap]);
+  }, [messages, cellColorMap]);
 
   // Calculate totals for header
   const totals = useMemo(() => {
@@ -119,8 +119,8 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         <div className="session-cost-tooltip">
           <div className="tooltip-header">Message #{data.index + 1}</div>
           <div className="tooltip-row">
-            <span>Phase:</span>
-            <span>{data.phase || 'N/A'}</span>
+            <span>Cell:</span>
+            <span>{data.cell || 'N/A'}</span>
           </div>
           <div className="tooltip-row">
             <span>Type:</span>
@@ -289,15 +289,15 @@ function SessionCostChart({ messages = [], isRunning = false, onBarClick = null 
         </ResponsiveContainer>
       </div>
       <div className="chart-legend">
-        {Object.entries(phaseColorMap).slice(0, 6).map(([phase, color]) => (
-          <span key={phase} className="legend-item phase-legend">
+        {Object.entries(cellColorMap).slice(0, 6).map(([cell, color]) => (
+          <span key={cell} className="legend-item cell-legend">
             <span className="legend-dot" style={{ background: color }}></span>
-            {phase === '_unknown_' ? 'Init' : phase.length > 12 ? phase.substring(0, 10) + '...' : phase}
+            {cell === '_unknown_' ? 'Init' : cell.length > 12 ? cell.substring(0, 10) + '...' : cell}
           </span>
         ))}
-        {Object.keys(phaseColorMap).length > 6 && (
-          <span className="legend-item phase-legend">
-            +{Object.keys(phaseColorMap).length - 6} more
+        {Object.keys(cellColorMap).length > 6 && (
+          <span className="legend-item cell-legend">
+            +{Object.keys(cellColorMap).length - 6} more
           </span>
         )}
         <span className="legend-divider">|</span>

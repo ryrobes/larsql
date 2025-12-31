@@ -1,6 +1,6 @@
 /* ========================================
    ContextAssessmentPanel Component Styles
-   Phase 2: Enhanced Visualizations
+   Cell 2: Enhanced Visualizations
    ======================================== */
 
 .context-assessment-panel {
@@ -356,10 +356,10 @@
 }
 
 /* ========================================
-   Phase Content Wrapper & View Mode Toggle
+   Cell Content Wrapper & View Mode Toggle
    ======================================== */
 
-.phase-content-wrapper {
+.cell-content-wrapper {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -762,10 +762,10 @@
 }
 
 /* ========================================
-   Inter-Phase Filters
+   Inter-Cell Filters
    ======================================== */
 
-.inter-phase-filters {
+.inter-cell-filters {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1057,7 +1057,7 @@
 }
 
 /* ========================================
-   Config Selector (Intra-Phase)
+   Config Selector (Intra-Cell)
    ======================================== */
 
 .config-explanation {

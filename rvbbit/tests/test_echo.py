@@ -121,7 +121,7 @@ class TestStateManagement:
 # =============================================================================
 
 class TestContextManagement:
-    """Test cascade/phase context setting."""
+    """Test cascade/cell context setting."""
 
     def test_set_cascade_context(self):
         """Set current cascade context."""
@@ -130,16 +130,16 @@ class TestContextManagement:
         assert echo._current_cascade_id == "my_cascade"
 
     def test_set_cell_context(self):
-        """Set current phase context."""
+        """Set current cell context."""
         echo = Echo(session_id="ctx_test")
-        echo.set_cell_context("analysis_phase")
-        assert echo._current_cell_name == "analysis_phase"
+        echo.set_cell_context("analysis_cell")
+        assert echo._current_cell_name == "analysis_cell"
 
     def test_context_enriches_history(self):
         """Context is automatically added to history entries."""
         echo = Echo(session_id="ctx_test")
         echo.set_cascade_context("test_cascade")
-        echo.set_cell_context("test_phase")
+        echo.set_cell_context("test_cell")
 
         # Use skip_unified_log to avoid DB calls
         echo.add_history(
@@ -151,7 +151,7 @@ class TestContextManagement:
 
         entry = echo.history[-1]
         assert entry["metadata"]["cascade_id"] == "test_cascade"
-        assert entry["metadata"]["cell_name"] == "test_phase"
+        assert entry["metadata"]["cell_name"] == "test_cell"
 
 
 # =============================================================================
@@ -243,7 +243,7 @@ class TestHistoryManagement:
 # =============================================================================
 
 class TestLineageTracking:
-    """Test phase lineage tracking."""
+    """Test cell lineage tracking."""
 
     def test_add_lineage(self):
         """Add lineage entry."""
@@ -256,23 +256,23 @@ class TestLineageTracking:
         assert echo.lineage[0]["trace_id"] == "trace_1"
 
     def test_lineage_accumulates(self):
-        """Lineage accumulates across phases."""
+        """Lineage accumulates across cells."""
         echo = Echo(session_id="lineage_test")
         echo.add_lineage("ingest", "Data received", trace_id="t1")
         echo.add_lineage("process", "Data processed", trace_id="t2")
         echo.add_lineage("output", "Results ready", trace_id="t3")
 
         assert len(echo.lineage) == 3
-        phases = [l["cell"] for l in echo.lineage]
-        assert phases == ["ingest", "process", "output"]
+        cells = [l["cell"] for l in echo.lineage]
+        assert cells == ["ingest", "process", "output"]
 
     def test_lineage_various_output_types(self):
         """Lineage output can be various types."""
         echo = Echo(session_id="lineage_test")
-        echo.add_lineage("string_phase", "text output")
-        echo.add_lineage("dict_phase", {"key": "value", "count": 5})
-        echo.add_lineage("list_phase", [1, 2, 3])
-        echo.add_lineage("none_phase", None)
+        echo.add_lineage("string_cell", "text output")
+        echo.add_lineage("dict_cell", {"key": "value", "count": 5})
+        echo.add_lineage("list_cell", [1, 2, 3])
+        echo.add_lineage("none_cell", None)
 
         assert echo.lineage[0]["output"] == "text output"
         assert echo.lineage[1]["output"] == {"key": "value", "count": 5}
@@ -318,9 +318,9 @@ class TestErrorTracking:
     def test_multiple_errors(self):
         """Multiple errors accumulate."""
         echo = Echo(session_id="error_test")
-        echo.add_error("phase1", "Error1", "Message 1")
-        echo.add_error("phase2", "Error2", "Message 2")
-        echo.add_error("phase1", "Error3", "Message 3")
+        echo.add_error("cell1", "Error1", "Message 1")
+        echo.add_error("cell2", "Error2", "Message 2")
+        echo.add_error("cell1", "Error3", "Message 3")
 
         assert len(echo.errors) == 3
 
@@ -362,7 +362,7 @@ class TestGetFullEcho:
     def test_get_full_echo_with_errors(self):
         """Get full echo reflects error status."""
         echo = Echo(session_id="full_echo_test")
-        echo.add_error("phase1", "TestError", "Something broke")
+        echo.add_error("cell1", "TestError", "Something broke")
 
         result = echo.get_full_echo()
 
@@ -395,24 +395,24 @@ class TestEchoMerging:
     def test_merge_lineage(self):
         """Merging extends lineage."""
         parent = Echo(session_id="parent")
-        parent.add_lineage("parent_phase", "parent_output")
+        parent.add_lineage("parent_cell", "parent_output")
 
         child = Echo(session_id="child")
-        child.add_lineage("child_phase1", "child_output1")
-        child.add_lineage("child_phase2", "child_output2")
+        child.add_lineage("child_cell1", "child_output1")
+        child.add_lineage("child_cell2", "child_output2")
 
         parent.merge(child)
 
         assert len(parent.lineage) == 3
-        phases = [l["cell"] for l in parent.lineage]
-        assert "child_phase1" in phases
-        assert "child_phase2" in phases
+        cells = [l["cell"] for l in parent.lineage]
+        assert "child_cell1" in cells
+        assert "child_cell2" in cells
 
     def test_merge_errors(self):
         """Merging includes child errors."""
         parent = Echo(session_id="parent")
         child = Echo(session_id="child")
-        child.add_error("child_phase", "ChildError", "Child error message")
+        child.add_error("child_cell", "ChildError", "Child error message")
 
         parent.merge(child)
 

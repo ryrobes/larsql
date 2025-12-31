@@ -1,5 +1,5 @@
 /**
- * Derive phase state from log rows
+ * Derive cell state from log rows
  *
  * Shared by: polling hook + direct fetch for URL loading
  *
@@ -13,14 +13,14 @@
  * - Tokens (in/out)
  * - Images (from metadata)
  */
-export function derivePhaseState(logs, phaseName) {
-  const phaseLogs = logs.filter(r => r.cell_name === phaseName);
+export function deriveCellState(logs, cellName) {
+  const cellLogs = logs.filter(r => r.cell_name === cellName);
 
-  if (phaseLogs.length === 0) {
+  if (cellLogs.length === 0) {
     return { status: 'pending', result: null, error: null, duration: null, images: null, cost: null, model: null, tokens_in: null, tokens_out: null };
   }
 
-  //console.log('[derivePhaseState]', phaseName, 'has', phaseLogs.length, 'log rows');
+  //console.log('[deriveCellState]', cellName, 'has', cellLogs.length, 'log rows');
 
   let status = 'pending';
   let result = null;
@@ -32,18 +32,18 @@ export function derivePhaseState(logs, phaseName) {
   let tokens_in = 0;
   let tokens_out = 0;
 
-  for (const row of phaseLogs) {
+  for (const row of cellLogs) {
     const role = row.role;
 
-    // Phase running
-    if (role === 'phase_start' || role === 'structure') {
-      //console.log('[derivePhaseState]', phaseName, 'Setting status to running (role:', role, ')');
+    // Cell running
+    if (role === 'cell_start' || role === 'structure') {
+      //console.log('[deriveCellState]', cellName, 'Setting status to running (role:', role, ')');
       status = 'running';
     }
 
-    // Phase complete
-    if (role === 'phase_complete') {
-      //console.log('[derivePhaseState]', phaseName, 'Setting status to SUCCESS (found phase_complete)');
+    // Cell complete
+    if (role === 'cell_complete') {
+      //console.log('[deriveCellState]', cellName, 'Setting status to SUCCESS (found cell_complete)');
       status = 'success';
     }
 
@@ -62,15 +62,15 @@ export function derivePhaseState(logs, phaseName) {
         try {
           const parsed = JSON.parse(toolResult);
           toolResult = parsed;
-          //console.log('[derivePhaseState]', phaseName, '✓ Parsed tool result, now type:', typeof toolResult);
+          //console.log('[deriveCellState]', cellName, '✓ Parsed tool result, now type:', typeof toolResult);
         } catch (e) {
           // Can't parse further - it's a plain string result
-          //console.log('[derivePhaseState]', phaseName, 'Result is plain string (not JSON)');
+          //console.log('[deriveCellState]', cellName, 'Result is plain string (not JSON)');
           break;
         }
       }
 
-      //console.log('[derivePhaseState]', phaseName, '✓ Found tool result, type:', typeof toolResult, 'has rows?', toolResult?.rows?.length);
+      //console.log('[deriveCellState]', cellName, '✓ Found tool result, type:', typeof toolResult, 'has rows?', toolResult?.rows?.length);
       result = toolResult;
     }
 
@@ -83,14 +83,14 @@ export function derivePhaseState(logs, phaseName) {
         try {
           const parsed = JSON.parse(content);
           content = parsed;
-          //console.log('[derivePhaseState]', phaseName, '✓ Parsed assistant content, now type:', typeof content);
+          //console.log('[deriveCellState]', cellName, '✓ Parsed assistant content, now type:', typeof content);
         } catch {
           // Can't parse further
           break;
         }
       }
 
-      //console.log('[derivePhaseState]', phaseName, '✓ Found assistant result, type:', typeof content);
+      //console.log('[deriveCellState]', cellName, '✓ Found assistant result, type:', typeof content);
       result = content;
     }
 
@@ -102,13 +102,13 @@ export function derivePhaseState(logs, phaseName) {
         try {
           metadata = JSON.parse(metadata);
         } catch (e) {
-          console.warn('[derivePhaseState] Failed to parse metadata_json:', e);
+          console.warn('[deriveCellState] Failed to parse metadata_json:', e);
         }
       }
 
       // Check for images in metadata
       if (metadata?.images && Array.isArray(metadata.images)) {
-        //console.log('[derivePhaseState]', phaseName, 'Found images in metadata:', metadata.images);
+        //console.log('[deriveCellState]', cellName, 'Found images in metadata:', metadata.images);
         images = metadata.images;
       }
     }
@@ -118,7 +118,7 @@ export function derivePhaseState(logs, phaseName) {
       const ms = parseFloat(row.duration_ms);
       if (!isNaN(ms) && ms > 0) {
         duration = (duration || 0) + ms;
-        //console.log('[derivePhaseState]', phaseName, '✓ Added duration:', ms, 'ms from', role, '- Total:', duration);
+        //console.log('[deriveCellState]', cellName, '✓ Added duration:', ms, 'ms from', role, '- Total:', duration);
       }
     }
 
@@ -164,7 +164,7 @@ export function derivePhaseState(logs, phaseName) {
   };
 
   // Log final state
-  console.log('[derivePhaseState]', phaseName, 'Final state:', {
+  console.log('[deriveCellState]', cellName, 'Final state:', {
     status,
     hasResult: !!result,
     resultType: result ? typeof result : 'null',

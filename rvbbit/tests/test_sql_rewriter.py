@@ -298,8 +298,8 @@ def test_rewrite_map_with_parallel():
     )
     rewritten = _rewrite_map(stmt)
 
-    # Phase 2 MVP: PARALLEL parses correctly but uses sequential execution
-    # Threading optimization deferred to Phase 2B
+    # Cell 2 MVP: PARALLEL parses correctly but uses sequential execution
+    # Threading optimization deferred to Cell 2B
     assert 'WITH rvbbit_input AS' in rewritten
     assert 'rvbbit_raw AS' in rewritten
     assert "rvbbit_run('x.yaml'" in rewritten

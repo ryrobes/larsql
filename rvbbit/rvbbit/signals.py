@@ -15,7 +15,7 @@ Key patterns:
 - Waiting cascade wakes immediately via callback, or catches up via polling
 
 Usage:
-    # In a cascade phase - wait for external event
+    # In a cascade cell - wait for external event
     result = await_signal(
         signal_name="data_ready",
         timeout="1h",
@@ -72,7 +72,7 @@ class Signal:
     callback_port: Optional[int] = None
     callback_token: Optional[str] = None
     payload: Optional[Dict[str, Any]] = None
-    target_phase: Optional[str] = None
+    target_cell: Optional[str] = None
     inputs: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
     source: Optional[str] = None
@@ -93,7 +93,7 @@ class Signal:
             "callback_host": self.callback_host,
             "callback_port": self.callback_port,
             "payload": self.payload,
-            "target_phase": self.target_phase,
+            "target_cell": self.target_cell,
             "inputs": self.inputs,
             "description": self.description,
             "source": self.source,
@@ -328,7 +328,7 @@ class SignalManager:
         cell_name: Optional[str] = None,
         timeout: str = "1h",
         description: Optional[str] = None,
-        target_phase: Optional[str] = None,
+        target_cell: Optional[str] = None,
         inputs: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Signal:
@@ -339,10 +339,10 @@ class SignalManager:
             signal_name: Name of the signal to wait for
             session_id: Current session ID
             cascade_id: Current cascade ID
-            cell_name: Current phase name
+            cell_name: Current cell name
             timeout: How long to wait (e.g., '1h', '30m')
             description: Human-readable description
-            target_phase: Phase to route to when signal fires
+            target_cell: Cell to route to when signal fires
             inputs: Inputs to pass when signal fires
             metadata: Additional metadata
 
@@ -364,7 +364,7 @@ class SignalManager:
             callback_host=self._server_host,
             callback_port=self._server_port,
             callback_token=callback_token,
-            target_phase=target_phase,
+            target_cell=target_cell,
             inputs=inputs,
             description=description,
             metadata=metadata,
@@ -807,7 +807,7 @@ class SignalManager:
                 'callback_port': signal.callback_port,
                 'callback_token': signal.callback_token,
                 'payload_json': json.dumps(signal.payload) if signal.payload else None,
-                'target_phase': signal.target_phase,
+                'target_cell': signal.target_cell,
                 'inputs_json': json.dumps(signal.inputs) if signal.inputs else None,
                 'description': signal.description,
                 'source': signal.source,
@@ -891,7 +891,7 @@ class SignalManager:
             callback_port=row.get('callback_port'),
             callback_token=row.get('callback_token'),
             payload=json.loads(row['payload_json']) if row.get('payload_json') else None,
-            target_phase=row.get('target_phase'),
+            target_cell=row.get('target_cell'),
             inputs=json.loads(row['inputs_json']) if row.get('inputs_json') else None,
             description=row.get('description'),
             source=row.get('source'),
@@ -930,7 +930,7 @@ def await_signal(
     signal_name: str,
     timeout: str = "1h",
     description: Optional[str] = None,
-    target_phase: Optional[str] = None,
+    target_cell: Optional[str] = None,
     inputs: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None
 ) -> Optional[Dict[str, Any]]:
@@ -943,7 +943,7 @@ def await_signal(
         signal_name: Name of the signal to wait for
         timeout: How long to wait (e.g., '1h', '30m', '1d')
         description: Human-readable description of what we're waiting for
-        target_phase: Phase to route to when signal fires
+        target_cell: Cell to route to when signal fires
         inputs: Inputs to merge when signal fires
         metadata: Additional metadata
 
@@ -971,7 +971,7 @@ def await_signal(
         cell_name=cell_name,
         timeout=timeout,
         description=description,
-        target_phase=target_phase,
+        target_cell=target_cell,
         inputs=inputs,
         metadata=metadata
     )

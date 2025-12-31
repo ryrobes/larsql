@@ -21,7 +21,7 @@ from .config import get_config
 
 def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
     """
-    Load all rabbitize artifacts for a phase into a plain dict structure.
+    Load all rabbitize artifacts for a cell into a plain dict structure.
 
     Returns structure like:
     {
@@ -125,13 +125,13 @@ def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
     return artifacts
 
 
-def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list, session_id: str) -> Dict[str, Any]:
+def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_cells: list, session_id: str) -> Dict[str, Any]:
     """
-    Enrich the outputs dict with artifact resolvers for rabbitize phases.
+    Enrich the outputs dict with artifact resolvers for rabbitize cells.
 
     Args:
         outputs: Standard outputs dict {cell_name: output}
-        cascade_phases: List of CellConfig objects
+        cascade_cells: List of CellConfig objects
         session_id: Current session ID
 
     Returns:
@@ -141,35 +141,35 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
 
     print(f"[ArtifactResolver] Enriching outputs with artifacts for session: {session_id}")
     print(f"[ArtifactResolver] Input outputs keys: {list(outputs.keys())}")
-    print(f"[ArtifactResolver] Cascade has {len(cascade_phases)} phases")
+    print(f"[ArtifactResolver] Cascade has {len(cascade_cells)} cells")
 
-    for phase in cascade_phases:
-        # Check if this is a rabbitize phase
-        cell_name = getattr(phase, 'name', None)
-        phase_tool = getattr(phase, 'tool', None)
-        phase_inputs = getattr(phase, 'inputs', None)
+    for cell in cascade_cells:
+        # Check if this is a rabbitize cell
+        cell_name = getattr(cell, 'name', None)
+        cell_tool = getattr(cell, 'tool', None)
+        cell_inputs = getattr(cell, 'inputs', None)
 
-        # print(f"[ArtifactResolver] Checking phase: {cell_name}, tool: {phase_tool}, inputs type: {type(phase_inputs)}")
-        # print(f"[ArtifactResolver]   Phase attributes: {dir(phase)[:20]}")  # Debug what's available
+        # print(f"[ArtifactResolver] Checking cell: {cell_name}, tool: {cell_tool}, inputs type: {type(cell_inputs)}")
+        # print(f"[ArtifactResolver]   Cell attributes: {dir(cell)[:20]}")  # Debug what's available
 
-        is_shell_tool = phase_tool in ('linux_shell', 'linux_shell_dangerous')
+        is_shell_tool = cell_tool in ('linux_shell', 'linux_shell_dangerous')
 
         # Check if inputs contains rabbitize command (multiple strategies)
         has_rabbitize = False
 
-        if phase_inputs:
-            if isinstance(phase_inputs, dict):
-                command = phase_inputs.get('command', '')
+        if cell_inputs:
+            if isinstance(cell_inputs, dict):
+                command = cell_inputs.get('command', '')
             else:
-                command = getattr(phase_inputs, 'command', '')
+                command = getattr(cell_inputs, 'command', '')
             has_rabbitize = 'rabbitize' in command if command else False
             print(f"[ArtifactResolver]   -> has_rabbitize: {has_rabbitize}, command preview: {command[:100] if command else None}")
 
-        # Fallback: Check phase dict directly (Pydantic model might have inputs in __dict__)
+        # Fallback: Check cell dict directly (Pydantic model might have inputs in __dict__)
         if not has_rabbitize and is_shell_tool:
-            phase_dict = getattr(phase, '__dict__', {}) or getattr(phase, 'dict', lambda: {})()
-            if isinstance(phase_dict, dict) and 'inputs' in phase_dict:
-                inputs_dict = phase_dict['inputs']
+            cell_dict = getattr(cell, '__dict__', {}) or getattr(cell, 'dict', lambda: {})()
+            if isinstance(cell_dict, dict) and 'inputs' in cell_dict:
+                inputs_dict = cell_dict['inputs']
                 if isinstance(inputs_dict, dict) and 'command' in inputs_dict:
                     command = inputs_dict['command']
                     has_rabbitize = 'rabbitize' in command if command else False
@@ -177,7 +177,7 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
 
         # Simple fallback: linux_shell_dangerous is primarily for rabbitize
         # (until we have a better Docker image)
-        if not has_rabbitize and phase_tool == 'linux_shell_dangerous':
+        if not has_rabbitize and cell_tool == 'linux_shell_dangerous':
             has_rabbitize = True
             print(f"[ArtifactResolver]   -> Using fallback: linux_shell_dangerous = rabbitize")
 
@@ -185,11 +185,11 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
 
         if is_rabbitize:
             if cell_name:
-                print(f"[ArtifactResolver] ✓ Loading artifacts for rabbitize phase: {cell_name}")
+                print(f"[ArtifactResolver] ✓ Loading artifacts for rabbitize cell: {cell_name}")
                 # Load artifacts into plain dict (no custom classes)
                 enriched[cell_name] = load_rabbitize_artifacts(cell_name, session_id)
             else:
-                print(f"[ArtifactResolver] ✗ Rabbitize phase has no name!")
+                print(f"[ArtifactResolver] ✗ Rabbitize cell has no name!")
 
     print(f"[ArtifactResolver] Final enriched outputs keys: {list(enriched.keys())}")
     return enriched

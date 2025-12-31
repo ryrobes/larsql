@@ -1,5 +1,5 @@
 -- ============================================================================
--- RVBBIT SQL Syntax Examples (Phase 1: MAP)
+-- RVBBIT SQL Syntax Examples (Cell 1: MAP)
 -- ============================================================================
 --
 -- These examples demonstrate the new RVBBIT MAP syntax for row-wise processing.
@@ -187,7 +187,7 @@ USING (
 
 
 -- ============================================================================
--- Example 10: PARALLEL Processing (NEW! Phase 2)
+-- Example 10: PARALLEL Processing (NEW! Cell 2)
 -- ============================================================================
 
 -- Process 100 products with only 5 concurrent LLM calls
@@ -218,7 +218,7 @@ USING (
 
 
 -- ============================================================================
--- Example 11: RVBBIT RUN - Batch Processing (NEW! Phase 3)
+-- Example 11: RVBBIT RUN - Batch Processing (NEW! Cell 3)
 -- ============================================================================
 
 -- Process entire dataset as ONE cascade (vs MAP = once per row)
@@ -272,8 +272,8 @@ USING (
 -- - WITH options (cache, budget_dollars, as_table)
 -- - Auto-LIMIT injection
 --
--- ❌ NOT YET SUPPORTED (coming in later phases):
--- - Real threading for MAP PARALLEL (Phase 2B)
+-- ❌ NOT YET SUPPORTED (coming in later cells):
+-- - Real threading for MAP PARALLEL (Cell 2B)
 -- - RVBBIT MAP BATCH <n> (chunked processing)
 -- - RETURNING (...) clause (field extraction)
 -- - RETURNING TABLE (multi-table outputs)

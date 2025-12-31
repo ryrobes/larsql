@@ -15,7 +15,7 @@ def ask_human(question: str, context: str = None, ui_hint: str = None) -> str:
 
     Args:
         question: The question to ask the human
-        context: Optional context to show (e.g., phase output to review)
+        context: Optional context to show (e.g., cell output to review)
         ui_hint: Optional explicit UI type ("confirmation", "choice", "rating", "text")
                  If provided, skips LLM classification and uses this type directly.
 
@@ -28,7 +28,7 @@ def ask_human(question: str, context: str = None, ui_hint: str = None) -> str:
         - For text: the entered text
 
     The response is automatically stored in state.{cell_name} for use
-    in subsequent phases via Jinja2 templates: {{ state.cell_name }}
+    in subsequent cells via Jinja2 templates: {{ state.cell_name }}
 
     In CLI mode: Uses terminal prompt
     In UI mode: Creates a checkpoint with generated UI and blocks until human responds
@@ -101,7 +101,7 @@ def ask_human(question: str, context: str = None, ui_hint: str = None) -> str:
             cascade_id=trace.name if trace else "unknown",
             cell_name=cell_name or "ask_human",
             checkpoint_type=checkpoint_type,
-            phase_output=question,  # Store original question
+            cell_output=question,  # Store original question
             ui_spec=ui_spec,
             echo_snapshot={},  # Not needed for blocking model
             timeout_seconds=3600  # 1 hour timeout
@@ -130,7 +130,7 @@ def ask_human(question: str, context: str = None, ui_hint: str = None) -> str:
 
         console.print(f"[green]✓ Received response: {answer[:100]}{'...' if len(str(answer)) > 100 else ''}[/green]")
 
-        # Store in state.{cell_name} for downstream phases
+        # Store in state.{cell_name} for downstream cells
         _store_response(cell_name, answer)
 
         return answer
@@ -147,14 +147,14 @@ def _cli_prompt(question: str, cell_name: str, console) -> str:
     console.print(f"\n[bold yellow]🤖 Agent asks:[/bold yellow] {question}")
     answer = Prompt.ask("[bold green]👤 You[/bold green]")
 
-    # Store in state.{cell_name} for downstream phases
+    # Store in state.{cell_name} for downstream cells
     _store_response(cell_name, answer)
 
     return answer
 
 
 def _store_response(cell_name: str, response: str) -> None:
-    """Store the human response in state using the phase name as key."""
+    """Store the human response in state using the cell name as key."""
     from .state_tools import set_state_internal
 
     if cell_name:
@@ -186,7 +186,7 @@ def ask_human_custom(
     - Show data tables with structured information
     - Present options as rich cards with images and descriptions
     - Create multi-column layouts for complex content
-    - Auto-detect relevant content from the current phase
+    - Auto-detect relevant content from the current cell
 
     Args:
         question: The question to ask the human
@@ -199,7 +199,7 @@ def ask_human_custom(
                  Format: [{"id": "opt1", "title": "...", "content": "...", "image": "...", "metadata": {...}}, ...]
         ui_hint: Force a specific input type ("confirmation", "choice", "rating", "text")
         layout_hint: Suggest a layout ("simple", "two-column", "card-grid", "tabs")
-        auto_detect: If True, automatically detect images/data from phase context
+        auto_detect: If True, automatically detect images/data from cell context
 
     Returns:
         The human's response as a string.
@@ -307,7 +307,7 @@ def _auto_detect_content(
     cell_name: str
 ) -> tuple:
     """
-    Auto-detect images and structured data from the current phase context.
+    Auto-detect images and structured data from the current cell context.
 
     This enables agents to simply call ask_human_custom(question="...")
     and have relevant charts/data automatically included.
@@ -316,7 +316,7 @@ def _auto_detect_content(
         images: Explicitly provided images (if any)
         data: Explicitly provided data (if any)
         session_id: Current session ID
-        cell_name: Current phase name
+        cell_name: Current cell name
 
     Returns:
         Tuple of (images_list, data_dict)
@@ -331,11 +331,11 @@ def _auto_detect_content(
         images = []
 
         if session_id and cell_name:
-            # 1. Check phase-specific image directory
-            phase_image_dir = os.path.join(config.image_dir, session_id, cell_name)
-            if os.path.exists(phase_image_dir):
+            # 1. Check cell-specific image directory
+            cell_image_dir = os.path.join(config.image_dir, session_id, cell_name)
+            if os.path.exists(cell_image_dir):
                 for ext in ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.svg']:
-                    found = glob_module.glob(os.path.join(phase_image_dir, ext))
+                    found = glob_module.glob(os.path.join(cell_image_dir, ext))
                     images.extend(sorted(found))
 
             # 2. Check session-level image directory
@@ -345,12 +345,12 @@ def _auto_detect_content(
                     found = glob_module.glob(os.path.join(session_image_dir, ext))
                     images.extend(sorted(found))
 
-        # 3. Check Echo for phase images (if available)
+        # 3. Check Echo for cell images (if available)
         try:
             from ..echo import get_current_echo
             echo = get_current_echo()
-            if echo and hasattr(echo, '_phase_images') and cell_name in echo._phase_images:
-                images.extend(echo._phase_images[cell_name])
+            if echo and hasattr(echo, '_cell_images') and cell_name in echo._cell_images:
+                images.extend(echo._cell_images[cell_name])
         except Exception:
             pass
 
@@ -366,11 +366,11 @@ def _auto_detect_content(
             echo = get_current_echo()
 
             if echo:
-                # 1. Check state for this phase
+                # 1. Check state for this cell
                 if cell_name and cell_name in echo.state:
-                    phase_state = echo.state.get(cell_name)
-                    if isinstance(phase_state, dict):
-                        data = phase_state
+                    cell_state = echo.state.get(cell_name)
+                    if isinstance(cell_state, dict):
+                        data = cell_state
 
                 # 2. Check last assistant message for JSON
                 if not data and echo.history:
@@ -475,7 +475,7 @@ def _ask_via_checkpoint_custom(
         cascade_id=trace.name if trace else "unknown",
         cell_name=cell_name or "ask_human_custom",
         checkpoint_type=checkpoint_type,
-        phase_output=question,
+        cell_output=question,
         ui_spec=ui_spec,
         echo_snapshot={},
         timeout_seconds=3600
@@ -1093,7 +1093,7 @@ def _request_decision_via_checkpoint(
         cascade_id=trace.name if trace else "unknown",
         cell_name=cell_name or "request_decision",
         checkpoint_type=CheckpointType.DECISION,
-        phase_output=question,
+        cell_output=question,
         ui_spec=ui_spec,
         echo_snapshot={},
         timeout_seconds=timeout_seconds

@@ -7,7 +7,7 @@ from .store import list_sources, read_chunk, search_chunks
 def _require_context():
     ctx = get_current_rag_context()
     if not ctx:
-        raise ValueError("No active RAG context. Add a `rag` block to the phase to enable RAG tools.")
+        raise ValueError("No active RAG context. Add a `rag` block to the cell to enable RAG tools.")
     return ctx
 
 def rag_search(query: str, k: int = 5, score_threshold: Optional[float] = None, doc_filter: Optional[str] = None) -> str:

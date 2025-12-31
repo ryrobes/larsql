@@ -5,13 +5,13 @@ import { useExecutionSSE } from '../hooks/useExecutionSSE';
 import './ExecutionNotebook.css';
 
 // Constants for layout calculations
-const PHASE_COLUMN_WIDTH = 220;
-const PHASE_COLUMN_WIDTH_EXPANDED = 400;
-const PHASE_COLUMN_GAP = 60; // Horizontal gap between phases
-const PHASE_ROW_GAP = 60; // Minimum vertical gap between rows
-const PHASE_HEADER_HEIGHT = 44;
-const PHASE_BASE_HEIGHT = 140; // Base height of a phase column (compact stats row)
-const PHASE_EXPANDED_EXTRA = 200; // Extra height when phase output is expanded
+const CELL_COLUMN_WIDTH = 220;
+const CELL_COLUMN_WIDTH_EXPANDED = 400;
+const CELL_COLUMN_GAP = 60; // Horizontal gap between cells
+const CELL_ROW_GAP = 60; // Minimum vertical gap between rows
+const CELL_HEADER_HEIGHT = 44;
+const CELL_BASE_HEIGHT = 140; // Base height of a cell column (compact stats row)
+const CELL_EXPANDED_EXTRA = 200; // Extra height when cell output is expanded
 const SOUNDING_BLOCK_HEIGHT = 85; // Height per sounding block (vertical stack)
 const SOUNDING_DEPTH_PADDING = 30; // Extra padding for soundings area
 const TIMELINE_PADDING = 16;
@@ -20,13 +20,13 @@ const LEFT_MARGIN = 50; // Space on left for row wrap connectors
 /**
  * ExecutionNotebook - Real-time cascade execution visualization
  *
- * Shows cascade execution as a horizontal timeline of phase columns.
- * Each phase displays:
- * - Phase status (pending/running/completed/error)
+ * Shows cascade execution as a horizontal timeline of cell columns.
+ * Each cell displays:
+ * - Cell status (pending/running/completed/error)
  * - Turn count and cost accumulation
  * - Soundings progress with parallel indicators
  * - Live updates via SSE
- * - Handoff arrows showing routing between phases
+ * - Handoff arrows showing routing between cells
  */
 function ExecutionNotebook() {
   const {
@@ -37,7 +37,7 @@ function ExecutionNotebook() {
     executionStartTime,
     executionEndTime,
     totalCost,
-    phaseResults,
+    cellResults,
     activeSoundings,
     executionLog,
     clearExecution,
@@ -47,30 +47,30 @@ function ExecutionNotebook() {
   // Connect to SSE for real-time updates
   useExecutionSSE();
 
-  // Track which phases are COLLAPSED (default is expanded to show output)
-  const [collapsedPhases, setCollapsedPhases] = useState(new Set());
+  // Track which cells are COLLAPSED (default is expanded to show output)
+  const [collapsedCells, setCollapsedCells] = useState(new Set());
 
-  const togglePhaseExpanded = (phaseName) => {
-    setCollapsedPhases((prev) => {
+  const toggleCellExpanded = (cellName) => {
+    setCollapsedCells((prev) => {
       const next = new Set(prev);
-      if (next.has(phaseName)) {
-        next.delete(phaseName); // Uncollapse = expand
+      if (next.has(cellName)) {
+        next.delete(cellName); // Uncollapse = expand
       } else {
-        next.add(phaseName); // Collapse
+        next.add(cellName); // Collapse
       }
       return next;
     });
   };
 
-  // Helper: is phase expanded? (default true unless collapsed)
-  const isPhaseExpanded = (phaseName) => !collapsedPhases.has(phaseName);
+  // Helper: is cell expanded? (default true unless collapsed)
+  const isCellExpanded = (cellName) => !collapsedCells.has(cellName);
 
   // Track container width for row wrapping
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(800);
 
-  // Get phases early so we can use them in layout calculation
-  const phases = cascade.cells || [];
+  // Get cells early so we can use them in layout calculation
+  const cells = cascade.cells || [];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -85,8 +85,8 @@ function ExecutionNotebook() {
     return () => observer.disconnect();
   }, []);
 
-  // Calculate phase layout with row wrapping and dynamic row heights
-  const phaseLayout = useMemo(() => {
+  // Calculate cell layout with row wrapping and dynamic row heights
+  const cellLayout = useMemo(() => {
     const layout = [];
     let currentX = 0;
     let currentRow = 0;
@@ -95,17 +95,17 @@ function ExecutionNotebook() {
     // Account for left margin in available width
     const availableWidth = containerWidth - LEFT_MARGIN;
 
-    // Helper to calculate phase height including soundings and expansion
-    const getPhaseHeight = (phase, isExpanded) => {
-      let height = PHASE_BASE_HEIGHT;
+    // Helper to calculate cell height including soundings and expansion
+    const getCellHeight = (cell, isExpanded) => {
+      let height = CELL_BASE_HEIGHT;
 
-      // Add extra height if phase output is expanded
+      // Add extra height if cell output is expanded
       if (isExpanded) {
-        height += PHASE_EXPANDED_EXTRA;
+        height += CELL_EXPANDED_EXTRA;
       }
 
       // Add height for soundings (vertical stack - each sounding adds height)
-      const soundingsFactor = phase.candidates?.factor || 0;
+      const soundingsFactor = cell.candidates?.factor || 0;
       if (soundingsFactor > 1) {
         height += (soundingsFactor * SOUNDING_BLOCK_HEIGHT) + SOUNDING_DEPTH_PADDING;
       }
@@ -113,12 +113,12 @@ function ExecutionNotebook() {
       return height;
     };
 
-    // First pass: assign phases to rows
+    // First pass: assign cells to rows
     const rowAssignments = [];
-    phases.forEach((phase, idx) => {
-      const isExpanded = isPhaseExpanded(phase.name);
-      const width = isExpanded ? PHASE_COLUMN_WIDTH_EXPANDED : PHASE_COLUMN_WIDTH;
-      const totalWidth = width + PHASE_COLUMN_GAP;
+    cells.forEach((cell, idx) => {
+      const isExpanded = isCellExpanded(cell.name);
+      const width = isExpanded ? CELL_COLUMN_WIDTH_EXPANDED : CELL_COLUMN_WIDTH;
+      const totalWidth = width + CELL_COLUMN_GAP;
 
       // Check if we need to wrap to next row
       if (currentX + width > availableWidth && idx > 0) {
@@ -127,23 +127,23 @@ function ExecutionNotebook() {
       }
 
       rowAssignments.push({
-        phase,
+        cell,
         index: idx,
         row: currentRow,
         x: currentX + LEFT_MARGIN,
         width,
         isExpanded,
-        height: getPhaseHeight(phase, isExpanded),
+        height: getCellHeight(cell, isExpanded),
       });
 
       currentX += totalWidth;
       maxRowWidth = Math.max(maxRowWidth, currentX + LEFT_MARGIN);
     });
 
-    // Second pass: calculate row heights (max height of phases in each row)
+    // Second pass: calculate row heights (max height of cells in each row)
     const rowHeights = {};
     rowAssignments.forEach((item) => {
-      const currentMax = rowHeights[item.row] || PHASE_BASE_HEIGHT;
+      const currentMax = rowHeights[item.row] || CELL_BASE_HEIGHT;
       rowHeights[item.row] = Math.max(currentMax, item.height);
     });
 
@@ -153,10 +153,10 @@ function ExecutionNotebook() {
     const totalRows = currentRow + 1;
     for (let r = 0; r < totalRows; r++) {
       rowYPositions[r] = cumulativeY;
-      cumulativeY += (rowHeights[r] || PHASE_BASE_HEIGHT) + PHASE_ROW_GAP;
+      cumulativeY += (rowHeights[r] || CELL_BASE_HEIGHT) + CELL_ROW_GAP;
     }
 
-    // Final pass: assign Y positions to phases
+    // Final pass: assign Y positions to cells
     rowAssignments.forEach((item) => {
       layout.push({
         ...item,
@@ -168,7 +168,7 @@ function ExecutionNotebook() {
     const totalHeight = cumulativeY;
 
     return { positions: layout, totalRows, totalHeight, maxRowWidth, rowHeights, rowYPositions };
-  }, [phases, collapsedPhases, containerWidth, isPhaseExpanded]);
+  }, [cells, collapsedCells, containerWidth, isCellExpanded]);
 
   // Live duration counter
   const [liveDuration, setLiveDuration] = useState(0);
@@ -265,45 +265,45 @@ function ExecutionNotebook() {
 
       {/* Timeline Content */}
       <div className="notebook-content" ref={containerRef}>
-        {phases.length === 0 ? (
+        {cells.length === 0 ? (
           <div className="notebook-empty">
             <Icon icon="mdi:chart-timeline-variant" width="64" />
-            <h3>No Phases Yet</h3>
-            <p>Add phases to your cascade to see the execution timeline</p>
+            <h3>No Cells Yet</h3>
+            <p>Add cells to your cascade to see the execution timeline</p>
           </div>
         ) : (
           <div className="timeline-scroll">
             <div
               className="timeline-track timeline-track-wrapped"
               style={{
-                width: Math.max(phaseLayout.maxRowWidth, containerWidth),
-                height: phaseLayout.totalHeight,
+                width: Math.max(cellLayout.maxRowWidth, containerWidth),
+                height: cellLayout.totalHeight,
               }}
             >
               {/* Handoff arrows SVG overlay */}
               <HandoffArrows
-                phases={phases}
-                phaseResults={phaseResults}
+                cells={cells}
+                cellResults={cellResults}
                 lastExecutedHandoffs={lastExecutedHandoffs}
                 sessionId={sessionId}
-                phaseLayout={phaseLayout}
+                cellLayout={cellLayout}
               />
 
-              {/* Row connectors for wrapped rows (only for sequential phases without handoffs) */}
-              {phaseLayout.totalRows > 1 && (
-                <RowConnectors phaseLayout={phaseLayout} phases={phases} />
+              {/* Row connectors for wrapped rows (only for sequential cells without handoffs) */}
+              {cellLayout.totalRows > 1 && (
+                <RowConnectors cellLayout={cellLayout} cells={cells} />
               )}
 
-              {phaseLayout.positions.map((pos, idx) => {
-                const { phase, x, y, width, row } = pos;
-                const hasExecutionData = sessionId && phaseResults[phase.name];
-                const isLastInRow = !phaseLayout.positions[idx + 1] || phaseLayout.positions[idx + 1].row !== row;
-                const hasHandoffs = phase.handoffs && phase.handoffs.length > 0;
+              {cellLayout.positions.map((pos, idx) => {
+                const { cell, x, y, width, row } = pos;
+                const hasExecutionData = sessionId && cellResults[cell.name];
+                const isLastInRow = !cellLayout.positions[idx + 1] || cellLayout.positions[idx + 1].row !== row;
+                const hasHandoffs = cell.handoffs && cell.handoffs.length > 0;
 
                 return (
                   <div
-                    key={phase.name}
-                    className="phase-position-wrapper"
+                    key={cell.name}
+                    className="cell-position-wrapper"
                     style={{
                       position: 'absolute',
                       left: x,
@@ -312,21 +312,21 @@ function ExecutionNotebook() {
                     }}
                   >
                     {hasExecutionData ? (
-                      <PhaseColumn
-                        phase={phase}
+                      <CellColumn
+                        cell={cell}
                         index={idx}
-                        result={phaseResults[phase.name]}
-                        activeSoundingsSet={activeSoundings[phase.name]}
+                        result={cellResults[cell.name]}
+                        activeSoundingsSet={activeSoundings[cell.name]}
                         isLast={isLastInRow}
                         hasHandoffs={hasHandoffs}
-                        isExpanded={isPhaseExpanded(phase.name)}
-                        onToggleExpand={() => togglePhaseExpanded(phase.name)}
+                        isExpanded={isCellExpanded(cell.name)}
+                        onToggleExpand={() => toggleCellExpanded(cell.name)}
                       />
                     ) : (
-                      <GhostPhaseColumn
-                        phase={phase}
+                      <GhostCellColumn
+                        cell={cell}
                         index={idx}
-                        allPhases={phases}
+                        allCells={cells}
                         isLast={isLastInRow}
                         hasHandoffs={hasHandoffs}
                       />
@@ -348,15 +348,15 @@ function ExecutionNotebook() {
 }
 
 /**
- * PhaseColumn - Single phase in the timeline with real-time updates
+ * CellColumn - Single cell in the timeline with real-time updates
  *
- * When soundings are active, shows ghost blocks descending below the main phase
+ * When soundings are active, shows ghost blocks descending below the main cell
  * like nautical depth soundings. The winner "rises" back up to the main block.
  */
-function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHandoffs, isExpanded, onToggleExpand }) {
+function CellColumn({ cell, index, result, activeSoundingsSet, isLast, hasHandoffs, isExpanded, onToggleExpand }) {
   const [selectedSounding, setSelectedSounding] = useState(null);
   const status = result?.status || 'pending';
-  const soundingsConfig = phase.candidates;
+  const soundingsConfig = cell.candidates;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasOutput = result?.output !== undefined;
@@ -382,13 +382,13 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHand
   };
 
   return (
-    <div className="phase-column-wrapper">
-      {/* Main Phase Block */}
+    <div className="cell-column-wrapper">
+      {/* Main Cell Block */}
       <div
-        className={`phase-column status-${status} ${hasOutput ? 'has-output' : ''} ${isExpanded ? 'expanded' : ''} ${hasSoundings ? 'has-soundings' : ''}`}
+        className={`cell-column status-${status} ${hasOutput ? 'has-output' : ''} ${isExpanded ? 'expanded' : ''} ${hasSoundings ? 'has-soundings' : ''}`}
         onClick={handleClick}
       >
-        {/* Connector to next phase (only if no handoffs - handoffs use SVG arrows) */}
+        {/* Connector to next cell (only if no handoffs - handoffs use SVG arrows) */}
         {!isLast && !hasHandoffs && (
           <div className="column-connector">
             <div className="connector-line-h" />
@@ -398,7 +398,7 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHand
 
         <div className="column-header">
           <span className="column-number">{index + 1}</span>
-          <span className="column-name">{phase.name}</span>
+          <span className="column-name">{cell.name}</span>
           {hasSoundings && (
             <span className="soundings-badge" title={`${soundingsCount} soundings`}>
               <Icon icon="mdi:source-branch" width="12" />
@@ -480,7 +480,7 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHand
 
         {/* Expanded output view */}
         {isExpanded && hasOutput && (
-          <div className="phase-output">
+          <div className="cell-output">
             <div className="output-header">
               <Icon icon="mdi:text-box-outline" width="14" />
               <span>Output</span>
@@ -493,7 +493,7 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHand
         )}
       </div>
 
-      {/* Ghost Sounding Blocks - Descend below the main phase */}
+      {/* Ghost Sounding Blocks - Descend below the main cell */}
       {hasSoundings && (status === 'running' || status === 'completed') && (
         <div className="soundings-depth">
           <div className="depth-line" />
@@ -562,21 +562,21 @@ function PhaseColumn({ phase, index, result, activeSoundingsSet, isLast, hasHand
 /**
  * RowConnectors - Visual connectors between rows when timeline wraps
  *
- * Only shows for SEQUENTIAL phases (no handoffs) that wrap to a new row.
- * Phases with handoffs are handled by HandoffArrows instead.
+ * Only shows for SEQUENTIAL cells (no handoffs) that wrap to a new row.
+ * Cells with handoffs are handled by HandoffArrows instead.
  */
-function RowConnectors({ phaseLayout, phases }) {
-  const { positions, totalRows } = phaseLayout;
+function RowConnectors({ cellLayout, cells }) {
+  const { positions, totalRows } = cellLayout;
 
   if (totalRows <= 1) return null;
 
-  // Find row transitions - only for sequential phases WITHOUT handoffs
+  // Find row transitions - only for sequential cells WITHOUT handoffs
   const transitions = [];
   for (let i = 0; i < positions.length - 1; i++) {
-    const currentPhase = phases[i];
-    const hasHandoffs = currentPhase?.handoffs && currentPhase.handoffs.length > 0;
+    const currentCell = cells[i];
+    const hasHandoffs = currentCell?.handoffs && currentCell.handoffs.length > 0;
 
-    // Only show row connector for sequential phases (no handoffs)
+    // Only show row connector for sequential cells (no handoffs)
     if (positions[i].row !== positions[i + 1].row && !hasHandoffs) {
       transitions.push({
         from: positions[i],
@@ -628,20 +628,20 @@ function RowConnectors({ phaseLayout, phases }) {
       </defs>
       {transitions.map((trans, idx) => {
         const fromX = trans.from.x + trans.from.width;
-        const fromY = trans.from.y + PHASE_HEADER_HEIGHT + 40;
+        const fromY = trans.from.y + CELL_HEADER_HEIGHT + 40;
         const toX = trans.to.x;
-        const toY = trans.to.y + PHASE_HEADER_HEIGHT + 40;
+        const toY = trans.to.y + CELL_HEADER_HEIGHT + 40;
 
         // "Carriage return" style path:
-        // 1. Exit right edge of last phase on row 1
+        // 1. Exit right edge of last cell on row 1
         // 2. Go down to below row 1 (accounting for soundings)
         // 3. Go left to the left margin area
         // 4. Go down to row 2
-        // 5. Enter first phase on row 2
+        // 5. Enter first cell on row 2
         const r = 12; // Consistent curve radius for all corners
-        const wrapMargin = 20; // Position in the LEFT_MARGIN area (left of phases)
+        const wrapMargin = 20; // Position in the LEFT_MARGIN area (left of cells)
         // Use the actual row height to position the connector below any soundings
-        const fromRowHeight = phaseLayout.rowHeights?.[trans.from.row] || PHASE_BASE_HEIGHT;
+        const fromRowHeight = cellLayout.rowHeights?.[trans.from.row] || CELL_BASE_HEIGHT;
         const rowBottomY = trans.from.y + fromRowHeight + 20; // Just below the row (including soundings)
 
         // All curves use the same radius for consistency
@@ -676,55 +676,55 @@ function RowConnectors({ phaseLayout, phases }) {
 }
 
 /**
- * HandoffArrows - SVG overlay showing routing between phases
+ * HandoffArrows - SVG overlay showing routing between cells
  *
- * Draws arrows from phases to their handoff targets.
+ * Draws arrows from cells to their handoff targets.
  * Ghost mode: dashed lines to all possible targets
  * Realized mode: solid line to executed target, dashed for others
  */
-function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, phaseLayout }) {
+function HandoffArrows({ cells, cellResults, lastExecutedHandoffs, sessionId, cellLayout }) {
   // Build list of all handoff connections
   const connections = useMemo(() => {
     const conns = [];
 
-    phases.forEach((phase, sourceIdx) => {
-      if (!phase.handoffs || phase.handoffs.length === 0) return;
+    cells.forEach((cell, sourceIdx) => {
+      if (!cell.handoffs || cell.handoffs.length === 0) return;
 
-      const isPhaseExecuted = sessionId && phaseResults[phase.name]?.status === 'completed';
-      const executedTarget = lastExecutedHandoffs?.[phase.name];
+      const isCellExecuted = sessionId && cellResults[cell.name]?.status === 'completed';
+      const executedTarget = lastExecutedHandoffs?.[cell.name];
 
-      phase.handoffs.forEach((handoff) => {
+      cell.handoffs.forEach((handoff) => {
         const targetName = typeof handoff === 'string' ? handoff : handoff.target;
         const description = typeof handoff === 'object' ? handoff.description : null;
-        const targetIdx = phases.findIndex((p) => p.name === targetName);
+        const targetIdx = cells.findIndex((p) => p.name === targetName);
 
         if (targetIdx === -1) return; // Target not found
 
-        // Get context info from source phase
-        const contextInfo = phase.context?.from
-          ? `ctx: ${phase.context.from.join(', ')}`
+        // Get context info from source cell
+        const contextInfo = cell.context?.from
+          ? `ctx: ${cell.context.from.join(', ')}`
           : null;
 
         conns.push({
           sourceIdx,
           targetIdx,
-          sourceName: phase.name,
+          sourceName: cell.name,
           targetName,
           description,
           contextInfo,
-          isExecuted: isPhaseExecuted && executedTarget === targetName,
-          isGhost: !isPhaseExecuted,
+          isExecuted: isCellExecuted && executedTarget === targetName,
+          isGhost: !isCellExecuted,
         });
       });
     });
 
     return conns;
-  }, [phases, phaseResults, lastExecutedHandoffs, sessionId]);
+  }, [cells, cellResults, lastExecutedHandoffs, sessionId]);
 
-  const { positions, maxRowWidth, totalHeight } = phaseLayout;
+  const { positions, maxRowWidth, totalHeight } = cellLayout;
 
-  // Get position info for a phase by index
-  const getPhasePos = (idx) => positions[idx] || { x: 0, y: 0, width: PHASE_COLUMN_WIDTH };
+  // Get position info for a cell by index
+  const getCellPos = (idx) => positions[idx] || { x: 0, y: 0, width: CELL_COLUMN_WIDTH };
 
   if (connections.length === 0) return null;
 
@@ -733,13 +733,13 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
 
   // Calculate path for a connection (handles cross-row connections)
   const getPath = (sourceIdx, targetIdx) => {
-    const sourcePos = getPhasePos(sourceIdx);
-    const targetPos = getPhasePos(targetIdx);
+    const sourcePos = getCellPos(sourceIdx);
+    const targetPos = getCellPos(targetIdx);
 
     const sourceX = sourcePos.x + sourcePos.width;
-    const sourceY = sourcePos.y + PHASE_HEADER_HEIGHT + 40;
+    const sourceY = sourcePos.y + CELL_HEADER_HEIGHT + 40;
     const targetX = targetPos.x;
-    const targetY = targetPos.y + PHASE_HEADER_HEIGHT + 40;
+    const targetY = targetPos.y + CELL_HEADER_HEIGHT + 40;
 
     const sameRow = sourcePos.row === targetPos.row;
     const distance = targetIdx - sourceIdx;
@@ -792,13 +792,13 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
 
   // Calculate label position
   const getLabelPos = (sourceIdx, targetIdx) => {
-    const sourcePos = getPhasePos(sourceIdx);
-    const targetPos = getPhasePos(targetIdx);
+    const sourcePos = getCellPos(sourceIdx);
+    const targetPos = getCellPos(targetIdx);
 
     const sourceX = sourcePos.x + sourcePos.width;
-    const sourceY = sourcePos.y + PHASE_HEADER_HEIGHT + 40;
+    const sourceY = sourcePos.y + CELL_HEADER_HEIGHT + 40;
     const targetX = targetPos.x;
-    const targetY = targetPos.y + PHASE_HEADER_HEIGHT + 40;
+    const targetY = targetPos.y + CELL_HEADER_HEIGHT + 40;
 
     const sameRow = sourcePos.row === targetPos.row;
     const distance = targetIdx - sourceIdx;
@@ -883,7 +883,7 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
           strokeDasharray = '6,4';
           opacity = 0.6;
         } else {
-          // Not executed but phase was run (alternative path)
+          // Not executed but cell was run (alternative path)
           strokeColor = 'var(--compass-brass)';
           markerEnd = 'url(#arrow-potential)';
           strokeDasharray = '4,4';
@@ -934,23 +934,23 @@ function HandoffArrows({ phases, phaseResults, lastExecutedHandoffs, sessionId, 
 }
 
 /**
- * GhostPhaseColumn - Preview of a phase before execution
+ * GhostCellColumn - Preview of a cell before execution
  *
- * Shows a ghost representation of what this phase will look like when run.
+ * Shows a ghost representation of what this cell will look like when run.
  * Includes ghost soundings lanes, handoff indicators, etc.
  */
-function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
-  const soundingsConfig = phase.candidates;
+function GhostCellColumn({ cell, index, allCells, isLast, hasHandoffs }) {
+  const soundingsConfig = cell.candidates;
   const hasSoundings = soundingsConfig?.factor > 1;
   const soundingsCount = soundingsConfig?.factor || 1;
   const hasReforge = soundingsConfig?.reforge?.steps > 0;
   const mode = soundingsConfig?.mode || 'evaluate';
 
   return (
-    <div className="phase-column-wrapper ghost-wrapper">
-      {/* Main Ghost Phase Block */}
-      <div className={`phase-column ghost-phase ${hasSoundings ? 'has-soundings' : ''}`}>
-        {/* Connector to next phase (only if no handoffs - handoffs use SVG arrows) */}
+    <div className="cell-column-wrapper ghost-wrapper">
+      {/* Main Ghost Cell Block */}
+      <div className={`cell-column ghost-cell ${hasSoundings ? 'has-soundings' : ''}`}>
+        {/* Connector to next cell (only if no handoffs - handoffs use SVG arrows) */}
         {!isLast && !hasHandoffs && (
           <div className="column-connector ghost-connector">
             <div className="connector-line-h" />
@@ -963,7 +963,7 @@ function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
             {index + 1}
             <span className="ghost-indicator">?</span>
           </span>
-          <span className="column-name">{phase.name}</span>
+          <span className="column-name">{cell.name}</span>
           {hasSoundings && (
             <span className="soundings-badge ghost-badge" title={`${soundingsCount} soundings configured`}>
               <Icon icon="mdi:source-branch" width="12" />
@@ -981,25 +981,25 @@ function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
             <Icon icon="mdi:ghost-outline" width="20" className="ghost-icon" />
             <span className="ghost-label">Preview</span>
           </div>
-          {phase.model && (
-            <div className="ghost-model" title={phase.model}>
+          {cell.model && (
+            <div className="ghost-model" title={cell.model}>
               <Icon icon="mdi:brain" width="10" />
-              {phase.model.split('/').pop()}
+              {cell.model.split('/').pop()}
             </div>
           )}
-          {phase.instructions && (
-            <div className="ghost-instructions" title={phase.instructions}>
+          {cell.instructions && (
+            <div className="ghost-instructions" title={cell.instructions}>
               <Icon icon="mdi:text" width="10" />
-              <span>{phase.instructions.slice(0, 60)}{phase.instructions.length > 60 ? '...' : ''}</span>
+              <span>{cell.instructions.slice(0, 60)}{cell.instructions.length > 60 ? '...' : ''}</span>
             </div>
           )}
         </div>
 
         {/* Tackle preview */}
-        {phase.traits && phase.traits.length > 0 && (
+        {cell.traits && cell.traits.length > 0 && (
           <div className="ghost-tackle">
             <Icon icon="mdi:wrench" width="10" />
-            <span>{phase.traits.length} tool{phase.traits.length !== 1 ? 's' : ''}</span>
+            <span>{cell.traits.length} tool{cell.traits.length !== 1 ? 's' : ''}</span>
           </div>
         )}
       </div>
@@ -1046,7 +1046,7 @@ function GhostPhaseColumn({ phase, index, allPhases, isLast, hasHandoffs }) {
       {hasHandoffs && (
         <div className="ghost-handoffs-indicator">
           <Icon icon="mdi:arrow-decision" width="12" />
-          <span>{phase.handoffs.length} route{phase.handoffs.length !== 1 ? 's' : ''}</span>
+          <span>{cell.handoffs.length} route{cell.handoffs.length !== 1 ? 's' : ''}</span>
         </div>
       )}
     </div>
@@ -1074,8 +1074,8 @@ function ExecutionLog({ log }) {
 
   const getEventIcon = (type) => {
     const icons = {
-      phase_start: 'mdi:play-circle',
-      phase_complete: 'mdi:check-circle',
+      cell_start: 'mdi:play-circle',
+      cell_complete: 'mdi:check-circle',
       turn_start: 'mdi:message-reply',
       tool_call: 'mdi:wrench',
       tool_result: 'mdi:clipboard-check',
@@ -1087,8 +1087,8 @@ function ExecutionLog({ log }) {
 
   const getEventColor = (type) => {
     const colors = {
-      phase_start: 'var(--ocean-primary)',
-      phase_complete: 'var(--success-green)',
+      cell_start: 'var(--ocean-primary)',
+      cell_complete: 'var(--success-green)',
       turn_start: 'var(--slate-blue-light)',
       tool_call: 'var(--compass-brass)',
       tool_result: 'var(--ocean-teal)',
@@ -1100,12 +1100,12 @@ function ExecutionLog({ log }) {
 
   const formatEvent = (entry) => {
     switch (entry.type) {
-      case 'phase_start':
-        return `Phase "${entry.phaseName}" started${entry.soundingIndex !== null ? ` (sounding ${entry.soundingIndex})` : ''}`;
-      case 'phase_complete':
-        return `Phase "${entry.phaseName}" completed`;
+      case 'cell_start':
+        return `Cell "${entry.cellName}" started${entry.soundingIndex !== null ? ` (sounding ${entry.soundingIndex})` : ''}`;
+      case 'cell_complete':
+        return `Cell "${entry.cellName}" completed`;
       case 'turn_start':
-        return `Turn ${entry.turnNumber + 1} in "${entry.phaseName}"`;
+        return `Turn ${entry.turnNumber + 1} in "${entry.cellName}"`;
       case 'tool_call':
         return `Tool call: ${entry.toolName}`;
       case 'tool_result':

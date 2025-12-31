@@ -22,7 +22,7 @@ def main():
     
     print("\n--- Final Lineage ---")
     for item in result["lineage"]:
-        print(f"\n[{item['phase']}]: {item['output']}")
+        print(f"\n[{item['cell']}]: {item['output']}")
 
 if __name__ == "__main__":
     main()

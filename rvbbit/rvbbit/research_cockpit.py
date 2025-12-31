@@ -19,7 +19,7 @@ from .cascade import CellConfig
 
 
 # =============================================================================
-# SYSTEM PROMPT - Injected as prefix to phase instructions
+# SYSTEM PROMPT - Injected as prefix to cell instructions
 # =============================================================================
 
 RESEARCH_COCKPIT_SYSTEM_PROMPT = """
@@ -120,7 +120,7 @@ previous checkpoints automatically as expandable cards.
 
 After generating your UI with request_decision() and receiving the user's response:
 ```python
-route_to('research_loop')  # Or whatever your phase name is
+route_to('research_loop')  # Or whatever your cell name is
 ```
 
 This keeps the research session going.
@@ -240,24 +240,24 @@ REFERENCE_TEMPLATES = {
 # DETECTION LOGIC
 # =============================================================================
 
-def is_research_cockpit_mode(phase: CellConfig, env_override: bool = None) -> bool:
+def is_research_cockpit_mode(cell: CellConfig, env_override: bool = None) -> bool:
     """
-    Detect if a phase should run in Research Cockpit mode.
+    Detect if a cell should run in Research Cockpit mode.
 
     Research Cockpit mode is triggered by:
-    1. Explicit marker: ui_mode: 'research_cockpit' in phase config
+    1. Explicit marker: ui_mode: 'research_cockpit' in cell config
     2. Environment flag: RVBBIT_RESEARCH_MODE=true
-    3. Heuristic: Self-looping phase with high max_turns and request_decision
+    3. Heuristic: Self-looping cell with high max_turns and request_decision
 
     Args:
-        phase: Phase configuration
+        cell: Cell configuration
         env_override: Optional environment flag check result (for testing)
 
     Returns:
         True if Research Cockpit mode should be enabled
     """
     # 1. Explicit marker (cleanest, recommended)
-    if hasattr(phase, 'ui_mode') and phase.ui_mode == 'research_cockpit':
+    if hasattr(cell, 'ui_mode') and cell.ui_mode == 'research_cockpit':
         return True
 
     # 2. Environment flag (set by UI when launching from Research Cockpit)
@@ -269,8 +269,8 @@ def is_research_cockpit_mode(phase: CellConfig, env_override: bool = None) -> bo
     # 3. Heuristic detection (for backward compatibility)
     # Characteristics: self-loop + high max_turns + likely uses request_decision
     # This is a best-guess, explicit marker is preferred
-    has_self_loop = hasattr(phase, 'handoffs') and phase.handoffs and phase.name in phase.handoffs
-    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and (getattr(phase.rules, 'max_turns', 0) or 0) >= 20
+    has_self_loop = hasattr(cell, 'handoffs') and cell.handoffs and cell.name in cell.handoffs
+    has_high_max_turns = hasattr(cell, 'rules') and cell.rules and (getattr(cell.rules, 'max_turns', 0) or 0) >= 20
 
     # We can't easily check if request_decision is in traits since it might be in manifest
     # So we use self-loop + high max_turns as signal
@@ -281,26 +281,26 @@ def is_research_cockpit_mode(phase: CellConfig, env_override: bool = None) -> bo
 
 
 def inject_research_scaffolding(
-    phase_instructions: str,
-    phase: CellConfig,
+    cell_instructions: str,
+    cell: CellConfig,
     template_context: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    Inject Research Cockpit scaffolding into phase instructions.
+    Inject Research Cockpit scaffolding into cell instructions.
 
     Prepends system prompt with UI patterns, state management guidance,
     and available tools/variables.
 
     Args:
-        phase_instructions: Original phase instructions from cascade
-        phase: Phase configuration
+        cell_instructions: Original cell instructions from cascade
+        cell: Cell configuration
         template_context: Optional additional context for templates
 
     Returns:
         Enhanced instructions with scaffolding prepended
     """
-    # Prepend system prompt to phase instructions
-    enhanced = RESEARCH_COCKPIT_SYSTEM_PROMPT + "\n" + phase_instructions
+    # Prepend system prompt to cell instructions
+    enhanced = RESEARCH_COCKPIT_SYSTEM_PROMPT + "\n" + cell_instructions
 
     # Optionally add reference templates to context
     # (Not in prompt, but available for Jinja2 rendering if needed)
@@ -315,18 +315,18 @@ def inject_research_scaffolding(
 # UTILITY - Detection Summary for Logging
 # =============================================================================
 
-def get_detection_reason(phase: CellConfig) -> str:
+def get_detection_reason(cell: CellConfig) -> str:
     """Get human-readable reason why Research Cockpit mode was detected."""
-    if hasattr(phase, 'ui_mode') and phase.ui_mode == 'research_cockpit':
+    if hasattr(cell, 'ui_mode') and cell.ui_mode == 'research_cockpit':
         return "explicit ui_mode marker"
 
     if os.environ.get('RVBBIT_RESEARCH_MODE', 'false').lower() == 'true':
         return "RVBBIT_RESEARCH_MODE env var"
 
-    has_self_loop = hasattr(phase, 'handoffs') and phase.handoffs and phase.name in phase.handoffs
-    has_high_max_turns = hasattr(phase, 'rules') and phase.rules and (getattr(phase.rules, 'max_turns', 0) or 0) >= 20
+    has_self_loop = hasattr(cell, 'handoffs') and cell.handoffs and cell.name in cell.handoffs
+    has_high_max_turns = hasattr(cell, 'rules') and cell.rules and (getattr(cell.rules, 'max_turns', 0) or 0) >= 20
 
     if has_self_loop and has_high_max_turns:
-        return f"heuristic (self-loop + max_turns={getattr(phase.rules, 'max_turns', 0)})"
+        return f"heuristic (self-loop + max_turns={getattr(cell.rules, 'max_turns', 0)})"
 
     return "unknown"

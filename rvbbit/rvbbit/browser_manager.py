@@ -464,7 +464,7 @@ class BrowserSessionManager:
             stability_wait: Seconds to wait for stability
             show_overlay: Show command overlay in video
             cascade_id: If from cascade, the cascade ID (for registry)
-            cell_name: If from cascade, the phase name (for registry)
+            cell_name: If from cascade, the cell name (for registry)
             rvbbit_session_id: If from cascade, the rvbbit session ID (for registry)
 
         Returns:

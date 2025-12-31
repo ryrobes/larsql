@@ -4,18 +4,18 @@ import RichMarkdown from './RichMarkdown';
 import VideoSpinner from './VideoSpinner';
 import './HotOrNotView.css';
 
-// Helper to render phase images from the filesystem (via API)
-const renderPhaseImages = (images) => {
+// Helper to render cell images from the filesystem (via API)
+const renderCellImages = (images) => {
   if (!images || images.length === 0) return null;
 
   return (
-    <div className="phase-images">
+    <div className="cell-images">
       {images.map((img, idx) => (
         <img
           key={img.filename || idx}
           src={`http://localhost:5050${img.url}`}
           alt={img.filename || `Image ${idx + 1}`}
-          className="phase-image"
+          className="cell-image"
         />
       ))}
     </div>
@@ -70,10 +70,10 @@ function HotOrNotView({ onBack }) {
   }, [showAllSoundings]);
 
   // Fetch sounding group for current item
-  const fetchSoundingGroup = useCallback(async (sessionId, phaseName) => {
+  const fetchSoundingGroup = useCallback(async (sessionId, cellName) => {
     try {
       const response = await fetch(
-        `http://localhost:5050/api/hotornot/sounding-group/${sessionId}/${phaseName}`
+        `http://localhost:5050/api/hotornot/sounding-group/${sessionId}/${cellName}`
       );
       const data = await response.json();
       if (!data.error) {
@@ -373,7 +373,7 @@ function HotOrNotView({ onBack }) {
       {currentItem && (
         <div className="context-bar">
           <span className="cascade-id">{currentItem.cascade_id}</span>
-          <span className="phase-name">{currentItem.cell_name}</span>
+          <span className="cell-name">{currentItem.cell_name}</span>
           <div className="queue-indicator">
             <span className="position">{currentIndex + 1} / {queue.length}</span>
           </div>
@@ -449,7 +449,7 @@ function HotOrNotView({ onBack }) {
                           </div>
                           <div className="card-content">
                             {/* Render images for this specific sounding */}
-                            {renderPhaseImages(currentSounding?.images)}
+                            {renderCellImages(currentSounding?.images)}
 
                             <div className="markdown-content">
                               <RichMarkdown>
@@ -487,7 +487,7 @@ function HotOrNotView({ onBack }) {
                       </div>
                       <div className="comparison-content">
                         {/* Render images for this specific sounding */}
-                        {renderPhaseImages(sounding.images)}
+                        {renderCellImages(sounding.images)}
 
                         <div className="markdown-content">
                           <RichMarkdown>
@@ -596,7 +596,7 @@ function HotOrNotView({ onBack }) {
             <button
               className={`secondary-btn ${showAllSoundings ? 'active' : ''}`}
               onClick={() => setShowAllSoundings(!showAllSoundings)}
-              title={showAllSoundings ? "Showing all soundings individually (blind mode)" : "Grouped by session/phase"}
+              title={showAllSoundings ? "Showing all soundings individually (blind mode)" : "Grouped by session/cell"}
             >
               <Icon icon={showAllSoundings ? "mdi:format-list-bulleted" : "mdi:group"} width={20} />
             </button>

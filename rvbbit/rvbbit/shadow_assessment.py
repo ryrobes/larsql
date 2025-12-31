@@ -4,7 +4,7 @@ Shadow Assessment System for RVBBIT Auto-Context
 This module provides "shadow" relevance assessments that run alongside explicit context
 mode to show what auto-context WOULD have done without actually affecting execution.
 
-Every phase transition logs per-message assessments from all strategies:
+Every cell transition logs per-message assessments from all strategies:
 - Heuristic: Keyword overlap + recency + callouts (fast, no LLM)
 - Semantic: Embedding similarity (if available)
 - LLM: Cheap model selects from summary menu
@@ -90,7 +90,7 @@ class AssessmentResult:
 
 @dataclass
 class ShadowAssessmentRequest:
-    """Request to run shadow assessment for a phase transition."""
+    """Request to run shadow assessment for a cell transition."""
     session_id: str
     cascade_id: str
     target_cell_name: str
@@ -148,7 +148,7 @@ class ShadowAssessor:
         request: ShadowAssessmentRequest
     ) -> List[AssessmentResult]:
         """
-        Assess all candidates for a phase transition.
+        Assess all candidates for a cell transition.
 
         Args:
             request: Assessment request with candidates and context
@@ -560,19 +560,19 @@ _worker_thread: Optional[threading.Thread] = None
 
 
 def _worker_loop():
-    """Background worker that processes assessment requests (both inter and intra phase)."""
+    """Background worker that processes assessment requests (both inter and intra cell)."""
     global _worker_running
 
     while _worker_running:
         try:
-            # Process inter-phase assessments
+            # Process inter-cell assessments
             try:
                 request_data = _assessment_queue.get(timeout=0.5)
                 _process_assessment_request(request_data)
             except queue.Empty:
                 pass
 
-            # Process intra-phase assessments
+            # Process intra-cell assessments
             try:
                 intra_request = _intra_assessment_queue.get(timeout=0.5)
                 _process_intra_assessment_request(intra_request)
@@ -851,14 +851,14 @@ def get_queue_size() -> int:
 
 
 # =============================================================================
-# INTRA-PHASE SHADOW ASSESSMENT
+# INTRA-CELL SHADOW ASSESSMENT
 # =============================================================================
-# Evaluates intra-phase context management configs (window, masking, etc.)
+# Evaluates intra-cell context management configs (window, masking, etc.)
 # This is 100% local computation - no LLM calls - so we can evaluate many configs.
 
 @dataclass
-class IntraPhaseMessage:
-    """A message in the intra-phase context history."""
+class IntraCellMessage:
+    """A message in the intra-cell context history."""
     index: int
     role: str
     content: str
@@ -870,8 +870,8 @@ class IntraPhaseMessage:
 
 
 @dataclass
-class IntraPhaseConfigScenario:
-    """A configuration scenario for intra-phase context management."""
+class IntraCellConfigScenario:
+    """A configuration scenario for intra-cell context management."""
     window: int = 5
     mask_observations_after: int = 3
     min_masked_size: int = 200
@@ -891,9 +891,9 @@ class IntraPhaseConfigScenario:
 
 
 @dataclass
-class IntraPhaseAssessmentResult:
+class IntraCellAssessmentResult:
     """Result of assessing a single config scenario."""
-    config: IntraPhaseConfigScenario
+    config: IntraCellConfigScenario
     full_history_size: int
     context_size: int
     tokens_before: int
@@ -914,9 +914,9 @@ class IntraPhaseAssessmentResult:
         return self.tokens_after / self.tokens_before
 
 
-class IntraPhaseShadowAssessor:
+class IntraCellShadowAssessor:
     """
-    Evaluates intra-phase context management under multiple config scenarios.
+    Evaluates intra-cell context management under multiple config scenarios.
 
     This is 100% local computation - no LLM calls - so we can evaluate many configs
     to suggest optimal settings based on actual execution patterns.
@@ -935,7 +935,7 @@ class IntraPhaseShadowAssessor:
         full_history: List[Dict[str, Any]],
         turn_number: int,
         is_loop_retry: bool = False
-    ) -> List[IntraPhaseAssessmentResult]:
+    ) -> List[IntraCellAssessmentResult]:
         """
         Assess a turn under multiple config scenarios.
 
@@ -947,7 +947,7 @@ class IntraPhaseShadowAssessor:
         Returns:
             List of assessment results, one per config scenario
         """
-        # Convert to IntraPhaseMessage for easier processing
+        # Convert to IntraCellMessage for easier processing
         messages = self._convert_history(full_history)
 
         if not messages:
@@ -963,7 +963,7 @@ class IntraPhaseShadowAssessor:
         for window in self.WINDOW_VALUES:
             for mask_after in self.MASK_AFTER_VALUES:
                 for min_size in self.MIN_MASKED_SIZE_VALUES:
-                    config = IntraPhaseConfigScenario(
+                    config = IntraCellConfigScenario(
                         window=window,
                         mask_observations_after=mask_after,
                         min_masked_size=min_size,
@@ -982,8 +982,8 @@ class IntraPhaseShadowAssessor:
 
         return results
 
-    def _convert_history(self, full_history: List[Dict]) -> List[IntraPhaseMessage]:
-        """Convert raw history to IntraPhaseMessage objects."""
+    def _convert_history(self, full_history: List[Dict]) -> List[IntraCellMessage]:
+        """Convert raw history to IntraCellMessage objects."""
         import hashlib
 
         messages = []
@@ -1012,7 +1012,7 @@ class IntraPhaseShadowAssessor:
             hash_input = f"{role}:{content_str[:500]}"
             content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
 
-            messages.append(IntraPhaseMessage(
+            messages.append(IntraCellMessage(
                 index=i,
                 role=role,
                 content=content_str,
@@ -1027,11 +1027,11 @@ class IntraPhaseShadowAssessor:
 
     def _evaluate_config(
         self,
-        messages: List[IntraPhaseMessage],
+        messages: List[IntraCellMessage],
         turn_number: int,
         is_loop_retry: bool,
-        config: IntraPhaseConfigScenario
-    ) -> IntraPhaseAssessmentResult:
+        config: IntraCellConfigScenario
+    ) -> IntraCellAssessmentResult:
         """Evaluate a single config scenario."""
 
         # Separate system messages
@@ -1105,7 +1105,7 @@ class IntraPhaseShadowAssessor:
 
         tokens_before = sum(m.estimated_tokens for m in messages)
 
-        return IntraPhaseAssessmentResult(
+        return IntraCellAssessmentResult(
             config=config,
             full_history_size=len(messages),
             context_size=len(system_msgs) + len(older_msgs) + len(recent_msgs),
@@ -1119,8 +1119,8 @@ class IntraPhaseShadowAssessor:
 
     def _process_older_message(
         self,
-        msg: IntraPhaseMessage,
-        config: IntraPhaseConfigScenario
+        msg: IntraCellMessage,
+        config: IntraCellConfigScenario
     ) -> Tuple[str, int, str]:
         """
         Process an older message under the given config.
@@ -1161,12 +1161,12 @@ class IntraPhaseShadowAssessor:
         return ("keep", msg.estimated_tokens, "default_keep")
 
 
-# Intra-phase assessment queue (separate from inter-phase)
+# Intra-cell assessment queue (separate from inter-cell)
 _intra_assessment_queue: queue.Queue = queue.Queue()
 
 
 def _intra_worker_loop():
-    """Background worker for intra-phase assessments."""
+    """Background worker for intra-cell assessments."""
     global _worker_running
 
     while _worker_running:
@@ -1179,13 +1179,13 @@ def _intra_worker_loop():
             _process_intra_assessment_request(request_data)
 
         except Exception as e:
-            logger.error(f"Intra-phase shadow assessment worker error: {e}")
+            logger.error(f"Intra-cell shadow assessment worker error: {e}")
 
 
 def _process_intra_assessment_request(request_data: Dict):
-    """Process a single intra-phase assessment request."""
+    """Process a single intra-cell assessment request."""
     try:
-        assessor = IntraPhaseShadowAssessor()
+        assessor = IntraCellShadowAssessor()
 
         full_history = request_data["full_history"]
         turn_number = request_data["turn_number"]
@@ -1263,25 +1263,25 @@ def _process_intra_assessment_request(request_data: Dict):
         _insert_intra_assessments(rows)
 
         logger.info(
-            f"Intra-phase shadow assessment: {len(results)} configs for "
+            f"Intra-cell shadow assessment: {len(results)} configs for "
             f"{cell_name}[{candidate_index}] turn {turn_number} in {duration_ms}ms"
         )
 
     except Exception as e:
-        logger.error(f"Failed to process intra-phase shadow assessment: {e}", exc_info=True)
+        logger.error(f"Failed to process intra-cell shadow assessment: {e}", exc_info=True)
 
 
 def _insert_intra_assessments(rows: List[Dict]):
-    """Insert intra-phase assessment rows to database."""
+    """Insert intra-cell assessment rows to database."""
     try:
         from .db_adapter import get_db
         db = get_db()
         db.insert_rows("intra_context_shadow_assessments", rows)
     except Exception as e:
-        logger.error(f"Failed to insert intra-phase shadow assessments: {e}")
+        logger.error(f"Failed to insert intra-cell shadow assessments: {e}")
 
 
-def queue_intra_phase_shadow_assessment(
+def queue_intra_cell_shadow_assessment(
     session_id: str,
     cascade_id: str,
     cell_name: str,
@@ -1293,7 +1293,7 @@ def queue_intra_phase_shadow_assessment(
     actual_tokens_after: Optional[int] = None
 ):
     """
-    Queue an intra-phase shadow assessment for background processing.
+    Queue an intra-cell shadow assessment for background processing.
 
     Call this from runner._build_turn_context() to evaluate multiple config scenarios.
 
@@ -1335,6 +1335,6 @@ def queue_intra_phase_shadow_assessment(
     })
 
     logger.debug(
-        f"Queued intra-phase shadow assessment for {cell_name}[{candidate_index}] "
+        f"Queued intra-cell shadow assessment for {cell_name}[{candidate_index}] "
         f"turn {turn_number} with {len(full_history)} messages"
     )

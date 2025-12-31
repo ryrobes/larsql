@@ -3,14 +3,14 @@ import { Icon } from '@iconify/react';
 import './HumanInputDisplay.css';
 
 /**
- * HumanInputDisplay - Shows human input interactions (ask_human calls) for a phase.
- * Displays the question asked and the human's response inline under each phase bar.
+ * HumanInputDisplay - Shows human input interactions (ask_human calls) for a cell.
+ * Displays the question asked and the human's response inline under each cell bar.
  * @param {string} sessionId - The session ID
- * @param {string} phaseName - Filter to only show inputs from this phase
+ * @param {string} cellName - Filter to only show inputs from this cell
  * @param {boolean} isRunning - Whether the session is currently running
  * @param {number} sessionUpdate - Timestamp of last session update (triggers refresh)
  */
-function HumanInputDisplay({ sessionId, phaseName, isRunning, sessionUpdate }) {
+function HumanInputDisplay({ sessionId, cellName, isRunning, sessionUpdate }) {
   const [inputs, setInputs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [cachedForSession, setCachedForSession] = useState(null);
@@ -60,13 +60,13 @@ function HumanInputDisplay({ sessionId, phaseName, isRunning, sessionUpdate }) {
     return null;
   }
 
-  // Filter inputs by phase if phaseName is provided
-  const phaseInputs = phaseName
-    ? inputs.filter(p => p.cell_name === phaseName)
+  // Filter inputs by cell if cellName is provided
+  const cellInputs = cellName
+    ? inputs.filter(p => p.cell_name === cellName)
     : inputs;
 
-  // Flatten to just interactions for this phase
-  const interactions = phaseInputs.flatMap(p => p.interactions || []);
+  // Flatten to just interactions for this cell
+  const interactions = cellInputs.flatMap(p => p.interactions || []);
 
   if (interactions.length === 0 && !loading) {
     return null; // Don't show anything if no human inputs

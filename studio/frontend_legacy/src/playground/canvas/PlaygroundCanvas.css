@@ -81,7 +81,7 @@
 .playground-canvas-wrapper .react-flow__node:focus,
 .playground-canvas-wrapper .react-flow__node:focus-visible,
 .playground-canvas-wrapper .react-flow__node-prompt,
-.playground-canvas-wrapper .react-flow__node-phase,
+.playground-canvas-wrapper .react-flow__node-cell,
 .playground-canvas-wrapper .react-flow__node-image {
   padding: 0 !important;
   margin: 0 !important;

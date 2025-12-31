@@ -6,7 +6,7 @@
   gap: 16px;
 }
 
-/* Drawer intro - matches PhaseBlock.css */
+/* Drawer intro - matches CellBlock.css */
 .flow-builder .drawer-intro {
   display: flex;
   align-items: flex-start;
@@ -359,7 +359,7 @@
   border-color: var(--ocean-primary);
 }
 
-.no-phases-hint {
+.no-cells-hint {
   display: flex;
   align-items: center;
   gap: 8px;

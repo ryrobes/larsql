@@ -7,7 +7,7 @@ description: Process a single item (fruit name) and return metadata
 inputs_schema:
   item: "The item to process (e.g., 'apple', 'banana')"
 
-phases:
+cells:
   - name: analyze
     instructions: |
       You are analyzing the fruit: "{{ input.item }}"

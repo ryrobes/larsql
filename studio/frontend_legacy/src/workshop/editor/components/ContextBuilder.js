@@ -7,12 +7,12 @@ import './ContextBuilder.css';
  *
  * Features:
  * - Quick presets (clean slate, previous, all, custom)
- * - Visual source builder with phase selection
+ * - Visual source builder with cell selection
  * - Include options (images, output, messages, state)
  * - Filter configurations for images and messages
  * - Exclusion list for "all" mode
  */
-function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
+function ContextBuilder({ value, onChange, otherCells = [], cellName }) {
   const [expandedSource, setExpandedSource] = useState(null);
 
   // Normalize value to ensure consistent structure
@@ -82,9 +82,9 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         updateContext({ from: [...currentFrom.filter(s => s !== 'all'), source] });
       }
     } else {
-      // Add phase name
+      // Add cell name
       const existing = currentFrom.filter(s =>
-        typeof s === 'string' ? s !== source : s.phase !== source
+        typeof s === 'string' ? s !== source : s.cell !== source
       );
       updateContext({ from: [...existing.filter(s => s !== 'all'), source] });
     }
@@ -104,7 +104,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
 
     // If it's a string, convert to object
     if (typeof current === 'string') {
-      newFrom[sourceIndex] = { phase: current, ...updates };
+      newFrom[sourceIndex] = { cell: current, ...updates };
     } else {
       newFrom[sourceIndex] = { ...current, ...updates };
     }
@@ -119,7 +119,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         (!source.as_role || source.as_role === 'user')
       );
       if (isDefault) {
-        newFrom[sourceIndex] = source.phase;
+        newFrom[sourceIndex] = source.cell;
       }
     }
 
@@ -127,12 +127,12 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
   };
 
   // Toggle exclusion
-  const toggleExclude = (phaseName) => {
+  const toggleExclude = (cellName) => {
     const exclude = context.exclude || [];
-    if (exclude.includes(phaseName)) {
-      updateContext({ exclude: exclude.filter(p => p !== phaseName) });
+    if (exclude.includes(cellName)) {
+      updateContext({ exclude: exclude.filter(p => p !== cellName) });
     } else {
-      updateContext({ exclude: [...exclude, phaseName] });
+      updateContext({ exclude: [...exclude, cellName] });
     }
   };
 
@@ -144,16 +144,16 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
       if (source === 'all') return { name: 'all', icon: 'mdi:select-all', color: 'brass' };
       return { name: source, icon: 'mdi:view-sequential', color: 'default' };
     }
-    return { name: source.phase, icon: 'mdi:view-sequential', color: 'default', config: source };
+    return { name: source.cell, icon: 'mdi:view-sequential', color: 'default', config: source };
   };
 
-  // Available phases to add (not already in from)
-  const availablePhases = useMemo(() => {
-    const usedPhases = (context.from || []).map(s =>
-      typeof s === 'string' ? s : s.phase
+  // Available cells to add (not already in from)
+  const availableCells = useMemo(() => {
+    const usedCells = (context.from || []).map(s =>
+      typeof s === 'string' ? s : s.cell
     );
-    return otherPhases.filter(p => !usedPhases.includes(p));
-  }, [otherPhases, context.from]);
+    return otherCells.filter(p => !usedCells.includes(p));
+  }, [otherCells, context.from]);
 
   return (
     <div className="context-builder">
@@ -161,8 +161,8 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
       <div className="drawer-intro">
         <Icon icon="mdi:information-outline" width="14" />
         <p>
-          <strong>Context</strong> controls what information flows into this phase from prior phases.
-          By default phases start clean. Use <strong>previous</strong> for linear chains or <strong>custom</strong> for fine-grained control.
+          <strong>Context</strong> controls what information flows into this cell from prior cells.
+          By default cells start clean. Use <strong>previous</strong> for linear chains or <strong>custom</strong> for fine-grained control.
         </p>
       </div>
 
@@ -171,7 +171,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         <button
           className={`preset-btn ${currentMode === 'clean' ? 'active' : ''}`}
           onClick={() => handlePreset('clean')}
-          title="Phase starts with no prior context"
+          title="Cell starts with no prior context"
         >
           <Icon icon="mdi:broom" width="14" />
           <span>Clean Slate</span>
@@ -179,7 +179,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         <button
           className={`preset-btn ${currentMode === 'previous' ? 'active' : ''}`}
           onClick={() => handlePreset('previous')}
-          title="Receive context from the previous phase only"
+          title="Receive context from the previous cell only"
         >
           <Icon icon="mdi:arrow-left" width="14" />
           <span>Previous</span>
@@ -187,7 +187,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         <button
           className={`preset-btn ${currentMode === 'all' ? 'active' : ''}`}
           onClick={() => handlePreset('all')}
-          title="Receive context from all prior phases (snowball)"
+          title="Receive context from all prior cells (snowball)"
         >
           <Icon icon="mdi:select-all" width="14" />
           <span>All</span>
@@ -195,7 +195,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         <button
           className={`preset-btn ${currentMode === 'custom' ? 'active' : ''}`}
           onClick={() => handlePreset('custom')}
-          title="Select specific phases and configure what to include"
+          title="Select specific cells and configure what to include"
         >
           <Icon icon="mdi:tune" width="14" />
           <span>Custom</span>
@@ -207,25 +207,25 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
         {currentMode === 'clean' && (
           <>
             <Icon icon="mdi:information-outline" width="14" />
-            <span>This phase starts fresh with no context from prior phases.</span>
+            <span>This cell starts fresh with no context from prior cells.</span>
           </>
         )}
         {currentMode === 'previous' && (
           <>
             <Icon icon="mdi:link-variant" width="14" />
-            <span>This phase receives output and images from the immediately previous phase.</span>
+            <span>This cell receives output and images from the immediately previous cell.</span>
           </>
         )}
         {currentMode === 'all' && (
           <>
             <Icon icon="mdi:source-merge" width="14" />
-            <span>This phase receives context from all prior phases (explicit snowball).</span>
+            <span>This cell receives context from all prior cells (explicit snowball).</span>
           </>
         )}
         {currentMode === 'custom' && (
           <>
             <Icon icon="mdi:tune-variant" width="14" />
-            <span>Configure exactly which phases and what content to include.</span>
+            <span>Configure exactly which cells and what content to include.</span>
           </>
         )}
       </div>
@@ -265,7 +265,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
                     )}
 
                     <div className="source-actions">
-                      {/* Only show config for phase sources, not keywords */}
+                      {/* Only show config for cell sources, not keywords */}
                       {display.name !== 'all' && (
                         <button
                           className={`action-btn ${isExpanded ? 'active' : ''}`}
@@ -303,7 +303,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
               <div className="add-source-row">
                 <span className="add-label">Add source:</span>
                 <div className="add-buttons">
-                  {!context.from?.some(s => s === 'first' || s?.phase === 'first') && (
+                  {!context.from?.some(s => s === 'first' || s?.cell === 'first') && (
                     <button className="add-btn keyword" onClick={() => addSource('first')}>
                       <Icon icon="mdi:ray-start" width="12" />
                       first
@@ -315,16 +315,16 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
                       previous
                     </button>
                   )}
-                  {availablePhases.length > 0 && (
+                  {availableCells.length > 0 && (
                     <select
-                      className="add-phase-select"
+                      className="add-cell-select"
                       value=""
                       onChange={(e) => {
                         if (e.target.value) addSource(e.target.value);
                       }}
                     >
-                      <option value="">+ Phase...</option>
-                      {availablePhases.map(p => (
+                      <option value="">+ Cell...</option>
+                      {availableCells.map(p => (
                         <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
@@ -337,21 +337,21 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
       )}
 
       {/* Exclusions (only for "all" mode) */}
-      {currentMode === 'all' && otherPhases.length > 0 && (
+      {currentMode === 'all' && otherCells.length > 0 && (
         <div className="exclusions-section">
           <div className="section-header">
             <Icon icon="mdi:filter-remove" width="14" />
-            <span>Exclude Phases</span>
+            <span>Exclude Cells</span>
           </div>
           <div className="exclusions-list">
-            {otherPhases.map(phase => (
-              <label key={phase} className="exclusion-item">
+            {otherCells.map(cell => (
+              <label key={cell} className="exclusion-item">
                 <input
                   type="checkbox"
-                  checked={context.exclude?.includes(phase) || false}
-                  onChange={() => toggleExclude(phase)}
+                  checked={context.exclude?.includes(cell) || false}
+                  onChange={() => toggleExclude(cell)}
                 />
-                <span>{phase}</span>
+                <span>{cell}</span>
               </label>
             ))}
           </div>
@@ -380,7 +380,7 @@ function ContextBuilder({ value, onChange, otherPhases = [], phaseName }) {
  * SourceConfig - Configuration panel for a single context source
  */
 function SourceConfig({ source, onChange }) {
-  const config = typeof source === 'object' ? source : { phase: source };
+  const config = typeof source === 'object' ? source : { cell: source };
   const include = config.include || ['images', 'output'];
 
   const toggleInclude = (item) => {

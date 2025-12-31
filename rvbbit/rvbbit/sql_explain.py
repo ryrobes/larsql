@@ -17,7 +17,7 @@ class ExplainResult:
     input_rows: int
     parallelism: Optional[int]
     cascade_path: str
-    phases: List[str]
+    cells: List[str]
     model: str
     candidates: int
     cost_per_row: float
@@ -57,7 +57,7 @@ def explain_rvbbit_map(
     # 3. Estimate cost per row
     cost_per_row = _estimate_cost_per_row(
         cascade_info['model'],
-        cascade_info['phases'],
+        cascade_info['cells'],
         cascade_info['candidates']
     )
 
@@ -82,7 +82,7 @@ def explain_rvbbit_map(
         input_rows=input_rows,
         parallelism=stmt.parallel,
         cascade_path=stmt.cascade_path,
-        phases=cascade_info['phases'],
+        cells=cascade_info['cells'],
         model=cascade_info['model'],
         candidates=cascade_info['candidates'],
         cost_per_row=cost_per_row,
@@ -108,7 +108,7 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
     if not os.path.exists(cascade_path):
         # Return defaults if cascade not found
         return {
-            'phases': ['unknown'],
+            'cells': ['unknown'],
             'model': 'google/gemini-2.5-flash-lite',
             'candidates': 1
         }
@@ -124,14 +124,14 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
                 config = yaml.safe_load(f)
     except Exception:
         return {
-            'phases': ['unknown'],
+            'cells': ['unknown'],
             'model': 'google/gemini-2.5-flash-lite',
             'candidates': 1
         }
 
     # Extract info
     cells = config.get('cells', [])
-    phases = [cell.get('name', f'phase_{i}') for i, cell in enumerate(cells)]
+    cells = [cell.get('name', f'cell_{i}') for i, cell in enumerate(cells)]
 
     # Get model (first cell's model or default)
     model = cells[0].get('model') if cells else None
@@ -150,13 +150,13 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
             # If factor is a string (Jinja template), estimate as 1
 
     return {
-        'phases': phases,
+        'cells': cells,
         'model': model,
         'candidates': candidates
     }
 
 
-def _estimate_cost_per_row(model: str, phases: List[str], candidates: int) -> float:
+def _estimate_cost_per_row(model: str, cells: List[str], candidates: int) -> float:
     """Estimate cost per row based on model pricing."""
     # Simplified pricing table (real implementation should query OpenRouter API)
     pricing_map = {
@@ -170,13 +170,13 @@ def _estimate_cost_per_row(model: str, phases: List[str], candidates: int) -> fl
 
     prices = pricing_map.get(model, {'input': 0.000005, 'output': 0.000010})
 
-    # Rough estimate: 500 prompt tokens, 200 completion tokens per phase
+    # Rough estimate: 500 prompt tokens, 200 completion tokens per cell
     # This is conservative - actual usage varies by instruction length
     prompt_tokens = 500
     completion_tokens = 200
 
-    cost_per_phase = (prompt_tokens * prices['input'] + completion_tokens * prices['output'])
-    cost_per_row = cost_per_phase * len(phases) * candidates
+    cost_per_cell = (prompt_tokens * prices['input'] + completion_tokens * prices['output'])
+    cost_per_row = cost_per_cell * len(cells) * candidates
 
     return cost_per_row
 
@@ -222,7 +222,7 @@ def format_explain_result(result: ExplainResult) -> str:
 
     lines.extend([
         f"  ├─ Cascade: {result.cascade_path}",
-        f"  │  ├─ Phases: {len(result.phases)} ({', '.join(result.phases)})",
+        f"  │  ├─ Cells: {len(result.cells)} ({', '.join(result.cells)})",
         f"  │  ├─ Model: {result.model}",
         f"  │  ├─ Candidates: {result.candidates}",
         f"  │  └─ Cost Estimate: ${result.cost_per_row:.6f} per row → ${result.total_cost:.2f} total",

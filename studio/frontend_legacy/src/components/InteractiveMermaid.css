@@ -74,8 +74,8 @@
   max-height: 450px;
 }
 
-/* Active Phase Highlight */
-.mermaid-diagram svg g.node.active-phase {
+/* Active Cell Highlight */
+.mermaid-diagram svg g.node.active-cell {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 

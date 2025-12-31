@@ -79,7 +79,7 @@
   padding-left: 20px;
 }
 
-.state-phase {
+.state-cell {
   color: #94a3b8;
   font-weight: 500;
 }
@@ -198,7 +198,7 @@
   min-width: 50px;
 }
 
-.state-history-phase {
+.state-history-cell {
   color: #94a3b8;
   min-width: 80px;
 }

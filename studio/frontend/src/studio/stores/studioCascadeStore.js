@@ -143,7 +143,7 @@ const useStudioCascadeStore = create(
       // ============================================
       // CELL TYPES (Declarative)
       // ============================================
-      cellTypes: [],  // Loaded from phase_types/ YAML files
+      cellTypes: [],  // Loaded from cell_types/ YAML files
       cellTypesLoading: false,
 
       // ============================================
@@ -368,7 +368,7 @@ const useStudioCascadeStore = create(
           if (parentRow && parentRow.parent_session_id) {
             set(state => {
               state.parentSessionId = parentRow.parent_session_id;
-              // We don't know parent_phase from child's perspective - would need separate query
+              // We don't know parent_cell from child's perspective - would need separate query
             });
             console.log('[fetchReplayData] ✓ This is a child session, parent:', parentRow.parent_session_id);
           }
@@ -644,16 +644,16 @@ const useStudioCascadeStore = create(
             python_data: '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}',
             js_data: '// Access prior cell outputs:\n// const rows = data.cell_name;\n//\n// Set result to an array of objects or value:\nresult = [{ message: "Hello" }];',
             clojure_data: '; Access prior cell outputs:\n; (:cell-name data)\n;\n; Return a vector of maps or value:\n[{:message "Hello"}]',
-            llm_phase: `You are a helpful assistant analyzing data.
+            llm_cell: `You are a helpful assistant analyzing data.
 
 Use Jinja2 templates to reference data:
 - Inputs: {{ input.param_name }}
-- Prior phases: {{ outputs.cell_name }}
+- Prior cells: {{ outputs.cell_name }}
 - State: {{ state.var_name }}
 
 Provide your analysis below:
 `,
-            windlass_data: `# LLM Phase Cell (Data Tool)
+            windlass_data: `# LLM Cell Cell (Data Tool)
 # Access prior cells with: {{outputs.cell_name}}
 # Full RVBBIT power: soundings, reforge, wards, model selection
 
@@ -716,7 +716,7 @@ output_schema:
           const applyTemplateVars = (obj) => {
             if (typeof obj === 'string') {
               return obj
-                .replace(/\{\{PHASE_NAME\}\}/g, cellName)
+                .replace(/\{\{CELL_NAME\}\}/g, cellName)
                 .replace(/\{\{CASCADE_ID\}\}/g, state.cascade?.cascade_id || 'untitled');
             }
             if (Array.isArray(obj)) {
@@ -1149,7 +1149,7 @@ output_schema:
           console.log('[runCascadeStandard] Polling will update cell states');
           console.log('[runCascadeStandard] isRunningAll should still be true:', get().isRunningAll);
           // Polling (via useTimelinePolling) will update cellStates automatically
-          // isRunningAll will be set to false when all phases complete
+          // isRunningAll will be set to false when all cells complete
           // Note: Running does NOT save the file - user must explicitly click Save
 
         } catch (err) {
@@ -1382,7 +1382,7 @@ output_schema:
         set(state => { state.cellTypesLoading = true; });
 
         try {
-          const res = await fetch(`${API_BASE_URL}/phase-types`);
+          const res = await fetch(`${API_BASE_URL}/cell-types`);
           const data = await res.json();
 
           set(state => {
@@ -1527,28 +1527,28 @@ output_schema:
           }
 
           // Migrate old property names to new ones
-          if (state.selectedPhaseIndex !== undefined) {
-            console.log('[Migration] Renaming: selectedPhaseIndex → selectedCellIndex');
-            state.selectedCellIndex = state.selectedPhaseIndex;
-            delete state.selectedPhaseIndex;
+          if (state.selectedCellIndex !== undefined) {
+            console.log('[Migration] Renaming: selectedCellIndex → selectedCellIndex');
+            state.selectedCellIndex = state.selectedCellIndex;
+            delete state.selectedCellIndex;
           }
 
-          if (state.phaseTypes !== undefined) {
-            console.log('[Migration] Renaming: phaseTypes → cellTypes');
-            state.cellTypes = state.phaseTypes;
-            delete state.phaseTypes;
+          if (state.cellTypes !== undefined) {
+            console.log('[Migration] Renaming: cellTypes → cellTypes');
+            state.cellTypes = state.cellTypes;
+            delete state.cellTypes;
           }
 
-          if (state.phaseTypesLoading !== undefined) {
-            console.log('[Migration] Renaming: phaseTypesLoading → cellTypesLoading');
-            state.cellTypesLoading = state.phaseTypesLoading;
-            delete state.phaseTypesLoading;
+          if (state.cellTypesLoading !== undefined) {
+            console.log('[Migration] Renaming: cellTypesLoading → cellTypesLoading');
+            state.cellTypesLoading = state.cellTypesLoading;
+            delete state.cellTypesLoading;
           }
 
-          if (state.parentPhase !== undefined) {
-            console.log('[Migration] Renaming: parentPhase → parentCell');
-            state.parentCell = state.parentPhase;
-            delete state.parentPhase;
+          if (state.parentCell !== undefined) {
+            console.log('[Migration] Renaming: parentCell → parentCell');
+            state.parentCell = state.parentCell;
+            delete state.parentCell;
           }
 
           console.log('[Migration] Migration complete. Final mode:', state.mode);

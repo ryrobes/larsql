@@ -153,8 +153,8 @@
   background: #0a0a0a;
 }
 
-/* Phase Groups */
-.phase-group {
+/* Cell Groups */
+.cell-group {
   margin-bottom: 2rem;
   border: 1px solid #333;
   border-radius: 8px;
@@ -162,7 +162,7 @@
   overflow: hidden;
 }
 
-.phase-header {
+.cell-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -174,13 +174,13 @@
   z-index: 10;
 }
 
-.phase-title {
+.cell-title {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
-.phase-name {
+.cell-name {
   font-size: 1.1rem;
   font-weight: 600;
   color: #e0e0e0;
@@ -204,14 +204,14 @@
   margin-left: 0.5rem;
 }
 
-.phase-cost {
+.cell-cost {
   font-size: 1rem;
   font-weight: 700;
   color: #5EEAD4;
 }
 
 /* Entries */
-.phase-entries {
+.cell-entries {
   padding: 0.5rem;
 }
 

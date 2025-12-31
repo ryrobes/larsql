@@ -83,14 +83,14 @@ function CheckpointBadge({ checkpoints, onSelectCheckpoint }) {
  */
 function CheckpointItem({ checkpoint, onSelect }) {
   const typeLabels = {
-    'phase_input': 'Input Required',
+    'cell_input': 'Input Required',
     'sounding_eval': 'Compare Outputs',
     'form': 'Form',
     'approval': 'Approval'
   };
 
   const typeIcons = {
-    'phase_input': <Icon icon="mdi:pencil" width="14" />,
+    'cell_input': <Icon icon="mdi:pencil" width="14" />,
     'sounding_eval': <Icon icon="mdi:scale-balance" width="14" />,
     'form': <Icon icon="mdi:form-textbox" width="14" />,
     'approval': <Icon icon="mdi:check" width="14" />
@@ -118,7 +118,7 @@ function CheckpointItem({ checkpoint, onSelect }) {
         )}
       </div>
       <div className="item-details">
-        <span className="item-phase">{checkpoint.cell_name}</span>
+        <span className="item-cell">{checkpoint.cell_name}</span>
         <span className="item-cascade">{checkpoint.cascade_id}</span>
       </div>
       {checkpoint.num_soundings && (

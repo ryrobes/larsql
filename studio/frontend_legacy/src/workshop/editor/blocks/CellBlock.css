@@ -1,6 +1,6 @@
-/* PhaseBlock - Individual Phase Container */
+/* CellBlock - Individual Cell Container */
 
-.phase-block {
+.cell-block {
   background: var(--bg-card);
   border: 2px solid var(--storm-cloud);
   border-radius: 8px;
@@ -8,31 +8,31 @@
   overflow: visible;
 }
 
-.phase-block:hover {
+.cell-block:hover {
   border-color: var(--ocean-secondary);
 }
 
-.phase-block.selected {
+.cell-block.selected {
   border-color: var(--ocean-primary);
   box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
 }
 
-.phase-block.dragging {
+.cell-block.dragging {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   cursor: grabbing;
 }
 
-.phase-block.drop-over {
+.cell-block.drop-over {
   border-color: #a855f7;
   background: linear-gradient(180deg, rgba(168, 85, 247, 0.1) 0%, var(--bg-card) 100%);
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.3), inset 0 0 20px rgba(168, 85, 247, 0.05);
 }
 
 /* ============================================
-   PHASE HEADER
+   CELL HEADER
    ============================================ */
 
-.phase-header {
+.cell-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -58,7 +58,7 @@
   cursor: grabbing;
 }
 
-.phase-number {
+.cell-number {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -71,12 +71,12 @@
   color: var(--ocean-primary);
 }
 
-.phase-name-container {
+.cell-name-container {
   flex: 1;
   min-width: 0;
 }
 
-.phase-name {
+.cell-name {
   font-weight: 600;
   font-size: 14px;
   font-family: 'Google Sans Code', 'Menlo', monospace;
@@ -84,7 +84,7 @@
   cursor: text;
 }
 
-.phase-name-input {
+.cell-name-input {
   width: 100%;
   background: var(--midnight-fjord);
   border: 1px solid var(--ocean-primary);
@@ -96,7 +96,7 @@
   color: var(--text-primary);
 }
 
-.phase-name-input:focus {
+.cell-name-input:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(74, 158, 221, 0.2);
 }
@@ -141,7 +141,7 @@
   color: var(--compass-brass);
 }
 
-.phase-delete-btn {
+.cell-delete-btn {
   padding: 4px;
   background: transparent;
   border: none;
@@ -152,11 +152,11 @@
   transition: all 0.15s ease;
 }
 
-.phase-block:hover .phase-delete-btn {
+.cell-block:hover .cell-delete-btn {
   opacity: 1;
 }
 
-.phase-delete-btn:hover {
+.cell-delete-btn:hover {
   background: rgba(207, 102, 121, 0.2);
   color: var(--bloodaxe-red);
 }
@@ -165,7 +165,7 @@
    INSTRUCTIONS FIELD
    ============================================ */
 
-.phase-instructions {
+.cell-instructions {
   padding: 12px;
   border-bottom: 1px solid var(--border-default);
 }
@@ -816,7 +816,7 @@
    CONTEXT DRAWER
    ============================================ */
 
-.context-drawer .context-phases {
+.context-drawer .context-cells {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -827,7 +827,7 @@
   border-radius: 6px;
 }
 
-.context-phase-chip {
+.context-cell-chip {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -839,7 +839,7 @@
   color: var(--ocean-primary);
 }
 
-.context-phase-chip .chip-remove {
+.context-cell-chip .chip-remove {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -855,7 +855,7 @@
   transition: all 0.1s ease;
 }
 
-.context-phase-chip .chip-remove:hover {
+.context-cell-chip .chip-remove:hover {
   background: var(--danger-red);
   color: white;
 }

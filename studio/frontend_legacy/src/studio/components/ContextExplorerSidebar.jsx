@@ -97,7 +97,7 @@ const cleanPreview = (content) => {
  * ContextExplorerSidebar - Replaces CascadeNavigator when a message with context is selected
  *
  * Shows:
- * 1. Selected message info (role, phase, hash)
+ * 1. Selected message info (role, cell, hash)
  * 2. Stats (ancestors, descendants, tokens)
  * 3. Context Matrix (30-40% height) - shows full conversation
  * 4. Message blocks list (60-70% height) - unpacked context for selected message
@@ -154,7 +154,7 @@ const ContextExplorerSidebar = ({
         position: idx,
         hash,
         role: linkedMsg?.role || 'unknown',
-        phase: linkedMsg?.cell_name || 'unknown',
+        cell: linkedMsg?.cell_name || 'unknown',
         index: linkedMsg?._index,
         estimated_tokens: linkedMsg?.estimated_tokens || 0,
         content: linkedMsg?.content_json || linkedMsg?.content,
@@ -175,7 +175,7 @@ const ContextExplorerSidebar = ({
       .map((msg, idx) => ({
         _index: idx,
         role: msg.role,
-        phase: msg.cell_name,
+        cell: msg.cell_name,
         timestamp: msg.timestamp,
         hasMatch: true
       }));
@@ -321,13 +321,13 @@ const ContextExplorerSidebar = ({
         detected.push({
           type: 'TOOL SPEW',
           severity: 'high',
-          message: `${toolMsg.phase || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — massive but rarely referenced`
+          message: `${toolMsg.cell || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — massive but rarely referenced`
         });
       } else if (wasteAnalysis.wasteScore < 20) {
         detected.push({
           type: 'TOOL SPEW',
           severity: 'low',
-          message: `${toolMsg.phase || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — large but efficiently re-used`
+          message: `${toolMsg.cell || 'tool'} result (${toolMsg.estimated_tokens.toLocaleString()} tok) — large but efficiently re-used`
         });
       }
     }
@@ -357,7 +357,7 @@ const ContextExplorerSidebar = ({
       detected.push({
         type: 'SYSTEM OVERLOAD',
         severity: 'info',
-        message: `${sysMsg.phase || 'system'} setup (${sysMsg.estimated_tokens.toLocaleString()} tok) — consider trimming instructions`
+        message: `${sysMsg.cell || 'system'} setup (${sysMsg.estimated_tokens.toLocaleString()} tok) — consider trimming instructions`
       });
     }
 
@@ -472,8 +472,8 @@ const ContextExplorerSidebar = ({
                 <span key={idx}>
                   {idx > 0 && ', '}
                   <span className="ce-summary-role">{desc}</span>
-                  {a.phase !== 'unknown' && (
-                    <span className="ce-summary-phase"> ({a.phase})</span>
+                  {a.cell !== 'unknown' && (
+                    <span className="ce-summary-cell"> ({a.cell})</span>
                   )}
                   {' '}(<span className="ce-summary-tokens">{a.estimated_tokens.toLocaleString()} tok</span>)
                 </span>
@@ -523,7 +523,7 @@ const ContextExplorerSidebar = ({
         {selectedMessage.cell_name && (
           <>
             <span className="ce-separator">·</span>
-            <span className="ce-msg-phase">{selectedMessage.cell_name}</span>
+            <span className="ce-msg-cell">{selectedMessage.cell_name}</span>
           </>
         )}
         {selectedMessage.content_hash && (
@@ -622,10 +622,10 @@ const ContextExplorerSidebar = ({
                       <span className="ce-block-role" style={{ color: ROLE_COLORS[ancestor.role] || '#64748b' }}>
                         {ancestor.role}
                       </span>
-                      {ancestor.phase !== 'unknown' && (
+                      {ancestor.cell !== 'unknown' && (
                         <>
                           <span className="ce-block-separator">·</span>
-                          <span className="ce-block-phase">{ancestor.phase}</span>
+                          <span className="ce-block-cell">{ancestor.cell}</span>
                         </>
                       )}
                       {/* Global rank badge */}
@@ -691,7 +691,7 @@ const ContextExplorerSidebar = ({
                   {selectedMessage.cell_name && (
                     <>
                       <span className="ce-block-separator">·</span>
-                      <span className="ce-block-phase">{selectedMessage.cell_name}</span>
+                      <span className="ce-block-cell">{selectedMessage.cell_name}</span>
                     </>
                   )}
                 </div>
@@ -764,10 +764,10 @@ const ContextExplorerSidebar = ({
                   <span className="ce-block-role" style={{ color: ROLE_COLORS[desc.role] || '#64748b' }}>
                     {desc.role}
                   </span>
-                  {desc.phase && (
+                  {desc.cell && (
                     <>
                       <span className="ce-block-separator">·</span>
-                      <span className="ce-block-phase">{desc.phase}</span>
+                      <span className="ce-block-cell">{desc.cell}</span>
                     </>
                   )}
                 </div>

@@ -19,7 +19,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                 # Additional unified fields
                 cascade_id: str = None, cascade_file: str = None, cell_name: str = None,
                 turn_number: int = None, attempt_number: int = None, parent_session_id: str = None,
-                species_hash: str = None, genus_hash: str = None, phase_config: dict = None,
+                species_hash: str = None, genus_hash: str = None, cell_config: dict = None,
                 # Caller tracking (NEW)
                 caller_id: str = None, invocation_metadata: dict = None):
     """
@@ -82,7 +82,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
         cell_name=cell_name,
         species_hash=species_hash,
         genus_hash=genus_hash,
-        phase_config=phase_config,
+        cell_config=cell_config,
         duration_ms=duration_ms,
         tokens_in=tokens_in,
         tokens_out=tokens_out,

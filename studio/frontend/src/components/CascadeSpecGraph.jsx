@@ -264,7 +264,7 @@ EdgesSVG.displayName = 'EdgesSVG';
 /**
  * CascadeSpecGraph - Main component
  *
- * @param {Array} cells - Array of cell definitions (phases)
+ * @param {Array} cells - Array of cell definitions (cells)
  * @param {Object} inputsSchema - Input parameter schema
  * @param {string} cascadeId - Cascade identifier for display
  * @param {Object} cellStatus - Map of cell name to status: { cellName: 'completed' | 'running' | 'waiting' | 'error' | 'pending' }

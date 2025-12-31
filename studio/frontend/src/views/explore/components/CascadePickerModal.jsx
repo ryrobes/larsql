@@ -317,8 +317,8 @@ const CascadePickerModal = ({ isOpen, onClose, onStart }) => {
                             </div>
 
                             {session.current_cell && (
-                              <div className="session-phase">
-                                Phase: {session.current_cell}
+                              <div className="session-cell">
+                                Cell: {session.current_cell}
                               </div>
                             )}
 

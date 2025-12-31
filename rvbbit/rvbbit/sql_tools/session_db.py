@@ -2,7 +2,7 @@
 Session-scoped DuckDB instances for data cascade temp tables.
 
 Each cascade execution gets its own DuckDB instance where temp tables
-persist across phases. Tables are named _<cell_name> by convention.
+persist across cells. Tables are named _<cell_name> by convention.
 """
 
 import os

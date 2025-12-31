@@ -8,7 +8,7 @@ class Echo:
     The history entries contain rich metadata for visualization:
     - trace_id: Unique ID for this entry
     - parent_id: Parent trace ID for tree structure
-    - node_type: cascade, phase, turn, tool, soundings, reforge, etc.
+    - node_type: cascade, cell, turn, tool, soundings, reforge, etc.
     - metadata: Dict with additional context (cell_name, candidate_index, etc.)
     """
     def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None,
@@ -38,7 +38,7 @@ class Echo:
         self._current_cascade_id = cascade_id
 
     def set_cell_context(self, cell_name: str):
-        """Set the current phase context for metadata enrichment."""
+        """Set the current cell context for metadata enrichment."""
         self._current_cell_name = cell_name
 
     def set_message_callback(self, callback: Callable[[Dict[str, Any]], None]):
@@ -66,7 +66,7 @@ class Echo:
 
         # Skip structural/lifecycle entries
         if node_type in ("context_injection", "context_selection", "lifecycle",
-                         "cascade", "phase", "turn", "structure"):
+                         "cascade", "cell", "turn", "structure"):
             return False
 
         # Skip validation infrastructure
@@ -90,7 +90,7 @@ class Echo:
             entry: The base entry dict (role, content, etc.)
             trace_id: Unique trace ID for this entry
             parent_id: Parent trace ID for tree structure
-            node_type: Type of node (cascade, phase, turn, tool, etc.)
+            node_type: Type of node (cascade, cell, turn, tool, etc.)
             metadata: Additional metadata dict (candidate_index, is_winner, cell_name, etc.)
             skip_unified_log: If True, skip automatic logging to unified_logs (caller already logged)
         """

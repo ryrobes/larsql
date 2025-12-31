@@ -6,7 +6,7 @@
   gap: 12px;
 }
 
-/* Drawer intro - matches PhaseBlock.css */
+/* Drawer intro - matches CellBlock.css */
 .context-builder .drawer-intro {
   display: flex;
   align-items: flex-start;
@@ -364,7 +364,7 @@
   color: var(--ocean-secondary);
 }
 
-.add-phase-select {
+.add-cell-select {
   padding: 4px 8px;
   background: var(--midnight-fjord);
   border: 1px dashed var(--border-default);
@@ -374,11 +374,11 @@
   cursor: pointer;
 }
 
-.add-phase-select:hover {
+.add-cell-select:hover {
   border-color: var(--ocean-secondary);
 }
 
-.add-phase-select:focus {
+.add-cell-select:focus {
   outline: none;
   border-style: solid;
   border-color: var(--ocean-primary);

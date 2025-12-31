@@ -13,8 +13,8 @@ turn into **hundreds of messages, retries, checks, and UI interrupts**.
 
 Windlass keeps all that complexity **inside the box**:
 
-- You define a pipeline as a few **phases** wired together.
-- Each phase is a self-contained reactor that can:
+- You define a pipeline as a few **cells** wired together.
+- Each cell is a self-contained reactor that can:
   - fan out with **soundings** (parallel attempts),
   - refine winners with **reforge**,
   - run **validators** and **HITL checkpoints**,
@@ -43,23 +43,23 @@ they give you a visual builder and let you draw bigger graphs.
 Windlass takes the opposite approach:
 
 > **Put the spaghetti in the bowl.**
-> Each phase encapsulates its own loops, retries, validation, and soundings.
+> Each cell encapsulates its own loops, retries, validation, and soundings.
 > At the top level you just connect a few boxes.
 
 ---
 
 ## What Windlass gives you
 
-**1. Phases & cascades – hierarchical, not flat graphs**
+**1. Cells & cascades – hierarchical, not flat graphs**
 
-* A **cascade** is a pipeline of named **phases**.
-* Each phase can:
+* A **cascade** is a pipeline of named **cells**.
+* Each cell can:
 
   * call tools,
   * run multiple LLM turns,
   * fan out with soundings,
   * loop internally for refinement.
-* Phases can be reused, nested, or called as tools from other cascades.
+* Cells can be reused, nested, or called as tools from other cascades.
 
 **2. Soundings & Reforge – parallel exploration instead of retry hell**
 
@@ -101,10 +101,10 @@ Same order of magnitude tokens, but:
 
 Validation is a first-class concept:
 
-* Define **wards** that run before or after a phase:
+* Define **wards** that run before or after a cell:
 
   * **blocking** – stop if this fails,
-  * **retry** – let the phase try again,
+  * **retry** – let the cell try again,
   * **advisory** – log + continue.
 * Use `loop_until` to automatically inject validation goals into the prompt
   (for objective rules like schema, format, or length).
@@ -113,8 +113,8 @@ Validation is a first-class concept:
 
 **4. Context as a lens, not an accident**
 
-* Inside a phase, Windlass keeps its own **local history** as it loops and refines.
-* Between phases, **nothing is shared by default.**
+* Inside a cell, Windlass keeps its own **local history** as it loops and refines.
+* Between cells, **nothing is shared by default.**
 * You declare context like a query:
 
 ```json
@@ -125,14 +125,14 @@ Validation is a first-class concept:
 }
 ```
 
-Phases see **exactly** what you choose: previous artifacts, selected messages, or both.
+Cells see **exactly** what you choose: previous artifacts, selected messages, or both.
 No more guessing “did I accidentally drag 300 messages into this prompt?”
 
 **5. Token budgets, tool caching, extraction**
 
 Production-minded features baked-in:
 
-* Global and per-phase **token budgets** with strategies:
+* Global and per-cell **token budgets** with strategies:
 
   * sliding window, pruning, summarizing, or “fail fast”.
 * **Tool caching** with TTL and custom keys, e.g. for expensive SQL/RAG calls.
@@ -145,7 +145,7 @@ Production-minded features baked-in:
 * Plain Python functions (or HTTP calls) registered as **tackles**.
 * Built-in utilities for SQL, charting, screenshots, web fetch, etc.
 * Easy to plug in your own RAG / vector search.
-* Phases can define **HITL checkpoints**:
+* Cells can define **HITL checkpoints**:
 
   * generate a UI,
   * pause the cascade,
@@ -161,12 +161,12 @@ Windlass ships with a small, optional UI aimed at **observability**, not authori
 You still define cascades as JSON/Python.
 The UI is a **black box recorder** for runs:
 
-* **Phase timeline**
-  See each phase’s duration and token cost at a glance.
+* **Cell timeline**
+  See each cell’s duration and token cost at a glance.
 * **Soundings made visible**
-  For phases that fan out, see all attempts, which one won, and how much each cost.
+  For cells that fan out, see all attempts, which one won, and how much each cost.
 * **Artifact gallery**
-  Browse charts, images, and summaries that each phase produced.
+  Browse charts, images, and summaries that each cell produced.
 * **Run controls**
   Re-run in debug mode, or **freeze** a successful run into a snapshot test.
 
@@ -181,13 +181,13 @@ Even without the UI, every run is fully instrumented:
 
 * **DuckDB / Parquet logs** – one file per run:
 
-  * `session_id`, `phase_name`, `sounding_index`, `is_winner`,
+  * `session_id`, `cell_name`, `sounding_index`, `is_winner`,
   * `reforge_step`, `cost_usd`, model name, and full content.
 * **CLI SQL helper**:
 
 ```bash
-# How much does each phase cost?
-windlass sql "SELECT phase_name, SUM(cost_usd) AS cost FROM all_data GROUP BY phase_name ORDER BY cost DESC"
+# How much does each cell cost?
+windlass sql "SELECT cell_name, SUM(cost_usd) AS cost FROM all_data GROUP BY cell_name ORDER BY cost DESC"
 
 # Compare sounding winners vs losers
 windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE sounding_index IS NOT NULL"
@@ -201,7 +201,7 @@ windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE
 ## Core concepts in 60 seconds
 
 * **Cascade** – a JSON/Python definition of your workflow.
-* **Phase** – a self-contained box inside the cascade with its own:
+* **Cell** – a self-contained box inside the cascade with its own:
 
   * tools, prompts, loops, soundings, validators, and context rules.
 * **Soundings** – parallel attempts; think “Tree-of-Thought, but configurable”.
@@ -215,12 +215,12 @@ windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE
 
 ## Quick example
 
-Simple two-phase cascade with soundings and a validator:
+Simple two-cell cascade with soundings and a validator:
 
 ```json
 {
   "name": "sql_chart_flow",
-  "phases": [
+  "cells": [
     {
       "name": "write_query",
       "soundings": {

@@ -95,7 +95,7 @@
   text-transform: capitalize;
 }
 
-.selected-msg-phase {
+.selected-msg-cell {
   font-size: 0.7rem;
   color: #9AA5B1;
   padding: 2px 6px;
@@ -283,7 +283,7 @@
   border-radius: 3px;
 }
 
-.context-phase {
+.context-cell {
   color: #9AA5B1;
   font-size: 0.65rem;
   flex: 1;

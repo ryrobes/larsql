@@ -14,10 +14,8 @@ import AccordionSection from './sections/AccordionSection';
 import TabsSection from './sections/TabsSection';
 import HTMLSection from './sections/HTMLSection';
 
-// Import layout components
-import TwoColumnLayout from './layouts/TwoColumnLayout';
-import GridLayout from './layouts/GridLayout';
-import SidebarLayout from './layouts/SidebarLayout';
+// Layout components removed - using fallback vertical layout for all cases
+// TODO: Re-implement layout components if needed
 
 /**
  * DynamicUI - Renders UI specifications from backend checkpoints
@@ -52,7 +50,7 @@ import SidebarLayout from './layouts/SidebarLayout';
  * - sidebar-left: Sidebar on left
  * - sidebar-right: Sidebar on right
  */
-function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessionId }) {
+function DynamicUI({ spec, onSubmit, isLoading, cellOutput, checkpointId, sessionId }) {
   const [values, setValues] = useState({});
   const [errors, setErrors] = useState({});
 
@@ -158,7 +156,7 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessi
         value={values[key]}
         error={errors[key]}
         onChange={(v) => handleChange(key, v)}
-        phaseOutput={phaseOutput}
+        cellOutput={cellOutput}
         values={values}
         onValueChange={handleChange}
         renderSection={renderSection}
@@ -166,7 +164,7 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessi
         sessionId={sessionId}
       />
     );
-  }, [values, errors, phaseOutput, handleChange, evaluateCondition, checkpointId, sessionId]);
+  }, [values, errors, cellOutput, handleChange, evaluateCondition, checkpointId, sessionId]);
 
   const layout = spec?.layout || 'vertical';
 
@@ -194,53 +192,17 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessi
     return false;
   }, [spec]);
 
-  // Render multi-column layouts
+  // Render sections - layout components were removed, using vertical fallback
   const renderLayout = () => {
-    switch (layout) {
-      case 'two-column':
-        return (
-          <TwoColumnLayout
-            spec={spec}
-            renderSection={renderSection}
-          />
-        );
-
-      case 'three-column':
-      case 'grid':
-        return (
-          <GridLayout
-            spec={spec}
-            renderSection={renderSection}
-          />
-        );
-
-      case 'sidebar-left':
-        return (
-          <SidebarLayout
-            spec={spec}
-            renderSection={renderSection}
-            position="left"
-          />
-        );
-
-      case 'sidebar-right':
-        return (
-          <SidebarLayout
-            spec={spec}
-            renderSection={renderSection}
-            position="right"
-          />
-        );
-
-      default: // vertical, horizontal
-        return (
-          <div className="dynamic-ui-sections">
-            {(spec?.sections || []).map((section, idx) =>
-              renderSection(section, `section_${idx}`)
-            )}
-          </div>
-        );
-    }
+    // TODO: Re-implement two-column, grid, sidebar layouts if needed
+    // For now, all layouts fall back to vertical stacking
+    return (
+      <div className="dynamic-ui-sections">
+        {(spec?.sections || []).map((section, idx) =>
+          renderSection(section, `section_${idx}`)
+        )}
+      </div>
+    );
   };
 
   return (
@@ -284,11 +246,11 @@ function DynamicUI({ spec, onSubmit, isLoading, phaseOutput, checkpointId, sessi
 /**
  * Renders a single UI section based on its type
  */
-function UISection({ spec, value, error, onChange, phaseOutput, values, onValueChange, renderSection, checkpointId, sessionId }) {
+function UISection({ spec, value, error, onChange, cellOutput, values, onValueChange, renderSection, checkpointId, sessionId }) {
   switch (spec.type) {
     // Existing section types
     case 'preview':
-      return <PreviewSection spec={spec} phaseOutput={phaseOutput} />;
+      return <PreviewSection spec={spec} cellOutput={cellOutput} />;
     case 'header':
       return <HeaderSection spec={spec} />;
     case 'confirmation':
@@ -313,7 +275,7 @@ function UISection({ spec, value, error, onChange, phaseOutput, values, onValueC
     case 'form':
       return <FormSection spec={spec} value={value} error={error} onChange={onChange} />;
     case 'group':
-      return <GroupSection spec={spec} value={value} error={error} onChange={onChange} phaseOutput={phaseOutput} renderSection={renderSection} />;
+      return <GroupSection spec={spec} value={value} error={error} onChange={onChange} cellOutput={cellOutput} renderSection={renderSection} />;
 
     // NEW: Rich content section types
     case 'image':
@@ -378,10 +340,10 @@ function TextDisplaySection({ spec }) {
 }
 
 /**
- * Preview Section - Renders phase output in different formats
+ * Preview Section - Renders cell output in different formats
  */
-function PreviewSection({ spec, phaseOutput }) {
-  const content = spec.content || phaseOutput || '';
+function PreviewSection({ spec, cellOutput }) {
+  const content = spec.content || cellOutput || '';
   const render = spec.render || 'auto';
   const [collapsed, setCollapsed] = useState(spec.collapsible && spec.default_collapsed);
 
@@ -870,7 +832,7 @@ function FormField({ field, value, onChange }) {
 /**
  * Group Section - Nested sections with optional collapsibility
  */
-function GroupSection({ spec, value, error, onChange, phaseOutput, renderSection }) {
+function GroupSection({ spec, value, error, onChange, cellOutput, renderSection }) {
   const [collapsed, setCollapsed] = useState(spec.default_collapsed);
 
   return (
@@ -891,7 +853,7 @@ function GroupSection({ spec, value, error, onChange, phaseOutput, renderSection
                 value={value}
                 error={error}
                 onChange={onChange}
-                phaseOutput={phaseOutput}
+                cellOutput={cellOutput}
               />
             )
           )}

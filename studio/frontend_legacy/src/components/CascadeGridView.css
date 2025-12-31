@@ -104,8 +104,8 @@
   text-align: right;
 }
 
-/* Phases cell with badges */
-.phases-cell-content {
+/* Cells cell with badges */
+.cells-cell-content {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -113,12 +113,12 @@
   flex-wrap: wrap;
 }
 
-.phase-count {
+.cell-count {
   font-weight: 600;
   color: #f0f4f8;
 }
 
-.phase-badge {
+.cell-badge {
   display: inline-block;
   padding: 2px 6px;
   border-radius: 8px;
@@ -127,17 +127,17 @@
   white-space: nowrap;
 }
 
-.phase-badge.soundings {
+.cell-badge.soundings {
   background: rgba(107, 127, 187, 0.2);
   color: #6B7FBB;
 }
 
-.phase-badge.reforges {
+.cell-badge.reforges {
   background: rgba(217, 165, 83, 0.2);
   color: #d9a553;
 }
 
-.phase-badge.wards {
+.cell-badge.wards {
   background: rgba(74, 158, 221, 0.2);
   color: #2dd4bf;
 }

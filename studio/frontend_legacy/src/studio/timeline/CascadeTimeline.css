@@ -382,7 +382,7 @@
   transition: all 0.3s ease;
 }
 
-/* Phase card wrapper for vertical stacking */
+/* Cell card wrapper for vertical stacking */
 .cell-card-wrapper {
   flex-shrink: 0;
   display: flex;
@@ -528,10 +528,10 @@
 
 
 /* ============================================
-   ADD PHASE BUTTON
+   ADD CELL BUTTON
    ============================================ */
 
-.cascade-add-phase {
+.cascade-add-cell {
   position: relative;
   flex-shrink: 0;
   margin-left: 12px;
@@ -763,7 +763,7 @@
 }
 
 /* ============================================
-   PHASE ANATOMY PANEL CONTAINER
+   CELL ANATOMY PANEL CONTAINER
    ============================================ */
 
 .cascade-anatomy-panel-container {

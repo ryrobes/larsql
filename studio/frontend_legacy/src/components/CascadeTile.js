@@ -31,7 +31,7 @@ mermaid.initialize({
 /**
  * Calculate tile dimensions based on cascade complexity
  * NEW LAYOUT: Title on top, mermaid on left, metrics column on right
- * @param {Object} cascade - Cascade definition with phases and graph_complexity
+ * @param {Object} cascade - Cascade definition with cells and graph_complexity
  * @returns {Object} - {w, h} in pixels (potpack format)
  */
 export function calculateTileDimensions(cascade) {
@@ -45,13 +45,13 @@ export function calculateTileDimensions(cascade) {
 
   // Cascades without runs get varied sizes for more interesting packing
   if (!hasRuns) {
-    // Add variety based on phase count or cascade_id hash
-    const phaseCount = cascade.cells?.length || 0;
+    // Add variety based on cell count or cascade_id hash
+    const cellCount = cascade.cells?.length || 0;
     const hash = cascade.cascade_id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
 
     // Generate varied sizes (200-350px)
     const variance = (hash % 150); // 0-149
-    const size = 200 + variance + (phaseCount * 10);
+    const size = 200 + variance + (cellCount * 10);
 
     return {
       w: size + GAP,
@@ -65,11 +65,11 @@ export function calculateTileDimensions(cascade) {
   if (cascade.graph_complexity) {
     // Use actual graph node count to estimate size
     const nodeCount = cascade.graph_complexity.total_nodes || 10;
-    const phaseCount = cascade.graph_complexity.total_phases || 2;
+    const cellCount = cascade.graph_complexity.total_cells || 2;
 
-    // Base estimation: each phase adds width, each node adds height
-    // Mermaid diagrams are typically wide (phases horizontal) and tall (nodes vertical)
-    const baseWidth = 400 + (phaseCount * 200);
+    // Base estimation: each cell adds width, each node adds height
+    // Mermaid diagrams are typically wide (cells horizontal) and tall (nodes vertical)
+    const baseWidth = 400 + (cellCount * 200);
     const baseHeight = 300 + (nodeCount * 30);
 
     // Apply 0.5 scale factor (mermaid diagrams are big)
@@ -80,10 +80,10 @@ export function calculateTileDimensions(cascade) {
     mermaidWidth = Math.min(Math.max(mermaidWidth, 300), 800);
     mermaidHeight = Math.min(Math.max(mermaidHeight, 250), 600);
   } else {
-    // Fallback: estimate from phase count
-    const numPhases = cascade.cells?.length || 2;
-    mermaidWidth = 400 + (numPhases * 100);
-    mermaidHeight = 300 + (numPhases * 50);
+    // Fallback: estimate from cell count
+    const numCells = cascade.cells?.length || 2;
+    mermaidWidth = 400 + (numCells * 100);
+    mermaidHeight = 300 + (numCells * 50);
 
     // Apply 0.5 scale
     mermaidWidth *= 0.5;
@@ -294,7 +294,7 @@ function CascadeTile({ cascade, onClick, isRunning }) {
 
       {/* Metrics Column - Right side, vertical */}
       <div className="tile-metrics">
-        {/* Phase count */}
+        {/* Cell count */}
         <div className="metric-item">
           <Icon icon="mdi:sitemap" width={16} height={16} />
           <span>{cascade.cells?.length || 0}</span>

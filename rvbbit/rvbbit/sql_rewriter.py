@@ -1,7 +1,7 @@
 """
 SQL Rewriter for RVBBIT MAP/RUN Syntax (Clean Version)
 
-Phase 1-2: MAP with optional PARALLEL
+Cell 1-2: MAP with optional PARALLEL
 """
 
 import re
@@ -506,7 +506,7 @@ SELECT
   r.* EXCLUDE (_raw_result),
   COALESCE(
     json_extract_string(_raw_result, '$.state.output_extract'),
-    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_phase')),
+    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_cell')),
     _raw_result
   ) AS {result_column}
 FROM rvbbit_raw r
@@ -527,7 +527,7 @@ SELECT
   r.* EXCLUDE (_raw_result),
   COALESCE(
     json_extract_string(_raw_result, '$.state.output_extract'),
-    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_phase')),
+    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_cell')),
     _raw_result
   ) AS {result_column}
 FROM rvbbit_raw r
@@ -671,7 +671,7 @@ def get_rewriter_info() -> Dict[str, Any]:
     """Get rewriter information."""
     return {
         'version': '0.3.0',
-        'phase': 'Phase 3',
+        'cell': 'Cell 3',
         'supported_features': {
             'RVBBIT MAP': True,
             'RVBBIT MAP PARALLEL': True,  # Syntax supported, threading TBD

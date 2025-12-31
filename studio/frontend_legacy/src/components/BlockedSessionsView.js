@@ -247,8 +247,8 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
         </div>
         <div className="cascade-info">
           <span className="cascade-id">{session.cascade_id}</span>
-          {session.current_phase && (
-            <span className="phase-name">@ {session.current_phase}</span>
+          {session.current_cell && (
+            <span className="cell-name">@ {session.current_cell}</span>
           )}
         </div>
         <div className="header-actions">
@@ -329,7 +329,7 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
                           spec={cp.ui_spec}
                           onSubmit={handleSubmitResponse}
                           isLoading={submitting}
-                          phaseOutput={cp.phase_output}
+                          cellOutput={cp.cell_output}
                           checkpointId={cp.id}
                           sessionId={session.session_id}
                         />
@@ -374,7 +374,7 @@ const BlockedSessionCard = React.memo(function BlockedSessionCard({ session, sig
                       spec={checkpoint.ui_spec}
                       onSubmit={handleSubmitResponse}
                       isLoading={submitting}
-                      phaseOutput={checkpoint.phase_output}
+                      cellOutput={checkpoint.cell_output}
                       checkpointId={checkpoint.id}
                       sessionId={session.session_id}
                     />
@@ -509,7 +509,7 @@ function BlockedSessionsView({ onBack, onSelectInstance, onMessageFlow, onSextan
           sessionMap[sid] = {
             session_id: sid,
             cascade_id: cp.cascade_id,
-            current_phase: cp.cell_name,
+            current_cell: cp.cell_name,
             blocked_type: cp.checkpoint_type,
             blocked_on: cp.id,
             timeout_at: cp.timeout_at,

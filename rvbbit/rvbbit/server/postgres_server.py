@@ -2087,7 +2087,7 @@ class RVBBITPostgresServer:
         print("     → Simple LLM extraction/classification")
         print()
         print("   • rvbbit_cascade_udf(cascade_path, json_inputs)")
-        print("     → Full multi-phase cascade per row (with soundings!)")
+        print("     → Full multi-cell cascade per row (with soundings!)")
         print()
         print("📚 Connect from:")
         print(f"   • psql:      psql postgresql://localhost:{self.port}/default")

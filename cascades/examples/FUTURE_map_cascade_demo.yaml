@@ -13,7 +13,7 @@ description: >
   PROPOSED: Dynamic mapping using dedicated map_cascade tool.
   This is cleaner than soundings for pure data fan-out.
 
-phases:
+cells:
   # Phase 1: List work items (could be files, customers, URLs, etc.)
   - name: list_customers
     tool: sql_data
@@ -128,7 +128,7 @@ inputs_schema:
   customer_name: "Customer company name"
   region: "Geographic region"
 
-phases:
+cells:
   - name: fetch_transactions
     tool: sql_data
     inputs:

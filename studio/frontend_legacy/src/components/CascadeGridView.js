@@ -146,26 +146,26 @@ function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }
     );
   };
 
-  const PhasesCellRenderer = (props) => {
+  const CellsCellRenderer = (props) => {
     const soundingsCount = props.data.cells?.filter(p => p.has_soundings).length || 0;
     const reforgesCount = props.data.cells?.filter(p => p.reforge_steps).length || 0;
     const wardsCount = props.data.cells?.reduce((sum, p) => sum + (p.ward_count || 0), 0) || 0;
 
     return (
-      <div className="phases-cell-content">
-        <span className="phase-count">{props.value}</span>
+      <div className="cells-cell-content">
+        <span className="cell-count">{props.value}</span>
         {soundingsCount > 0 && (
-          <span className="phase-badge soundings" title="Soundings">
+          <span className="cell-badge soundings" title="Soundings">
             <Icon icon="mdi:brain" width="14" style={{ marginRight: '4px' }} />{soundingsCount}
           </span>
         )}
         {reforgesCount > 0 && (
-          <span className="phase-badge reforges" title="Reforges">
+          <span className="cell-badge reforges" title="Reforges">
             <Icon icon="mdi:hammer" width="14" style={{ marginRight: '4px' }} />{reforgesCount}
           </span>
         )}
         {wardsCount > 0 && (
-          <span className="phase-badge wards" title="Wards">
+          <span className="cell-badge wards" title="Wards">
             <Icon icon="mdi:shield" width="14" style={{ marginRight: '4px' }} />{wardsCount}
           </span>
         )}
@@ -217,12 +217,12 @@ function CascadeGridView({ cascades, onSelectCascade, onVisualize, searchQuery }
       autoHeight: true
     },
     {
-      field: 'phases',
-      headerName: 'Phases',
+      field: 'cells',
+      headerName: 'Cells',
       width: 180,
       cellClass: 'center-cell',
       valueGetter: (params) => params.data.cells?.length || 0,
-      cellRenderer: PhasesCellRenderer
+      cellRenderer: CellsCellRenderer
     },
     {
       field: 'metrics.run_count',

@@ -15,15 +15,15 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
         for key, val in value.items():
             # Rename keys
             new_key = key
-            if key == 'phases':
+            if key == 'cells':
                 new_key = 'cells'
             elif key == 'tackle':
                 new_key = 'traits'
             elif key == 'soundings':
                 new_key = 'candidates'
-            elif key == 'phase_name':
+            elif key == 'cell_name':
                 new_key = 'cell_name'
-            elif key == 'phase_json':
+            elif key == 'cell_json':
                 new_key = 'cell_json'
             elif key == 'sounding_index':
                 new_key = 'candidate_index'
@@ -31,15 +31,15 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
                 new_key = 'candidate_factor'
             elif key == 'winning_sounding_index':
                 new_key = 'winning_candidate_index'
-            elif key == 'current_phase':
+            elif key == 'current_cell':
                 new_key = 'current_cell'
-            elif key == 'error_phase':
+            elif key == 'error_cell':
                 new_key = 'error_cell'
-            elif key == 'target_phase':
+            elif key == 'target_cell':
                 new_key = 'target_cell'
-            elif key == 'phase':  # In ContextSourceConfig
+            elif key == 'cell':  # In ContextSourceConfig
                 new_key = 'cell'
-            elif key == 'phases_executed':
+            elif key == 'cells_executed':
                 new_key = 'cells_executed'
 
             # Recursively migrate value
@@ -55,8 +55,8 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
         updated = updated.replace('traits/', 'traits/')
         updated = updated.replace('windlass_cascade_udf', 'rvbbit_run')
         updated = updated.replace('windlass_udf', 'rvbbit')
-        # Be careful with phase_name in SQL - only in specific contexts
-        # Don't blindly replace "phase" as it's a common word
+        # Be careful with cell_name in SQL - only in specific contexts
+        # Don't blindly replace "cell" as it's a common word
         return updated
 
     else:

@@ -14,11 +14,11 @@ const createEmptyCascade = () => ({
   description: '',
   inputs_schema: {},
   validators: {},
-  phases: [],
+  cells: [],
 });
 
-// Default empty phase template
-const createEmptyPhase = (name = 'new_phase') => ({
+// Default empty cell template
+const createEmptyCell = (name = 'new_cell') => ({
   name,
   instructions: '',
   tackle: [],
@@ -43,17 +43,17 @@ const useWorkshopStore = create(
     setCascade: (cascade) => set((state) => {
       state.cascade = cascade;
       state.isDirty = true;
-      // Reset execution state for new cascade - all phases start as ghosts
+      // Reset execution state for new cascade - all cells start as ghosts
       state.executionStatus = 'idle';
       state.sessionId = null;
       state.executionError = null;
       state.executionStartTime = null;
       state.executionEndTime = null;
       state.totalCost = 0;
-      state.phaseResults = {};
+      state.cellResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
-      state.lastExecutedPhases = [];
+      state.lastExecutedCells = [];
       state.lastExecutedHandoffs = {};
     }),
 
@@ -61,18 +61,18 @@ const useWorkshopStore = create(
     resetCascade: () => set((state) => {
       state.cascade = createEmptyCascade();
       state.isDirty = false;
-      state.selectedPhaseIndex = null;
-      // Reset execution state - all phases start as ghosts
+      state.selectedCellIndex = null;
+      // Reset execution state - all cells start as ghosts
       state.executionStatus = 'idle';
       state.sessionId = null;
       state.executionError = null;
       state.executionStartTime = null;
       state.executionEndTime = null;
       state.totalCost = 0;
-      state.phaseResults = {};
+      state.cellResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
-      state.lastExecutedPhases = [];
+      state.lastExecutedCells = [];
       state.lastExecutedHandoffs = {};
     }),
 
@@ -83,47 +83,47 @@ const useWorkshopStore = create(
     }),
 
     // ============================================
-    // PHASE OPERATIONS
+    // CELL OPERATIONS
     // ============================================
 
-    // Add a new phase
-    addPhase: (phase = null, afterIndex = null) => set((state) => {
-      const newPhase = phase || createEmptyPhase(`phase_${state.cascade.cells.length + 1}`);
+    // Add a new cell
+    addCell: (cell = null, afterIndex = null) => set((state) => {
+      const newCell = cell || createEmptyCell(`cell_${state.cascade.cells.length + 1}`);
 
       if (afterIndex !== null && afterIndex >= 0) {
-        state.cascade.cells.splice(afterIndex + 1, 0, newPhase);
-        state.selectedPhaseIndex = afterIndex + 1;
+        state.cascade.cells.splice(afterIndex + 1, 0, newCell);
+        state.selectedCellIndex = afterIndex + 1;
       } else {
-        state.cascade.cells.push(newPhase);
-        state.selectedPhaseIndex = state.cascade.cells.length - 1;
+        state.cascade.cells.push(newCell);
+        state.selectedCellIndex = state.cascade.cells.length - 1;
       }
       state.isDirty = true;
     }),
 
-    // Update a phase by index
-    // Keys with undefined values will be deleted from the phase
-    updatePhase: (cellIndex, updates) => set((state) => {
+    // Update a cell by index
+    // Keys with undefined values will be deleted from the cell
+    updateCell: (cellIndex, updates) => set((state) => {
       if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
-        const phase = state.cascade.cells[cellIndex];
+        const cell = state.cascade.cells[cellIndex];
         for (const [key, value] of Object.entries(updates)) {
           if (value === undefined) {
-            delete phase[key];
+            delete cell[key];
           } else {
-            phase[key] = value;
+            cell[key] = value;
           }
         }
         state.isDirty = true;
       }
     }),
 
-    // Update a specific nested field in a phase
-    updatePhaseField: (cellIndex, path, value) => set((state) => {
+    // Update a specific nested field in a cell
+    updateCellField: (cellIndex, path, value) => set((state) => {
       if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
-        const phase = state.cascade.cells[cellIndex];
+        const cell = state.cascade.cells[cellIndex];
 
         // Handle nested paths like 'soundings.factor' or 'rules.max_turns'
         const parts = path.split('.');
-        let current = phase;
+        let current = cell;
 
         for (let i = 0; i < parts.length - 1; i++) {
           if (current[parts[i]] === undefined) {
@@ -137,14 +137,14 @@ const useWorkshopStore = create(
       }
     }),
 
-    // Remove a phase
-    removePhase: (cellIndex) => set((state) => {
+    // Remove a cell
+    removeCell: (cellIndex) => set((state) => {
       if (cellIndex >= 0 && cellIndex < state.cascade.cells.length) {
         state.cascade.cells.splice(cellIndex, 1);
 
         // Adjust selection
-        if (state.selectedPhaseIndex >= state.cascade.cells.length) {
-          state.selectedPhaseIndex = state.cascade.cells.length > 0
+        if (state.selectedCellIndex >= state.cascade.cells.length) {
+          state.selectedCellIndex = state.cascade.cells.length > 0
             ? state.cascade.cells.length - 1
             : null;
         }
@@ -152,27 +152,27 @@ const useWorkshopStore = create(
       }
     }),
 
-    // Reorder phases (for drag and drop)
-    reorderPhases: (fromIndex, toIndex) => set((state) => {
+    // Reorder cells (for drag and drop)
+    reorderCells: (fromIndex, toIndex) => set((state) => {
       if (fromIndex === toIndex) return;
 
-      const phases = state.cascade.cells;
-      const [removed] = phases.splice(fromIndex, 1);
-      phases.splice(toIndex, 0, removed);
+      const cells = state.cascade.cells;
+      const [removed] = cells.splice(fromIndex, 1);
+      cells.splice(toIndex, 0, removed);
 
-      // Update selection to follow the moved phase
-      if (state.selectedPhaseIndex === fromIndex) {
-        state.selectedPhaseIndex = toIndex;
+      // Update selection to follow the moved cell
+      if (state.selectedCellIndex === fromIndex) {
+        state.selectedCellIndex = toIndex;
       } else if (
-        state.selectedPhaseIndex > fromIndex &&
-        state.selectedPhaseIndex <= toIndex
+        state.selectedCellIndex > fromIndex &&
+        state.selectedCellIndex <= toIndex
       ) {
-        state.selectedPhaseIndex -= 1;
+        state.selectedCellIndex -= 1;
       } else if (
-        state.selectedPhaseIndex < fromIndex &&
-        state.selectedPhaseIndex >= toIndex
+        state.selectedCellIndex < fromIndex &&
+        state.selectedCellIndex >= toIndex
       ) {
-        state.selectedPhaseIndex += 1;
+        state.selectedCellIndex += 1;
       }
 
       state.isDirty = true;
@@ -225,10 +225,10 @@ const useWorkshopStore = create(
     // UI STATE
     // ============================================
 
-    selectedPhaseIndex: null,
-    setSelectedPhase: (index) => set({ selectedPhaseIndex: index }),
+    selectedCellIndex: null,
+    setSelectedCell: (index) => set({ selectedCellIndex: index }),
 
-    // Track which drawers are expanded per phase
+    // Track which drawers are expanded per cell
     expandedDrawers: {}, // { cellIndex: ['execution', 'soundings', ...] }
 
     toggleDrawer: (cellIndex, drawerName) => set((state) => {
@@ -297,53 +297,53 @@ const useWorkshopStore = create(
     executionEndTime: null,
     totalCost: 0,
 
-    // Phase-level tracking
-    // { phaseName: { status, cost, duration, startTime, turnCount, soundings: { index: {status, cost} } } }
-    phaseResults: {},
+    // Cell-level tracking
+    // { cellName: { status, cost, duration, startTime, turnCount, soundings: { index: {status, cost} } } }
+    cellResults: {},
 
-    // Active soundings tracking: { phaseName: [0, 1, 2] }
+    // Active soundings tracking: { cellName: [0, 1, 2] }
     activeSoundings: {},
 
     // Messages/events log for display
-    executionLog: [], // [{ type, timestamp, phaseName, data }]
+    executionLog: [], // [{ type, timestamp, cellName, data }]
 
     // ============================================
-    // GHOST PHASE TRACKING
+    // GHOST CELL TRACKING
     // ============================================
 
-    // Snapshot of phase names from the last successful execution
-    // Used to determine which phases are "real" vs "ghost" (preview)
-    lastExecutedPhases: [], // ['phase_1', 'phase_2', ...]
+    // Snapshot of cell names from the last successful execution
+    // Used to determine which cells are "real" vs "ghost" (preview)
+    lastExecutedCells: [], // ['cell_1', 'cell_2', ...]
 
-    // Executed handoffs from last run: { sourcePhaseName: targetPhaseName }
+    // Executed handoffs from last run: { sourceCellName: targetCellName }
     lastExecutedHandoffs: {},
 
-    // Check if a phase is a ghost (wasn't in the last execution)
+    // Check if a cell is a ghost (wasn't in the last execution)
     // This returns a function that can be called with state for reactivity
-    isPhaseGhost: (phaseName) => {
+    isCellGhost: (cellName) => {
       const {
-        lastExecutedPhases,
+        lastExecutedCells,
         executionStatus,
-        phaseResults,
+        cellResults,
       } = get();
 
-      // If no execution has happened, all phases are ghosts (preview mode)
-      if (lastExecutedPhases.length === 0 && executionStatus === 'idle') {
+      // If no execution has happened, all cells are ghosts (preview mode)
+      if (lastExecutedCells.length === 0 && executionStatus === 'idle') {
         return true;
       }
-      // During execution, phases that haven't started yet are ghosts
+      // During execution, cells that haven't started yet are ghosts
       if (executionStatus === 'running') {
-        const result = phaseResults[phaseName];
+        const result = cellResults[cellName];
         return !result || result.status === 'pending';
       }
-      // After execution, phases not in lastExecutedPhases are ghosts
-      return !lastExecutedPhases.includes(phaseName);
+      // After execution, cells not in lastExecutedCells are ghosts
+      return !lastExecutedCells.includes(cellName);
     },
 
-    // Get the executed handoff for a phase (if any)
-    getExecutedHandoff: (phaseName) => {
+    // Get the executed handoff for a cell (if any)
+    getExecutedHandoff: (cellName) => {
       const state = get();
-      return state.lastExecutedHandoffs[phaseName] || null;
+      return state.lastExecutedHandoffs[cellName] || null;
     },
 
     // ============================================
@@ -357,13 +357,13 @@ const useWorkshopStore = create(
       state.executionEndTime = null;
       state.executionError = null;
       state.totalCost = 0;
-      state.phaseResults = {};
+      state.cellResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
 
-      // Initialize all phases as pending
-      state.cascade.cells.forEach((phase) => {
-        state.phaseResults[phase.name] = {
+      // Initialize all cells as pending
+      state.cascade.cells.forEach((cell) => {
+        state.cellResults[cell.name] = {
           status: 'pending',
           cost: 0,
           turnCount: 0,
@@ -374,9 +374,9 @@ const useWorkshopStore = create(
       });
     }),
 
-    handlePhaseStart: (phaseName, soundingIndex = null) => set((state) => {
-      if (!state.phaseResults[phaseName]) {
-        state.phaseResults[phaseName] = {
+    handleCellStart: (cellName, soundingIndex = null) => set((state) => {
+      if (!state.cellResults[cellName]) {
+        state.cellResults[cellName] = {
           status: 'running',
           cost: 0,
           turnCount: 0,
@@ -384,20 +384,20 @@ const useWorkshopStore = create(
           soundings: {},
         };
       } else {
-        state.phaseResults[phaseName].status = 'running';
-        state.phaseResults[phaseName].startTime = Date.now();
+        state.cellResults[cellName].status = 'running';
+        state.cellResults[cellName].startTime = Date.now();
       }
 
       // Track sounding if present
       if (soundingIndex !== null && soundingIndex !== undefined) {
-        if (!state.activeSoundings[phaseName]) {
-          state.activeSoundings[phaseName] = [];
+        if (!state.activeSoundings[cellName]) {
+          state.activeSoundings[cellName] = [];
         }
-        if (!state.activeSoundings[phaseName].includes(soundingIndex)) {
-          state.activeSoundings[phaseName].push(soundingIndex);
+        if (!state.activeSoundings[cellName].includes(soundingIndex)) {
+          state.activeSoundings[cellName].push(soundingIndex);
         }
 
-        state.phaseResults[phaseName].soundings[soundingIndex] = {
+        state.cellResults[cellName].soundings[soundingIndex] = {
           status: 'running',
           cost: 0,
           startTime: Date.now(),
@@ -405,22 +405,22 @@ const useWorkshopStore = create(
       }
 
       state.executionLog.push({
-        type: 'phase_start',
+        type: 'cell_start',
         timestamp: Date.now(),
-        phaseName,
+        cellName,
         soundingIndex,
       });
     }),
 
-    handlePhaseComplete: (phaseName, result = {}, soundingIndex = null) => set((state) => {
-      if (!state.phaseResults[phaseName]) return;
+    handleCellComplete: (cellName, result = {}, soundingIndex = null) => set((state) => {
+      if (!state.cellResults[cellName]) return;
 
-      const phase = state.phaseResults[phaseName];
+      const cell = state.cellResults[cellName];
 
       if (soundingIndex !== null && soundingIndex !== undefined) {
         // Complete specific sounding
-        if (phase.candidates[soundingIndex]) {
-          const sounding = phase.candidates[soundingIndex];
+        if (cell.candidates[soundingIndex]) {
+          const sounding = cell.candidates[soundingIndex];
           sounding.status = 'completed';
           sounding.endTime = Date.now();
           if (sounding.startTime) {
@@ -440,62 +440,62 @@ const useWorkshopStore = create(
         }
 
         // Remove from active
-        if (state.activeSoundings[phaseName]) {
-          const idx = state.activeSoundings[phaseName].indexOf(soundingIndex);
+        if (state.activeSoundings[cellName]) {
+          const idx = state.activeSoundings[cellName].indexOf(soundingIndex);
           if (idx >= 0) {
-            state.activeSoundings[phaseName].splice(idx, 1);
+            state.activeSoundings[cellName].splice(idx, 1);
           }
-          if (state.activeSoundings[phaseName].length === 0) {
-            delete state.activeSoundings[phaseName];
+          if (state.activeSoundings[cellName].length === 0) {
+            delete state.activeSoundings[cellName];
           }
         }
       } else {
-        // Complete entire phase
-        phase.status = 'completed';
-        phase.endTime = Date.now();
-        if (phase.startTime) {
-          phase.duration = (phase.endTime - phase.startTime) / 1000;
+        // Complete entire cell
+        cell.status = 'completed';
+        cell.endTime = Date.now();
+        if (cell.startTime) {
+          cell.duration = (cell.endTime - cell.startTime) / 1000;
         }
       }
 
       if (result.cost) {
-        phase.cost = (phase.cost || 0) + result.cost;
+        cell.cost = (cell.cost || 0) + result.cost;
       }
 
       // Store the output content
-      console.log('[Store] Phase complete result:', result);
+      console.log('[Store] Cell complete result:', result);
       if (result.output !== undefined) {
-        console.log('[Store] Setting phase.output to:', result.output);
-        phase.output = result.output;
+        console.log('[Store] Setting cell.output to:', result.output);
+        cell.output = result.output;
       } else if (result.content !== undefined) {
-        console.log('[Store] Setting phase.output from content:', result.content);
-        phase.output = result.content;
+        console.log('[Store] Setting cell.output from content:', result.content);
+        cell.output = result.content;
       } else if (typeof result === 'string') {
-        console.log('[Store] Setting phase.output from string result:', result);
-        phase.output = result;
+        console.log('[Store] Setting cell.output from string result:', result);
+        cell.output = result;
       } else {
         console.log('[Store] No output found in result');
       }
 
       state.executionLog.push({
-        type: 'phase_complete',
+        type: 'cell_complete',
         timestamp: Date.now(),
-        phaseName,
+        cellName,
         soundingIndex,
         result,
       });
     }),
 
-    handleSoundingStart: (phaseName, soundingIndex) => set((state) => {
-      if (!state.activeSoundings[phaseName]) {
-        state.activeSoundings[phaseName] = [];
+    handleSoundingStart: (cellName, soundingIndex) => set((state) => {
+      if (!state.activeSoundings[cellName]) {
+        state.activeSoundings[cellName] = [];
       }
-      if (!state.activeSoundings[phaseName].includes(soundingIndex)) {
-        state.activeSoundings[phaseName].push(soundingIndex);
+      if (!state.activeSoundings[cellName].includes(soundingIndex)) {
+        state.activeSoundings[cellName].push(soundingIndex);
       }
 
-      if (!state.phaseResults[phaseName]) {
-        state.phaseResults[phaseName] = {
+      if (!state.cellResults[cellName]) {
+        state.cellResults[cellName] = {
           status: 'running',
           cost: 0,
           turnCount: 0,
@@ -503,26 +503,26 @@ const useWorkshopStore = create(
         };
       }
 
-      state.phaseResults[phaseName].soundings[soundingIndex] = {
+      state.cellResults[cellName].soundings[soundingIndex] = {
         status: 'running',
         cost: 0,
         startTime: Date.now(),
       };
     }),
 
-    handleSoundingComplete: (phaseName, soundingIndex, output = null, isWinner = false) => set((state) => {
-      if (state.activeSoundings[phaseName]) {
-        const idx = state.activeSoundings[phaseName].indexOf(soundingIndex);
+    handleSoundingComplete: (cellName, soundingIndex, output = null, isWinner = false) => set((state) => {
+      if (state.activeSoundings[cellName]) {
+        const idx = state.activeSoundings[cellName].indexOf(soundingIndex);
         if (idx >= 0) {
-          state.activeSoundings[phaseName].splice(idx, 1);
+          state.activeSoundings[cellName].splice(idx, 1);
         }
-        if (state.activeSoundings[phaseName].length === 0) {
-          delete state.activeSoundings[phaseName];
+        if (state.activeSoundings[cellName].length === 0) {
+          delete state.activeSoundings[cellName];
         }
       }
 
-      if (state.phaseResults[phaseName]?.soundings[soundingIndex]) {
-        const sounding = state.phaseResults[phaseName].soundings[soundingIndex];
+      if (state.cellResults[cellName]?.soundings[soundingIndex]) {
+        const sounding = state.cellResults[cellName].soundings[soundingIndex];
         sounding.status = 'completed';
         sounding.endTime = Date.now();
         if (sounding.startTime) {
@@ -537,13 +537,13 @@ const useWorkshopStore = create(
       }
     }),
 
-    handleTurnStart: (phaseName, turnNumber, soundingIndex = null) => set((state) => {
-      if (state.phaseResults[phaseName]) {
-        state.phaseResults[phaseName].turnCount = turnNumber + 1;
+    handleTurnStart: (cellName, turnNumber, soundingIndex = null) => set((state) => {
+      if (state.cellResults[cellName]) {
+        state.cellResults[cellName].turnCount = turnNumber + 1;
 
         // Track turns per sounding if applicable
         if (soundingIndex !== null && soundingIndex !== undefined) {
-          const sounding = state.phaseResults[phaseName].soundings[soundingIndex];
+          const sounding = state.cellResults[cellName].soundings[soundingIndex];
           if (sounding) {
             sounding.turnCount = (sounding.turnCount || 0) + 1;
           }
@@ -553,54 +553,54 @@ const useWorkshopStore = create(
       state.executionLog.push({
         type: 'turn_start',
         timestamp: Date.now(),
-        phaseName,
+        cellName,
         turnNumber,
         soundingIndex,
       });
     }),
 
-    handleToolCall: (phaseName, toolName, args) => set((state) => {
+    handleToolCall: (cellName, toolName, args) => set((state) => {
       state.executionLog.push({
         type: 'tool_call',
         timestamp: Date.now(),
-        phaseName,
+        cellName,
         toolName,
         args,
       });
     }),
 
-    handleToolResult: (phaseName, toolName, result) => set((state) => {
+    handleToolResult: (cellName, toolName, result) => set((state) => {
       state.executionLog.push({
         type: 'tool_result',
         timestamp: Date.now(),
-        phaseName,
+        cellName,
         toolName,
         result,
       });
     }),
 
-    handleHandoff: (fromPhase, toPhase) => set((state) => {
+    handleHandoff: (fromCell, toCell) => set((state) => {
       // Track handoffs as they happen during execution
-      state.lastExecutedHandoffs[fromPhase] = toPhase;
+      state.lastExecutedHandoffs[fromCell] = toCell;
 
       state.executionLog.push({
         type: 'handoff',
         timestamp: Date.now(),
-        fromPhase,
-        toPhase,
+        fromCell,
+        toCell,
       });
     }),
 
-    handleCostUpdate: (cost, phaseName = null, soundingIndex = null) => set((state) => {
+    handleCostUpdate: (cost, cellName = null, soundingIndex = null) => set((state) => {
       state.totalCost += cost;
 
-      if (phaseName && state.phaseResults[phaseName]) {
-        state.phaseResults[phaseName].cost =
-          (state.phaseResults[phaseName].cost || 0) + cost;
+      if (cellName && state.cellResults[cellName]) {
+        state.cellResults[cellName].cost =
+          (state.cellResults[cellName].cost || 0) + cost;
 
         // Track cost per sounding if applicable
         if (soundingIndex !== null && soundingIndex !== undefined) {
-          const sounding = state.phaseResults[phaseName].soundings[soundingIndex];
+          const sounding = state.cellResults[cellName].soundings[soundingIndex];
           if (sounding) {
             sounding.cost = (sounding.cost || 0) + cost;
           }
@@ -612,18 +612,18 @@ const useWorkshopStore = create(
       state.executionStatus = 'completed';
       state.executionEndTime = Date.now();
 
-      // Mark any still-running phases as completed
-      Object.keys(state.phaseResults).forEach((phaseName) => {
-        if (state.phaseResults[phaseName].status === 'running') {
-          state.phaseResults[phaseName].status = 'completed';
-          state.phaseResults[phaseName].endTime = Date.now();
+      // Mark any still-running cells as completed
+      Object.keys(state.cellResults).forEach((cellName) => {
+        if (state.cellResults[cellName].status === 'running') {
+          state.cellResults[cellName].status = 'completed';
+          state.cellResults[cellName].endTime = Date.now();
         }
       });
 
-      // Save executed phases for ghost tracking
-      // Only include phases that actually ran (completed status)
-      state.lastExecutedPhases = Object.keys(state.phaseResults).filter(
-        (name) => state.phaseResults[name].status === 'completed'
+      // Save executed cells for ghost tracking
+      // Only include cells that actually ran (completed status)
+      state.lastExecutedCells = Object.keys(state.cellResults).filter(
+        (name) => state.cellResults[name].status === 'completed'
       );
 
       // Extract executed handoffs from the result or lineage if available
@@ -632,8 +632,8 @@ const useWorkshopStore = create(
         for (let i = 0; i < result.lineage.length - 1; i++) {
           const current = result.lineage[i];
           const next = result.lineage[i + 1];
-          if (current.phase && next.phase) {
-            handoffs[current.phase] = next.phase;
+          if (current.cell && next.cell) {
+            handoffs[current.cell] = next.cell;
           }
         }
         state.lastExecutedHandoffs = handoffs;
@@ -651,10 +651,10 @@ const useWorkshopStore = create(
       state.executionError = error;
       state.executionEndTime = Date.now();
 
-      // Mark current running phase as error
-      Object.keys(state.phaseResults).forEach((phaseName) => {
-        if (state.phaseResults[phaseName].status === 'running') {
-          state.phaseResults[phaseName].status = 'error';
+      // Mark current running cell as error
+      Object.keys(state.cellResults).forEach((cellName) => {
+        if (state.cellResults[cellName].status === 'running') {
+          state.cellResults[cellName].status = 'error';
         }
       });
 
@@ -672,9 +672,9 @@ const useWorkshopStore = create(
       if (error) state.executionError = error;
     }),
 
-    updatePhaseResult: (phaseName, result) => set((state) => {
-      state.phaseResults[phaseName] = {
-        ...state.phaseResults[phaseName],
+    updateCellResult: (cellName, result) => set((state) => {
+      state.cellResults[cellName] = {
+        ...state.cellResults[cellName],
         ...result,
       };
     }),
@@ -686,10 +686,10 @@ const useWorkshopStore = create(
       state.executionStartTime = null;
       state.executionEndTime = null;
       state.totalCost = 0;
-      state.phaseResults = {};
+      state.cellResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
-      // Note: We keep lastExecutedPhases and lastExecutedHandoffs for ghost tracking
+      // Note: We keep lastExecutedCells and lastExecutedHandoffs for ghost tracking
       // They represent the last successful run and help show what's "real" vs "preview"
     }),
 
@@ -701,10 +701,10 @@ const useWorkshopStore = create(
       state.executionStartTime = null;
       state.executionEndTime = null;
       state.totalCost = 0;
-      state.phaseResults = {};
+      state.cellResults = {};
       state.activeSoundings = {};
       state.executionLog = [];
-      state.lastExecutedPhases = [];
+      state.lastExecutedCells = [];
       state.lastExecutedHandoffs = {};
     }),
 
@@ -722,7 +722,7 @@ const useWorkshopStore = create(
         set((state) => {
           state.cascade = normalized;
           state.isDirty = false;
-          state.selectedPhaseIndex = normalized.cells?.length > 0 ? 0 : null;
+          state.selectedCellIndex = normalized.cells?.length > 0 ? 0 : null;
         });
 
         return { success: true };
@@ -760,7 +760,7 @@ const useWorkshopStore = create(
       set((s) => {
         s.executionStatus = 'running';
         s.executionError = null;
-        s.phaseResults = {};
+        s.cellResults = {};
       });
 
       try {
@@ -854,4 +854,4 @@ function denormalizeForYaml(obj) {
 }
 
 export default useWorkshopStore;
-export { createEmptyCascade, createEmptyPhase };
+export { createEmptyCascade, createEmptyCell };

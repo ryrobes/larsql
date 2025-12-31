@@ -1,9 +1,9 @@
 -- Migration: Create intra_context_shadow_assessments table
 -- Date: 2025-12-30
--- Purpose: Shadow assessment of intra-phase context management across multiple config scenarios
+-- Purpose: Shadow assessment of intra-cell context management across multiple config scenarios
 --
 -- Background:
--- Intra-phase context management controls HOW messages within a cell's turn loop are
+-- Intra-cell context management controls HOW messages within a cell's turn loop are
 -- compressed/masked. This is purely local computation (no LLM calls), so we can cheaply
 -- evaluate many config scenarios to suggest optimal settings.
 --
@@ -17,7 +17,7 @@
 -- 2. Suggesting optimal config based on actual execution patterns
 -- 3. Understanding which messages contribute most to context bloat
 --
--- Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (same as inter-phase)
+-- Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (same as inter-cell)
 
 CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     -- ============================================

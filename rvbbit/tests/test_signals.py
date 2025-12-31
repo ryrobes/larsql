@@ -30,7 +30,7 @@ def test_signal_dataclass():
         status=SignalStatus.WAITING,
         session_id="session_abc",
         cascade_id="test_cascade",
-        cell_name="test_phase",
+        cell_name="test_cell",
         description="Test signal for unit tests"
     )
 
@@ -39,7 +39,7 @@ def test_signal_dataclass():
     assert signal.status == SignalStatus.WAITING
     assert signal.session_id == "session_abc"
     assert signal.cascade_id == "test_cascade"
-    assert signal.cell_name == "test_phase"
+    assert signal.cell_name == "test_cell"
     assert signal.description == "Test signal for unit tests"
 
 
@@ -124,7 +124,7 @@ def test_signal_manager_register():
         signal_name="test_signal",
         session_id="session_123",
         cascade_id="cascade_abc",
-        cell_name="phase_1",
+        cell_name="cell_1",
         timeout="1h",
         description="Test signal"
     )

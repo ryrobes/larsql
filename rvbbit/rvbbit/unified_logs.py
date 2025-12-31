@@ -332,7 +332,7 @@ class UnifiedLogger:
         cascade_file: str = None,
         cascade_config: dict = None,
         cell_name: str = None,
-        phase_config: dict = None,
+        cell_config: dict = None,
         species_hash: str = None,  # Hash of cell template DNA for prompt evolution tracking
         genus_hash: str = None,    # Hash of cascade invocation DNA for trending/analytics
 
@@ -489,7 +489,7 @@ class UnifiedLogger:
             "cascade_file": cascade_file,
             "cascade_json": safe_json(cascade_config),
             "cell_name": cell_name,
-            "cell_json": safe_json(phase_config),
+            "cell_json": safe_json(cell_config),
             "species_hash": species_hash,
             "genus_hash": genus_hash,
 
@@ -671,7 +671,7 @@ def log_unified(
     cascade_file: str = None,
     cascade_config: dict = None,
     cell_name: str = None,
-    phase_config: dict = None,
+    cell_config: dict = None,
     species_hash: str = None,
     genus_hash: str = None,
     model: str = None,
@@ -758,7 +758,7 @@ def log_unified(
         cascade_file=cascade_file,
         cascade_config=cascade_config,
         cell_name=cell_name,
-        phase_config=phase_config,
+        cell_config=cell_config,
         species_hash=species_hash,
         genus_hash=genus_hash,
         model=model,
@@ -798,7 +798,7 @@ def force_flush():
     """
     Force flush any buffered log messages to ClickHouse.
 
-    Call this at important lifecycle events (phase complete, cascade complete)
+    Call this at important lifecycle events (cell complete, cascade complete)
     to ensure data is persisted for UI visibility.
     """
     _get_logger().flush()
@@ -911,7 +911,7 @@ def get_cascade_costs(cascade_id: str) -> 'pd.DataFrame':
 
 
 def get_soundings_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
-    """Analyze candidate attempts for a specific phase in a session."""
+    """Analyze candidate attempts for a specific cell in a session."""
     from .db_adapter import get_db
 
     db = get_db()

@@ -60,7 +60,7 @@ class EchoLogger:
         is_winner: bool = None,
         reforge_step: int = None,
 
-        # Phase context
+        # Cell context
         cell_name: str = None,
         cascade_id: str = None,
         cascade_file: str = None,
@@ -96,7 +96,7 @@ class EchoLogger:
             candidate_index: Which candidate attempt (0-indexed, None if N/A)
             is_winner: True if this candidate won (None if N/A)
             reforge_step: Which reforge iteration (0=initial, None if N/A)
-            cell_name: Current phase name
+            cell_name: Current cell name
             cascade_id: Cascade identifier
             cascade_file: Path to cascade JSON
             duration_ms: How long this event took (milliseconds)
@@ -139,7 +139,7 @@ class EchoLogger:
             "is_winner": is_winner,
             "reforge_step": reforge_step,
 
-            # Phase context (typed)
+            # Cell context (typed)
             "cell_name": cell_name,
             "cascade_id": cascade_id,
             "cascade_file": cascade_file,

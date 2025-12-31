@@ -4,10 +4,10 @@ Auto-Context System for RVBBIT
 This module provides intelligent context management to reduce LLM token costs
 while maintaining output quality. It operates at two levels:
 
-1. **Intra-phase**: Per-turn context management within a phase (biggest cost savings)
-2. **Inter-phase**: Selective context injection between phases (Phase 2+)
+1. **Intra-cell**: Per-turn context management within a cell (biggest cost savings)
+2. **Inter-cell**: Selective context injection between cells (Cell 2+)
 
-The intra-phase system uses a tiered approach:
+The intra-cell system uses a tiered approach:
 - Tier 0: Sliding window (last N turns, full fidelity)
 - Tier 1: Observation masking (older tool results -> placeholders)
 - Tier 2: Loop compression (retry attempts get minimal context)
@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class IntraContextConfig:
-    """Configuration for intra-phase auto-context.
+    """Configuration for intra-cell auto-context.
 
-    This controls how context is managed within a single phase's turn loop.
-    The goal is to prevent context explosion in long-running phases.
+    This controls how context is managed within a single cell's turn loop.
+    The goal is to prevent context explosion in long-running cells.
 
     Attributes:
-        enabled: Master switch for intra-phase context management
+        enabled: Master switch for intra-cell context management
         window: Number of recent turns to keep in full fidelity
         mask_observations_after: Mask tool results after N turns ago
         compress_loops: Special handling for loop_until retry attempts
@@ -90,10 +90,10 @@ class ContextSelectionStats:
         }
 
 
-class IntraPhaseContextBuilder:
-    """Builds bounded context for each turn within a phase.
+class IntraCellContextBuilder:
+    """Builds bounded context for each turn within a cell.
 
-    This is the primary optimization for intra-phase token usage.
+    This is the primary optimization for intra-cell token usage.
     It applies a tiered approach to context management:
 
     1. Recent messages (within window) are kept in full fidelity
@@ -121,10 +121,10 @@ class IntraPhaseContextBuilder:
         loop_validation_failures: Optional[List[Dict]] = None
     ) -> Tuple[List[Dict[str, Any]], ContextSelectionStats]:
         """
-        Build context for a single turn within a phase.
+        Build context for a single turn within a cell.
 
         Args:
-            full_history: Complete phase history (for potential retrieval)
+            full_history: Complete cell history (for potential retrieval)
             turn_number: Current turn number (0-indexed)
             is_loop_retry: Whether this is a loop_until retry attempt
             loop_validation_failures: Previous validation failures for loop context
@@ -472,12 +472,12 @@ def get_default_intra_context_config() -> IntraContextConfig:
 
 
 # =============================================================================
-# Inter-Phase Auto-Context (Phase 3)
+# Inter-Cell Auto-Context (Cell 3)
 # =============================================================================
 
 @dataclass
-class InterPhaseSelectionStats:
-    """Statistics about inter-phase context selection.
+class InterCellSelectionStats:
+    """Statistics about inter-cell context selection.
 
     Used for observability and debugging.
     """
@@ -501,13 +501,13 @@ class InterPhaseSelectionStats:
         }
 
 
-class InterPhaseContextBuilder:
+class InterCellContextBuilder:
     """
-    Builds context for a phase from previous phases using intelligent selection.
+    Builds context for a cell from previous cells using intelligent selection.
 
     This is the "crowning jewel" of auto-context - it uses context cards
     (summaries + embeddings) to select the most relevant prior messages
-    for the current phase's task.
+    for the current cell's task.
 
     Selection strategies:
     - "heuristic": Keyword overlap + recency + callouts (fast, no LLM)
@@ -520,40 +520,40 @@ class InterPhaseContextBuilder:
         self,
         session_id: str,
         echo: 'Echo',
-        config: Optional['InterPhaseContextConfig'] = None
+        config: Optional['InterCellContextConfig'] = None
     ):
         """
-        Initialize the inter-phase context builder.
+        Initialize the inter-cell context builder.
 
         Args:
             session_id: Current session ID
             echo: Echo instance for accessing history/lineage
-            config: Inter-phase context configuration (uses defaults if None)
+            config: Inter-cell context configuration (uses defaults if None)
         """
         self.session_id = session_id
         self.echo = echo
         self.config = config
         self._context_cards_cache: Optional[List[Dict]] = None
-        self._last_stats: Optional[InterPhaseSelectionStats] = None
+        self._last_stats: Optional[InterCellSelectionStats] = None
 
     @property
-    def last_stats(self) -> Optional[InterPhaseSelectionStats]:
+    def last_stats(self) -> Optional[InterCellSelectionStats]:
         """Get stats from the last build call."""
         return self._last_stats
 
-    def build_phase_context(
+    def build_cell_context(
         self,
         current_cell: 'CellConfig',
         input_data: Dict[str, Any],
-        executed_phases: List[str]
-    ) -> Tuple[List[Dict[str, Any]], InterPhaseSelectionStats]:
+        executed_cells: List[str]
+    ) -> Tuple[List[Dict[str, Any]], InterCellSelectionStats]:
         """
-        Build context for a phase using auto-selection.
+        Build context for a cell using auto-selection.
 
         Args:
-            current_cell: The phase being executed
+            current_cell: The cell being executed
             input_data: Original cascade input
-            executed_phases: List of phase names already executed
+            executed_cells: List of cell names already executed
 
         Returns:
             Tuple of (context messages, selection stats)
@@ -561,7 +561,7 @@ class InterPhaseContextBuilder:
         import time
         start_time = time.time()
 
-        stats = InterPhaseSelectionStats()
+        stats = InterCellSelectionStats()
 
         # Get config with defaults
         anchors_config = self._get_anchors_config(current_cell)
@@ -575,7 +575,7 @@ class InterPhaseContextBuilder:
         anchor_messages, anchor_hashes = self._gather_anchors(
             current_cell,
             input_data,
-            executed_phases,
+            executed_cells,
             anchors_config
         )
         result.extend(anchor_messages)
@@ -583,7 +583,7 @@ class InterPhaseContextBuilder:
         anchor_tokens = self._estimate_tokens_list(anchor_messages)
 
         # STEP 2: Get candidate messages from context cards
-        candidates = self._get_candidate_cards(executed_phases, anchor_hashes)
+        candidates = self._get_candidate_cards(executed_cells, anchor_hashes)
         stats.candidate_count = len(candidates)
 
         if not candidates:
@@ -614,13 +614,13 @@ class InterPhaseContextBuilder:
 
         return result, stats
 
-    def _get_anchors_config(self, phase: 'CellConfig') -> 'AnchorConfig':
+    def _get_anchors_config(self, cell: 'CellConfig') -> 'AnchorConfig':
         """Get anchors config with inheritance."""
         from .cascade import AnchorConfig
 
-        # Phase-level context.anchors takes precedence
-        if phase.context and phase.context.anchors:
-            return phase.context.anchors
+        # Cell-level context.anchors takes precedence
+        if cell.context and cell.context.anchors:
+            return cell.context.anchors
 
         # Fall back to builder config
         if self.config and self.config.anchors:
@@ -629,13 +629,13 @@ class InterPhaseContextBuilder:
         # Default
         return AnchorConfig()
 
-    def _get_selection_config(self, phase: 'CellConfig') -> 'SelectionConfig':
+    def _get_selection_config(self, cell: 'CellConfig') -> 'SelectionConfig':
         """Get selection config with inheritance."""
         from .cascade import SelectionConfig
 
-        # Phase-level context.selection takes precedence
-        if phase.context and phase.context.selection:
-            return phase.context.selection
+        # Cell-level context.selection takes precedence
+        if cell.context and cell.context.selection:
+            return cell.context.selection
 
         # Fall back to builder config
         if self.config and self.config.selection:
@@ -646,9 +646,9 @@ class InterPhaseContextBuilder:
 
     def _gather_anchors(
         self,
-        phase: 'CellConfig',
+        cell: 'CellConfig',
         input_data: Dict,
-        executed_phases: List[str],
+        executed_cells: List[str],
         anchors: 'AnchorConfig'
     ) -> Tuple[List[Dict], set]:
         """Gather always-included anchor messages."""
@@ -665,25 +665,25 @@ class InterPhaseContextBuilder:
             }
             result.append(msg)
 
-        # Phase outputs from specified phases
-        for phase_ref in anchors.from_phases:
-            resolved = self._resolve_phase_reference(phase_ref, executed_phases)
+        # Cell outputs from specified cells
+        for cell_ref in anchors.from_cells:
+            resolved = self._resolve_cell_reference(cell_ref, executed_cells)
             for cell_name in resolved:
                 if "output" in anchors.include:
-                    output = self._get_phase_output(cell_name)
+                    output = self._get_cell_output(cell_name)
                     if output:
                         msg = {
                             "role": "assistant",
                             "content": f"[Output from {cell_name}]\n{output}",
                             "_anchor": True,
-                            "_anchor_type": "phase_output",
-                            "_source_phase": cell_name
+                            "_anchor_type": "cell_output",
+                            "_source_cell": cell_name
                         }
                         result.append(msg)
 
         # Callouts (user-marked important messages)
         if "callouts" in anchors.include:
-            callout_messages = self._get_callout_messages(executed_phases)
+            callout_messages = self._get_callout_messages(executed_cells)
             for msg in callout_messages:
                 if msg.get("_hash"):
                     anchor_hashes.add(msg["_hash"])
@@ -691,7 +691,7 @@ class InterPhaseContextBuilder:
 
         # Error messages
         if "errors" in anchors.include:
-            error_messages = self._get_error_messages(executed_phases)
+            error_messages = self._get_error_messages(executed_cells)
             for msg in error_messages:
                 if msg.get("_hash"):
                     anchor_hashes.add(msg["_hash"])
@@ -699,27 +699,27 @@ class InterPhaseContextBuilder:
 
         return result, anchor_hashes
 
-    def _resolve_phase_reference(
+    def _resolve_cell_reference(
         self,
-        phase_ref: str,
-        executed_phases: List[str]
+        cell_ref: str,
+        executed_cells: List[str]
     ) -> List[str]:
-        """Resolve phase reference keywords to actual phase names."""
-        if not executed_phases:
+        """Resolve cell reference keywords to actual cell names."""
+        if not executed_cells:
             return []
 
-        if phase_ref in ("previous", "prev"):
-            return [executed_phases[-1]] if executed_phases else []
-        elif phase_ref == "first":
-            return [executed_phases[0]] if executed_phases else []
-        elif phase_ref == "all":
-            return executed_phases.copy()
+        if cell_ref in ("previous", "prev"):
+            return [executed_cells[-1]] if executed_cells else []
+        elif cell_ref == "first":
+            return [executed_cells[0]] if executed_cells else []
+        elif cell_ref == "all":
+            return executed_cells.copy()
         else:
-            # Direct phase name
-            return [phase_ref] if phase_ref in executed_phases else []
+            # Direct cell name
+            return [cell_ref] if cell_ref in executed_cells else []
 
-    def _get_phase_output(self, cell_name: str) -> Optional[str]:
-        """Get the output from a phase via echo.state."""
+    def _get_cell_output(self, cell_name: str) -> Optional[str]:
+        """Get the output from a cell via echo.state."""
         output_key = f"output_{cell_name}"
         output = self.echo.state.get(output_key)
         if output:
@@ -728,12 +728,12 @@ class InterPhaseContextBuilder:
             return str(output)
         return None
 
-    def _get_callout_messages(self, executed_phases: List[str]) -> List[Dict]:
-        """Get callout messages from executed phases."""
+    def _get_callout_messages(self, executed_cells: List[str]) -> List[Dict]:
+        """Get callout messages from executed cells."""
         callouts = []
         for entry in self.echo.history:
             meta = entry.get("metadata", {})
-            if meta.get("is_callout") and meta.get("cell_name") in executed_phases:
+            if meta.get("is_callout") and meta.get("cell_name") in executed_cells:
                 callouts.append({
                     "role": entry.get("role", "user"),
                     "content": f"[Callout: {meta.get('callout_name', 'important')}]\n{entry.get('content', '')}",
@@ -743,14 +743,14 @@ class InterPhaseContextBuilder:
                 })
         return callouts
 
-    def _get_error_messages(self, executed_phases: List[str]) -> List[Dict]:
-        """Get error messages from executed phases."""
+    def _get_error_messages(self, executed_cells: List[str]) -> List[Dict]:
+        """Get error messages from executed cells."""
         errors = []
         for entry in self.echo.history:
             meta = entry.get("metadata", {})
             content = str(entry.get("content", "")).lower()
             if (
-                meta.get("cell_name") in executed_phases and
+                meta.get("cell_name") in executed_cells and
                 any(kw in content for kw in ["error", "exception", "failed", "traceback"])
             ):
                 errors.append({
@@ -764,7 +764,7 @@ class InterPhaseContextBuilder:
 
     def _get_candidate_cards(
         self,
-        executed_phases: List[str],
+        executed_cells: List[str],
         exclude_hashes: set
     ) -> List[Dict]:
         """Get context cards as candidates for selection."""
@@ -780,10 +780,10 @@ class InterPhaseContextBuilder:
                 logger.warning(f"Failed to get context cards: {e}")
                 return []
 
-        # Filter to executed phases and exclude anchor hashes
+        # Filter to executed cells and exclude anchor hashes
         candidates = []
         for card in cards:
-            if card.get("cell_name") in executed_phases:
+            if card.get("cell_name") in executed_cells:
                 if card.get("content_hash") not in exclude_hashes:
                     candidates.append(card)
 
@@ -951,7 +951,7 @@ class InterPhaseContextBuilder:
                 summary = str(card.get("summary", "No summary"))[:150]
                 tokens = card.get("estimated_tokens", "?")
 
-                menu_lines.append(f"[{hash_short}] {role} ({phase}, ~{tokens} tok): {summary}")
+                menu_lines.append(f"[{hash_short}] {role} ({cell}, ~{tokens} tok): {summary}")
 
             if not menu_lines:
                 return []

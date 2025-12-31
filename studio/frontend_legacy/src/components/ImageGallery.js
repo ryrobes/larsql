@@ -6,9 +6,9 @@ import './ImageGallery.css';
 /**
  * ImageGallery - Displays thumbnails for images generated during a cascade session.
  * Reorganized to show clear hierarchy: Soundings row → Reforges section
- * @param {string} phaseName - Optional: filter to only show images from this phase
+ * @param {string} cellName - Optional: filter to only show images from this cell
  */
-function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
+function ImageGallery({ sessionId, isRunning, sessionUpdate, cellName }) {
   const [images, setImages] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -64,8 +64,8 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
 
   // Reorganize images into a clearer structure
   const { soundingImages, reforgeImages, mainImages, soundingWinnerIndex, ultimateWinner } = useMemo(() => {
-    const filteredImages = phaseName
-      ? images.filter(img => img.cell_name === phaseName)
+    const filteredImages = cellName
+      ? images.filter(img => img.cell_name === cellName)
       : images;
 
     // Separate into categories
@@ -114,7 +114,7 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
       soundingWinnerIndex: finalWinnerIdx,
       ultimateWinner: ultimate
     };
-  }, [images, phaseName, apiSoundingWinner]);
+  }, [images, cellName, apiSoundingWinner]);
 
   if (!sessionId) {
     return null;
@@ -244,7 +244,7 @@ function ImageGallery({ sessionId, isRunning, sessionUpdate, phaseName }) {
             <div className="image-modal-info">
               <span className="image-modal-filename">{selectedImage.filename}</span>
               {selectedImage.cell_name && (
-                <span className="image-modal-phase">Phase: {selectedImage.cell_name}</span>
+                <span className="image-modal-cell">Cell: {selectedImage.cell_name}</span>
               )}
               {selectedImage.candidate_index !== null && selectedImage.candidate_index !== undefined && (
                 <span className="image-modal-sounding">Sounding: S{selectedImage.candidate_index}</span>

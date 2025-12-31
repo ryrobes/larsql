@@ -26,7 +26,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
         hash,
         index: linkedMsg?.index,
         role: linkedMsg?.role || 'unknown',
-        phase: linkedMsg?.cell_name || 'unknown',
+        cell: linkedMsg?.cell_name || 'unknown',
         contextPosition: idx,
         hasMatch: !!linkedMsg
       };
@@ -41,7 +41,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
           descendantsList.push({
             index: idx,
             role: msg.role,
-            phase: msg.cell_name,
+            cell: msg.cell_name,
             contextPosition: contextPos,
             contextSize: msg.context_hashes.length,
             hash: msg.content_hash
@@ -110,7 +110,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
             {selectedMessage.role}
           </span>
           {selectedMessage.cell_name && (
-            <span className="selected-msg-phase">{selectedMessage.cell_name}</span>
+            <span className="selected-msg-cell">{selectedMessage.cell_name}</span>
           )}
           {selectedMessage.turn_number !== null && (
             <span className="selected-msg-turn">Turn {selectedMessage.turn_number}</span>
@@ -172,7 +172,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
                       {a.role}
                     </span>
                     <span className="context-index">M{a.index}</span>
-                    <span className="context-phase">{a.phase}</span>
+                    <span className="context-cell">{a.cell}</span>
                     <Icon icon="mdi:chevron-right" width="14" className="nav-arrow" />
                   </>
                 ) : (
@@ -208,7 +208,7 @@ function ContextCrossRefPanel({ selectedMessage, allMessages, hashIndex, onNavig
                 <span className="context-role" style={{ color: roleColors[d.role] || '#666' }}>
                   {d.role}
                 </span>
-                <span className="context-phase">{d.phase}</span>
+                <span className="context-cell">{d.cell}</span>
                 <span className="context-position-info">
                   @ pos {d.contextPosition}/{d.contextSize}
                 </span>

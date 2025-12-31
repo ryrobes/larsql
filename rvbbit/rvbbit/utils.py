@@ -9,7 +9,7 @@ import json
 import hashlib
 
 
-def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
+def compute_species_hash(cell_config: Optional[Dict[str, Any]], input_data: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
     Compute a deterministic hash ("species hash") for a cell configuration.
 
@@ -32,53 +32,53 @@ def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Opt
     - timestamps, session_id: Not part of identity
 
     Args:
-        phase_config: Dict from CellConfig.model_dump() or cell JSON
+        cell_config: Dict from CellConfig.model_dump() or cell JSON
         input_data: Input parameters that get rendered into the template
 
     Returns:
-        16-character hex hash, or "unknown_species" if phase_config is invalid
+        16-character hex hash, or "unknown_species" if cell_config is invalid
 
     Example:
         >>> config = {"instructions": "Write a poem about {{topic}}", "candidates": {"factor": 3}}
         >>> compute_species_hash(config, {"topic": "cats"})
         'a1b2c3d4e5f6g7h8'
     """
-    if not phase_config:
+    if not cell_config:
         return "unknown_species"
 
     # Determine if this is a deterministic cell (tool-based) or LLM cell (instructions-based)
-    is_deterministic = bool(phase_config.get('tool'))
+    is_deterministic = bool(cell_config.get('tool'))
 
     if is_deterministic:
         # For deterministic cells (sql_data, python_data, js_data, etc.)
         # Hash the tool name and its inputs (code, query, etc.)
         spec_parts = {
-            'tool': phase_config.get('tool'),
-            'inputs': phase_config.get('inputs', {}),  # Tool inputs (code, query, etc.)
+            'tool': cell_config.get('tool'),
+            'inputs': cell_config.get('inputs', {}),  # Tool inputs (code, query, etc.)
             'input_data': input_data or {},  # Cascade inputs
-            'rules': phase_config.get('rules'),
-            'for_each_row': phase_config.get('for_each_row'),  # SQL mapping config
+            'rules': cell_config.get('rules'),
+            'for_each_row': cell_config.get('for_each_row'),  # SQL mapping config
         }
     else:
         # For LLM cells (instructions-based)
         spec_parts = {
             # The template itself - the core DNA
-            'instructions': phase_config.get('instructions', ''),
+            'instructions': cell_config.get('instructions', ''),
 
             # Input data - template parameters that affect rendered prompt
             'input_data': input_data or {},
 
             # Candidates config affects prompt generation strategy
-            'candidates': phase_config.get('candidates') or phase_config.get('soundings'),
+            'candidates': cell_config.get('candidates') or cell_config.get('soundings'),
 
             # Rules affect execution behavior
-            'rules': phase_config.get('rules'),
+            'rules': cell_config.get('rules'),
 
             # Output schema affects what we're asking for
-            'output_schema': phase_config.get('output_schema'),
+            'output_schema': cell_config.get('output_schema'),
 
             # Wards (validators) affect the evolution pressure
-            'wards': phase_config.get('wards'),
+            'wards': cell_config.get('wards'),
         }
 
     # Create deterministic JSON string (sorted keys, no whitespace)
@@ -456,7 +456,7 @@ def cull_old_conversation_history(messages: List[Dict], keep_recent_turns: int =
 
 def get_next_image_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
     """
-    Find the next available image index for a session/phase directory.
+    Find the next available image index for a session/cell directory.
     Scans existing files to avoid overwriting.
     If candidate_index is provided, only considers images for that candidate.
     """
@@ -464,14 +464,14 @@ def get_next_image_index(session_id: str, cell_name: str, candidate_index: int =
     config = get_config()
 
     images_dir = config.image_dir
-    phase_dir = os.path.join(images_dir, session_id, cell_name)
+    cell_dir = os.path.join(images_dir, session_id, cell_name)
 
-    if not os.path.exists(phase_dir):
+    if not os.path.exists(cell_dir):
         return 0
 
     # Find all existing image files and extract their indices
     existing_indices = set()
-    for filename in os.listdir(phase_dir):
+    for filename in os.listdir(cell_dir):
         if candidate_index is not None:
             # Match pattern: sounding_N_image_M.ext
             match = re.match(rf'sounding_{candidate_index}_image_(\d+)\.\w+$', filename)
@@ -509,7 +509,7 @@ def get_image_save_path(session_id: str, cell_name: str, image_index: int, exten
 
 def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
     """
-    Find the next available audio index for a session/phase directory.
+    Find the next available audio index for a session/cell directory.
     Scans existing files to avoid overwriting.
     If candidate_index is provided, only considers audio for that candidate.
     """
@@ -517,14 +517,14 @@ def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int =
     config = get_config()
 
     audio_dir = config.audio_dir
-    phase_dir = os.path.join(audio_dir, session_id, cell_name)
+    cell_dir = os.path.join(audio_dir, session_id, cell_name)
 
-    if not os.path.exists(phase_dir):
+    if not os.path.exists(cell_dir):
         return 0
 
     # Find all existing audio files and extract their indices
     existing_indices = set()
-    for filename in os.listdir(phase_dir):
+    for filename in os.listdir(cell_dir):
         if candidate_index is not None:
             # Match pattern: sounding_N_audio_M.ext
             match = re.match(rf'sounding_{candidate_index}_audio_(\d+)\.\w+$', filename)
@@ -650,7 +650,7 @@ def get_video_extension_from_data_url(data_url: str) -> str:
 
 def get_next_video_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
     """
-    Find the next available video index for a session/phase directory.
+    Find the next available video index for a session/cell directory.
     Scans existing files to avoid overwriting.
     If candidate_index is provided, only considers videos for that candidate.
     """
@@ -658,14 +658,14 @@ def get_next_video_index(session_id: str, cell_name: str, candidate_index: int =
     config = get_config()
 
     video_dir = config.video_dir
-    phase_dir = os.path.join(video_dir, session_id, cell_name)
+    cell_dir = os.path.join(video_dir, session_id, cell_name)
 
-    if not os.path.exists(phase_dir):
+    if not os.path.exists(cell_dir):
         return 0
 
     # Find all existing video files and extract their indices
     existing_indices = set()
-    for filename in os.listdir(phase_dir):
+    for filename in os.listdir(cell_dir):
         if candidate_index is not None:
             # Match pattern: sounding_N_video_M.ext
             match = re.match(rf'sounding_{candidate_index}_video_(\d+)\.\w+$', filename)

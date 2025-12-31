@@ -6,7 +6,7 @@ import yaml from 'js-yaml';
 import usePlaygroundStore from '../../stores/playgroundStore';
 import useNodeResize from '../hooks/useNodeResize';
 import RichMarkdown from '../../../components/RichMarkdown';
-import PhaseExplosionView from '../PhaseExplosionView';
+import CellExplosionView from '../CellExplosionView';
 import './CellCard.css';
 
 // Default dimensions (grid-aligned to 16px)
@@ -26,7 +26,7 @@ rules:
 const INPUT_PATTERN_STR = '\\{\\{\\s*input\\.(\\w+)(?:\\s*\\|[^}]*)?\\s*\\}\\}';
 
 /**
- * Derive rarity from phase configuration
+ * Derive rarity from cell configuration
  */
 function deriveRarity(parsedYaml, status) {
   if (status === 'error') return 'broken';
@@ -64,7 +64,7 @@ function getStackDepth(soundingsFactor, reforgeSteps = 0) {
 }
 
 /**
- * PhaseCard - Two-sided card node for LLM phases
+ * CellCard - Two-sided card node for LLM cells
  *
  * Front: Output/execution preview
  * Back: YAML configuration editor
@@ -75,7 +75,7 @@ function getStackDepth(soundingsFactor, reforgeSteps = 0) {
  * - Rarity frames based on complexity
  * - Model element border colors
  */
-function PhaseCard({ id, data, selected }) {
+function CellCard({ id, data, selected }) {
   const removeNode = usePlaygroundStore((state) => state.removeNode);
   const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
   const runFromNode = usePlaygroundStore((state) => state.runFromNode);
@@ -131,7 +131,7 @@ function PhaseCard({ id, data, selected }) {
     reforgeOutputs = {},     // Flattened reforge outputs: step -> winner content
   } = data;
 
-  // Parse YAML for phase config
+  // Parse YAML for cell config
   const parsedYaml = useMemo(() => {
     try {
       return yaml.load(localYaml);
@@ -141,8 +141,8 @@ function PhaseCard({ id, data, selected }) {
   }, [localYaml]);
 
   // Derive display properties
-  const phaseName = parsedYaml?.name || 'llm_phase';
-  const displayName = customName || phaseName || 'LLM Phase';
+  const cellName = parsedYaml?.name || 'llm_cell';
+  const displayName = customName || cellName || 'LLM Cell';
   const rarity = deriveRarity(parsedYaml, status);
   const modelElement = deriveModelElement(parsedYaml?.model);
   const soundingsFactor = parsedYaml?.soundings?.factor || 0;
@@ -234,7 +234,7 @@ function PhaseCard({ id, data, selected }) {
 
         updateNodeData(id, {
           yaml: newValue,
-          parsedPhase: parsed,
+          parsedCell: parsed,
           discoveredInputs: inputs,
         });
       } catch (err) {
@@ -334,7 +334,7 @@ function PhaseCard({ id, data, selected }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Clear all animations when phase completes
+  // Clear all animations when cell completes
   useEffect(() => {
     if (status === 'completed' || status === 'idle') {
       setRecentlyUpdated(new Set());
@@ -407,7 +407,7 @@ function PhaseCard({ id, data, selected }) {
     setIsTilted(false);
     const result = await runFromNode(id);
     if (!result.success) {
-      console.error('[PhaseCard] Run from here failed:', result.error);
+      console.error('[CellCard] Run from here failed:', result.error);
     }
   }, [id, runFromNode]);
 
@@ -457,7 +457,7 @@ function PhaseCard({ id, data, selected }) {
   }, []);
 
   const handleEditorWillMount = useCallback((monaco) => {
-    monaco.editor.defineTheme('windlass-phase', {
+    monaco.editor.defineTheme('windlass-cell', {
       base: 'vs-dark',
       inherit: true,
       rules: [
@@ -539,7 +539,7 @@ function PhaseCard({ id, data, selected }) {
 
   // Build class names
   const cardClasses = [
-    'phase-card',
+    'cell-card',
     `rarity-${rarity}`,
     `model-${modelElement}`,
     `status-${status}`,
@@ -651,7 +651,7 @@ function PhaseCard({ id, data, selected }) {
         <button
           className="tray-action action-delete"
           onClick={handleDelete}
-          title="Delete phase"
+          title="Delete cell"
         >
           <Icon icon="mdi:trash-can-outline" width="14" />
         </button>
@@ -784,7 +784,7 @@ function PhaseCard({ id, data, selected }) {
                   <span>Ready to execute</span>
                 </div>
               )}
-              {/* Pending/waiting state - waiting for upstream phases */}
+              {/* Pending/waiting state - waiting for upstream cells */}
               {status === 'pending' && (
                 <div className="card-waiting-state">
                   <Icon icon="mdi:clock-outline" width="28" />
@@ -945,7 +945,7 @@ function PhaseCard({ id, data, selected }) {
                 onChange={handleYamlChange}
                 onMount={handleEditorDidMount}
                 beforeMount={handleEditorWillMount}
-                theme="windlass-phase"
+                theme="windlass-cell"
                 options={editorOptions}
                 loading={
                   <div className="editor-loading">
@@ -966,8 +966,8 @@ function PhaseCard({ id, data, selected }) {
 
       {/* Explosion view - rendered as portal when active */}
       {showExplosion && explosionOriginRect && (
-        <PhaseExplosionView
-          phaseData={{
+        <CellExplosionView
+          cellData={{
             name: displayName,
             soundingsProgress,
             soundingsOutputs,
@@ -992,7 +992,7 @@ function PhaseCard({ id, data, selected }) {
               typeof e.content === 'string' &&
               e.content.toLowerCase().includes('aggregate')
             )?.content || '',
-            parsedPhase: parsedYaml,
+            parsedCell: parsedYaml,
             liveLog, // Pass full log for debugging
           }}
           originRect={explosionOriginRect}
@@ -1003,4 +1003,4 @@ function PhaseCard({ id, data, selected }) {
   );
 }
 
-export default memo(PhaseCard);
+export default memo(CellCard);

@@ -151,26 +151,6 @@ const ContextRenderer = (props) => {
   );
 };
 
-const BottleneckRenderer = (props) => {
-  const cell = props.value;
-  const pct = props.data.bottleneck_cell_pct || 0;
-
-  if (!cell || pct < 40) {
-    return <span style={{ color: '#475569' }}>-</span>;
-  }
-
-  const color = pct > 70 ? '#f87171' : '#fbbf24';
-
-  return (
-    <div style={{ color, fontWeight: '500', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-      <div>{cell}</div>
-      <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
-        {pct.toFixed(0)}% of cascade
-      </div>
-    </div>
-  );
-};
-
 const DurationRenderer = (props) => {
   const ms = props.value || 0;
   const seconds = (ms / 1000).toFixed(1);
@@ -336,8 +316,6 @@ const CascadesView = () => {
         cluster_run_count: session.cluster_run_count || 0,
         context_cost_pct: session.context_cost_pct || 0,
         total_context_cost_estimated: session.total_context_cost_estimated || 0,
-        bottleneck_cell: session.bottleneck_cell,
-        bottleneck_cell_pct: session.bottleneck_cell_pct || 0,
       }));
 
       setInstances(transformed);
@@ -625,27 +603,6 @@ const CascadesView = () => {
         paddingBottom: '4px'
       },
     },
-    // BOTTLENECK CELL
-    {
-      field: 'bottleneck_cell',
-      headerName: 'Bottleneck',
-      headerTooltip: 'Cell that consumed the most cascade cost/time',
-      width: 140,
-      wrapText: true,
-      autoHeight: true,
-      cellRenderer: BottleneckRenderer,
-      tooltipValueGetter: (params) => {
-        const cell = params.value;
-        const pct = params.data.bottleneck_cell_pct || 0;
-        return cell ? `Cell '${cell}' consumed ${pct.toFixed(0)}% of cascade cost` : 'No dominant bottleneck';
-      },
-      cellStyle: {
-        lineHeight: '1.4',
-        whiteSpace: 'normal',
-        paddingTop: '4px',
-        paddingBottom: '4px'
-      },
-    },
     // DURATION WITH MULTIPLIER
     {
       field: 'total_duration_ms',
@@ -845,31 +802,6 @@ const CascadesView = () => {
       ? instancesWithContext.reduce((sum, i) => sum + i.context_cost_pct, 0) / instancesWithContext.length
       : 0;
 
-    // Top bottleneck cell (most frequent bottleneck across runs)
-    const bottleneckCounts = {};
-    const bottleneckPcts = {};
-    instances.forEach(i => {
-      if (i.bottleneck_cell && i.bottleneck_cell_pct >= 40) {
-        bottleneckCounts[i.bottleneck_cell] = (bottleneckCounts[i.bottleneck_cell] || 0) + 1;
-        if (!bottleneckPcts[i.bottleneck_cell]) {
-          bottleneckPcts[i.bottleneck_cell] = [];
-        }
-        bottleneckPcts[i.bottleneck_cell].push(i.bottleneck_cell_pct);
-      }
-    });
-
-    let topBottleneck = null;
-    let topBottleneckCount = 0;
-    let topBottleneckAvgPct = 0;
-    Object.entries(bottleneckCounts).forEach(([cell, count]) => {
-      if (count > topBottleneckCount) {
-        topBottleneckCount = count;
-        topBottleneck = cell;
-        const pcts = bottleneckPcts[cell];
-        topBottleneckAvgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
-      }
-    });
-
     // Success rate
     const completedCount = instances.filter(i => i.status === 'completed').length;
     const errorCount = instances.filter(i => i.status === 'error').length;
@@ -880,9 +812,6 @@ const CascadesView = () => {
       totalCost,
       outlierCount,
       avgContextPct,
-      topBottleneck,
-      topBottleneckCount,
-      topBottleneckAvgPct,
       successRate,
       errorCount,
     };
@@ -980,7 +909,7 @@ const CascadesView = () => {
     const cascade = cascades.find(c => c.cascade_id === selectedCascade);
     if (!cascade) return null;
     return {
-      cells: cascade.phases || [],
+      cells: cascade.cells || [],
       inputsSchema: cascade.inputs_schema || {},
     };
   }, [selectedCascade, cascades]);
@@ -1047,15 +976,6 @@ const CascadesView = () => {
               icon="mdi:database-import"
               color={cascadeKpis.avgContextPct > 60 ? '#fbbf24' : cascadeKpis.avgContextPct > 30 ? '#60a5fa' : '#34d399'}
             />
-            {cascadeKpis.topBottleneck && (
-              <KPICard
-                title="Top Bottleneck"
-                value={cascadeKpis.topBottleneck}
-                subtitle={`${cascadeKpis.topBottleneckAvgPct.toFixed(0)}% avg (${cascadeKpis.topBottleneckCount} runs)`}
-                icon="mdi:target"
-                color="#fbbf24"
-              />
-            )}
           </div>
         </div>
       )}

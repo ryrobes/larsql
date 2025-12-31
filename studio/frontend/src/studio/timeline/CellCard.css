@@ -44,7 +44,7 @@
 }
 
 /* ============================================
-   PHASE CARD - Compact Horizontal Card
+   CELL CARD - Compact Horizontal Card
    ============================================ */
 
 .cell-card {
@@ -112,7 +112,7 @@
 }
 
 /* ============================================
-   STACKED CARD EFFECT (for soundings/parallel phases)
+   STACKED CARD EFFECT (for soundings/parallel cells)
    ============================================ */
 
 .cell-card-stacked {

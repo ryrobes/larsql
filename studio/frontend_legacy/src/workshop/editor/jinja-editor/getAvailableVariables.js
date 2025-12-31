@@ -1,17 +1,17 @@
 /**
  * getAvailableVariables - Introspect cascade to find all available Jinja2 variables
  *
- * Analyzes the cascade definition and current phase index to determine
+ * Analyzes the cascade definition and current cell index to determine
  * which variables are available for use in the instructions template.
  */
 
 /**
- * Built-in variables available in all phases
+ * Built-in variables available in all cells
  */
 const BUILTIN_VARIABLES = [
   {
     path: 'lineage',
-    description: 'Execution path through phases',
+    description: 'Execution path through cells',
   },
   {
     path: 'history',
@@ -27,18 +27,18 @@ const BUILTIN_VARIABLES = [
   },
   {
     path: 'is_sounding',
-    description: 'True when phase is running as a sounding',
+    description: 'True when cell is running as a sounding',
   },
 ];
 
 /**
- * Get all available variables for a phase
+ * Get all available variables for a cell
  *
  * @param {Object} cascade - The cascade definition
- * @param {number} currentPhaseIndex - Index of the current phase
+ * @param {number} currentCellIndex - Index of the current cell
  * @returns {Array} - Array of variable objects with path, description, and template
  */
-function getAvailableVariables(cascade, currentPhaseIndex) {
+function getAvailableVariables(cascade, currentCellIndex) {
   const variables = [];
 
   // 1. Input schema variables
@@ -52,21 +52,21 @@ function getAvailableVariables(cascade, currentPhaseIndex) {
     });
   }
 
-  // 2. Previous phase outputs
-  if (cascade.cells && currentPhaseIndex > 0) {
-    cascade.cells.slice(0, currentPhaseIndex).forEach((phase) => {
-      if (phase.name) {
+  // 2. Previous cell outputs
+  if (cascade.cells && currentCellIndex > 0) {
+    cascade.cells.slice(0, currentCellIndex).forEach((cell) => {
+      if (cell.name) {
         variables.push({
-          path: `outputs.${phase.name}`,
-          description: `Output from phase "${phase.name}"`,
-          template: `{{ outputs.${phase.name} }}`,
+          path: `outputs.${cell.name}`,
+          description: `Output from cell "${cell.name}"`,
+          template: `{{ outputs.${cell.name} }}`,
         });
       }
     });
   }
 
-  // 3. State variables (scan for set_state usage in previous phases)
-  const stateVars = extractStateVariables(cascade, currentPhaseIndex);
+  // 3. State variables (scan for set_state usage in previous cells)
+  const stateVars = extractStateVariables(cascade, currentCellIndex);
   stateVars.forEach((varName) => {
     variables.push({
       path: `state.${varName}`,
@@ -87,7 +87,7 @@ function getAvailableVariables(cascade, currentPhaseIndex) {
 }
 
 /**
- * Extract state variables from cascade phases
+ * Extract state variables from cascade cells
  *
  * Looks for patterns like:
  * - set_state tool calls in tackle
@@ -101,16 +101,16 @@ function extractStateVariables(cascade, upToIndex) {
   // Simple pattern matching for state.* references in instructions
   const statePattern = /state\.(\w+)/g;
 
-  cascade.cells.slice(0, upToIndex).forEach((phase) => {
-    if (phase.instructions) {
+  cascade.cells.slice(0, upToIndex).forEach((cell) => {
+    if (cell.instructions) {
       let match;
-      while ((match = statePattern.exec(phase.instructions)) !== null) {
+      while ((match = statePattern.exec(cell.instructions)) !== null) {
         stateVars.add(match[1]);
       }
     }
 
     // Check if set_state is in tackle (user might be setting state)
-    if (phase.traits && phase.traits.includes('set_state')) {
+    if (cell.traits && cell.traits.includes('set_state')) {
       // We can't know the exact keys without more info,
       // but we can flag that state is being used
     }
@@ -122,8 +122,8 @@ function extractStateVariables(cascade, upToIndex) {
 /**
  * Get variables grouped by type
  */
-function getGroupedVariables(cascade, currentPhaseIndex) {
-  const variables = getAvailableVariables(cascade, currentPhaseIndex);
+function getGroupedVariables(cascade, currentCellIndex) {
+  const variables = getAvailableVariables(cascade, currentCellIndex);
 
   return {
     input: variables.filter((v) => v.path.startsWith('input.')),

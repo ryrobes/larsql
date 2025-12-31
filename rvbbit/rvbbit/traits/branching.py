@@ -255,7 +255,7 @@ def launch_branch_cascade(
             'total_input_tokens': 0,
             'total_output_tokens': 0,
             'duration_seconds': 0.0,
-            'phases_visited': json.dumps([]),
+            'cells_visited': json.dumps([]),
             'tools_used': json.dumps([]),
             'tags': json.dumps([]),
             'parent_session_id': parent_session.get('original_session_id'),

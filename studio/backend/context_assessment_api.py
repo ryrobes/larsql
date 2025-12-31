@@ -3,14 +3,14 @@ Context Assessment API - Shadow Assessment Analysis for Receipts Page
 
 Provides API endpoints for analyzing context shadow assessments collected during
 cascade runs. These assessments help understand:
-1. Inter-phase context selection (which messages from other cells are relevant)
-2. Intra-phase context management (how to compress within-cell conversation)
+1. Inter-cell context selection (which messages from other cells are relevant)
+2. Intra-cell context management (how to compress within-cell conversation)
 
 Routes:
 - /api/context-assessment/sessions - Sessions with shadow assessment data
 - /api/context-assessment/overview/:session_id - Summary stats for a session
-- /api/context-assessment/inter-phase/:session_id - Inter-phase shadow data
-- /api/context-assessment/intra-phase/:session_id - Intra-phase config scenarios
+- /api/context-assessment/inter-cell/:session_id - Inter-cell shadow data
+- /api/context-assessment/intra-cell/:session_id - Intra-cell config scenarios
 - /api/context-assessment/recommendations/:cascade_id - Aggregated recommendations
 """
 
@@ -82,7 +82,7 @@ def list_sessions():
 
         sessions = []
 
-        # Query inter-phase assessments if table exists
+        # Query inter-cell assessments if table exists
         if 'context_shadow_assessments' in table_names:
             inter_query = f"""
                 SELECT
@@ -109,13 +109,13 @@ def list_sessions():
                         'last_assessment': row['last_assessment'].isoformat() if hasattr(row['last_assessment'], 'isoformat') else str(row['last_assessment']),
                         'cells_assessed': safe_int(row['cells_assessed']),
                         'total_assessments': safe_int(row['total_assessments']),
-                        'has_inter_phase': True,
-                        'has_intra_phase': False
+                        'has_inter_cell': True,
+                        'has_intra_cell': False
                     })
             except Exception as e:
-                print(f"Error querying inter-phase: {e}")
+                print(f"Error querying inter-cell: {e}")
 
-        # Query intra-phase assessments if table exists
+        # Query intra-cell assessments if table exists
         if 'intra_context_shadow_assessments' in table_names:
             intra_query = f"""
                 SELECT
@@ -138,7 +138,7 @@ def list_sessions():
                 for row in intra_results:
                     sid = row['session_id']
                     if sid in session_map:
-                        session_map[sid]['has_intra_phase'] = True
+                        session_map[sid]['has_intra_cell'] = True
                         session_map[sid]['intra_cells_assessed'] = safe_int(row['cells_assessed'])
                         session_map[sid]['intra_total_assessments'] = safe_int(row['total_assessments'])
                     else:
@@ -149,11 +149,11 @@ def list_sessions():
                             'last_assessment': row['last_assessment'].isoformat() if hasattr(row['last_assessment'], 'isoformat') else str(row['last_assessment']),
                             'cells_assessed': safe_int(row['cells_assessed']),
                             'total_assessments': safe_int(row['total_assessments']),
-                            'has_inter_phase': False,
-                            'has_intra_phase': True
+                            'has_inter_cell': False,
+                            'has_intra_cell': True
                         })
             except Exception as e:
-                print(f"Error querying intra-phase: {e}")
+                print(f"Error querying intra-cell: {e}")
 
         # Sort by last assessment
         sessions.sort(key=lambda x: x['last_assessment'], reverse=True)
@@ -171,20 +171,20 @@ def get_overview(session_id):
     """
     Get overview stats for a session's shadow assessments.
 
-    Returns summary of both inter-phase and intra-phase assessments.
+    Returns summary of both inter-cell and intra-cell assessments.
     """
     try:
         db = get_db()
 
         result = {
             'session_id': session_id,
-            'inter_phase': None,
-            'intra_phase': None,
+            'inter_cell': None,
+            'intra_cell': None,
             'potential_savings': None,
             'best_intra_config': None
         }
 
-        # Inter-phase stats (only user/assistant messages)
+        # Inter-cell stats (only user/assistant messages)
         try:
             inter_query = f"""
                 SELECT
@@ -204,7 +204,7 @@ def get_overview(session_id):
             if inter_result and inter_result[0].get('cells_assessed'):
                 row = inter_result[0]
                 result['cascade_id'] = row['cascade_id']
-                result['inter_phase'] = {
+                result['inter_cell'] = {
                     'cells_assessed': safe_int(row['cells_assessed']),
                     'messages_assessed': safe_int(row['messages_assessed']),
                     'budgets_evaluated': safe_int(row['budgets_evaluated']),
@@ -214,9 +214,9 @@ def get_overview(session_id):
                     'potential_token_savings': safe_int(row['potential_token_savings'])
                 }
         except Exception as e:
-            print(f"Inter-phase query error: {e}")
+            print(f"Inter-cell query error: {e}")
 
-        # Intra-phase stats
+        # Intra-cell stats
         try:
             intra_query = f"""
                 SELECT
@@ -234,7 +234,7 @@ def get_overview(session_id):
                 row = intra_result[0]
                 if not result.get('cascade_id'):
                     result['cascade_id'] = row['cascade_id']
-                result['intra_phase'] = {
+                result['intra_cell'] = {
                     'turns_assessed': safe_int(row['turns_assessed']),
                     'cells_assessed': safe_int(row['cells_assessed']),
                     'total_config_rows': safe_int(row['total_config_rows']),
@@ -242,7 +242,7 @@ def get_overview(session_id):
                     'avg_compression_ratio': safe_float(row['avg_compression_ratio'])
                 }
         except Exception as e:
-            print(f"Intra-phase query error: {e}")
+            print(f"Intra-cell query error: {e}")
 
         # Best intra config recommendation
         try:
@@ -274,8 +274,8 @@ def get_overview(session_id):
 
         # Calculate potential cost savings using actual model pricing
         total_potential_tokens = 0
-        if result['inter_phase']:
-            total_potential_tokens += result['inter_phase'].get('potential_token_savings', 0)
+        if result['inter_cell']:
+            total_potential_tokens += result['inter_cell'].get('potential_token_savings', 0)
         if result['best_intra_config']:
             total_potential_tokens += result['best_intra_config'].get('total_saved', 0)
 
@@ -296,10 +296,10 @@ def get_overview(session_id):
         return jsonify({'error': str(e)}), 500
 
 
-@context_assessment_bp.route('/api/context-assessment/inter-phase/<session_id>', methods=['GET'])
-def get_inter_phase(session_id):
+@context_assessment_bp.route('/api/context-assessment/inter-cell/<session_id>', methods=['GET'])
+def get_inter_cell(session_id):
     """
-    Get inter-phase shadow assessment data for a session.
+    Get inter-cell shadow assessment data for a session.
 
     Query params:
         cell: Filter by target cell name (optional)
@@ -417,10 +417,10 @@ def get_inter_phase(session_id):
         return jsonify({'error': str(e)}), 500
 
 
-@context_assessment_bp.route('/api/context-assessment/intra-phase/<session_id>', methods=['GET'])
-def get_intra_phase(session_id):
+@context_assessment_bp.route('/api/context-assessment/intra-cell/<session_id>', methods=['GET'])
+def get_intra_cell(session_id):
     """
-    Get intra-phase shadow assessment data for a session.
+    Get intra-cell shadow assessment data for a session.
 
     Query params:
         cell: Filter by cell name (optional)
@@ -699,7 +699,7 @@ def get_table_status():
 
 
 # =============================================================================
-# Phase 3 Endpoints: Interactive Explorers
+# Cell 3 Endpoints: Interactive Explorers
 # =============================================================================
 
 @context_assessment_bp.route('/api/context-assessment/relevance-scatter/<session_id>', methods=['GET'])
@@ -784,7 +784,7 @@ def get_candidate_comparison(session_id):
     try:
         db = get_db()
 
-        # Get per-candidate stats from intra-phase data
+        # Get per-candidate stats from intra-cell data
         query = f"""
             SELECT
                 cell_name,
@@ -960,7 +960,7 @@ def get_budget_simulation(session_id):
 
 
 # =============================================================================
-# Phase 4 Endpoints: Intelligence Layer + Multi-Run Analysis
+# Cell 4 Endpoints: Intelligence Layer + Multi-Run Analysis
 # =============================================================================
 
 # Model pricing cache (refreshed periodically)
@@ -1129,7 +1129,7 @@ def get_cascade_aggregate(cascade_id):
                 "message": f"Need at least {min_sessions} sessions for reliable analysis, found {session_count}"
             })
 
-        # Aggregate inter-phase: which cells consistently have waste?
+        # Aggregate inter-cell: which cells consistently have waste?
         cell_waste_query = f"""
             SELECT
                 target_cell_name as cell_name,
@@ -1149,7 +1149,7 @@ def get_cascade_aggregate(cascade_id):
         """
         cell_waste = db.query(cell_waste_query)
 
-        # Aggregate intra-phase: best configs across all runs
+        # Aggregate intra-cell: best configs across all runs
         config_query = f"""
             SELECT
                 config_window,
@@ -1211,7 +1211,7 @@ def get_cascade_aggregate(cascade_id):
                 "last": str(session_stats[0]["last_run"]) if session_stats else None,
                 "days": days
             },
-            "inter_phase": {
+            "inter_cell": {
                 "cells": [{
                     "cell_name": c["cell_name"],
                     "sessions_seen": safe_int(c["sessions_seen"]),
@@ -1225,7 +1225,7 @@ def get_cascade_aggregate(cascade_id):
                 "total_waste_pct": round(waste_pct, 1),
                 "estimated_waste_cost": round(estimated_waste_cost, 4)
             },
-            "intra_phase": {
+            "intra_cell": {
                 "best_config": best_config,
                 "all_configs": [{
                     "window": safe_int(c["config_window"]),
@@ -1351,7 +1351,7 @@ def get_quality_recommendations(cascade_id):
         db = get_db()
         days = request.args.get("days", 30, type=int)
 
-        # Get intra-phase recommendations with quality weighting
+        # Get intra-cell recommendations with quality weighting
         intra_query = f"""
             SELECT
                 config_window,
@@ -1413,7 +1413,7 @@ def get_quality_recommendations(cascade_id):
                 "sessions": safe_int(intra_results[0]["sessions"])
             }
 
-        # Get inter-phase budget recommendations
+        # Get inter-cell budget recommendations
         inter_query = f"""
             SELECT
                 budget_total,
@@ -1441,7 +1441,7 @@ def get_quality_recommendations(cascade_id):
         return jsonify({
             "cascade_id": cascade_id,
             "days_analyzed": days,
-            "intra_phase": {
+            "intra_cell": {
                 "tiers": tiers,
                 "recommendation": (
                     f"Start with balanced (window={tiers['balanced']['window'] if tiers['balanced'] else '?'}, "
@@ -1449,7 +1449,7 @@ def get_quality_recommendations(cascade_id):
                     f"for ~{tiers['balanced']['savings_pct'] if tiers['balanced'] else '?'}% savings with minimal risk."
                 ) if tiers else "Insufficient data for recommendations"
             },
-            "inter_phase": {
+            "inter_cell": {
                 "budget_options": budget_recommendations,
                 "recommendation": (
                     "Higher budgets preserve more context but cost more. "

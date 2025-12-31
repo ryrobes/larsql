@@ -31,10 +31,10 @@ function isMeaningfulContent(content) {
 
   // Skip status/system messages
   const statusPatterns = [
-    /^"?Phase \w+ completed"?$/i,
+    /^"?Cell \w+ completed"?$/i,
     /^"?Starting cascade/i,
     /^"?Cascade:/i,
-    /^"?Phase:/i,
+    /^"?Cell:/i,
     /^"?Soundings:/i,
     /^"?Turn \d+"?$/i,
     /^"?Selected best of/i,
@@ -45,7 +45,7 @@ function isMeaningfulContent(content) {
     /^"?🏆 Step \d+ Winner/i,
     /^"?## Input Data:/i,
     /^"?Original intent:/i,
-    /^"?\w+_phase"?$/i, // Phase names
+    /^"?\w+_cell"?$/i, // Cell names
   ];
 
   for (const pattern of statusPatterns) {
@@ -76,10 +76,10 @@ function parseContent(content) {
 }
 
 /**
- * Derive phase state from accumulated log rows
+ * Derive cell state from accumulated log rows
  *
  * This function extracts:
- * - Overall phase status (idle/running/completed/error)
+ * - Overall cell status (idle/running/completed/error)
  * - Soundings progress (which are running, complete, failed)
  * - Winner index (if evaluator has picked one)
  * - Sounding outputs (content from each sounding)
@@ -88,10 +88,10 @@ function parseContent(content) {
  * - Cost and duration
  *
  * @param {Array} logs - All accumulated log rows for the session
- * @param {string} phaseName - The phase name to derive state for
- * @returns {Object} Derived phase state
+ * @param {string} cellName - The cell name to derive state for
+ * @returns {Object} Derived cell state
  */
-export function derivePhaseState(logs, phaseName) {
+export function deriveCellState(logs, cellName) {
   const emptyState = {
     status: 'idle',
     soundingsProgress: [],
@@ -109,14 +109,14 @@ export function derivePhaseState(logs, phaseName) {
     error: null,
   };
 
-  if (!logs || logs.length === 0 || !phaseName) {
+  if (!logs || logs.length === 0 || !cellName) {
     return emptyState;
   }
 
-  // Filter logs for this phase
-  const phaseLogs = logs.filter(r => r.cell_name === phaseName);
+  // Filter logs for this cell
+  const cellLogs = logs.filter(r => r.cell_name === cellName);
 
-  if (phaseLogs.length === 0) {
+  if (cellLogs.length === 0) {
     return emptyState;
   }
 
@@ -145,7 +145,7 @@ export function derivePhaseState(logs, phaseName) {
   // Track short status messages for footer
   let lastStatusMessage = '';
 
-  for (const row of phaseLogs) {
+  for (const row of cellLogs) {
     const role = row.role;
     const sidx = row.candidate_index;
     const rstep = row.reforge_step;
@@ -162,8 +162,8 @@ export function derivePhaseState(logs, phaseName) {
       totalDuration += parseFloat(row.duration_ms) || 0;
     }
 
-    // Phase start
-    if (role === 'phase_start') {
+    // Cell start
+    if (role === 'cell_start') {
       status = 'running';
     }
 
@@ -308,8 +308,8 @@ export function derivePhaseState(logs, phaseName) {
       }
     }
 
-    // Phase complete - mark as complete but DON'T use status message as output
-    if (role === 'phase_complete') {
+    // Cell complete - mark as complete but DON'T use status message as output
+    if (role === 'cell_complete') {
       isComplete = true;
     }
 
@@ -365,7 +365,7 @@ export function derivePhaseState(logs, phaseName) {
     finalOutput = soundingsOutputs[winnerIndex];
   } else {
     // Get last assistant message with meaningful content
-    const assistantMessages = phaseLogs
+    const assistantMessages = cellLogs
       .filter(r => r.role === 'assistant')
       .map(r => parseContent(r.content_json))
       .filter(c => isMeaningfulContent(c));
@@ -413,11 +413,11 @@ export function derivePhaseState(logs, phaseName) {
     }
   }
 
-  // Output: during running states show nothing (PhaseCard will use liveLog)
+  // Output: during running states show nothing (CellCard will use liveLog)
   // After completion, show finalOutput
   const output = status === 'completed' ? finalOutput : '';
 
-  // Clear status message when phase is complete
+  // Clear status message when cell is complete
   const statusMessage = status === 'completed' ? '' : lastStatusMessage;
 
   return {
@@ -442,7 +442,7 @@ export function derivePhaseState(logs, phaseName) {
  * useSessionStream - Main hook for polling session logs
  *
  * @param {string} sessionId - The session ID to poll for
- * @returns {Object} { logs, phaseStates, isPolling, error, totalCost }
+ * @returns {Object} { logs, cellStates, isPolling, error, totalCost }
  */
 export function useSessionStream(sessionId) {
   const [logs, setLogs] = useState([]);
@@ -589,13 +589,13 @@ export function useSessionStream(sessionId) {
     }
   }, [sessionComplete, poll]);
 
-  // Derive phase states from logs
-  const phaseStates = useMemo(() => {
+  // Derive cell states from logs
+  const cellStates = useMemo(() => {
     const states = {};
-    const phaseNames = new Set(logs.map(r => r.cell_name).filter(Boolean));
+    const cellNames = new Set(logs.map(r => r.cell_name).filter(Boolean));
 
-    for (const phaseName of phaseNames) {
-      states[phaseName] = derivePhaseState(logs, phaseName);
+    for (const cellName of cellNames) {
+      states[cellName] = deriveCellState(logs, cellName);
     }
 
     return states;
@@ -603,7 +603,7 @@ export function useSessionStream(sessionId) {
 
   return {
     logs,
-    phaseStates,
+    cellStates,
     isPolling,
     error,
     sessionComplete,

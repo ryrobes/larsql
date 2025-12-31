@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Icon } from '@iconify/react';
-import InterPhaseExplorer from './InterPhaseExplorer';
-import IntraPhaseExplorer from './IntraPhaseExplorer';
+import InterCellExplorer from './InterCellExplorer';
+import IntraCellExplorer from './IntraCellExplorer';
 import WasteScatterPlot from './WasteScatterPlot';
 import CascadeAggregateView from './CascadeAggregateView';
 import './ContextAssessmentPanel.css';
 
 /**
- * ContextAssessmentPanel - Shadow Assessment Analysis (Phase 2)
+ * ContextAssessmentPanel - Shadow Assessment Analysis (Cell 2)
  *
  * Enhanced visual interface for understanding context management decisions:
- * - Interactive budget slider for inter-phase exploration
- * - Compression timeline chart for intra-phase
+ * - Interactive budget slider for inter-cell exploration
+ * - Compression timeline chart for intra-cell
  * - Strategy comparison visualization
  * - Message detail sidebar
  */
@@ -19,16 +19,16 @@ const ContextAssessmentPanel = ({ timeRange }) => {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [overview, setOverview] = useState(null);
-  const [interPhaseData, setInterPhaseData] = useState(null);
-  const [intraPhaseData, setIntraPhaseData] = useState(null);
+  const [interCellData, setInterCellData] = useState(null);
+  const [intraCellData, setIntraCellData] = useState(null);
   const [tableStatus, setTableStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
-  const [interPhaseViewMode, setInterPhaseViewMode] = useState('explorer'); // 'explorer' or 'table'
-  const [intraPhaseViewMode, setIntraPhaseViewMode] = useState('explorer'); // 'explorer' or 'table'
+  const [interCellViewMode, setInterCellViewMode] = useState('explorer'); // 'explorer' or 'table'
+  const [intraCellViewMode, setIntraCellViewMode] = useState('explorer'); // 'explorer' or 'table'
 
   // Check table status on mount
   useEffect(() => {
@@ -93,50 +93,50 @@ const ContextAssessmentPanel = ({ timeRange }) => {
     fetchOverview();
   }, [selectedSession]);
 
-  // Fetch inter-phase data when tab is active
+  // Fetch inter-cell data when tab is active
   useEffect(() => {
-    if (!selectedSession || activeTab !== 'inter-phase') return;
+    if (!selectedSession || activeTab !== 'inter-cell') return;
 
-    const fetchInterPhase = async () => {
+    const fetchInterCell = async () => {
       try {
         const url = selectedCell
-          ? `http://localhost:5050/api/context-assessment/inter-phase/${selectedSession}?cell=${selectedCell}`
-          : `http://localhost:5050/api/context-assessment/inter-phase/${selectedSession}`;
+          ? `http://localhost:5050/api/context-assessment/inter-cell/${selectedSession}?cell=${selectedCell}`
+          : `http://localhost:5050/api/context-assessment/inter-cell/${selectedSession}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) {
-          console.error('Inter-phase error:', data.error);
+          console.error('Inter-cell error:', data.error);
           return;
         }
-        setInterPhaseData(data);
+        setInterCellData(data);
       } catch (err) {
-        console.error('Failed to fetch inter-phase:', err);
+        console.error('Failed to fetch inter-cell:', err);
       }
     };
-    fetchInterPhase();
+    fetchInterCell();
   }, [selectedSession, activeTab, selectedCell]);
 
-  // Fetch intra-phase data when tab is active
+  // Fetch intra-cell data when tab is active
   useEffect(() => {
-    if (!selectedSession || activeTab !== 'intra-phase') return;
+    if (!selectedSession || activeTab !== 'intra-cell') return;
 
-    const fetchIntraPhase = async () => {
+    const fetchIntraCell = async () => {
       try {
         const url = selectedCell
-          ? `http://localhost:5050/api/context-assessment/intra-phase/${selectedSession}?cell=${selectedCell}`
-          : `http://localhost:5050/api/context-assessment/intra-phase/${selectedSession}`;
+          ? `http://localhost:5050/api/context-assessment/intra-cell/${selectedSession}?cell=${selectedCell}`
+          : `http://localhost:5050/api/context-assessment/intra-cell/${selectedSession}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) {
-          console.error('Intra-phase error:', data.error);
+          console.error('Intra-cell error:', data.error);
           return;
         }
-        setIntraPhaseData(data);
+        setIntraCellData(data);
       } catch (err) {
-        console.error('Failed to fetch intra-phase:', err);
+        console.error('Failed to fetch intra-cell:', err);
       }
     };
-    fetchIntraPhase();
+    fetchIntraCell();
   }, [selectedSession, activeTab, selectedCell]);
 
   const formatNumber = (n) => n?.toLocaleString() ?? '—';
@@ -237,19 +237,19 @@ const ContextAssessmentPanel = ({ timeRange }) => {
       {/* Overview Cards */}
       {overview && (
         <div className="assessment-overview-cards">
-          {/* Inter-phase card */}
-          <div className={`overview-card ${overview.inter_phase ? '' : 'disabled'}`}>
+          {/* Inter-cell card */}
+          <div className={`overview-card ${overview.inter_cell ? '' : 'disabled'}`}>
             <div className="card-icon">
               <Icon icon="mdi:swap-horizontal" width={18} />
             </div>
             <div className="card-content">
               <div className="card-value">
-                {overview.inter_phase ? formatNumber(overview.inter_phase.cells_assessed) : '—'}
+                {overview.inter_cell ? formatNumber(overview.inter_cell.cells_assessed) : '—'}
               </div>
-              <div className="card-label">Inter-Phase Cells</div>
-              {overview.inter_phase ? (
+              <div className="card-label">Inter-Cell Cells</div>
+              {overview.inter_cell ? (
                 <div className="card-detail">
-                  {formatNumber(overview.inter_phase.messages_assessed)} messages assessed
+                  {formatNumber(overview.inter_cell.messages_assessed)} messages assessed
                 </div>
               ) : (
                 <div className="card-detail muted">No cross-cell context data</div>
@@ -257,19 +257,19 @@ const ContextAssessmentPanel = ({ timeRange }) => {
             </div>
           </div>
 
-          {/* Intra-phase card */}
-          <div className={`overview-card ${overview.intra_phase ? '' : 'disabled'}`}>
+          {/* Intra-cell card */}
+          <div className={`overview-card ${overview.intra_cell ? '' : 'disabled'}`}>
             <div className="card-icon">
               <Icon icon="mdi:rotate-right" width={18} />
             </div>
             <div className="card-content">
               <div className="card-value">
-                {overview.intra_phase ? formatNumber(overview.intra_phase.turns_assessed) : '—'}
+                {overview.intra_cell ? formatNumber(overview.intra_cell.turns_assessed) : '—'}
               </div>
-              <div className="card-label">Intra-Phase Turns</div>
-              {overview.intra_phase ? (
+              <div className="card-label">Intra-Cell Turns</div>
+              {overview.intra_cell ? (
                 <div className="card-detail">
-                  {formatNumber(overview.intra_phase.total_config_rows)} config scenarios
+                  {formatNumber(overview.intra_cell.total_config_rows)} config scenarios
                 </div>
               ) : (
                 <div className="card-detail muted">No within-cell compression data</div>
@@ -283,8 +283,8 @@ const ContextAssessmentPanel = ({ timeRange }) => {
               <Icon icon="mdi:gauge" width={18} />
             </div>
             <div className="card-content">
-              <div className="card-value" style={{ color: getScoreColor(overview.inter_phase?.avg_composite_score) }}>
-                {overview.inter_phase?.avg_composite_score?.toFixed(0) ?? '—'}
+              <div className="card-value" style={{ color: getScoreColor(overview.inter_cell?.avg_composite_score) }}>
+                {overview.inter_cell?.avg_composite_score?.toFixed(0) ?? '—'}
               </div>
               <div className="card-label">Avg Relevance</div>
               <div className="card-detail">composite score (0-100)</div>
@@ -325,24 +325,24 @@ const ContextAssessmentPanel = ({ timeRange }) => {
           <span>Summary</span>
         </button>
         <button
-          className={`assessment-tab ${activeTab === 'inter-phase' ? 'active' : ''}`}
-          onClick={() => setActiveTab('inter-phase')}
-          disabled={!overview?.inter_phase}
-          title={!overview?.inter_phase ? 'No inter-phase context data available for this session' : ''}
+          className={`assessment-tab ${activeTab === 'inter-cell' ? 'active' : ''}`}
+          onClick={() => setActiveTab('inter-cell')}
+          disabled={!overview?.inter_cell}
+          title={!overview?.inter_cell ? 'No inter-cell context data available for this session' : ''}
         >
           <Icon icon="mdi:swap-horizontal" width={14} />
-          <span>Inter-Phase</span>
-          {!overview?.inter_phase && <Icon icon="mdi:lock" width={10} className="tab-lock" />}
+          <span>Inter-Cell</span>
+          {!overview?.inter_cell && <Icon icon="mdi:lock" width={10} className="tab-lock" />}
         </button>
         <button
-          className={`assessment-tab ${activeTab === 'intra-phase' ? 'active' : ''}`}
-          onClick={() => setActiveTab('intra-phase')}
-          disabled={!overview?.intra_phase}
-          title={!overview?.intra_phase ? 'No intra-phase compression data available for this session' : ''}
+          className={`assessment-tab ${activeTab === 'intra-cell' ? 'active' : ''}`}
+          onClick={() => setActiveTab('intra-cell')}
+          disabled={!overview?.intra_cell}
+          title={!overview?.intra_cell ? 'No intra-cell compression data available for this session' : ''}
         >
           <Icon icon="mdi:rotate-right" width={14} />
-          <span>Intra-Phase</span>
-          {!overview?.intra_phase && <Icon icon="mdi:lock" width={10} className="tab-lock" />}
+          <span>Intra-Cell</span>
+          {!overview?.intra_cell && <Icon icon="mdi:lock" width={10} className="tab-lock" />}
         </button>
         <button
           className={`assessment-tab ${activeTab === 'waste' ? 'active' : ''}`}
@@ -369,30 +369,30 @@ const ContextAssessmentPanel = ({ timeRange }) => {
           {activeTab === 'overview' && overview && (
             <OverviewContent overview={overview} />
           )}
-          {activeTab === 'inter-phase' && (
-            <div className="phase-content-wrapper">
+          {activeTab === 'inter-cell' && (
+            <div className="cell-content-wrapper">
               <div className="view-mode-toggle">
                 <button
-                  className={interPhaseViewMode === 'explorer' ? 'active' : ''}
-                  onClick={() => setInterPhaseViewMode('explorer')}
+                  className={interCellViewMode === 'explorer' ? 'active' : ''}
+                  onClick={() => setInterCellViewMode('explorer')}
                 >
                   <Icon icon="mdi:tune-variant" width={14} />
                   Interactive Explorer
                 </button>
                 <button
-                  className={interPhaseViewMode === 'table' ? 'active' : ''}
-                  onClick={() => setInterPhaseViewMode('table')}
+                  className={interCellViewMode === 'table' ? 'active' : ''}
+                  onClick={() => setInterCellViewMode('table')}
                 >
                   <Icon icon="mdi:table" width={14} />
                   Table View
                 </button>
               </div>
-              {interPhaseViewMode === 'explorer' ? (
-                <InterPhaseExplorer sessionId={selectedSession} />
+              {interCellViewMode === 'explorer' ? (
+                <InterCellExplorer sessionId={selectedSession} />
               ) : (
-                interPhaseData && (
-                  <InterPhaseContent
-                    data={interPhaseData}
+                interCellData && (
+                  <InterCellContent
+                    data={interCellData}
                     selectedCell={selectedCell}
                     onCellSelect={setSelectedCell}
                     selectedMessage={selectedMessage}
@@ -402,30 +402,30 @@ const ContextAssessmentPanel = ({ timeRange }) => {
               )}
             </div>
           )}
-          {activeTab === 'intra-phase' && (
-            <div className="phase-content-wrapper">
+          {activeTab === 'intra-cell' && (
+            <div className="cell-content-wrapper">
               <div className="view-mode-toggle">
                 <button
-                  className={intraPhaseViewMode === 'explorer' ? 'active' : ''}
-                  onClick={() => setIntraPhaseViewMode('explorer')}
+                  className={intraCellViewMode === 'explorer' ? 'active' : ''}
+                  onClick={() => setIntraCellViewMode('explorer')}
                 >
                   <Icon icon="mdi:tune-variant" width={14} />
                   Interactive Explorer
                 </button>
                 <button
-                  className={intraPhaseViewMode === 'table' ? 'active' : ''}
-                  onClick={() => setIntraPhaseViewMode('table')}
+                  className={intraCellViewMode === 'table' ? 'active' : ''}
+                  onClick={() => setIntraCellViewMode('table')}
                 >
                   <Icon icon="mdi:view-grid" width={14} />
                   Cards View
                 </button>
               </div>
-              {intraPhaseViewMode === 'explorer' ? (
-                <IntraPhaseExplorer sessionId={selectedSession} />
+              {intraCellViewMode === 'explorer' ? (
+                <IntraCellExplorer sessionId={selectedSession} />
               ) : (
-                intraPhaseData && (
-                  <IntraPhaseContent
-                    data={intraPhaseData}
+                intraCellData && (
+                  <IntraCellContent
+                    data={intraCellData}
                     selectedCell={selectedCell}
                     onCellSelect={setSelectedCell}
                   />
@@ -472,7 +472,7 @@ const ExplainerBanner = () => {
       {expanded && (
         <div className="explainer-content">
           <div className="explainer-section">
-            <h4><Icon icon="mdi:swap-horizontal" width={14} /> Inter-Phase Context</h4>
+            <h4><Icon icon="mdi:swap-horizontal" width={14} /> Inter-Cell Context</h4>
             <p>
               Analyzes which messages from <strong>other cells</strong> should be included when entering a new cell.
               Uses three strategies: <strong>heuristic</strong> (keyword matching, recency),
@@ -480,7 +480,7 @@ const ExplainerBanner = () => {
             </p>
           </div>
           <div className="explainer-section">
-            <h4><Icon icon="mdi:rotate-right" width={14} /> Intra-Phase Compression</h4>
+            <h4><Icon icon="mdi:rotate-right" width={14} /> Intra-Cell Compression</h4>
             <p>
               Evaluates how to compress the conversation <strong>within a cell</strong> as turns accumulate.
               Tests different <strong>window</strong> sizes (how many recent turns to keep) and
@@ -570,23 +570,23 @@ const OverviewContent = ({ overview }) => {
 
       {/* Stats Summary with more context */}
       <div className="stats-summary">
-        {overview.inter_phase && (
+        {overview.inter_cell && (
           <div className="stats-section">
             <div className="stats-header">
               <Icon icon="mdi:swap-horizontal" width={16} />
-              <h4>Inter-Phase Context Analysis</h4>
+              <h4>Inter-Cell Context Analysis</h4>
             </div>
             <div className="stats-body">
               <p>
-                Analyzed <strong>{overview.inter_phase.messages_assessed}</strong> candidate messages
-                across <strong>{overview.inter_phase.cells_assessed}</strong> cell transitions.
+                Analyzed <strong>{overview.inter_cell.messages_assessed}</strong> candidate messages
+                across <strong>{overview.inter_cell.cells_assessed}</strong> cell transitions.
               </p>
-              {overview.inter_phase.would_prune_count > 0 ? (
+              {overview.inter_cell.would_prune_count > 0 ? (
                 <div className="stats-insight warning">
                   <Icon icon="mdi:scissors-cutting" width={14} />
                   <span>
-                    Auto-context would prune <strong>{overview.inter_phase.would_prune_count}</strong> messages
-                    that are currently included, saving ~{overview.inter_phase.potential_token_savings?.toLocaleString()} tokens.
+                    Auto-context would prune <strong>{overview.inter_cell.would_prune_count}</strong> messages
+                    that are currently included, saving ~{overview.inter_cell.potential_token_savings?.toLocaleString()} tokens.
                   </span>
                 </div>
               ) : (
@@ -599,30 +599,30 @@ const OverviewContent = ({ overview }) => {
           </div>
         )}
 
-        {overview.intra_phase && (
+        {overview.intra_cell && (
           <div className="stats-section">
             <div className="stats-header">
               <Icon icon="mdi:rotate-right" width={16} />
-              <h4>Intra-Phase Compression Analysis</h4>
+              <h4>Intra-Cell Compression Analysis</h4>
             </div>
             <div className="stats-body">
               <p>
-                Evaluated <strong>{overview.intra_phase.total_config_rows}</strong> configuration scenarios
-                across <strong>{overview.intra_phase.turns_assessed}</strong> turns.
+                Evaluated <strong>{overview.intra_cell.total_config_rows}</strong> configuration scenarios
+                across <strong>{overview.intra_cell.turns_assessed}</strong> turns.
               </p>
               <div className="compression-summary">
                 <div className="compression-bar">
                   <div
                     className="compression-fill"
-                    style={{ width: `${(overview.intra_phase.avg_compression_ratio || 1) * 100}%` }}
+                    style={{ width: `${(overview.intra_cell.avg_compression_ratio || 1) * 100}%` }}
                   />
                   <span className="compression-label">
-                    {((overview.intra_phase.avg_compression_ratio || 1) * 100).toFixed(0)}% retention
+                    {((overview.intra_cell.avg_compression_ratio || 1) * 100).toFixed(0)}% retention
                   </span>
                 </div>
                 <p className="compression-note">
-                  {overview.intra_phase.avg_compression_ratio < 0.8
-                    ? `Compression could reduce context by ~${((1 - overview.intra_phase.avg_compression_ratio) * 100).toFixed(0)}%`
+                  {overview.intra_cell.avg_compression_ratio < 0.8
+                    ? `Compression could reduce context by ~${((1 - overview.intra_cell.avg_compression_ratio) * 100).toFixed(0)}%`
                     : 'Context is already fairly compact, limited compression available'}
                 </p>
               </div>
@@ -630,7 +630,7 @@ const OverviewContent = ({ overview }) => {
           </div>
         )}
 
-        {!overview.inter_phase && !overview.intra_phase && (
+        {!overview.inter_cell && !overview.intra_cell && (
           <div className="stats-section empty">
             <Icon icon="mdi:clipboard-text-off-outline" width={32} />
             <p>No assessment data available for this session.</p>
@@ -645,9 +645,9 @@ const OverviewContent = ({ overview }) => {
 };
 
 /**
- * Inter-phase content with enhanced visualization
+ * Inter-cell content with enhanced visualization
  */
-const InterPhaseContent = ({ data, selectedCell, onCellSelect, selectedMessage, onMessageSelect }) => {
+const InterCellContent = ({ data, selectedCell, onCellSelect, selectedMessage, onMessageSelect }) => {
   const [budgetThreshold, setBudgetThreshold] = useState(100);
   const [strategyFilter, setStrategyFilter] = useState('all');
   const [sortBy, setSortBy] = useState('rank');
@@ -656,8 +656,8 @@ const InterPhaseContent = ({ data, selectedCell, onCellSelect, selectedMessage, 
     return (
       <div className="empty-content">
         <Icon icon="mdi:information-outline" width={24} />
-        <p>No inter-phase assessment data available</p>
-        <p className="help-text">Inter-phase assessment requires multiple cells with context dependencies.</p>
+        <p>No inter-cell assessment data available</p>
+        <p className="help-text">Inter-cell assessment requires multiple cells with context dependencies.</p>
       </div>
     );
   }
@@ -670,7 +670,7 @@ const InterPhaseContent = ({ data, selectedCell, onCellSelect, selectedMessage, 
   const scoreDistribution = calculateScoreDistribution(allMessages);
 
   return (
-    <div className="inter-phase-content">
+    <div className="inter-cell-content">
       {/* Strategy Legend */}
       <div className="strategy-legend">
         <div className="legend-title">Scoring Strategies:</div>
@@ -703,7 +703,7 @@ const InterPhaseContent = ({ data, selectedCell, onCellSelect, selectedMessage, 
       </div>
 
       {/* Filters */}
-      <div className="inter-phase-filters">
+      <div className="inter-cell-filters">
         <div className="filter-group">
           <label>Target Cell:</label>
           <select
@@ -998,9 +998,9 @@ const calculateScoreDistribution = (messages) => {
 };
 
 /**
- * Intra-phase content with compression timeline
+ * Intra-cell content with compression timeline
  */
-const IntraPhaseContent = ({ data, selectedCell, onCellSelect }) => {
+const IntraCellContent = ({ data, selectedCell, onCellSelect }) => {
   const [selectedConfig, setSelectedConfig] = useState({ window: 5, mask_after: 3 });
   const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'timeline'
 
@@ -1008,8 +1008,8 @@ const IntraPhaseContent = ({ data, selectedCell, onCellSelect }) => {
     return (
       <div className="empty-content">
         <Icon icon="mdi:information-outline" width={24} />
-        <p>No intra-phase assessment data available</p>
-        <p className="help-text">Intra-phase assessment requires multi-turn cells.</p>
+        <p>No intra-cell assessment data available</p>
+        <p className="help-text">Intra-cell assessment requires multi-turn cells.</p>
       </div>
     );
   }
@@ -1021,7 +1021,7 @@ const IntraPhaseContent = ({ data, selectedCell, onCellSelect }) => {
   const configComparison = calculateConfigComparison(data);
 
   return (
-    <div className="intra-phase-content">
+    <div className="intra-cell-content">
       {/* Config explanation */}
       <div className="config-explanation">
         <Icon icon="mdi:information-outline" width={14} />

@@ -71,9 +71,9 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
 
 @dataclass
 class ExecutionNode:
-    """Represents a single execution unit (phase attempt, sounding, etc.)"""
+    """Represents a single execution unit (cell attempt, sounding, etc.)"""
     node_id: str
-    node_type: str  # 'cascade', 'phase', 'turn', 'message', 'sounding', 'reforge', 'sub_cascade'
+    node_type: str  # 'cascade', 'cell', 'turn', 'message', 'sounding', 'reforge', 'sub_cascade'
     name: str  # Display name or content preview
     session_id: str
     parent_id: Optional[str] = None
@@ -158,8 +158,8 @@ class ExecutionTreeBuilder:
             # Determine display name based on type
             if node_type == 'cascade':
                 name = content.replace("Cascade: ", "") if content and content.startswith("Cascade: ") else content or "Cascade"
-            elif node_type == 'phase':
-                name = content.replace("Phase: ", "") if content and content.startswith("Phase: ") else content or "Phase"
+            elif node_type == 'cell':
+                name = content.replace("Cell: ", "") if content and content.startswith("Cell: ") else content or "Cell"
             elif node_type == 'turn':
                 name = f"Turn {meta.get('turn_number', '?')}"
             elif node_type in ('system', 'user', 'turn_input', 'turn_output', 'tool_result', 'injection', 'follow_up'):
@@ -207,11 +207,11 @@ class ExecutionTreeBuilder:
 
         Uses similar semantics as visualizer.py:
         - Builds hierarchy from trace_id/parent_id relationships
-        - Collects cascades, phases, turns, and all messages
+        - Collects cascades, cells, turns, and all messages
         - Shows content previews for all message types
-        - Properly groups messages under their phases
+        - Properly groups messages under their cells
 
-        Returns a hierarchical structure with phases containing their messages.
+        Returns a hierarchical structure with cells containing their messages.
         """
         conn = self._get_connection()
 
@@ -242,7 +242,7 @@ class ExecutionTreeBuilder:
         nodes_map = self._build_nodes_map(events)
         root_nodes = self._build_hierarchy(nodes_map)
 
-        # Find cascade and phases
+        # Find cascade and cells
         cascade_node = None
         for node in root_nodes:
             if node.node_type == 'cascade':
@@ -253,7 +253,7 @@ class ExecutionTreeBuilder:
         tree = {
             'session_id': session_id,
             'cascade': None,
-            'phases': [],
+            'cells': [],
             'sub_cascades': []
         }
 
@@ -264,21 +264,21 @@ class ExecutionTreeBuilder:
                 'child_count': len(cascade_node.children)
             }
 
-        # Collect phases with their messages
-        phase_nodes = [n for n in nodes_map.values() if n.node_type == 'phase']
-        phase_nodes.sort(key=lambda n: n.timestamp or 0)
+        # Collect cells with their messages
+        cell_nodes = [n for n in nodes_map.values() if n.node_type == 'cell']
+        cell_nodes.sort(key=lambda n: n.timestamp or 0)
 
-        for phase_node in phase_nodes:
-            phase_data = self._build_phase_data(phase_node, nodes_map)
-            tree['phases'].append(phase_data)
+        for cell_node in cell_nodes:
+            cell_data = self._build_cell_data(cell_node, nodes_map)
+            tree['cells'].append(cell_data)
 
         return tree
 
-    def _build_phase_data(self, phase_node: ExecutionNode, nodes_map: Dict[str, ExecutionNode]) -> Dict:
-        """Build structured data for a phase including all its messages and sub-cascades."""
-        # Collect all turn traces under this phase
+    def _build_cell_data(self, cell_node: ExecutionNode, nodes_map: Dict[str, ExecutionNode]) -> Dict:
+        """Build structured data for a cell including all its messages and sub-cascades."""
+        # Collect all turn traces under this cell
         turn_traces = set()
-        for child in phase_node.children:
+        for child in cell_node.children:
             if child.node_type == 'turn':
                 turn_traces.add(child.node_id)
 
@@ -291,11 +291,11 @@ class ExecutionTreeBuilder:
                     if child.node_type == 'tool':
                         tool_traces.add(child.node_id)
 
-        # Collect messages belonging to this phase
+        # Collect messages belonging to this cell
         messages = []
 
-        # Direct children of phase (system, user, injection, validation, validation_retry)
-        for child in phase_node.children:
+        # Direct children of cell (system, user, injection, validation, validation_retry)
+        for child in cell_node.children:
             if child.node_type in ('system', 'user', 'injection', 'validation', 'schema_validation', 'validation_retry'):
                 messages.append(self._build_message_data(child))
 
@@ -321,15 +321,15 @@ class ExecutionTreeBuilder:
         # Sort messages by timestamp
         messages.sort(key=lambda m: m.get('timestamp') or 0)
 
-        # Check for sub-cascades (cascade nodes that are children of this phase)
+        # Check for sub-cascades (cascade nodes that are children of this cell)
         sub_cascades = []
-        for child in phase_node.children:
+        for child in cell_node.children:
             if child.node_type == 'cascade':
                 sub_cascade_data = self._build_sub_cascade_data(child, nodes_map)
                 sub_cascades.append(sub_cascade_data)
 
         # Also check for sub-cascades via sub_cascade node type
-        for child in phase_node.children:
+        for child in cell_node.children:
             if child.node_type == 'sub_cascade':
                 # Find the actual cascade node under this
                 for grandchild in child.children:
@@ -341,7 +341,7 @@ class ExecutionTreeBuilder:
         soundings = []
         sounding_attempts = [n for n in nodes_map.values()
                            if n.node_type == 'sounding_attempt'
-                           and n.metadata.get('cell_name') == phase_node.name]
+                           and n.metadata.get('cell_name') == cell_node.name]
 
         if sounding_attempts:
             for attempt in sounding_attempts:
@@ -357,7 +357,7 @@ class ExecutionTreeBuilder:
         evaluator_content = ""
         evaluator_entries = [n for n in nodes_map.values()
                            if n.node_type in ('evaluator', 'evaluation')
-                           and n.metadata.get('cell_name') == phase_node.name]
+                           and n.metadata.get('cell_name') == cell_node.name]
         if evaluator_entries:
             evaluator_content = evaluator_entries[0].content or ""
 
@@ -365,7 +365,7 @@ class ExecutionTreeBuilder:
         quartermaster_entry = None
         qm_entries = [n for n in nodes_map.values()
                      if n.node_type == 'quartermaster_result'
-                     and n.metadata.get('cell_name') == phase_node.name]
+                     and n.metadata.get('cell_name') == cell_node.name]
         if qm_entries:
             quartermaster_entry = {
                 'content': qm_entries[0].content or "",
@@ -375,7 +375,7 @@ class ExecutionTreeBuilder:
 
         # Check for wards
         wards = {'pre': [], 'post': []}
-        for child in phase_node.children:
+        for child in cell_node.children:
             if child.node_type == 'pre_ward':
                 wards['pre'].append({
                     'validator': child.metadata.get('validator', 'validator'),
@@ -391,16 +391,16 @@ class ExecutionTreeBuilder:
                     'reason': child.metadata.get('reason', '')
                 })
 
-        # Determine phase type
-        phase_type = 'simple'
+        # Determine cell type
+        cell_type = 'simple'
         if soundings:
-            phase_type = 'soundings'
-        elif phase_node.metadata.get('has_soundings'):
-            phase_type = 'soundings'
+            cell_type = 'soundings'
+        elif cell_node.metadata.get('has_soundings'):
+            cell_type = 'soundings'
         elif wards['pre'] or wards['post']:
-            phase_type = 'wards'
+            cell_type = 'wards'
         elif sub_cascades:
-            phase_type = 'sub_cascade'
+            cell_type = 'sub_cascade'
 
         # Check for winner
         winner_index = None
@@ -410,9 +410,9 @@ class ExecutionTreeBuilder:
                 break
 
         return {
-            'name': phase_node.name,
-            'id': phase_node.node_id,
-            'type': phase_type,
+            'name': cell_node.name,
+            'id': cell_node.node_id,
+            'type': cell_type,
             'messages': messages,
             'message_count': len(messages),
             'soundings': soundings if soundings else None,
@@ -421,27 +421,27 @@ class ExecutionTreeBuilder:
             'quartermaster': quartermaster_entry,
             'wards': wards if (wards['pre'] or wards['post']) else None,
             'sub_cascades': sub_cascades if sub_cascades else None,
-            'handoffs': phase_node.metadata.get('handoffs', []),
-            'timestamp': phase_node.timestamp
+            'handoffs': cell_node.metadata.get('handoffs', []),
+            'timestamp': cell_node.timestamp
         }
 
     def _build_sub_cascade_data(self, cascade_node: ExecutionNode, nodes_map: Dict[str, ExecutionNode]) -> Dict:
-        """Build structured data for a sub-cascade including all its phases."""
-        # Find all phases under this cascade
-        sub_phases = []
+        """Build structured data for a sub-cascade including all its cells."""
+        # Find all cells under this cascade
+        sub_cells = []
         for child in cascade_node.children:
-            if child.node_type == 'phase':
-                phase_data = self._build_phase_data(child, nodes_map)
-                sub_phases.append(phase_data)
+            if child.node_type == 'cell':
+                cell_data = self._build_cell_data(child, nodes_map)
+                sub_cells.append(cell_data)
 
         # Sort by timestamp
-        sub_phases.sort(key=lambda p: p.get('timestamp') or 0)
+        sub_cells.sort(key=lambda p: p.get('timestamp') or 0)
 
         return {
             'id': cascade_node.node_id,
             'name': cascade_node.name,
-            'phases': sub_phases,
-            'phase_count': len(sub_phases),
+            'cells': sub_cells,
+            'cell_count': len(sub_cells),
             'timestamp': cascade_node.timestamp
         }
 
@@ -514,7 +514,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
     Uses similar semantics as visualizer.py:
     - Cascade as outer container
-    - Phases as subgraphs containing message nodes
+    - Cells as subgraphs containing message nodes
     - Messages connected sequentially (SYS → USE → 💬 → ...)
     - Soundings with parallel attempts and winner highlighting
     - Wards as checkpoints
@@ -523,21 +523,21 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
     {
         'nodes': [
             {
-                'id': 'phase_0',
-                'type': 'phaseGroup',
+                'id': 'cell_0',
+                'type': 'cellGroup',
                 'position': {'x': 0, 'y': 0},
-                'data': {'label': 'Phase 1', 'messages': [...]}
+                'data': {'label': 'Cell 1', 'messages': [...]}
             },
             {
-                'id': 'phase_0_msg_0',
+                'id': 'cell_0_msg_0',
                 'type': 'messageNode',
-                'parentNode': 'phase_0',
+                'parentNode': 'cell_0',
                 'data': {'label': 'SYS: ...', 'style': 'system'}
             },
             ...
         ],
         'edges': [
-            {'id': 'e_msg_0_1', 'source': 'phase_0_msg_0', 'target': 'phase_0_msg_1'},
+            {'id': 'e_msg_0_1', 'source': 'cell_0_msg_0', 'target': 'cell_0_msg_1'},
             ...
         ]
     }
@@ -561,29 +561,29 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
     cell_ids = []
     prev_cell_last_node = None
 
-    for phase_idx, phase in enumerate(cells):
-        phase_id = f"phase_{phase_idx}"
-        phase_ids.append(phase_id)
-        x_offset = phase_idx * x_spacing
+    for cell_idx, cell in enumerate(cells):
+        cell_id = f"cell_{cell_idx}"
+        cell_ids.append(cell_id)
+        x_offset = cell_idx * x_spacing
 
-        phase_type = phase.get('type', 'simple')
-        messages = phase.get('messages', [])
-        soundings = phase.get('soundings') or []
-        wards = phase.get('wards')
+        cell_type = cell.get('type', 'simple')
+        messages = cell.get('messages', [])
+        soundings = cell.get('soundings') or []
+        wards = cell.get('wards')
 
-        if phase_type == 'soundings' and soundings:
-            # === SOUNDINGS PHASE ===
+        if cell_type == 'soundings' and soundings:
+            # === SOUNDINGS CELL ===
             # Create group node for soundings
-            group_id = f"{phase_id}_soundings_group"
+            group_id = f"{cell_id}_soundings_group"
             nodes.append({
                 'id': group_id,
                 'type': 'soundingsGroup',
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
-                    'label': f"🔱 {phase['name']}",
-                    'cell_name': phase['name'],
+                    'label': f"🔱 {cell['name']}",
+                    'cell_name': cell['name'],
                     'sounding_count': len(soundings),
-                    'winner_index': phase.get('winner_index'),
+                    'winner_index': cell.get('winner_index'),
                     'type': 'soundings'
                 },
                 'style': {'backgroundColor': '#fff3bf', 'border': '2px solid #fab005'}
@@ -595,7 +595,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 idx = sounding.get('index', 0)
                 is_winner = sounding.get('is_winner', False)
                 content_preview = sounding.get('preview', '')
-                sounding_id = f"{phase_id}_sounding_{idx}"
+                sounding_id = f"{cell_id}_sounding_{idx}"
                 attempt_ids.append(sounding_id)
                 y_pos = idx * y_spacing
 
@@ -629,9 +629,9 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 })
 
             # Add evaluator node with content preview
-            eval_id = f"{phase_id}_evaluator"
+            eval_id = f"{cell_id}_evaluator"
             eval_y = len(soundings) * y_spacing + 60
-            evaluator_content = phase.get('evaluator_content', '')
+            evaluator_content = cell.get('evaluator_content', '')
             if evaluator_content:
                 eval_preview = sanitize_label(evaluator_content, 35)
                 eval_label = f"⚖️ {eval_preview}"
@@ -659,9 +659,9 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 })
 
             # Add winner output node if there's a winner
-            winner_index = phase.get('winner_index')
+            winner_index = cell.get('winner_index')
             if winner_index is not None:
-                winner_id = f"{phase_id}_winner"
+                winner_id = f"{cell_id}_winner"
                 # Find the winner's content
                 winner_content = ""
                 for s in soundings:
@@ -689,20 +689,20 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'animated': True,
                     'style': {'stroke': '#37b24d', 'strokeWidth': 3}
                 })
-                prev_phase_last_node = winner_id
+                prev_cell_last_node = winner_id
             else:
-                prev_phase_last_node = eval_id
+                prev_cell_last_node = eval_id
 
         elif wards and (wards.get('pre') or wards.get('post')):
-            # === WARDS PHASE ===
-            group_id = f"{phase_id}_wards_group"
+            # === WARDS CELL ===
+            group_id = f"{cell_id}_wards_group"
             nodes.append({
                 'id': group_id,
                 'type': 'wardsGroup',
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
-                    'label': f"🛡️ {phase['name']}",
-                    'cell_name': phase['name'],
+                    'label': f"🛡️ {cell['name']}",
+                    'cell_name': cell['name'],
                     'type': 'wards'
                 },
                 'style': {'backgroundColor': '#e3fafc', 'border': '2px solid #15aabf'}
@@ -713,7 +713,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             # Pre-wards
             for j, ward in enumerate(wards.get('pre', [])):
-                ward_id = f"{phase_id}_pre_ward_{j}"
+                ward_id = f"{cell_id}_pre_ward_{j}"
                 internal_ids.append(ward_id)
 
                 validator = ward.get('validator', 'validator')
@@ -739,22 +739,22 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 y_pos += y_spacing
 
             # Main execution node
-            exec_id = f"{phase_id}_exec"
+            exec_id = f"{cell_id}_exec"
             internal_ids.append(exec_id)
             nodes.append({
                 'id': exec_id,
-                'type': 'phaseExecNode',
+                'type': 'cellExecNode',
                 'position': {'x': 20, 'y': y_pos},
                 'parentNode': group_id,
                 'extent': 'parent',
-                'data': {'label': phase['name']},
+                'data': {'label': cell['name']},
                 'style': {'backgroundColor': '#e7f5ff', 'border': '2px solid #1c7ed6'}
             })
             y_pos += y_spacing
 
             # Post-wards
             for j, ward in enumerate(wards.get('post', [])):
-                ward_id = f"{phase_id}_post_ward_{j}"
+                ward_id = f"{cell_id}_post_ward_{j}"
                 internal_ids.append(ward_id)
 
                 validator = ward.get('validator', 'validator')
@@ -787,12 +787,12 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'target': internal_ids[k + 1]
                 })
 
-            prev_phase_last_node = internal_ids[-1] if internal_ids else group_id
+            prev_cell_last_node = internal_ids[-1] if internal_ids else group_id
 
-        elif phase_type == 'sub_cascade' and phase.get('sub_cascades'):
-            # === PHASE WITH SUB-CASCADE ===
-            # Render the phase with nested sub-cascade(s)
-            sub_cascades = phase.get('sub_cascades', [])
+        elif cell_type == 'sub_cascade' and cell.get('sub_cascades'):
+            # === CELL WITH SUB-CASCADE ===
+            # Render the cell with nested sub-cascade(s)
+            sub_cascades = cell.get('sub_cascades', [])
 
             # Calculate total height needed
             total_sub_height = 0
@@ -806,14 +806,14 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
             cell_msgs_height = len(messages) * y_spacing if messages else 0
             group_height = max(200, cell_msgs_height + total_sub_height + 120)
 
-            group_id = f"{phase_id}_group"
+            group_id = f"{cell_id}_group"
             nodes.append({
                 'id': group_id,
-                'type': 'subCascadePhaseGroup',
+                'type': 'subCascadeCellGroup',
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
-                    'label': phase['name'],
-                    'cell_name': phase['name'],
+                    'label': cell['name'],
+                    'cell_name': cell['name'],
                     'message_count': len(messages),
                     'sub_cascade_count': len(sub_cascades),
                     'type': 'sub_cascade'
@@ -829,9 +829,9 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
             y_pos = 40
             all_node_ids = []
 
-            # Render phase messages first (before sub-cascade)
+            # Render cell messages first (before sub-cascade)
             for j, msg in enumerate(messages):
-                msg_id = f"{phase_id}_msg_{j}"
+                msg_id = f"{cell_id}_msg_{j}"
                 all_node_ids.append(msg_id)
 
                 style = msg.get('style', 'default')
@@ -874,7 +874,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             # Render each sub-cascade as a nested container
             for sc_idx, sub_cascade in enumerate(sub_cascades):
-                sc_id = f"{phase_id}_subcascade_{sc_idx}"
+                sc_id = f"{cell_id}_subcascade_{sc_idx}"
                 sc_cells = sub_cascade.get('cells', [])
 
                 # Calculate sub-cascade height
@@ -883,7 +883,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     sp_msgs = sp.get('messages', [])
                     sc_height += max(80, len(sp_msgs) * y_spacing + 50)
 
-                # Sub-cascade container (nested inside phase)
+                # Sub-cascade container (nested inside cell)
                 nodes.append({
                     'id': sc_id,
                     'type': 'subCascadeGroup',
@@ -893,7 +893,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'data': {
                         'label': f"📦 {sub_cascade.get('name', 'Sub-Cascade')}",
                         'cascade_name': sub_cascade.get('name', ''),
-                        'phase_count': len(sc_phases)
+                        'cell_count': len(sc_cells)
                     },
                     'style': {
                         'backgroundColor': '#f8f0fc',
@@ -905,24 +905,24 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 })
                 all_node_ids.append(sc_id)
 
-                # Render sub-cascade phases inside the sub-cascade container
+                # Render sub-cascade cells inside the sub-cascade container
                 sc_y_pos = 40
-                sc_phase_ids = []
-                for sp_idx, sub_phase in enumerate(sc_phases):
-                    sp_id = f"{sc_id}_phase_{sp_idx}"
-                    sc_phase_ids.append(sp_id)
-                    sp_msgs = sub_phase.get('messages', [])
+                sc_cell_ids = []
+                for sp_idx, sub_cell in enumerate(sc_cells):
+                    sp_id = f"{sc_id}_cell_{sp_idx}"
+                    sc_cell_ids.append(sp_id)
+                    sp_msgs = sub_cell.get('messages', [])
                     sp_height = max(60, len(sp_msgs) * (y_spacing - 10) + 40)
 
-                    # Sub-phase container
+                    # Sub-cell container
                     nodes.append({
                         'id': sp_id,
-                        'type': 'nestedPhaseGroup',
+                        'type': 'nestedCellGroup',
                         'position': {'x': 10, 'y': sc_y_pos},
                         'parentNode': sc_id,
                         'extent': 'parent',
                         'data': {
-                            'label': sub_phase.get('name', ''),
+                            'label': sub_cell.get('name', ''),
                             'message_count': len(sp_msgs)
                         },
                         'style': {
@@ -933,7 +933,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                         }
                     })
 
-                    # Render messages inside sub-phase
+                    # Render messages inside sub-cell
                     sp_msg_y = 30
                     sp_msg_ids = []
                     for m_idx, sp_msg in enumerate(sp_msgs):
@@ -979,7 +979,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                         })
                         sp_msg_y += y_spacing - 10
 
-                    # Connect messages in sub-phase
+                    # Connect messages in sub-cell
                     for k in range(len(sp_msg_ids) - 1):
                         edges.append({
                             'id': f"e_{sp_msg_ids[k]}_to_{sp_msg_ids[k+1]}",
@@ -989,12 +989,12 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
                     sc_y_pos += sp_height + 10
 
-                # Connect sub-phases within sub-cascade
-                for k in range(len(sc_phase_ids) - 1):
+                # Connect sub-cells within sub-cascade
+                for k in range(len(sc_cell_ids) - 1):
                     edges.append({
-                        'id': f"e_{sc_phase_ids[k]}_to_{sc_phase_ids[k+1]}",
-                        'source': sc_phase_ids[k],
-                        'target': sc_phase_ids[k + 1],
+                        'id': f"e_{sc_cell_ids[k]}_to_{sc_cell_ids[k+1]}",
+                        'source': sc_cell_ids[k],
+                        'target': sc_cell_ids[k + 1],
                         'style': {'stroke': '#be4bdb'}
                     })
 
@@ -1008,15 +1008,15 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'target': all_node_ids[k + 1]
                 })
 
-            prev_phase_last_node = all_node_ids[-1] if all_node_ids else group_id
+            prev_cell_last_node = all_node_ids[-1] if all_node_ids else group_id
 
         else:
-            # === SIMPLE PHASE WITH MESSAGES ===
-            # Create phase group containing messages
-            group_id = f"{phase_id}_group"
+            # === SIMPLE CELL WITH MESSAGES ===
+            # Create cell group containing messages
+            group_id = f"{cell_id}_group"
 
             # Check for quartermaster entry
-            quartermaster = phase.get('quartermaster')
+            quartermaster = cell.get('quartermaster')
 
             # Calculate group height based on message count + quartermaster
             extra_height = y_spacing if quartermaster else 0
@@ -1024,11 +1024,11 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             nodes.append({
                 'id': group_id,
-                'type': 'phaseGroup',
+                'type': 'cellGroup',
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
-                    'label': phase['name'],
-                    'cell_name': phase['name'],
+                    'label': cell['name'],
+                    'cell_name': cell['name'],
                     'message_count': len(messages),
                     'has_quartermaster': quartermaster is not None,
                     'type': 'simple'
@@ -1047,7 +1047,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             # Add quartermaster decision node first (if present)
             if quartermaster:
-                qm_id = f"{phase_id}_qm"
+                qm_id = f"{cell_id}_qm"
                 all_node_ids.append(qm_id)
                 selected_traits = quartermaster.get('selected_traits', [])
                 if selected_traits:
@@ -1077,9 +1077,9 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 })
                 y_pos += y_spacing
 
-            # Create message nodes inside phase group
+            # Create message nodes inside cell group
             for j, msg in enumerate(messages):
-                msg_id = f"{phase_id}_msg_{j}"
+                msg_id = f"{cell_id}_msg_{j}"
                 msg_ids.append(msg_id)
                 all_node_ids.append(msg_id)
 
@@ -1134,32 +1134,32 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'target': all_node_ids[k + 1]
                 })
 
-            prev_phase_last_node = all_node_ids[-1] if all_node_ids else group_id
+            prev_cell_last_node = all_node_ids[-1] if all_node_ids else group_id
 
-    # Connect phases - need to find the correct group IDs
-    phase_group_ids = []
-    for phase_idx, phase in enumerate(phases):
-        phase_id = f"phase_{phase_idx}"
-        phase_type = phase.get('type', 'simple')
-        soundings = phase.get('soundings') or []
-        wards = phase.get('wards')
-        sub_cascades = phase.get('sub_cascades') or []
+    # Connect cells - need to find the correct group IDs
+    cell_group_ids = []
+    for cell_idx, cell in enumerate(cells):
+        cell_id = f"cell_{cell_idx}"
+        cell_type = cell.get('type', 'simple')
+        soundings = cell.get('soundings') or []
+        wards = cell.get('wards')
+        sub_cascades = cell.get('sub_cascades') or []
 
-        if phase_type == 'soundings' and soundings:
-            phase_group_ids.append(f"{phase_id}_soundings_group")
+        if cell_type == 'soundings' and soundings:
+            cell_group_ids.append(f"{cell_id}_soundings_group")
         elif wards and (wards.get('pre') or wards.get('post')):
-            phase_group_ids.append(f"{phase_id}_wards_group")
-        elif phase_type == 'sub_cascade' and sub_cascades:
-            phase_group_ids.append(f"{phase_id}_group")
+            cell_group_ids.append(f"{cell_id}_wards_group")
+        elif cell_type == 'sub_cascade' and sub_cascades:
+            cell_group_ids.append(f"{cell_id}_group")
         else:
-            phase_group_ids.append(f"{phase_id}_group")
+            cell_group_ids.append(f"{cell_id}_group")
 
-    # Create edges between consecutive phases
-    for i in range(len(phase_group_ids) - 1):
+    # Create edges between consecutive cells
+    for i in range(len(cell_group_ids) - 1):
         edges.append({
-            'id': f"e_phase_{i}_to_{i+1}",
-            'source': phase_group_ids[i],
-            'target': phase_group_ids[i + 1],
+            'id': f"e_cell_{i}_to_{i+1}",
+            'source': cell_group_ids[i],
+            'target': cell_group_ids[i + 1],
             'animated': True,
             'style': {'stroke': '#1c7ed6', 'strokeWidth': 2}
         })

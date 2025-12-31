@@ -110,7 +110,7 @@
   font-style: italic;
 }
 
-.ce-summary-phase {
+.ce-summary-cell {
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
   font-family: var(--font-mono);
@@ -244,7 +244,7 @@
   font-size: 10px;
 }
 
-.ce-msg-phase {
+.ce-msg-cell {
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -453,7 +453,7 @@
   font-size: 10px;
 }
 
-.ce-block-phase {
+.ce-block-cell {
   font-size: 11px;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);

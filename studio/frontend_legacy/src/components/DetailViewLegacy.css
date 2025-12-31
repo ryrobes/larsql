@@ -201,18 +201,18 @@
   letter-spacing: 0.5px;
 }
 
-/* Phase Timeline */
-.phase-timeline-section {
+/* Cell Timeline */
+.cell-timeline-section {
   margin-bottom: 24px;
 }
 
-.phase-timeline {
+.cell-timeline {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.phase-timeline-item {
+.cell-timeline-item {
   cursor: pointer;
   transition: all 0.2s ease;
   border-radius: 8px;
@@ -221,12 +221,12 @@
   border: 1px solid transparent;
 }
 
-.phase-timeline-item:hover {
+.cell-timeline-item:hover {
   background: rgba(74, 158, 221, 0.1);
   border-color: #4A9EDD;
 }
 
-.phase-timeline-item.active {
+.cell-timeline-item.active {
   background: rgba(74, 158, 221, 0.15);
   border-color: #4A9EDD;
   box-shadow: 0 0 12px rgba(74, 158, 221, 0.3);

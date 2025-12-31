@@ -1,4 +1,4 @@
-/* CascadeBar - Stacked cost visualization across all phases */
+/* CascadeBar - Stacked cost visualization across all cells */
 /* A thick, distinctive bar showing cost distribution at a glance */
 
 .cascade-bar-container {
@@ -104,7 +104,7 @@
   filter: brightness(1.2);
   transform: scaleY(1.1);
   z-index: 10;
-  box-shadow: 0 0 12px var(--phase-color);
+  box-shadow: 0 0 12px var(--cell-color);
 }
 
 .cascade-segment.hovered .segment-glow {
@@ -189,7 +189,7 @@
   }
 }
 
-.tooltip-phase-name {
+.tooltip-cell-name {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -377,7 +377,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Clickable legend items (for completed phases with output) */
+/* Clickable legend items (for completed cells with output) */
 .legend-item.clickable {
   cursor: pointer;
   border: 1px solid transparent;
@@ -402,11 +402,11 @@
   color: #5EEAD4;
 }
 
-/* Phase output panel */
-.phase-output-panel {
+/* Cell output panel */
+.cell-output-panel {
   margin-top: 0.75rem;
   background: linear-gradient(135deg, rgba(22, 32, 42, 0.8) 0%, rgba(11, 18, 25, 0.95) 100%);
-  border: 1px solid var(--phase-color, rgba(74, 158, 221, 0.3));
+  border: 1px solid var(--cell-color, rgba(74, 158, 221, 0.3));
   border-radius: 10px;
   overflow: hidden;
   animation: panel-slide-in 0.2s ease-out;
@@ -423,7 +423,7 @@
   }
 }
 
-.phase-output-header {
+.cell-output-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -432,27 +432,27 @@
   border-bottom: 1px solid rgba(74, 158, 221, 0.1);
 }
 
-.phase-output-title {
+.cell-output-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.phase-output-color {
+.cell-output-color {
   width: 10px;
   height: 10px;
   border-radius: 3px;
   flex-shrink: 0;
-  box-shadow: 0 0 6px var(--phase-color, rgba(94, 234, 212, 0.5));
+  box-shadow: 0 0 6px var(--cell-color, rgba(94, 234, 212, 0.5));
 }
 
-.phase-output-name {
+.cell-output-name {
   font-size: 0.85rem;
   font-weight: 600;
   color: #F0F4F8;
 }
 
-.phase-output-label {
+.cell-output-label {
   font-size: 0.7rem;
   color: #9AA5B1;
   text-transform: uppercase;
@@ -462,7 +462,7 @@
   border-radius: 4px;
 }
 
-.phase-output-close {
+.cell-output-close {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -476,13 +476,13 @@
   transition: all 0.2s ease;
 }
 
-.phase-output-close:hover {
+.cell-output-close:hover {
   background: rgba(248, 113, 113, 0.2);
   border-color: rgba(248, 113, 113, 0.3);
   color: #f87171;
 }
 
-.phase-output-content {
+.cell-output-content {
   padding: 1rem;
   max-height: 400px;
   overflow-y: auto;
@@ -490,61 +490,61 @@
   scrollbar-color: rgba(74, 158, 221, 0.3) transparent;
 }
 
-.phase-output-content::-webkit-scrollbar {
+.cell-output-content::-webkit-scrollbar {
   width: 6px;
 }
 
-.phase-output-content::-webkit-scrollbar-track {
+.cell-output-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.phase-output-content::-webkit-scrollbar-thumb {
+.cell-output-content::-webkit-scrollbar-thumb {
   background: rgba(74, 158, 221, 0.3);
   border-radius: 3px;
 }
 
-.phase-output-content::-webkit-scrollbar-thumb:hover {
+.cell-output-content::-webkit-scrollbar-thumb:hover {
   background: rgba(74, 158, 221, 0.5);
 }
 
 /* Override RichMarkdown styles for compact display in panel */
-.phase-output-content .rich-markdown {
+.cell-output-content .rich-markdown {
   font-size: 0.9rem;
   line-height: 1.6;
 }
 
-.phase-output-content .rich-markdown p {
+.cell-output-content .rich-markdown p {
   margin: 0 0 0.75rem 0;
 }
 
-.phase-output-content .rich-markdown p:last-child {
+.cell-output-content .rich-markdown p:last-child {
   margin-bottom: 0;
 }
 
-.phase-output-content .rich-markdown pre {
+.cell-output-content .rich-markdown pre {
   margin: 0.75rem 0;
   font-size: 0.85rem;
 }
 
-.phase-output-content .rich-markdown h1,
-.phase-output-content .rich-markdown h2,
-.phase-output-content .rich-markdown h3 {
+.cell-output-content .rich-markdown h1,
+.cell-output-content .rich-markdown h2,
+.cell-output-content .rich-markdown h3 {
   margin-top: 1rem;
   margin-bottom: 0.5rem;
 }
 
-.phase-output-content .rich-markdown h1:first-child,
-.phase-output-content .rich-markdown h2:first-child,
-.phase-output-content .rich-markdown h3:first-child {
+.cell-output-content .rich-markdown h1:first-child,
+.cell-output-content .rich-markdown h2:first-child,
+.cell-output-content .rich-markdown h3:first-child {
   margin-top: 0;
 }
 
-.phase-output-content .rich-markdown ul,
-.phase-output-content .rich-markdown ol {
+.cell-output-content .rich-markdown ul,
+.cell-output-content .rich-markdown ol {
   margin: 0.5rem 0;
   padding-left: 1.5rem;
 }
 
-.phase-output-content .rich-markdown li {
+.cell-output-content .rich-markdown li {
   margin-bottom: 0.25rem;
 }

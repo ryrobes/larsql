@@ -79,10 +79,10 @@ class TestContextVariables:
         assert result == "Current user: user_123, Mode: debug"
 
     def test_outputs_access(self):
-        """Access outputs from previous phases."""
-        template = "Previous result: {{ outputs.phase_1 }}"
+        """Access outputs from previous cells."""
+        template = "Previous result: {{ outputs.cell_1 }}"
         result = render_instruction(template, {
-            "outputs": {"phase_1": "completed successfully"}
+            "outputs": {"cell_1": "completed successfully"}
         })
         assert result == "Previous result: completed successfully"
 
@@ -352,13 +352,13 @@ Line 3: {{ c }}"""
 class TestCascadePatterns:
     """Test patterns commonly used in cascade instructions."""
 
-    def test_typical_phase_instruction(self):
-        """Typical phase instruction pattern."""
+    def test_typical_cell_instruction(self):
+        """Typical cell instruction pattern."""
         template = """You are a helpful assistant.
 
 The user wants to: {{ input.task }}
 
-Previous analysis showed: {{ outputs.analysis_phase }}
+Previous analysis showed: {{ outputs.analysis_cell }}
 
 Current state:
 - User: {{ state.user_name }}
@@ -368,7 +368,7 @@ Please proceed with the task."""
 
         result = render_instruction(template, {
             "input": {"task": "summarize the document"},
-            "outputs": {"analysis_phase": "Document contains 5 sections"},
+            "outputs": {"analysis_cell": "Document contains 5 sections"},
             "state": {
                 "user_name": "Alice",
                 "session_type": "interactive"

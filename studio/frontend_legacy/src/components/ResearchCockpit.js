@@ -17,9 +17,9 @@ import './ResearchCockpit.css';
  * Features:
  * - Live cascade execution with real-time updates
  * - Interactive decision points rendered inline
- * - Right sidebar showing orchestration state (phases, costs, tools, models)
+ * - Right sidebar showing orchestration state (cells, costs, tools, models)
  * - Timeline of results that grows as cascade executes
- * - Visual indicators for "thinking", tool calls, phase transitions
+ * - Visual indicators for "thinking", tool calls, cell transitions
  *
  * Unlike Perplexity: You SEE the orchestration, costs, tool selection, multi-model thinking
  */
@@ -157,13 +157,13 @@ function ResearchCockpit({
       setCheckpointHistory([]); // Clear checkpoint history for new session
       setGhostMessages([]); // Clear ghost messages for new session
       setOrchestrationState({
-        currentPhase: null,
+        currentCell: null,
         currentModel: null,
         totalCost: 0,
         turnCount: 0,
         status: 'idle',
         lastToolCall: null,
-        phaseHistory: [],
+        cellHistory: [],
         soundings: null
       });
     } else {
@@ -184,13 +184,13 @@ function ResearchCockpit({
   const [ghostMessages, setGhostMessages] = useState([]); // Live thinking/tool messages (cleared on checkpoint)
   const [cascadeInputs, setCascadeInputs] = useState(null); // Initial inputs when cascade started
   const [orchestrationState, setOrchestrationState] = useState({
-    currentPhase: null,
+    currentCell: null,
     currentModel: null,
     totalCost: 0,
     turnCount: 0,
     status: 'idle', // idle, thinking, tool_running, waiting_human
     lastToolCall: null,
-    phaseHistory: [],
+    cellHistory: [],
     soundings: null
   });
   const [roundEvents, setRoundEvents] = useState([]); // Events accumulated during current agent round
@@ -451,19 +451,19 @@ function ResearchCockpit({
           .filter(e => e.cost && e.cost > 0)
           .reduce((sum, e) => sum + e.cost, 0);
 
-        // Get current/last phase
+        // Get current/last cell
         const lastEntry = entries[entries.length - 1];
-        const currentPhase = lastEntry?.cell_name;
+        const currentCell = lastEntry?.cell_name;
         const currentModel = lastEntry?.model;
 
         // Count turns (assistant messages)
         const turnCount = entries.filter(e => e.role === 'assistant').length;
 
-        // Compute phase costs
-        const phaseCosts = {};
+        // Compute cell costs
+        const cellCosts = {};
         entries.forEach(e => {
           if (e.cell_name && e.cost > 0) {
-            phaseCosts[e.cell_name] = (phaseCosts[e.cell_name] || 0) + e.cost;
+            cellCosts[e.cell_name] = (cellCosts[e.cell_name] || 0) + e.cost;
           }
         });
 
@@ -475,10 +475,10 @@ function ResearchCockpit({
         const enrichedData = {
           ...data,
           total_cost: totalCost,
-          current_phase: currentPhase,
+          current_cell: currentCell,
           model: currentModel,
           total_turns: turnCount,
-          phase_costs: phaseCosts,
+          cell_costs: cellCosts,
           total_input_tokens: totalInputTokens,
           total_output_tokens: totalOutputTokens,
           created_at: firstEntry?.timestamp,
@@ -492,7 +492,7 @@ function ResearchCockpit({
         // Update orchestration state
         setOrchestrationState(prev => ({
           ...prev,
-          currentPhase: currentPhase,
+          currentCell: currentCell,
           currentModel: currentModel,
           totalCost: totalCost,
           turnCount: turnCount,
@@ -601,15 +601,15 @@ function ResearchCockpit({
             }));
             break;
 
-          case 'phase_start':
-            //console.log('[ResearchCockpit] Phase started:', event.data);
+          case 'cell_start':
+            //console.log('[ResearchCockpit] Cell started:', event.data);
             setOrchestrationState(prev => ({
               ...prev,
-              currentPhase: event.data.cell_name,
+              currentCell: event.data.cell_name,
               currentModel: event.data.model,
               status: 'thinking',
-              phaseHistory: [...prev.phaseHistory, {
-                phase: event.data.cell_name,
+              cellHistory: [...prev.cellHistory, {
+                cell: event.data.cell_name,
                 startedAt: new Date(),
                 model: event.data.model
               }]
@@ -655,8 +655,8 @@ function ResearchCockpit({
             fetchSessionData(); // Refresh for updated costs/tokens
             break;
 
-          case 'phase_complete':
-            //console.log('[ResearchCockpit] Phase completed');
+          case 'cell_complete':
+            //console.log('[ResearchCockpit] Cell completed');
             fetchSessionData(); // Refresh for updated costs
             break;
 
@@ -916,13 +916,13 @@ function ResearchCockpit({
 
       // Initialize orchestration state
       setOrchestrationState({
-        currentPhase: null,
+        currentCell: null,
         currentModel: null,
         totalCost: 0,
         turnCount: 0,
         status: 'thinking',
         lastToolCall: null,
-        phaseHistory: [],
+        cellHistory: [],
         soundings: null
       });
 
@@ -990,13 +990,13 @@ function ResearchCockpit({
     setRoundEvents([]); // Clear round events
     setShowPicker(true);
     setOrchestrationState({
-      currentPhase: null,
+      currentCell: null,
       currentModel: null,
       totalCost: 0,
       turnCount: 0,
       status: 'idle',
       lastToolCall: null,
-      phaseHistory: [],
+      cellHistory: [],
       soundings: null
     });
   };
@@ -1025,16 +1025,16 @@ function ResearchCockpit({
       }
 
       const htmlSection = uiSpec?.sections?.find(s => s.type === 'html');
-      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.phase_output || '<div>No content available</div>';
+      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.cell_output || '<div>No content available</div>';
 
       // Wrap with full HTML document
       const htmlContent = buildArtifactHTML(bodyContent);
 
       // Compute title
-      const phaseName = checkpoint.cell_name || 'decision';
-      const summary = checkpoint.summary || checkpoint.phase_output || '';
+      const cellName = checkpoint.cell_name || 'decision';
+      const summary = checkpoint.summary || checkpoint.cell_output || '';
       const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
-      const title = summarySnippet ? `${phaseName}: ${summarySnippet}` : `${phaseName} - Decision`;
+      const title = summarySnippet ? `${cellName}: ${summarySnippet}` : `${cellName} - Decision`;
 
       const response = await fetch('http://localhost:5050/api/artifacts/create', {
         method: 'POST',
@@ -1045,7 +1045,7 @@ function ResearchCockpit({
           cell_name: checkpoint.cell_name || 'unknown',
           title: title,
           artifact_type: 'decision',
-          description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',
+          description: checkpoint.summary || checkpoint.cell_output?.slice(0, 200) || '',
           html_content: htmlContent,
           tags: ['decision', 'checkpoint', checkpoint.checkpoint_type || 'general']
         })
@@ -1386,7 +1386,7 @@ function ResearchCockpit({
                     return (
                       <div className="checkpoint-simple-view">
                         <h2 className="checkpoint-question">
-                          {checkpoint.phase_output || 'Waiting for input...'}
+                          {checkpoint.cell_output || 'Waiting for input...'}
                         </h2>
                         <form onSubmit={(e) => {
                           e.preventDefault();
@@ -1427,7 +1427,7 @@ function ResearchCockpit({
                       </span>
                     </div>
                     <div className="timeline-item-content">
-                      <RichMarkdown>{item.checkpoint?.phase_output || 'Interaction'}</RichMarkdown>
+                      <RichMarkdown>{item.checkpoint?.cell_output || 'Interaction'}</RichMarkdown>
                       <div className="timeline-response">
                         Response: {JSON.stringify(item.response)}
                       </div>
@@ -1515,14 +1515,14 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
 
   // Compute artifact name from checkpoint data
   const computeArtifactName = () => {
-    const phaseName = checkpoint.cell_name || 'decision';
-    const summary = checkpoint.summary || checkpoint.phase_output || '';
+    const cellName = checkpoint.cell_name || 'decision';
+    const summary = checkpoint.summary || checkpoint.cell_output || '';
     // Take first 50 chars of summary, clean up
     const summarySnippet = summary.slice(0, 50).replace(/[^a-zA-Z0-9\s]/g, '').trim();
     if (summarySnippet) {
-      return `${phaseName}: ${summarySnippet}`;
+      return `${cellName}: ${summarySnippet}`;
     }
-    return `${phaseName} - Decision ${index + 1}`;
+    return `${cellName} - Decision ${index + 1}`;
   };
 
   // Save checkpoint as artifact
@@ -1545,7 +1545,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
       }
 
       const htmlSection = uiSpec?.sections?.find(s => s.type === 'html');
-      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.phase_output || '<div>No content available</div>';
+      const bodyContent = htmlSection?.html || htmlSection?.content || checkpoint.cell_output || '<div>No content available</div>';
 
       // Wrap with full HTML document (same as artifact viewer expects)
       const htmlContent = buildArtifactHTML(bodyContent);
@@ -1561,7 +1561,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
           cell_name: checkpoint.cell_name || 'unknown',
           title: title,
           artifact_type: 'decision',
-          description: checkpoint.summary || checkpoint.phase_output?.slice(0, 200) || '',
+          description: checkpoint.summary || checkpoint.cell_output?.slice(0, 200) || '',
           html_content: htmlContent,
           tags: ['decision', 'checkpoint', checkpoint.checkpoint_type || 'general']
         })
@@ -1625,7 +1625,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
           {index + 1}
         </div>
         <div className="checkpoint-summary">
-          <h3>{checkpoint.summary || checkpoint.phase_output || 'Interaction'}</h3>
+          <h3>{checkpoint.summary || checkpoint.cell_output || 'Interaction'}</h3>
           <div className="checkpoint-meta">
             <span className="checkpoint-timestamp">
               <Icon icon="mdi:clock-outline" width="14" />
@@ -1700,7 +1700,7 @@ function ExpandableCheckpoint({ checkpoint, index, sessionId, savedSessionData, 
           {/* No HTML section - show text */}
           {!hasHTMLSection && (
             <div className="checkpoint-text-content">
-              <p>{checkpoint.phase_output}</p>
+              <p>{checkpoint.cell_output}</p>
             </div>
           )}
         </div>
@@ -1727,8 +1727,8 @@ function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, sav
     ? respondedCheckpoints[respondedCheckpoints.length - 1]
     : null;
 
-  // Get feedback message (phase_output or summary)
-  const latestFeedback = latestCheckpoint?.summary || latestCheckpoint?.phase_output;
+  // Get feedback message (cell_output or summary)
+  const latestFeedback = latestCheckpoint?.summary || latestCheckpoint?.cell_output;
 
   // Don't render if no inputs and no feedback
   if (!cascadeInputs && !latestFeedback) {
@@ -1806,7 +1806,7 @@ function CascadeContextHeader({ cascadeInputs, checkpointHistory, cascadeId, sav
 
 /**
  * GhostMessage - Translucent message showing LLM's work in progress
- * Displays tool calls, thinking, phase transitions
+ * Displays tool calls, thinking, cell transitions
  * Cleared when checkpoint arrives
  */
 function GhostMessage({ ghost }) {

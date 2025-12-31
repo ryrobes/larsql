@@ -41,7 +41,7 @@ const colors = {
   mint: '#34d399',
 };
 
-function InteractiveMermaid({ sessionId, activePhase, onPhaseClick, lastUpdate }) {
+function InteractiveMermaid({ sessionId, activeCell, onCellClick, lastUpdate }) {
   const [graphData, setGraphData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -220,11 +220,11 @@ function InteractiveMermaid({ sessionId, activePhase, onPhaseClick, lastUpdate }
         svgElement.style.width = '100%';
         svgElement.style.height = 'auto';
 
-        // Add click handlers to phase nodes
+        // Add click handlers to cell nodes
         addClickHandlers();
 
-        // Highlight active phase
-        updateActivePhaseHighlight();
+        // Highlight active cell
+        updateActiveCellHighlight();
 
         console.log(`[InteractiveMermaid] Rendered ${renderId} successfully`);
       } catch (err) {
@@ -234,12 +234,12 @@ function InteractiveMermaid({ sessionId, activePhase, onPhaseClick, lastUpdate }
     });
   }, [graphData, sessionId]);
 
-  // Update active phase highlight when activePhase changes
+  // Update active cell highlight when activeCell changes
   useEffect(() => {
     if (graphData && containerRef.current) {
-      updateActivePhaseHighlight();
+      updateActiveCellHighlight();
     }
-  }, [activePhase, graphData]);
+  }, [activeCell, graphData]);
 
   const mutateMermaidColors = (mermaidContent) => {
     if (!mermaidContent) return '';
@@ -286,17 +286,17 @@ function InteractiveMermaid({ sessionId, activePhase, onPhaseClick, lastUpdate }
     const nodes = svg.querySelectorAll('g.node');
 
     nodes.forEach(node => {
-      // Extract phase name from node ID or text content
+      // Extract cell name from node ID or text content
       const textElement = node.querySelector('text');
       if (!textElement) return;
 
-      const phaseName = textElement.textContent.trim();
+      const cellName = textElement.textContent.trim();
 
       // Make clickable
       node.style.cursor = 'pointer';
       node.addEventListener('click', () => {
-        if (onPhaseClick) {
-          onPhaseClick(phaseName);
+        if (onCellClick) {
+          onCellClick(cellName);
         }
       });
 
@@ -305,31 +305,31 @@ function InteractiveMermaid({ sessionId, activePhase, onPhaseClick, lastUpdate }
         node.style.filter = 'brightness(1.3)';
       });
       node.addEventListener('mouseleave', () => {
-        if (phaseName !== activePhase) {
+        if (cellName !== activeCell) {
           node.style.filter = 'brightness(1)';
         }
       });
     });
   };
 
-  const updateActivePhaseHighlight = () => {
-    if (!containerRef.current || !activePhase) return;
+  const updateActiveCellHighlight = () => {
+    if (!containerRef.current || !activeCell) return;
 
     const svg = containerRef.current.querySelector('svg');
     if (!svg) return;
 
     // Remove previous highlights
     svg.querySelectorAll('g.node').forEach(node => {
-      node.classList.remove('active-phase');
+      node.classList.remove('active-cell');
       node.style.filter = 'brightness(1)';
     });
 
-    // Find and highlight active phase node
+    // Find and highlight active cell node
     const nodes = svg.querySelectorAll('g.node');
     nodes.forEach(node => {
       const textElement = node.querySelector('text');
-      if (textElement && textElement.textContent.trim() === activePhase) {
-        node.classList.add('active-phase');
+      if (textElement && textElement.textContent.trim() === activeCell) {
+        node.classList.add('active-cell');
         node.style.filter = 'drop-shadow(0 0 12px #2DD4BF) brightness(1.5)';
       }
     });

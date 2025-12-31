@@ -16,7 +16,7 @@ class EventPublishingHooks(RVBBITHooks):
     Hooks implementation that publishes all lifecycle events to the event bus.
     Can be used standalone or combined with other hooks via CompositeHooks.
 
-    Tracks candidate and turn context for proper phase bar visualization.
+    Tracks candidate and turn context for proper cell bar visualization.
     """
 
     def __init__(self):
@@ -80,7 +80,7 @@ class EventPublishingHooks(RVBBITHooks):
         ))
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_start(self, cell_name: str, context: dict) -> dict:
+    def on_cell_start(self, cell_name: str, context: dict) -> dict:
         echo = context.get("echo")
         session_id = echo.session_id if echo else "unknown"
 
@@ -90,7 +90,7 @@ class EventPublishingHooks(RVBBITHooks):
             self._current_candidate_index = candidate_index
 
         self.bus.publish(Event(
-            type="phase_start",
+            type="cell_start",
             session_id=session_id,
             timestamp=datetime.now().isoformat(),
             data={
@@ -101,12 +101,12 @@ class EventPublishingHooks(RVBBITHooks):
         ))
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
+    def on_cell_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
         # Extract is_winner from result if available
         is_winner = result.get("is_winner") if isinstance(result, dict) else None
 
         self.bus.publish(Event(
-            type="phase_complete",
+            type="cell_complete",
             session_id=session_id,
             timestamp=datetime.now().isoformat(),
             data={
@@ -239,14 +239,14 @@ class CompositeHooks(RVBBITHooks):
             hook.on_cascade_error(cascade_id, session_id, error)
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_start(self, cell_name: str, context: dict) -> dict:
+    def on_cell_start(self, cell_name: str, context: dict) -> dict:
         for hook in self.hooks:
-            hook.on_phase_start(cell_name, context)
+            hook.on_cell_start(cell_name, context)
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
+    def on_cell_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
         for hook in self.hooks:
-            hook.on_phase_complete(cell_name, session_id, result)
+            hook.on_cell_complete(cell_name, session_id, result)
         return {"action": HookAction.CONTINUE}
 
     def on_turn_start(self, cell_name: str, turn_index: int, context: dict) -> dict:
@@ -315,11 +315,11 @@ class ResearchSessionAutoSaveHooks(RVBBITHooks):
 
                 config = get_config()
 
-                # Collect checkpoint summaries, phase_outputs, or responses
+                # Collect checkpoint summaries, cell_outputs, or responses
                 checkpoint_texts = []
                 for cp in checkpoints[:10]:  # Limit to first 10 checkpoints
-                    # Prefer summary, fall back to phase_output, then response
-                    text = cp.get('summary') or cp.get('phase_output') or ''
+                    # Prefer summary, fall back to cell_output, then response
+                    text = cp.get('summary') or cp.get('cell_output') or ''
 
                     # If no text, try response
                     if not text and cp.get('response'):
@@ -446,11 +446,11 @@ Return ONLY the title, nothing else."""
 
         # Build fallback title from checkpoints
         if checkpoints and len(checkpoints) > 0:
-            # Try to use first checkpoint's summary, phase_output, or response
+            # Try to use first checkpoint's summary, cell_output, or response
             first_cp = checkpoints[0]
-            first_text = first_cp.get('summary') or first_cp.get('phase_output') or ''
+            first_text = first_cp.get('summary') or first_cp.get('cell_output') or ''
 
-            # If no phase_output, try to use the user's response from the checkpoint
+            # If no cell_output, try to use the user's response from the checkpoint
             if not first_text and first_cp.get('response'):
                 response = first_cp.get('response')
                 if isinstance(response, dict):
@@ -574,7 +574,7 @@ Return ONLY the title, nothing else."""
                         'total_input_tokens': metrics['total_input_tokens'],
                         'total_output_tokens': metrics['total_output_tokens'],
                         'duration_seconds': metrics['duration_seconds'],
-                        'phases_visited': json.dumps(metrics['phases_visited']),
+                        'cells_visited': json.dumps(metrics['cells_visited']),
                         'tools_used': json.dumps(metrics['tools_used']),
                         'tags': json.dumps([]),
                         'parent_session_id': parent_session_id,  # Capture parent!
@@ -606,7 +606,7 @@ Return ONLY the title, nothing else."""
                     'total_input_tokens': metrics['total_input_tokens'],
                     'total_output_tokens': metrics['total_output_tokens'],
                     'duration_seconds': metrics['duration_seconds'],
-                    'phases_visited': json.dumps(metrics['phases_visited']),
+                    'cells_visited': json.dumps(metrics['cells_visited']),
                     'tools_used': json.dumps(metrics['tools_used']),
                     'tags': json.dumps([]),
                     'parent_session_id': parent_session_id,  # Capture parent!

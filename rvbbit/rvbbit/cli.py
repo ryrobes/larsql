@@ -97,7 +97,7 @@ def main():
     # Analyze command
     analyze_parser = subparsers.add_parser('analyze', help='Analyze cascades and suggest improvements')
     analyze_parser.add_argument('cascade', help='Path to cascade JSON file')
-    analyze_parser.add_argument('--phase', help='Specific phase to analyze (default: all phases)', default=None)
+    analyze_parser.add_argument('--cell', help='Specific cell to analyze (default: all cells)', default=None)
     analyze_parser.add_argument('--min-runs', type=int, default=10, help='Minimum runs needed for analysis')
     analyze_parser.add_argument('--apply', action='store_true', help='Automatically apply suggestions')
     analyze_parser.add_argument('--output', help='Save suggestions to file', default=None)
@@ -262,7 +262,7 @@ def main():
     )
     quick_parser.add_argument('session_id', help='Session ID to rate')
     quick_parser.add_argument('rating', choices=['good', 'bad', 'g', 'b', '+', '-'], help='Rating (good/bad)')
-    quick_parser.add_argument('--phase', help='Specific phase', default=None)
+    quick_parser.add_argument('--cell', help='Specific cell', default=None)
     quick_parser.add_argument('--notes', help='Optional notes', default='')
 
     # Harbor (HuggingFace Spaces) command group
@@ -1177,7 +1177,7 @@ def cmd_test_list(args):
         if snapshot.get('description'):
             print(f"      {snapshot['description']}")
         print(f"      Cascade: {snapshot.get('cascade_file', 'unknown')}")
-        print(f"      Phases: {', '.join(p['name'] for p in snapshot['execution']['phases'])}")
+        print(f"      Cells: {', '.join(p['name'] for p in snapshot['execution']['cells'])}")
         print(f"      Captured: {snapshot['captured_at'][:10]}")
         print()
 
@@ -1190,7 +1190,7 @@ def cmd_analyze(args):
         # Run analysis
         analysis = analyze_and_suggest(
             args.cascade,
-            cell_name=args.phase,
+            cell_name=args.cell,
             min_runs=args.min_runs
         )
 
@@ -1210,7 +1210,7 @@ def cmd_analyze(args):
         print()
 
         for i, suggestion in enumerate(analysis["suggestions"], 1):
-            print(f"{i}. Phase: {suggestion['phase']}")
+            print(f"{i}. Cell: {suggestion['cell']}")
             print()
             print(f"   Current:")
             print(f"   \"{suggestion['current_instruction'][:100]}...\"")
@@ -1250,15 +1250,15 @@ def cmd_analyze(args):
             for suggestion in analysis["suggestions"]:
                 success = manager.apply_suggestion(
                     args.cascade,
-                    suggestion["phase"],
+                    suggestion["cell"],
                     suggestion["suggested_instruction"],
                     auto_commit=True
                 )
 
                 if success:
-                    print(f"✓ Applied suggestion for phase: {suggestion['phase']}")
+                    print(f"✓ Applied suggestion for cell: {suggestion['cell']}")
                 else:
-                    print(f"✗ Failed to apply suggestion for phase: {suggestion['phase']}")
+                    print(f"✗ Failed to apply suggestion for cell: {suggestion['cell']}")
 
             print()
             print("✓ All suggestions applied!")
@@ -1548,7 +1548,7 @@ def cmd_embed_status(args):
                     length(content_embedding) = 0
                     AND length(content_json) > 10
                     AND (role IN ('assistant', 'user') OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up'))
-                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'phase', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
                 ) as unembedded,
                 COUNT(*) as total
             FROM unified_logs
@@ -1593,7 +1593,7 @@ def cmd_embed_run(args):
     from rvbbit.db_adapter import get_db_adapter
     from rvbbit.config import get_config
     from rvbbit.agent import Agent
-    from rvbbit.embedding_worker import EMBEDDING_SESSION_ID, EMBEDDING_CASCADE_ID, EMBEDDING_PHASE_NAME
+    from rvbbit.embedding_worker import EMBEDDING_SESSION_ID, EMBEDDING_CASCADE_ID, EMBEDDING_CELL_NAME
     import uuid
     import json as json_lib
 
@@ -1631,7 +1631,7 @@ def cmd_embed_run(args):
               role IN ('assistant', 'user')
               OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up')
           )
-          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'phase', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
         ORDER BY timestamp DESC
         LIMIT {batch_size}
     """
@@ -1704,7 +1704,7 @@ def cmd_embed_run(args):
             session_id=EMBEDDING_SESSION_ID,
             trace_id=trace_id,
             cascade_id=EMBEDDING_CASCADE_ID,
-            cell_name=EMBEDDING_PHASE_NAME,
+            cell_name=EMBEDDING_CELL_NAME,
         )
     except Exception as e:
         print(f"Embedding API error: {e}")
@@ -1897,7 +1897,7 @@ def cmd_hotornot_list(args):
     print("="*60)
     print()
 
-    # Group by session+phase
+    # Group by session+cell
     grouped = df.groupby(['session_id', 'cell_name'])
 
     for (session_id, cell_name), group in grouped:
@@ -1905,7 +1905,7 @@ def cmd_hotornot_list(args):
         winner_idx = winner_row['candidate_index'].values[0] if not winner_row.empty else '?'
 
         print(f"Session: {session_id[:30]}...")
-        print(f"  Phase: {cell_name}")
+        print(f"  Cell: {cell_name}")
         print(f"  Soundings: {len(group)} variants")
         print(f"  System winner: #{winner_idx}")
         print()
@@ -1925,7 +1925,7 @@ def cmd_hotornot_quick(args):
     eval_id = log_binary_eval(
         session_id=args.session_id,
         is_good=is_good,
-        cell_name=args.phase,
+        cell_name=args.cell,
         notes=args.notes
     )
 
@@ -1936,8 +1936,8 @@ def cmd_hotornot_quick(args):
 
     print()
     print(f"{emoji} Rated session {args.session_id[:20]}... as {rating_str}")
-    if args.phase:
-        print(f"   Phase: {args.phase}")
+    if args.cell:
+        print(f"   Cell: {args.cell}")
     if args.notes:
         print(f"   Notes: {args.notes}")
     print()
@@ -1984,7 +1984,7 @@ def cmd_hotornot_rate(args):
         print("Run cascades with soundings first.")
         return
 
-    # Get unique session+phase combinations
+    # Get unique session+cell combinations
     combos = df.groupby(['session_id', 'cell_name']).first().reset_index()[['session_id', 'cell_name']]
 
     rated_count = 0
@@ -2014,7 +2014,7 @@ def cmd_hotornot_rate(args):
         print("="*60)
         print()
         print(f"Cascade: {group.get('cascade_id', 'unknown')}")
-        print(f"Phase: {cell_name}")
+        print(f"Cell: {cell_name}")
         print(f"Session: {session_id[:40]}...")
         print()
 
@@ -2884,7 +2884,7 @@ def cmd_signals_status(args):
         print(f"  Status: {signal.status.value}")
         print(f"  Cascade: {signal.cascade_id}")
         print(f"  Session: {signal.session_id}")
-        print(f"  Phase: {signal.cell_name or 'N/A'}")
+        print(f"  Cell: {signal.cell_name or 'N/A'}")
         print(f"  Created: {signal.created_at.isoformat() if signal.created_at else 'N/A'}")
         print(f"  Timeout: {signal.timeout_at.isoformat() if signal.timeout_at else 'None'}")
 
@@ -2965,7 +2965,7 @@ def cmd_sessions_list(args):
             return
 
         # Header
-        print(f"{'SESSION ID':<35} {'CASCADE':<25} {'STATUS':<12} {'PHASE':<20} {'UPDATED':<16}")
+        print(f"{'SESSION ID':<35} {'CASCADE':<25} {'STATUS':<12} {'CELL':<20} {'UPDATED':<16}")
         print("-" * 110)
 
         for session in sessions:
@@ -2985,7 +2985,7 @@ def cmd_sessions_list(args):
             elif status == 'orphaned':
                 status = f"\033[35m{status}\033[0m"  # Magenta
 
-            print(f"{session_id:<35} {cascade:<25} {status:<21} {phase:<20} {updated}")
+            print(f"{session_id:<35} {cascade:<25} {status:<21} {cell:<20} {updated}")
 
         print()
         print(f"Total: {len(sessions)} session(s)")
@@ -3021,7 +3021,7 @@ def cmd_sessions_show(args):
         print(f"Session: {session.session_id}")
         print(f"  Cascade: {session.cascade_id}")
         print(f"  Status: {session.status.value}")
-        print(f"  Current Phase: {session.current_cell or 'N/A'}")
+        print(f"  Current Cell: {session.current_cell or 'N/A'}")
         print(f"  Depth: {session.depth}")
 
         if session.parent_session_id:
@@ -3053,7 +3053,7 @@ def cmd_sessions_show(args):
         if session.status.value == 'error':
             print()
             print("Error:")
-            print(f"  Phase: {session.error_phase or 'N/A'}")
+            print(f"  Cell: {session.error_cell or 'N/A'}")
             print(f"  Message: {session.error_message or 'N/A'}")
 
         # Cancellation
@@ -3099,7 +3099,7 @@ def cmd_sessions_cancel(args):
         manager.request_cancellation(args.session_id, getattr(args, 'reason', None))
         print(f"✓ Cancellation requested for session '{args.session_id}'")
         print()
-        print("The session will stop gracefully at the next phase boundary.")
+        print("The session will stop gracefully at the next cell boundary.")
         print("Note: If the session is blocked (waiting for signal/input), it may take")
         print("longer to detect the cancellation request.")
 

@@ -548,7 +548,7 @@ SELECT
   r.* EXCLUDE (_raw_result),
   COALESCE(
     json_extract_string(_raw_result, '$.state.output_extract'),
-    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_phase')),
+    json_extract_string(_raw_result, '$.outputs.' || json_extract_string(_raw_result, '$.state.last_cell')),
     _raw_result
   ) AS {result_column}
 FROM rvbbit_raw r
@@ -627,7 +627,7 @@ def _ensure_limit(query: str) -> str:
 
 
 # ============================================================================
-# RUN Rewrite (Stub for Phase 3)
+# RUN Rewrite (Stub for Cell 3)
 # ============================================================================
 
 def _rewrite_run(stmt: RVBBITStatement) -> str:
@@ -641,10 +641,10 @@ def _rewrite_run(stmt: RVBBITStatement) -> str:
         Rewritten SQL
 
     Note:
-        This is a stub for Phase 3. Currently raises NotImplementedError.
+        This is a stub for Cell 3. Currently raises NotImplementedError.
     """
     raise NotImplementedError(
-        "RVBBIT RUN is not yet implemented (coming in Phase 3).\n"
+        "RVBBIT RUN is not yet implemented (coming in Cell 3).\n"
         "For now, use RVBBIT MAP for row-wise processing."
     )
 
@@ -662,7 +662,7 @@ def get_rewriter_info() -> Dict[str, Any]:
     """
     return {
         'version': '0.2.0',
-        'phase': 'Phase 2 (PARALLEL)',
+        'cell': 'Cell 2 (PARALLEL)',
         'supported_features': {
             'RVBBIT MAP': True,
             'RVBBIT MAP PARALLEL': True,

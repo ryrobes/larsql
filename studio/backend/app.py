@@ -533,15 +533,15 @@ def get_cascade_definitions():
                             cascade_id = config.get('cascade_id')
 
                             if cascade_id and cascade_id not in all_cascades:
-                                # Extract phase data with full spec
-                                # Support both "cells" (current) and "phases" (legacy)
-                                phases_data = []
-                                for p in config.get("cells", config.get("phases", [])):
+                                # Extract cell data with full spec
+                                # Support both "cells" (current) and "cells" (legacy)
+                                cells_data = []
+                                for p in config.get("cells", config.get("cells", [])):
                                     rules = p.get("rules", {})
                                     soundings = p.get("soundings", {})
                                     wards = p.get("wards", {})
 
-                                    phases_data.append({
+                                    cells_data.append({
                                         "name": p["name"],
                                         "instructions": p.get("instructions", ""),
                                         # Soundings
@@ -560,7 +560,7 @@ def get_cascade_definitions():
                                         "loop_until": rules.get("loop_until"),
                                         "has_turn_prompt": "turn_prompt" in rules,
                                         "has_retry_instructions": "retry_instructions" in rules,
-                                        # Deterministic phases
+                                        # Deterministic cells
                                         "is_deterministic": "tool" in p and "instructions" not in p,
                                         "deterministic_tool": p.get("tool"),
                                         "deterministic_inputs": p.get("inputs"),
@@ -586,7 +586,7 @@ def get_cascade_definitions():
                                     'cascade_id': cascade_id,
                                     'description': config.get('description', ''),
                                     'cascade_file': filepath,
-                                    'phases': phases_data,
+                                    'cells': cells_data,
                                     'inputs_schema': config.get('inputs_schema', {}),
                                     # Root-level features
                                     'memory': config.get('memory'),
@@ -656,10 +656,10 @@ def get_cascade_definitions():
 
             result = conn.execute(query).fetchall()
 
-            # BATCH QUERY 1: Get ALL phase metrics for ALL cascades at once
-            phase_metrics_by_cascade = {}
+            # BATCH QUERY 1: Get ALL cell metrics for ALL cascades at once
+            cell_metrics_by_cascade = {}
             try:
-                phase_query = """
+                cell_query = """
                 SELECT
                     cascade_id,
                     cell_name,
@@ -670,15 +670,15 @@ def get_cascade_definitions():
                   AND cost IS NOT NULL AND cost > 0
                 GROUP BY cascade_id, cell_name
                 """
-                phase_results = conn.execute(phase_query).fetchall()
+                cell_results = conn.execute(cell_query).fetchall()
 
                 # Group by cascade_id
-                for cascade_id, cell_name, avg_cost in phase_results:
-                    if cascade_id not in phase_metrics_by_cascade:
-                        phase_metrics_by_cascade[cascade_id] = {}
-                    phase_metrics_by_cascade[cascade_id][cell_name] = float(avg_cost) if avg_cost else 0.0
+                for cascade_id, cell_name, avg_cost in cell_results:
+                    if cascade_id not in cell_metrics_by_cascade:
+                        cell_metrics_by_cascade[cascade_id] = {}
+                    cell_metrics_by_cascade[cascade_id][cell_name] = float(avg_cost) if avg_cost else 0.0
             except Exception as e:
-                print(f"[ERROR] Batch phase metrics query failed: {e}")
+                print(f"[ERROR] Batch cell metrics query failed: {e}")
 
             # BATCH QUERY 2: Get latest session for ALL cascades at once
             latest_sessions_by_cascade = {}
@@ -811,12 +811,12 @@ def get_cascade_definitions():
                         'max_duration_seconds': float(max_duration) if max_duration else 0.0,
                     }
 
-                    # Apply phase metrics from batch query
-                    if cascade_id in phase_metrics_by_cascade:
-                        phase_costs = phase_metrics_by_cascade[cascade_id]
-                        for phase in all_cascades[cascade_id]['phases']:
-                            if phase['name'] in phase_costs:
-                                phase['avg_cost'] = phase_costs[phase['name']]
+                    # Apply cell metrics from batch query
+                    if cascade_id in cell_metrics_by_cascade:
+                        cell_costs = cell_metrics_by_cascade[cascade_id]
+                        for cell in all_cascades[cascade_id]['cells']:
+                            if cell['name'] in cell_costs:
+                                cell['avg_cost'] = cell_costs[cell['name']]
 
                     # Add cascade analytics from batch query
                     if cascade_id in cascade_analytics_map:
@@ -862,7 +862,7 @@ def get_cascade_definitions():
                                     summary = graph_data.get('summary', {})
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
-                                        'total_phases': summary.get('total_phases', 0),
+                                        'total_cells': summary.get('total_cells', 0),
                                         'has_soundings': summary.get('has_soundings', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
@@ -880,7 +880,7 @@ def get_cascade_definitions():
                     all_cascades[cascade_id] = {
                         'cascade_id': cascade_id,
                         'description': description,
-                        'phases': [],  # No phase definitions available
+                        'cells': [],  # No cell definitions available
                         'source_file': None,
                         'is_dynamic': True,  # Flag for UI to style differently
                         'metrics': {
@@ -933,7 +933,7 @@ def get_cascade_definitions():
                                     summary = graph_data.get('summary', {})
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
-                                        'total_phases': summary.get('total_phases', 0),
+                                        'total_cells': summary.get('total_cells', 0),
                                         'has_soundings': summary.get('has_soundings', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
@@ -993,7 +993,7 @@ def get_cascade_instances(cascade_id):
             SELECT
                 session_id,
                 cascade_id,
-                -- Collect ALL species hashes (multi-phase cascade support)
+                -- Collect ALL species hashes (multi-cell cascade support)
                 -- Sorted array of unique non-null species hashes = compound species signature
                 arraySort(arrayFilter(x -> x IS NOT NULL AND x != '', groupArray(DISTINCT species_hash))) as species_hashes,
                 MIN(timestamp) as start_time,
@@ -1008,7 +1008,7 @@ def get_cascade_instances(cascade_id):
             SELECT
                 l.session_id,
                 MAX(l.cascade_id) as cascade_id,  -- Take non-null cascade_id
-                -- Collect ALL species hashes (multi-phase cascade support)
+                -- Collect ALL species hashes (multi-cell cascade support)
                 arraySort(arrayFilter(x -> x IS NOT NULL AND x != '', groupArray(DISTINCT l.species_hash))) as species_hashes,
                 l.parent_session_id,
                 MIN(l.timestamp) as start_time,
@@ -1098,7 +1098,7 @@ def get_cascade_instances(cascade_id):
                       AND role NOT IN ('structure', 'system')
                       AND node_type NOT IN ('cascade', 'cascade_start', 'cascade_complete', 'cascade_completed', 'cascade_error',
                                            'cascade_failed', 'cascade_killed',
-                                           'phase', 'phase_start', 'phase_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
+                                           'cell', 'cell_start', 'cell_complete', 'turn', 'turn_start', 'turn_input', 'cost_update')
                 )
                 SELECT session_id, content_json, node_type, role
                 FROM ranked_outputs
@@ -1130,7 +1130,7 @@ def get_cascade_instances(cascade_id):
 
         # Batch 3: Get cascade-level errors for all sessions
         # Only cascade_failed, cascade_error, cascade_killed indicate true failure
-        # sounding_error, phase errors are expected and don't mark cascade as failed
+        # sounding_error, cell errors are expected and don't mark cascade as failed
         errors_by_session = {}
         if session_ids:
             try:
@@ -1142,7 +1142,7 @@ def get_cascade_instances(cascade_id):
                 ORDER BY session_id, timestamp
                 """.format(','.join('?' * len(session_ids)))
                 error_results = conn.execute(errors_query, session_ids).fetchall()
-                for sid, err_phase, err_content, err_type in error_results:
+                for sid, err_cell, err_content, err_type in error_results:
                     if sid not in errors_by_session:
                         errors_by_session[sid] = []
                     if err_type == 'cascade_killed':
@@ -1152,18 +1152,18 @@ def get_cascade_instances(cascade_id):
                     else:
                         error_type_label = "Cascade Failed"
                     errors_by_session[sid].append({
-                        "phase": err_phase or "unknown",
+                        "cell": err_cell or "unknown",
                         "message": str(err_content)[:200] if err_content else "Unknown error",
                         "error_type": error_type_label
                     })
             except Exception as e:
                 print(f"[ERROR] Batch errors query: {e}")
 
-        # Batch 4: Get phase costs for all sessions
-        phase_costs_by_session = {}
+        # Batch 4: Get cell costs for all sessions
+        cell_costs_by_session = {}
         if session_ids:
             try:
-                phase_costs_query = """
+                cell_costs_query = """
                 SELECT
                     session_id,
                     cell_name,
@@ -1176,13 +1176,13 @@ def get_cascade_instances(cascade_id):
                   AND role = 'assistant'
                 GROUP BY session_id, cell_name
                 """.format(','.join('?' * len(session_ids)))
-                phase_cost_results = conn.execute(phase_costs_query, session_ids).fetchall()
-                for sid, cell_name, total_cost in phase_cost_results:
-                    if sid not in phase_costs_by_session:
-                        phase_costs_by_session[sid] = {}
-                    phase_costs_by_session[sid][cell_name] = float(total_cost) if total_cost else 0.0
+                cell_cost_results = conn.execute(cell_costs_query, session_ids).fetchall()
+                for sid, cell_name, total_cost in cell_cost_results:
+                    if sid not in cell_costs_by_session:
+                        cell_costs_by_session[sid] = {}
+                    cell_costs_by_session[sid][cell_name] = float(total_cost) if total_cost else 0.0
             except Exception as e:
-                print(f"[ERROR] Batch phase costs query: {e}")
+                print(f"[ERROR] Batch cell costs query: {e}")
 
         # Batch 5: Get token timeseries for all sessions (max 20 buckets for sparkline)
         token_timeseries_by_session = {}
@@ -1386,10 +1386,10 @@ def get_cascade_instances(cascade_id):
                     """.format(','.join('?' * len(session_ids)))
                 turn_results = conn.execute(turn_query, session_ids).fetchall()
 
-                for sid, t_phase, t_sounding, t_turn, t_cost in turn_results:
+                for sid, t_cell, t_sounding, t_turn, t_cost in turn_results:
                     if sid not in turn_costs_by_session:
                         turn_costs_by_session[sid] = {}
-                    key = (t_phase, t_sounding)
+                    key = (t_cell, t_sounding)
                     if key not in turn_costs_by_session[sid]:
                         turn_costs_by_session[sid][key] = []
                     turn_costs_by_session[sid][key].append({
@@ -1416,11 +1416,11 @@ def get_cascade_instances(cascade_id):
                 """.format(','.join('?' * len(session_ids)))
                 tool_results = conn.execute(tool_query, session_ids).fetchall()
 
-                for sid, t_phase, tool_calls_json, metadata_json in tool_results:
+                for sid, t_cell, tool_calls_json, metadata_json in tool_results:
                     if sid not in tool_calls_by_session:
                         tool_calls_by_session[sid] = {}
-                    if t_phase not in tool_calls_by_session[sid]:
-                        tool_calls_by_session[sid][t_phase] = []
+                    if t_cell not in tool_calls_by_session[sid]:
+                        tool_calls_by_session[sid][t_cell] = []
 
                     if tool_calls_json:
                         try:
@@ -1429,7 +1429,7 @@ def get_cascade_instances(cascade_id):
                                 for tc in tool_calls:
                                     if isinstance(tc, dict):
                                         tool_name = tc.get('function', {}).get('name') or tc.get('name') or 'unknown'
-                                        tool_calls_by_session[sid][t_phase].append(tool_name)
+                                        tool_calls_by_session[sid][t_cell].append(tool_name)
                         except:
                             pass
 
@@ -1437,7 +1437,7 @@ def get_cascade_instances(cascade_id):
                         try:
                             meta = json.loads(metadata_json) if isinstance(metadata_json, str) else metadata_json
                             if isinstance(meta, dict) and meta.get('tool_name'):
-                                tool_calls_by_session[sid][t_phase].append(meta['tool_name'])
+                                tool_calls_by_session[sid][t_cell].append(meta['tool_name'])
                         except:
                             pass
             except Exception as e:
@@ -1465,11 +1465,11 @@ def get_cascade_instances(cascade_id):
                 """
                 sounding_results = conn.execute(soundings_query, session_ids).fetchall()
 
-                for sid, s_phase, s_idx, s_winner, s_cost, s_model in sounding_results:
+                for sid, s_cell, s_idx, s_winner, s_cost, s_model in sounding_results:
                     if sid not in soundings_by_session:
                         soundings_by_session[sid] = {}
-                    if s_phase not in soundings_by_session[sid]:
-                        soundings_by_session[sid][s_phase] = {
+                    if s_cell not in soundings_by_session[sid]:
+                        soundings_by_session[sid][s_cell] = {
                             'total': 0,
                             'winner_index': None,
                             'attempts': [],
@@ -1477,17 +1477,17 @@ def get_cascade_instances(cascade_id):
                         }
 
                     s_idx_int = int(s_idx) if s_idx is not None else 0
-                    soundings_by_session[sid][s_phase]['total'] = max(soundings_by_session[sid][s_phase]['total'], s_idx_int + 1)
+                    soundings_by_session[sid][s_cell]['total'] = max(soundings_by_session[sid][s_cell]['total'], s_idx_int + 1)
 
                     if s_winner:
-                        soundings_by_session[sid][s_phase]['winner_index'] = s_idx_int
+                        soundings_by_session[sid][s_cell]['winner_index'] = s_idx_int
 
                     # Get turn breakdown for this sounding (from batch 8)
-                    turn_key = (s_phase, s_idx_int)
+                    turn_key = (s_cell, s_idx_int)
                     turns = turn_costs_by_session.get(sid, {}).get(turn_key, [])
-                    soundings_by_session[sid][s_phase]['max_turns'] = max(soundings_by_session[sid][s_phase]['max_turns'], len(turns))
+                    soundings_by_session[sid][s_cell]['max_turns'] = max(soundings_by_session[sid][s_cell]['max_turns'], len(turns))
 
-                    soundings_by_session[sid][s_phase]['attempts'].append({
+                    soundings_by_session[sid][s_cell]['attempts'].append({
                         'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
@@ -1513,21 +1513,21 @@ def get_cascade_instances(cascade_id):
                 GROUP BY session_id, cell_name
                 """.format(','.join('?' * len(session_ids)))
                 msg_results = conn.execute(msg_query, session_ids).fetchall()
-                for sid, m_phase, m_count in msg_results:
+                for sid, m_cell, m_count in msg_results:
                     if sid not in message_counts_by_session:
                         message_counts_by_session[sid] = {}
-                    message_counts_by_session[sid][m_phase] = int(m_count)
+                    message_counts_by_session[sid][m_cell] = int(m_count)
             except Exception as e:
                 print(f"[ERROR] Batch message counts query: {e}")
 
-        # Batch 12: Get phase-level data for all sessions (LIMITED to prevent huge result sets)
-        phases_data_by_session = {}
+        # Batch 12: Get cell-level data for all sessions (LIMITED to prevent huge result sets)
+        cells_data_by_session = {}
         if session_ids:
             try:
-                # Get aggregated phase data instead of all rows
+                # Get aggregated cell data instead of all rows
                 # IMPORTANT: Use argMax for node_type/role to get the MOST RECENT value,
                 # not MAX which does lexicographic sorting (would return 'user' > 'agent')
-                phases_query = """
+                cells_query = """
                 SELECT
                     session_id,
                     cell_name,
@@ -1537,21 +1537,21 @@ def get_cascade_instances(cascade_id):
                     argMax(model, timestamp) as last_model,
                     MAX(candidate_index) as max_candidate_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as has_winner,
-                    MIN(timestamp) as phase_start,
-                    MAX(timestamp) as phase_end
+                    MIN(timestamp) as cell_start,
+                    MAX(timestamp) as cell_end
                 FROM unified_logs
                 WHERE session_id IN ({})
                   AND cell_name IS NOT NULL
                 GROUP BY session_id, cell_name
-                ORDER BY session_id, phase_start
+                ORDER BY session_id, cell_start
                 """.format(','.join('?' * len(session_ids)))
-                phase_results = conn.execute(phases_query, session_ids).fetchall()
+                cell_results = conn.execute(cells_query, session_ids).fetchall()
 
-                for p_row in phase_results:
-                    sid, p_name, p_node_type, p_role, p_content, p_model, max_sounding, has_winner, phase_start, phase_end = p_row
-                    if sid not in phases_data_by_session:
-                        phases_data_by_session[sid] = {}
-                    phases_data_by_session[sid][p_name] = {
+                for p_row in cell_results:
+                    sid, p_name, p_node_type, p_role, p_content, p_model, max_sounding, has_winner, cell_start, cell_end = p_row
+                    if sid not in cells_data_by_session:
+                        cells_data_by_session[sid] = {}
+                    cells_data_by_session[sid][p_name] = {
                         'last_node_type': p_node_type,
                         'last_role': p_role,
                         'last_content': p_content,
@@ -1560,7 +1560,7 @@ def get_cascade_instances(cascade_id):
                         'has_winner': has_winner
                     }
             except Exception as e:
-                print(f"[ERROR] Batch phases query: {e}")
+                print(f"[ERROR] Batch cells query: {e}")
 
         # Batch 13: Get session states from session_state table (source of truth for status)
         session_states_by_id = {}
@@ -1596,8 +1596,8 @@ def get_cascade_instances(cascade_id):
             # Get input data from batch query (Batch 7)
             input_data = input_data_by_session.get(session_id, {})
 
-            # Get phase costs from batch query
-            phase_costs_map = phase_costs_by_session.get(session_id, {})
+            # Get cell costs from batch query
+            cell_costs_map = cell_costs_by_session.get(session_id, {})
 
             # Get turn-level costs from batch query (Batch 8)
             turn_costs_map = turn_costs_by_session.get(session_id, {})
@@ -1611,10 +1611,10 @@ def get_cascade_instances(cascade_id):
             # Get message counts from batch query (Batch 11)
             message_counts = message_counts_by_session.get(session_id, {})
 
-            # Get phase-level data from batch query (Batch 12)
-            phases_data = phases_data_by_session.get(session_id, {})
+            # Get cell-level data from batch query (Batch 12)
+            cells_data = cells_data_by_session.get(session_id, {})
 
-            # Load cascade config once for phase max_turns (moved outside the loop)
+            # Load cascade config once for cell max_turns (moved outside the loop)
             cascade_config = None
             cascade_file = find_cascade_file(cascade_id)
             if cascade_file:
@@ -1624,12 +1624,12 @@ def get_cascade_instances(cascade_id):
                 except:
                     pass
 
-            # Build phases_map from batched data
-            phases_map = {}
-            for p_name, p_data in phases_data.items():
+            # Build cells_map from batched data
+            cells_map = {}
+            for p_name, p_data in cells_data.items():
                 sounding_data = soundings_map.get(p_name, {})
 
-                # Get turn data for non-sounding phases
+                # Get turn data for non-sounding cells
                 turn_key = (p_name, None)
                 turns = turn_costs_map.get(turn_key, [])
 
@@ -1652,24 +1652,24 @@ def get_cascade_instances(cascade_id):
                 # Default status
                 status = "pending"
                 output_snippet = ""
-                phase_output = ""
+                cell_output = ""
                 error_message = None
 
                 # Determine status based on node_type AND role
-                is_phase_complete = (p_node_type == "phase_complete") or (p_node_type == "phase" and p_role == "phase_complete")
+                is_cell_complete = (p_node_type == "cell_complete") or (p_node_type == "cell" and p_role == "cell_complete")
                 is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
-                # Cascade-level soundings have _orchestration phase that completes with cascade_soundings_result
+                # Cascade-level soundings have _orchestration cell that completes with cascade_soundings_result
                 is_cascade_complete = p_node_type in ("cascade_soundings_result", "cascade_completed", "cascade_evaluator")
                 is_error = p_node_type == "error" or (p_node_type and "error" in str(p_node_type).lower())
 
-                if is_phase_complete or is_agent_output or is_cascade_complete:
+                if is_cell_complete or is_agent_output or is_cascade_complete:
                     status = "completed"
                     if p_content and isinstance(p_content, str):
                         try:
                             content_obj = json.loads(p_content)
                             if isinstance(content_obj, str):
                                 output_snippet = content_obj[:200]
-                                phase_output = content_obj
+                                cell_output = content_obj
                             elif isinstance(content_obj, dict):
                                 if 'content' in content_obj:
                                     full_output = str(content_obj['content'])
@@ -1678,10 +1678,10 @@ def get_cascade_instances(cascade_id):
                                 else:
                                     full_output = str(content_obj)
                                 output_snippet = full_output[:200]
-                                phase_output = full_output
+                                cell_output = full_output
                         except:
                             output_snippet = str(p_content)[:200]
-                            phase_output = str(p_content)
+                            cell_output = str(p_content)
                 elif is_error:
                     status = "error"
                     if p_content:
@@ -1693,11 +1693,11 @@ def get_cascade_instances(cascade_id):
                 elif p_node_type:  # Has activity but not complete
                     status = "running"
 
-                phases_map[p_name] = {
+                cells_map[p_name] = {
                     "name": p_name,
                     "status": status,
                     "output_snippet": output_snippet,
-                    "phase_output": phase_output,
+                    "cell_output": cell_output,
                     "error_message": error_message,
                     "model": p_model,
                     "has_soundings": p_name in soundings_map,
@@ -1709,13 +1709,13 @@ def get_cascade_instances(cascade_id):
                     "turn_costs": turns,
                     "tool_calls": tool_calls_map.get(p_name, []),
                     "message_count": message_counts.get(p_name, 0),
-                    "avg_cost": phase_costs_map.get(p_name, 0.0),
+                    "avg_cost": cell_costs_map.get(p_name, 0.0),
                     "avg_duration": 0.0
                 }
 
-                # Handle soundings winner model (still need this for multi-model phases)
+                # Handle soundings winner model (still need this for multi-model cells)
                 if sounding_data and sounding_data.get('winner_index') is not None:
-                    phases_map[p_name]["has_soundings"] = True
+                    cells_map[p_name]["has_soundings"] = True
 
             # Get final output from batch query
             final_output = outputs_by_session.get(session_id, None)
@@ -1725,7 +1725,7 @@ def get_cascade_instances(cascade_id):
             error_count = len(error_list)
 
             # Determine cascade status - use session_state (ClickHouse) as source of truth
-            # Fall back to phase-based derivation if session_state not available
+            # Fall back to cell-based derivation if session_state not available
             durable_state = session_states_by_id.get(session_id)
             if durable_state:
                 # Map session_state status to UI status
@@ -1741,28 +1741,28 @@ def get_cascade_instances(cascade_id):
                 elif durable_status in ('running', 'starting', 'blocked'):
                     cascade_status = "running"
                 else:
-                    # Unknown status - fall back to phase-based
+                    # Unknown status - fall back to cell-based
                     cascade_status = None
             else:
                 cascade_status = None
 
-            # Fall back to phase-based status derivation if durable state not available
+            # Fall back to cell-based status derivation if durable state not available
             if cascade_status is None:
-                has_running_phase = any(p.get("status") == "running" for p in phases_map.values())
+                has_running_cell = any(p.get("status") == "running" for p in cells_map.values())
                 if error_count > 0:
                     cascade_status = "failed"
-                elif has_running_phase:
+                elif has_running_cell:
                     cascade_status = "running"
                 else:
                     cascade_status = "success"
 
-            # Check if any phase has soundings
-            has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())
+            # Check if any cell has soundings
+            has_soundings = any(cell.get('sounding_total', 0) > 1 for cell in cells_map.values())
 
             instances.append({
                 'session_id': session_id,
                 'cascade_id': session_cascade_id,  # Use the actual cascade_id from this session (may differ from parent)
-                'species_hashes': list(species_hashes) if species_hashes else [],  # Array of species hashes (multi-phase support)
+                'species_hashes': list(species_hashes) if species_hashes else [],  # Array of species hashes (multi-cell support)
                 'parent_session_id': parent_session_id,
                 'depth': int(depth) if depth is not None else 0,
                 'start_time': to_iso_string(start_time),
@@ -1773,7 +1773,7 @@ def get_cascade_instances(cascade_id):
                 'model_costs': model_costs_by_session.get(session_id, []),
                 'input_data': input_data,
                 'final_output': final_output,
-                'phases': list(phases_map.values()),
+                'cells': list(cells_map.values()),
                 'status': cascade_status,
                 'error_count': error_count,
                 'errors': error_list,
@@ -1946,10 +1946,10 @@ def get_session_execution_flow(session_id):
         cascade_id = rows[0][11] if rows else None
 
         # Build execution data structure
-        phases = {}
+        cells = {}
         executed_path = []
         executed_handoffs = {}
-        prev_phase = None
+        prev_cell = None
         total_cost = 0.0
         total_duration = 0.0
         overall_status = 'completed'
@@ -1960,16 +1960,16 @@ def get_session_execution_flow(session_id):
              cost, duration_ms, _, model_requested, model_used,
              tokens_in, tokens_out, content_preview, image_paths, timestamp) = row
 
-            # Track executed path (order of phases seen)
+            # Track executed path (order of cells seen)
             if cell_name not in executed_path:
                 executed_path.append(cell_name)
-                if prev_phase:
-                    executed_handoffs[prev_phase] = cell_name
-                prev_phase = cell_name
+                if prev_cell:
+                    executed_handoffs[prev_cell] = cell_name
+                prev_cell = cell_name
 
-            # Initialize phase data if not seen
-            if cell_name not in phases:
-                phases[cell_name] = {
+            # Initialize cell data if not seen
+            if cell_name not in cells:
+                cells[cell_name] = {
                     'status': 'completed',
                     'cost': 0.0,
                     'duration': 0.0,
@@ -1992,32 +1992,32 @@ def get_session_execution_flow(session_id):
                     }
                 }
 
-            phase_data = phases[cell_name]
+            cell_data = cells[cell_name]
 
             # Track model used
-            if model_used and not phase_data['model']:
-                phase_data['model'] = model_used
-            elif model_requested and not phase_data['model']:
-                phase_data['model'] = model_requested
+            if model_used and not cell_data['model']:
+                cell_data['model'] = model_used
+            elif model_requested and not cell_data['model']:
+                cell_data['model'] = model_requested
 
             # Accumulate costs and durations
             if cost and cost > 0:
-                phase_data['cost'] += float(cost)
+                cell_data['cost'] += float(cost)
                 total_cost += float(cost)
 
             if duration_ms and duration_ms > 0:
-                phase_data['duration'] += float(duration_ms) / 1000.0
+                cell_data['duration'] += float(duration_ms) / 1000.0
                 total_duration += float(duration_ms) / 1000.0
 
             # Track tokens
             if tokens_in:
-                phase_data['tokensIn'] += int(tokens_in)
+                cell_data['tokensIn'] += int(tokens_in)
             if tokens_out:
-                phase_data['tokensOut'] += int(tokens_out)
+                cell_data['tokensOut'] += int(tokens_out)
 
             # Track max turn number
-            if turn_number and turn_number > phase_data['turnCount']:
-                phase_data['turnCount'] = turn_number
+            if turn_number and turn_number > cell_data['turnCount']:
+                cell_data['turnCount'] = turn_number
 
             # Track images
             if image_paths:
@@ -2028,19 +2028,19 @@ def get_session_execution_flow(session_id):
                     else:
                         imgs = image_paths if isinstance(image_paths, list) else []
                     for img in imgs:
-                        if img and img not in phase_data['images']:
-                            phase_data['images'].append(img)
+                        if img and img not in cell_data['images']:
+                            cell_data['images'].append(img)
                 except:
                     pass
 
             # Track sounding winner
             if winning_candidate_index is not None:
-                phase_data['soundingWinner'] = winning_candidate_index
-                phase_data['details']['soundings']['winnerIndex'] = winning_candidate_index
+                cell_data['soundingWinner'] = winning_candidate_index
+                cell_data['details']['soundings']['winnerIndex'] = winning_candidate_index
 
             # Track sounding attempts with richer data
             if candidate_index is not None and role == 'assistant':
-                attempts = phase_data['details']['soundings']['attempts']
+                attempts = cell_data['details']['soundings']['attempts']
                 while len(attempts) <= candidate_index:
                     attempts.append({
                         'status': 'pending',
@@ -2100,11 +2100,11 @@ def get_session_execution_flow(session_id):
                                 preview = str(parsed['content'])[:400]
                         except:
                             pass
-                    phase_data['output'] = preview
+                    cell_data['output'] = preview
 
             # Track reforge steps
             if reforge_step is not None and reforge_step > 0:
-                reforge_steps = phase_data['details']['reforge']['reforgeSteps']
+                reforge_steps = cell_data['details']['reforge']['reforgeSteps']
                 while len(reforge_steps) < reforge_step:
                     reforge_steps.append({'winnerIndex': None, 'attempts': []})
                 step_data = reforge_steps[reforge_step - 1]
@@ -2113,37 +2113,37 @@ def get_session_execution_flow(session_id):
 
             # Check for error status
             if node_type and 'error' in node_type.lower():
-                phase_data['status'] = 'error'
+                cell_data['status'] = 'error'
                 overall_status = 'error'
 
             # Track ward results
             if node_type and 'ward' in node_type.lower():
                 ward_type = 'pre' if 'pre' in node_type.lower() else 'post'
-                ward_key = f"{ward_type}_{len(phase_data['details']['wards'])}"
+                ward_key = f"{ward_type}_{len(cell_data['details']['wards'])}"
                 # Try to extract validation result from content
                 valid = 'pass' in node_type.lower() or 'valid' in str(content_preview).lower()
-                phase_data['details']['wards'][ward_key] = {
+                cell_data['details']['wards'][ward_key] = {
                     'valid': valid,
                     'type': ward_type,
                     'reason': content_preview[:100] if content_preview else ''
                 }
 
-        # Check if cascade is still running (last phase might be in progress)
-        last_phase_query = """
+        # Check if cascade is still running (last cell might be in progress)
+        last_cell_query = """
             SELECT node_type
             FROM unified_logs
             WHERE session_id = ?
             ORDER BY timestamp DESC
             LIMIT 1
         """
-        last_row = conn.execute(last_phase_query, [session_id]).fetchone()
+        last_row = conn.execute(last_cell_query, [session_id]).fetchone()
         if last_row and last_row[0]:
             last_type = last_row[0].lower()
             if 'start' in last_type and 'complete' not in last_type:
                 overall_status = 'running'
-                # Mark last phase as running
+                # Mark last cell as running
                 if executed_path:
-                    phases[executed_path[-1]]['status'] = 'running'
+                    cells[executed_path[-1]]['status'] = 'running'
 
         conn.close()
 
@@ -2152,9 +2152,9 @@ def get_session_execution_flow(session_id):
             'cascade_id': cascade_id,
             'executedPath': executed_path,
             'executedHandoffs': executed_handoffs,
-            'phases': phases,
+            'cells': cells,
             'summary': {
-                'phaseCount': len(executed_path),
+                'cellCount': len(executed_path),
                 'totalCost': total_cost,
                 'totalDuration': total_duration,
                 'status': overall_status
@@ -2174,7 +2174,7 @@ def get_session_cost(session_id):
         conn = get_db_connection()
 
         # Only sum costs from 'assistant' role rows to avoid double/triple counting
-        # The same cost value is propagated to system, phase_start, and assistant rows
+        # The same cost value is propagated to system, cell_start, and assistant rows
         # but we only want to count it once (the assistant row is the final response)
         query = """
             SELECT SUM(cost) as total_cost
@@ -2318,7 +2318,7 @@ def get_soundings_tree(session_id):
     """
     Returns hierarchical soundings data for visualization.
 
-    Shows all soundings across all phases, evaluator reasoning,
+    Shows all soundings across all cells, evaluator reasoning,
     and the winner path through the cascade execution.
 
     Data source: ClickHouse unified_logs table
@@ -2366,14 +2366,14 @@ def get_soundings_tree(session_id):
             # Show sample row with mutation
             sample = df[df['mutation_type'].notna()].head(1)
             if not sample.empty:
-                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['candidate_index']}, phase={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
+                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['candidate_index']}, cell={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
         if 'full_request_json' in df.columns:
             has_full_request = df['full_request_json'].notna().sum()
             print(f"[API] full_request_json non-null count: {has_full_request}/{len(df)}")
 
-        # Group by phase
-        phases_dict = {}
-        phase_order = []  # Track execution order by first appearance
+        # Group by cell
+        cells_dict = {}
+        cell_order = []  # Track execution order by first appearance
         winner_path = []
 
         for _, row in df.iterrows():
@@ -2381,15 +2381,15 @@ def get_soundings_tree(session_id):
             sounding_idx = int(row['candidate_index'])
             reforge_step = row['reforge_step']
 
-            if cell_name not in phases_dict:
-                phases_dict[cell_name] = {
+            if cell_name not in cells_dict:
+                cells_dict[cell_name] = {
                     'name': cell_name,
                     'soundings': {},
                     'reforge_steps': {},
                     'eval_reasoning': None
                 }
                 # Track execution order by first appearance (preserves timestamp order from query)
-                phase_order.append(cell_name)
+                cell_order.append(cell_name)
 
             # Separate initial soundings from reforge refinements
             is_reforge = pd.notna(reforge_step)
@@ -2399,8 +2399,8 @@ def get_soundings_tree(session_id):
                 step_num = int(reforge_step)
 
                 # Initialize reforge step if needed
-                if step_num not in phases_dict[cell_name]['reforge_steps']:
-                    phases_dict[cell_name]['reforge_steps'][step_num] = {
+                if step_num not in cells_dict[cell_name]['reforge_steps']:
+                    cells_dict[cell_name]['reforge_steps'][step_num] = {
                         'step': step_num,
                         'refinements': {},
                         'eval_reasoning': None,
@@ -2408,14 +2408,14 @@ def get_soundings_tree(session_id):
                     }
 
                 # Initialize refinement if needed
-                if sounding_idx not in phases_dict[cell_name]['reforge_steps'][step_num]['refinements']:
+                if sounding_idx not in cells_dict[cell_name]['reforge_steps'][step_num]['refinements']:
                     is_winner_val = row['is_winner']
                     if pd.isna(is_winner_val):
                         is_winner = False
                     else:
                         is_winner = bool(is_winner_val)
 
-                    phases_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
+                    cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
                         'index': sounding_idx,
                         'cost': 0,
                         'turns': [],
@@ -2434,7 +2434,7 @@ def get_soundings_tree(session_id):
                         'prompt': None
                     }
 
-                refinement = phases_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
+                refinement = cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
 
                 # Update is_winner if definitive
                 is_winner_val = row['is_winner']
@@ -2532,14 +2532,14 @@ def get_soundings_tree(session_id):
                             refinement['failed'] = True
                         # Extract honing prompt from metadata
                         if isinstance(metadata, dict) and metadata.get('honing_prompt'):
-                            phases_dict[cell_name]['reforge_steps'][step_num]['honing_prompt'] = metadata.get('honing_prompt')
+                            cells_dict[cell_name]['reforge_steps'][step_num]['honing_prompt'] = metadata.get('honing_prompt')
                 except:
                     pass
 
                 continue  # Skip to next row (reforge handled)
 
             # INITIAL SOUNDING (reforge_step IS NULL)
-            if sounding_idx not in phases_dict[cell_name]['soundings']:
+            if sounding_idx not in cells_dict[cell_name]['soundings']:
                 # Handle NA values for is_winner (agent rows may not have this set)
                 is_winner_val = row['is_winner']
                 if pd.isna(is_winner_val):
@@ -2547,7 +2547,7 @@ def get_soundings_tree(session_id):
                 else:
                     is_winner = bool(is_winner_val)
 
-                phases_dict[cell_name]['soundings'][sounding_idx] = {
+                cells_dict[cell_name]['soundings'][sounding_idx] = {
                     'index': sounding_idx,
                     'cost': 0,
                     'turns': [],
@@ -2566,7 +2566,7 @@ def get_soundings_tree(session_id):
                     'prompt': None
                 }
 
-            sounding = phases_dict[cell_name]['soundings'][sounding_idx]
+            sounding = cells_dict[cell_name]['soundings'][sounding_idx]
 
             # Update is_winner if we have a definitive value (sounding_attempt rows have this)
             is_winner_val = row['is_winner']
@@ -2599,7 +2599,7 @@ def get_soundings_tree(session_id):
             mutation_type_val = row.get('mutation_type')
             if pd.notna(mutation_type_val) and not sounding['mutation_type']:
                 sounding['mutation_type'] = mutation_type_val
-                print(f"[API] Found mutation_type={mutation_type_val} for phase={cell_name}, sounding={sounding_idx}")
+                print(f"[API] Found mutation_type={mutation_type_val} for cell={cell_name}, sounding={sounding_idx}")
             if pd.notna(row.get('mutation_applied')) and not sounding['mutation_applied']:
                 sounding['mutation_applied'] = row['mutation_applied']
             if pd.notna(row.get('mutation_template')) and not sounding['mutation_template']:
@@ -2609,7 +2609,7 @@ def get_soundings_tree(session_id):
             # Note: System message contains tool descriptions, USER message contains actual instructions
             full_req = row.get('full_request_json')
             if pd.notna(full_req) and not sounding['prompt']:
-                print(f"[API] Found full_request_json for phase={cell_name}, sounding={sounding_idx}")
+                print(f"[API] Found full_request_json for cell={cell_name}, sounding={sounding_idx}")
                 try:
                     full_request = json.loads(full_req)
                     messages = full_request.get('messages', [])
@@ -2719,7 +2719,7 @@ def get_soundings_tree(session_id):
             cell_name = row['cell_name']
             reforge_step = row['reforge_step']
 
-            if cell_name in phases_dict:
+            if cell_name in cells_dict:
                 try:
                     if pd.notna(row['content_json']):
                         content = json.loads(row['content_json'])
@@ -2773,23 +2773,23 @@ def get_soundings_tree(session_id):
                             if pd.notna(reforge_step):
                                 # Reforge step evaluation
                                 step_num = int(reforge_step)
-                                if step_num in phases_dict[cell_name]['reforge_steps']:
-                                    if not phases_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning']:
-                                        phases_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
+                                if step_num in cells_dict[cell_name]['reforge_steps']:
+                                    if not cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning']:
+                                        cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
                             else:
                                 # Initial soundings evaluation
-                                if not phases_dict[cell_name]['eval_reasoning']:
+                                if not cells_dict[cell_name]['eval_reasoning']:
                                     # Store full eval reasoning (no truncation)
-                                    phases_dict[cell_name]['eval_reasoning'] = content_text
+                                    cells_dict[cell_name]['eval_reasoning'] = content_text
                 except:
                     pass
 
         # Convert dicts to lists and calculate durations
-        # Use phase_order to maintain execution order (not alphabetical!)
-        phases = []
-        for cell_name in phase_order:
-            phase = phases_dict[cell_name]
-            soundings_list = list(phase['soundings'].values())
+        # Use cell_order to maintain execution order (not alphabetical!)
+        cells = []
+        for cell_name in cell_order:
+            cell = cells_dict[cell_name]
+            soundings_list = list(cell['soundings'].values())
 
             # Calculate duration for each sounding
             for sounding in soundings_list:
@@ -2801,16 +2801,16 @@ def get_soundings_tree(session_id):
                 del sounding['start_time']
                 del sounding['end_time']
 
-            phase['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
+            cell['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
 
             # Attach images to soundings
             import re
 
-            # METHOD 1: Check for phase-level sounding images (filename pattern)
+            # METHOD 1: Check for cell-level sounding images (filename pattern)
             # Pattern: images/{session_id}/{cell_name}/sounding_{s}_image_{index}.{ext}
-            phase_dir = os.path.join(IMAGE_DIR, session_id, cell_name)
-            if os.path.exists(phase_dir):
-                for img_file in sorted(os.listdir(phase_dir)):
+            cell_dir = os.path.join(IMAGE_DIR, session_id, cell_name)
+            if os.path.exists(cell_dir):
+                for img_file in sorted(os.listdir(cell_dir)):
                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                         # Check if this is a sounding-specific image (has sounding_N_ prefix)
                         sounding_file_match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', img_file)
@@ -2863,8 +2863,8 @@ def get_soundings_tree(session_id):
 
             # Convert reforge dicts to lists and attach images
             reforge_steps_list = []
-            for step_num in sorted(phase['reforge_steps'].keys()):
-                step = phase['reforge_steps'][step_num]
+            for step_num in sorted(cell['reforge_steps'].keys()):
+                step = cell['reforge_steps'][step_num]
                 refinements_list = list(step['refinements'].values())
 
                 # Calculate duration for each refinement
@@ -2905,21 +2905,21 @@ def get_soundings_tree(session_id):
 
                 reforge_steps_list.append(step)
 
-            phase['reforge_steps'] = reforge_steps_list
+            cell['reforge_steps'] = reforge_steps_list
 
-            phases.append(phase)
+            cells.append(cell)
 
         # Build reforge trails for winner_path
         for winner_entry in winner_path:
             cell_name = winner_entry['cell_name']
-            # Find the phase in our phases list
-            for phase in phases:
-                if phase['name'] == cell_name:
-                    # Check if this phase has reforge steps
-                    if phase['reforge_steps']:
+            # Find the cell in our cells list
+            for cell in cells:
+                if cell['name'] == cell_name:
+                    # Check if this cell has reforge steps
+                    if cell['reforge_steps']:
                         reforge_trail = []
                         # For each reforge step, find the winner
-                        for step in phase['reforge_steps']:
+                        for step in cell['reforge_steps']:
                             for refinement in step['refinements']:
                                 if refinement['is_winner']:
                                     reforge_trail.append(refinement['index'])
@@ -2929,7 +2929,7 @@ def get_soundings_tree(session_id):
                     break
 
         result = {
-            'phases': phases,
+            'cells': cells,
             'winner_path': winner_path
         }
 
@@ -3125,9 +3125,9 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             'mermaid': str,        # Mermaid diagram string
             'cascade_id': str,     # Cascade ID from config
             'cascade_path': str,   # Resolved file path
-            'phases_count': int,   # Number of phases
-            'has_soundings': bool, # Whether any phases have soundings
-            'has_routing': bool    # Whether any phases have routing/handoffs
+            'cells_count': int,   # Number of cells
+            'has_soundings': bool, # Whether any cells have soundings
+            'has_routing': bool    # Whether any cells have routing/handoffs
         }
 
     Example:
@@ -3201,19 +3201,19 @@ def get_static_mermaid_from_cascade(cascade_path=None):
 
         # Extract metadata from config
         has_soundings = any(
-            phase.soundings and phase.soundings.factor > 1
-            for phase in cascade_config.phases
+            cell.soundings and cell.soundings.factor > 1
+            for cell in cascade_config.cells
         )
         has_routing = any(
-            phase.handoffs or (phase.routing if hasattr(phase, 'routing') else False)
-            for phase in cascade_config.phases
+            cell.handoffs or (cell.routing if hasattr(cell, 'routing') else False)
+            for cell in cascade_config.cells
         )
 
         return jsonify({
             'mermaid': mermaid_content,
             'cascade_id': cascade_config.cascade_id,
             'cascade_path': str(resolved_path),
-            'phases_count': len(cascade_config.phases),
+            'cells_count': len(cascade_config.cells),
             'has_soundings': has_soundings,
             'has_routing': has_routing,
             'description': cascade_config.description
@@ -3571,7 +3571,7 @@ def run_cascade():
                             "error": str(e),
                             "error_type": type(e).__name__,
                             "traceback": error_tb,
-                            "phase": "initialization"
+                            "cell": "initialization"
                         }
                     ))
 
@@ -3627,14 +3627,14 @@ def run_cascade():
 
 @app.route('/api/playground/run-from', methods=['POST'])
 def playground_run_from():
-    """Run playground cascade starting from a specific phase.
+    """Run playground cascade starting from a specific cell.
 
-    Uses cached images from a previous run for upstream phases,
-    pre-populates Echo state, and only executes from the target phase.
+    Uses cached images from a previous run for upstream cells,
+    pre-populates Echo state, and only executes from the target cell.
 
     Request body:
-        cell_name: The phase to start execution from (or node_id for backwards compat)
-        cached_session_id: Session ID with cached images for upstream phases
+        cell_name: The cell to start execution from (or node_id for backwards compat)
+        cached_session_id: Session ID with cached images for upstream cells
         cascade_yaml: Full cascade YAML
         inputs: Input values
     """
@@ -3692,32 +3692,32 @@ def playground_run_from():
             if os.path.exists(src_dir):
                 os.makedirs(dst_dir, exist_ok=True)
 
-                for cell_name in upstream_phases:
-                    phase_src = os.path.join(src_dir, cell_name)
-                    phase_dst = os.path.join(dst_dir, cell_name)
+                for cell_name in upstream_cells:
+                    cell_src = os.path.join(src_dir, cell_name)
+                    cell_dst = os.path.join(dst_dir, cell_name)
 
-                    if os.path.exists(phase_src):
-                        shutil.copytree(phase_src, phase_dst)
+                    if os.path.exists(cell_src):
+                        shutil.copytree(cell_src, cell_dst)
                         print(f"[Playground RunFrom] Copied images: {cell_name}")
             else:
                 print(f"[Playground RunFrom] Warning: cached session dir not found: {src_dir}")
 
-        # Build Echo with pre-populated state for upstream phases
+        # Build Echo with pre-populated state for upstream cells
         echo = Echo(session_id=new_session_id, initial_state={'input': inputs})
 
-        # Add output_* entries for each upstream phase with image references
-        for cell_name in upstream_phases:
-            phase_img_dir = os.path.join(IMAGE_DIR, new_session_id, cell_name)
+        # Add output_* entries for each upstream cell with image references
+        for cell_name in upstream_cells:
+            cell_img_dir = os.path.join(IMAGE_DIR, new_session_id, cell_name)
             images = []
 
-            if os.path.exists(phase_img_dir):
-                for img_file in sorted(os.listdir(phase_img_dir)):
+            if os.path.exists(cell_img_dir):
+                for img_file in sorted(os.listdir(cell_img_dir)):
                     if img_file.endswith(('.png', '.jpg', '.jpeg', '.webp')):
                         # Use API URL format that runner expects
                         img_url = f"/api/images/{new_session_id}/{cell_name}/{img_file}"
                         images.append(img_url)
 
-            # Set output state that downstream phases can reference
+            # Set output state that downstream cells can reference
             echo.state[f'output_{cell_name}'] = {
                 'images': images,
                 'status': 'completed',
@@ -3728,11 +3728,11 @@ def playground_run_from():
         # Register Echo in session manager (key pattern from branching.py)
         _session_manager.sessions[new_session_id] = echo
 
-        # Modify cascade to only include target + downstream phases
-        cascade_data['phases'] = [p for p in phases if p['name'] in target_and_downstream]
+        # Modify cascade to only include target + downstream cells
+        cascade_data['cells'] = [p for p in cells if p['name'] in target_and_downstream]
         modified_yaml = yaml_module.dump(cascade_data, default_flow_style=False)
 
-        print(f"[Playground RunFrom] Modified cascade has {len(cascade_data['phases'])} phases")
+        print(f"[Playground RunFrom] Modified cascade has {len(cascade_data['cells'])} cells")
 
         # Save modified cascade to scratchpad
         scratchpad_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad')
@@ -3808,7 +3808,7 @@ def playground_run_from():
                             "error": str(e),
                             "error_type": type(e).__name__,
                             "traceback": error_tb,
-                            "phase": "initialization",
+                            "cell": "initialization",
                             "run_from": node_id
                         }
                     ))
@@ -4275,7 +4275,7 @@ def playground_session_stream(session_id):
 
     This endpoint replaces fragmented SSE events with a single polling endpoint
     that returns all relevant execution data since a given timestamp. The UI
-    derives phase states, soundings progress, winner, etc. from these log rows.
+    derives cell states, soundings progress, winner, etc. from these log rows.
 
     Query params:
         after: ISO timestamp to fetch logs after (default: 1970-01-01)
@@ -4553,7 +4553,7 @@ def playground_session_stream(session_id):
                     child_sessions[child_session_id] = {
                         'session_id': child_session_id,
                         'parent_session_id': session_id,
-                        'parent_phase': row.get('cell_name'),  # Phase that spawned the child
+                        'parent_cell': row.get('cell_name'),  # Cell that spawned the child
                         'first_seen': row.get('timestamp_iso')
                     }
 
@@ -4824,7 +4824,7 @@ def get_blocked_sessions():
                 session_map[sid] = {
                     'session_id': sid,
                     'cascade_id': cp.cascade_id,
-                    'current_phase': cp.cell_name,
+                    'current_cell': cp.cell_name,
                     'blocked_type': cp.checkpoint_type.value if hasattr(cp.checkpoint_type, 'value') else str(cp.checkpoint_type),
                     'blocked_on': cp.id,
                     'created_at': cp.created_at.isoformat() if cp.created_at else None,
@@ -4980,7 +4980,7 @@ def hotornot_queue():
 
 @app.route('/api/hotornot/sounding-group/<session_id>/<cell_name>', methods=['GET'])
 def hotornot_sounding_group(session_id, cell_name):
-    """Get all soundings for a specific session+phase for comparison."""
+    """Get all soundings for a specific session+cell for comparison."""
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
@@ -5213,7 +5213,7 @@ def get_session_images(session_id):
                     full_path = os.path.join(root, filename)
                     rel_path = os.path.relpath(full_path, session_image_dir)
 
-                    # Extract phase name from path (e.g., "generate/image_0.png" -> "generate")
+                    # Extract cell name from path (e.g., "generate/image_0.png" -> "generate")
                     path_parts = rel_path.split(os.sep)
                     cell_name = path_parts[0] if len(path_parts) > 1 else None
 
@@ -5252,7 +5252,7 @@ def get_session_images(session_id):
                             full_path = os.path.join(root, filename)
                             rel_path = os.path.relpath(full_path, sounding_dir)
 
-                            # Extract phase name
+                            # Extract cell name
                             path_parts = rel_path.split(os.sep)
                             cell_name = path_parts[0] if len(path_parts) > 1 else None
 
@@ -5419,10 +5419,10 @@ def get_session_images(session_id):
                     # Build a set of (cell_name, candidate_index) pairs that are winners
                     sounding_winners = set()
                     for _, row in sounding_winner_df.iterrows():
-                        phase = row.get('cell_name')
+                        cell = row.get('cell_name')
                         idx = row.get('candidate_index')
-                        if phase and idx is not None:
-                            sounding_winners.add((phase, int(idx)))
+                        if cell and idx is not None:
+                            sounding_winners.add((cell, int(idx)))
 
                     # Mark winning sounding images
                     for img in images:
@@ -5433,7 +5433,7 @@ def get_session_images(session_id):
             except Exception as e:
                 print(f"Warning: Could not query sounding winners: {e}")
 
-        # Sort by phase, then sounding index, then reforge step, then modification time
+        # Sort by cell, then sounding index, then reforge step, then modification time
         images.sort(key=lambda x: (
             x['cell_name'] or '',
             x['candidate_index'] if x['candidate_index'] is not None else -1,
@@ -5530,7 +5530,7 @@ def get_session_audio(session_id):
                 full_path = os.path.join(root, filename)
                 rel_path = os.path.relpath(full_path, session_audio_dir)
 
-                # Extract phase name from path (e.g., "speak/audio_0.mp3" -> "speak")
+                # Extract cell name from path (e.g., "speak/audio_0.mp3" -> "speak")
                 path_parts = rel_path.split(os.sep)
                 cell_name = path_parts[0] if len(path_parts) > 1 else None
 
@@ -5815,7 +5815,7 @@ def debug_schema():
             session_id,
             cascade_id,
             COUNT(*) as msg_count,
-            COUNT(DISTINCT cell_name) as phase_count,
+            COUNT(DISTINCT cell_name) as cell_count,
             SUM(CASE WHEN cost IS NOT NULL AND cost > 0 THEN cost ELSE 0 END) as total_cost
         FROM unified_logs
         WHERE cascade_id IS NOT NULL
@@ -5851,7 +5851,7 @@ def debug_schema():
 def get_session_human_inputs(session_id):
     """
     Get all human input interactions (ask_human calls and responses) for a session.
-    Returns the question asked and the human's response, grouped by phase.
+    Returns the question asked and the human's response, grouped by cell.
     """
     try:
         conn = get_db_connection()
@@ -5877,8 +5877,8 @@ def get_session_human_inputs(session_id):
         result = conn.execute(query, [session_id]).fetchall()
         conn.close()
 
-        # Group by phase, pairing tool_calls with their results
-        human_inputs_by_phase = {}
+        # Group by cell, pairing tool_calls with their results
+        human_inputs_by_cell = {}
 
         for row in result:
             timestamp, cell_name, node_type, content, metadata_str = row
@@ -5896,10 +5896,10 @@ def get_session_human_inputs(session_id):
             if tool_name != 'ask_human':
                 continue
 
-            phase_key = cell_name or '_unknown_'
-            if phase_key not in human_inputs_by_phase:
-                human_inputs_by_phase[phase_key] = {
-                    'cell_name': phase_key,
+            cell_key = cell_name or '_unknown_'
+            if cell_key not in human_inputs_by_cell:
+                human_inputs_by_cell[cell_key] = {
+                    'cell_name': cell_key,
                     'interactions': []
                 }
 
@@ -5910,7 +5910,7 @@ def get_session_human_inputs(session_id):
                 context = arguments.get('context', '')
                 ui_hint = arguments.get('ui_hint')
 
-                human_inputs_by_phase[phase_key]['interactions'].append({
+                human_inputs_by_cell[cell_key]['interactions'].append({
                     'type': 'question',
                     'timestamp': timestamp,
                     'question': question,
@@ -5922,8 +5922,8 @@ def get_session_human_inputs(session_id):
                 # Extract response
                 response = metadata.get('result', '')
 
-                # Try to match with the last question in this phase
-                interactions = human_inputs_by_phase[phase_key]['interactions']
+                # Try to match with the last question in this cell
+                interactions = human_inputs_by_cell[cell_key]['interactions']
                 if interactions and interactions[-1]['type'] == 'question':
                     # Merge response into the question entry
                     interactions[-1]['response'] = response
@@ -5937,7 +5937,7 @@ def get_session_human_inputs(session_id):
                     })
 
         # Convert to list sorted by first interaction timestamp
-        human_inputs_list = list(human_inputs_by_phase.values())
+        human_inputs_list = list(human_inputs_by_cell.values())
 
         return jsonify({
             'session_id': session_id,
@@ -6450,7 +6450,7 @@ def get_research_session_api(research_session_id):
         # Parse JSON fields
         json_fields = [
             'context_snapshot', 'checkpoints_data', 'entries_snapshot',
-            'screenshots', 'phases_visited', 'tools_used', 'tags'
+            'screenshots', 'cells_visited', 'tools_used', 'tags'
         ]
 
         for field in json_fields:
@@ -6681,7 +6681,7 @@ def save_research_session_api():
         checkpoints_query = """
             SELECT
                 id, cell_name, checkpoint_type,
-                phase_output, ui_spec,
+                cell_output, ui_spec,
                 response, responded_at,
                 created_at, status
             FROM checkpoints
@@ -6693,7 +6693,7 @@ def save_research_session_api():
         checkpoints = []
         try:
             checkpoint_result = conn.execute(checkpoints_query, [session_id]).fetchall()
-            checkpoint_columns = ['id', 'cell_name', 'checkpoint_type', 'phase_output',
+            checkpoint_columns = ['id', 'cell_name', 'checkpoint_type', 'cell_output',
                                    'ui_spec', 'response', 'responded_at', 'created_at', 'status']
 
             for row in checkpoint_result:
@@ -6737,8 +6737,8 @@ def save_research_session_api():
 
             duration_seconds = (last_dt - first_dt).total_seconds()
 
-        # Phases and tools
-        phases_visited = list(dict.fromkeys([e.get('cell_name') for e in entries if e.get('cell_name')]))
+        # Cells and tools
+        cells_visited = list(dict.fromkeys([e.get('cell_name') for e in entries if e.get('cell_name')]))
 
         tools_used = []
         for e in entries:
@@ -6763,7 +6763,7 @@ def save_research_session_api():
         # Auto-generate title if not provided
         title = data.get('title')
         if not title and checkpoints:
-            question = checkpoints[0].get('phase_output', '')
+            question = checkpoints[0].get('cell_output', '')
             title = question[:80] + ("..." if len(question) > 80 else "")
         if not title:
             title = f"Research Session - {session_id[:8]}"
@@ -6811,7 +6811,7 @@ def save_research_session_api():
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "duration_seconds": duration_seconds,
-            "phases_visited": json.dumps(phases_visited),
+            "cells_visited": json.dumps(cells_visited),
             "tools_used": json.dumps(tools_used),
 
             # Taxonomy
@@ -6847,7 +6847,7 @@ def save_research_session_api():
             research_session['total_input_tokens'],
             research_session['total_output_tokens'],
             research_session['duration_seconds'],
-            research_session['phases_visited'],
+            research_session['cells_visited'],
             research_session['tools_used'],
             research_session['tags'],
             research_session['parent_session_id'],

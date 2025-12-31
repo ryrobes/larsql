@@ -50,7 +50,7 @@ def execute_tool():
     """
     Execute a tool by creating an ephemeral cascade.
 
-    This creates a single-phase cascade in /tmp that calls the specified tool,
+    This creates a single-cell cascade in /tmp that calls the specified tool,
     then submits it to the existing run-cascade endpoint. This approach:
     - Reuses all existing execution infrastructure
     - Provides full session persistence and tracing
@@ -168,7 +168,7 @@ def execute_tool():
                             "error": str(e),
                             "error_type": type(e).__name__,
                             "traceback": error_tb,
-                            "phase": "initialization",
+                            "cell": "initialization",
                             "tool_name": tool_name
                         }
                     ))

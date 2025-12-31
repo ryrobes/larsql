@@ -207,7 +207,7 @@ function InstanceGridView({
     const instance = props.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const hasRunningCells = instance.cells?.some(p => p.status === 'running');
     const hasFailed = instance.status === 'failed';
     const isChild = instance._isChild;
 
@@ -215,7 +215,7 @@ function InstanceGridView({
       <div className="session-id-cell">
         {isChild && <span className="child-badge">└─</span>}
         <span className="session-id-text">{props.value}</span>
-        {(isRunning || hasRunningPhases) && !isFinalizing && (
+        {(isRunning || hasRunningCells) && !isFinalizing && (
           <span className="status-badge running">
             <Icon icon="mdi:lightning-bolt" width="12" />
           </span>
@@ -238,7 +238,7 @@ function InstanceGridView({
     const instance = props.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const hasRunningCells = instance.cells?.some(p => p.status === 'running');
     const isCompleted = instance.cells?.every(p => p.status === 'completed');
     const hasFailed = instance.status === 'failed' || instance.cells?.some(p => p.status === 'error');
 
@@ -248,7 +248,7 @@ function InstanceGridView({
     if (isFinalizing) {
       statusText = 'Processing';
       statusClass = 'finalizing';
-    } else if (isRunning || hasRunningPhases) {
+    } else if (isRunning || hasRunningCells) {
       statusText = 'Running';
       statusClass = 'running';
     } else if (hasFailed) {
@@ -266,27 +266,27 @@ function InstanceGridView({
     );
   };
 
-  const PhasesRenderer = (props) => {
-    const phases = props.data.cells || [];
-    const completed = phases.filter(p => p.status === 'completed').length;
-    const running = phases.filter(p => p.status === 'running').length;
-    const failed = phases.filter(p => p.status === 'error').length;
-    const total = phases.length;
+  const CellsRenderer = (props) => {
+    const cells = props.data.cells || [];
+    const completed = cells.filter(p => p.status === 'completed').length;
+    const running = cells.filter(p => p.status === 'running').length;
+    const failed = cells.filter(p => p.status === 'error').length;
+    const total = cells.length;
 
     return (
-      <div className="phases-cell">
-        <span className="phase-count">{total}</span>
+      <div className="cells-cell">
+        <span className="cell-count">{total}</span>
         {running > 0 && (
-          <span className="phase-indicator running" title={`${running} running`}>
+          <span className="cell-indicator running" title={`${running} running`}>
             <Icon icon="mdi:circle" width="8" />
           </span>
         )}
         {failed > 0 && (
-          <span className="phase-indicator failed" title={`${failed} failed`}>
+          <span className="cell-indicator failed" title={`${failed} failed`}>
             {failed}
           </span>
         )}
-        <span className="phase-progress">
+        <span className="cell-progress">
           ({completed}/{total})
         </span>
       </div>
@@ -363,7 +363,7 @@ function InstanceGridView({
 
     const isRunning = rs?.has(instance.session_id);
     const isFinalizing = fs?.has(instance.session_id);
-    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const hasRunningCells = instance.cells?.some(p => p.status === 'running');
     const isCompleted = instance.cells?.every(p => p.status === 'completed');
     const isChild = instance._isChild;
 
@@ -401,7 +401,7 @@ function InstanceGridView({
         >
           <Icon icon="mdi:replay" width="14" />
         </button>
-        {(isRunning || (hasRunningPhases && !isFinalizing)) && (
+        {(isRunning || (hasRunningCells && !isFinalizing)) && (
           <button
             className={`action-btn audible ${aSig?.[instance.session_id] ? 'signaled' : ''}`}
             onClick={(e) => handleClick(e, audible, e, instance.session_id)}
@@ -475,10 +475,10 @@ function InstanceGridView({
       cellClass: 'session-id-column'
     },
     {
-      field: 'phases',
-      headerName: 'Phases',
+      field: 'cells',
+      headerName: 'Cells',
       width: 100,
-      cellRenderer: PhasesRenderer,
+      cellRenderer: CellsRenderer,
       valueGetter: (params) => params.data.cells?.length || 0,
       cellClass: 'center-cell'
     },
@@ -569,7 +569,7 @@ function InstanceGridView({
     const instance = params.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const hasRunningCells = instance.cells?.some(p => p.status === 'running');
     const isChild = instance._isChild;
 
     const style = {};
@@ -581,7 +581,7 @@ function InstanceGridView({
 
     if (isFinalizing) {
       style.backgroundColor = 'rgba(45, 212, 191, 0.08)';
-    } else if (isRunning || hasRunningPhases) {
+    } else if (isRunning || hasRunningCells) {
       style.backgroundColor = 'rgba(251, 191, 36, 0.08)';
     }
 
@@ -593,13 +593,13 @@ function InstanceGridView({
     const instance = params.data;
     const isRunning = runningSessions?.has(instance.session_id);
     const isFinalizing = finalizingSessions?.has(instance.session_id);
-    const hasRunningPhases = instance.cells?.some(p => p.status === 'running');
+    const hasRunningCells = instance.cells?.some(p => p.status === 'running');
     const isChild = instance._isChild;
 
     const classes = [];
     if (isChild) classes.push('child-row');
     if (isFinalizing) classes.push('finalizing-row');
-    if (isRunning || hasRunningPhases) classes.push('running-row');
+    if (isRunning || hasRunningCells) classes.push('running-row');
 
     return classes.join(' ');
   };

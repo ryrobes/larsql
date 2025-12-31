@@ -133,19 +133,19 @@
   color: #f87171;
 }
 
-/* Phases Cell */
-.phases-cell {
+/* Cells Cell */
+.cells-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.phase-count {
+.cell-count {
   font-weight: 700;
   color: #f0f4f8;
 }
 
-.phase-indicator {
+.cell-indicator {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -153,24 +153,24 @@
   font-weight: 600;
 }
 
-.phase-indicator.running {
+.cell-indicator.running {
   color: #fbbf24;
-  animation: phase-pulse 1s ease-in-out infinite;
+  animation: cell-pulse 1s ease-in-out infinite;
 }
 
-@keyframes phase-pulse {
+@keyframes cell-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
-.phase-indicator.failed {
+.cell-indicator.failed {
   color: #f87171;
   background: rgba(248, 113, 113, 0.2);
   padding: 1px 4px;
   border-radius: 3px;
 }
 
-.phase-progress {
+.cell-progress {
   color: #64748b;
   font-size: 11px;
 }

@@ -36,14 +36,14 @@ export function deriveCellState(logs, cellName) {
     const role = row.role;
 
     // Cell running
-    if (role === 'phase_start' || role === 'structure') {
+    if (role === 'cell_start' || role === 'structure') {
       //console.log('[deriveCellState]', cellName, 'Setting status to running (role:', role, ')');
       status = 'running';
     }
 
     // Cell complete
-    if (role === 'phase_complete') {
-      //console.log('[deriveCellState]', cellName, 'Setting status to SUCCESS (found phase_complete)');
+    if (role === 'cell_complete') {
+      //console.log('[deriveCellState]', cellName, 'Setting status to SUCCESS (found cell_complete)');
       status = 'success';
     }
 
@@ -74,8 +74,8 @@ export function deriveCellState(logs, cellName) {
       result = toolResult;
     }
 
-    // Extract output from LLM/assistant messages (but skip evaluator!)
-    if (role === 'assistant' && row.content_json && row.node_type !== 'evaluator') {
+    // Extract output from LLM/assistant messages
+    if (role === 'assistant' && row.content_json) {
       let content = row.content_json;
 
       // Parse if JSON-encoded string (may need multiple parses for double-encoding)
@@ -92,24 +92,6 @@ export function deriveCellState(logs, cellName) {
 
       //console.log('[deriveCellState]', cellName, '✓ Found assistant result, type:', typeof content);
       result = content;
-    }
-
-    // Extract output from soundings_result (final winner output for candidates)
-    if (role === 'soundings_result' && row.content_json) {
-      let content = row.content_json;
-
-      // Parse if JSON-encoded string
-      while (typeof content === 'string' && content.startsWith('"')) {
-        try {
-          const parsed = JSON.parse(content);
-          content = parsed;
-        } catch {
-          break;
-        }
-      }
-
-      //console.log('[deriveCellState]', cellName, '✓ Found soundings_result, overriding with winner output');
-      result = content;  // Override any previous result with winner output
     }
 
     // Extract images from metadata_json
@@ -182,15 +164,15 @@ export function deriveCellState(logs, cellName) {
   };
 
   // Log final state
-  // console.log('[deriveCellState]', cellName, 'Final state:', {
-  //   status,
-  //   hasResult: !!result,
-  //   resultType: result ? typeof result : 'null',
-  //   hasRows: result?.rows?.length,
-  //   duration: finalState.duration,
-  //   cost: finalState.cost,
-  //   hasImages: !!images
-  // });
+  console.log('[deriveCellState]', cellName, 'Final state:', {
+    status,
+    hasResult: !!result,
+    resultType: result ? typeof result : 'null',
+    hasRows: result?.rows?.length,
+    duration: finalState.duration,
+    cost: finalState.cost,
+    hasImages: !!images
+  });
 
   return finalState;
 }

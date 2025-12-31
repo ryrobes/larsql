@@ -34,16 +34,16 @@ export const ROLE_CONFIG = {
     label: 'Tool Call',
     matrixColor: '#60a5fa'
   },
-  phase_start: {
+  cell_start: {
     icon: 'mdi:play-circle-outline',
     color: '#34d399',
-    label: 'Phase Start',
+    label: 'Cell Start',
     matrixColor: '#34d399'
   },
-  phase_complete: {
+  cell_complete: {
     icon: 'mdi:check-circle-outline',
     color: '#34d399',
-    label: 'Phase Complete',
+    label: 'Cell Complete',
     matrixColor: '#34d399'
   },
   structure: {

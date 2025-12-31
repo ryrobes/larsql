@@ -42,7 +42,7 @@ def list_cascades_with_soundings():
             SELECT
                 cascade_id,
                 COUNT(DISTINCT session_id) as session_count,
-                COUNT(DISTINCT cell_name) as phase_count,
+                COUNT(DISTINCT cell_name) as cell_count,
                 SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
                 COUNT(DISTINCT candidate_index) as sounding_diversity,
                 MIN(timestamp) as first_run,
@@ -65,7 +65,7 @@ def list_cascades_with_soundings():
             cascades.append({
                 'cascade_id': row['cascade_id'],
                 'session_count': row['session_count'],
-                'phase_count': row['phase_count'],
+                'cell_count': row['cell_count'],
                 'winner_count': row['winner_count'],
                 'sounding_diversity': row['sounding_diversity'],
                 'first_run': str(row['first_run']) if row['first_run'] else None,
@@ -83,7 +83,7 @@ def list_cascades_with_soundings():
 @sextant_bp.route('/species/<cascade_id>/<cell_name>', methods=['GET'])
 def list_species(cascade_id, cell_name):
     """
-    List distinct species (phase template DNA hashes) for a cascade/phase.
+    List distinct species (cell template DNA hashes) for a cascade/cell.
 
     Species represents the "DNA" of the prompt template - the instructions,
     soundings config, and rules that define how prompts are generated.
@@ -144,12 +144,12 @@ def list_species(cascade_id, cell_name):
             input_preview = None
             instructions_preview = None
 
-            # Try to extract instructions from cell_json (the phase config)
+            # Try to extract instructions from cell_json (the cell config)
             if row.get('cell_json'):
                 try:
-                    phase_data = json.loads(row['cell_json']) if isinstance(row['cell_json'], str) else row['cell_json']
-                    if isinstance(phase_data, dict):
-                        instr = phase_data.get('instructions', '')
+                    cell_data = json.loads(row['cell_json']) if isinstance(row['cell_json'], str) else row['cell_json']
+                    if isinstance(cell_data, dict):
+                        instr = cell_data.get('instructions', '')
                         if instr:
                             # Truncate but try to get meaningful first line
                             lines = instr.strip().split('\n')
@@ -244,7 +244,7 @@ def analyze_cascade(cascade_id):
     """
     Analyze a cascade's sounding patterns.
 
-    Returns per-phase analysis with:
+    Returns per-cell analysis with:
     - Win rate by MODEL (the causal factor, not arbitrary sounding index)
     - Win rate by MUTATION TYPE (when mutations are used)
     - Cost/quality metrics per model
@@ -254,8 +254,8 @@ def analyze_cascade(cascade_id):
     min_runs = request.args.get('min_runs', 3, type=int)
 
     try:
-        # Get phases with soundings for this cascade
-        phases_query = f"""
+        # Get cells with soundings for this cascade
+        cells_query = f"""
             SELECT
                 cell_name,
                 COUNT(DISTINCT session_id) as session_count,
@@ -269,11 +269,11 @@ def analyze_cascade(cascade_id):
             ORDER BY session_count DESC
         """
 
-        phases_result = db.query(phases_query, output_format='dict')
+        cells_result = db.query(cells_query, output_format='dict')
 
-        phases = []
-        for phase in phases_result:
-            cell_name = phase['cell_name']
+        cells = []
+        for cell in cells_result:
+            cell_name = cell['cell_name']
 
             # Get MODEL breakdown (the meaningful dimension!)
             model_query = f"""
@@ -311,7 +311,7 @@ def analyze_cascade(cascade_id):
             mutation_result = db.query(mutation_query, output_format='dict')
 
             # Calculate total competitions
-            total_wins = phase['winner_count']
+            total_wins = cell['winner_count']
 
             # Find best model
             best_model = None
@@ -342,9 +342,9 @@ def analyze_cascade(cascade_id):
             unique_models = len(model_result)
             has_mutations = any(m['mutation_type'] != 'baseline' for m in mutation_result)
 
-            phases.append({
+            cells.append({
                 'cell_name': cell_name,
-                'session_count': phase['session_count'],
+                'session_count': cell['session_count'],
                 'total_competitions': total_wins,
                 'unique_models': unique_models,
                 'has_mutations': has_mutations,
@@ -376,9 +376,9 @@ def analyze_cascade(cascade_id):
 
         return jsonify({
             'cascade_id': cascade_id,
-            'phases': phases,
-            'total_phases': len(phases),
-            'analysis_ready_phases': sum(1 for p in phases if p['analysis_ready']),
+            'cells': cells,
+            'total_cells': len(cells),
+            'analysis_ready_cells': sum(1 for p in cells if p['analysis_ready']),
         })
 
     except Exception as e:
@@ -475,7 +475,7 @@ def winner_loser_analysis(cascade_id, cell_name):
                 'winners': [],
                 'losers': [],
                 'synopsis': None,
-                'message': 'No winning prompts found for this phase'
+                'message': 'No winning prompts found for this cell'
             })
 
         # Get losing PROMPTS from same sessions
@@ -672,7 +672,7 @@ def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, cell_
 
     analysis_prompt = f"""You are analyzing INPUT PROMPTS to understand what makes them produce winning outputs.
 
-CONTEXT: These are the prompts sent to LLMs in the "{cell_name}" phase of cascade "{cascade_id}".
+CONTEXT: These are the prompts sent to LLMs in the "{cell_name}" cell of cascade "{cascade_id}".
 An evaluator judged the outputs - WINNING PROMPTS produced better outputs than LOSING PROMPTS.
 Your job is to identify what in the PROMPT WORDING caused better outputs.
 
@@ -737,7 +737,7 @@ Respond ONLY with the JSON object, no other text."""
             content=response.get('content', ''),
             metadata={
                 'analyzed_cascade': cascade_id,
-                'analyzed_phase': cell_name,
+                'analyzed_cell': cell_name,
                 'winner_count': len(winners),
                 'loser_count': len(losers),
             },
@@ -806,7 +806,7 @@ def get_suggestions(cascade_id):
     """
     from rvbbit.analyzer import SoundingAnalyzer, analyze_and_suggest
 
-    cell_name = request.args.get('phase')
+    cell_name = request.args.get('cell')
     min_runs = request.args.get('min_runs', 5, type=int)
     generate = request.args.get('generate', 'false').lower() == 'true'
 
@@ -837,7 +837,7 @@ def get_suggestions(cascade_id):
         suggestions = []
         for s in analysis['suggestions']:
             suggestion = {
-                'phase': s['phase'],
+                'cell': s['cell'],
                 'dominant_sounding': s.get('dominant_sounding'),
                 'win_rate': s['win_rate'],
                 'wins': s['wins'],
@@ -927,7 +927,7 @@ def apply_suggestion():
 @sextant_bp.route('/winning-samples/<cascade_id>/<cell_name>', methods=['GET'])
 def get_winning_samples(cascade_id, cell_name):
     """
-    Get sample winning outputs for a specific phase.
+    Get sample winning outputs for a specific cell.
 
     Useful for understanding WHY certain soundings win.
     Note: is_winner is marked on sounding_attempt rows, not assistant rows.
@@ -1676,7 +1676,7 @@ def prompt_heatmap(cascade_id, cell_name):
 
         config = get_config()
 
-        # Step 1: Get all agent rows with prompts for this phase, joined with is_winner from sounding_attempts
+        # Step 1: Get all agent rows with prompts for this cell, joined with is_winner from sounding_attempts
         # Agent rows have the prompts but sounding_attempt rows have the is_winner flag
         query = f"""
             SELECT
@@ -2422,12 +2422,12 @@ def get_prompt_evolution(session_id):
     Get prompt evolution (phylogeny) for the species of the given session.
 
     Returns React Flow compatible graph showing how prompts evolved across
-    multiple runs of the same species (phase configuration).
+    multiple runs of the same species (cell configuration).
 
     Query params:
     - as_of: timestamp | 'current' (default: session timestamp - show tree as it was at that time)
     - include_future: bool (default: false - whether to show runs after this session)
-    - cell_name: string (optional - filter to specific phase)
+    - cell_name: string (optional - filter to specific cell)
 
     Returns:
     {
@@ -2449,11 +2449,11 @@ def get_prompt_evolution(session_id):
         # Parse query params
         as_of = request.args.get('as_of', 'session')  # 'session', 'latest', or ISO timestamp
         include_future = request.args.get('include_future', 'false').lower() == 'true'
-        phase_filter = request.args.get('cell_name')
+        cell_filter = request.args.get('cell_name')
 
         # 1. Get metadata for the current session (cascade_id, cell_name, species_hash, timestamp)
-        # IMPORTANT: Pick the phase with the MOST sounding data (most candidates)
-        # This ensures we show the most interesting evolution, not a random phase
+        # IMPORTANT: Pick the cell with the MOST sounding data (most candidates)
+        # This ensures we show the most interesting evolution, not a random cell
         session_query = f"""
             SELECT
                 cascade_id,
@@ -2479,7 +2479,7 @@ def get_prompt_evolution(session_id):
 
         session_info = session_info[0]
         cascade_id = session_info['cascade_id']
-        cell_name = session_info['cell_name'] if not phase_filter else phase_filter
+        cell_name = session_info['cell_name'] if not cell_filter else cell_filter
         species_hash = session_info['species_hash']
         session_timestamp = session_info['timestamp']
 
@@ -2771,7 +2771,7 @@ def get_species_info(session_id):
     Get species hash and related sessions for a given session.
 
     Returns:
-    - species_hash: The species hash for this session's phases
+    - species_hash: The species hash for this session's cells
     - related_sessions: List of other sessions with the same species
     - evolution_depth: How many generations of this species exist
     """
@@ -2798,8 +2798,8 @@ def get_species_info(session_id):
                 'session_id': session_id
             }), 404
 
-        # Group by phase (sessions can have multiple phases with different species)
-        phases_info = []
+        # Group by cell (sessions can have multiple cells with different species)
+        cells_info = []
 
         for row in species_rows:
             cascade_id = row['cascade_id']
@@ -2851,7 +2851,7 @@ def get_species_info(session_id):
                     'total_cost': float(total_cost)
                 })
 
-            phases_info.append({
+            cells_info.append({
                 'cascade_id': cascade_id,
                 'cell_name': cell_name,
                 'species_hash': species_hash,
@@ -2862,7 +2862,7 @@ def get_species_info(session_id):
 
         return jsonify({
             'session_id': session_id,
-            'phases': phases_info
+            'cells': cells_info
         })
 
     except Exception as e:

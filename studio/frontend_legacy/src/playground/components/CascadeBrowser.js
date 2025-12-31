@@ -205,7 +205,7 @@ function CascadeBrowser({ isOpen, onClose, onLoad }) {
                         <div className="file-meta">
                           <span>
                             <Icon icon="mdi:puzzle" width="12" />
-                            {file.phase_count} phase{file.phase_count !== 1 ? 's' : ''}
+                            {file.cell_count} cell{file.cell_count !== 1 ? 's' : ''}
                           </span>
                           {file.input_count > 0 && (
                             <span>

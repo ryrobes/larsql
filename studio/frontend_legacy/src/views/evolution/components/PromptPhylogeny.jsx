@@ -372,7 +372,7 @@ function PromptPhylogenyInner({ sessionId, speciesHash, onMetadataLoad, onNodesL
             <details style={{ marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
               <summary style={{ cursor: 'pointer' }}>What is species_hash?</summary>
               <p style={{ marginTop: '8px', lineHeight: '1.5' }}>
-                Species hash is a unique identifier for your phase configuration (instructions, rules, soundings settings).
+                Species hash is a unique identifier for your cell configuration (instructions, rules, soundings settings).
                 It ensures we only compare prompts with the same "DNA" template for fair analysis.
               </p>
             </details>

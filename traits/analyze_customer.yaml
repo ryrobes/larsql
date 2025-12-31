@@ -9,7 +9,7 @@ inputs_schema:
   customer_name: "Company name"
   email: "Email address"
 
-phases:
+cells:
   - name: analyze
     instructions: |
       Analyze this customer:

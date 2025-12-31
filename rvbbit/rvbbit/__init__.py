@@ -34,7 +34,7 @@ from .traits.research_db import research_query, research_execute
 from .traits.chart import create_chart, create_vega_lite, create_plotly
 from .traits.filesystem import read_file, write_file, append_file, list_files, file_info
 # Image generation uses normal Agent.run() with modalities=["text", "image"]
-# No separate tool needed - phases with image models are auto-detected
+# No separate tool needed - cells with image models are auto-detected
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
 
 register_trait("smart_sql_run", run_sql)

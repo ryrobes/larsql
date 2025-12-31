@@ -959,7 +959,7 @@ const CalliopeView = () => {
                   checkpoint={calliopeCheckpoint}
                   onSubmit={handleCalliopeResponse}
                   variant="inline"
-                  showPhaseOutput={false}
+                  showCellOutput={false}
                 />
               </motion.div>
             )}

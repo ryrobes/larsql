@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@iconify/react';
 import RichMarkdown from './RichMarkdown';
-import PhaseBar from './CellBar';
+import CellBar from './CellBar';
 import CascadeBar from './CascadeBar';
 import MermaidPreview from './MermaidPreview';
 import MediaGalleryFooter from './MediaGalleryFooter';
@@ -390,7 +390,7 @@ function MessageDetailPanel({ selectedMessage, onCloseMessage }) {
           <Icon icon="mdi:message-text" width="18" />
           <span>Message M{selectedMessage.index}</span>
           {selectedMessage.cell_name && (
-            <span className="message-detail-phase">{selectedMessage.cell_name}</span>
+            <span className="message-detail-cell">{selectedMessage.cell_name}</span>
           )}
         </div>
         <div className="message-detail-badges">
@@ -659,7 +659,7 @@ function LiveDuration({ startTime, sseStartTime, isRunning, staticDuration }) {
   );
 }
 
-function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, runningSoundings = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null, onPhaseClick = null, onSoundingClick = null }) {
+function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessions = new Set(), sessionUpdates = {}, sessionStartTimes = {}, runningSoundings = {}, compact = false, hideOutput = false, selectedMessage = null, onCloseMessage = null, onCellClick = null, onSoundingClick = null }) {
   const [instance, setInstance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -731,30 +731,30 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         return entry.model;
       };
 
-      // Group entries by phase
-      const phaseMap = {};
-      // Track which phases have "real" content (not just structural entries)
-      const phasesWithRealContent = new Set();
+      // Group entries by cell
+      const cellMap = {};
+      // Track which cells have "real" content (not just structural entries)
+      const cellsWithRealContent = new Set();
 
       entries.forEach(entry => {
-        // Normalize phase name - trim whitespace, handle empty strings
-        let phaseName = entry.cell_name;
-        if (!phaseName || (typeof phaseName === 'string' && phaseName.trim() === '')) {
-          phaseName = 'Initialization';
+        // Normalize cell name - trim whitespace, handle empty strings
+        let cellName = entry.cell_name;
+        if (!cellName || (typeof cellName === 'string' && cellName.trim() === '')) {
+          cellName = 'Initialization';
         } else {
-          phaseName = phaseName.trim();
+          cellName = cellName.trim();
         }
 
         // Track if this entry represents real content (not just structural)
         const isRealContent = entry.node_type &&
-          !['cascade', 'phase_start', 'session_start'].includes(entry.node_type);
+          !['cascade', 'cell_start', 'session_start'].includes(entry.node_type);
         if (isRealContent) {
-          phasesWithRealContent.add(phaseName);
+          cellsWithRealContent.add(cellName);
         }
 
-        if (!phaseMap[phaseName]) {
-          phaseMap[phaseName] = {
-            name: phaseName,
+        if (!cellMap[cellName]) {
+          cellMap[cellName] = {
+            name: cellName,
             entries: [],
             totalCost: 0,
             soundingAttempts: new Map(),
@@ -763,27 +763,27 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             status: 'pending'
           };
         }
-        phaseMap[phaseName].entries.push(entry);
+        cellMap[cellName].entries.push(entry);
         // Safely add cost, handling NaN and undefined
         const entryCost = typeof entry.cost === 'number' && !isNaN(entry.cost) ? entry.cost : 0;
         if (entryCost > 0) {
-          phaseMap[phaseName].totalCost += entryCost;
+          cellMap[cellName].totalCost += entryCost;
         }
         if (entry.node_type === 'tool_call') {
           try {
             const meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
             if (meta?.tool_name) {
-              phaseMap[phaseName].toolCalls.add(meta.tool_name);
+              cellMap[cellName].toolCalls.add(meta.tool_name);
             }
           } catch (e) {}
         }
         if (entry.node_type && entry.node_type.includes('ward')) {
-          phaseMap[phaseName].wardCount++;
+          cellMap[cellName].wardCount++;
         }
         if (entry.candidate_index !== null && entry.candidate_index !== undefined) {
           const idx = entry.candidate_index;
-          if (!phaseMap[phaseName].soundingAttempts.has(idx)) {
-            phaseMap[phaseName].soundingAttempts.set(idx, {
+          if (!cellMap[cellName].soundingAttempts.has(idx)) {
+            cellMap[cellName].soundingAttempts.set(idx, {
               index: idx,
               cost: 0,
               is_winner: false,
@@ -796,7 +796,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               last_snippet: null
             });
           }
-          const soundingData = phaseMap[phaseName].soundingAttempts.get(idx);
+          const soundingData = cellMap[cellName].soundingAttempts.get(idx);
           soundingData.cost += entryCost;
           soundingData.message_count++;
 
@@ -882,88 +882,88 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         }
         // Track max turns
         if (entry.turn_number !== null && entry.turn_number !== undefined) {
-          if (!phaseMap[phaseName].maxTurnSeen) {
-            phaseMap[phaseName].maxTurnSeen = 0;
+          if (!cellMap[cellName].maxTurnSeen) {
+            cellMap[cellName].maxTurnSeen = 0;
           }
-          phaseMap[phaseName].maxTurnSeen = Math.max(phaseMap[phaseName].maxTurnSeen, entry.turn_number + 1);
+          cellMap[cellName].maxTurnSeen = Math.max(cellMap[cellName].maxTurnSeen, entry.turn_number + 1);
         }
       });
 
-      // Find the last phase with entries - if session is running, this is the active phase
-      const phaseNames = Object.keys(phaseMap);
-      const phasesWithEntries = phaseNames.filter(name =>
-        phaseMap[name].entries.length > 0 && phasesWithRealContent.has(name)
+      // Find the last cell with entries - if session is running, this is the active cell
+      const cellNames = Object.keys(cellMap);
+      const cellsWithEntries = cellNames.filter(name =>
+        cellMap[name].entries.length > 0 && cellsWithRealContent.has(name)
       );
-      const lastActivePhase = phasesWithEntries.length > 0 ? phasesWithEntries[phasesWithEntries.length - 1] : null;
+      const lastActiveCell = cellsWithEntries.length > 0 ? cellsWithEntries[cellsWithEntries.length - 1] : null;
 
-      // Only process phases that have real content (not just structural entries)
-      const phases = Object.values(phaseMap)
-        .filter(phase => phasesWithRealContent.has(phase.name))
-        .map(phase => {
-        const lastEntryInPhase = phase.entries[phase.entries.length - 1];
-        const hasError = phase.entries.some(e => e.node_type === 'error');
-        const hasPhaseComplete = phase.entries.some(e => e.node_type === 'phase_complete');
+      // Only process cells that have real content (not just structural entries)
+      const cells = Object.values(cellMap)
+        .filter(cell => cellsWithRealContent.has(cell.name))
+        .map(cell => {
+        const lastEntryInCell = cell.entries[cell.entries.length - 1];
+        const hasError = cell.entries.some(e => e.node_type === 'error');
+        const hasCellComplete = cell.entries.some(e => e.node_type === 'cell_complete');
 
-        // Find the last agent/assistant output (not structural messages like phase_complete)
-        const agentEntries = phase.entries.filter(e =>
+        // Find the last agent/assistant output (not structural messages like cell_complete)
+        const agentEntries = cell.entries.filter(e =>
           e.node_type === 'agent' || e.node_type === 'turn_output' ||
-          (e.role === 'assistant' && e.node_type !== 'phase_complete')
+          (e.role === 'assistant' && e.node_type !== 'cell_complete')
         );
         const lastAgentEntry = agentEntries.length > 0 ? agentEntries[agentEntries.length - 1] : null;
 
         let outputSnippet = '';
-        let phaseOutput = '';  // Full output for phase output panel
+        let cellOutput = '';  // Full output for cell output panel
 
         if (lastAgentEntry?.content) {
           const content = lastAgentEntry.content;
           if (typeof content === 'string') {
             outputSnippet = content.substring(0, 100);
-            phaseOutput = content;
+            cellOutput = content;
           } else if (typeof content === 'object' && content.content) {
             // Handle nested content structure
             const innerContent = typeof content.content === 'string' ? content.content : JSON.stringify(content.content);
             outputSnippet = innerContent.substring(0, 100);
-            phaseOutput = innerContent;
+            cellOutput = innerContent;
           } else {
             const jsonContent = JSON.stringify(content);
             outputSnippet = jsonContent.substring(0, 100);
-            phaseOutput = jsonContent;
+            cellOutput = jsonContent;
           }
         }
 
         // Find the winning sounding index
-        const soundingAttempts = Array.from(phase.soundingAttempts.values());
+        const soundingAttempts = Array.from(cell.soundingAttempts.values());
         const winnerAttempt = soundingAttempts.find(a => a.is_winner === true);
         const soundingWinner = winnerAttempt ? winnerAttempt.index : null;
 
-        // Determine phase status:
+        // Determine cell status:
         // - 'error' if any error entries
-        // - 'running' if session is running AND this is the last active phase AND no phase_complete
-        // - 'completed' if has entries and either has phase_complete or session is done
+        // - 'running' if session is running AND this is the last active cell AND no cell_complete
+        // - 'completed' if has entries and either has cell_complete or session is done
         // - 'pending' if no entries
         let status = 'pending';
         if (hasError) {
           status = 'error';
-        } else if (phase.entries.length > 0) {
-          const isActivePhase = (isSessionRunning || isFinalizing) && phase.name === lastActivePhase && !hasPhaseComplete;
-          status = isActivePhase ? 'running' : 'completed';
+        } else if (cell.entries.length > 0) {
+          const isActiveCell = (isSessionRunning || isFinalizing) && cell.name === lastActiveCell && !hasCellComplete;
+          status = isActiveCell ? 'running' : 'completed';
         }
 
         return {
-          name: phase.name,
+          name: cell.name,
           status,
-          avg_cost: phase.totalCost,
+          avg_cost: cell.totalCost,
           avg_duration: 0,
-          message_count: phase.entries.length,
+          message_count: cell.entries.length,
           sounding_attempts: soundingAttempts,
-          sounding_total: phase.soundingAttempts.size,
+          sounding_total: cell.soundingAttempts.size,
           sounding_winner: soundingWinner,
-          max_turns_actual: phase.maxTurnSeen || 1,
-          max_turns: phase.maxTurnSeen || 1,
-          tool_calls: Array.from(phase.toolCalls),
-          ward_count: phase.wardCount,
+          max_turns_actual: cell.maxTurnSeen || 1,
+          max_turns: cell.maxTurnSeen || 1,
+          tool_calls: Array.from(cell.toolCalls),
+          ward_count: cell.wardCount,
           output_snippet: outputSnippet,
-          phase_output: phaseOutput  // Full output for phase output panel
+          cell_output: cellOutput  // Full output for cell output panel
         };
       });
 
@@ -974,9 +974,9 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       const totalTokensIn = entries.reduce((sum, e) => sum + safeNum(e.tokens_in), 0);
       const totalTokensOut = entries.reduce((sum, e) => sum + safeNum(e.tokens_out), 0);
 
-      // Collect winning models from all phases that have soundings
-      const winnerModels = phases
-        .filter(p => p.sounding_total > 1) // Only phases with multiple soundings
+      // Collect winning models from all cells that have soundings
+      const winnerModels = cells
+        .filter(p => p.sounding_total > 1) // Only cells with multiple soundings
         .flatMap(p => p.sounding_attempts.filter(a => a.is_winner && a.model).map(a => a.model))
         .filter((m, i, arr) => arr.indexOf(m) === i); // Unique models
 
@@ -1000,16 +1000,16 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         return null;
       };
 
-      // First pass: find winning sounding indices per phase
+      // First pass: find winning sounding indices per cell
       // is_winner is only set to true on specific entries, so we need to find which indices won
-      const winningSoundingsByPhase = new Map(); // cell_name -> Set of winning sounding indices
+      const winningSoundingsByCell = new Map(); // cell_name -> Set of winning sounding indices
       entries.forEach(e => {
         if (e.is_winner === true && e.candidate_index !== null && e.candidate_index !== undefined) {
-          const phase = e.cell_name || 'unknown';
-          if (!winningSoundingsByPhase.has(phase)) {
-            winningSoundingsByPhase.set(phase, new Set());
+          const cell = e.cell_name || 'unknown';
+          if (!winningSoundingsByCell.has(cell)) {
+            winningSoundingsByCell.set(cell, new Set());
           }
-          winningSoundingsByPhase.get(phase).add(e.candidate_index);
+          winningSoundingsByCell.get(cell).add(e.candidate_index);
         }
       });
 
@@ -1041,8 +1041,8 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         if (entryCost > 0) {
           const hasSounding = e.candidate_index !== null && e.candidate_index !== undefined;
           if (hasSounding) {
-            const phase = e.cell_name || 'unknown';
-            const winningIndices = winningSoundingsByPhase.get(phase);
+            const cell = e.cell_name || 'unknown';
+            const winningIndices = winningSoundingsByCell.get(cell);
             const isFromWinningSounding = winningIndices && winningIndices.has(e.candidate_index);
             if (isFromWinningSounding) {
               usedCost += entryCost;
@@ -1081,7 +1081,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       const lastAssistant = [...entries].reverse().find(e => e.role === 'assistant' && e.content);
       const finalOutput = lastAssistant?.content || '';
 
-      const hasRunningPhase = phases.some(p => p.status === 'running');
+      const hasRunningCell = cells.some(p => p.status === 'running');
 
       // Helper to parse timestamps that could be ISO strings, Unix seconds, or Unix milliseconds
       const parseTimestamp = (ts) => {
@@ -1116,7 +1116,7 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
       setInstance({
         session_id: sessionId,
         cascade_id: cascadeEntry?.cascade_id || 'unknown',
-        status: (isSessionRunning || isFinalizing) ? 'running' : (hasRunningPhase ? 'running' : 'completed'),
+        status: (isSessionRunning || isFinalizing) ? 'running' : (hasRunningCell ? 'running' : 'completed'),
         start_time: startDate ? startDate.toISOString() : null,
         total_cost: totalCost,
         total_tokens_in: totalTokensIn,
@@ -1127,11 +1127,11 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
         exploration_cost: explorationCost,
         input_data: inputData,
         final_output: finalOutput,
-        phases: phases,
+        cells: cells,
         token_timeseries: tokenTimeseries,
         duration_seconds: durationSeconds,
         error_count: entries.filter(e => e.node_type === 'error').length,
-        has_soundings: phases.some(p => p.sounding_total > 1),
+        has_soundings: cells.some(p => p.sounding_total > 1),
         winner_models: winnerModels
       });
 
@@ -1500,21 +1500,21 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
           )}
         </div>
 
-        {/* Right side: Phase bars + Output */}
-        <div className="instance-card-phases">
+        {/* Right side: Cell bars + Output */}
+        <div className="instance-card-cells">
           {/* Cascade Bar - Sticky at top, outside scroll */}
           {instance.cells && instance.cells.length > 1 && (
             <div className="cascade-bar-sticky">
               <CascadeBar
-                phases={instance.cells}
+                cells={instance.cells}
                 totalCost={instance.total_cost}
                 isRunning={isSessionRunning || hasRunning}
               />
             </div>
           )}
 
-          {/* Scrollable phase bars container */}
-          <div className="phase-bars-scroll">
+          {/* Scrollable cell bars container */}
+          <div className="cell-bars-scroll">
             {/* Selected Message Detail Panel */}
             {selectedMessage && (
               <MessageDetailPanel
@@ -1523,41 +1523,41 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
               />
             )}
 
-            {/* Phase bars */}
+            {/* Cell bars */}
             {(() => {
-              // Filter to only phases with content to prevent layout jumping
-              const phasesWithContent = (instance.cells || []).filter(p => p.message_count > 0);
-              const costs = phasesWithContent.map(p => p.avg_cost || 0);
+              // Filter to only cells with content to prevent layout jumping
+              const cellsWithContent = (instance.cells || []).filter(p => p.message_count > 0);
+              const costs = cellsWithContent.map(p => p.avg_cost || 0);
               const maxCost = Math.max(...costs, 0.01);
               const avgCost = costs.reduce((sum, c) => sum + c, 0) / (costs.length || 1);
               const normalizedMax = Math.max(maxCost, avgCost * 2, 0.01);
 
-              return phasesWithContent.map((phase, idx) => {
-                // Get running soundings for this phase from SSE events
+              return cellsWithContent.map((cell, idx) => {
+                // Get running soundings for this cell from SSE events
                 const sessionSoundings = runningSoundings[sessionId] || {};
-                const runningSoundingsForPhase = sessionSoundings[phase.name] || new Set();
+                const runningSoundingsForCell = sessionSoundings[cell.name] || new Set();
 
                 return (
-                <div key={phase.name} className="phase-container" style={{ contain: 'layout style' }}>
-                  <PhaseBar
-                    phase={phase}
+                <div key={cell.name} className="cell-container" style={{ contain: 'layout style' }}>
+                  <CellBar
+                    cell={cell}
                     maxCost={normalizedMax}
-                    status={phase.status}
+                    status={cell.status}
                     cellIndex={idx}
-                    runningSoundingsSet={runningSoundingsForPhase}
-                    onPhaseClick={onPhaseClick}
+                    runningSoundingsSet={runningSoundingsForCell}
+                    onCellClick={onCellClick}
                     onSoundingClick={onSoundingClick}
                   />
                   {/* DEBUG: Commenting out to test if these cause jumping */}
                   {/* <AudioGallery
                     sessionId={instance.session_id}
-                    phaseName={phase.name}
+                    cellName={cell.name}
                     isRunning={isSessionRunning || isFinalizing}
                     sessionUpdate={sessionUpdates?.[instance.session_id]}
                   />
                   <HumanInputDisplay
                     sessionId={instance.session_id}
-                    phaseName={phase.name}
+                    cellName={cell.name}
                     isRunning={isSessionRunning || isFinalizing}
                     sessionUpdate={sessionUpdates?.[instance.session_id]}
                   /> */}
@@ -1576,12 +1576,12 @@ function InstanceCard({ sessionId, runningSessions = new Set(), finalizingSessio
             )}
           </div>
 
-          {/* Media Gallery Footer - Fixed at bottom, shows all images with phase attribution */}
+          {/* Media Gallery Footer - Fixed at bottom, shows all images with cell attribution */}
           <MediaGalleryFooter
             sessionId={instance.session_id}
             isRunning={isSessionRunning || isFinalizing}
             sessionUpdate={sessionUpdates?.[instance.session_id]}
-            phases={instance.cells}
+            cells={instance.cells}
           />
         </div>
       </div>

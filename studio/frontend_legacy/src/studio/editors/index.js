@@ -5,11 +5,11 @@
  * Import this file to initialize the registry.
  */
 
-import { registerPhaseEditor } from './phaseEditorRegistry';
+import { registerCellEditor } from './cellEditorRegistry';
 import RabbitizeRecorderEditor from './RabbitizeRecorderEditor';
 
 // Register Rabbitize Recorder Editor
-registerPhaseEditor({
+registerCellEditor({
   id: 'rabbitize-recorder',
   label: 'Browser Recorder',
   icon: 'mdi:record-circle',
@@ -27,7 +27,7 @@ registerPhaseEditor({
 });
 
 // Future editors can be registered here
-// registerPhaseEditor({
+// registerCellEditor({
 //   id: 'sql-editor',
 //   label: 'SQL Editor',
 //   icon: 'mdi:database',
@@ -35,4 +35,4 @@ registerPhaseEditor({
 //   component: SQLEditor
 // });
 
-export * from './phaseEditorRegistry';
+export * from './cellEditorRegistry';

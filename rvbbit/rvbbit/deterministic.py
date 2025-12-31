@@ -1,8 +1,8 @@
 """
-Deterministic phase execution for RVBBIT.
+Deterministic cell execution for RVBBIT.
 
 This module handles direct tool execution without LLM mediation,
-enabling hybrid workflows that mix deterministic and intelligent phases.
+enabling hybrid workflows that mix deterministic and intelligent cells.
 """
 
 import asyncio
@@ -23,7 +23,7 @@ console = Console()
 
 
 class DeterministicExecutionError(Exception):
-    """Raised when deterministic phase execution fails."""
+    """Raised when deterministic cell execution fails."""
 
     def __init__(self, message: str, cell_name: str, tool: str, inputs: Dict = None, original_error: Exception = None):
         super().__init__(message)
@@ -187,7 +187,7 @@ def render_inputs(
     render_context: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Render Jinja2-templated inputs for a deterministic phase.
+    Render Jinja2-templated inputs for a deterministic cell.
 
     Uses NativeEnvironment to properly evaluate Python expressions and return
     native Python objects (lists, dicts, etc.) instead of string representations.
@@ -244,7 +244,7 @@ def determine_routing(
     handoffs: list
 ) -> Optional[str]:
     """
-    Determine the next phase based on routing configuration and result.
+    Determine the next cell based on routing configuration and result.
 
     Routing is determined by (in order of priority):
     1. result["_route"] if present
@@ -258,7 +258,7 @@ def determine_routing(
         handoffs: List of valid handoff targets
 
     Returns:
-        Name of the next phase, or None if no routing
+        Name of the next cell, or None if no routing
     """
     # Extract route key from result
     route_key = None
@@ -410,20 +410,20 @@ def execute_with_retry(
     raise last_error
 
 
-def execute_deterministic_phase(
-    phase: CellConfig,
+def execute_deterministic_cell(
+    cell: CellConfig,
     input_data: Dict[str, Any],
     echo: Any,  # Echo object
     config_path: str = None,
     depth: int = 0
 ) -> Tuple[Any, Optional[str]]:
     """
-    Execute a deterministic (tool-based) phase.
+    Execute a deterministic (tool-based) cell.
 
-    This is the main entry point for deterministic phase execution.
+    This is the main entry point for deterministic cell execution.
 
     Args:
-        phase: Phase configuration
+        cell: Cell configuration
         input_data: Input data for the cascade
         echo: Echo object with state/history
         config_path: Path to cascade config (for relative paths)
@@ -437,17 +437,17 @@ def execute_deterministic_phase(
     """
     indent = "  " * depth
 
-    console.print(f"\n{indent}[bold blue]⚙️  Deterministic Phase: {phase.name}[/bold blue]")
-    console.print(f"{indent}  [dim]Tool: {phase.tool}[/dim]")
+    console.print(f"\n{indent}[bold blue]⚙️  Deterministic Cell: {cell.name}[/bold blue]")
+    console.print(f"{indent}  [dim]Tool: {cell.tool}[/dim]")
 
     # Resolve the tool function
     try:
-        tool_func = resolve_tool_function(phase.tool, config_path)
+        tool_func = resolve_tool_function(cell.tool, config_path)
     except Exception as e:
         raise DeterministicExecutionError(
             f"Failed to resolve tool: {e}",
-            cell_name=phase.name,
-            tool=phase.tool,
+            cell_name=cell.name,
+            tool=cell.tool,
             original_error=e
         )
 
@@ -470,33 +470,33 @@ def execute_deterministic_phase(
 
     # Render inputs
     try:
-        rendered_inputs = render_inputs(phase.tool_inputs, render_context)
+        rendered_inputs = render_inputs(cell.tool_inputs, render_context)
         console.print(f"{indent}  [dim]Inputs: {list(rendered_inputs.keys())}[/dim]")
     except Exception as e:
         raise DeterministicExecutionError(
             f"Failed to render inputs: {e}",
-            cell_name=phase.name,
-            tool=phase.tool,
+            cell_name=cell.name,
+            tool=cell.tool,
             original_error=e
         )
 
     # Inject context for ALL data tools (sql_data, python_data, js_data, clojure_data, rvbbit_data, bash_data, bodybuilder)
-    if phase.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder"):
-        rendered_inputs["_cell_name"] = phase.name
+    if cell.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder"):
+        rendered_inputs["_cell_name"] = cell.name
         rendered_inputs["_session_id"] = echo.session_id
 
         # Enable materialization by default for sql_data (creates _cell_name temp tables)
-        if phase.tool == "sql_data" and "materialize" not in rendered_inputs:
+        if cell.tool == "sql_data" and "materialize" not in rendered_inputs:
             rendered_inputs["materialize"] = True
 
         # All polyglot tools need access to outputs and state (not just python_data)
-        if phase.tool in ("python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data"):
+        if cell.tool in ("python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data"):
             rendered_inputs["_outputs"] = outputs  # Dict of cell_name -> output
             rendered_inputs["_state"] = echo.state
             rendered_inputs["_input"] = input_data
 
     # Parse timeout
-    timeout_seconds = parse_timeout(phase.timeout)
+    timeout_seconds = parse_timeout(cell.timeout)
 
     # Execute with retry logic
     start_time = time.time()
@@ -504,7 +504,7 @@ def execute_deterministic_phase(
         result = execute_with_retry(
             tool_func,
             rendered_inputs,
-            phase.retry,
+            cell.retry,
             timeout_seconds
         )
         duration_ms = (time.time() - start_time) * 1000
@@ -521,15 +521,15 @@ def execute_deterministic_phase(
 
         raise DeterministicExecutionError(
             f"Tool execution failed: {e}",
-            cell_name=phase.name,
-            tool=phase.tool,
+            cell_name=cell.name,
+            tool=cell.tool,
             inputs=rendered_inputs,
             original_error=e
         )
 
-    # Determine next phase (routing)
-    handoffs = phase.handoffs or []
-    next_cell = determine_routing(result, phase.routing, handoffs)
+    # Determine next cell (routing)
+    handoffs = cell.handoffs or []
+    next_cell = determine_routing(result, cell.routing, handoffs)
 
     if next_cell:
         console.print(f"{indent}  [magenta]→ Routing to: {next_cell}[/magenta]")
@@ -541,8 +541,8 @@ def execute_deterministic_phase(
 # HITL Screen Execution (Calliope)
 # =============================================================================
 
-def execute_hitl_phase(
-    phase: CellConfig,
+def execute_hitl_cell(
+    cell: CellConfig,
     input_data: Dict[str, Any],
     echo: Any,  # Echo object
     session_id: str,
@@ -550,13 +550,13 @@ def execute_hitl_phase(
     depth: int = 0
 ) -> Tuple[Any, Optional[str]]:
     """
-    Execute a HITL screen phase - render HTML and block for user response.
+    Execute a HITL screen cell - render HTML and block for user response.
 
     This is deterministic execution (no LLM) - the HTML template is rendered
     directly using Jinja2 and displayed via the checkpoint system.
 
     Args:
-        phase: Phase configuration with hitl field containing HTML/HTMX
+        cell: Cell configuration with hitl field containing HTML/HTMX
         input_data: Input data for the cascade
         echo: Echo object with state/history
         session_id: Current session ID
@@ -566,14 +566,14 @@ def execute_hitl_phase(
     Returns:
         Tuple of (response_dict, next_cell_name)
 
-    The response from the user is stored in echo.state[phase.name] and
+    The response from the user is stored in echo.state[cell.name] and
     can be used for routing via the response[action] or response[selected] fields.
     """
     from .checkpoints import get_checkpoint_manager, CheckpointType
 
     indent = "  " * depth
 
-    console.print(f"\n{indent}[bold magenta]📺 HITL Screen: {phase.name}[/bold magenta]")
+    console.print(f"\n{indent}[bold magenta]📺 HITL Screen: {cell.name}[/bold magenta]")
 
     # Build render context
     outputs = {}
@@ -629,7 +629,7 @@ def execute_hitl_phase(
 
     # Render the HITL HTML template
     # Use effective_htmx to support both hitl and htmx keys
-    template_content = phase.effective_htmx
+    template_content = cell.effective_htmx
     try:
         rendered_html = render_instruction(template_content, render_context)
         console.print(f"{indent}  [dim]HTML template rendered ({len(rendered_html)} chars)[/dim]")
@@ -640,17 +640,17 @@ def execute_hitl_phase(
     # Build UI spec compatible with request_decision format
     ui_spec = _build_hitl_ui_spec(
         html=rendered_html,
-        title=phase.hitl_title or phase.name,
-        description=phase.hitl_description,
+        title=cell.hitl_title or cell.name,
+        description=cell.hitl_description,
     )
 
     # Create checkpoint
     checkpoint_manager = get_checkpoint_manager()
 
-    # Determine timeout from phase config or default
+    # Determine timeout from cell config or default
     timeout_seconds = 3600  # 1 hour default
-    if phase.timeout:
-        parsed = parse_timeout(phase.timeout)
+    if cell.timeout:
+        parsed = parse_timeout(cell.timeout)
         if parsed:
             timeout_seconds = int(parsed)
 
@@ -659,9 +659,9 @@ def execute_hitl_phase(
     checkpoint = checkpoint_manager.create_checkpoint(
         session_id=session_id,
         cascade_id=cascade_id,
-        cell_name=phase.name,
+        cell_name=cell.name,
         checkpoint_type=CheckpointType.DECISION,
-        phase_output=phase.hitl_description or f"Screen: {phase.name}",
+        cell_output=cell.hitl_description or f"Screen: {cell.name}",
         ui_spec=ui_spec,
         echo_snapshot={},
         timeout_seconds=timeout_seconds,
@@ -692,13 +692,13 @@ def execute_hitl_phase(
         response_preview = str(result)[:100] + "..." if len(str(result)) > 100 else str(result)
         console.print(f"{indent}  [dim]Response: {response_preview}[/dim]")
 
-    # Store response in echo state for downstream phases
-    echo.state[phase.name] = result
+    # Store response in echo state for downstream cells
+    echo.state[cell.name] = result
 
-    # Determine next phase (routing)
+    # Determine next cell (routing)
     # HITL screens use response["action"] or response["selected"] for routing
-    handoffs = phase.handoffs or []
-    next_cell = _determine_hitl_routing(result, phase.routing, handoffs)
+    handoffs = cell.handoffs or []
+    next_cell = _determine_hitl_routing(result, cell.routing, handoffs)
 
     if next_cell:
         console.print(f"{indent}  [magenta]→ Routing to: {next_cell}[/magenta]")
@@ -756,7 +756,7 @@ def _determine_hitl_routing(
     handoffs: list
 ) -> Optional[str]:
     """
-    Determine next phase based on HITL response and routing config.
+    Determine next cell based on HITL response and routing config.
 
     HITL routing uses these fields from the response (in priority order):
     1. response["action"] - Common for button selections
@@ -769,7 +769,7 @@ def _determine_hitl_routing(
         handoffs: List of valid handoff targets
 
     Returns:
-        Name of the next phase, or None if no routing
+        Name of the next cell, or None if no routing
     """
     # Extract route key from response
     route_key = None

@@ -69,7 +69,7 @@ const ConsoleView = () => {
         session_id: session.session_id,
         cascade_id: session.cascade_id,
         status: session.status,
-        current_phase: session.current_phase || session.current_cell,
+        current_cell: session.current_cell || session.current_cell,
         started_at: session.started_at,
         completed_at: session.completed_at,
         updated_at: session.updated_at,
@@ -92,7 +92,7 @@ const ConsoleView = () => {
       const newHash = JSON.stringify(rows.map(r => ({
         id: r.session_id,
         status: r.status,
-        phase: r.current_phase,
+        cell: r.current_cell,
         updated: r.updated_at,
         cost: r.total_cost,
         msgs: r.message_count,
@@ -212,7 +212,7 @@ const ConsoleView = () => {
       },
     },
     {
-      field: 'current_phase',
+      field: 'current_cell',
       headerName: 'Last Cell',
       flex: 1,
       minWidth: 120,

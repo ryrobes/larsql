@@ -47,7 +47,7 @@ class Config(BaseModel):
         )
     )
 
-    # Model for auto-context selection (used by InterPhaseContextBuilder LLM strategy)
+    # Model for auto-context selection (used by InterCellContextBuilder LLM strategy)
     # A fast, cheap model that can scan message summaries and select relevant context
     context_selector_model: str = Field(
         default_factory=lambda: os.getenv(

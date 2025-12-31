@@ -13,7 +13,7 @@ import './SextantView.css';
  * - Low heat (red) = this pattern appears in many losers, few winners - AVOID IT
  * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function PromptPatternCards({ cascadeId, phaseName, speciesHash }) {
+function PromptPatternCards({ cascadeId, cellName, speciesHash }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +30,7 @@ function PromptPatternCards({ cascadeId, phaseName, speciesHash }) {
     setError(null);
     try {
       const speciesParam = speciesHash ? `?species_hash=${speciesHash}` : '';
-      const res = await fetch(`/api/sextant/prompt-patterns/${cascadeId}/${phaseName}${speciesParam}`);
+      const res = await fetch(`/api/sextant/prompt-patterns/${cascadeId}/${cellName}${speciesParam}`);
       const result = await res.json();
       if (result.error) {
         setError(result.error);
@@ -341,10 +341,10 @@ function PromptPatternCards({ cascadeId, phaseName, speciesHash }) {
 
 /**
  * EmbeddingHotspotViz - 2D scatter plot of winner/loser embeddings
- * Phase 2 of Sextant Evolution: Visualize WHERE winners cluster
+ * Cell 2 of Sextant Evolution: Visualize WHERE winners cluster
  * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function EmbeddingHotspotViz({ cascadeId, phaseName, speciesHash }) {
+function EmbeddingHotspotViz({ cascadeId, cellName, speciesHash }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -363,7 +363,7 @@ function EmbeddingHotspotViz({ cascadeId, phaseName, speciesHash }) {
     try {
       const speciesParam = speciesHash ? `&species_hash=${speciesHash}` : '';
       const res = await fetch(
-        `/api/sextant/embedding-hotspots/${cascadeId}/${phaseName}?n_regions=5${speciesParam}`
+        `/api/sextant/embedding-hotspots/${cascadeId}/${cellName}?n_regions=5${speciesParam}`
       );
       const result = await res.json();
       if (result.error) {
@@ -781,7 +781,7 @@ function SynopsisPanel({ synopsis, onApply }) {
  * REFOCUSED: Analyzes PROMPTS (inputs) not responses (outputs)
  * NOW: Filters by speciesHash for apples-to-apples comparison
  */
-function WinnerLoserAnalysis({ cascadeId, phaseName, speciesHash, onApply }) {
+function WinnerLoserAnalysis({ cascadeId, cellName, speciesHash, onApply }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -798,7 +798,7 @@ function WinnerLoserAnalysis({ cascadeId, phaseName, speciesHash, onApply }) {
     try {
       const speciesParam = speciesHash ? `&species_hash=${speciesHash}` : '';
       const res = await fetch(
-        `/api/sextant/winner-loser-analysis/${cascadeId}/${phaseName}?limit=5${speciesParam}`
+        `/api/sextant/winner-loser-analysis/${cascadeId}/${cellName}?limit=5${speciesParam}`
       );
       const result = await res.json();
       if (result.error) {
@@ -1034,22 +1034,22 @@ function SpeciesCard({ species, isSelected, onClick }) {
 }
 
 /**
- * SpeciesSelector - Shows available species for a phase, user picks one to analyze
+ * SpeciesSelector - Shows available species for a cell, user picks one to analyze
  */
-function SpeciesSelector({ cascadeId, phaseName, selectedSpecies, onSelectSpecies }) {
+function SpeciesSelector({ cascadeId, cellName, selectedSpecies, onSelectSpecies }) {
   const [species, setSpecies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     loadSpecies();
-  }, [cascadeId, phaseName]);
+  }, [cascadeId, cellName]);
 
   const loadSpecies = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sextant/species/${cascadeId}/${phaseName}`);
+      const res = await fetch(`/api/sextant/species/${cascadeId}/${cellName}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -1123,12 +1123,12 @@ function SpeciesSelector({ cascadeId, phaseName, selectedSpecies, onSelectSpecie
 }
 
 /**
- * PhaseAnalysisCard - Expandable card showing per-phase analysis
+ * CellAnalysisCard - Expandable card showing per-cell analysis
  *
  * NEW: Now shows species selector first, then analysis for selected species.
  * This ensures we only compare prompts within the same "DNA" template.
  */
-function PhaseAnalysisCard({ phase, cascadeId }) {
+function CellAnalysisCard({ cell, cascadeId }) {
   const [expanded, setExpanded] = useState(false);
   const [selectedSpecies, setSelectedSpecies] = useState(null);
   const [samples, setSamples] = useState(null);
@@ -1139,7 +1139,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
     setLoadingSamples(true);
     try {
       const res = await fetch(
-        `/api/sextant/winning-samples/${cascadeId}/${phase.cell_name}?limit=3`
+        `/api/sextant/winning-samples/${cascadeId}/${cell.cell_name}?limit=3`
       );
       const data = await res.json();
       setSamples(data.samples || []);
@@ -1154,27 +1154,27 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
     if (!expanded) loadSamples();
   };
 
-  const isMultiModel = phase.unique_models > 1;
+  const isMultiModel = cell.unique_models > 1;
 
   return (
-    <div className={`phase-analysis-card ${expanded ? 'expanded' : ''}`}>
-      <div className="phase-card-header" onClick={handleExpand}>
-        <div className="phase-card-left">
-          <Icon icon="mdi:hexagon-outline" width="20" className="phase-icon" />
-          <h3>{phase.cell_name}</h3>
-          <span className="session-count">{phase.total_competitions} competitions</span>
+    <div className={`cell-analysis-card ${expanded ? 'expanded' : ''}`}>
+      <div className="cell-card-header" onClick={handleExpand}>
+        <div className="cell-card-left">
+          <Icon icon="mdi:hexagon-outline" width="20" className="cell-icon" />
+          <h3>{cell.cell_name}</h3>
+          <span className="session-count">{cell.total_competitions} competitions</span>
           {isMultiModel && (
             <span className="multi-model-badge">
               <Icon icon="mdi:robot" width="12" />
-              {phase.unique_models} models
+              {cell.unique_models} models
             </span>
           )}
         </div>
-        <div className="phase-card-right">
-          {phase.analysis_ready && (
-            <ConfidenceBadge confidence={phase.confidence} />
+        <div className="cell-card-right">
+          {cell.analysis_ready && (
+            <ConfidenceBadge confidence={cell.confidence} />
           )}
-          {!phase.analysis_ready && (
+          {!cell.analysis_ready && (
             <span className="needs-data-badge">
               <Icon icon="mdi:database-clock" width="14" />
               Needs more data
@@ -1189,33 +1189,33 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
       </div>
 
       {/* Quick stats visible even when collapsed */}
-      <div className="phase-quick-stats">
-        {phase.best_model && (
+      <div className="cell-quick-stats">
+        {cell.best_model && (
           <div className="dominant-stat">
             <span className="stat-label">Best Model:</span>
             <span className="stat-value best-model">
-              {phase.best_model} ({phase.best_win_rate.toFixed(0)}% win rate)
+              {cell.best_model} ({cell.best_win_rate.toFixed(0)}% win rate)
             </span>
           </div>
         )}
         <div className="patterns-preview">
-          {phase.patterns?.slice(0, 2).map((p, i) => (
+          {cell.patterns?.slice(0, 2).map((p, i) => (
             <PatternBadge key={i} pattern={p} />
           ))}
-          {phase.patterns?.length > 2 && (
-            <span className="more-patterns">+{phase.patterns.length - 2}</span>
+          {cell.patterns?.length > 2 && (
+            <span className="more-patterns">+{cell.patterns.length - 2}</span>
           )}
         </div>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div className="phase-expanded-content">
+        <div className="cell-expanded-content">
           {/* Species Selector - FIRST: Pick which DNA to analyze */}
           <div className="analysis-section species-section">
             <SpeciesSelector
               cascadeId={cascadeId}
-              phaseName={phase.cell_name}
+              cellName={cell.cell_name}
               selectedSpecies={selectedSpecies}
               onSelectSpecies={setSelectedSpecies}
             />
@@ -1244,7 +1244,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                   <span className="section-hint">Which models win most often?</span>
                 </h4>
                 <div className="model-leaderboard">
-                  {phase.models?.map((m, i) => (
+                  {cell.models?.map((m, i) => (
                     <ModelWinRateBar
                       key={m.model}
                       model={m.model}
@@ -1256,7 +1256,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                     />
                   ))}
                 </div>
-                {phase.models?.length === 1 && (
+                {cell.models?.length === 1 && (
                   <div className="single-model-note">
                     <Icon icon="mdi:information-outline" width="14" />
                     Single model tested. Run with multiple models to compare performance.
@@ -1265,14 +1265,14 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
               </div>
 
               {/* Mutation Strategy Analysis (when relevant) */}
-              {phase.has_mutations && phase.mutations?.length > 0 && (
+              {cell.has_mutations && cell.mutations?.length > 0 && (
                 <div className="analysis-section">
                   <h4>
                     <Icon icon="mdi:auto-fix" width="16" />
                     Mutation Strategy Effectiveness
                   </h4>
                   <div className="mutation-stats">
-                    {phase.mutations.map((m, i) => (
+                    {cell.mutations.map((m, i) => (
                       <div key={m.type} className="mutation-stat-item">
                         <span className="mutation-type">{m.type}</span>
                         <span className="mutation-wins">{m.wins}/{m.attempts}</span>
@@ -1296,11 +1296,11 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <WinnerLoserAnalysis
                   cascadeId={cascadeId}
-                  phaseName={phase.cell_name}
+                  cellName={cell.cell_name}
                   speciesHash={selectedSpecies}
                   onApply={(suggestion) => {
                     console.log('Apply suggestion:', suggestion);
-                    alert(`Suggestion to apply:\n\n${suggestion}\n\n(Apply functionality coming in Phase 6)`);
+                    alert(`Suggestion to apply:\n\n${suggestion}\n\n(Apply functionality coming in Cell 6)`);
                   }}
                 />
               </div>
@@ -1314,7 +1314,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <PromptPatternCards
                   cascadeId={cascadeId}
-                  phaseName={phase.cell_name}
+                  cellName={cell.cell_name}
                   speciesHash={selectedSpecies}
                 />
               </div>
@@ -1328,7 +1328,7 @@ function PhaseAnalysisCard({ phase, cascadeId }) {
                 </h4>
                 <EmbeddingHotspotViz
                   cascadeId={cascadeId}
-                  phaseName={phase.cell_name}
+                  cellName={cell.cell_name}
                   speciesHash={selectedSpecies}
                 />
               </div>
@@ -1421,7 +1421,7 @@ function SimilaritySearch({ onResults }) {
             <div key={i} className="search-result-item">
               <div className="result-header">
                 <span className="result-cascade">{r.cascade_id}</span>
-                <span className="result-phase">{r.cell_name}</span>
+                <span className="result-cell">{r.cell_name}</span>
                 <span className="result-similarity">
                   {(r.similarity * 100).toFixed(0)}% match
                 </span>
@@ -1619,28 +1619,28 @@ function SextantView({ onBack, onMessageFlow, onSextant, onWorkshop, onPlaygroun
                   {analysis.cascade_id}
                 </h2>
                 <div className="results-meta">
-                  <span>{analysis.total_phases} phases</span>
+                  <span>{analysis.total_cells} cells</span>
                   <span className="separator">|</span>
                   <span className="ready-count">
-                    {analysis.analysis_ready_phases} ready for optimization
+                    {analysis.analysis_ready_cells} ready for optimization
                   </span>
                 </div>
               </div>
 
-              <div className="phases-list">
-                {analysis.cells?.map(phase => (
-                  <PhaseAnalysisCard
-                    key={phase.cell_name}
-                    phase={phase}
+              <div className="cells-list">
+                {analysis.cells?.map(cell => (
+                  <CellAnalysisCard
+                    key={cell.cell_name}
+                    cell={cell}
                     cascadeId={analysis.cascade_id}
                   />
                 ))}
               </div>
 
               {analysis.cells?.length === 0 && (
-                <div className="no-phases">
+                <div className="no-cells">
                   <Icon icon="mdi:information-outline" width="24" />
-                  <span>No phases with sounding data found</span>
+                  <span>No cells with sounding data found</span>
                 </div>
               )}
             </div>

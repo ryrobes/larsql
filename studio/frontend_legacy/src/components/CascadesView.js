@@ -35,7 +35,7 @@ function CascadesView({ onSelectCascade, onRunCascade, onHotOrNot, onMessageFlow
       if (regex.test(cascade.cascade_id)) return true;
       // Search in description
       if (cascade.description && regex.test(cascade.description)) return true;
-      // Search in phase names
+      // Search in cell names
       if (cascade.cells?.some(p => regex.test(p.name))) return true;
       return false;
     });

@@ -188,16 +188,16 @@
   position: relative;
 }
 
-.phase-position-wrapper {
+.cell-position-wrapper {
   z-index: 1;
   overflow: visible;
 }
 
 /* ============================================
-   PHASE COLUMN
+   CELL COLUMN
    ============================================ */
 
-.phase-column {
+.cell-column {
   flex-shrink: 0;
   width: 220px;
   background: var(--bg-card);
@@ -209,38 +209,38 @@
   z-index: 1; /* Above SVG arrows */
 }
 
-.phase-column.status-pending {
+.cell-column.status-pending {
   opacity: 0.6;
 }
 
-.phase-column.status-running {
+.cell-column.status-running {
   border-color: var(--compass-brass);
   box-shadow: 0 0 12px rgba(217, 165, 83, 0.3);
 }
 
-.phase-column.status-completed {
+.cell-column.status-completed {
   border-color: var(--success-green);
 }
 
-.phase-column.status-error {
+.cell-column.status-error {
   border-color: var(--bloodaxe-red);
 }
 
-.phase-column.has-output {
+.cell-column.has-output {
   cursor: pointer;
 }
 
-.phase-column.has-output:hover {
+.cell-column.has-output:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.phase-column.expanded {
+.cell-column.expanded {
   width: 400px;
 }
 
-/* Column connector - positioned between phase-column-wrappers */
-/* Only shown for adjacent phases without handoffs */
+/* Column connector - positioned between cell-column-wrappers */
+/* Only shown for adjacent cells without handoffs */
 .column-connector {
   position: absolute;
   right: -56px; /* Center in the 80px gap */
@@ -398,7 +398,7 @@
 }
 
 /* ============================================
-   PHASE OUTPUT
+   CELL OUTPUT
    ============================================ */
 
 .output-hint {
@@ -413,12 +413,12 @@
   background: rgba(11, 18, 25, 0.3);
 }
 
-.phase-column.has-output:hover .output-hint {
+.cell-column.has-output:hover .output-hint {
   color: var(--ocean-primary);
   background: rgba(74, 158, 221, 0.1);
 }
 
-.phase-output {
+.cell-output {
   border-top: 1px solid var(--border-default);
   background: var(--midnight-fjord);
 }
@@ -455,7 +455,7 @@
 }
 
 /* ============================================
-   RUNNING PHASE DETAILS
+   RUNNING CELL DETAILS
    ============================================ */
 
 .column-running .turn-counter {
@@ -559,17 +559,17 @@
 }
 
 /* ============================================
-   PHASE COLUMN WRAPPER (for ghost blocks)
+   CELL COLUMN WRAPPER (for ghost blocks)
    ============================================ */
 
-.phase-column-wrapper {
+.cell-column-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
 }
 
-.phase-column.has-soundings .column-header {
+.cell-column.has-soundings .column-header {
   background: linear-gradient(135deg, var(--storm-cloud) 0%, rgba(107, 114, 142, 0.3) 100%);
 }
 
@@ -608,7 +608,7 @@
 
 /* ============================================
    GHOST SOUNDING BLOCKS - "Depth Soundings"
-   Stacked VERTICALLY below the phase like depth soundings
+   Stacked VERTICALLY below the cell like depth soundings
    ============================================ */
 
 .soundings-depth {
@@ -893,7 +893,7 @@
 }
 
 /* ============================================
-   GHOST PHASE COLUMN - Preview before execution
+   GHOST CELL COLUMN - Preview before execution
    Shows what the timeline will look like
    ============================================ */
 
@@ -901,7 +901,7 @@
   position: relative;
 }
 
-.phase-column.ghost-phase {
+.cell-column.ghost-cell {
   opacity: 0.7;
   border: 2px dashed var(--storm-cloud);
   background: repeating-linear-gradient(
@@ -914,7 +914,7 @@
   position: relative;
 }
 
-.phase-column.ghost-phase::before {
+.cell-column.ghost-cell::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -934,7 +934,7 @@
   50% { opacity: 0.7; }
 }
 
-.phase-column.ghost-phase .column-header {
+.cell-column.ghost-cell .column-header {
   background: rgba(44, 59, 75, 0.6);
 }
 
@@ -996,7 +996,7 @@
 }
 
 /* Ghost body content */
-.phase-column.ghost-phase .column-body.ghost-body {
+.cell-column.ghost-cell .column-body.ghost-body {
   display: flex;
   flex-direction: column;
   align-items: center;

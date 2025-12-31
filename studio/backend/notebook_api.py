@@ -90,7 +90,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
-Available: `data.cell_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+Available: `data.cell_name` for prior cell outputs, `pd` (pandas), `np` (numpy).
 
 Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -104,7 +104,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (array of objects, object, or scalar).
-Available: `data.cell_name` for prior phase outputs (arrays of objects), `state`, `input`.
+Available: `data.cell_name` for prior cell outputs (arrays of objects), `state`, `input`.
 
 Return ONLY the corrected JavaScript code. No explanations, no markdown code blocks, just the raw code.""",
 
@@ -118,8 +118,8 @@ Original code:
 ```
 
 The code should evaluate to the result (vector of maps for dataframes, or other Clojure values).
-Available: `(:phase-name data)` for prior phase outputs (vectors of maps), `state`, `input`.
-Note: Phase names use kebab-case (e.g., raw-customers instead of raw_customers).
+Available: `(:cell-name data)` for prior cell outputs (vectors of maps), `state`, `input`.
+Note: Cell names use kebab-case (e.g., raw-customers instead of raw_customers).
 
 Return ONLY the corrected Clojure code. No explanations, no markdown code blocks, just the raw code."""
 }
@@ -144,7 +144,7 @@ def attempt_auto_fix(
         error_message: The error message
         auto_fix_config: Auto-fix configuration
         session_id: Session ID for cost tracking
-        cell_name: Phase name for logging
+        cell_name: Cell name for logging
         prior_outputs: Prior cell outputs (for python_data)
         inputs: Notebook inputs (for python_data)
 
@@ -380,7 +380,7 @@ def list_notebooks():
     List all available data cascade notebooks.
 
     Scans traits/, cascades/, and examples/ directories for YAML/JSON files
-    that only contain deterministic phases (sql_data, python_data, js_data, clojure_data).
+    that only contain deterministic cells (sql_data, python_data, js_data, clojure_data).
 
     Returns:
         JSON with list of notebooks and their metadata
@@ -497,7 +497,7 @@ def run_notebook():
         - inputs: Input values for the notebook
 
     Returns:
-        JSON with execution results for each phase
+        JSON with execution results for each cell
     """
     try:
         data = request.json
@@ -522,16 +522,16 @@ def run_notebook():
             # Run the cascade
             result = run_cascade(temp_path, inputs, session_id=session_id)
 
-            # Extract phase results from lineage
-            phases = {}
+            # Extract cell results from lineage
+            cells = {}
             for entry in result.get('lineage', []):
-                cell_name = entry.get('phase')
+                cell_name = entry.get('cell')
                 output = entry.get('output')
                 duration = entry.get('duration_ms')
 
                 # Skip routing messages (strings)
                 if isinstance(output, dict):
-                    phases[cell_name] = {
+                    cells[cell_name] = {
                         'result': sanitize_for_json(output),
                         'duration_ms': duration,
                         'error': output.get('error') if output.get('_route') == 'error' else None
@@ -539,8 +539,8 @@ def run_notebook():
 
             return jsonify({
                 'session_id': session_id,
-                'phases': phases,
-                'final_output': sanitize_for_json(result.get('state', {}).get(f'output_{notebook["phases"][-1]["name"]}')),
+                'cells': cells,
+                'final_output': sanitize_for_json(result.get('state', {}).get(f'output_{notebook["cells"][-1]["name"]}')),
                 'has_errors': result.get('has_errors', False)
             })
 
@@ -563,7 +563,7 @@ def run_cell():
     Run a single notebook cell with optional auto-fix.
 
     Request body:
-        - cell: Cell definition (phase object)
+        - cell: Cell definition (cell object)
         - inputs: Input values for the notebook
         - prior_outputs: Outputs from prior cells
         - session_id: Session ID for temp table persistence
@@ -602,19 +602,19 @@ def run_cell():
             else:
                 rendered_inputs[key] = value
 
-        # Check if this is a regular LLM phase (no tool field, has instructions)
-        is_llm_phase = not tool and cell.get('instructions')
+        # Check if this is a regular LLM cell (no tool field, has instructions)
+        is_llm_cell = not tool and cell.get('instructions')
 
         # Get original code for potential auto-fix
         original_code = rendered_inputs.get('query') if tool == 'sql_data' else rendered_inputs.get('code', '')
 
-        # Execute the appropriate tool or phase
+        # Execute the appropriate tool or cell
         execution_error = None
         result = None
 
         try:
-            if is_llm_phase:
-                # Regular LLM phase - use run_cascade with temp file
+            if is_llm_cell:
+                # Regular LLM cell - use run_cascade with temp file
                 import traceback
                 try:
                     # Render Jinja2 templates in instructions
@@ -630,14 +630,14 @@ def run_cell():
                     else:
                         rendered_instructions = instructions
 
-                    # Create phase with rendered instructions
+                    # Create cell with rendered instructions
                     rendered_cell = {**cell, 'instructions': rendered_instructions}
 
-                    # Create a mini-cascade with just this phase
+                    # Create a mini-cascade with just this cell
                     mini_cascade = {
                         'cascade_id': f'notebook_{cell_name}',
-                        'description': 'Notebook LLM phase',
-                        'phases': [rendered_cell]
+                        'description': 'Notebook LLM cell',
+                        'cells': [rendered_cell]
                     }
 
                     # Write to temp file (run_cascade expects a file path)
@@ -665,8 +665,8 @@ def run_cell():
                             pass
 
                 except Exception as llm_error:
-                    print(f"[LLM Phase Error] {llm_error}")
-                    print(f"[LLM Phase Cell] {json.dumps(cell, indent=2)}")
+                    print(f"[LLM Cell Error] {llm_error}")
+                    print(f"[LLM Cell Cell] {json.dumps(cell, indent=2)}")
                     print(traceback.format_exc())
                     raise
 
@@ -708,7 +708,7 @@ def run_cell():
                 )
             elif tool == 'rvbbit_data':
                 result = rvbbit_data(
-                    phase_yaml=rendered_inputs.get('code', ''),
+                    cell_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
                     _input=inputs,

@@ -1,8 +1,8 @@
 """
 Data-focused tools for SQL notebooks / data cascades.
 
-These tools support the "notebook" pattern where phases produce DataFrames
-that can be referenced by downstream phases via temp tables.
+These tools support the "notebook" pattern where cells produce DataFrames
+that can be referenced by downstream cells via temp tables.
 
 Supports multi-modal outputs:
 - DataFrames (tables)
@@ -228,7 +228,7 @@ def sql_data(
     Execute SQL query and return results as DataFrame.
 
     Optionally materializes result as a temp table named '_<cell_name>'
-    for downstream SQL phases to reference directly.
+    for downstream SQL cells to reference directly.
 
     Args:
         query: SQL query to execute (Jinja2 already rendered by deterministic executor)
@@ -248,7 +248,7 @@ def sql_data(
         }
 
     Example cascade usage:
-        phases:
+        cells:
           - name: "customers"
             tool: "sql_data"
             inputs:
@@ -300,7 +300,7 @@ def sql_data(
             if limit:
                 df = df.head(limit)
 
-        # Materialize as temp table for downstream phases
+        # Materialize as temp table for downstream cells
         if materialize and _cell_name and session_db:
             table_name = f"_{_cell_name}"
             # Register DataFrame and create table
@@ -309,7 +309,7 @@ def sql_data(
             session_db.unregister("_temp_df")
 
         # Note: We don't include 'dataframe' in return as it's not JSON-serializable
-        # Downstream phases access data via temp tables or by reconstructing from 'rows'
+        # Downstream cells access data via temp tables or by reconstructing from 'rows'
         # Use _serialize_for_json to handle numpy arrays (e.g., from DuckDB LIST columns)
         return {
             "rows": _serialize_for_json(df.to_dict('records')),
@@ -327,10 +327,10 @@ def sql_data(
 
 class DataNamespace:
     """
-    Namespace object that provides access to prior phase DataFrames.
+    Namespace object that provides access to prior cell DataFrames.
 
     Usage in python_data code:
-        df = data.raw_customers      # Get DataFrame from prior phase
+        df = data.raw_customers      # Get DataFrame from prior cell
         df = data['raw_customers']   # Alternative dict-style access
     """
 
@@ -364,7 +364,7 @@ class DataNamespace:
                     return df
                 except Exception:
                     pass
-            raise AttributeError(f"No data found for phase '{name}'")
+            raise AttributeError(f"No data found for cell '{name}'")
 
         # Extract data from various output formats
         if isinstance(output, pd.DataFrame):
@@ -410,7 +410,7 @@ class DataNamespace:
         return df
 
     def list_available(self) -> List[str]:
-        """List all available phase names."""
+        """List all available cell names."""
         return list(self._outputs.keys())
 
 
@@ -424,10 +424,10 @@ def python_data(
     _session_id: str = None
 ) -> Dict[str, Any]:
     """
-    Execute inline Python code with access to prior phase DataFrames.
+    Execute inline Python code with access to prior cell DataFrames.
 
     The code environment includes:
-        - data.<cell_name>: DataFrame from prior sql_data/python_data phases
+        - data.<cell_name>: DataFrame from prior sql_data/python_data cells
         - data['cell_name']: Alternative dict-style access
         - state: Current cascade state dict (read-only recommended)
         - input: Original cascade input dict
@@ -440,10 +440,10 @@ def python_data(
 
     Args:
         code: Python code to execute
-        _outputs: Injected by runner - all prior phase outputs
+        _outputs: Injected by runner - all prior cell outputs
         _state: Injected by runner - current cascade state
         _input: Injected by runner - original cascade input
-        _cell_name: Injected by runner - current phase name
+        _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
 
     Returns:
@@ -456,7 +456,7 @@ def python_data(
         }
 
     Example cascade usage:
-        phases:
+        cells:
           - name: "transform"
             tool: "python_data"
             inputs:
@@ -556,7 +556,7 @@ def python_data(
                 session_db.unregister("_temp_df")
 
             # Note: We don't include 'dataframe' or 'result' as they're not JSON-serializable
-            # Downstream phases access data via temp tables or by reconstructing from 'rows'
+            # Downstream cells access data via temp tables or by reconstructing from 'rows'
             # Serialize rows to convert Timestamps and numpy types to JSON-serializable values
             rows = _serialize_for_json(result.to_dict('records'))
             return {
@@ -641,7 +641,7 @@ def python_data(
 # ============================================================================
 
 def _prepare_inputs_for_polyglot(outputs: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert prior phase outputs to a format suitable for other languages.
+    """Convert prior cell outputs to a format suitable for other languages.
 
     DataFrames become arrays of objects, everything else passes through as JSON.
     """
@@ -758,23 +758,23 @@ def js_data(
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
-    Execute JavaScript/Node.js code with access to prior phase data.
+    Execute JavaScript/Node.js code with access to prior cell data.
 
     The code environment includes:
-        - data.<cell_name>: Array of objects from prior phases
+        - data.<cell_name>: Array of objects from prior cells
         - data['cell_name']: Alternative bracket notation
         - state: Current cascade state object
         - input: Original cascade input object
 
     The code MUST set a 'result' variable as its output.
-    If result is an array of objects, it becomes a DataFrame for downstream phases.
+    If result is an array of objects, it becomes a DataFrame for downstream cells.
 
     Args:
         code: JavaScript code to execute
-        _outputs: Injected by runner - all prior phase outputs
+        _outputs: Injected by runner - all prior cell outputs
         _state: Injected by runner - current cascade state
         _input: Injected by runner - original cascade input
-        _cell_name: Injected by runner - current phase name
+        _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
         timeout: Execution timeout in seconds (default 30)
 
@@ -787,7 +787,7 @@ def js_data(
         }
 
     Example cascade usage:
-        phases:
+        cells:
           - name: "transform"
             tool: "js_data"
             inputs:
@@ -904,26 +904,26 @@ def clojure_data(
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
-    Execute Clojure code using Babashka with access to prior phase data.
+    Execute Clojure code using Babashka with access to prior cell data.
 
     Babashka is a fast-starting Clojure interpreter (~10ms startup vs 2-3s for JVM).
 
     The code environment includes:
-        - data: Map with prior phase outputs (keyword keys)
-            - (:phase-name data) or (data :phase-name)
-            - Phase names with underscores become kebab-case: raw_customers -> :raw-customers
+        - data: Map with prior cell outputs (keyword keys)
+            - (:cell-name data) or (data :cell-name)
+            - Cell names with underscores become kebab-case: raw_customers -> :raw-customers
         - state: Current cascade state map
         - input: Original cascade input map
 
     The code should evaluate to the result value (last expression).
-    If result is a vector of maps, it becomes a DataFrame for downstream phases.
+    If result is a vector of maps, it becomes a DataFrame for downstream cells.
 
     Args:
         code: Clojure code to execute
-        _outputs: Injected by runner - all prior phase outputs
+        _outputs: Injected by runner - all prior cell outputs
         _state: Injected by runner - current cascade state
         _input: Injected by runner - original cascade input
-        _cell_name: Injected by runner - current phase name
+        _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
         timeout: Execution timeout in seconds (default 30)
 
@@ -936,7 +936,7 @@ def clojure_data(
         }
 
     Example cascade usage:
-        phases:
+        cells:
           - name: "transform"
             tool: "clojure_data"
             inputs:
@@ -1045,7 +1045,7 @@ def clojure_data(
 
 @simple_eddy
 def rvbbit_data(
-    phase_yaml: str,
+    cell_yaml: str,
     _cell_name: str = None,
     _outputs: Dict[str, Any] = None,
     _session_id: str = None,
@@ -1053,9 +1053,9 @@ def rvbbit_data(
     _input: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """
-    Execute a full RVBBIT LLM phase within a notebook cell.
+    Execute a full RVBBIT LLM cell within a notebook cell.
 
-    The phase_yaml should be a valid phase definition with:
+    The cell_yaml should be a valid cell definition with:
     - instructions: The prompt template (can use {{outputs.cell_name}}, {{input.x}}, {{state.x}})
     - model: Optional model override (default: system default)
     - output_schema: JSON schema for structured output (REQUIRED - must return structured data)
@@ -1064,7 +1064,7 @@ def rvbbit_data(
     - wards: Optional validation (pre/post)
     - traits: Optional tools to make available
 
-    Example phase_yaml:
+    Example cell_yaml:
         instructions: |
           Analyze the customer orders from {{outputs.raw_orders}} and classify each customer.
         model: google/gemini-2.5-flash
@@ -1083,30 +1083,30 @@ def rvbbit_data(
     import traceback
 
     try:
-        # Parse the phase YAML
-        phase_config = yaml.safe_load(phase_yaml)
+        # Parse the cell YAML
+        cell_config = yaml.safe_load(cell_yaml)
 
-        if not phase_config:
+        if not cell_config:
             return {
                 "_route": "error",
                 "error": "Empty or invalid YAML"
             }
 
         # Require output_schema for structured output
-        if 'output_schema' not in phase_config:
+        if 'output_schema' not in cell_config:
             return {
                 "_route": "error",
                 "error": "LLM cells require 'output_schema' to return structured data. Add an output_schema definition."
             }
 
-        # Set the phase name
-        phase_config['name'] = _cell_name or 'llm_cell'
+        # Set the cell name
+        cell_config['name'] = _cell_name or 'llm_cell'
 
-        # Create a mini cascade with just this phase
+        # Create a mini cascade with just this cell
         cascade_config = {
             'cascade_id': f'notebook_{_cell_name}',
             'description': 'Notebook LLM cell',
-            'cells': [phase_config]
+            'cells': [cell_config]
         }
 
         # Import runner components
@@ -1124,7 +1124,7 @@ def rvbbit_data(
             for cell_name, output in _outputs.items():
                 # Add to lineage so {{ outputs.cell_name }} works
                 echo.lineage.append({
-                    'phase': cell_name,
+                    'cell': cell_name,
                     'output': output
                 })
 
@@ -1142,31 +1142,31 @@ def rvbbit_data(
         # Run with input data
         result = runner.run(_input or {})
 
-        # Extract the structured output from the phase
+        # Extract the structured output from the cell
         # runner.run() returns the full echo: {session_id, state, history, lineage, errors, ...}
-        # The phase output is in lineage[-1]["output"]
-        phase_output = None
+        # The cell output is in lineage[-1]["output"]
+        cell_output = None
         if isinstance(result, dict):
             lineage = result.get('lineage', [])
             if lineage and len(lineage) > 0:
-                # Get the last (and only) phase output
-                phase_output = lineage[-1].get('output')
+                # Get the last (and only) cell output
+                cell_output = lineage[-1].get('output')
 
             # If not in lineage, try direct output key (fallback)
-            if phase_output is None:
-                phase_output = result.get('output')
+            if cell_output is None:
+                cell_output = result.get('output')
 
         # If the result is wrapped in another layer, unwrap it
-        if isinstance(phase_output, dict) and 'output' in phase_output:
-            phase_output = phase_output['output']
+        if isinstance(cell_output, dict) and 'output' in cell_output:
+            cell_output = cell_output['output']
 
         # Handle markdown code fences - LLMs sometimes wrap JSON in ```json ... ```
         # Also handles preamble text like "Here's the analysis:\n\n```json\n..."
-        if isinstance(phase_output, str):
+        if isinstance(cell_output, str):
             import json as json_module
             import re
 
-            content = phase_output.strip()
+            content = cell_output.strip()
 
             # Try to extract content from code fences anywhere in the string
             # Matches ```json, ```JSON, ``` followed by content and closing ```
@@ -1179,7 +1179,7 @@ def rvbbit_data(
 
             # Try to parse as JSON
             try:
-                phase_output = json_module.loads(content)
+                cell_output = json_module.loads(content)
             except (json_module.JSONDecodeError, ValueError):
                 # If that failed, try to find JSON array or object directly
                 # Look for [ ... ] or { ... } pattern
@@ -1187,27 +1187,27 @@ def rvbbit_data(
                 json_match = re.search(json_pattern, content)
                 if json_match:
                     try:
-                        phase_output = json_module.loads(json_match.group(1))
+                        cell_output = json_module.loads(json_match.group(1))
                     except (json_module.JSONDecodeError, ValueError):
                         # Still not valid JSON, keep as string
                         pass
 
         # Handle case where we couldn't find output
-        if phase_output is None:
+        if cell_output is None:
             return {
                 "_route": "error",
-                "error": "LLM phase did not produce output. Check the phase configuration.",
+                "error": "LLM cell did not produce output. Check the cell configuration.",
                 "debug_result_keys": list(result.keys()) if isinstance(result, dict) else str(type(result))
             }
 
         # Format result for notebook consumption
-        formatted = _format_polyglot_result(phase_output, _cell_name, _session_id)
+        formatted = _format_polyglot_result(cell_output, _cell_name, _session_id)
 
         # Add metadata about the LLM execution
         formatted['_llm_execution'] = {
-            'model': phase_config.get('model', 'default'),
-            'had_soundings': 'soundings' in phase_config,
-            'had_reforge': 'reforge' in phase_config,
+            'model': cell_config.get('model', 'default'),
+            'had_soundings': 'soundings' in cell_config,
+            'had_reforge': 'reforge' in cell_config,
         }
 
         return formatted

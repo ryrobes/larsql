@@ -452,7 +452,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = 
                 'session_id': sid,
                 'cascade_id': cascade_id,
                 'status': 'completed',  # Assume completed for virtual sessions
-                'current_phase': None,
+                'current_cell': None,
                 'started_at': row.get('started_at').isoformat() if row.get('started_at') else None,
                 'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
                 'completed_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
@@ -675,7 +675,7 @@ def cancel_session(session_id: str):
         else:
             # Process is alive - request graceful cancellation
             manager.request_cancellation(session_id, reason)
-            message = 'Cancellation requested - session will stop at next phase boundary'
+            message = 'Cancellation requested - session will stop at next cell boundary'
 
         # Fetch updated state (fresh from DB)
         updated_session = _get_fresh_session(session_id)

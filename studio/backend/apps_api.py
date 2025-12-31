@@ -726,7 +726,7 @@ def get_cascade_state_from_clickhouse(session_id: str) -> dict:
             error_message = status_result[0].get('error_message')
 
         # Query unified_logs for the latest cell being executed
-        # Look for phase starts (cell beginning) or the latest log entry
+        # Look for cell starts (cell beginning) or the latest log entry
         cell_query = f"""
             SELECT cell_name, node_type, timestamp as created_at
             FROM unified_logs
@@ -2376,7 +2376,7 @@ def status(cascade_id: str, session_id: str):
                     SELECT content_json, cell_name
                     FROM unified_logs
                     WHERE session_id = '{session_id}'
-                      AND node_type IN ('phase_complete', 'cascade_complete', 'agent')
+                      AND node_type IN ('cell_complete', 'cascade_complete', 'agent')
                       AND content_json != ''
                     ORDER BY timestamp DESC
                     LIMIT 1

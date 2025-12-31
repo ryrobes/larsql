@@ -28,8 +28,8 @@ try:
 except ImportError:
     OpenAI = None
 
-from .cascade import load_cascade_config, CascadeConfig, CellConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraPhaseContextConfig, AutoFixConfig, PolyglotValidatorConfig
-from .auto_context import IntraPhaseContextBuilder, IntraContextConfig, ContextSelectionStats
+from .cascade import load_cascade_config, CascadeConfig, CellConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraCellContextConfig, AutoFixConfig, PolyglotValidatorConfig
+from .auto_context import IntraCellContextBuilder, IntraContextConfig, ContextSelectionStats
 import re
 from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
@@ -47,7 +47,7 @@ from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
 from .artifact_resolver import enrich_outputs_with_artifacts, convert_to_multimodal_content
-from .state import update_phase_progress, clear_phase_progress
+from .state import update_cell_progress, clear_cell_progress
 from .session_state import (
     get_session_state_manager, create_session as create_session_state,
     update_session_status, session_heartbeat, is_session_cancelled,
@@ -117,12 +117,12 @@ class RVBBITHooks:
         """Called when cascade execution fails"""
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_start(self, cell_name: str, context: dict) -> dict:
-        """Called when phase execution begins"""
+    def on_cell_start(self, cell_name: str, context: dict) -> dict:
+        """Called when cell execution begins"""
         return {"action": HookAction.CONTINUE}
 
-    def on_phase_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
-        """Called when phase execution completes"""
+    def on_cell_complete(self, cell_name: str, session_id: str, result: dict) -> dict:
+        """Called when cell execution completes"""
         return {"action": HookAction.CONTINUE}
 
     def on_turn_start(self, cell_name: str, turn_index: int, context: dict) -> dict:
@@ -170,11 +170,11 @@ class RVBBITRunner:
         self.hooks = hooks or RVBBITHooks()
         self.context_messages: List[Dict[str, str]] = []
         self.candidate_index = candidate_index  # Track which candidate attempt this is (for cascade-level soundings)
-        self.current_phase_candidate_index = None  # Track candidate index within current phase
+        self.current_cell_candidate_index = None  # Track candidate index within current cell
         self.current_reforge_step = None  # Track which reforge step we're in
         self.current_winning_candidate_index = None  # Track which initial candidate won (for reforge)
         self.current_retry_attempt = None  # Track retry/validation attempt index
-        self.current_turn_number = None  # Track turn number within phase (for max_turns)
+        self.current_turn_number = None  # Track turn number within cell (for max_turns)
         self.current_mutation_applied = None  # Track mutation applied to current candidate
         self.current_mutation_type = None  # Track mutation type: 'rewrite', 'augment', 'approach'
         self.current_mutation_template = None  # Track mutation template (for rewrite: instruction used)
@@ -227,12 +227,12 @@ class RVBBITRunner:
         self._audible_budget_used = {}  # cell_name -> count of audibles used
         self._audible_lock = threading.Lock()
 
-        # Narrator config (cascade-level, can be overridden per-phase)
+        # Narrator config (cascade-level, can be overridden per-cell)
         self.cascade_narrator = self.config.narrator if hasattr(self.config, 'narrator') else None
         self._narrator_service = None  # Will be initialized in run() if configured
 
         # Auto-context system for intelligent context management
-        self._intra_context_builder: Optional[IntraPhaseContextBuilder] = None
+        self._intra_context_builder: Optional[IntraCellContextBuilder] = None
         self._loop_validation_failures: List[Dict] = []  # Track failures for loop compression
 
         # Heartbeat system for durable execution
@@ -261,7 +261,7 @@ class RVBBITRunner:
             return
 
         # Skip saving losing soundings (they're alternate universes, not canon)
-        if self.current_phase_candidate_index is not None or self.candidate_index is not None:
+        if self.current_cell_candidate_index is not None or self.candidate_index is not None:
             # We're inside soundings - don't save until we know if we're a winner
             return
 
@@ -387,7 +387,7 @@ class RVBBITRunner:
         """
         Check if cancellation was requested for this session.
 
-        Called between phases to allow graceful cancellation.
+        Called between cells to allow graceful cancellation.
         Returns True if cascade should stop.
         """
         try:
@@ -405,21 +405,21 @@ class RVBBITRunner:
         return False
 
     # =========================================================================
-    # Parallel Phase Execution
+    # Parallel Cell Execution
     # =========================================================================
 
     def _analyze_cell_dependencies(self) -> Dict[str, set]:
         """
-        Analyze all phases to build a dependency graph.
+        Analyze all cells to build a dependency graph.
 
         Returns:
-            Dict mapping cell_name -> set of phase names it depends on.
-            A phase with an empty set has no dependencies (can run immediately).
+            Dict mapping cell_name -> set of cell names it depends on.
+            A cell with an empty set has no dependencies (can run immediately).
 
         Dependencies are detected from:
-        1. context.from - explicit phase references
+        1. context.from - explicit cell references
         2. Template variables - {{ outputs.cell_name }} or {{ state.output_cell_name }}
-        3. Handoffs pointing TO this phase (reverse lookup)
+        3. Handoffs pointing TO this cell (reverse lookup)
         """
         import re
 
@@ -437,26 +437,26 @@ class RVBBITRunner:
             # 1. Check context.from for explicit dependencies
             if cell.context and cell.context.from_:
                 for source in cell.context.from_:
-                    source_name = source if isinstance(source, str) else getattr(source, 'phase', None)
+                    source_name = source if isinstance(source, str) else getattr(source, 'cell', None)
                     if source_name:
                         # Handle special keywords
                         if source_name == "all":
-                            # Depends on ALL prior phases in definition order
+                            # Depends on ALL prior cells in definition order
                             for p in self.config.cells:
                                 if p.name == cell.name:
                                     break
                                 deps.add(p.name)
                         elif source_name == "previous":
-                            # Find the phase defined before this one
-                            prev_phase = None
+                            # Find the cell defined before this one
+                            prev_cell = None
                             for p in self.config.cells:
                                 if p.name == cell.name:
                                     break
-                                prev_phase = p.name
-                            if prev_phase:
-                                deps.add(prev_phase)
+                                prev_cell = p.name
+                            if prev_cell:
+                                deps.add(prev_cell)
                         elif source_name == "first":
-                            # First phase
+                            # First cell
                             if self.config.cells:
                                 deps.add(self.config.cells[0].name)
                         elif source_name in cell_names:
@@ -466,47 +466,47 @@ class RVBBITRunner:
             if cell.instructions:
                 # Find {{ outputs.X }} references
                 for match in outputs_pattern.finditer(cell.instructions):
-                    ref_phase = match.group(1)
-                    if ref_phase in cell_names and ref_phase != cell.name:
-                        deps.add(ref_phase)
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
 
                 # Find {{ state.output_X }} references
                 for match in state_output_pattern.finditer(cell.instructions):
-                    ref_phase = match.group(1)
-                    if ref_phase in cell_names and ref_phase != cell.name:
-                        deps.add(ref_phase)
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
 
             # 3. Check soundings.factor for template variable references (for dynamic factors)
             if cell.candidates and isinstance(cell.candidates.factor, str):
                 # Find {{ outputs.X }} references in soundings.factor
                 for match in outputs_pattern.finditer(cell.candidates.factor):
-                    ref_phase = match.group(1)
-                    if ref_phase in cell_names and ref_phase != cell.name:
-                        deps.add(ref_phase)
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
 
                 # Find {{ state.output_X }} references in soundings.factor
                 for match in state_output_pattern.finditer(cell.candidates.factor):
-                    ref_phase = match.group(1)
-                    if ref_phase in cell_names and ref_phase != cell.name:
-                        deps.add(ref_phase)
+                    ref_cell = match.group(1)
+                    if ref_cell in cell_names and ref_cell != cell.name:
+                        deps.add(ref_cell)
 
             dependencies[cell.name] = deps
 
         return dependencies
 
-    def _can_run_phases_parallel(self) -> bool:
+    def _can_run_cells_parallel(self) -> bool:
         """
-        Check if this cascade can benefit from parallel phase execution.
+        Check if this cascade can benefit from parallel cell execution.
 
         Returns True if:
-        - There are multiple phases
-        - No phases have handoffs (handoffs imply sequential/routing logic)
-        - At least 2 phases have no dependencies on each other
+        - There are multiple cells
+        - No cells have handoffs (handoffs imply sequential/routing logic)
+        - At least 2 cells have no dependencies on each other
 
         Returns False if:
-        - Single phase cascade
-        - Any phase has handoffs (explicit routing)
-        - All phases depend on previous phases (linear chain)
+        - Single cell cascade
+        - Any cell has handoffs (explicit routing)
+        - All cells depend on previous cells (linear chain)
         """
         cells = self.config.cells
         if len(cells) <= 1:
@@ -526,15 +526,15 @@ class RVBBITRunner:
         # If we have 2+ root cells, parallel execution makes sense
         return len(root_cells) >= 2
 
-    def _execute_phases_parallel(self, input_data: dict) -> dict:
+    def _execute_cells_parallel(self, input_data: dict) -> dict:
         """
-        Execute phases in parallel based on their dependencies.
+        Execute cells in parallel based on their dependencies.
 
         Uses a DAG-based execution model:
-        1. Find all phases with satisfied dependencies (initially: root phases)
+        1. Find all cells with satisfied dependencies (initially: root cells)
         2. Execute them in parallel using ThreadPoolExecutor
-        3. When phases complete, check if new phases are unblocked
-        4. Continue until all phases complete
+        3. When cells complete, check if new cells are unblocked
+        4. Continue until all cells complete
 
         Returns the combined echo result.
         """
@@ -546,7 +546,7 @@ class RVBBITRunner:
 
         # Build dependency graph
         dependencies = self._analyze_cell_dependencies()
-        phase_map = {p.name: p for p in self.config.cells}
+        cell_map = {p.name: p for p in self.config.cells}
 
         # Track state
         completed = set()
@@ -559,67 +559,67 @@ class RVBBITRunner:
         # Determine max workers (like soundings)
         max_workers = min(len(self.config.cells), 5)
 
-        def execute_single_phase(cell_name: str, phase_input: dict) -> dict:
-            """Execute a single phase in a worker thread."""
-            cell = phase_map[cell_name]
+        def execute_single_cell(cell_name: str, cell_input: dict) -> dict:
+            """Execute a single cell in a worker thread."""
+            cell = cell_map[cell_name]
 
             # Set thread-local context vars
             session_token = set_current_session_id(self.session_id)
-            phase_token = set_current_cell_name(cell.name)
+            cell_token = set_current_cell_name(cell.name)
             cascade_token = set_current_cascade_id(self.config.cascade_id)
 
             try:
-                # Create trace for this phase
-                phase_trace = self.trace.create_child("phase", cell.name)
+                # Create trace for this cell
+                cell_trace = self.trace.create_child("cell", cell.name)
 
-                # Hook: Phase Start (emits SSE event)
-                self.hooks.on_phase_start(cell.name, {
+                # Hook: Cell Start (emits SSE event)
+                self.hooks.on_cell_start(cell.name, {
                     "echo": self.echo,
-                    "input": phase_input,
+                    "input": cell_input,
                     "parallel_execution": True,
                 })
 
-                # Publish phase_start event
-                self._publish_event("phase_start", {
+                # Publish cell_start event
+                self._publish_event("cell_start", {
                     "cell_name": cell.name,
                     "cascade_id": self.config.cascade_id,
                     "parallel_execution": True,
                 })
 
-                # Log phase start
-                log_message(self.session_id, "system", f"Phase {cell.name} starting (parallel)",
-                           trace_id=phase_trace.id, parent_id=phase_trace.parent_id,
-                           node_type="phase", depth=self.depth, cell_name=cell.name,
+                # Log cell start
+                log_message(self.session_id, "system", f"Cell {cell.name} starting (parallel)",
+                           trace_id=cell_trace.id, parent_id=cell_trace.parent_id,
+                           node_type="cell", depth=self.depth, cell_name=cell.name,
                            cascade_id=self.config.cascade_id)
 
-                # Execute the phase with timing
+                # Execute the cell with timing
                 import time as time_module
-                phase_start_time = time_module.time()
-                result = self.execute_phase(cell, phase_input, phase_trace)
-                phase_duration_ms = (time_module.time() - phase_start_time) * 1000
+                cell_start_time = time_module.time()
+                result = self.execute_cell(cell, cell_input, cell_trace)
+                cell_duration_ms = (time_module.time() - cell_start_time) * 1000
 
                 # Store in echo state (thread-safe for simple dict updates)
                 self.echo.state[f"output_{cell.name}"] = result
 
                 # Add to lineage
-                self.echo.add_lineage(cell.name, result, trace_id=phase_trace.id)
+                self.echo.add_lineage(cell.name, result, trace_id=cell_trace.id)
 
-                # Hook: Phase Complete (emits SSE event)
-                # In parallel execution, ALWAYS call this to ensure phase_complete is logged
-                self.hooks.on_phase_complete(cell.name, self.session_id, {
+                # Hook: Cell Complete (emits SSE event)
+                # In parallel execution, ALWAYS call this to ensure cell_complete is logged
+                self.hooks.on_cell_complete(cell.name, self.session_id, {
                     "output": result,
-                    "duration_ms": phase_duration_ms,
+                    "duration_ms": cell_duration_ms,
                 })
 
-                # Log phase completion to unified_logs
+                # Log cell completion to unified_logs
                 log_message(
                     self.session_id,
-                    "phase_complete",
-                    f"Phase {cell.name} completed",
-                    trace_id=phase_trace.id,
+                    "cell_complete",
+                    f"Cell {cell.name} completed",
+                    trace_id=cell_trace.id,
                     cell_name=cell.name,
                     cascade_id=self.config.cascade_id,
-                    duration_ms=phase_duration_ms
+                    duration_ms=cell_duration_ms
                 )
 
                 return {
@@ -628,7 +628,7 @@ class RVBBITRunner:
                     "success": True,
                 }
             except Exception as e:
-                console.print(f"{indent}  [red]✗ Phase {cell.name} failed: {e}[/red]")
+                console.print(f"{indent}  [red]✗ Cell {cell.name} failed: {e}[/red]")
                 return {
                     "cell_name": cell.name,
                     "error": str(e),
@@ -640,8 +640,8 @@ class RVBBITRunner:
                 set_current_cell_name(None)
                 set_current_cascade_id(None)
 
-        def get_runnable_phases() -> List[str]:
-            """Find phases that can run (dependencies satisfied, not running/completed)."""
+        def get_runnable_cells() -> List[str]:
+            """Find cells that can run (dependencies satisfied, not running/completed)."""
             runnable = []
             for cell_name, deps in dependencies.items():
                 if cell_name in completed:
@@ -659,24 +659,24 @@ class RVBBITRunner:
                     console.print(f"{indent}[bold yellow]⚠ Cascade cancelled during parallel execution[/bold yellow]")
                     break
 
-                # Find phases that can run now
-                runnable = get_runnable_phases()
+                # Find cells that can run now
+                runnable = get_runnable_cells()
 
-                # Submit runnable phases
+                # Submit runnable cells
                 for cell_name in runnable:
                     console.print(f"{indent}  [cyan]▶ Starting: {cell_name}[/cyan]")
-                    future = executor.submit(execute_single_phase, cell_name, input_data)
+                    future = executor.submit(execute_single_cell, cell_name, input_data)
                     running[cell_name] = future
 
                 if not running:
-                    # No phases running and none runnable - we're done or stuck
+                    # No cells running and none runnable - we're done or stuck
                     break
 
-                # Wait for at least one phase to complete
+                # Wait for at least one cell to complete
                 from concurrent.futures import wait, FIRST_COMPLETED
                 done, _ = wait(running.values(), return_when=FIRST_COMPLETED)
 
-                # Process completed phases
+                # Process completed cells
                 for future in done:
                     result = future.result()
                     cell_name = result["cell_name"]
@@ -690,7 +690,7 @@ class RVBBITRunner:
                     else:
                         console.print(f"{indent}  [red]✗ Failed: {cell_name}[/red]")
 
-        console.print(f"{indent}[bold magenta]⚡ Parallel execution complete: {len(completed)}/{len(self.config.cells)} phases[/bold magenta]")
+        console.print(f"{indent}[bold magenta]⚡ Parallel execution complete: {len(completed)}/{len(self.config.cells)} cells[/bold magenta]")
 
         return self.echo.get_full_echo()
 
@@ -700,7 +700,7 @@ class RVBBITRunner:
         Use this in all echo.add_history() calls to ensure consistent tagging.
 
         Semantic Actors (WHO is speaking):
-            - main_agent: Primary LLM doing phase work
+            - main_agent: Primary LLM doing cell work
             - sounding_agent: Main agent in a candidate attempt
             - reforge_agent: Main agent in a reforge iteration
             - evaluator: LLM judging soundings/reforge quality
@@ -711,9 +711,9 @@ class RVBBITRunner:
             - framework: System-generated metadata/lifecycle
 
         Semantic Purposes (WHAT is this message for):
-            - instructions: Phase system prompt
+            - instructions: Cell system prompt
             - task_input: The actual work request
-            - context_injection: Prior phase context being injected
+            - context_injection: Prior cell context being injected
             - tool_request: Agent calling a tool
             - tool_response: Tool returning result
             - continuation: Turn follow-up prompt
@@ -729,8 +729,8 @@ class RVBBITRunner:
         meta = extra.copy() if extra else {}
 
         # Auto-inject candidate_index if we're in a candidate
-        if self.current_phase_candidate_index is not None:
-            meta.setdefault("candidate_index", self.current_phase_candidate_index)
+        if self.current_cell_candidate_index is not None:
+            meta.setdefault("candidate_index", self.current_cell_candidate_index)
         elif self.candidate_index is not None:
             meta.setdefault("candidate_index", self.candidate_index)
 
@@ -752,14 +752,14 @@ class RVBBITRunner:
         if "semantic_actor" not in meta:
             if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
                 meta["semantic_actor"] = "reforge_agent"
-            elif self.current_phase_candidate_index is not None or self.candidate_index is not None:
+            elif self.current_cell_candidate_index is not None or self.candidate_index is not None:
                 meta["semantic_actor"] = "sounding_agent"
 
         return meta
 
-    def _get_callout_config(self, phase):
+    def _get_callout_config(self, cell):
         """
-        Get normalized callout config from phase.
+        Get normalized callout config from cell.
 
         Handles shorthand: callouts="Result" → CalloutsConfig(output="Result")
 
@@ -767,28 +767,28 @@ class RVBBITRunner:
         """
         from .cascade import CalloutsConfig
 
-        if not phase.callouts:
+        if not cell.callouts:
             return None
 
         # String shorthand: convert to CalloutsConfig with output set
-        if isinstance(phase.callouts, str):
-            return CalloutsConfig(output=phase.callouts)
+        if isinstance(cell.callouts, str):
+            return CalloutsConfig(output=cell.callouts)
 
-        return phase.callouts
+        return cell.callouts
 
-    def _should_tag_as_callout(self, phase, message_type: str, turn_number: int = None) -> tuple:
+    def _should_tag_as_callout(self, cell, message_type: str, turn_number: int = None) -> tuple:
         """
-        Check if a message should be tagged as a callout based on phase config.
+        Check if a message should be tagged as a callout based on cell config.
 
         Args:
-            phase: CellConfig object
+            cell: CellConfig object
             message_type: 'output' or 'assistant_message'
             turn_number: Current turn number (for message filtering)
 
         Returns:
             (should_tag: bool, template: str or None)
         """
-        callout_config = self._get_callout_config(phase)
+        callout_config = self._get_callout_config(cell)
         if not callout_config:
             return False, None
 
@@ -808,7 +808,7 @@ class RVBBITRunner:
 
         return False, None
 
-    def _render_callout_name(self, template: str, phase, input_data: dict, turn_number: int = None) -> str:
+    def _render_callout_name(self, template: str, cell, input_data: dict, turn_number: int = None) -> str:
         """
         Render a callout name template with Jinja2.
 
@@ -816,11 +816,11 @@ class RVBBITRunner:
         - input.*: Original cascade input
         - state.*: Current state variables
         - turn: Current turn number
-        - phase: Current phase name
+        - cell: Current cell name
 
         Args:
             template: Jinja2 template string
-            phase: CellConfig object
+            cell: CellConfig object
             input_data: Cascade input data
             turn_number: Current turn number
 
@@ -834,7 +834,7 @@ class RVBBITRunner:
             "input": input_data,
             "state": self.echo.state,
             "turn": turn_number if turn_number is not None else 0,
-            "cell": phase.name,
+            "cell": cell.name,
         }
 
         try:
@@ -863,37 +863,37 @@ class RVBBITRunner:
 
     # ========== AUTO-CONTEXT SYSTEM ==========
 
-    def _get_intra_context_config(self, phase: CellConfig) -> IntraContextConfig:
+    def _get_intra_context_config(self, cell: CellConfig) -> IntraContextConfig:
         """
-        Get the intra-phase auto-context config for a phase.
+        Get the intra-cell auto-context config for a cell.
 
         Priority:
-        1. Phase-level intra_context config
-        2. Cascade-level auto_context.intra_phase config
+        1. Cell-level intra_context config
+        2. Cascade-level auto_context.intra_cell config
         3. Default config (enabled with sensible defaults)
 
         Args:
-            phase: The phase config
+            cell: The cell config
 
         Returns:
-            IntraContextConfig dataclass for use with IntraPhaseContextBuilder
+            IntraContextConfig dataclass for use with IntraCellContextBuilder
         """
-        # Phase-level override takes precedence
-        if phase.intra_context:
+        # Cell-level override takes precedence
+        if cell.intra_context:
             return IntraContextConfig(
-                enabled=phase.intra_context.enabled,
-                window=phase.intra_context.window,
-                mask_observations_after=phase.intra_context.mask_observations_after,
-                compress_loops=phase.intra_context.compress_loops,
-                loop_history_limit=phase.intra_context.loop_history_limit,
-                preserve_reasoning=phase.intra_context.preserve_reasoning,
-                preserve_errors=phase.intra_context.preserve_errors,
-                min_masked_size=phase.intra_context.min_masked_size,
+                enabled=cell.intra_context.enabled,
+                window=cell.intra_context.window,
+                mask_observations_after=cell.intra_context.mask_observations_after,
+                compress_loops=cell.intra_context.compress_loops,
+                loop_history_limit=cell.intra_context.loop_history_limit,
+                preserve_reasoning=cell.intra_context.preserve_reasoning,
+                preserve_errors=cell.intra_context.preserve_errors,
+                min_masked_size=cell.intra_context.min_masked_size,
             )
 
         # Cascade-level default
-        if self.config.auto_context and self.config.auto_context.intra_phase:
-            cfg = self.config.auto_context.intra_phase
+        if self.config.auto_context and self.config.auto_context.intra_cell:
+            cfg = self.config.auto_context.intra_cell
             return IntraContextConfig(
                 enabled=cfg.enabled,
                 window=cfg.window,
@@ -906,21 +906,21 @@ class RVBBITRunner:
             )
 
         # Default: disabled for now to ensure backward compatibility
-        # Users must explicitly enable via phase or cascade config
+        # Users must explicitly enable via cell or cascade config
         return IntraContextConfig(enabled=False)
 
-    def _get_or_create_intra_context_builder(self, phase: CellConfig) -> IntraPhaseContextBuilder:
+    def _get_or_create_intra_context_builder(self, cell: CellConfig) -> IntraCellContextBuilder:
         """
-        Get or create the intra-phase context builder for a phase.
+        Get or create the intra-cell context builder for a cell.
 
-        Creates a new builder with the phase's config if one doesn't exist
+        Creates a new builder with the cell's config if one doesn't exist
         or if the config has changed.
         """
-        config = self._get_intra_context_config(phase)
+        config = self._get_intra_context_config(cell)
 
         # Create or update builder
         if self._intra_context_builder is None:
-            self._intra_context_builder = IntraPhaseContextBuilder(config)
+            self._intra_context_builder = IntraCellContextBuilder(config)
         else:
             # Update config if it changed
             self._intra_context_builder.config = config
@@ -929,28 +929,28 @@ class RVBBITRunner:
 
     def _build_turn_context(
         self,
-        phase: CellConfig,
+        cell: CellConfig,
         turn_number: int,
         is_loop_retry: bool = False
     ) -> tuple:
         """
         Build context for a single turn using auto-context system.
 
-        This wraps the IntraPhaseContextBuilder and handles:
-        - Getting the right config for the phase
+        This wraps the IntraCellContextBuilder and handles:
+        - Getting the right config for the cell
         - Passing loop validation failures
         - Logging context selection stats
-        - Queueing intra-phase shadow assessment for config comparison
+        - Queueing intra-cell shadow assessment for config comparison
 
         Args:
-            phase: The phase config
+            cell: The cell config
             turn_number: Current turn number (0-indexed)
             is_loop_retry: Whether this is a loop_until retry
 
         Returns:
             Tuple of (context_messages, stats)
         """
-        builder = self._get_or_create_intra_context_builder(phase)
+        builder = self._get_or_create_intra_context_builder(cell)
 
         # Build context
         context, stats = builder.build_turn_context(
@@ -960,29 +960,29 @@ class RVBBITRunner:
             loop_validation_failures=self._loop_validation_failures
         )
 
-        # Queue intra-phase shadow assessment for config comparison
+        # Queue intra-cell shadow assessment for config comparison
         # This evaluates ~60 config scenarios (window × mask_after × min_size)
         # to suggest optimal intra-context settings based on actual execution patterns
         try:
-            from .shadow_assessment import queue_intra_phase_shadow_assessment, is_shadow_assessment_enabled
+            from .shadow_assessment import queue_intra_cell_shadow_assessment, is_shadow_assessment_enabled
 
             if is_shadow_assessment_enabled(self.config.cascade_id) and self.context_messages:
-                # Get candidate index (phase-level or cascade-level)
-                candidate_index = self.current_phase_candidate_index
+                # Get candidate index (cell-level or cascade-level)
+                candidate_index = self.current_cell_candidate_index
                 if candidate_index is None:
                     candidate_index = self.candidate_index
 
                 # Determine if intra-context was actually enabled
-                intra_config = phase.intra_context
+                intra_config = cell.intra_context
                 actual_enabled = intra_config and intra_config.enabled
 
                 # Get actual tokens after (if intra-context was enabled)
                 actual_tokens_after = stats.tokens_estimated_after if actual_enabled else None
 
-                queue_intra_phase_shadow_assessment(
+                queue_intra_cell_shadow_assessment(
                     session_id=self.session_id,
                     cascade_id=self.config.cascade_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     full_history=self.context_messages,
                     turn_number=turn_number,
                     candidate_index=candidate_index,
@@ -992,19 +992,19 @@ class RVBBITRunner:
                 )
         except Exception as e:
             # Don't let shadow assessment failures break execution
-            logger.debug(f"Intra-phase shadow assessment queueing failed: {e}")
+            logger.debug(f"Intra-cell shadow assessment queueing failed: {e}")
 
         return context, stats
 
     def _log_context_selection(
         self,
-        phase: CellConfig,
+        cell: CellConfig,
         turn_number: int,
         stats: ContextSelectionStats,
         trace: TraceNode
     ):
         """Log context selection decision for observability."""
-        # Add structural message for intra-phase context selection
+        # Add structural message for intra-cell context selection
         compression_pct = round((1 - stats.compression_ratio) * 100) if stats.compression_ratio < 1 else 0
         selection_emoji = "🗜️" if stats.selection_type == "standard" else "🔄" if stats.selection_type == "loop_retry" else "📝"
 
@@ -1015,7 +1015,7 @@ class RVBBITRunner:
         self.echo.add_history({
             "role": "structure",
             "content": (
-                f"{selection_emoji} Intra-Phase Auto-Context (Turn {turn_number + 1})\n"
+                f"{selection_emoji} Intra-Cell Auto-Context (Turn {turn_number + 1})\n"
                 f"   Type: {stats.selection_type}\n"
                 f"   Messages: {stats.context_size}/{stats.full_history_size} "
                 f"(masked: {stats.masked_count}, preserved: {stats.preserved_count})\n"
@@ -1026,11 +1026,11 @@ class RVBBITRunner:
         }, trace_id=ctx_trace.id if ctx_trace else None, parent_id=trace.id if trace else None,
            node_type="intra_context_selection",
            metadata={
-               "cell_name": phase.name,
+               "cell_name": cell.name,
                "cascade_id": self.config.cascade_id,
                "turn_number": turn_number,
                "semantic_actor": "auto_context",
-               "semantic_purpose": "intra_phase_selection",
+               "semantic_purpose": "intra_cell_selection",
                "selection_type": stats.selection_type,
                "full_history_size": stats.full_history_size,
                "context_size": stats.context_size,
@@ -1045,7 +1045,7 @@ class RVBBITRunner:
 
     # ========== AUDIBLE SYSTEM ==========
     # These methods implement real-time feedback injection, allowing users to
-    # steer cascades mid-phase by injecting feedback as messages.
+    # steer cascades mid-cell by injecting feedback as messages.
 
     def signal_audible(self):
         """
@@ -1058,7 +1058,7 @@ class RVBBITRunner:
         """Clear the audible signal after it has been handled."""
         self._audible_signal.clear()
 
-    def _check_audible_signal(self, phase: 'CellConfig') -> bool:
+    def _check_audible_signal(self, cell: 'CellConfig') -> bool:
         """
         Check if an audible signal has been received and if we can process it.
 
@@ -1067,7 +1067,7 @@ class RVBBITRunner:
         2. API endpoint (cross-process signal from UI)
 
         Args:
-            phase: Current phase configuration
+            cell: Current cell configuration
 
         Returns:
             True if an audible should be processed, False otherwise
@@ -1095,17 +1095,17 @@ class RVBBITRunner:
         if not local_signaled and not api_signaled:
             return False
 
-        # Check if audibles are enabled for this phase
-        audible_config = phase.audibles
+        # Check if audibles are enabled for this cell
+        audible_config = cell.audibles
         if not audible_config or not audible_config.enabled:
-            console.print(f"  [dim yellow]Audible signal received but audibles not enabled for phase '{phase.name}'[/dim yellow]")
+            console.print(f"  [dim yellow]Audible signal received but audibles not enabled for cell '{cell.name}'[/dim yellow]")
             self.clear_audible_signal()
             self._clear_api_audible_signal()
             return False
 
         # Check budget
         with self._audible_lock:
-            used = self._audible_budget_used.get(phase.name, 0)
+            used = self._audible_budget_used.get(cell.name, 0)
             if used >= audible_config.budget:
                 console.print(f"  [dim yellow]Audible budget exhausted ({used}/{audible_config.budget})[/dim yellow]")
                 self.clear_audible_signal()
@@ -1127,13 +1127,13 @@ class RVBBITRunner:
         except Exception:
             pass  # API not available - that's fine
 
-    def _handle_audible(self, phase: 'CellConfig', current_output: str, turn_number: int,
+    def _handle_audible(self, cell: 'CellConfig', current_output: str, turn_number: int,
                        trace: 'TraceNode') -> Optional[dict]:
         """
         Handle an audible signal by creating a checkpoint and waiting for feedback.
 
         Args:
-            phase: Current phase configuration
+            cell: Current cell configuration
             current_output: The most recent output from the agent
             turn_number: Current turn number
             trace: Current trace node for logging
@@ -1150,21 +1150,21 @@ class RVBBITRunner:
         self._clear_api_audible_signal()
 
         # Increment budget usage
-        audible_config = phase.audibles
+        audible_config = cell.audibles
         with self._audible_lock:
-            used = self._audible_budget_used.get(phase.name, 0)
-            self._audible_budget_used[phase.name] = used + 1
+            used = self._audible_budget_used.get(cell.name, 0)
+            self._audible_budget_used[cell.name] = used + 1
             audibles_remaining = audible_config.budget - used - 1
 
-        # Get recent images from the phase
-        recent_images = self._get_recent_phase_images(phase.name)
+        # Get recent images from the cell
+        recent_images = self._get_recent_cell_images(cell.name)
 
         # Build trace context for proper resume linkage
         trace_context = TraceContext(
             trace_id=trace.id,
             parent_id=trace.parent_id,
             cascade_trace_id=self.trace.id,
-            phase_trace_id=trace.id,
+            cell_trace_id=trace.id,
             depth=self.depth,
             node_type="audible",
             name=f"audible_{turn_number}"
@@ -1175,11 +1175,11 @@ class RVBBITRunner:
         ui_spec = {
             "type": "audible",
             "title": "🏈 Call Audible",
-            "subtitle": f"Turn {turn_number + 1} of {phase.rules.max_turns or 1} | {audibles_remaining} audibles remaining",
+            "subtitle": f"Turn {turn_number + 1} of {cell.rules.max_turns or 1} | {audibles_remaining} audibles remaining",
             "current_output": current_output,
             "turn_number": turn_number,
-            "max_turns": phase.rules.max_turns or 1,
-            "turns_remaining": (phase.rules.max_turns or 1) - turn_number - 1,
+            "max_turns": cell.rules.max_turns or 1,
+            "turns_remaining": (cell.rules.max_turns or 1) - turn_number - 1,
             "audibles_remaining": audibles_remaining,
             "recent_images": recent_images,
             "allow_retry": audible_config.allow_retry,
@@ -1232,11 +1232,11 @@ class RVBBITRunner:
         checkpoint = checkpoint_manager.create_checkpoint(
             session_id=self.session_id,
             cascade_id=self.config.cascade_id,
-            cell_name=phase.name,
+            cell_name=cell.name,
             checkpoint_type=CheckpointType.AUDIBLE,
             ui_spec=ui_spec,
             echo_snapshot=self.echo.get_full_echo(),
-            phase_output=current_output,
+            cell_output=current_output,
             cascade_config=self.config.model_dump() if hasattr(self.config, 'model_dump') else None,
             trace_context=trace_context,
             timeout_seconds=audible_config.timeout_seconds
@@ -1247,7 +1247,7 @@ class RVBBITRunner:
             self.session_id,
             checkpoint.id,
             CheckpointType.AUDIBLE.value,
-            phase.name,
+            cell.name,
             "Waiting for audible feedback",
             cascade_id=self.config.cascade_id
         )
@@ -1263,7 +1263,7 @@ class RVBBITRunner:
             self.hooks.on_checkpoint_resumed(
                 self.session_id,
                 checkpoint.id,
-                phase.name,
+                cell.name,
                 response
             )
             return response
@@ -1271,12 +1271,12 @@ class RVBBITRunner:
             console.print(f"  [dim yellow]Audible cancelled or timed out[/dim yellow]")
             return None
 
-    def _get_recent_phase_images(self, cell_name: str, max_images: int = 5) -> List[str]:
+    def _get_recent_cell_images(self, cell_name: str, max_images: int = 5) -> List[str]:
         """
-        Get recent image file paths from the current phase.
+        Get recent image file paths from the current cell.
 
         Args:
-            cell_name: Name of the phase
+            cell_name: Name of the cell
             max_images: Maximum number of images to return
 
         Returns:
@@ -1352,13 +1352,13 @@ class RVBBITRunner:
 
         return "\n".join(content_parts)
 
-    def _inject_audible_feedback(self, feedback: dict, phase: 'CellConfig', trace: 'TraceNode'):
+    def _inject_audible_feedback(self, feedback: dict, cell: 'CellConfig', trace: 'TraceNode'):
         """
         Inject audible feedback into the conversation as a user message.
 
         Args:
             feedback: Feedback dict from checkpoint response
-            phase: Current phase configuration
+            cell: Current cell configuration
             trace: Current trace node for logging
         """
         from .unified_logs import log_unified
@@ -1383,9 +1383,9 @@ class RVBBITRunner:
             "has_voice": bool(feedback.get("voice_transcript")),
             "turn_number": self.current_turn_number,
             "feedback_length": len(feedback.get("feedback", "")),
-            "audibles_used": self._audible_budget_used.get(phase.name, 0),
-            "audibles_remaining": (phase.audibles.budget - self._audible_budget_used.get(phase.name, 0)) if phase.audibles else 0,
-            "cell_name": phase.name,
+            "audibles_used": self._audible_budget_used.get(cell.name, 0),
+            "audibles_remaining": (cell.audibles.budget - self._audible_budget_used.get(cell.name, 0)) if cell.audibles else 0,
+            "cell_name": cell.name,
             "cascade_id": self.config.cascade_id
         }
 
@@ -1413,27 +1413,27 @@ class RVBBITRunner:
         console.print(f"  [bold green]✓ Audible feedback injected ({mode} mode)[/bold green]")
 
     # ========== CONTEXT INJECTION SYSTEM ==========
-    # These methods implement selective context management, allowing phases to
+    # These methods implement selective context management, allowing cells to
     # explicitly declare their context dependencies rather than relying solely
     # on the snowball architecture where all context accumulates.
 
-    def _resolve_phase_reference(self, ref: str) -> Union[str, List[str], None]:
+    def _resolve_cell_reference(self, ref: str) -> Union[str, List[str], None]:
         """
-        Resolve special phase reference keywords to actual phase names.
+        Resolve special cell reference keywords to actual cell names.
 
         Supported keywords:
-            - "all": All completed phases (explicit snowball)
-            - "first": The first phase that executed (often contains original problem)
-            - "previous" or "prev": The most recently completed phase
+            - "all": All completed cells (explicit snowball)
+            - "first": The first cell that executed (often contains original problem)
+            - "previous" or "prev": The most recently completed cell
 
         Args:
-            ref: Phase name or special keyword
+            ref: Cell name or special keyword
 
         Returns:
-            - For "all": List of all completed phase names
-            - For "first"/"previous": Single phase name string
+            - For "all": List of all completed cell names
+            - For "first"/"previous": Single cell name string
             - For literal names: The name unchanged
-            - None if keyword can't be resolved (e.g., "first" in first phase)
+            - None if keyword can't be resolved (e.g., "first" in first cell)
         """
         ref_lower = ref.lower()
 
@@ -1448,7 +1448,7 @@ class RVBBITRunner:
 
         elif ref_lower == "first":
             if self.echo.lineage:
-                resolved = self.echo.lineage[0].get("phase")
+                resolved = self.echo.lineage[0].get("cell")
                 console.print(f"    [dim]Resolved 'first' → '{resolved}'[/dim]")
                 return resolved
             else:
@@ -1457,41 +1457,41 @@ class RVBBITRunner:
 
         elif ref_lower in ("previous", "prev"):
             if self.echo.lineage:
-                resolved = self.echo.lineage[-1].get("phase")
+                resolved = self.echo.lineage[-1].get("cell")
                 console.print(f"    [dim]Resolved 'previous' → '{resolved}'[/dim]")
                 return resolved
             else:
                 console.print(f"    [dim yellow]Cannot resolve 'previous': no cells have completed yet[/dim yellow]")
                 return None
 
-        # Not a special keyword - return as literal phase name
+        # Not a special keyword - return as literal cell name
         return ref
 
     def _normalize_source_config(self, source: Union[str, ContextSourceConfig]) -> Optional[ContextSourceConfig]:
         """
         Normalize a context source specification to ContextSourceConfig.
-        Resolves special keywords like "first", "previous" to actual phase names.
+        Resolves special keywords like "first", "previous" to actual cell names.
 
         Args:
-            source: Either a phase name string (or keyword) or a ContextSourceConfig object
+            source: Either a cell name string (or keyword) or a ContextSourceConfig object
 
         Returns:
             ContextSourceConfig with defaults applied, or None if reference couldn't be resolved
         """
         if isinstance(source, str):
-            resolved_phase = self._resolve_phase_reference(source)
-            if resolved_phase is None:
+            resolved_cell = self._resolve_cell_reference(source)
+            if resolved_cell is None:
                 return None
-            return ContextSourceConfig(cell=resolved_phase)
+            return ContextSourceConfig(cell=resolved_cell)
         else:
-            # ContextSourceConfig object - may need to resolve the phase name
-            resolved_phase = self._resolve_phase_reference(source.cell)
-            if resolved_phase is None:
+            # ContextSourceConfig object - may need to resolve the cell name
+            resolved_cell = self._resolve_cell_reference(source.cell)
+            if resolved_cell is None:
                 return None
-            if resolved_phase != source.cell:
-                # Create new config with resolved phase name
+            if resolved_cell != source.cell:
+                # Create new config with resolved cell name
                 return ContextSourceConfig(
-                    cell=resolved_phase,
+                    cell=resolved_cell,
                     include=source.include,
                     images_filter=source.images_filter,
                     images_count=source.images_count,
@@ -1503,10 +1503,10 @@ class RVBBITRunner:
 
     def _load_cell_images(self, cell_name: str, config: ContextSourceConfig) -> List[str]:
         """
-        Load images from disk for a specific phase.
+        Load images from disk for a specific cell.
 
         Args:
-            cell_name: Name of the phase to load images from
+            cell_name: Name of the cell to load images from
             config: Source configuration with filtering options
 
         Returns:
@@ -1518,7 +1518,7 @@ class RVBBITRunner:
         image_dir = os.path.join(get_config().image_dir, self.session_id, cell_name)
 
         if not os.path.exists(image_dir):
-            console.print(f"  [dim]No images found for phase '{cell_name}' (directory doesn't exist)[/dim]")
+            console.print(f"  [dim]No images found for cell '{cell_name}' (directory doesn't exist)[/dim]")
             return []
 
         # Find all image files
@@ -1531,7 +1531,7 @@ class RVBBITRunner:
         image_files.sort(key=os.path.getmtime)
 
         if not image_files:
-            console.print(f"  [dim]No images found for phase '{cell_name}'[/dim]")
+            console.print(f"  [dim]No images found for cell '{cell_name}'[/dim]")
             return []
 
         # Apply filtering
@@ -1560,46 +1560,46 @@ class RVBBITRunner:
             except Exception as e:
                 console.print(f"  [yellow]Warning: Failed to load image {img_path}: {e}[/yellow]")
 
-        console.print(f"  [dim]Loaded {len(encoded_images)} image(s) from phase '{cell_name}'[/dim]")
+        console.print(f"  [dim]Loaded {len(encoded_images)} image(s) from cell '{cell_name}'[/dim]")
         return encoded_images
 
-    def _get_phase_output(self, cell_name: str) -> Optional[str]:
+    def _get_cell_output(self, cell_name: str) -> Optional[str]:
         """
-        Get the output from a specific phase via echo.lineage.
+        Get the output from a specific cell via echo.lineage.
 
         Args:
-            cell_name: Name of the phase to get output from
+            cell_name: Name of the cell to get output from
 
         Returns:
-            The phase output as a string, or None if not found
+            The cell output as a string, or None if not found
         """
         for entry in self.echo.lineage:
-            if entry.get('phase') == cell_name:
+            if entry.get('cell') == cell_name:
                 output = entry.get('output')
                 if output is not None:
                     return str(output)
         return None
 
-    def _get_phase_messages(self, cell_name: str, config: ContextSourceConfig) -> List[Dict]:
+    def _get_cell_messages(self, cell_name: str, config: ContextSourceConfig) -> List[Dict]:
         """
-        Get messages from a specific phase via echo.history.
+        Get messages from a specific cell via echo.history.
 
         Args:
-            cell_name: Name of the phase to get messages from
+            cell_name: Name of the cell to get messages from
             config: Source configuration with filtering options
 
         Returns:
             List of message dicts with role/content
         """
         messages = []
-        in_phase = False
+        in_cell = False
         last_turn_messages = []
 
         for entry in self.echo.history:
-            # Check if this entry belongs to the target phase
-            entry_phase = entry.get('metadata', {}).get('cell_name')
-            if entry_phase == cell_name:
-                in_phase = True
+            # Check if this entry belongs to the target cell
+            entry_cell = entry.get('metadata', {}).get('cell_name')
+            if entry_cell == cell_name:
+                in_cell = True
                 role = entry.get('role')
                 content = entry.get('content')
 
@@ -1617,8 +1617,8 @@ class RVBBITRunner:
                 else:  # "all"
                     if role in ['user', 'assistant', 'tool', 'system']:
                         messages.append({"role": role, "content": content})
-            elif in_phase:
-                # We've left the phase, stop collecting
+            elif in_cell:
+                # We've left the cell, stop collecting
                 break
 
         # For last_turn filter, find the last user->assistant exchange
@@ -1675,7 +1675,7 @@ class RVBBITRunner:
 
         # Include output
         if "output" in config.include:
-            output = self._get_phase_output(cell_name)
+            output = self._get_cell_output(cell_name)
             if output:
                 messages.append({
                     "role": config.as_role,
@@ -1684,20 +1684,20 @@ class RVBBITRunner:
 
         # Include messages (full conversation replay)
         if "messages" in config.include:
-            phase_messages = self._get_phase_messages(cell_name, config)
-            if phase_messages:
+            cell_messages = self._get_cell_messages(cell_name, config)
+            if cell_messages:
                 # Add header message
                 messages.append({
                     "role": config.as_role,
                     "content": f"[Conversation from {cell_name}]:"
                 })
                 # Add the actual messages with their original roles
-                messages.extend(phase_messages)
+                messages.extend(cell_messages)
 
-        # Include state (Phase 4 feature - basic implementation)
+        # Include state (Cell 4 feature - basic implementation)
         if "state" in config.include:
             # For now, include the full state as JSON
-            # Future: filter to only keys set during that phase
+            # Future: filter to only keys set during that cell
             if self.echo.state:
                 messages.append({
                     "role": config.as_role,
@@ -1706,16 +1706,16 @@ class RVBBITRunner:
 
         return messages
 
-    def _build_phase_context(self, phase: CellConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
+    def _build_cell_context(self, cell: CellConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
         """
-        Build the context messages for a phase based on its context configuration.
+        Build the context messages for a cell based on its context configuration.
 
-        SELECTIVE-BY-DEFAULT: Phases without a context config get NO prior context (clean slate).
+        SELECTIVE-BY-DEFAULT: Cells without a context config get NO prior context (clean slate).
         Use context.from: ["all"] for explicit snowball behavior.
         Use context.mode: "auto" for LLM-assisted context selection.
 
         Args:
-            phase: Phase configuration
+            cell: Cell configuration
             input_data: Original cascade input
             trace: Current trace node
 
@@ -1723,13 +1723,13 @@ class RVBBITRunner:
             List of context messages (empty list for clean slate)
         """
         # No context config = clean slate (selective-by-default)
-        if not phase.context:
+        if not cell.context:
             console.print(f"  [dim]No context config → clean slate[/dim]")
 
             # Shadow assessment: Even for clean slate, assess what auto-context would have done
             if is_shadow_assessment_enabled(self.config.cascade_id):
                 self._queue_shadow_assessment(
-                    phase=phase,
+                    cell=cell,
                     input_data=input_data,
                     actual_context_messages=[],  # Nothing was included
                     actual_mode="clean_slate"
@@ -1737,35 +1737,35 @@ class RVBBITRunner:
 
             return []
 
-        # AUTO MODE: Use InterPhaseContextBuilder for intelligent selection
-        if phase.context.mode == "auto":
-            return self._build_auto_context(phase, input_data, trace)
+        # AUTO MODE: Use InterCellContextBuilder for intelligent selection
+        if cell.context.mode == "auto":
+            return self._build_auto_context(cell, input_data, trace)
 
         console.print(f"  [bold cyan]📦 Building context from config...[/bold cyan]")
         messages = []
 
         # Optionally include original input
-        if phase.context.include_input and input_data:
+        if cell.context.include_input and input_data:
             messages.append({
                 "role": "user",
                 "content": f"[Original Input]:\n{json.dumps(input_data, indent=2)}"
             })
 
         # Get the exclude list for filtering
-        exclude_set = set(phase.context.exclude)
+        exclude_set = set(cell.context.exclude)
 
         # Pull from each specified source (in order!)
-        for source in phase.context.from_:
+        for source in cell.context.from_:
             # Handle string sources (may be keywords like "all", "first", "previous")
             if isinstance(source, str):
-                resolved = self._resolve_phase_reference(source)
+                resolved = self._resolve_cell_reference(source)
 
                 if resolved is None:
-                    # Keyword couldn't be resolved (e.g., "first" in first phase)
+                    # Keyword couldn't be resolved (e.g., "first" in first cell)
                     continue
 
                 if isinstance(resolved, list):
-                    # "all" returns a list of phase names
+                    # "all" returns a list of cell names
                     for cell_name in resolved:
                         if cell_name in exclude_set:
                             console.print(f"    [dim]Excluding '{cell_name}'[/dim]")
@@ -1774,7 +1774,7 @@ class RVBBITRunner:
                         injection_messages = self._build_injection_messages(source_config, trace)
                         messages.extend(injection_messages)
                 else:
-                    # Single phase name
+                    # Single cell name
                     if resolved in exclude_set:
                         console.print(f"    [dim]Excluding '{resolved}'[/dim]")
                         continue
@@ -1782,12 +1782,12 @@ class RVBBITRunner:
                     injection_messages = self._build_injection_messages(source_config, trace)
                     messages.extend(injection_messages)
             else:
-                # ContextSourceConfig object - resolve phase name if needed
-                resolved = self._resolve_phase_reference(source.cell)
+                # ContextSourceConfig object - resolve cell name if needed
+                resolved = self._resolve_cell_reference(source.cell)
                 if resolved is None:
                     continue
                 if isinstance(resolved, list):
-                    # "all" in a ContextSourceConfig - apply the same config to all phases
+                    # "all" in a ContextSourceConfig - apply the same config to all cells
                     for cell_name in resolved:
                         if cell_name in exclude_set:
                             console.print(f"    [dim]Excluding '{cell_name}'[/dim]")
@@ -1812,12 +1812,12 @@ class RVBBITRunner:
                         injection_messages = self._build_injection_messages(source_config, trace)
                         messages.extend(injection_messages)
 
-        console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
+        console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(cell.context.from_)} source(s)[/dim]")
 
         # Shadow assessment: Queue background analysis of what auto-context would have done
         if is_shadow_assessment_enabled(self.config.cascade_id):
             self._queue_shadow_assessment(
-                phase=phase,
+                cell=cell,
                 input_data=input_data,
                 actual_context_messages=messages,
                 actual_mode="explicit"
@@ -1827,7 +1827,7 @@ class RVBBITRunner:
 
     def _queue_shadow_assessment(
         self,
-        phase: CellConfig,
+        cell: CellConfig,
         input_data: dict,
         actual_context_messages: List[Dict],
         actual_mode: str
@@ -1838,22 +1838,22 @@ class RVBBITRunner:
         This runs in the background and logs results to context_shadow_assessments table.
 
         Args:
-            phase: Target phase we're building context for
+            cell: Target cell we're building context for
             input_data: Original cascade input
             actual_context_messages: Messages that were actually included
             actual_mode: 'explicit' or 'auto'
         """
         try:
-            # Get executed phase names
-            executed_phases = [
-                entry.get("cell") or entry.get("phase")
+            # Get executed cell names
+            executed_cells = [
+                entry.get("cell") or entry.get("cell")
                 for entry in self.echo.lineage
-                if (entry.get("cell") or entry.get("phase")) and
-                   (entry.get("cell") or entry.get("phase")) != phase.name
+                if (entry.get("cell") or entry.get("cell")) and
+                   (entry.get("cell") or entry.get("cell")) != cell.name
             ]
 
-            if not executed_phases:
-                return  # No prior phases to assess
+            if not executed_cells:
+                return  # No prior cells to assess
 
             # Collect content hashes of actually included messages
             actual_included_hashes = set()
@@ -1869,14 +1869,14 @@ class RVBBITRunner:
                 meta = entry.get("metadata", {})
                 entry_cell = meta.get("cell_name") or entry.get("cell_name")
 
-                # Only include messages from executed phases
-                if entry_cell not in executed_phases:
+                # Only include messages from executed cells
+                if entry_cell not in executed_cells:
                     continue
 
                 # Skip structural/lifecycle entries
                 node_type = entry.get("node_type", "")
                 if node_type in ("context_injection", "context_selection", "lifecycle",
-                                "cascade", "phase", "structure", "auto_context_start",
+                                "cascade", "cell", "structure", "auto_context_start",
                                 "auto_context_sources", "auto_context_result",
                                 "auto_context_injection"):
                     continue
@@ -1918,16 +1918,16 @@ class RVBBITRunner:
 
             # Get budget from config or default
             budget_total = 30000
-            if self.config.auto_context and self.config.auto_context.inter_phase:
-                if self.config.auto_context.inter_phase.selection:
-                    budget_total = self.config.auto_context.inter_phase.selection.max_tokens
+            if self.config.auto_context and self.config.auto_context.inter_cell:
+                if self.config.auto_context.inter_cell.selection:
+                    budget_total = self.config.auto_context.inter_cell.selection.max_tokens
 
             # Queue the assessment
             queue_shadow_assessment(
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
-                target_cell_name=phase.name,
-                target_cell_instructions=phase.instructions or "",
+                target_cell_name=cell.name,
+                target_cell_instructions=cell.instructions or "",
                 candidates=candidates,
                 actual_included_hashes=actual_included_hashes,
                 actual_mode=actual_mode,
@@ -1940,7 +1940,7 @@ class RVBBITRunner:
             # Don't let shadow assessment errors affect main execution
             console.print(f"  [dim red]Shadow assessment error: {e}[/dim red]")
 
-    def _build_auto_context(self, phase: CellConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
+    def _build_auto_context(self, cell: CellConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
         """
         Build context using LLM-assisted auto-selection.
 
@@ -1948,82 +1948,82 @@ class RVBBITRunner:
         to intelligently select the most relevant prior messages for the current task.
 
         Args:
-            phase: Phase configuration
+            cell: Cell configuration
             input_data: Original cascade input
             trace: Current trace node
 
         Returns:
             List of selected context messages
         """
-        from .auto_context import InterPhaseContextBuilder
-        from .cascade import InterPhaseContextConfig
+        from .auto_context import InterCellContextBuilder
+        from .cascade import InterCellContextConfig
 
         console.print(f"  [bold magenta]🧠 Auto-context mode: intelligent selection...[/bold magenta]")
 
         # Log auto-context start as structural message
-        auto_ctx_trace = trace.create_child("auto_context", "inter_phase_selection")
+        auto_ctx_trace = trace.create_child("auto_context", "inter_cell_selection")
         self.echo.add_history({
             "role": "structure",
-            "content": f"🧠 Auto-Context: Inter-Phase Selection",
+            "content": f"🧠 Auto-Context: Inter-Cell Selection",
             "node_type": "auto_context_start"
         }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_start",
            metadata={
-               "cell_name": phase.name,
+               "cell_name": cell.name,
                "cascade_id": self.config.cascade_id,
                "semantic_actor": "auto_context",
-               "semantic_purpose": "inter_phase_selection",
+               "semantic_purpose": "inter_cell_selection",
                "mode": "auto"
            })
 
-        # Get inter-phase config from cascade or phase
-        inter_phase_config = None
+        # Get inter-cell config from cascade or cell
+        inter_cell_config = None
         selection_strategy = "hybrid"  # default
-        if self.config.auto_context and self.config.auto_context.inter_phase:
-            inter_phase_config = InterPhaseContextConfig(
-                enabled=self.config.auto_context.inter_phase.enabled,
-                anchors=self.config.auto_context.inter_phase.anchors,
-                selection=self.config.auto_context.inter_phase.selection
+        if self.config.auto_context and self.config.auto_context.inter_cell:
+            inter_cell_config = InterCellContextConfig(
+                enabled=self.config.auto_context.inter_cell.enabled,
+                anchors=self.config.auto_context.inter_cell.anchors,
+                selection=self.config.auto_context.inter_cell.selection
             )
-            if inter_phase_config.selection:
-                selection_strategy = inter_phase_config.selection.strategy
+            if inter_cell_config.selection:
+                selection_strategy = inter_cell_config.selection.strategy
 
-        # Phase-level override
-        if phase.context and phase.context.selection:
-            selection_strategy = phase.context.selection.strategy
+        # Cell-level override
+        if cell.context and cell.context.selection:
+            selection_strategy = cell.context.selection.strategy
 
-        # Build list of executed phases
-        executed_phases = [
-            entry["phase"] for entry in self.echo.lineage
-            if entry.get("phase") and entry["phase"] != phase.name
+        # Build list of executed cells
+        executed_cells = [
+            entry["cell"] for entry in self.echo.lineage
+            if entry.get("cell") and entry["cell"] != cell.name
         ]
 
-        # Log source phases
+        # Log source cells
         self.echo.add_history({
             "role": "structure",
-            "content": f"📦 Source Phases: {', '.join(executed_phases) if executed_phases else '(none)'}",
+            "content": f"📦 Source Cells: {', '.join(executed_cells) if executed_cells else '(none)'}",
             "node_type": "auto_context_sources"
         }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_sources",
            metadata={
-               "cell_name": phase.name,
+               "cell_name": cell.name,
                "cascade_id": self.config.cascade_id,
-               "executed_phases": executed_phases,
+               "executed_cells": executed_cells,
                "strategy": selection_strategy,
                "semantic_actor": "auto_context",
                "semantic_purpose": "source_identification"
            })
 
         # Create builder
-        builder = InterPhaseContextBuilder(
+        builder = InterCellContextBuilder(
             session_id=self.session_id,
             echo=self.echo,
-            config=inter_phase_config
+            config=inter_cell_config
         )
 
         # Build context
-        messages, stats = builder.build_phase_context(
-            current_cell=phase,
+        messages, stats = builder.build_cell_context(
+            current_cell=cell,
             input_data=input_data,
-            executed_phases=executed_phases
+            executed_cells=executed_cells
         )
 
         # Log selection stats
@@ -2049,7 +2049,7 @@ class RVBBITRunner:
             "node_type": "auto_context_result"
         }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_result",
            metadata={
-               "cell_name": phase.name,
+               "cell_name": cell.name,
                "cascade_id": self.config.cascade_id,
                "strategy": stats.strategy,
                "anchor_count": stats.anchor_count,
@@ -2066,7 +2066,7 @@ class RVBBITRunner:
         # Log each injected message for debugging
         for i, msg in enumerate(messages):
             anchor_type = msg.get("_anchor_type", "selected")
-            source = msg.get("_source_phase", msg.get("_content_hash", "unknown")[:8] if msg.get("_content_hash") else "unknown")
+            source = msg.get("_source_cell", msg.get("_content_hash", "unknown")[:8] if msg.get("_content_hash") else "unknown")
             role = msg.get("role", "unknown")
             content_preview = str(msg.get("content", ""))[:100]
 
@@ -2076,7 +2076,7 @@ class RVBBITRunner:
                 "node_type": "auto_context_injection"
             }, trace_id=auto_ctx_trace.id, parent_id=trace.id, node_type="auto_context_injection",
                metadata={
-                   "cell_name": phase.name,
+                   "cell_name": cell.name,
                    "cascade_id": self.config.cascade_id,
                    "injection_index": i,
                    "anchor_type": anchor_type,
@@ -2099,44 +2099,44 @@ class RVBBITRunner:
 
     def _handle_human_input_checkpoint(
         self,
-        phase: CellConfig,
-        phase_output: str,
+        cell: CellConfig,
+        cell_output: str,
         trace: TraceNode,
         input_data: dict = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Handle human-in-the-loop checkpoint if configured for this phase.
+        Handle human-in-the-loop checkpoint if configured for this cell.
 
         This method uses a BLOCKING approach - the cascade thread waits here
         until the human responds (similar to waiting for an LLM API call).
         No suspend/resume complexity needed.
 
-        If phase.human_input is configured, this method:
+        If cell.human_input is configured, this method:
         1. Generates the UI specification
         2. Creates a checkpoint record
         3. BLOCKS waiting for human response
         4. Returns the response (or None if timed out/cancelled)
 
         Args:
-            phase: The phase configuration
-            phase_output: The output from the phase
-            trace: The trace node for this phase
+            cell: The cell configuration
+            cell_output: The output from the cell
+            trace: The trace node for this cell
             input_data: The input data for this cascade
 
         Returns:
             Human response dict, or None if timed out/cancelled
         """
-        if not phase.human_input:
+        if not cell.human_input:
             return None
 
         # Normalize config (handles bool vs HumanInputConfig)
-        config = normalize_human_input_config(phase.human_input)
+        config = normalize_human_input_config(cell.human_input)
         if config is None:
             return None
 
         input_data = input_data or {}
         indent = "  " * self.depth
-        console.print(f"{indent}[bold yellow]⏸️  Human checkpoint: {phase.name}[/bold yellow]")
+        console.print(f"{indent}[bold yellow]⏸️  Human checkpoint: {cell.name}[/bold yellow]")
 
         # Check condition if specified
         if config.condition:
@@ -2144,7 +2144,7 @@ class RVBBITRunner:
                 # Simple condition evaluation with state context
                 condition_result = eval(config.condition, {
                     "state": self.echo.state,
-                    "output": phase_output,
+                    "output": cell_output,
                     "input": input_data
                 })
                 if not condition_result:
@@ -2158,23 +2158,23 @@ class RVBBITRunner:
         ui_generator = UIGenerator()
         context = {
             "cascade_id": self.config.cascade_id,
-            "cell_name": phase.name,
-            "lineage": [entry.get("phase") for entry in self.echo.lineage],
+            "cell_name": cell.name,
+            "lineage": [entry.get("cell") for entry in self.echo.lineage],
             "state": self.echo.state
         }
 
-        ui_spec = ui_generator.generate(config, phase_output, context)
+        ui_spec = ui_generator.generate(config, cell_output, context)
 
         # Create checkpoint (no need for echo_snapshot or cascade_config - we're not suspending)
         checkpoint_manager = get_checkpoint_manager()
         checkpoint = checkpoint_manager.create_checkpoint(
             session_id=self.session_id,
             cascade_id=self.config.cascade_id,
-            cell_name=phase.name,
-            checkpoint_type=CheckpointType.PHASE_INPUT,
+            cell_name=cell.name,
+            checkpoint_type=CheckpointType.CELL_INPUT,
             ui_spec=ui_spec,
             echo_snapshot={},  # Not needed for blocking approach
-            phase_output=phase_output,
+            cell_output=cell_output,
             cascade_config=None,  # Not needed for blocking approach
             trace_context=None,  # Not needed for blocking approach
             timeout_seconds=config.timeout_seconds
@@ -2191,9 +2191,9 @@ class RVBBITRunner:
             trace_id=trace.id,
             node_type="checkpoint_waiting",
             metadata={
-                "cell": phase.name,
+                "cell": cell.name,
                 "checkpoint_id": checkpoint.id,
-                "checkpoint_type": "phase_input",
+                "checkpoint_type": "cell_input",
                 "ui_type": config.type.value,
                 "semantic_actor": "framework",
                 "semantic_purpose": "lifecycle",
@@ -2216,7 +2216,7 @@ class RVBBITRunner:
                 trace_id=trace.id,
                 node_type="checkpoint_timeout",
                 metadata={
-                    "cell": phase.name,
+                    "cell": cell.name,
                     "checkpoint_id": checkpoint.id,
                     "semantic_actor": "framework",
                     "semantic_purpose": "lifecycle",
@@ -2231,7 +2231,7 @@ class RVBBITRunner:
             trace_id=trace.id,
             node_type="checkpoint_response",
             metadata={
-                "cell": phase.name,
+                "cell": cell.name,
                 "checkpoint_id": checkpoint.id,
                 "response": response,
                 "semantic_actor": "human",
@@ -2243,7 +2243,7 @@ class RVBBITRunner:
 
     # ===== Decision Point Handling (LLM-Generated HITL) =====
 
-    # Regex pattern to detect <decision> blocks in phase output
+    # Regex pattern to detect <decision> blocks in cell output
     DECISION_PATTERN = re.compile(
         r'<decision>\s*(\{.*?\})\s*</decision>',
         re.DOTALL
@@ -2251,11 +2251,11 @@ class RVBBITRunner:
 
     def _check_for_decision_point(
         self,
-        phase_output: str,
-        phase: CellConfig
+        cell_output: str,
+        cell: CellConfig
     ) -> Optional[Dict[str, Any]]:
         """
-        Detect and parse <decision> blocks in phase output.
+        Detect and parse <decision> blocks in cell output.
 
         The LLM can output a decision block to request human input:
         <decision>
@@ -2273,10 +2273,10 @@ class RVBBITRunner:
         Returns:
             Dict with decision data if found, None otherwise
         """
-        if not phase.decision_points or not phase.decision_points.enabled:
+        if not cell.decision_points or not cell.decision_points.enabled:
             return None
 
-        match = self.DECISION_PATTERN.search(phase_output)
+        match = self.DECISION_PATTERN.search(cell_output)
         if not match:
             return None
 
@@ -2289,12 +2289,12 @@ class RVBBITRunner:
                 return None
 
             # Extract context (text before the decision block)
-            context_before = phase_output[:match.start()].strip()
+            context_before = cell_output[:match.start()].strip()
 
             return {
                 "decision": decision,
                 "context_before": context_before,
-                "full_output": phase_output,
+                "full_output": cell_output,
                 "match_start": match.start(),
                 "match_end": match.end()
             }
@@ -2305,7 +2305,7 @@ class RVBBITRunner:
     def _handle_decision_point(
         self,
         decision_data: Dict[str, Any],
-        phase: CellConfig,
+        cell: CellConfig,
         trace: TraceNode
     ) -> Optional[Dict[str, Any]]:
         """
@@ -2316,14 +2316,14 @@ class RVBBITRunner:
 
         Args:
             decision_data: Parsed decision data from _check_for_decision_point
-            phase: The phase configuration
-            trace: The trace node for this phase
+            cell: The cell configuration
+            trace: The trace node for this cell
 
         Returns:
             Dict with routing info: {"_action": "continue|retry|route", ...}
         """
         decision = decision_data["decision"]
-        config = phase.decision_points
+        config = cell.decision_points
         indent = "  " * self.depth
 
         console.print(f"{indent}[bold magenta]🔀 Decision point detected: {decision['question']}[/bold magenta]")
@@ -2413,7 +2413,7 @@ class RVBBITRunner:
                 "severity": decision.get("severity", "info"),
                 "category": decision.get("category"),
                 "options_count": len(options),
-                "cell_name": phase.name
+                "cell_name": cell.name
             }
         }
 
@@ -2422,11 +2422,11 @@ class RVBBITRunner:
         checkpoint = checkpoint_manager.create_checkpoint(
             session_id=self.session_id,
             cascade_id=self.config.cascade_id,
-            cell_name=phase.name,
+            cell_name=cell.name,
             checkpoint_type=CheckpointType.DECISION,
             ui_spec=ui_spec,
             echo_snapshot={},
-            phase_output=decision_data["full_output"],
+            cell_output=decision_data["full_output"],
             cascade_config=None,
             trace_context=None,
             timeout_seconds=config.timeout_seconds
@@ -2441,7 +2441,7 @@ class RVBBITRunner:
             trace_id=trace.id,
             node_type="decision_waiting",
             metadata={
-                "cell": phase.name,
+                "cell": cell.name,
                 "checkpoint_id": checkpoint.id,
                 "checkpoint_type": "decision",
                 "question": decision["question"],
@@ -2465,7 +2465,7 @@ class RVBBITRunner:
                 trace_id=trace.id,
                 node_type="decision_timeout",
                 metadata={
-                    "cell": phase.name,
+                    "cell": cell.name,
                     "checkpoint_id": checkpoint.id,
                     "semantic_actor": "framework",
                     "semantic_purpose": "lifecycle",
@@ -2491,7 +2491,7 @@ class RVBBITRunner:
             trace_id=trace.id,
             node_type="decision_response",
             metadata={
-                "cell": phase.name,
+                "cell": cell.name,
                 "checkpoint_id": checkpoint.id,
                 "selected_id": selected_id,
                 "selected_label": selected_option["label"] if selected_option else None,
@@ -2502,7 +2502,7 @@ class RVBBITRunner:
         )
 
         # Store decision in state for downstream access
-        self.echo.state[f"_decision_{phase.name}"] = {
+        self.echo.state[f"_decision_{cell.name}"] = {
             "choice": selected_id,
             "label": selected_option["label"] if selected_option else selected_id,
             "custom_text": custom_text,
@@ -2510,14 +2510,14 @@ class RVBBITRunner:
         }
 
         # Determine routing action
-        return self._route_decision(response, decision, config, phase, selected_id, custom_text, selected_option)
+        return self._route_decision(response, decision, config, cell, selected_id, custom_text, selected_option)
 
     def _route_decision(
         self,
         response: Dict[str, Any],
         decision: Dict[str, Any],
         config: DecisionPointConfig,
-        phase: CellConfig,
+        cell: CellConfig,
         selected_id: str,
         custom_text: Optional[str],
         selected_option: Optional[Dict[str, Any]]
@@ -2527,8 +2527,8 @@ class RVBBITRunner:
 
         Checks (in order):
         1. Option-level action (from the <decision> block)
-        2. Config-level routing (from phase.decision_points.routing)
-        3. Default: continue to next phase
+        2. Config-level routing (from cell.decision_points.routing)
+        3. Default: continue to next cell
         """
         indent = "  " * self.depth
 
@@ -2553,7 +2553,7 @@ class RVBBITRunner:
             elif action == "next":
                 action = {"to": "next"}
             else:
-                action = {"to": action}  # Phase name
+                action = {"to": action}  # Cell name
 
         # Handle failure
         if action.get("fail"):
@@ -2570,7 +2570,7 @@ class RVBBITRunner:
 
         # Handle retry (route to self)
         if action.get("to") == "self":
-            console.print(f"{indent}  [yellow]↻ Retrying phase with decision feedback[/yellow]")
+            console.print(f"{indent}  [yellow]↻ Retrying cell with decision feedback[/yellow]")
             # Store feedback for injection on retry
             self.echo.state["_decision_feedback"] = feedback
             return {
@@ -2580,18 +2580,18 @@ class RVBBITRunner:
                 "custom_text": custom_text
             }
 
-        # Handle route to specific phase
+        # Handle route to specific cell
         target = action.get("to", "next")
         if target != "next":
-            console.print(f"{indent}  [cyan]→ Routing to phase: {target}[/cyan]")
+            console.print(f"{indent}  [cyan]→ Routing to cell: {target}[/cyan]")
             return {
                 "_action": "route",
-                "target_phase": target,
+                "target_cell": target,
                 "decision_choice": selected_id,
                 "decision_feedback": feedback
             }
 
-        # Default: continue to next phase
+        # Default: continue to next cell
         return {
             "_action": "continue",
             "decision_choice": selected_id,
@@ -3944,19 +3944,19 @@ To call this tool, output a JSON code block:
             self.echo.history.extend(winner['echo'].history)
             self.echo.lineage.extend(winner['echo'].lineage)
 
-            # IMPORTANT: Re-log winner's phases to parent session so parent shows data
-            # The winner's data lives in the child session, but we need the parent to show phases too
+            # IMPORTANT: Re-log winner's cells to parent session so parent shows data
+            # The winner's data lives in the child session, but we need the parent to show cells too
             # This allows backend queries (which filter by cell_name IS NOT NULL) to find parent's data
             for lineage_item in winner['echo'].lineage:
-                cell_name = lineage_item.get('phase')
+                cell_name = lineage_item.get('cell')
                 output_content = lineage_item.get('output', '')
 
-                # Log phase completion to parent session
+                # Log cell completion to parent session
                 self.echo.add_history({
-                    "role": "phase_result",
-                    "content": f"Phase {cell_name} completed (from candidate #{winner_index})",
-                    "node_type": "phase_result"
-                }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="phase_result",
+                    "role": "cell_result",
+                    "content": f"Cell {cell_name} completed (from candidate #{winner_index})",
+                    "node_type": "cell_result"
+                }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cell_result",
                    metadata={
                        "cascade_id": self.config.cascade_id,
                        "cell_name": cell_name,
@@ -4227,7 +4227,7 @@ Refinement directive: {reforge_config.honing_prompt}
             winner = refined_winner
 
         # Reset candidate index and reforge step after cascade reforge completes
-        self.current_phase_candidate_index = None
+        self.current_cell_candidate_index = None
         self.current_reforge_step = None
 
         # Merge final winner's echo into main echo
@@ -4292,10 +4292,10 @@ Refinement directive: {reforge_config.honing_prompt}
                      "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
         self._update_graph()
 
-        # Check if we can run phases in parallel (multiple independent phases)
-        if self._can_run_phases_parallel():
-            # Use parallel execution for independent phases
-            result = self._execute_phases_parallel(input_data)
+        # Check if we can run cells in parallel (multiple independent cells)
+        if self._can_run_cells_parallel():
+            # Use parallel execution for independent cells
+            result = self._execute_cells_parallel(input_data)
 
             # Hooks
             if result.get("has_errors"):
@@ -4314,11 +4314,11 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Sequential execution (original behavior)
         current_cell_name = self.config.cells[0].name
-        chosen_next_phase = None # For dynamic handoff
+        chosen_next_cell = None # For dynamic handoff
 
 
-        # Simple state machine for phases
-        while current_cell_name and current_cell_name != chosen_next_phase: # Also check against chosen_next_phase
+        # Simple state machine for cells
+        while current_cell_name and current_cell_name != chosen_next_cell: # Also check against chosen_next_cell
             cell = next((p for p in self.config.cells if p.name == current_cell_name), None)
             if not cell:
                 break
@@ -4337,90 +4337,90 @@ Refinement directive: {reforge_config.honing_prompt}
             # Set cell context for visualization metadata
             self.echo.set_cell_context(cell.name)
 
-            # Hook: Phase Start
-            hook_result = self.hooks.on_phase_start(cell.name, {
+            # Hook: Cell Start
+            hook_result = self.hooks.on_cell_start(cell.name, {
                 "echo": self.echo,
                 "input": input_data,
-                "candidate_index": self.current_phase_candidate_index or self.candidate_index,
+                "candidate_index": self.current_cell_candidate_index or self.candidate_index,
             })
 
-            # Phase Trace
-            phase_trace = self.trace.create_child("cell", cell.name)
+            # Cell Trace
+            cell_trace = self.trace.create_child("cell", cell.name)
 
-            # Log Phase Structure with rich metadata
-            phase_meta = {
+            # Log Cell Structure with rich metadata
+            cell_meta = {
                 "cell_name": cell.name,
                 "has_soundings": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1),
                 "has_wards": cell.wards is not None,
                 "has_sub_cascades": len(cell.sub_cascades) > 0 if cell.sub_cascades else False,
                 "handoffs": [h.target if hasattr(h, 'target') else h for h in cell.handoffs] if cell.handoffs else []
             }
-            phase_meta["semantic_actor"] = "framework"
-            phase_meta["semantic_purpose"] = "lifecycle"
+            cell_meta["semantic_actor"] = "framework"
+            cell_meta["semantic_purpose"] = "lifecycle"
             self.echo.add_history({
                 "role": "structure",
-                "content": f"Phase: {cell.name}",
+                "content": f"Cell: {cell.name}",
                 "node_type": "cell"
-            }, trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="cell",
-               metadata=phase_meta)
+            }, trace_id=cell_trace.id, parent_id=cell_trace.parent_id, node_type="cell",
+               metadata=cell_meta)
 
             import time as time_module
-            phase_start_time = time_module.time()
-            output_or_next_phase = self.execute_phase(cell, input_data, phase_trace, initial_injection=hook_result)
-            phase_duration_ms = (time_module.time() - phase_start_time) * 1000
+            cell_start_time = time_module.time()
+            output_or_next_cell = self.execute_cell(cell, input_data, cell_trace, initial_injection=hook_result)
+            cell_duration_ms = (time_module.time() - cell_start_time) * 1000
 
             # Check if cell was blocked by a ward
-            phase_was_blocked = isinstance(output_or_next_phase, str) and output_or_next_phase.startswith("[BLOCKED by")
+            cell_was_blocked = isinstance(output_or_next_cell, str) and output_or_next_cell.startswith("[BLOCKED by")
 
-            if phase_was_blocked:
-                # Phase failed due to ward blocking - log as error and abort cascade
-                console.print(f"{indent}[bold red]⛔ Cascade aborted: {output_or_next_phase}[/bold red]")
-                log_message(self.session_id, "phase_error", f"Phase {cell.name} blocked",
-                           trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="phase_error",
+            if cell_was_blocked:
+                # Cell failed due to ward blocking - log as error and abort cascade
+                console.print(f"{indent}[bold red]⛔ Cascade aborted: {output_or_next_cell}[/bold red]")
+                log_message(self.session_id, "cell_error", f"Cell {cell.name} blocked",
+                           trace_id=cell_trace.id, parent_id=cell_trace.parent_id, node_type="cell_error",
                            depth=self.depth, cell_name=cell.name, cascade_id=self.config.cascade_id,
                            parent_session_id=self.parent_session_id,
-                           metadata={"error": output_or_next_phase, "blocked": True})
+                           metadata={"error": output_or_next_cell, "blocked": True})
 
                 # Add to echo errors
-                self.echo.add_error(cell.name, "ward_blocked", output_or_next_phase)
+                self.echo.add_error(cell.name, "ward_blocked", output_or_next_cell)
 
-                # Hook: Phase Error
-                self.hooks.on_phase_error(cell.name, self.session_id, Exception(output_or_next_phase))
+                # Hook: Cell Error
+                self.hooks.on_cell_error(cell.name, self.session_id, Exception(output_or_next_cell))
 
                 # Abort cascade - break out of cell loop
                 break
 
             # Log cell completion for UI visibility
-            log_message(self.session_id, "phase_complete", f"Phase {cell.name} completed",
-                       trace_id=phase_trace.id, parent_id=phase_trace.parent_id, node_type="cell",
+            log_message(self.session_id, "cell_complete", f"Cell {cell.name} completed",
+                       trace_id=cell_trace.id, parent_id=cell_trace.parent_id, node_type="cell",
                        depth=self.depth, cell_name=cell.name, cascade_id=self.config.cascade_id,
                        parent_session_id=self.parent_session_id)
 
-            # Hook: Phase Complete
-            # Skip if this was an image generation cell (it already called hooks.on_phase_complete)
-            phase_model = cell.model or self.model
-            if not Agent.is_image_generation_model(phase_model):
-                self.hooks.on_phase_complete(cell.name, self.session_id, {
-                    "output": output_or_next_phase,
-                    "duration_ms": phase_duration_ms,
+            # Hook: Cell Complete
+            # Skip if this was an image generation cell (it already called hooks.on_cell_complete)
+            cell_model = cell.model or self.model
+            if not Agent.is_image_generation_model(cell_model):
+                self.hooks.on_cell_complete(cell.name, self.session_id, {
+                    "output": output_or_next_cell,
+                    "duration_ms": cell_duration_ms,
                 })
 
-            if isinstance(output_or_next_phase, str) and output_or_next_phase in [h.target if isinstance(h, HandoffConfig) else h for h in cell.handoffs]:
-                chosen_next_phase = output_or_next_phase # Dynamic handoff chosen by agent
-                self.echo.add_lineage(cell.name, f"Dynamically routed to: {chosen_next_phase}", trace_id=phase_trace.id)
+            if isinstance(output_or_next_cell, str) and output_or_next_cell in [h.target if isinstance(h, HandoffConfig) else h for h in cell.handoffs]:
+                chosen_next_cell = output_or_next_cell # Dynamic handoff chosen by agent
+                self.echo.add_lineage(cell.name, f"Dynamically routed to: {chosen_next_cell}", trace_id=cell_trace.id)
             else:
-                self.echo.add_lineage(cell.name, output_or_next_phase, trace_id=phase_trace.id)
+                self.echo.add_lineage(cell.name, output_or_next_cell, trace_id=cell_trace.id)
 
-            # Store cell output in state for access by subsequent phases via {{ state.output_<cell_name> }}
-            # Note: Deterministic phases already do this in _execute_deterministic_phase
+            # Store cell output in state for access by subsequent cells via {{ state.output_<cell_name> }}
+            # Note: Deterministic cells already do this in _execute_deterministic_cell
             if not cell.is_deterministic():
-                self.echo.state[f"output_{cell.name}"] = output_or_next_phase
+                self.echo.state[f"output_{cell.name}"] = output_or_next_cell
 
             self._update_graph() # After cell
 
-            if chosen_next_phase: # If agent decided next cell
-                current_cell_name = chosen_next_phase
-                chosen_next_phase = None # Reset for next cell's routing
+            if chosen_next_cell: # If agent decided next cell
+                current_cell_name = chosen_next_cell
+                chosen_next_cell = None # Reset for next cell's routing
             elif cell.handoffs: # Else, follow explicit handoffs if exist
                 # Default to first handoff, or dynamically chosen
                 next_handoff_target = cell.handoffs[0].target if isinstance(cell.handoffs[0], HandoffConfig) else cell.handoffs[0]
@@ -4434,7 +4434,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     if current_idx + 1 < len(cell_names):
                         current_cell_name = cell_names[current_idx + 1]
                     else:
-                        current_cell_name = None  # Last phase, cascade ends
+                        current_cell_name = None  # Last cell, cascade ends
                 except ValueError:
                     current_cell_name = None
 
@@ -4639,9 +4639,9 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     # Iterate in reverse to find last message with actual content
                     for message in reversed(history):
-                        # Skip system and phase_complete messages (no real content)
+                        # Skip system and cell_complete messages (no real content)
                         msg_role = message.get("role", "")
-                        if msg_role in ["system", "phase_complete", "structure"]:
+                        if msg_role in ["system", "cell_complete", "structure"]:
                             continue
 
                         # Get content_json from this message (preferred)
@@ -4652,7 +4652,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
                         # Fallback to 'content' field if content_json not available
                         content = message.get("content")
-                        if content and not content.startswith("Phase:") and not content.startswith("Cascade:"):
+                        if content and not content.startswith("Cell:") and not content.startswith("Cascade:"):
                             final_output = content
                             break
 
@@ -4836,9 +4836,9 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Don't fail cascade if cleanup fails
 
-    def _run_quartermaster(self, phase: CellConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
+    def _run_quartermaster(self, cell: CellConfig, input_data: dict, trace: TraceNode, cell_model: str = None) -> list[str]:
         """
-        Run the Quartermaster agent to select appropriate traits for this phase.
+        Run the Quartermaster agent to select appropriate traits for this cell.
 
         Returns list of tool names to make available.
         """
@@ -4856,7 +4856,7 @@ Refinement directive: {reforge_config.honing_prompt}
         filtered_manifest = manifest
         used_semantic_filtering = False
 
-        if len(manifest) > phase.manifest_limit:
+        if len(manifest) > cell.manifest_limit:
             try:
                 from .db_adapter import get_db
                 from .rag.indexer import embed_texts
@@ -4865,14 +4865,14 @@ Refinement directive: {reforge_config.honing_prompt}
                 config = get_config()
                 db = get_db()
 
-                # Embed phase instructions for semantic matching
-                console.print(f"{indent}  [dim cyan]🔍 Semantic pre-filtering ({len(manifest)} → {phase.manifest_limit} tools)...[/dim cyan]")
+                # Embed cell instructions for semantic matching
+                console.print(f"{indent}  [dim cyan]🔍 Semantic pre-filtering ({len(manifest)} → {cell.manifest_limit} tools)...[/dim cyan]")
 
                 embed_result = embed_texts(
-                    texts=[phase.instructions],
+                    texts=[cell.instructions],
                     model=config.default_embed_model,
                     session_id=self.session_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     trace_id=qm_trace.id,
                     parent_id=trace.id
                 )
@@ -4890,7 +4890,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     FROM tool_manifest_vectors FINAL
                     WHERE length(embedding) > 0
                     ORDER BY distance ASC
-                    LIMIT {phase.manifest_limit}
+                    LIMIT {cell.manifest_limit}
                 """
 
                 relevant_tools = db.query(search_query)
@@ -4916,7 +4916,7 @@ Refinement directive: {reforge_config.honing_prompt}
         manifest_text = format_manifest_for_quartermaster(filtered_manifest)
 
         # Build context for quartermaster
-        if phase.manifest_context == "full":
+        if cell.manifest_context == "full":
             # Full conversation history
             context_text = "## Full Mission Context:\n"
             for msg in self.context_messages[-20:]:  # Last 20 messages to avoid bloat
@@ -4925,11 +4925,11 @@ Refinement directive: {reforge_config.honing_prompt}
                 if isinstance(content, str):
                     context_text += f"\n{role.upper()}: {content[:200]}...\n"
         else:
-            # Current phase only
-            context_text = f"## Mission Instructions:\n{phase.instructions}\n\n## Input Data:\n{json.dumps(input_data)}"
+            # Current cell only
+            context_text = f"## Mission Instructions:\n{cell.instructions}\n\n## Input Data:\n{json.dumps(input_data)}"
 
         # Build quartermaster prompt
-        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant traits (tools) for this specific mission phase.
+        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant traits (tools) for this specific mission cell.
 
 {manifest_text}
 
@@ -4942,8 +4942,8 @@ Respond with a JSON array of tool names, nothing else. Example: ["tool1", "tool2
 If no tools are needed, return an empty array: []
 """
 
-        # Use phase model or fall back to default
-        qm_model = phase_model if phase_model else self.model
+        # Use cell model or fall back to default
+        qm_model = cell_model if cell_model else self.model
 
         # Create quartermaster agent
         qm_agent = Agent(
@@ -4986,11 +4986,11 @@ If no tools are needed, return an empty array: []
             "node_type": "quartermaster_result"
         }, trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster_result",
            metadata=self._get_metadata({
-               "cell_name": phase.name,
+               "cell_name": cell.name,
                "selected_traits": valid_traits,
                "reasoning": response_content,  # Full content, no truncation
-               "manifest_context": phase.manifest_context,
-               "manifest_limit": phase.manifest_limit,
+               "manifest_context": cell.manifest_context,
+               "manifest_limit": cell.manifest_limit,
                "semantic_filtering_used": used_semantic_filtering,
                "tools_considered": len(filtered_manifest),
                "tools_available": len(manifest),
@@ -5003,16 +5003,16 @@ If no tools are needed, return an empty array: []
 
     def _fetch_winning_mutations(self, cascade_id: str, cell_name: str, species_hash: str, limit: int = 5) -> List[Dict]:
         """
-        Fetch previous winning rewrite mutations for this exact phase species.
+        Fetch previous winning rewrite mutations for this exact cell species.
 
         Only returns winners from runs with the SAME species_hash (apples-to-apples).
         This enables learning from what worked before without cross-contaminating
-        different phase configurations.
+        different cell configurations.
 
         Args:
             cascade_id: Cascade identifier
-            cell_name: Phase name
-            species_hash: Species hash for this phase config
+            cell_name: Cell name
+            species_hash: Species hash for this cell config
             limit: Max number of winners to fetch
 
         Returns:
@@ -5060,15 +5060,15 @@ If no tools are needed, return an empty array: []
             logger.debug(f"Failed to fetch winning mutations: {e}")
             return []
 
-    def _rewrite_prompt_with_llm(self, phase: CellConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode, mutation_mode: str = "rewrite", species_hash: str = None) -> str:
+    def _rewrite_prompt_with_llm(self, cell: CellConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode, mutation_mode: str = "rewrite", species_hash: str = None) -> str:
         """
-        Use an LLM to rewrite the phase prompt based on the mutation template.
+        Use an LLM to rewrite the cell prompt based on the mutation template.
 
         This creates a completely rewritten version of the prompt, discovering new
         formulations that may work better. The rewrite call is fully tracked in logs/costs.
 
         Args:
-            phase: The phase config containing instructions to rewrite
+            cell: The cell config containing instructions to rewrite
             input_data: Input data for rendering the original instructions
             mutation_template: The rewrite instruction (e.g., "Rewrite to be more specific...")
             parent_trace: Parent trace for observability
@@ -5091,21 +5091,21 @@ If no tools are needed, return an empty array: []
             "outputs": outputs,
             "lineage": self.echo.lineage
         }
-        original_prompt = render_instruction(phase.instructions, render_context)
+        original_prompt = render_instruction(cell.instructions, render_context)
 
         # LEARNING FROM WINNERS: Fetch previous winning mutations for "rewrite" mode
         # (but not "rewrite_free" which is pure exploration)
         winner_context = ""
         if mutation_mode == "rewrite":
-            # Get species hash for this exact phase config
+            # Get species hash for this exact cell config
             if not species_hash:
-                species_hash = compute_species_hash(phase.dict(), input_data)
+                species_hash = compute_species_hash(cell.dict(), input_data)
 
             # Fetch previous winners with same species (apples-to-apples)
             limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
             winners = self._fetch_winning_mutations(
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
+                cell_name=cell.name,
                 species_hash=species_hash,
                 limit=limit
             )
@@ -5143,7 +5143,7 @@ If no tools are needed, return an empty array: []
 
                 winner_context = f"""
 ## Learning from Previous Winning Rewrites:
-Below are {len(winners)} rewrites that WON in previous runs of this exact same phase configuration.
+Below are {len(winners)} rewrites that WON in previous runs of this exact same cell configuration.
 Use them as inspiration for effective patterns, but stay creative - find novel variations, don't just copy.
 {"".join(winner_examples)}
 """
@@ -5198,13 +5198,13 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
                 "original_prompt": original_prompt[:500],  # Truncate for storage
                 "mutation_template": mutation_template,
                 "rewrite_model": rewrite_model,
-                "cell_name": phase.name
+                "cell_name": cell.name
             },
             trace_id=rewrite_trace.id,
             parent_id=parent_trace.id,
             node_type="prompt_rewrite",
             depth=self.depth,
-            cell_name=phase.name,
+            cell_name=cell.name,
             cascade_id=self.config.cascade_id
         )
 
@@ -5503,9 +5503,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
                 # Generate unique ward session ID (include candidate index if inside soundings)
                 ward_candidate_index = None
-                if self.current_phase_candidate_index is not None:
-                    ward_session_id = f"{self.session_id}_ward_{self.current_phase_candidate_index}"
-                    ward_candidate_index = self.current_phase_candidate_index
+                if self.current_cell_candidate_index is not None:
+                    ward_session_id = f"{self.session_id}_ward_{self.current_cell_candidate_index}"
+                    ward_candidate_index = self.current_cell_candidate_index
                 elif self.candidate_index is not None:
                     ward_session_id = f"{self.session_id}_ward_{self.candidate_index}"
                     ward_candidate_index = self.candidate_index
@@ -5732,7 +5732,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         is_per_turn: bool = False
     ) -> dict:
         """
-        Run a loop_until validator to check if phase output satisfies requirements.
+        Run a loop_until validator to check if cell output satisfies requirements.
 
         This method supports per-turn validation (early exit from turn loop) as well as
         post-turn-loop validation. When is_per_turn=True, validation passes will allow
@@ -5817,9 +5817,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
             # Generate unique validator session ID
             validator_candidate_index = None
-            if self.current_phase_candidate_index is not None:
-                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.current_phase_candidate_index}"
-                validator_candidate_index = self.current_phase_candidate_index
+            if self.current_cell_candidate_index is not None:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.current_cell_candidate_index}"
+                validator_candidate_index = self.current_cell_candidate_index
             elif self.candidate_index is not None:
                 validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.candidate_index}"
                 validator_candidate_index = self.candidate_index
@@ -5872,7 +5872,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 # Inject images into validator context if available (multi-modal validation)
                 if context_images:
                     # Build multi-modal context message with images
-                    image_content = [{"type": "text", "text": f"[{len(context_images)} image(s) from the phase output to validate]:"}]
+                    image_content = [{"type": "text", "text": f"[{len(context_images)} image(s) from the cell output to validate]:"}]
                     for img_data, desc in context_images[-3:]:  # Last 3 images max
                         image_content.append({
                             "type": "image_url",
@@ -5886,7 +5886,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
                 validator_result_echo = validator_runner.run(validator_input)
 
-                # Extract the result - look in lineage for last phase output
+                # Extract the result - look in lineage for last cell output
                 if validator_result_echo.get("lineage"):
                     last_output = validator_result_echo["lineage"][-1].get("output", "")
                     try:
@@ -5945,9 +5945,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
                     # Generate unique validator session ID
                     validator_candidate_index = None
-                    if self.current_phase_candidate_index is not None:
-                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.current_phase_candidate_index}"
-                        validator_candidate_index = self.current_phase_candidate_index
+                    if self.current_cell_candidate_index is not None:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.current_cell_candidate_index}"
+                        validator_candidate_index = self.current_cell_candidate_index
                     elif self.candidate_index is not None:
                         validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.candidate_index}"
                         validator_candidate_index = self.candidate_index
@@ -5968,7 +5968,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                             candidate_index=validator_candidate_index
                         )
 
-                        # Extract the result - look in lineage for last phase output
+                        # Extract the result - look in lineage for last cell output
                         if validator_result_echo.get("lineage"):
                             last_output = validator_result_echo["lineage"][-1].get("output", "")
                             try:
@@ -6725,9 +6725,9 @@ Use only numbers 0-100 for scores."""
 
         console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
 
-    def _execute_phase_with_soundings(self, phase: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def _execute_cell_with_soundings(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
         """
-        Execute a phase with soundings (Tree of Thought).
+        Execute a cell with soundings (Tree of Thought).
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
         from .unified_logs import log_unified
@@ -6746,25 +6746,25 @@ Use only numbers 0-100 for scores."""
         }
 
         # Render factor if it's a string (Jinja2 template)
-        if isinstance(phase.candidates.factor, str):
+        if isinstance(cell.candidates.factor, str):
             from .prompts import render_instruction
-            rendered_factor = render_instruction(phase.candidates.factor, render_context)
+            rendered_factor = render_instruction(cell.candidates.factor, render_context)
             try:
                 resolved_factor = int(rendered_factor.strip())
             except ValueError:
                 console.print(f"{indent}[red]⚠ Warning: Could not parse soundings factor '{rendered_factor}' as integer, defaulting to 1[/red]")
                 resolved_factor = 1
         else:
-            resolved_factor = phase.candidates.factor
+            resolved_factor = cell.candidates.factor
 
         # Assign models using resolved factor
-        assigned_models = self._assign_models(phase.candidates, resolved_factor)
+        assigned_models = self._assign_models(cell.candidates, resolved_factor)
 
         # Filter models by context window if multi-model soundings
-        if phase.candidates.models and len(set(assigned_models)) > 1:
+        if cell.candidates.models and len(set(assigned_models)) > 1:
             filter_result = self._filter_models_by_context(
                 models=assigned_models,
-                cell=phase,
+                cell=cell,
                 input_data=input_data
             )
 
@@ -6808,8 +6808,8 @@ Use only numbers 0-100 for scores."""
                 from datetime import datetime
 
                 filter_event_data = {
-                    "cell_name": phase.name,
-                    "original_models": list(set(self._assign_models(phase.candidates))),
+                    "cell_name": cell.name,
+                    "original_models": list(set(self._assign_models(cell.candidates))),
                     "filtered_models": filter_result["filtered_models"],
                     "viable_models": list(set(assigned_models)),
                     "filter_details": filter_result["filter_details"],
@@ -6836,7 +6836,7 @@ Use only numbers 0-100 for scores."""
                     node_type="model_filter",
                     role="system",
                     depth=self.depth,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     cascade_id=self.config.cascade_id,
                     content=f"Filtered {filtered_count} models with insufficient context",
                     metadata=filter_event_data
@@ -6844,7 +6844,7 @@ Use only numbers 0-100 for scores."""
 
         # When using dict-based models with per-model factors, the actual number of soundings
         # is determined by the model assignments, not the top-level factor
-        if isinstance(phase.candidates.models, dict):
+        if isinstance(cell.candidates.models, dict):
             factor = len(assigned_models)
             if resolved_factor != factor:
                 console.print(f"{indent}[yellow]Note: Using {factor} soundings from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
@@ -6854,19 +6854,19 @@ Use only numbers 0-100 for scores."""
         console.print(f"{indent}[bold blue]🔱 Taking {factor} Soundings (Parallel Attempts)...[/bold blue]")
 
         # Create soundings trace node
-        soundings_trace = trace.create_child("soundings", f"{phase.name}_soundings")
+        soundings_trace = trace.create_child("soundings", f"{cell.name}_soundings")
 
         # Add soundings structure to Echo for visualization (auto-logs via unified_logs)
         soundings_meta = {
-            "cell_name": phase.name,
+            "cell_name": cell.name,
             "factor": factor,
-            "has_reforge": phase.candidates.reforge is not None,
+            "has_reforge": cell.candidates.reforge is not None,
             "semantic_actor": "framework",
             "semantic_purpose": "lifecycle"
         }
         self.echo.add_history({
             "role": "structure",
-            "content": f"Soundings: {phase.name}",
+            "content": f"Soundings: {cell.name}",
             "node_type": "soundings"
         }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings",
            metadata=soundings_meta)
@@ -6882,18 +6882,18 @@ Use only numbers 0-100 for scores."""
 
         # Determine mutations to apply
         mutations_to_use = []
-        mutation_mode = phase.candidates.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
+        mutation_mode = cell.candidates.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
 
         # Compute species hash ONLY for rewrite mode (for winner learning)
         # Species hash is used to compare similar prompt rewrites, not needed for other mutation modes
-        phase_species_hash = None
+        cell_species_hash = None
         if mutation_mode == 'rewrite':
-            phase_species_hash = compute_species_hash(phase.dict(), input_data)
+            cell_species_hash = compute_species_hash(cell.dict(), input_data)
 
-        if phase.candidates.mutate:
-            if phase.candidates.mutations:
+        if cell.candidates.mutate:
+            if cell.candidates.mutations:
                 # Use custom mutations/templates
-                mutations_to_use = phase.candidates.mutations
+                mutations_to_use = cell.candidates.mutations
             elif mutation_mode in ("rewrite", "rewrite_free"):
                 # Rewrite templates: LLM will rewrite the prompt using these instructions
                 # These are META-instructions for how to transform the prompt
@@ -6962,8 +6962,8 @@ Use only numbers 0-100 for scores."""
                     # For rewrite modes: use LLM to rewrite the prompt
                     console.print(f"{indent}  [dim]Pre-computing mutation {i+1}: rewriting prompt...[/dim]")
                     mutation_applied = self._rewrite_prompt_with_llm(
-                        phase, input_data, mutation_template, soundings_trace,
-                        mutation_mode=mutation_mode, species_hash=phase_species_hash
+                        cell, input_data, mutation_template, soundings_trace,
+                        mutation_mode=mutation_mode, species_hash=cell_species_hash
                     )
                 else:
                     mutation_applied = mutation_template
@@ -6977,7 +6977,7 @@ Use only numbers 0-100 for scores."""
         # Parallel execution setup
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from .echo import Echo
-        max_parallel = phase.candidates.max_parallel or 3
+        max_parallel = cell.candidates.max_parallel or 3
         max_workers = min(factor, max_parallel)
         console.print(f"{indent}  [dim]Parallel workers: {max_workers}[/dim]")
 
@@ -7001,7 +7001,7 @@ Use only numbers 0-100 for scores."""
                 session_id=self.session_id,
                 timestamp=datetime.now().isoformat(),
                 data={
-                    "cell_name": phase.name,
+                    "cell_name": cell.name,
                     "candidate_index": i,
                     "trace_id": sounding_trace.id,
                     "model": sounding_model,
@@ -7035,7 +7035,7 @@ Use only numbers 0-100 for scores."""
                 sounding_runner.model = sounding_model
 
                 # Set candidate tracking state
-                sounding_runner.current_phase_candidate_index = i
+                sounding_runner.current_cell_candidate_index = i
                 sounding_runner._current_sounding_factor = factor  # For Jinja2 templates
                 sounding_runner.current_mutation_applied = mutation_info['applied']
                 sounding_runner.current_mutation_type = mutation_info['type']
@@ -7044,21 +7044,21 @@ Use only numbers 0-100 for scores."""
                 # CRITICAL: Set context vars IN THIS THREAD (candidate thread)
                 # Context vars are thread-local, must be set in each candidate thread
                 session_token = set_current_session_id(sounding_runner.session_id)
-                phase_token = set_current_cell_name(phase.name)
+                cell_token = set_current_cell_name(cell.name)
                 cascade_token = set_current_cascade_id(sounding_runner.config.cascade_id)
                 sounding_token = set_current_candidate_index(i)
 
                 # Set model context for downstream_model propagation
                 model_token = set_current_model(sounding_model)
                 downstream_token = set_downstream_model(
-                    phase.candidates.downstream_model if phase.candidates else False
+                    cell.candidates.downstream_model if cell.candidates else False
                 )
 
-                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, cell={phase.name}, candidate_index={i}, model={sounding_model}, downstream={phase.candidates.downstream_model if phase.candidates else False}")
+                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, cell={cell.name}, candidate_index={i}, model={sounding_model}, downstream={cell.candidates.downstream_model if cell.candidates else False}")
 
-                # Execute the phase on isolated runner
-                result = sounding_runner._execute_phase_internal(
-                    phase, input_data, sounding_trace,
+                # Execute the cell on isolated runner
+                result = sounding_runner._execute_cell_internal(
+                    cell, input_data, sounding_trace,
                     initial_injection=initial_injection,
                     mutation=mutation_info['applied'],
                     mutation_mode=mutation_mode
@@ -7082,7 +7082,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
-                        "cell_name": phase.name,
+                        "cell_name": cell.name,
                         "candidate_index": i,
                         "trace_id": sounding_trace.id,
                         "model": sounding_model,
@@ -7114,7 +7114,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
-                        "cell_name": phase.name,
+                        "cell_name": cell.name,
                         "candidate_index": i,
                         "trace_id": sounding_trace.id,
                         "model": sounding_model,
@@ -7156,7 +7156,7 @@ Use only numbers 0-100 for scores."""
             if sr.get('failed'):
                 log_message(self.session_id, "sounding_error", sr.get('error', 'Unknown error'),
                            trace_id=sr['trace_id'], parent_id=soundings_trace.id, node_type="sounding_error", depth=self.depth,
-                           candidate_index=sr['index'], metadata={"cell_name": phase.name, "error": sr.get('error'), "model": sr.get('model')})
+                           candidate_index=sr['index'], metadata={"cell_name": cell.name, "error": sr.get('error'), "model": sr.get('model')})
 
         # Clear mutation tracking
         self.current_mutation_applied = None
@@ -7172,8 +7172,8 @@ Use only numbers 0-100 for scores."""
         # Pre-evaluation validation (if configured)
         # Filters out soundings that fail validation before sending to evaluator
         valid_sounding_results = sounding_results
-        if phase.candidates.validator:
-            validator_spec = phase.candidates.validator
+        if cell.candidates.validator:
+            validator_spec = cell.candidates.validator
             validator_display_name = _format_validator_name(validator_spec)
             console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_display_name}'...[/bold cyan]")
 
@@ -7207,12 +7207,12 @@ Use only numbers 0-100 for scores."""
                 console.print(f"{indent}[bold green]✓ {len(valid_sounding_results)}/{len(sounding_results)} soundings passed validation[/bold green]")
 
         # AGGREGATE MODE: Combine all outputs instead of picking one winner
-        if phase.candidates.mode == "aggregate":
+        if cell.candidates.mode == "aggregate":
             console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_sounding_results)} outputs...[/bold cyan]")
 
-            # Update phase progress
-            update_phase_progress(
-                self.session_id, self.config.cascade_id, phase.name, self.depth,
+            # Update cell progress
+            update_cell_progress(
+                self.session_id, self.config.cascade_id, cell.name, self.depth,
                 sounding_stage="aggregating"
             )
 
@@ -7236,13 +7236,13 @@ Use only numbers 0-100 for scores."""
             aggregator_trace = soundings_trace.create_child("aggregator", "sounding_aggregation")
 
             # Aggregate the outputs
-            if phase.candidates.aggregator_instructions:
+            if cell.candidates.aggregator_instructions:
                 # Use LLM to aggregate/merge outputs
                 console.print(f"{indent}  [dim]Using LLM aggregator...[/dim]")
                 aggregated_output = self._aggregate_with_llm(
                     all_outputs,
-                    phase.candidates.aggregator_instructions,
-                    phase.candidates.aggregator_model or self.model,
+                    cell.candidates.aggregator_instructions,
+                    cell.candidates.aggregator_model or self.model,
                     aggregator_trace
                 )
             else:
@@ -7279,10 +7279,10 @@ Use only numbers 0-100 for scores."""
                 "content": f"Aggregated {len(all_outputs)} candidate outputs"
             }, trace_id=aggregator_trace.id, parent_id=soundings_trace.id, node_type="aggregator",
                metadata={
-                   "cell_name": phase.name,
+                   "cell_name": cell.name,
                    "aggregated_count": len(all_outputs),
                    "output_indices": [o["index"] for o in all_outputs],
-                   "used_llm": phase.candidates.aggregator_instructions is not None,
+                   "used_llm": cell.candidates.aggregator_instructions is not None,
                    "semantic_actor": "aggregator",
                    "semantic_purpose": "aggregation",
                })
@@ -7305,9 +7305,9 @@ Use only numbers 0-100 for scores."""
             # Skip directly to winner processing (below)
         else:
             # Now evaluate soundings (only valid ones, unless all failed)
-            # Update phase progress for evaluation stage
-            update_phase_progress(
-                self.session_id, self.config.cascade_id, phase.name, self.depth,
+            # Update cell progress for evaluation stage
+            update_cell_progress(
+                self.session_id, self.config.cascade_id, cell.name, self.depth,
                 sounding_stage="evaluating"
             )
 
@@ -7315,21 +7315,21 @@ Use only numbers 0-100 for scores."""
             evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
 
             # Check for human evaluation mode
-            use_human_eval = phase.candidates.evaluator == "human"
-            use_hybrid_eval = phase.candidates.evaluator == "hybrid"
+            use_human_eval = cell.candidates.evaluator == "human"
+            use_hybrid_eval = cell.candidates.evaluator == "hybrid"
             winner_already_set = False  # Evaluation will determine winner
 
         # Human evaluation: block for human to pick winner via UI
         if use_human_eval or use_hybrid_eval:
             # For hybrid: first do LLM prefilter, then human picks from top N
             eval_candidates = valid_sounding_results
-            if use_hybrid_eval and phase.candidates.llm_prefilter:
-                prefilter_n = phase.candidates.llm_prefilter
+            if use_hybrid_eval and cell.candidates.llm_prefilter:
+                prefilter_n = cell.candidates.llm_prefilter
                 console.print(f"{indent}[bold cyan]🔀 Hybrid mode: LLM prefiltering to top {prefilter_n}...[/bold cyan]")
                 eval_candidates = self._llm_prefilter_soundings(
                     valid_sounding_results,
                     prefilter_n,
-                    phase.candidates.llm_prefilter_instructions or phase.candidates.evaluator_instructions,
+                    cell.candidates.llm_prefilter_instructions or cell.candidates.evaluator_instructions,
                     evaluator_trace
                 )
                 console.print(f"{indent}  [dim]Filtered to {len(eval_candidates)} candidates for human evaluation[/dim]")
@@ -7368,7 +7368,7 @@ Use only numbers 0-100 for scores."""
                 sounding_metadata.append(meta)
 
             # Build UI spec from human_eval config
-            human_eval_config = phase.candidates.human_eval
+            human_eval_config = cell.candidates.human_eval
             ui_spec = {
                 "type": "sounding_comparison",
                 "presentation": human_eval_config.presentation.value if human_eval_config else "side_by_side",
@@ -7398,11 +7398,11 @@ Use only numbers 0-100 for scores."""
             checkpoint = checkpoint_manager.create_checkpoint(
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
+                cell_name=cell.name,
                 checkpoint_type=CheckpointType.SOUNDING_EVAL,
                 ui_spec=ui_spec,
                 echo_snapshot=self.echo.get_full_echo(),
-                phase_output=f"Comparing {len(eval_candidates)} candidate attempts",
+                cell_output=f"Comparing {len(eval_candidates)} candidate attempts",
                 sounding_outputs=sounding_outputs,
                 sounding_metadata=sounding_metadata,
                 timeout_seconds=human_eval_config.timeout_seconds if human_eval_config else None
@@ -7470,7 +7470,7 @@ Use only numbers 0-100 for scores."""
                 from .hotornot import log_preference_eval
                 log_preference_eval(
                     session_id=self.session_id,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     preferred_index=winner_candidate["index"],
                     system_winner_index=-1,  # No system winner in pure human eval
                     sounding_outputs=[
@@ -7494,20 +7494,20 @@ Use only numbers 0-100 for scores."""
         dominated_map = None
         pareto_ranks = None
         eval_prompt = None  # Initialize for all paths (used in metadata logging)
-        use_cost_aware = phase.candidates.cost_aware_evaluation and phase.candidates.cost_aware_evaluation.enabled
-        use_pareto = phase.candidates.pareto_frontier and phase.candidates.pareto_frontier.enabled
+        use_cost_aware = cell.candidates.cost_aware_evaluation and cell.candidates.cost_aware_evaluation.enabled
+        use_pareto = cell.candidates.pareto_frontier and cell.candidates.pareto_frontier.enabled
 
         # Only run LLM evaluation if we didn't do human eval (or fell back from timeout)
         # Also skip if winner_already_set (aggregate mode)
         if not (use_human_eval or use_hybrid_eval or winner_already_set):
             console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
 
-            # Phase 3: Pareto Frontier Analysis
+            # Cell 3: Pareto Frontier Analysis
             if use_pareto:
                 console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
 
                 # Initialize eval_prompt for metadata logging (Pareto uses quality scoring, not traditional eval)
-                eval_prompt = f"{phase.candidates.evaluator_instructions}\n\nPareto Frontier Analysis: Quality scoring + cost-based frontier computation."
+                eval_prompt = f"{cell.candidates.evaluator_instructions}\n\nPareto Frontier Analysis: Quality scoring + cost-based frontier computation."
 
                 # Get costs
                 console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
@@ -7521,7 +7521,7 @@ Use only numbers 0-100 for scores."""
                 (quality_scores, evaluator_reasoning, eval_cost, eval_tokens_in,
                  eval_tokens_out, eval_request_id, eval_model) = self._get_quality_scores_from_evaluator(
                     valid_sounding_results,
-                    phase.candidates.evaluator_instructions,
+                    cell.candidates.evaluator_instructions,
                     evaluator_trace
                 )
 
@@ -7537,7 +7537,7 @@ Use only numbers 0-100 for scores."""
                     cascade_id=self.config.cascade_id,
                     cascade_config=None,
                     content=evaluator_reasoning,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     model=eval_model,
                     tokens_in=eval_tokens_in,
                     tokens_out=eval_tokens_out,
@@ -7575,7 +7575,7 @@ Use only numbers 0-100 for scores."""
                     frontier_indices,
                     quality_scores,
                     sounding_costs,
-                    phase.candidates.pareto_frontier.policy
+                    cell.candidates.pareto_frontier.policy
                 )
 
                 # Build comprehensive eval_content with quality reasoning + Pareto selection
@@ -7590,7 +7590,7 @@ Use only numbers 0-100 for scores."""
 ## Pareto Frontier Analysis
 
 - **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_sounding_results)} total
-- **Selection policy:** `{phase.candidates.pareto_frontier.policy}`
+- **Selection policy:** `{cell.candidates.pareto_frontier.policy}`
 - **Winner:** Attempt {winner_index + 1} ({winner_model}) - Quality: {winner_quality:.1f}, Cost: ${winner_cost:.6f}
 
 ### Frontier Members:
@@ -7603,10 +7603,10 @@ Use only numbers 0-100 for scores."""
                     eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
 
                 # Log Pareto data for visualization
-                if phase.candidates.pareto_frontier.show_frontier:
+                if cell.candidates.pareto_frontier.show_frontier:
                     self._log_pareto_frontier(
                         self.session_id,
-                        phase.name,
+                        cell.name,
                         valid_sounding_results,
                         frontier_indices,
                         dominated_map,
@@ -7615,13 +7615,13 @@ Use only numbers 0-100 for scores."""
                         winner_index
                     )
 
-            # Phase 2: Cost-Aware Evaluation
+            # Cell 2: Cost-Aware Evaluation
             elif use_cost_aware:
                 console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
                 sounding_costs = self._get_sounding_costs(valid_sounding_results)
                 normalized_costs = self._normalize_costs(
                     sounding_costs,
-                    phase.candidates.cost_aware_evaluation.cost_normalization
+                    cell.candidates.cost_aware_evaluation.cost_normalization
                 )
                 # Store costs in candidate results for logging
                 for i, sr in enumerate(valid_sounding_results):
@@ -7632,8 +7632,8 @@ Use only numbers 0-100 for scores."""
                 eval_prompt = self._build_cost_aware_eval_prompt(
                     valid_sounding_results,
                     sounding_costs,
-                    phase.candidates,
-                    phase.candidates.evaluator_instructions
+                    cell.candidates,
+                    cell.candidates.evaluator_instructions
                 )
                 console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
 
@@ -7697,7 +7697,7 @@ Use only numbers 0-100 for scores."""
                     cascade_id=self.config.cascade_id,
                     cascade_config=None,
                     content=eval_content,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     model=eval_model,
                     tokens_in=eval_tokens_in,
                     tokens_out=eval_tokens_out,
@@ -7715,9 +7715,9 @@ Use only numbers 0-100 for scores."""
                     if winner_index >= len(valid_sounding_results):
                         winner_index = 0
 
-            # Phase 1: Standard quality-only evaluation
+            # Cell 1: Standard quality-only evaluation
             else:
-                eval_prompt = f"{phase.candidates.evaluator_instructions}\n\n"
+                eval_prompt = f"{cell.candidates.evaluator_instructions}\n\n"
                 eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
                 # Check if any soundings have images
@@ -7805,7 +7805,7 @@ Use only numbers 0-100 for scores."""
                     cascade_id=self.config.cascade_id,
                     cascade_config=None,
                     content=eval_content,
-                    cell_name=phase.name,
+                    cell_name=cell.name,
                     model=eval_model,
                     tokens_in=eval_tokens_in,
                     tokens_out=eval_tokens_out,
@@ -7839,7 +7839,7 @@ Use only numbers 0-100 for scores."""
         self.echo.state = winner['final_state']
 
         # Reset candidate index (no longer in candidate context)
-        self.current_phase_candidate_index = None
+        self.current_cell_candidate_index = None
 
         # Track original winner index for metadata logging
         # In aggregate mode, all valid soundings contribute (no single winner)
@@ -7861,7 +7861,7 @@ Use only numbers 0-100 for scores."""
             session_id=self.session_id,
             timestamp=dt_winner.now().isoformat(),
             data={
-                "cell_name": phase.name,
+                "cell_name": cell.name,
                 "winner_index": original_winner_index,
                 "is_aggregated": is_aggregated,
                 "aggregated_indices": list(aggregated_indices) if is_aggregated else None,
@@ -7870,11 +7870,11 @@ Use only numbers 0-100 for scores."""
             }
         ))
 
-        # Compute species hash for prompt evolution tracking (once for all soundings in this phase)
+        # Compute species hash for prompt evolution tracking (once for all soundings in this cell)
         # NOTE: This should match the species_hash computed at the start of soundings (line 3374)
         # We re-compute here instead of passing it through to avoid coupling
-        phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
-        phase_species_hash = compute_species_hash(phase_config_dict, input_data)
+        cell_config_dict = cell.model_dump() if hasattr(cell, 'model_dump') else None
+        cell_species_hash = compute_species_hash(cell_config_dict, input_data)
 
         # Add all candidate attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
         for sr in sounding_results:
@@ -7884,22 +7884,22 @@ Use only numbers 0-100 for scores."""
             else:
                 is_winner = sr["index"] == original_winner_index
             sounding_metadata = {
-                "cell_name": phase.name,
+                "cell_name": cell.name,
                 "candidate_index": sr["index"],
                 "is_winner": is_winner,
                 "factor": factor,
                 "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
                 "mutation_type": sr.get("mutation_type"),  # Log mutation type: rewrite, augment, approach
                 "mutation_template": sr.get("mutation_template"),  # Log mutation template/instruction
-                "model": sr.get("model"),  # Log which model was used (Phase 1: Multi-Model Soundings)
+                "model": sr.get("model"),  # Log which model was used (Cell 1: Multi-Model Soundings)
                 "validation": sr.get("validation"),  # Log validation result if validator was used
-                "species_hash": phase_species_hash,  # Track prompt template DNA for evolution analysis
+                "species_hash": cell_species_hash,  # Track prompt template DNA for evolution analysis
             }
-            # Add cost data if available (Phase 2: Cost-Aware Evaluation)
+            # Add cost data if available (Cell 2: Cost-Aware Evaluation)
             if sr.get("cost") is not None:
                 sounding_metadata["cost"] = sr["cost"]
                 sounding_metadata["normalized_cost"] = sr.get("normalized_cost")
-            # Add Pareto data if available (Phase 3: Pareto Frontier Analysis)
+            # Add Pareto data if available (Cell 3: Pareto Frontier Analysis)
             if sr.get("quality_score") is not None:
                 sounding_metadata["quality_score"] = sr["quality_score"]
             if sr.get("is_pareto_optimal") is not None:
@@ -7955,7 +7955,7 @@ Use only numbers 0-100 for scores."""
 
             # Add evaluator entry (auto-logs via unified_logs)
             evaluator_metadata = {
-                "cell_name": phase.name,
+                "cell_name": cell.name,
                 "winner_index": original_winner_index,  # Use original index for consistency
                 "winner_trace_id": winner['trace_id'],
                 "evaluation": eval_content,
@@ -7967,18 +7967,18 @@ Use only numbers 0-100 for scores."""
                 "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
                 "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
             }
-            # Add cost-aware evaluation info (Phase 2: Multi-Model Soundings)
+            # Add cost-aware evaluation info (Cell 2: Multi-Model Soundings)
             if use_cost_aware:
                 evaluator_metadata["cost_aware"] = True
-                evaluator_metadata["quality_weight"] = phase.candidates.cost_aware_evaluation.quality_weight
-                evaluator_metadata["cost_weight"] = phase.candidates.cost_aware_evaluation.cost_weight
+                evaluator_metadata["quality_weight"] = cell.candidates.cost_aware_evaluation.quality_weight
+                evaluator_metadata["cost_weight"] = cell.candidates.cost_aware_evaluation.cost_weight
                 if sounding_costs:
                     evaluator_metadata["sounding_costs"] = sounding_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
-            # Add Pareto frontier info (Phase 3: Pareto Frontier Analysis)
+            # Add Pareto frontier info (Cell 3: Pareto Frontier Analysis)
             if use_pareto:
                 evaluator_metadata["pareto_enabled"] = True
-                evaluator_metadata["pareto_policy"] = phase.candidates.pareto_frontier.policy
+                evaluator_metadata["pareto_policy"] = cell.candidates.pareto_frontier.policy
                 evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
                 if quality_scores:
                     evaluator_metadata["quality_scores"] = quality_scores
@@ -8015,7 +8015,7 @@ Use only numbers 0-100 for scores."""
                 "is_aggregated": True,
                 "aggregated_indices": list(aggregated_indices)
             }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
-               metadata={"cell_name": phase.name, "winner_index": -1, "factor": factor,
+               metadata={"cell_name": cell.name, "winner_index": -1, "factor": factor,
                          "is_aggregated": True, "aggregated_count": winner.get('aggregated_count', 0),
                          "aggregated_indices": list(aggregated_indices),
                          "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
@@ -8023,7 +8023,7 @@ Use only numbers 0-100 for scores."""
             # Mark all contributing soundings as winners in database
             from .unified_logs import mark_sounding_winner
             for idx in aggregated_indices:
-                mark_sounding_winner(self.session_id, phase.name, idx)
+                mark_sounding_winner(self.session_id, cell.name, idx)
         else:
             # Single winner mode
             self.echo.add_history({
@@ -8032,7 +8032,7 @@ Use only numbers 0-100 for scores."""
                 "winner_index": winner_index + 1,
                 "evaluation": eval_content
             }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
-               metadata={"cell_name": phase.name, "winner_index": winner_index, "factor": factor,
+               metadata={"cell_name": cell.name, "winner_index": winner_index, "factor": factor,
                          "candidate_index": original_winner_index, "is_winner": True,
                          "model": winner.get('model'),  # Track winning model for UI highlighting
                          "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
@@ -8041,12 +8041,12 @@ Use only numbers 0-100 for scores."""
             # This updates all rows in the winning candidate thread with is_winner=True
             # so _fetch_winning_mutations() can find them for rewrite mode learning
             from .unified_logs import mark_sounding_winner
-            mark_sounding_winner(self.session_id, phase.name, original_winner_index)
+            mark_sounding_winner(self.session_id, cell.name, original_winner_index)
 
         self._update_graph()
 
         # Check if reforge is configured
-        if phase.candidates.reforge:
+        if cell.candidates.reforge:
             # Reforge doesn't make sense in aggregate mode (no single winner to refine)
             if is_aggregated:
                 console.print(f"{indent}[yellow]⚠️  Reforge skipped: Not compatible with aggregate mode[/yellow]")
@@ -8056,7 +8056,7 @@ Use only numbers 0-100 for scores."""
 
                 winner = self._reforge_winner(
                     winner=winner,
-                    cell=phase,
+                    cell=cell,
                     input_data=input_data,
                     trace=soundings_trace,
                     context_snapshot=context_snapshot,
@@ -8372,11 +8372,11 @@ Refinement directive: {reforge_config.honing_prompt}
                    "semantic_purpose": "lifecycle"
                })
 
-            # Create temporary phase config for refinement
-            # Use a modified phase with refinement instructions
+            # Create temporary cell config for refinement
+            # Use a modified cell with refinement instructions
             from copy import deepcopy
-            refine_phase = deepcopy(cell)
-            refine_phase.instructions = refinement_instructions
+            refine_cell = deepcopy(cell)
+            refine_cell.instructions = refinement_instructions
 
             # Snapshot state before reforge soundings
             echo_state_snapshot = self.echo.state.copy()
@@ -8433,13 +8433,13 @@ Refinement directive: {reforge_config.honing_prompt}
                     refinement_runner.context_messages = context_snapshot.copy()
 
                     # Set tracking state
-                    refinement_runner.current_phase_candidate_index = i
+                    refinement_runner.current_cell_candidate_index = i
                     refinement_runner._current_sounding_factor = factor_per_step  # For Jinja2 templates
                     refinement_runner.current_reforge_step = step
 
-                    # Execute the phase on isolated runner
-                    result = refinement_runner._execute_phase_internal(
-                        refine_phase, input_data, refinement_trace,
+                    # Execute the cell on isolated runner
+                    result = refinement_runner._execute_cell_internal(
+                        refine_cell, input_data, refinement_trace,
                         pre_built_context=full_reforge_context
                     )
 
@@ -8705,7 +8705,7 @@ Refinement directive: {reforge_config.honing_prompt}
             winner = refined_winner
 
         # Reset candidate index and reforge step after reforge completes
-        self.current_phase_candidate_index = None
+        self.current_cell_candidate_index = None
         self.current_reforge_step = None
 
         # Apply final winner's context
@@ -8716,7 +8716,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return winner
 
-    def execute_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def execute_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
         import asyncio
 
         # ─────────────────────────────────────────────────────────────────────
@@ -8724,46 +8724,46 @@ Refinement directive: {reforge_config.honing_prompt}
         # ─────────────────────────────────────────────────────────────────────
         browser_session: Optional[BrowserSession] = None
 
-        if phase.browser:
-            # Set up browser session for this phase
-            browser_session = self._setup_browser_session(phase, input_data, trace)
+        if cell.browser:
+            # Set up browser session for this cell
+            browser_session = self._setup_browser_session(cell, input_data, trace)
 
         try:
-            # Check if SQL-native mapping phase (for_each_row)
-            if phase.for_each_row:
-                return self._execute_sql_mapping_phase(phase, input_data, trace)
+            # Check if SQL-native mapping cell (for_each_row)
+            if cell.for_each_row:
+                return self._execute_sql_mapping_cell(cell, input_data, trace)
 
-            # Check if this is a HITL screen phase (direct HTML rendering, no LLM)
-            # Only block if the phase requires input (pure HITL screens)
+            # Check if this is a HITL screen cell (direct HTML rendering, no LLM)
+            # Only block if the cell requires input (pure HITL screens)
             # If requires_input is False, emit progress display and continue execution
-            if phase.is_hitl_screen():
-                if phase.requires_input:
+            if cell.is_hitl_screen():
+                if cell.requires_input:
                     # Pure HITL screen - block for user input
-                    return self._execute_hitl_phase(phase, input_data, trace)
+                    return self._execute_hitl_cell(cell, input_data, trace)
                 else:
                     # Progress display - emit event but continue execution
-                    self._emit_progress_display(phase, input_data, trace)
+                    self._emit_progress_display(cell, input_data, trace)
                     # Fall through to tool/LLM execution below
 
-            # Check if this is a deterministic (tool-based) phase
-            # NOTE: Use phase.tool directly, not is_deterministic() which includes has_ui
+            # Check if this is a deterministic (tool-based) cell
+            # NOTE: Use cell.tool directly, not is_deterministic() which includes has_ui
             # This allows LLM cells with progress displays to fall through to LLM execution
-            if phase.tool:
-                return self._execute_deterministic_phase(phase, input_data, trace)
+            if cell.tool:
+                return self._execute_deterministic_cell(cell, input_data, trace)
 
-            # Check if this is an image generation phase (uses image model like FLUX, SDXL)
-            phase_model = phase.model or self.model
-            if Agent.is_image_generation_model(phase_model):
-                return self._execute_image_generation_phase(phase, input_data, trace)
+            # Check if this is an image generation cell (uses image model like FLUX, SDXL)
+            cell_model = cell.model or self.model
+            if Agent.is_image_generation_model(cell_model):
+                return self._execute_image_generation_cell(cell, input_data, trace)
 
             # Check if soundings (Tree of Thought) is enabled
-            if phase.candidates and (isinstance(phase.candidates.factor, str) or phase.candidates.factor > 1):
-                return self._execute_phase_with_soundings(phase, input_data, trace, initial_injection)
+            if cell.candidates and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1):
+                return self._execute_cell_with_soundings(cell, input_data, trace, initial_injection)
 
-            return self._execute_phase_internal(phase, input_data, trace, initial_injection)
+            return self._execute_cell_internal(cell, input_data, trace, initial_injection)
 
         except Exception as e:
-            # Log uncaught phase errors to unified logs
+            # Log uncaught cell errors to unified logs
             # (Note: Turn-loop errors and deterministic errors are already logged in their respective methods)
             from .unified_logs import log_unified
             import traceback
@@ -8782,25 +8782,25 @@ Refinement directive: {reforge_config.honing_prompt}
                 trace_id=trace.id,
                 parent_id=trace.parent_id,
                 parent_session_id=self.parent_session_id,
-                node_type="phase_error",
+                node_type="cell_error",
                 role="error",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
-                phase_config=phase.dict() if hasattr(phase, 'dict') else None,
+                cell_name=cell.name,
+                cell_config=cell.dict() if hasattr(cell, 'dict') else None,
                 content=f"{error_type}: {display_msg}\n\nTraceback:\n{error_tb}",
                 metadata={
                     "error_type": error_type,
                     "error_message": display_msg,
-                    "cell_name": phase.name,
-                    "phase_type": "deterministic" if phase.is_deterministic() else "llm",
-                    "has_soundings": phase.candidates is not None and (isinstance(phase.candidates.factor, str) or phase.candidates.factor > 1) if phase.candidates else False,
+                    "cell_name": cell.name,
+                    "cell_type": "deterministic" if cell.is_deterministic() else "llm",
+                    "has_soundings": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1) if cell.candidates else False,
                 }
             )
 
             # Add to echo for cascade-level error tracking
             self.echo.add_error(
-                cell=phase.name,
+                cell=cell.name,
                 error_type=error_type,
                 error_message=error_msg
             )
@@ -8811,11 +8811,11 @@ Refinement directive: {reforge_config.honing_prompt}
         finally:
             # Clean up browser session
             if browser_session:
-                self._teardown_browser_session(browser_session, phase)
+                self._teardown_browser_session(browser_session, cell)
 
-    def _setup_browser_session(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Optional[BrowserSession]:
+    def _setup_browser_session(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> Optional[BrowserSession]:
         """
-        Set up a browser session for a phase with browser config.
+        Set up a browser session for a cell with browser config.
 
         Spawns a dedicated Rabbitize subprocess, initializes the browser,
         and stores session info in echo.state for tools to access.
@@ -8824,11 +8824,11 @@ Refinement directive: {reforge_config.honing_prompt}
         from .prompts import render_instruction
 
         indent = "  " * self.depth
-        console.print(f"{indent}[bold cyan]🌐 Starting browser session for phase '{phase.name}'[/bold cyan]")
+        console.print(f"{indent}[bold cyan]🌐 Starting browser session for cell '{cell.name}'[/bold cyan]")
 
         try:
-            # Create unique session ID for this phase
-            session_id = f"{self.session_id}_{phase.name}"
+            # Create unique session ID for this cell
+            session_id = f"{self.session_id}_{cell.name}"
 
             # Run async browser setup in sync context
             loop = asyncio.new_event_loop()
@@ -8837,18 +8837,18 @@ Refinement directive: {reforge_config.honing_prompt}
                 browser_session = loop.run_until_complete(
                     create_browser_session(
                         session_id,
-                        stability_detection=phase.browser.stability_detection,
-                        stability_wait=phase.browser.stability_wait,
-                        show_overlay=phase.browser.show_overlay,
+                        stability_detection=cell.browser.stability_detection,
+                        stability_wait=cell.browser.stability_wait,
+                        show_overlay=cell.browser.show_overlay,
                         # Cascade context for unified session registry
                         cascade_id=self.config.cascade_id,
-                        cell_name=phase.name,
+                        cell_name=cell.name,
                         rvbbit_session_id=self.session_id
                     )
                 )
 
                 # Render URL template (supports {{ input.url }} etc.)
-                outputs = {entry["phase"]: entry["output"] for entry in self.echo.lineage if "phase" in entry and "output" in entry}
+                outputs = {entry["cell"]: entry["output"] for entry in self.echo.lineage if "cell" in entry and "output" in entry}
                 outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
                 render_context = {
                     "input": input_data,
@@ -8857,7 +8857,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     "history": self.echo.history,
                     "lineage": self.echo.lineage
                 }
-                url = render_instruction(phase.browser.url, render_context)
+                url = render_instruction(cell.browser.url, render_context)
 
                 # Initialize browser and navigate to URL
                 result = loop.run_until_complete(browser_session.initialize(url))
@@ -8888,13 +8888,13 @@ Refinement directive: {reforge_config.honing_prompt}
 
         except Exception as e:
             console.print(f"{indent}[bold red]✗ Failed to start browser: {e}[/bold red]")
-            logging.error(f"Browser session setup failed for phase '{phase.name}': {e}")
-            # Don't fail the phase - just continue without browser
+            logging.error(f"Browser session setup failed for cell '{cell.name}': {e}")
+            # Don't fail the cell - just continue without browser
             return None
 
-    def _teardown_browser_session(self, browser_session: BrowserSession, phase: CellConfig) -> None:
+    def _teardown_browser_session(self, browser_session: BrowserSession, cell: CellConfig) -> None:
         """
-        Clean up a browser session after phase completion.
+        Clean up a browser session after cell completion.
 
         Ends the browser session (finalizing video) and kills the subprocess.
         """
@@ -8927,15 +8927,15 @@ Refinement directive: {reforge_config.honing_prompt}
             console.print(f"{indent}[yellow]⚠ Error closing browser: {e}[/yellow]")
             logging.warning(f"Browser session teardown failed: {e}")
 
-    def _execute_image_generation_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
+    def _execute_image_generation_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> Any:
         """
-        Execute an image generation phase using normal Agent with modalities.
+        Execute an image generation cell using normal Agent with modalities.
 
-        Image generation phases use models like Gemini that support image output.
+        Image generation cells use models like Gemini that support image output.
         Uses the same Agent.run() path as text models, just with modalities=["text", "image"].
         This ensures full observability: cost tracking, unified logging, events.
 
-        The phase.instructions becomes the image prompt (rendered with Jinja2).
+        The cell.instructions becomes the image prompt (rendered with Jinja2).
         """
         from .unified_logs import log_unified
         from .utils import get_next_image_index
@@ -8946,50 +8946,50 @@ Refinement directive: {reforge_config.honing_prompt}
 
         indent = "  " * self.depth
         start_time = time.time()
-        phase_model = phase.model or self.model
+        cell_model = cell.model or self.model
 
-        # Log phase start
-        log_message(self.session_id, "phase_start", phase.name,
-                    trace_id=trace.id, parent_id=trace.parent_id, node_type="image_generation_phase",
+        # Log cell start
+        log_message(self.session_id, "cell_start", cell.name,
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="image_generation_cell",
                     depth=self.depth, parent_session_id=self.parent_session_id,
-                    cell_name=phase.name, cascade_id=self.config.cascade_id,
-                    metadata={"phase_type": "image_generation", "model": phase_model})
+                    cell_name=cell.name, cascade_id=self.config.cascade_id,
+                    metadata={"cell_type": "image_generation", "model": cell_model})
 
-        # Update phase progress
-        update_phase_progress(
-            self.session_id, self.config.cascade_id, phase.name, self.depth,
+        # Update cell progress
+        update_cell_progress(
+            self.session_id, self.config.cascade_id, cell.name, self.depth,
             stage="image_generation"
         )
 
-        # Build outputs dict from lineage (same pattern as other phase methods)
+        # Build outputs dict from lineage (same pattern as other cell methods)
         outputs = {item['cell']: item['output'] for item in self.echo.lineage}
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
 
         # Render the prompt from instructions using Jinja2
-        prompt = render_instruction(phase.instructions, {
+        prompt = render_instruction(cell.instructions, {
             "input": input_data,
             "state": self.echo.state,
             "outputs": outputs,
             "lineage": self.echo.lineage,
         })
 
-        console.print(f"{indent}[bold magenta]🎨 Image Generation: {phase.name}[/bold magenta]")
-        console.print(f"{indent}  Model: {phase_model}")
+        console.print(f"{indent}[bold magenta]🎨 Image Generation: {cell.name}[/bold magenta]")
+        console.print(f"{indent}  Model: {cell_model}")
         console.print(f"{indent}  Prompt: {prompt[:100]}...")
 
-        # Check if this phase has context.from for image-to-image
+        # Check if this cell has context.from for image-to-image
         context_images = []
-        if phase.context and phase.context.from_:
+        if cell.context and cell.context.from_:
             from .cascade import ContextSourceConfig
-            for source in phase.context.from_:
-                source_name = source if isinstance(source, str) else getattr(source, 'phase', None)
+            for source in cell.context.from_:
+                source_name = source if isinstance(source, str) else getattr(source, 'cell', None)
                 if source_name:
                     # Create a config for loading images
                     source_config = source if isinstance(source, ContextSourceConfig) else ContextSourceConfig(cell=source_name)
                     source_images = self._load_cell_images(source_name, source_config)
                     context_images.extend(source_images)
                     if source_images:
-                        console.print(f"{indent}  [cyan]📷 Loaded {len(source_images)} image(s) from phase '{source_name}'[/cyan]")
+                        console.print(f"{indent}  [cyan]📷 Loaded {len(source_images)} image(s) from cell '{source_name}'[/cyan]")
 
         # Retry logic for image generation (transient API failures are common)
         max_attempts = 3
@@ -9001,7 +9001,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 # Create Agent with modalities for image generation
                 # This uses the SAME Agent.run() path as text models
                 agent = Agent(
-                    model=phase_model,
+                    model=cell_model,
                     system_prompt="Generate the requested image.",
                     tools=[],
                     base_url=self.base_url,
@@ -9074,7 +9074,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
             if raw_images:
                 config = get_config()
-                image_dir = os.path.join(config.image_dir, self.session_id, phase.name)
+                image_dir = os.path.join(config.image_dir, self.session_id, cell.name)
                 os.makedirs(image_dir, exist_ok=True)
 
                 for img_data in raw_images:
@@ -9104,7 +9104,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                 elif "webp" in header:
                                     ext = ".webp"
 
-                                image_idx = get_next_image_index(self.session_id, phase.name)
+                                image_idx = get_next_image_index(self.session_id, cell.name)
                                 filename = f"image_{image_idx}{ext}"
                                 filepath = os.path.join(image_dir, filename)
 
@@ -9114,7 +9114,7 @@ Refinement directive: {reforge_config.honing_prompt}
                                     f.write(image_bytes)
 
                                 # API-servable path
-                                relative_path = f"/api/images/{self.session_id}/{phase.name}/{filename}"
+                                relative_path = f"/api/images/{self.session_id}/{cell.name}/{filename}"
                                 saved_paths.append(relative_path)
 
                                 console.print(f"{indent}    📷 Saved: {relative_path}")
@@ -9125,22 +9125,22 @@ Refinement directive: {reforge_config.honing_prompt}
             result = {
                 "content": response.get("content", f"Generated {len(saved_paths)} image(s)"),
                 "images": saved_paths,
-                "model": phase_model,
+                "model": cell_model,
                 "request_id": response.get("id"),
             }
 
             # Add to lineage
             self.echo.lineage.append({
-                "cell": phase.name,
+                "cell": cell.name,
                 "output": result,
                 "type": "image_generation",
-                "model": phase_model,
+                "model": cell_model,
                 "images": saved_paths,
                 "duration_ms": duration_ms
             })
 
-            # Store output in state for subsequent phases
-            self.echo.state[f"output_{phase.name}"] = result
+            # Store output in state for subsequent cells
+            self.echo.state[f"output_{cell.name}"] = result
 
             # Log to unified logs
             log_unified(
@@ -9152,13 +9152,13 @@ Refinement directive: {reforge_config.honing_prompt}
                 role="assistant",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
-                model=phase_model,
+                cell_name=cell.name,
+                model=cell_model,
                 request_id=response.get("id"),
                 duration_ms=duration_ms,
                 content=f"Generated {len(saved_paths)} image(s)",
                 metadata={
-                    "phase_type": "image_generation",
+                    "cell_type": "image_generation",
                     "images": saved_paths,
                 }
             )
@@ -9166,18 +9166,18 @@ Refinement directive: {reforge_config.honing_prompt}
             # Console output
             console.print(f"{indent}  [green]✓ Generated {len(saved_paths)} image(s)[/green]")
 
-            # Hook: Phase Complete (this also publishes event via EventPublishingHooks)
+            # Hook: Cell Complete (this also publishes event via EventPublishingHooks)
             # Pass result with images so the hook publishes them correctly
-            self.hooks.on_phase_complete(phase.name, self.session_id, {
+            self.hooks.on_cell_complete(cell.name, self.session_id, {
                 **result,
-                "phase_type": "image_generation",
+                "cell_type": "image_generation",
                 "duration_ms": duration_ms,
             })
 
-            # Determine next phase from handoffs
+            # Determine next cell from handoffs
             next_cell = None
-            if phase.handoffs and len(phase.handoffs) > 0:
-                first_handoff = phase.handoffs[0]
+            if cell.handoffs and len(cell.handoffs) > 0:
+                first_handoff = cell.handoffs[0]
                 if isinstance(first_handoff, str):
                     next_cell = first_handoff
                 elif hasattr(first_handoff, 'target'):
@@ -9201,12 +9201,12 @@ Refinement directive: {reforge_config.honing_prompt}
                 role="system",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
+                cell_name=cell.name,
                 content=f"Image generation failed: {error_message}",
                 duration_ms=duration_ms,
                 metadata={
-                    "phase_type": "image_generation",
-                    "model": phase_model,
+                    "cell_type": "image_generation",
+                    "model": cell_model,
                     "error": error_message,
                     "error_type": type(e).__name__,
                 }
@@ -9225,13 +9225,13 @@ Refinement directive: {reforge_config.honing_prompt}
         depth: int = 0
     ) -> Any:
         """
-        Attempt to auto-fix a failed deterministic phase using LLM.
+        Attempt to auto-fix a failed deterministic cell using LLM.
 
         Uses an LLM to analyze the error and generate fixed code,
         then re-runs the tool with the fixed inputs.
 
         Args:
-            phase: The phase that failed
+            cell: The cell that failed
             error: The exception that occurred
             input_data: Original input data
             trace: Trace node for logging
@@ -9289,7 +9289,7 @@ Original code:
 ```
 
 The code should set a `result` variable with the output (DataFrame, dict, or scalar).
-Available: `data.cell_name` for prior phase outputs, `pd` (pandas), `np` (numpy).
+Available: `data.cell_name` for prior cell outputs, `pd` (pandas), `np` (numpy).
 
 Return ONLY the corrected Python code. No explanations, no markdown code blocks, just the raw code."""
         }
@@ -9442,7 +9442,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # All attempts failed
         raise last_error
 
-    def _execute_sql_mapping_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
+    def _execute_sql_mapping_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> Any:
         """
         Execute SQL-native mapping: fan out over rows from a temp table.
 
@@ -9456,7 +9456,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         import uuid
 
         indent = "  " * self.depth
-        config = phase.for_each_row
+        config = cell.for_each_row
 
         console.print(f"{indent}[bold magenta]🗂️  SQL Mapping: {config.table} → {config.max_parallel} parallel[/bold magenta]")
 
@@ -9535,11 +9535,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     }
 
                 elif config.instructions:
-                    # Run LLM phase per row
+                    # Run LLM cell per row
                     # Render instructions with row data
                     rendered_instructions = render_instruction(config.instructions, render_context)
 
-                    # Create a mini LLM phase
+                    # Create a mini LLM cell
                     from .agent import Agent
                     agent = Agent(model=self.model)
 
@@ -9645,15 +9645,15 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "_route": "success" if successful_count > 0 else "error"
         }
 
-    def _execute_deterministic_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
+    def _execute_deterministic_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> Any:
         """
-        Execute a deterministic (tool-based) phase without LLM mediation.
+        Execute a deterministic (tool-based) cell without LLM mediation.
 
         This provides direct tool execution for predictable, fast operations
-        while maintaining the same observability as LLM phases.
+        while maintaining the same observability as LLM cells.
         """
         from .deterministic import (
-            execute_deterministic_phase,
+            execute_deterministic_cell,
             DeterministicExecutionError,
             determine_routing
         )
@@ -9667,32 +9667,32 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         try:
             from .utils import compute_species_hash
 
-            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
-            phase_species_hash = compute_species_hash(phase_config, input_data)
+            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
+            cell_species_hash = compute_species_hash(cell_config, input_data)
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.debug(f"Could not compute species_hash for deterministic {phase.name}: {e}")
-            phase_species_hash = "unknown_species"
+            logger.debug(f"Could not compute species_hash for deterministic {cell.name}: {e}")
+            cell_species_hash = "unknown_species"
 
-        # Log phase start
-        log_message(self.session_id, "phase_start", phase.name,
-                    trace_id=trace.id, parent_id=trace.parent_id, node_type="deterministic_phase",
+        # Log cell start
+        log_message(self.session_id, "cell_start", cell.name,
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="deterministic_cell",
                     depth=self.depth, parent_session_id=self.parent_session_id,
-                    cell_name=phase.name, cascade_id=self.config.cascade_id,
-                    species_hash=phase_species_hash,
-                    metadata={"phase_type": "deterministic", "tool": phase.tool})
+                    cell_name=cell.name, cascade_id=self.config.cascade_id,
+                    species_hash=cell_species_hash,
+                    metadata={"cell_type": "deterministic", "tool": cell.tool})
 
-        # Update phase progress
-        update_phase_progress(
-            self.session_id, self.config.cascade_id, phase.name, self.depth,
+        # Update cell progress
+        update_cell_progress(
+            self.session_id, self.config.cascade_id, cell.name, self.depth,
             stage="deterministic"
         )
 
         try:
             # Execute the deterministic cell
-            result, next_cell = execute_deterministic_phase(
-                phase,
+            result, next_cell = execute_deterministic_cell(
+                cell,
                 input_data=input_data,
                 echo=self.echo,
                 config_path=self.config_path if isinstance(self.config_path, str) else None,
@@ -9702,14 +9702,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             duration_ms = (time.time() - start_time) * 1000
 
             # Update echo state with result
-            self.echo.state[f"output_{phase.name}"] = result
+            self.echo.state[f"output_{cell.name}"] = result
 
             # Add to lineage
             self.echo.lineage.append({
-                "cell": phase.name,
+                "cell": cell.name,
                 "output": result,
                 "type": "deterministic",
-                "tool": phase.tool,
+                "tool": cell.tool,
                 "duration_ms": duration_ms
             })
 
@@ -9724,25 +9724,25 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
                 cascade_file=self.config_path if isinstance(self.config_path, str) else None,
-                cell_name=phase.name,
-                species_hash=phase_species_hash,
+                cell_name=cell.name,
+                species_hash=cell_species_hash,
                 content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
                 duration_ms=duration_ms,
                 metadata={
-                    "phase_type": "deterministic",
-                    "tool": phase.tool,
-                    "inputs": list((phase.tool_inputs or {}).keys()),
+                    "cell_type": "deterministic",
+                    "tool": cell.tool,
+                    "inputs": list((cell.tool_inputs or {}).keys()),
                     "next_cell": next_cell
                 }
             )
 
-            # Hook: Phase Complete
-            self.hooks.on_phase_complete(phase.name, self.session_id, {
+            # Hook: Cell Complete
+            self.hooks.on_cell_complete(cell.name, self.session_id, {
                 "output": result,
                 "duration_ms": duration_ms,
             })
 
-            # Return next phase name or result
+            # Return next cell name or result
             if next_cell:
                 return next_cell
             return result
@@ -9759,27 +9759,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 role="error",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
-                content=f"Deterministic phase failed: {str(e)}",
+                cell_name=cell.name,
+                content=f"Deterministic cell failed: {str(e)}",
                 duration_ms=duration_ms,
                 metadata={
-                    "phase_type": "deterministic",
-                    "tool": phase.tool,
+                    "cell_type": "deterministic",
+                    "tool": cell.tool,
                     "error": str(e.original_error) if e.original_error else str(e)
                 }
             )
 
             # Handle on_error routing
-            if phase.on_error:
+            if cell.on_error:
                 # Check for auto_fix mode
                 auto_fix_config = None
-                if phase.on_error == "auto_fix":
+                if cell.on_error == "auto_fix":
                     # Simple mode: on_error: auto_fix
                     auto_fix_config = AutoFixConfig()
-                elif isinstance(phase.on_error, dict) and "auto_fix" in phase.on_error:
+                elif isinstance(cell.on_error, dict) and "auto_fix" in cell.on_error:
                     # Customized mode: on_error: {auto_fix: {...}}
-                    if isinstance(phase.on_error["auto_fix"], dict):
-                        auto_fix_config = AutoFixConfig(**phase.on_error["auto_fix"])
+                    if isinstance(cell.on_error["auto_fix"], dict):
+                        auto_fix_config = AutoFixConfig(**cell.on_error["auto_fix"])
                     else:
                         auto_fix_config = AutoFixConfig()
 
@@ -9788,7 +9788,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     console.print(f"{indent}  [yellow]🔧 Attempting auto-fix...[/yellow]")
                     try:
                         result = self._auto_fix_and_retry(
-                            cell=phase,
+                            cell=cell,
                             error=e,
                             input_data=input_data,
                             trace=trace,
@@ -9796,8 +9796,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             depth=depth
                         )
                         # Success - determine routing and return
-                        handoffs = phase.handoffs or []
-                        next_cell = determine_routing(result, phase.routing, handoffs)
+                        handoffs = cell.handoffs or []
+                        next_cell = determine_routing(result, cell.routing, handoffs)
                         if next_cell:
                             console.print(f"{indent}  [magenta]→ Routing to: {next_cell}[/magenta]")
                             return next_cell
@@ -9807,49 +9807,49 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         console.print(f"{indent}  [red]✗ Auto-fix exhausted all attempts[/red]")
                         e = fix_error  # Use the last error for further handling
 
-                if isinstance(phase.on_error, str) and phase.on_error != "auto_fix":
-                    # Route to error handler phase
-                    console.print(f"{indent}  [yellow]→ Routing to error handler: {phase.on_error}[/yellow]")
+                if isinstance(cell.on_error, str) and cell.on_error != "auto_fix":
+                    # Route to error handler cell
+                    console.print(f"{indent}  [yellow]→ Routing to error handler: {cell.on_error}[/yellow]")
                     # Store error info in state for error handler to access
                     self.echo.state["last_deterministic_error"] = {
-                        "cell": phase.name,
-                        "tool": phase.tool,
+                        "cell": cell.name,
+                        "tool": cell.tool,
                         "error": str(e.original_error) if hasattr(e, 'original_error') and e.original_error else str(e),
                         "inputs": e.inputs if hasattr(e, 'inputs') else {}
                     }
-                    return phase.on_error
-                elif isinstance(phase.on_error, dict) and "instructions" in phase.on_error:
-                    # Inline LLM fallback - create temporary phase and execute
+                    return cell.on_error
+                elif isinstance(cell.on_error, dict) and "instructions" in cell.on_error:
+                    # Inline LLM fallback - create temporary cell and execute
                     console.print(f"{indent}  [yellow]→ Falling back to LLM handler[/yellow]")
 
-                    # Build fallback phase config
+                    # Build fallback cell config
                     fallback_config = {
-                        "name": f"{phase.name}_fallback",
-                        "instructions": phase.on_error.get("instructions", f"Handle error from {phase.name}: {{{{ state.last_deterministic_error }}}}"),
-                        **{k: v for k, v in phase.on_error.items() if k != "instructions"}
+                        "name": f"{cell.name}_fallback",
+                        "instructions": cell.on_error.get("instructions", f"Handle error from {cell.name}: {{{{ state.last_deterministic_error }}}}"),
+                        **{k: v for k, v in cell.on_error.items() if k != "instructions"}
                     }
 
                     # Store error info
                     self.echo.state["last_deterministic_error"] = {
-                        "cell": phase.name,
-                        "tool": phase.tool,
+                        "cell": cell.name,
+                        "tool": cell.tool,
                         "error": str(e.original_error) if hasattr(e, 'original_error') and e.original_error else str(e),
                         "inputs": e.inputs if hasattr(e, 'inputs') else {}
                     }
 
-                    # Create and execute fallback phase
-                    fallback_phase = CellConfig(**fallback_config)
-                    fallback_trace = trace.create_child("phase", f"{phase.name}_fallback")
-                    return self._execute_phase_internal(fallback_phase, input_data, fallback_trace)
+                    # Create and execute fallback cell
+                    fallback_cell = CellConfig(**fallback_config)
+                    fallback_trace = trace.create_child("cell", f"{cell.name}_fallback")
+                    return self._execute_cell_internal(fallback_cell, input_data, fallback_trace)
 
             # No error handler - re-raise
             raise
 
-    def _emit_progress_display(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> None:
+    def _emit_progress_display(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> None:
         """
         Emit a non-blocking progress display for cells with hitl + tool/instructions.
 
-        Unlike _execute_hitl_phase which blocks for user input, this:
+        Unlike _execute_hitl_cell which blocks for user input, this:
         - Renders the HITL template
         - Emits an event for the apps UI to display
         - Logs for visibility
@@ -9866,9 +9866,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         indent = "  " * self.depth
         logger = logging.getLogger(__name__)
 
-        logger.debug(f"{indent}Emitting progress display for {phase.name}")
+        logger.debug(f"{indent}Emitting progress display for {cell.name}")
 
-        # Build render context (same as HITL phase)
+        # Build render context (same as HITL cell)
         outputs = {}
         for item in self.echo.lineage:
             output = item.get("output")
@@ -9888,22 +9888,22 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # Render the HITL template
         try:
-            rendered_html = render_instruction(phase.effective_htmx, render_context)
+            rendered_html = render_instruction(cell.effective_htmx, render_context)
         except Exception as e:
             logger.warning(f"{indent}Progress display template rendering failed: {e}")
-            rendered_html = f"<div class='text-muted-foreground'>Executing {phase.name}...</div>"
+            rendered_html = f"<div class='text-muted-foreground'>Executing {cell.name}...</div>"
 
         # Build UI spec for the progress display
         ui_spec = {
             "layout": "vertical",
-            "title": phase.hitl_title or f"Progress: {phase.name}",
+            "title": cell.hitl_title or f"Progress: {cell.name}",
             "sections": [
                 {"type": "html", "content": rendered_html, "allow_forms": False}
             ],
             "_meta": {
                 "type": "progress_display",
                 "blocking": False,
-                "cell_name": phase.name,
+                "cell_name": cell.name,
             }
         }
 
@@ -9914,7 +9914,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             session_id=self.session_id,
             timestamp=datetime.now().isoformat(),
             data={
-                "cell_name": phase.name,
+                "cell_name": cell.name,
                 "cascade_id": self.config.cascade_id,
                 "ui_spec": ui_spec,
                 "html": rendered_html,
@@ -9932,10 +9932,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             depth=self.depth,
             cascade_id=self.config.cascade_id,
             cascade_file=self.config_path if isinstance(self.config_path, str) else None,
-            cell_name=phase.name,
+            cell_name=cell.name,
             content=f"Progress display rendered ({len(rendered_html)} chars)",
             metadata={
-                "phase_type": "progress_display",
+                "cell_type": "progress_display",
                 "blocking": False,
                 "html": rendered_html,
             }
@@ -9943,14 +9943,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         logger.debug(f"{indent}Progress display emitted, continuing execution")
 
-    def _execute_hitl_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
+    def _execute_hitl_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode) -> Any:
         """
-        Execute a HITL screen phase - render HTML and block for user response.
+        Execute a HITL screen cell - render HTML and block for user response.
 
         This is deterministic execution (no LLM) - the HTML template is rendered
         directly using Jinja2 and displayed via the checkpoint system.
         """
-        from .deterministic import execute_hitl_phase
+        from .deterministic import execute_hitl_cell
         from .unified_logs import log_unified
         import time
 
@@ -9961,32 +9961,32 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         try:
             from .utils import compute_species_hash
 
-            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
-            phase_species_hash = compute_species_hash(phase_config, input_data)
+            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
+            cell_species_hash = compute_species_hash(cell_config, input_data)
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.debug(f"Could not compute species_hash for HITL {phase.name}: {e}")
-            phase_species_hash = "unknown_species"
+            logger.debug(f"Could not compute species_hash for HITL {cell.name}: {e}")
+            cell_species_hash = "unknown_species"
 
-        # Log phase start
-        log_message(self.session_id, "phase_start", phase.name,
+        # Log cell start
+        log_message(self.session_id, "cell_start", cell.name,
                     trace_id=trace.id, parent_id=trace.parent_id, node_type="hitl_screen",
                     depth=self.depth, parent_session_id=self.parent_session_id,
-                    cell_name=phase.name, cascade_id=self.config.cascade_id,
-                    species_hash=phase_species_hash,
-                    metadata={"phase_type": "hitl_screen"})
+                    cell_name=cell.name, cascade_id=self.config.cascade_id,
+                    species_hash=cell_species_hash,
+                    metadata={"cell_type": "hitl_screen"})
 
-        # Update phase progress
-        update_phase_progress(
-            self.session_id, self.config.cascade_id, phase.name, self.depth,
+        # Update cell progress
+        update_cell_progress(
+            self.session_id, self.config.cascade_id, cell.name, self.depth,
             stage="hitl_screen"
         )
 
         try:
             # Execute the HITL screen cell
-            result, next_cell = execute_hitl_phase(
-                phase,
+            result, next_cell = execute_hitl_cell(
+                cell,
                 input_data=input_data,
                 echo=self.echo,
                 session_id=self.session_id,
@@ -9997,11 +9997,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             duration_ms = (time.time() - start_time) * 1000
 
             # Update echo state with result
-            self.echo.state[f"output_{phase.name}"] = result
+            self.echo.state[f"output_{cell.name}"] = result
 
             # Add to lineage
             self.echo.lineage.append({
-                "cell": phase.name,
+                "cell": cell.name,
                 "output": result,
                 "type": "hitl_screen",
                 "duration_ms": duration_ms
@@ -10018,24 +10018,24 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
                 cascade_file=self.config_path if isinstance(self.config_path, str) else None,
-                cell_name=phase.name,
-                species_hash=phase_species_hash,
+                cell_name=cell.name,
+                species_hash=cell_species_hash,
                 content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
                 duration_ms=duration_ms,
                 metadata={
-                    "phase_type": "hitl_screen",
+                    "cell_type": "hitl_screen",
                     "next_cell": next_cell,
                     "timeout": result.get("_timeout", False) if isinstance(result, dict) else False
                 }
             )
 
-            # Hook: Phase Complete
-            self.hooks.on_phase_complete(phase.name, self.session_id, {
+            # Hook: Cell Complete
+            self.hooks.on_cell_complete(cell.name, self.session_id, {
                 "output": result,
                 "duration_ms": duration_ms,
             })
 
-            # Return next phase name or result
+            # Return next cell name or result
             if next_cell:
                 return next_cell
             return result
@@ -10052,11 +10052,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 role="error",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cell_name=phase.name,
+                cell_name=cell.name,
                 content=f"HITL screen failed: {str(e)}",
                 duration_ms=duration_ms,
                 metadata={
-                    "phase_type": "hitl_screen",
+                    "cell_type": "hitl_screen",
                     "error": str(e)
                 }
             )
@@ -10064,7 +10064,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # Re-raise
             raise
 
-    def _execute_phase_internal(self, phase: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:
+    def _execute_cell_internal(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:
         indent = "  " * self.depth
         rag_context = None
         rag_prompt = ""
@@ -10075,27 +10075,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         try:
             from .utils import compute_species_hash
 
-            # Get phase config as dict
-            phase_config = phase.dict() if hasattr(phase, 'dict') else (phase if isinstance(phase, dict) else {})
+            # Get cell config as dict
+            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
 
             # Compute species_hash (cell-level identity)
-            phase_species_hash = compute_species_hash(phase_config, input_data)
+            cell_species_hash = compute_species_hash(cell_config, input_data)
 
         except Exception as e:
             # Fallback to unknown if computation fails (don't break execution)
             logger = logging.getLogger(__name__)
-            logger.debug(f"Could not compute species_hash for {phase.name}: {e}")
-            phase_species_hash = "unknown_species"
+            logger.debug(f"Could not compute species_hash for {cell.name}: {e}")
+            cell_species_hash = "unknown_species"
 
-        # Set current phase name for tools like ask_human to use
-        set_current_cell_name(phase.name)
+        # Set current cell name for tools like ask_human to use
+        set_current_cell_name(cell.name)
 
-        # Reset auto-context loop tracking for this phase
+        # Reset auto-context loop tracking for this cell
         self._loop_validation_failures = []
 
         # Set current candidate index if we're in a candidate (for parallel candidate decisions)
-        if self.current_phase_candidate_index is not None:
-            set_current_candidate_index(self.current_phase_candidate_index)
+        if self.current_cell_candidate_index is not None:
+            set_current_candidate_index(self.current_cell_candidate_index)
 
         def _cleanup_rag():
             if rag_context:
@@ -10113,20 +10113,20 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "outputs": outputs,
             "lineage": self.echo.lineage,
             # Sounding context - enables fan-out patterns like {{ state.items[candidate_index] }}
-            "candidate_index": self.current_phase_candidate_index if self.current_phase_candidate_index is not None else 0,
-            "candidate_factor": getattr(self, '_current_sounding_factor', 1),  # Total soundings in this phase
-            "is_sounding": self.current_phase_candidate_index is not None,
+            "candidate_index": self.current_cell_candidate_index if self.current_cell_candidate_index is not None else 0,
+            "candidate_factor": getattr(self, '_current_sounding_factor', 1),  # Total soundings in this cell
+            "is_sounding": self.current_cell_candidate_index is not None,
         }
 
-        # Build/update RAG index if configured for this phase
-        if phase.rag:
+        # Build/update RAG index if configured for this cell
+        if cell.rag:
             rag_context = ensure_rag_index(
-                phase.rag,
+                cell.rag,
                 self.config_path,
                 self.session_id,
                 trace_id=trace.id,
                 parent_id=trace.parent_id,
-                cell_name=phase.name,
+                cell_name=cell.name,
                 cascade_id=self.config.cascade_id
             )
             set_current_rag_context(rag_context)
@@ -10134,7 +10134,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             rag_prompt = (
                 f"\n\n## Retrieval Context\n"
                 f"A retrieval index is available for `{rag_context.directory}` "
-                f"(recursive: {phase.rag.recursive}), RAG ID: `{rag_context.rag_id}`.\n\n"
+                f"(recursive: {cell.rag.recursive}), RAG ID: `{rag_context.rag_id}`.\n\n"
                 f"**CRITICAL: You MUST use `rag_search` first to get valid chunk_ids.** "
                 f"Chunk IDs are opaque strings like `9de9b0d4a33d_1` - never invent or guess them! "
                 f"Only use the exact chunk_id values returned by `rag_search` in the results array.\n\n"
@@ -10142,21 +10142,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 f"Cite sources as path#line_start-line_end."
             )
         else:
-            # No rag block on this phase - check if RAG tools are in traits list
-            # If so, reuse the existing RAG context from an earlier phase
+            # No rag block on this cell - check if RAG tools are in traits list
+            # If so, reuse the existing RAG context from an earlier cell
             from .rag.context import get_current_rag_context
             existing_ctx = get_current_rag_context()
             rag_tools_in_traits = {"rag_search", "rag_read_chunk", "rag_list_sources"}
-            phase_uses_rag_tools = bool(
-                phase.traits and
-                isinstance(phase.traits, list) and
-                rag_tools_in_traits.intersection(phase.traits)
+            cell_uses_rag_tools = bool(
+                cell.traits and
+                isinstance(cell.traits, list) and
+                rag_tools_in_traits.intersection(cell.traits)
             )
 
-            if existing_ctx and phase_uses_rag_tools:
+            if existing_ctx and cell_uses_rag_tools:
                 # Reuse existing RAG context - no rebuild needed
                 rag_context = existing_ctx
-                rag_tool_names = list(rag_tools_in_traits.intersection(phase.traits))
+                rag_tool_names = list(rag_tools_in_traits.intersection(cell.traits))
                 rag_prompt = (
                     f"\n\n## Retrieval Context\n"
                     f"A retrieval index is available for `{rag_context.directory}`, "
@@ -10170,18 +10170,18 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # else: no RAG context and no RAG tools requested - leave context as-is
 
         # ========== RESEARCH COCKPIT MODE: Inject UI scaffolding ==========
-        # If this phase is running in Research Cockpit mode (interactive research UI),
+        # If this cell is running in Research Cockpit mode (interactive research UI),
         # inject system prompt with UI patterns, state management, and available tools
         from .research_cockpit import is_research_cockpit_mode, inject_research_scaffolding, get_detection_reason
 
-        phase_instructions = phase.instructions
-        if is_research_cockpit_mode(phase):
-            reason = get_detection_reason(phase)
+        cell_instructions = cell.instructions
+        if is_research_cockpit_mode(cell):
+            reason = get_detection_reason(cell)
             console.print(f"{indent}[dim cyan]🧭 Research Cockpit mode detected ({reason})[/dim cyan]")
             console.print(f"{indent}[dim]Injecting UI scaffolding and state management patterns...[/dim]")
-            phase_instructions = inject_research_scaffolding(phase.instructions, phase, render_context)
+            cell_instructions = inject_research_scaffolding(cell.instructions, cell, render_context)
 
-        rendered_instructions = render_instruction(phase_instructions, render_context)
+        rendered_instructions = render_instruction(cell_instructions, render_context)
 
         # Apply mutation if provided (for candidate variations)
         # Three modes:
@@ -10202,24 +10202,24 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # This is for diversity sampling (Tree of Thought), less learnable
                 rendered_instructions += f"\n\n**Variation Strategy**: {mutation}"
 
-        # ========== PRE-WARDS: Validate inputs before phase starts ==========
-        if phase.wards and phase.wards.pre:
+        # ========== PRE-WARDS: Validate inputs before cell starts ==========
+        if cell.wards and cell.wards.pre:
             console.print(f"{indent}[bold cyan]🛡️  Running Pre-Wards (Input Validation)...[/bold cyan]")
 
-            # Update phase progress for pre-ward stage
-            update_phase_progress(
-                self.session_id, self.config.cascade_id, phase.name, self.depth,
+            # Update cell progress for pre-ward stage
+            update_cell_progress(
+                self.session_id, self.config.cascade_id, cell.name, self.depth,
                 stage="pre_ward"
             )
 
             # Prepare input content for validation
             input_content = json.dumps(input_data)
 
-            total_pre_wards = len(phase.wards.pre)
-            for ward_idx, ward_config in enumerate(phase.wards.pre):
+            total_pre_wards = len(cell.wards.pre)
+            for ward_idx, ward_config in enumerate(cell.wards.pre):
                 # Update progress with current ward
-                update_phase_progress(
-                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                update_cell_progress(
+                    self.session_id, self.config.cascade_id, cell.name, self.depth,
                     ward_name=_format_validator_name(ward_config.validator),
                     ward_type="pre",
                     ward_index=ward_idx + 1,
@@ -10230,8 +10230,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 if not ward_result["valid"]:
                     # Handle based on mode
                     if ward_result["mode"] == "blocking":
-                        console.print(f"{indent}[bold red]⛔ Pre-Ward BLOCKING: Phase aborted[/bold red]")
-                        log_message(self.session_id, "pre_ward_blocked", f"Phase blocked by {ward_result['validator']}",
+                        console.print(f"{indent}[bold red]⛔ Pre-Ward BLOCKING: Cell aborted[/bold red]")
+                        log_message(self.session_id, "pre_ward_blocked", f"Cell blocked by {ward_result['validator']}",
                                    {"reason": ward_result["reason"]},
                                    trace_id=trace.id, parent_id=trace.parent_id,
                                    node_type="ward_block", depth=self.depth)
@@ -10249,8 +10249,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         routing_menu = ""
         
         normalized_handoffs = []
-        if phase.handoffs:
-            for h in phase.handoffs:
+        if cell.handoffs:
+            for h in cell.handoffs:
                 if isinstance(h, str):
                     normalized_handoffs.append({"target": h, "description": None})
                 else:
@@ -10270,14 +10270,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # AUTO-INJECT LOOP_UNTIL VALIDATION GOAL
         # If loop_until is configured, tell the agent upfront what validation it needs to pass
         # Unless loop_until_silent is True (for impartial/subjective validation)
-        if phase.rules.loop_until and not phase.rules.loop_until_silent:
-            validator_spec = phase.rules.loop_until
+        if cell.rules.loop_until and not cell.rules.loop_until_silent:
+            validator_spec = cell.rules.loop_until
             validator_display_name = _format_validator_name(validator_spec)
-            max_attempts = phase.rules.max_attempts if phase.rules.max_attempts else 5
+            max_attempts = cell.rules.max_attempts if cell.rules.max_attempts else 5
 
             # Use custom prompt if provided, otherwise auto-generate from validator description
-            if phase.rules.loop_until_prompt:
-                validation_prompt = phase.rules.loop_until_prompt
+            if cell.rules.loop_until_prompt:
+                validation_prompt = cell.rules.loop_until_prompt
             else:
                 # Try to get validator description from manifest (only for string validators)
                 validator_description = None
@@ -10296,36 +10296,36 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # Inject validation requirement into instructions
             rendered_instructions += f"\n\n---\n**VALIDATION REQUIREMENT:**\n{validation_prompt}\nYou have {max_attempts} attempt(s) to satisfy this validator.\n---"
 
-        # Determine model to use (phase override or default)
-        phase_model = phase.model if phase.model else self.model
+        # Determine model to use (cell override or default)
+        cell_model = cell.model if cell.model else self.model
 
-        console.print(f"\n{indent}[bold magenta]📍 Bearing (Phase): {phase.name}[/bold magenta] [bold cyan]🤖 {phase_model}[/bold cyan]")
+        console.print(f"\n{indent}[bold magenta]📍 Bearing (Cell): {cell.name}[/bold magenta] [bold cyan]🤖 {cell_model}[/bold cyan]")
         console.print(f"{indent}[italic]{rendered_instructions[:100]}...[/italic]")
 
-        log_message(self.session_id, "phase_start", phase.name,
-                   trace_id=trace.id, parent_id=trace.parent_id, node_type="phase", depth=trace.depth,
-                   model=phase_model, parent_session_id=self.parent_session_id,
-                   cell_name=phase.name, cascade_id=self.config.cascade_id,
-                   species_hash=phase_species_hash, phase_config=phase.dict() if phase_species_hash else None)
+        log_message(self.session_id, "cell_start", cell.name,
+                   trace_id=trace.id, parent_id=trace.parent_id, node_type="cell", depth=trace.depth,
+                   model=cell_model, parent_session_id=self.parent_session_id,
+                   cell_name=cell.name, cascade_id=self.config.cascade_id,
+                   species_hash=cell_species_hash, cell_config=cell.dict() if cell_species_hash else None)
 
-        # Publish phase_start event (for narrator and other subscribers)
-        self._publish_event("phase_start", {
-            "cell_name": phase.name,
+        # Publish cell_start event (for narrator and other subscribers)
+        self._publish_event("cell_start", {
+            "cell_name": cell.name,
             "cascade_id": self.config.cascade_id,
-            "model": phase_model,
+            "model": cell_model,
             "trace_id": trace.id if trace else None,
         })
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
-        trait_list = phase.traits
+        trait_list = cell.traits
         # Handle manifest mode: traits can be "manifest" (string) or ["manifest"] (list)
         is_manifest = (
-            phase.traits == "manifest" or
-            (isinstance(phase.traits, list) and "manifest" in phase.traits)
+            cell.traits == "manifest" or
+            (isinstance(cell.traits, list) and "manifest" in cell.traits)
         )
         if is_manifest:
             console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting traits...[/bold cyan]")
-            trait_list = self._run_quartermaster(phase, input_data, trace, phase_model)
+            trait_list = self._run_quartermaster(cell, input_data, trace, cell_model)
             console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(trait_list)}[/bold cyan]")
 
         if rag_tool_names:
@@ -10370,17 +10370,17 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # else: Tool not found
 
         # Inject 'route_to' tool if routing enabled
-        chosen_next_phase_by_agent = None
-        chosen_next_phase = None # Initialize for consistency
+        chosen_next_cell_by_agent = None
+        chosen_next_cell = None # Initialize for consistency
 
         if enable_routing_tool:
             def route_to_tool(target: str):
                 """
-                Routes execution to the specified target phase.
+                Routes execution to the specified target cell.
                 """
-                nonlocal chosen_next_phase_by_agent # Allow modification of outer scope variable
+                nonlocal chosen_next_cell_by_agent # Allow modification of outer scope variable
                 if target in valid_handoff_targets:
-                    chosen_next_phase_by_agent = target
+                    chosen_next_cell_by_agent = target
                     return f"Routing to {target}."
                 return f"Invalid target. Valid options: {valid_handoff_targets}"
 
@@ -10389,7 +10389,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
 
         # ========== CONTEXT SYSTEM (SELECTIVE-BY-DEFAULT) ==========
-        # Build context fresh for each phase from config
+        # Build context fresh for each cell from config
         # No config = clean slate (empty context)
         # Use context.from: ["all"] for explicit snowball behavior
         #
@@ -10407,14 +10407,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 self.context_messages.append(msg)
             context_result = pre_built_context
         else:
-            context_result = self._build_phase_context(phase, input_data, trace)
+            context_result = self._build_cell_context(cell, input_data, trace)
 
             # Always use the built context (selective-by-default)
             self.context_messages = []
             for msg in context_result:
                 ctx_trace = trace.create_child("msg", "context_injection")
                 self.echo.add_history(msg, trace_id=ctx_trace.id, parent_id=trace.id, node_type="context_injection",
-                                     metadata=self._get_metadata({"context_from": phase.context.from_ if phase.context else []},
+                                     metadata=self._get_metadata({"context_from": cell.context.from_ if cell.context else []},
                                                                  semantic_actor="framework", semantic_purpose="context_injection"))
                 self.context_messages.append(msg)
 
@@ -10422,13 +10422,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # Since we are snowballing context_messages, we don't need to add input_data as a separate user message.
         # Input data is already available via:
         # 1. Jinja2 template rendering in system prompt ({{ input.key }})
-        # 2. Snowball context from previous phases (for multi-phase cascades)
+        # 2. Snowball context from previous cells (for multi-cell cascades)
         # Adding a redundant "## Input Data:" user message confuses the agent.
         # user_content = f"## Input Data:\n{json.dumps(input_data or {})}"  # REMOVED - redundant!
 
         # Add tool descriptions to instructions if using prompt-based tools
         final_instructions = rendered_instructions + rag_prompt
-        use_native = phase.use_native_tools
+        use_native = cell.use_native_tools
 
         if tool_descriptions:
             if use_native:
@@ -10444,9 +10444,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
                 final_instructions += tools_prompt
 
-        # Initialize Agent (using phase_model determined earlier)
+        # Initialize Agent (using cell_model determined earlier)
         agent = Agent(
-            model=phase_model,
+            model=cell_model,
             system_prompt="", # We manage system prompts in context_messages
             tools=tools_schema if use_native else None,  # Only pass tools if using native
             base_url=self.base_url,
@@ -10454,12 +10454,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             use_native_tools=use_native  # Pass flag so Agent can strip tool_calls/tool_call_id from messages
         )
 
-        # Determine if this is the first phase (no prior assistant messages in context)
+        # Determine if this is the first cell (no prior assistant messages in context)
         has_prior_context = any(m.get("role") == "assistant" for m in self.context_messages)
 
-        # Build phase messages based on context:
-        # - First phase: system message (tools) + user message (task)
-        # - Subsequent phases: user message only (task) - tools already in context
+        # Build cell messages based on context:
+        # - First cell: system message (tools) + user message (task)
+        # - Subsequent cells: user message only (task) - tools already in context
         #
         # This ensures proper conversation flow: user messages prompt responses,
         # while multiple system messages can confuse LLM APIs.
@@ -10474,7 +10474,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             tools_prompt += "Do NOT output raw JSON outside of code fences - it will not be detected."
 
         if has_prior_context:
-            # Subsequent phase: task as user message
+            # Subsequent cell: task as user message
             # For prompt-based tools: include tool definitions in a system message if tools changed,
             # otherwise include in user message for cleaner flow
             # For native tools: tools are passed via API parameter, no message needed
@@ -10482,7 +10482,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             if not use_native and tool_descriptions:
                 # Add system message with tool definitions (Quartermaster may have selected different tools)
                 sys_trace = trace.create_child("msg", "tool_definitions")
-                sys_msg = {"role": "system", "content": f"## Tools for this phase\n\n{tools_prompt}"}
+                sys_msg = {"role": "system", "content": f"## Tools for this cell\n\n{tools_prompt}"}
                 self.echo.add_history(sys_msg, trace_id=sys_trace.id, parent_id=trace.id, node_type="system",
                                      metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="instructions"))
                 self.context_messages.append(sys_msg)
@@ -10491,13 +10491,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             task_content = f"## New Task\n\n{rendered_instructions}{rag_prompt}"
             # Convert to multimodal if images are embedded in rendered text
             task_content = convert_to_multimodal_content(task_content)
-            user_trace = trace.create_child("msg", "phase_task")
+            user_trace = trace.create_child("msg", "cell_task")
             user_msg = {"role": "user", "content": task_content}
             self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",
                                  metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="task_input"))
             self.context_messages.append(user_msg)
         else:
-            # First phase: system message with tools + user message with task
+            # First cell: system message with tools + user message with task
             if not use_native and tool_descriptions:
                 sys_trace = trace.create_child("msg", "tool_definitions")
                 sys_msg = {"role": "system", "content": f"## Available Tools\n\n{tools_prompt}"}
@@ -10509,7 +10509,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             task_content = rendered_instructions + rag_prompt
             # Convert to multimodal if images are embedded in rendered text
             task_content = convert_to_multimodal_content(task_content)
-            user_trace = trace.create_child("msg", "phase_task")
+            user_trace = trace.create_child("msg", "cell_task")
             user_msg = {"role": "user", "content": task_content}
             self.echo.add_history(user_msg, trace_id=user_trace.id, parent_id=trace.id, node_type="user",
                                  metadata=self._get_metadata(semantic_actor="framework", semantic_purpose="task_input"))
@@ -10525,7 +10525,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                             semantic_actor="framework", semantic_purpose="task_input")
             )
 
-        # Handle Phase Start Injection
+        # Handle Cell Start Injection
         injected_messages = []
         if initial_injection and initial_injection.get("action") == HookAction.INJECT:
             inject_content = initial_injection.get("content")
@@ -10541,8 +10541,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         self._update_graph()
 
         # Async Cascades (Side Effects) - on_start
-        if phase.async_cascades:
-            for sub in phase.async_cascades:
+        if cell.async_cascades:
+            for sub in cell.async_cascades:
                 if sub.trigger == "on_start":
                     # Prepare Input (same logic as sub_cascades)
                     sub_input = {}
@@ -10571,8 +10571,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                     # Determine candidate_index to pass to spawned cascade
                     async_candidate_index = None
-                    if self.current_phase_candidate_index is not None:
-                        async_candidate_index = self.current_phase_candidate_index
+                    if self.current_cell_candidate_index is not None:
+                        async_candidate_index = self.current_cell_candidate_index
                     elif self.candidate_index is not None:
                         async_candidate_index = self.candidate_index
 
@@ -10581,8 +10581,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id, candidate_index=async_candidate_index)
 
         # Sub-cascades handling
-        if phase.sub_cascades:
-            for sub in phase.sub_cascades:
+        if cell.sub_cascades:
+            for sub in cell.sub_cascades:
                 # Resolve path relative to current config if possible
                 ref_path = sub.ref
                 if isinstance(self.config_path, str) and not os.path.isabs(ref_path):
@@ -10618,10 +10618,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Generate unique sub-cascade session ID (include candidate index if inside soundings)
                 # Also determine which candidate_index to pass through to child
                 sub_candidate_index = None
-                if self.current_phase_candidate_index is not None:
-                    # Inside phase-level candidate - include candidate index
-                    sub_session_id = f"{self.session_id}_sub_{self.current_phase_candidate_index}"
-                    sub_candidate_index = self.current_phase_candidate_index
+                if self.current_cell_candidate_index is not None:
+                    # Inside cell-level candidate - include candidate index
+                    sub_session_id = f"{self.session_id}_sub_{self.current_cell_candidate_index}"
+                    sub_candidate_index = self.current_cell_candidate_index
                 elif self.candidate_index is not None:
                     # Inside cascade-level candidate - include candidate index
                     sub_session_id = f"{self.session_id}_sub_{self.candidate_index}"
@@ -10647,24 +10647,24 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     pass
 
         # Loop for rules (max_turns, loop_until)
-        max_turns = phase.rules.max_turns or 1
-        max_attempts = phase.rules.max_attempts or 1
+        max_turns = cell.rules.max_turns or 1
+        max_attempts = cell.rules.max_attempts or 1
 
         response_content = ""
         validation_passed = False
 
         # We iterate turns.
-        phase_history = []
-        phase_history.extend(injected_messages)
+        cell_history = []
+        cell_history.extend(injected_messages)
 
         # Outer loop for validation attempts (loop_until)
         for attempt in range(max_attempts):
             # Track retry attempt
             self.current_retry_attempt = attempt if max_attempts > 1 else None
 
-            # Update phase progress for visualization
-            update_phase_progress(
-                self.session_id, self.config.cascade_id, phase.name, self.depth,
+            # Update cell progress for visualization
+            update_cell_progress(
+                self.session_id, self.config.cascade_id, cell.name, self.depth,
                 stage="main",
                 attempt=attempt + 1,
                 max_attempts=max_attempts
@@ -10677,7 +10677,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 retry_trace = trace.create_child("validation_retry", f"attempt_{attempt + 1}")
 
                 # Inject retry instructions if provided
-                if phase.rules.retry_instructions:
+                if cell.rules.retry_instructions:
                     # Render retry instructions with context
                     # Check for both schema and validation errors
                     error_msg = self.echo.state.get("last_schema_error") or self.echo.state.get("last_validation_error", "Validation failed")
@@ -10690,7 +10690,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         "attempt": attempt + 1,
                         "max_attempts": max_attempts
                     }
-                    retry_msg_content = render_instruction(phase.rules.retry_instructions, retry_context)
+                    retry_msg_content = render_instruction(cell.rules.retry_instructions, retry_context)
                 else:
                     # Default retry message
                     error_msg = self.echo.state.get("last_schema_error") or self.echo.state.get("last_validation_error", "Validation failed")
@@ -10706,10 +10706,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 self.context_messages.append(retry_msg)
                 self.echo.add_history(retry_msg, trace_id=retry_trace.id, parent_id=trace.id, node_type="validation_retry",
                                       metadata={
-                                          "cell_name": phase.name,
+                                          "cell_name": cell.name,
                                           "attempt": attempt + 1,
                                           "max_attempts": max_attempts,
-                                          "loop_until": _format_validator_name(phase.rules.loop_until) if phase.rules.loop_until else None,
+                                          "loop_until": _format_validator_name(cell.rules.loop_until) if cell.rules.loop_until else None,
                                           "semantic_actor": "framework",
                                           "semantic_purpose": "validation_output"
                                       })
@@ -10720,17 +10720,17 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Track turn number
                 self.current_turn_number = i if max_turns > 1 else None
 
-                # Update phase progress for visualization
-                update_phase_progress(
-                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                # Update cell progress for visualization
+                update_cell_progress(
+                    self.session_id, self.config.cascade_id, cell.name, self.depth,
                     turn=i + 1,
                     max_turns=max_turns
                 )
 
                 # Hook: Turn Start
-                hook_result = self.hooks.on_turn_start(phase.name, i, {
+                hook_result = self.hooks.on_turn_start(cell.name, i, {
                     "echo": self.echo,
-                    "candidate_index": self.current_phase_candidate_index or self.candidate_index,
+                    "candidate_index": self.current_cell_candidate_index or self.candidate_index,
                 })
                 turn_injection = ""
                 if hook_result.get("action") == HookAction.INJECT:
@@ -10742,13 +10742,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                 # Add turn structure to Echo for visualization
                 # Include candidate_index so turn messages group correctly with their candidate branch
-                current_sounding = self.current_phase_candidate_index or self.candidate_index
+                current_sounding = self.current_cell_candidate_index or self.candidate_index
                 self.echo.add_history({
                     "role": "structure",
                     "content": f"Turn {i+1}",
                     "node_type": "turn"
                 }, trace_id=turn_trace.id, parent_id=trace.id, node_type="turn",
-                   metadata={"cell_name": phase.name, "turn_number": i+1, "max_turns": max_turns,
+                   metadata={"cell_name": cell.name, "turn_number": i+1, "max_turns": max_turns,
                              "candidate_index": current_sounding,  # Tag with candidate for correct grouping
                              "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
@@ -10756,15 +10756,15 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     console.print(f"{indent}  [dim]Turn {i+1}/{max_turns}[/dim]")
 
                 # Determine current_input before calling agent
-                # Phase task is already in context_messages as a user message,
+                # Cell task is already in context_messages as a user message,
                 # so turn 0 doesn't need additional input. Subsequent turns get a continuation prompt.
                 if turn_injection:
                     current_input = f"USER INJECTION: {turn_injection}"
                 elif i == 0:
-                    current_input = None  # Phase task already in context_messages as user message
+                    current_input = None  # Cell task already in context_messages as user message
                 else:
                     # Use turn_prompt if provided (with Jinja2 templating support)
-                    if phase.rules.turn_prompt:
+                    if cell.rules.turn_prompt:
                         turn_render_context = {
                             "input": input_data,
                             "state": self.echo.state,
@@ -10774,7 +10774,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             "turn": i + 1,
                             "max_turns": max_turns
                         }
-                        current_input = render_instruction(phase.rules.turn_prompt, turn_render_context)
+                        current_input = render_instruction(cell.rules.turn_prompt, turn_render_context)
                     else:
                         current_input = "Continue/Refine based on previous output."
 
@@ -10841,7 +10841,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         node_type="token_budget_enforcement",
                                         role="system",
                                         content=f"Token budget enforced: {tokens_before} → {tokens_after} tokens (pruned {tokens_pruned})",
-                                        cell_name=phase.name,
+                                        cell_name=cell.name,
                                         cascade_id=self.config.cascade_id,
                                         # First-class budget fields
                                         budget_strategy=self.config.token_budget.strategy,
@@ -10855,20 +10855,20 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # AUTO-CONTEXT: Build bounded context for this turn
                             # Check if this is a loop retry (attempt > 0 means we're retrying)
                             is_loop_retry = (
-                                phase.rules.loop_until and
+                                cell.rules.loop_until and
                                 attempt > 0  # attempt variable tracks validation retries
                             )
 
                             # Build turn context (may be compressed if auto-context enabled)
                             turn_context, context_stats = self._build_turn_context(
-                                phase,
+                                cell,
                                 turn_number=i,
                                 is_loop_retry=is_loop_retry
                             )
 
                             # Log context selection if auto-context did something
                             if context_stats.selection_type != "disabled":
-                                self._log_context_selection(phase, i, context_stats, turn_trace)
+                                self._log_context_selection(cell, i, context_stats, turn_trace)
                                 if context_stats.tokens_saved > 0:
                                     console.print(f"{indent}  [dim cyan]🗜️  Auto-context: {context_stats.context_size}/{context_stats.full_history_size} msgs, ~{context_stats.tokens_saved} tokens saved[/dim cyan]")
 
@@ -10890,7 +10890,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # BUT: Image generation models return empty content + images array
                             # So we also check for images in the response
                             if (not content or content.strip() == "") and not tool_calls and not images:
-                                error_msg = f"Agent returned empty response (0 tokens output). Model: {phase_model}"
+                                error_msg = f"Agent returned empty response (0 tokens output). Model: {cell_model}"
                                 console.print(f"{indent}  [bold red]⚠️  Infrastructure Error: {error_msg}[/bold red]")
                                 last_infrastructure_error = error_msg
 
@@ -10906,14 +10906,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                     node_type="error",
                                     role="error",
                                     content=f"Empty response (0 tokens). Attempt {infra_attempt + 1}/{infrastructure_max_retries}",
-                                    model=phase_model,
+                                    model=cell_model,
                                     full_request=full_request,
                                     full_response=full_response,
                                     metadata={
                                         "error_type": "empty_response",
                                         "attempt": infra_attempt + 1,
                                         "max_attempts": infrastructure_max_retries,
-                                        "cell_name": phase.name,
+                                        "cell_name": cell.name,
                                         "cascade_id": self.config.cascade_id
                                     }
                                 )
@@ -10930,9 +10930,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # that wasn't in our registry. Register it for future runs.
                             if images and (not content or content.strip() == ""):
                                 from .model_registry import ModelRegistry
-                                if not ModelRegistry.is_image_output_model(phase_model):
-                                    console.print(f"{indent}  [cyan]📷 Runtime detected image model: {phase_model}[/cyan]")
-                                    ModelRegistry.register_runtime_image_model(phase_model)
+                                if not ModelRegistry.is_image_output_model(cell_model):
+                                    console.print(f"{indent}  [cyan]📷 Runtime detected image model: {cell_model}[/cyan]")
+                                    ModelRegistry.register_runtime_image_model(cell_model)
 
                             # Successfully got response, break from infrastructure retry loop
                             break
@@ -10956,7 +10956,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 node_type="error",
                                 role="error",
                                 content=f"API Error: {type(infra_error).__name__}: {str(infra_error)[:500]}",
-                                model=phase_model,
+                                model=cell_model,
                                 full_request=failed_request,
                                 metadata={
                                     "error_type": type(infra_error).__name__,
@@ -10964,7 +10964,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                     "attempt": infra_attempt + 1,
                                     "max_attempts": infrastructure_max_retries,
                                     "is_infrastructure_error": is_infrastructure_error,
-                                    "cell_name": phase.name,
+                                    "cell_name": cell.name,
                                     "cascade_id": self.config.cascade_id
                                 }
                             )
@@ -10991,7 +10991,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Extract all data from agent response
                     full_request = response_dict.get("full_request")
                     full_response = response_dict.get("full_response")
-                    model_used = response_dict.get("model", phase_model)
+                    model_used = response_dict.get("model", cell_model)
                     cost = response_dict.get("cost")
                     tokens_in = response_dict.get("tokens_in", 0)
                     tokens_out = response_dict.get("tokens_out", 0)
@@ -11007,21 +11007,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
                         "turn_number": self.current_turn_number,
-                        "cell_name": phase.name,
+                        "cell_name": cell.name,
                         "cascade_id": self.config.cascade_id
                     }
 
-                    # Get cascade and phase configs for logging
+                    # Get cascade and cell configs for logging
                     cascade_config_dict = self.config.model_dump() if hasattr(self.config, 'model_dump') else None
-                    phase_config_dict = phase.model_dump() if hasattr(phase, 'model_dump') else None
+                    cell_config_dict = cell.model_dump() if hasattr(cell, 'model_dump') else None
 
                     # Check if this message should be tagged as a callout
                     is_callout = False
                     callout_name = None
-                    should_tag, template = self._should_tag_as_callout(phase, 'assistant_message', turn_number=i)
+                    should_tag, template = self._should_tag_as_callout(cell, 'assistant_message', turn_number=i)
                     if should_tag:
                         is_callout = True
-                        callout_name = self._render_callout_name(template, phase, input_data, turn_number=i)
+                        callout_name = self._render_callout_name(template, cell, input_data, turn_number=i)
 
                     # LOG WITH UNIFIED SYSTEM (immediate write with all context)
                     log_unified(
@@ -11033,7 +11033,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         node_type="agent",
                         role="assistant",
                         depth=self.depth,
-                        candidate_index=self.current_phase_candidate_index,
+                        candidate_index=self.current_cell_candidate_index,
                         is_winner=None,  # Set later when candidate evaluation happens
                         reforge_step=getattr(self, 'current_reforge_step', None),
                         attempt_number=self.current_retry_attempt,
@@ -11044,11 +11044,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         cascade_id=self.config.cascade_id,
                         cascade_file=self.config_path if isinstance(self.config_path, str) else None,
                         cascade_config=cascade_config_dict,
-                        cell_name=phase.name,
-                        phase_config=phase_config_dict,
-                        species_hash=phase_species_hash,  # Species hash for winner learning (rewrite mode only)
+                        cell_name=cell.name,
+                        cell_config=cell_config_dict,
+                        species_hash=cell_species_hash,  # Species hash for winner learning (rewrite mode only)
                         model=model_used,              # Resolved model from API response
-                        model_requested=phase_model,  # Originally requested model from config
+                        model_requested=cell_model,  # Originally requested model from config
                         request_id=request_id,
                         provider=provider,
                         duration_ms=None,  # Not tracking per-message duration yet
@@ -11071,7 +11071,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     )
 
                     if content:
-                        console.print(Panel(Markdown(content), title=f"Agent ({phase_model})", border_style="green", expand=False))
+                        console.print(Panel(Markdown(content), title=f"Agent ({cell_model})", border_style="green", expand=False))
                 
                     # Update histories (Snowball)
                     if current_input:
@@ -11088,14 +11088,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     input_trace = turn_trace.create_child("msg", "user_input")
                     if current_input:
                          self.echo.add_history({"role": "user", "content": current_input}, trace_id=input_trace.id, parent_id=turn_trace.id, node_type="turn_input",
-                                             metadata=self._get_metadata({"cell_name": phase.name, "turn": i},
+                                             metadata=self._get_metadata({"cell_name": cell.name, "turn": i},
                                                                          semantic_actor="framework", semantic_purpose="task_input"))
 
                     # Add assistant response to Echo (needed for message injection in context.from)
                     # skip_unified_log=True because we already logged this response above with full LLM metadata
                     output_trace = turn_trace.create_child("msg", "assistant_output")
                     self.echo.add_history({"role": "assistant", "content": content}, trace_id=output_trace.id, parent_id=turn_trace.id, node_type="agent",
-                                         metadata=self._get_metadata({"cell_name": phase.name, "turn": i},
+                                         metadata=self._get_metadata({"cell_name": cell.name, "turn": i},
                                                                      semantic_purpose="generation"),
                                          skip_unified_log=True)
 
@@ -11105,7 +11105,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Include recent conversation history so narrator has full context
                     recent_history = self.echo.history[-10:] if len(self.echo.history) > 0 else []
                     self._publish_event("turn_complete", {
-                        "cell_name": phase.name,
+                        "cell_name": cell.name,
                         "cascade_id": self.config.cascade_id,
                         "turn_number": i + 1,
                         "max_turns": max_turns,
@@ -11134,7 +11134,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # Log the error
                             error_trace = turn_trace.create_child("msg", "json_error")
                             log_message(self.session_id, "json_parse_error", parse_error,
-                                       metadata={"cell_name": phase.name, "turn": i},
+                                       metadata={"cell_name": cell.name, "turn": i},
                                        trace_id=error_trace.id, parent_id=turn_trace.parent_id, node_type="validation_error")
 
                             # Add error to echo history
@@ -11143,7 +11143,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 "content": f"⚠️ Tool Call JSON Error:\n{parse_error}\n\nPlease fix the JSON and try again. Ensure proper brace matching: {{ and }}"
                             }
                             self.echo.add_history(error_msg, trace_id=error_trace.id, parent_id=turn_trace.id, node_type="validation_error",
-                                                metadata=self._get_metadata({"cell_name": phase.name, "turn": i},
+                                                metadata=self._get_metadata({"cell_name": cell.name, "turn": i},
                                                                             semantic_actor="framework", semantic_purpose="validation_output"))
 
                             # CRITICAL: Set validation_passed = False to trigger attempt retry
@@ -11197,23 +11197,23 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                                            semantic_purpose="tool_request")
                             )
 
-                            # Update phase progress with current tool
-                            update_phase_progress(
-                                self.session_id, self.config.cascade_id, phase.name, self.depth,
+                            # Update cell progress with current tool
+                            update_cell_progress(
+                                self.session_id, self.config.cascade_id, cell.name, self.depth,
                                 tool_name=func_name
                             )
 
-                            # Find tool - first check phase tool_map, then fall back to global registry
+                            # Find tool - first check cell tool_map, then fall back to global registry
                             tool_func = tool_map.get(func_name)
                             if not tool_func:
-                                # Fallback to global tool registry - phase traits only controls prompting
+                                # Fallback to global tool registry - cell traits only controls prompting
                                 tool_func = get_trait(func_name)
                             result = "Tool not found."
                         
                             # Check for route_to specifically to capture state
                             if func_name == "route_to" and "target" in args:
-                                chosen_next_phase = args["target"]
-                                console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered:[/bold magenta] {chosen_next_phase}")
+                                chosen_next_cell = args["target"]
+                                console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered:[/bold magenta] {chosen_next_cell}")
                         
                             if tool_func:
                                  # TOOL CACHING: Check cache before execution
@@ -11228,7 +11228,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                          result = cached_result
 
                                          # Hook: Tool Result (cached)
-                                         self.hooks.on_tool_result(func_name, phase.name, self.session_id, cached_result)
+                                         self.hooks.on_tool_result(func_name, cell.name, self.session_id, cached_result)
 
                                  if cached_result is None:
                                      # Cache miss or caching disabled - execute normally
@@ -11236,12 +11236,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                      set_current_trace(tool_trace)
                                      try:
                                          # Hook: Tool Call
-                                         self.hooks.on_tool_call(func_name, phase.name, self.session_id, args)
+                                         self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
 
                                          result = tool_func(**args)
 
                                          # Hook: Tool Result
-                                         self.hooks.on_tool_result(func_name, phase.name, self.session_id, result)
+                                         self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
 
                                          # TOOL CACHING: Store result after successful execution
                                          if self.tool_cache:
@@ -11262,7 +11262,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                  # Publish tool_complete event (for narrator and other subscribers)
                                  # Include tool result so narrator knows what the tool did
                                  self._publish_event("tool_complete", {
-                                     "cell_name": phase.name,
+                                     "cell_name": cell.name,
                                      "cascade_id": self.config.cascade_id,
                                      "tool_name": func_name,
                                      "tool_result": str(result)[:500],  # First 500 chars of result
@@ -11294,7 +11294,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                                 # Get the next available index to avoid overwriting existing images
                                 from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
-                                next_idx = get_next_image_index(self.session_id, phase.name, self.current_phase_candidate_index)
+                                next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_candidate_index)
 
                                 for i, img_path in enumerate(images):
                                     encoded_img = encode_image_base64(img_path)
@@ -11308,10 +11308,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         # Auto-save image to structured directory
                                         save_path = get_image_save_path(
                                             self.session_id,
-                                            phase.name,
+                                            cell.name,
                                             next_idx + i,
                                             extension=img_path.split('.')[-1] if '.' in img_path else 'png',
-                                            candidate_index=self.current_phase_candidate_index
+                                            candidate_index=self.current_cell_candidate_index
                                         )
                                         try:
                                             decode_and_save_image(encoded_img, save_path)
@@ -11335,17 +11335,17 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 # Get the next available index to avoid overwriting existing audio
                                 from .utils import get_audio_save_path, get_next_audio_index
                                 import shutil
-                                next_audio_idx = get_next_audio_index(self.session_id, phase.name, self.current_phase_candidate_index)
+                                next_audio_idx = get_next_audio_index(self.session_id, cell.name, self.current_cell_candidate_index)
 
                                 for i, audio_path in enumerate(audio_files):
                                     if os.path.exists(audio_path):
                                         # Save audio to structured directory
                                         save_path = get_audio_save_path(
                                             self.session_id,
-                                            phase.name,
+                                            cell.name,
                                             next_audio_idx + i,
                                             extension=audio_path.split('.')[-1] if '.' in audio_path else 'mp3',
-                                            candidate_index=self.current_phase_candidate_index
+                                            candidate_index=self.current_cell_candidate_index
                                         )
                                         try:
                                             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -11381,7 +11381,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 self.context_messages.append(image_injection_message)
                                 img_trace = tool_trace.create_child("msg", "image_injection")
                                 self.echo.add_history(image_injection_message, trace_id=img_trace.id, parent_id=tool_trace.id, node_type="injection",
-                                                     metadata=self._get_metadata({"cell_name": phase.name},
+                                                     metadata=self._get_metadata({"cell_name": cell.name},
                                                                                  semantic_actor="framework", semantic_purpose="context_injection"))
 
                             self._update_graph() # Update after tool
@@ -11405,7 +11405,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                         # AUTO-CONTEXT: Rebuild context for follow-up (after tool results added)
                         followup_context, followup_stats = self._build_turn_context(
-                            phase,
+                            cell,
                             turn_number=i,
                             is_loop_retry=False  # Follow-ups are not loop retries
                         )
@@ -11454,7 +11454,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 node_type="follow_up",
                                 role="assistant",
                                 depth=self.depth,
-                                cell_name=phase.name,
+                                cell_name=cell.name,
                                 cascade_id=self.config.cascade_id,
                                 model=model_used,
                                 request_id=request_id,  # For non-blocking cost tracking
@@ -11462,7 +11462,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 content=content,
                                 full_request=full_request,  # ADD: Include complete request with images
                                 full_response=full_response,  # ADD: Include complete response
-                                candidate_index=self.current_phase_candidate_index or self.candidate_index,  # FIX: Tag with candidate
+                                candidate_index=self.current_cell_candidate_index or self.candidate_index,  # FIX: Tag with candidate
                                 reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
                                 reasoning_enabled=followup_reasoning_enabled,
                                 reasoning_effort=followup_reasoning_effort,
@@ -11505,13 +11505,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                                                         semantic_purpose="tool_request")
                                         )
 
-                                        # Update phase progress
-                                        update_phase_progress(
-                                            self.session_id, self.config.cascade_id, phase.name, self.depth,
+                                        # Update cell progress
+                                        update_cell_progress(
+                                            self.session_id, self.config.cascade_id, cell.name, self.depth,
                                             tool_name=func_name
                                         )
 
-                                        # Find and execute tool - check phase tool_map, then global registry
+                                        # Find and execute tool - check cell tool_map, then global registry
                                         tool_func = tool_map.get(func_name)
                                         if not tool_func:
                                             tool_func = get_trait(func_name)
@@ -11519,15 +11519,15 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                                         # Check for route_to
                                         if func_name == "route_to" and "target" in args:
-                                            chosen_next_phase = args["target"]
-                                            console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered (follow-up):[/bold magenta] {chosen_next_phase}")
+                                            chosen_next_cell = args["target"]
+                                            console.print(f"{indent}  🚀 [bold magenta]Dynamic Handoff Triggered (follow-up):[/bold magenta] {chosen_next_cell}")
 
                                         if tool_func:
                                             set_current_trace(tool_trace_fu)
                                             try:
-                                                self.hooks.on_tool_call(func_name, phase.name, self.session_id, args)
+                                                self.hooks.on_tool_call(func_name, cell.name, self.session_id, args)
                                                 result = tool_func(**args)
-                                                self.hooks.on_tool_result(func_name, phase.name, self.session_id, result)
+                                                self.hooks.on_tool_result(func_name, cell.name, self.session_id, result)
                                             except Exception as e:
                                                 result = f"Error: {str(e)}"
 
@@ -11542,7 +11542,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         # Publish tool_complete event (follow-up)
                                         # Include tool result so narrator knows what the tool did
                                         self._publish_event("tool_complete", {
-                                            "cell_name": phase.name,
+                                            "cell_name": cell.name,
                                             "cascade_id": self.config.cascade_id,
                                             "tool_name": func_name,
                                             "tool_result": str(result)[:500],  # First 500 chars of result
@@ -11574,7 +11574,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                             content_block = [{"type": "text", "text": "Result Images from follow-up tool:"}]
 
                                             from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
-                                            next_idx = get_next_image_index(self.session_id, phase.name, self.current_phase_candidate_index)
+                                            next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_candidate_index)
 
                                             for img_i, img_path in enumerate(images):
                                                 encoded_img = encode_image_base64(img_path)
@@ -11585,9 +11585,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                                     })
 
                                                     save_path = get_image_save_path(
-                                                        self.session_id, phase.name, next_idx + img_i,
+                                                        self.session_id, cell.name, next_idx + img_i,
                                                         extension=img_path.split('.')[-1] if '.' in img_path else 'png',
-                                                        candidate_index=self.current_phase_candidate_index
+                                                        candidate_index=self.current_cell_candidate_index
                                                     )
                                                     try:
                                                         decode_and_save_image(encoded_img, save_path)
@@ -11600,7 +11600,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                                 self.context_messages.append(image_injection_msg)
                                                 img_trace_fu = tool_trace_fu.create_child("msg", "image_injection")
                                                 self.echo.add_history(image_injection_msg, trace_id=img_trace_fu.id, parent_id=tool_trace_fu.id, node_type="injection",
-                                                                    metadata=self._get_metadata({"cell_name": phase.name, "is_followup": True},
+                                                                    metadata=self._get_metadata({"cell_name": cell.name, "is_followup": True},
                                                                                                 semantic_actor="framework", semantic_purpose="context_injection"))
 
                                         self._update_graph()
@@ -11610,21 +11610,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                        trace_id=turn_trace.id, parent_id=turn_trace.parent_id, node_type="warning", depth=turn_trace.depth)
 
                         # Auto-save any images/videos from messages (catches manual injection, feedback loops, etc.)
-                        self._save_images_from_messages(self.context_messages, phase.name)
-                        self._save_videos_from_messages(self.context_messages, phase.name)
+                        self._save_images_from_messages(self.context_messages, cell.name)
+                        self._save_videos_from_messages(self.context_messages, cell.name)
 
                     # ========== AUDIBLE CHECK ==========
                     # Check if user has signaled an audible (feedback injection)
                     # This happens at the end of each turn, after processing but before validation
-                    if self._check_audible_signal(phase):
+                    if self._check_audible_signal(cell):
                         # Handle the audible - creates checkpoint and waits for feedback
-                        feedback = self._handle_audible(phase, response_content, i, turn_trace)
+                        feedback = self._handle_audible(cell, response_content, i, turn_trace)
 
                         if feedback:
                             mode = feedback.get("mode", "continue")
 
                             # Inject the feedback as a user message
-                            self._inject_audible_feedback(feedback, phase, turn_trace)
+                            self._inject_audible_feedback(feedback, cell, turn_trace)
 
                             # Handle retry mode - don't save this turn's output, redo it
                             if mode == "retry":
@@ -11662,9 +11662,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     # Check if task is complete after each turn to enable early exit from turn loop.
                     # This prevents unnecessary context snowballing when the task is done early.
                     # Only runs if loop_until is configured and we have more turns remaining.
-                    if phase.rules.loop_until and i < max_turns - 1:
+                    if cell.rules.loop_until and i < max_turns - 1:
                         per_turn_result = self._run_loop_until_validator(
-                            validator_spec=phase.rules.loop_until,
+                            validator_spec=cell.rules.loop_until,
                             content=response_content,
                             input_data=input_data,
                             trace=turn_trace,
@@ -11691,9 +11691,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     error_metadata = {
                         "error_type": error_type,
                         "error_message": error_msg,
-                        "cell_name": phase.name,
+                        "cell_name": cell.name,
                         "turn_number": self.current_turn_number,
-                        "model": phase_model,
+                        "model": cell_model,
                         "cascade_id": self.config.cascade_id,
                     }
 
@@ -11712,7 +11712,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                     # Print detailed error to console
                     console.print(f"[bold red]Error in Agent call:[/bold red] {error_type}: {error_msg}")
-                    console.print(f"[dim]Phase: {phase.name}, Turn: {self.current_turn_number}[/dim]")
+                    console.print(f"[dim]Cell: {cell.name}, Turn: {self.current_turn_number}[/dim]")
                     if "http_status" in error_metadata:
                         console.print(f"[dim]HTTP Status: {error_metadata['http_status']}[/dim]")
                         console.print(f"[dim]Response: {error_metadata['http_response'][:200]}...[/dim]")
@@ -11741,7 +11741,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                     # Track error in echo for cascade-level status
                     self.echo.add_error(
-                        cell=phase.name,
+                        cell=cell.name,
                         error_type=error_type,
                         error_message=error_msg,
                         metadata=error_metadata
@@ -11754,7 +11754,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     break  # Break from turn loop, continue to validation/next attempt
 
             # After turn loop: Check if schema validation is required (output_schema)
-            if phase.output_schema:
+            if cell.output_schema:
                 console.print(f"{indent}[bold cyan]📋 Validating Output Schema...[/bold cyan]")
 
                 # Create schema validation trace
@@ -11795,11 +11795,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
 
                     # Validate against schema
-                    jsonschema.validate(instance=output_data, schema=phase.output_schema)
+                    jsonschema.validate(instance=output_data, schema=cell.output_schema)
 
                     console.print(f"{indent}  [bold green]✓ Schema Validation Passed[/bold green]")
                     log_message(self.session_id, "schema_validation", "Schema validation passed",
-                               {"schema": phase.output_schema},
+                               {"schema": cell.output_schema},
                                trace_id=schema_trace.id, parent_id=trace.id,
                                node_type="schema_validation", depth=self.depth)
 
@@ -11810,7 +11810,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         "node_type": "schema_validation"
                     }, trace_id=schema_trace.id, parent_id=trace.id, node_type="schema_validation",
                        metadata={
-                           "cell_name": phase.name,
+                           "cell_name": cell.name,
                            "valid": True,
                            "attempt": attempt + 1,
                            "semantic_actor": "framework",
@@ -11838,7 +11838,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     self.echo.update_state("last_schema_error", error_msg)
 
                     log_message(self.session_id, "schema_validation_failed", error_msg,
-                               {"schema": phase.output_schema, "attempt": attempt + 1},
+                               {"schema": cell.output_schema, "attempt": attempt + 1},
                                trace_id=schema_trace.id, parent_id=trace.id,
                                node_type="schema_validation_failed", depth=self.depth)
 
@@ -11849,7 +11849,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         "node_type": "schema_validation"
                     }, trace_id=schema_trace.id, parent_id=trace.id, node_type="schema_validation",
                        metadata={
-                           "cell_name": phase.name,
+                           "cell_name": cell.name,
                            "valid": False,
                            "reason": error_msg,
                            "attempt": attempt + 1,
@@ -11880,8 +11880,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # After schema validation: Check if validator is required (loop_until)
             # Skip if validation already passed from per-turn early exit
-            if phase.rules.loop_until and not validation_passed:
-                validator_spec = phase.rules.loop_until
+            if cell.rules.loop_until and not validation_passed:
+                validator_spec = cell.rules.loop_until
                 validator_display_name = _format_validator_name(validator_spec)
                 console.print(f"{indent}[bold cyan]🛡️  Running Validator: {validator_display_name}[/bold cyan]")
 
@@ -11895,7 +11895,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     "node_type": "validation_start"
                 }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation_start",
                    metadata={
-                       "cell_name": phase.name,
+                       "cell_name": cell.name,
                        "validator": validator_display_name,
                        "attempt": attempt + 1,
                        "content_preview": response_content[:200] if response_content else "(empty)",
@@ -11941,9 +11941,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                         # Generate unique validator session ID (include candidate index if inside soundings)
                         validator_candidate_index = None
-                        if self.current_phase_candidate_index is not None:
-                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_phase_candidate_index}"
-                            validator_candidate_index = self.current_phase_candidate_index
+                        if self.current_cell_candidate_index is not None:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_cell_candidate_index}"
+                            validator_candidate_index = self.current_cell_candidate_index
                         elif self.candidate_index is not None:
                             validator_session_id = f"{self.session_id}_validator_{attempt}_{self.candidate_index}"
                             validator_candidate_index = self.candidate_index
@@ -11955,7 +11955,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Log sub-cascade reference to parent
                         log_message(self.session_id, "sub_cascade_ref", f"Validator sub-cascade: {validator_name}",
                                    {"validator": validator_name, "sub_session_id": validator_session_id,
-                                    "cascade_path": cascade_path, "cell_name": phase.name},
+                                    "cascade_path": cascade_path, "cell_name": cell.name},
                                    trace_id=validation_trace.id, parent_id=trace.id,
                                    node_type="sub_cascade_ref", depth=self.depth)
 
@@ -11975,7 +11975,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                             console.print(f"{indent}  [dim cyan]Validator sub-cascade completed[/dim cyan]")
 
-                            # Extract the result - look in lineage for last phase output
+                            # Extract the result - look in lineage for last cell output
                             if validator_result_echo.get("lineage"):
                                 last_output = validator_result_echo["lineage"][-1].get("output", "")
                                 console.print(f"{indent}  [dim]Validator output: {last_output[:100]}...[/dim]")
@@ -12067,7 +12067,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     "node_type": "validation"
                 }, trace_id=validation_trace.id, parent_id=trace.id, node_type="validation",
                    metadata={
-                       "cell_name": phase.name,
+                       "cell_name": cell.name,
                        "validator": validator_name,
                        "valid": is_valid,
                        "reason": reason,
@@ -12098,22 +12098,22 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     if attempt + 1 >= max_attempts:
                         console.print(f"{indent}[bold red]⚠️  Max validation attempts reached ({max_attempts})[/bold red]")
 
-            # ========== POST-WARDS: Validate outputs after phase completes ==========
+            # ========== POST-WARDS: Validate outputs after cell completes ==========
             post_ward_retry_needed = False
-            if phase.wards and phase.wards.post:
+            if cell.wards and cell.wards.post:
                 console.print(f"{indent}[bold cyan]🛡️  Running Post-Wards (Output Validation)...[/bold cyan]")
 
-                # Update phase progress for post-ward stage
-                update_phase_progress(
-                    self.session_id, self.config.cascade_id, phase.name, self.depth,
+                # Update cell progress for post-ward stage
+                update_cell_progress(
+                    self.session_id, self.config.cascade_id, cell.name, self.depth,
                     stage="post_ward"
                 )
 
-                total_post_wards = len(phase.wards.post)
-                for ward_idx, ward_config in enumerate(phase.wards.post):
+                total_post_wards = len(cell.wards.post)
+                for ward_idx, ward_config in enumerate(cell.wards.post):
                     # Update progress with current ward
-                    update_phase_progress(
-                        self.session_id, self.config.cascade_id, phase.name, self.depth,
+                    update_cell_progress(
+                        self.session_id, self.config.cascade_id, cell.name, self.depth,
                         ward_name=_format_validator_name(ward_config.validator),
                         ward_type="post",
                         ward_index=ward_idx + 1,
@@ -12124,8 +12124,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     if not ward_result["valid"]:
                         # Handle based on mode
                         if ward_result["mode"] == "blocking":
-                            console.print(f"{indent}[bold red]⛔ Post-Ward BLOCKING: Phase failed[/bold red]")
-                            log_message(self.session_id, "post_ward_blocked", f"Phase blocked by {ward_result['validator']}",
+                            console.print(f"{indent}[bold red]⛔ Post-Ward BLOCKING: Cell failed[/bold red]")
+                            log_message(self.session_id, "post_ward_blocked", f"Cell blocked by {ward_result['validator']}",
                                        {"reason": ward_result["reason"]},
                                        trace_id=trace.id, parent_id=trace.parent_id,
                                        node_type="ward_block", depth=self.depth)
@@ -12155,7 +12155,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 continue
 
             # Check if we should exit retry loop
-            if not phase.rules.loop_until and not (phase.wards and phase.wards.post):
+            if not cell.rules.loop_until and not (cell.wards and cell.wards.post):
                 # No validation required, exit after first attempt
                 validation_passed = True
                 break  # Exit retry loop
@@ -12171,23 +12171,23 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # Continue to next attempt (loop will iterate)
 
-        # Auto-save any images/videos from final phase context (catches all before phase completion)
-        self._save_images_from_messages(self.context_messages, phase.name)
-        self._save_videos_from_messages(self.context_messages, phase.name)
+        # Auto-save any images/videos from final cell context (catches all before cell completion)
+        self._save_images_from_messages(self.context_messages, cell.name)
+        self._save_videos_from_messages(self.context_messages, cell.name)
 
-        # ========== OUTPUT EXTRACTION: Extract structured content from phase output ==========
-        if phase.output_extraction:
+        # ========== OUTPUT EXTRACTION: Extract structured content from cell output ==========
+        if cell.output_extraction:
             from .extraction import OutputExtractor, ExtractionError
 
             console.print(f"{indent}[bold cyan]🔍 Extracting structured content...[/bold cyan]")
             extractor = OutputExtractor()
 
             try:
-                extracted = extractor.extract(response_content, phase.output_extraction)
+                extracted = extractor.extract(response_content, cell.output_extraction)
 
                 if extracted is not None:
                     # Store in state
-                    state_key = phase.output_extraction.store_as
+                    state_key = cell.output_extraction.store_as
                     self.echo.update_state(state_key, extracted)
 
                     console.print(f"{indent}  [green]✓ Extracted '{state_key}': {str(extracted)[:100]}...[/green]")
@@ -12202,9 +12202,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         role="system",
                         content=f"Extracted {state_key}",
                         metadata={
-                            "cell": phase.name,
+                            "cell": cell.name,
                             "key": state_key,
-                            "pattern": phase.output_extraction.pattern,
+                            "pattern": cell.output_extraction.pattern,
                             "size": len(str(extracted))
                         }
                     )
@@ -12214,44 +12214,44 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             except ExtractionError as e:
                 # Required extraction failed
                 console.print(f"{indent}[red]✗ Extraction failed: {e}[/red]")
-                self.echo.add_error(phase.name, "extraction_error", str(e))
+                self.echo.add_error(cell.name, "extraction_error", str(e))
                 _cleanup_rag()
                 return f"[EXTRACTION ERROR: {e}]"
 
         _cleanup_rag()
 
         # Convert output to string for checkpoint handling
-        phase_output_str = response_content if isinstance(response_content, str) else str(response_content)
+        cell_output_str = response_content if isinstance(response_content, str) else str(response_content)
 
         # Check for LLM-generated decision points (<decision> blocks)
         # This allows the LLM to dynamically request human input with custom options
-        decision_data = self._check_for_decision_point(phase_output_str, phase)
+        decision_data = self._check_for_decision_point(cell_output_str, cell)
         if decision_data:
-            decision_result = self._handle_decision_point(decision_data, phase, trace)
+            decision_result = self._handle_decision_point(decision_data, cell, trace)
             if decision_result:
                 action = decision_result.get("_action")
                 if action == "retry":
-                    # Retry this phase with decision feedback injected
+                    # Retry this cell with decision feedback injected
                     # The feedback is stored in state["_decision_feedback"]
-                    console.print(f"[yellow]↻ Retrying phase due to decision[/yellow]")
+                    console.print(f"[yellow]↻ Retrying cell due to decision[/yellow]")
                     # Note: Actual retry logic would need to be handled at a higher level
                     # For now, we continue but the feedback is available in state
                 elif action == "route":
-                    # Route to a specific phase
-                    target = decision_result.get("target_phase")
+                    # Route to a specific cell
+                    target = decision_result.get("target_cell")
                     if target:
-                        return target  # Return the target phase name as the chosen next phase
+                        return target  # Return the target cell name as the chosen next cell
 
         # Handle human-in-the-loop checkpoint if configured (static HITL)
         # This BLOCKS waiting for human input (no exceptions, just waits)
-        human_response = self._handle_human_input_checkpoint(phase, phase_output_str, trace, input_data)
+        human_response = self._handle_human_input_checkpoint(cell, cell_output_str, trace, input_data)
 
-        # If human input was received, it can be accessed via self.echo.state or passed to next phase
+        # If human input was received, it can be accessed via self.echo.state or passed to next cell
         # For now, we just log it and continue - the response is in the history
 
-        # Publish phase_complete event (for narrator and other subscribers)
-        self._publish_event("phase_complete", {
-            "cell_name": phase.name,
+        # Publish cell_complete event (for narrator and other subscribers)
+        self._publish_event("cell_complete", {
+            "cell_name": cell.name,
             "cascade_id": self.config.cascade_id,
             "output": str(response_content)[:500] if response_content else None,
             "turn_number": max_turns,
@@ -12259,7 +12259,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "trace_id": trace.id if trace else None,
         })
 
-        return chosen_next_phase if chosen_next_phase else response_content
+        return chosen_next_cell if chosen_next_cell else response_content
 
 def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
                 depth: int = 0, parent_trace: TraceNode = None, hooks: RVBBITHooks = None, parent_session_id: str = None,

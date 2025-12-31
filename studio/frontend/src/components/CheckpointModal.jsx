@@ -87,7 +87,7 @@ const CheckpointModal = ({
             onSubmit={handleSubmit}
             onCancel={onCancel ? handleCancel : undefined}
             variant="modal"
-            showPhaseOutput={true}
+            showCellOutput={true}
           />
         </div>
       </div>

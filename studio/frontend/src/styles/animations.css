@@ -213,7 +213,7 @@
    WINDLASS-SPECIFIC ANIMATIONS
    ============================================ */
 
-/* Running pulse for phase cards */
+/* Running pulse for cell cards */
 @keyframes running-pulse {
   0%, 100% {
     border-color: var(--color-running);
@@ -225,7 +225,7 @@
   }
 }
 
-/* Success pop for completed phases */
+/* Success pop for completed cells */
 @keyframes success-pop {
   0% {
     transform: scale(1);

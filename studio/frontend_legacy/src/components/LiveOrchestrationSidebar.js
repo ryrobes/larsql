@@ -9,13 +9,13 @@ import './LiveOrchestrationSidebar.css';
  * Inspired by Bret Victor's "Inventing on Principle" - make the invisible visible
  *
  * Shows:
- * - Current phase (animated)
+ * - Current cell (animated)
  * - Model being used
  * - Live cost ticker
  * - Tool calls as they happen
  * - Turn counter
  * - Token usage
- * - Phase history
+ * - Cell history
  * - Status indicators (thinking, tool running, waiting)
  *
  * This is the "orchestration observatory" - you SEE what RVBBIT is doing
@@ -146,7 +146,7 @@ function LiveOrchestrationSidebar({
   useEffect(() => {
     // console.log('[LiveOrchestrationSidebar] State update:', {
     //   status: orchestrationState.status,
-    //   currentPhase: orchestrationState.currentPhase,
+    //   currentCell: orchestrationState.currentCell,
     //   totalCost: orchestrationState.totalCost,
     //   turnCount: orchestrationState.turnCount,
     //   currentModel: orchestrationState.currentModel
@@ -156,7 +156,7 @@ function LiveOrchestrationSidebar({
   useEffect(() => {
     // console.log('[LiveOrchestrationSidebar] Session data update:', {
     //   totalCost: sessionData?.total_cost,
-    //   phaseCosts: sessionData?.phase_costs,
+    //   cellCosts: sessionData?.cell_costs,
     //   inputTokens: sessionData?.total_input_tokens,
     //   outputTokens: sessionData?.total_output_tokens
     // });
@@ -316,11 +316,11 @@ function LiveOrchestrationSidebar({
             `$${orchestrationState.totalCost.toFixed(4)}`
           )}
         </div>
-        {sessionData?.phase_costs && (
+        {sessionData?.cell_costs && (
           <div className="cost-breakdown">
-            {Object.entries(sessionData.phase_costs).slice(-3).map(([phase, cost]) => (
-              <div key={phase} className="cost-item">
-                <span className="cost-phase">{phase}</span>
+            {Object.entries(sessionData.cell_costs).slice(-3).map(([cell, cost]) => (
+              <div key={cell} className="cost-item">
+                <span className="cost-cell">{cell}</span>
                 <span className="cost-value">${cost.toFixed(4)}</span>
               </div>
             ))}
@@ -336,14 +336,14 @@ function LiveOrchestrationSidebar({
         </div>
 
         <div className="overview-grid">
-          {/* Phase */}
-          <div className="overview-item phase">
+          {/* Cell */}
+          <div className="overview-item cell">
             <div className="overview-label">
               <Icon icon="mdi:hexagon" width="14" />
-              <span>Phase</span>
+              <span>Cell</span>
             </div>
-            <div className="overview-value phase-value">
-              {orchestrationState.currentPhase || 'N/A'}
+            <div className="overview-value cell-value">
+              {orchestrationState.currentCell || 'N/A'}
             </div>
             {sessionData?.model && (
               <div className="model-badge-compact">
@@ -401,21 +401,21 @@ function LiveOrchestrationSidebar({
         </div>
       </div>
 
-      {/* Phase History */}
-      {orchestrationState.phaseHistory && orchestrationState.phaseHistory.length > 0 && (
+      {/* Cell History */}
+      {orchestrationState.cellHistory && orchestrationState.cellHistory.length > 0 && (
         <div className="sidebar-section history-section">
           <div className="section-header">
             <Icon icon="mdi:timeline" width="18" />
-            <span>Phase Flow</span>
+            <span>Cell Flow</span>
           </div>
-          <div className="phase-timeline">
-            {orchestrationState.phaseHistory.slice(-5).map((item, idx) => (
-              <div key={idx} className="phase-timeline-item">
-                <div className="phase-timeline-dot" />
-                <div className="phase-timeline-content">
-                  <div className="phase-timeline-name">{item.phase}</div>
+          <div className="cell-timeline">
+            {orchestrationState.cellHistory.slice(-5).map((item, idx) => (
+              <div key={idx} className="cell-timeline-item">
+                <div className="cell-timeline-dot" />
+                <div className="cell-timeline-content">
+                  <div className="cell-timeline-name">{item.cell}</div>
                   {item.model && (
-                    <div className="phase-timeline-model">
+                    <div className="cell-timeline-model">
                       {item.model.split('/').pop()}
                     </div>
                   )}

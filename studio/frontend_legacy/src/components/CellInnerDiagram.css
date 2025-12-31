@@ -1,7 +1,7 @@
 /**
- * PhaseInnerDiagram Styles
+ * CellInnerDiagram Styles
  *
- * Visualizes inner phase complexity:
+ * Visualizes inner cell complexity:
  * - Soundings: Fan-out pattern with attempts
  * - Reforge: Sequential refinement steps
  * - Wards: Validation checkpoints
@@ -11,7 +11,7 @@
    COLLAPSED VIEW (Summary chips)
    ============================================ */
 
-.phase-inner-collapsed {
+.cell-inner-collapsed {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
@@ -42,7 +42,7 @@
    EXPANDED DIAGRAM CONTAINER
    ============================================ */
 
-.phase-inner-diagram {
+.cell-inner-diagram {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -53,12 +53,12 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.phase-inner-diagram.ghost {
+.cell-inner-diagram.ghost {
   opacity: 0.7;
   border-style: dashed;
 }
 
-.phase-inner-diagram.executed {
+.cell-inner-diagram.executed {
   border-color: rgba(52, 211, 153, 0.3);
 }
 

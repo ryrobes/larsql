@@ -11,7 +11,7 @@ import './YamlPanel.css';
  * - Copy button
  * - Line numbers
  *
- * Phase 6 will add Monaco for proper editing and bidirectional sync.
+ * Cell 6 will add Monaco for proper editing and bidirectional sync.
  */
 function YamlPanel() {
   const { exportToYaml, toggleYamlPanel } = useWorkshopStore();

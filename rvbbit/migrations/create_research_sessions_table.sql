@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS research_sessions (
     total_input_tokens UInt64,
     total_output_tokens UInt64,
     duration_seconds Float64,
-    phases_visited String,  -- JSON array of phase names
+    cells_visited String,  -- JSON array of cell names
     tools_used String,  -- JSON array of tool names
 
     -- Taxonomy

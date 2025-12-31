@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 @dataclass
 class RagContext:
     """
-    Runtime RAG context for the current phase.
+    Runtime RAG context for the current cell.
 
     In the ClickHouse implementation, all data is in tables.
     This context tracks:

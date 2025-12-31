@@ -6,9 +6,9 @@ import LiveDebugLog from './LiveDebugLog';
 import InteractiveMermaid from './InteractiveMermaid';
 import MetricsCards from './MetricsCards';
 import ParametersCard from './ParametersCard';
-import PhaseBar from './CellBar';
+import CellBar from './CellBar';
 import CascadeBar from './CascadeBar';
-import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByPhase } from '../utils/debugUtils';
+import { deduplicateEntries, filterEntriesByViewMode, groupEntriesByCell } from '../utils/debugUtils';
 import './DetailViewLegacy.css';
 
 const API_BASE_URL = 'http://localhost:5050/api';
@@ -18,7 +18,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
   const [error, setError] = useState(null);
   const [entries, setEntries] = useState([]);
   const [instance, setInstance] = useState(null);
-  const [activePhase, setActivePhase] = useState(null);
+  const [activeCell, setActiveCell] = useState(null);
   const [viewMode, setViewMode] = useState('all'); // 'all', 'conversation', 'structural'
   const [showStructural, setShowStructural] = useState(false);
   const [lastEntryCount, setLastEntryCount] = useState(0); // Track entry count to detect changes
@@ -59,7 +59,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
   const groupedEntries = useMemo(() => {
     if (entries.length === 0) return [];
     const filtered = filterEntriesByViewMode(entries, viewMode, showStructural);
-    return groupEntriesByPhase(filtered);
+    return groupEntriesByCell(filtered);
   }, [entries, viewMode, showStructural]);
 
   // Parse instance-level metadata from entries
@@ -70,13 +70,13 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
     const firstEntry = entries[0];
     const lastEntry = entries[entries.length - 1];
 
-    // Group entries by phase to calculate phase summaries
-    const phaseMap = {};
+    // Group entries by cell to calculate cell summaries
+    const cellMap = {};
     entries.forEach(entry => {
-      const phaseName = entry.cell_name || 'Initialization';
-      if (!phaseMap[phaseName]) {
-        phaseMap[phaseName] = {
-          name: phaseName,
+      const cellName = entry.cell_name || 'Initialization';
+      if (!cellMap[cellName]) {
+        cellMap[cellName] = {
+          name: cellName,
           entries: [],
           totalCost: 0,
           soundingAttempts: new Map(),
@@ -85,48 +85,48 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
           status: 'pending'
         };
       }
-      phaseMap[phaseName].entries.push(entry);
+      cellMap[cellName].entries.push(entry);
       if (entry.cost) {
-        phaseMap[phaseName].totalCost += entry.cost;
+        cellMap[cellName].totalCost += entry.cost;
       }
       if (entry.node_type === 'tool_call') {
         try {
           const meta = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
           if (meta?.tool_name) {
-            phaseMap[phaseName].toolCalls.add(meta.tool_name);
+            cellMap[cellName].toolCalls.add(meta.tool_name);
           }
         } catch (e) {}
       }
       if (entry.node_type && entry.node_type.includes('ward')) {
-        phaseMap[phaseName].wardCount++;
+        cellMap[cellName].wardCount++;
       }
       if (entry.candidate_index !== null && entry.candidate_index !== undefined) {
         const idx = entry.candidate_index;
-        if (!phaseMap[phaseName].soundingAttempts.has(idx)) {
-          phaseMap[phaseName].soundingAttempts.set(idx, {
+        if (!cellMap[cellName].soundingAttempts.has(idx)) {
+          cellMap[cellName].soundingAttempts.set(idx, {
             index: idx,
             cost: 0,
             is_winner: entry.is_winner,
             model: null
           });
         }
-        phaseMap[phaseName].soundingAttempts.get(idx).cost += entry.cost || 0;
+        cellMap[cellName].soundingAttempts.get(idx).cost += entry.cost || 0;
         // Track model for this sounding (use first non-null model found)
-        if (entry.model && !phaseMap[phaseName].soundingAttempts.get(idx).model) {
-          phaseMap[phaseName].soundingAttempts.get(idx).model = entry.model;
+        if (entry.model && !cellMap[cellName].soundingAttempts.get(idx).model) {
+          cellMap[cellName].soundingAttempts.get(idx).model = entry.model;
         }
       }
     });
 
-    // Convert phase map to array
-    const phases = Object.values(phaseMap).map(phase => {
-      const lastEntryInPhase = phase.entries[phase.entries.length - 1];
-      const hasError = phase.entries.some(e => e.node_type === 'error');
+    // Convert cell map to array
+    const cells = Object.values(cellMap).map(cell => {
+      const lastEntryInCell = cell.entries[cell.entries.length - 1];
+      const hasError = cell.entries.some(e => e.node_type === 'error');
 
       // Handle content that might be string, object, or array
       let outputSnippet = '';
-      if (lastEntryInPhase?.content) {
-        const content = lastEntryInPhase.content;
+      if (lastEntryInCell?.content) {
+        const content = lastEntryInCell.content;
         if (typeof content === 'string') {
           outputSnippet = content.substring(0, 100);
         } else {
@@ -135,14 +135,14 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
       }
 
       return {
-        name: phase.name,
-        status: hasError ? 'error' : (phase.entries.length > 0 ? 'completed' : 'pending'),
-        avg_cost: phase.totalCost,
+        name: cell.name,
+        status: hasError ? 'error' : (cell.entries.length > 0 ? 'completed' : 'pending'),
+        avg_cost: cell.totalCost,
         avg_duration: 0,
-        message_count: phase.entries.length,
-        sounding_attempts: Array.from(phase.soundingAttempts.values()),
-        tool_calls: Array.from(phase.toolCalls),
-        ward_count: phase.wardCount,
+        message_count: cell.entries.length,
+        sounding_attempts: Array.from(cell.soundingAttempts.values()),
+        tool_calls: Array.from(cell.toolCalls),
+        ward_count: cell.wardCount,
         output_snippet: outputSnippet
       };
     });
@@ -174,7 +174,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
       models_used: Array.from(modelsSet),
       input_data: inputData,
       final_output: finalOutput,
-      phases: phases,
+      cells: cells,
       error_count: entries.filter(e => e.node_type === 'error').length
     };
   }, [sessionId, isRunning]);
@@ -235,15 +235,15 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
     }
   }, [isRunning, fetchData]);
 
-  const handlePhaseClick = useCallback((phaseName) => {
-    setActivePhase(phaseName);
+  const handleCellClick = useCallback((cellName) => {
+    setActiveCell(cellName);
   }, []);
 
-  const handlePhaseChange = useCallback((phaseName) => {
-    setActivePhase(phaseName);
+  const handleCellChange = useCallback((cellName) => {
+    setActiveCell(cellName);
   }, []);
 
-  // Memoize max cost calculation for PhaseBar
+  // Memoize max cost calculation for CellBar
   const maxCost = useMemo(() => {
     if (!instance || !instance.cells || instance.cells.length === 0) return 0;
     return Math.max(...instance.cells.map(p => p.avg_cost));
@@ -284,7 +284,7 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
               className={`audible-button ${audibleSignaled ? 'signaled' : ''}`}
               onClick={handleAudibleClick}
               disabled={audibleSending || audibleSignaled}
-              title={audibleSignaled ? 'Audible signaled - waiting for safe point' : 'Call audible - inject feedback mid-phase'}
+              title={audibleSignaled ? 'Audible signaled - waiting for safe point' : 'Call audible - inject feedback mid-cell'}
             >
               <Icon icon="mdi:bullhorn" width="16" className="audible-icon" />
               {audibleSending ? 'Signaling...' : audibleSignaled ? 'Signaled!' : 'Audible'}
@@ -324,8 +324,8 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
               <div className="detail-mermaid-section">
                 <InteractiveMermaid
                   sessionId={sessionId}
-                  activePhase={activePhase}
-                  onPhaseClick={handlePhaseClick}
+                  activeCell={activeCell}
+                  onCellClick={handleCellClick}
                   lastUpdate={lastEntryCount}
                 />
               </div>
@@ -335,31 +335,31 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
                 <MetricsCards instance={instance} />
               )}
 
-              {/* Phase Timeline */}
+              {/* Cell Timeline */}
               {instance && instance.cells && instance.cells.length > 0 && (
-                <div className="phase-timeline-section">
+                <div className="cell-timeline-section">
                   <h3 className="section-title">
                     <Icon icon="mdi:timeline" width="20" />
-                    Phase Timeline
+                    Cell Timeline
                   </h3>
 
                   {/* Cascade Bar - cost distribution overview */}
                   {instance.cells.length > 1 && (
                     <CascadeBar
-                      phases={instance.cells}
+                      cells={instance.cells}
                       totalCost={instance.total_cost}
                       isRunning={isRunning}
                     />
                   )}
 
-                  <div className="phase-timeline">
-                    {instance.cells.map((phase, idx) => (
+                  <div className="cell-timeline">
+                    {instance.cells.map((cell, idx) => (
                       <div
-                        key={phase.name}
-                        className={`phase-timeline-item ${activePhase === phase.name ? 'active' : ''}`}
-                        onClick={() => handlePhaseClick(phase.name)}
+                        key={cell.name}
+                        className={`cell-timeline-item ${activeCell === cell.name ? 'active' : ''}`}
+                        onClick={() => handleCellClick(cell.name)}
                       >
-                        <PhaseBar phase={phase} maxCost={maxCost} cellIndex={idx} />
+                        <CellBar cell={cell} maxCost={maxCost} cellIndex={idx} />
                       </div>
                     ))}
                   </div>
@@ -380,8 +380,8 @@ function DetailViewLegacy({ sessionId, onBack, runningSessions = new Set(), fina
             <LiveDebugLog
               sessionId={sessionId}
               groupedEntries={groupedEntries}
-              activePhase={activePhase}
-              onPhaseChange={handlePhaseChange}
+              activeCell={activeCell}
+              onCellChange={handleCellChange}
               isRunning={isRunning}
             />
           )}

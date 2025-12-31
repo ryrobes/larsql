@@ -1,5 +1,5 @@
 /**
- * ContextDropPicker - Quick picker that appears when dropping a phase output
+ * ContextDropPicker - Quick picker that appears when dropping a cell output
  * onto the Context drawer toggle.
  *
  * Lets user choose the include mode:
@@ -44,7 +44,7 @@ const INCLUDE_OPTIONS = [
   },
 ];
 
-function ContextDropPicker({ phaseName, position, onSelect, onCancel }) {
+function ContextDropPicker({ cellName, position, onSelect, onCancel }) {
   const pickerRef = useRef(null);
 
   // Close on click outside
@@ -86,7 +86,7 @@ function ContextDropPicker({ phaseName, position, onSelect, onCancel }) {
     <div className="context-drop-picker" style={style} ref={pickerRef}>
       <div className="picker-header">
         <Icon icon="mdi:link-variant" width="14" />
-        <span>Add context from <strong>{phaseName}</strong></span>
+        <span>Add context from <strong>{cellName}</strong></span>
       </div>
 
       <div className="picker-options">

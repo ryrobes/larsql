@@ -149,7 +149,7 @@ function MessageSearchTab() {
                     {result.session_id && (
                       <>
                         Session: <code>{result.session_id}</code>
-                        {result.cell_name && ` | Phase: ${result.cell_name}`}
+                        {result.cell_name && ` | Cell: ${result.cell_name}`}
                       </>
                     )}
                     {result.session_id && (

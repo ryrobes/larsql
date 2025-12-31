@@ -25,9 +25,9 @@ const renderAudioFromEntry = (entry, sessionId) => {
       relPath = pathParts.slice(sessionIndex + 1).join('/');
     } else {
       // Fallback: use cell_name if available
-      const phaseName = entry.cell_name || 'unknown';
+      const cellName = entry.cell_name || 'unknown';
       const filename = pathParts[pathParts.length - 1];
-      relPath = `${phaseName}/${filename}`;
+      relPath = `${cellName}/${filename}`;
     }
 
     const audioUrl = `http://localhost:5050/api/audio/${sessionId}/${relPath}`;

@@ -11,7 +11,7 @@
  *   value={instructions}
  *   onChange={setInstructions}
  *   availableVariables={variables}
- *   placeholder="Enter phase instructions..."
+ *   placeholder="Enter cell instructions..."
  * />
  */
 

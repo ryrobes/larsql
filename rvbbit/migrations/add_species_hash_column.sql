@@ -1,6 +1,6 @@
 -- Migration: Add species_hash column to unified_logs table
 -- Date: 2025-12-10
--- Description: Adds species_hash column for prompt evolution tracking (Phase 1 of Sextant evolution)
+-- Description: Adds species_hash column for prompt evolution tracking (Cell 1 of Sextant evolution)
 --
 -- species_hash captures the "DNA" of a prompt template - the instructions, soundings config,
 -- and rules that define how prompts are generated. This enables comparing prompts across

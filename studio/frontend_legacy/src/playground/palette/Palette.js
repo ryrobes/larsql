@@ -79,7 +79,7 @@ function Palette() {
     event.dataTransfer.setData('application/playground-node', JSON.stringify({
       paletteId,
       type: paletteType,
-      nodeType: nodeType || paletteType, // Pass nodeType for phase nodes
+      nodeType: nodeType || paletteType, // Pass nodeType for cell nodes
     }));
     event.dataTransfer.effectAllowed = 'move';
   }, []);

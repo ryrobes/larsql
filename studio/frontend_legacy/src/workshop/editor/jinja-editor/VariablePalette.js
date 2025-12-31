@@ -143,7 +143,7 @@ function VariablePalette({ variables, onInsert }) {
           onInsert={onInsert}
         />
         <VariableSection
-          title="Previous Phases"
+          title="Previous Cells"
           icon="📤"
           variables={grouped.output}
           onInsert={onInsert}

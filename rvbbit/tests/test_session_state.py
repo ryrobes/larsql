@@ -43,14 +43,14 @@ def test_session_state_dataclass():
         session_id="session_123",
         cascade_id="test_cascade",
         status=SessionStatus.RUNNING,
-        current_cell="phase_1",
+        current_cell="cell_1",
         depth=0
     )
 
     assert state.session_id == "session_123"
     assert state.cascade_id == "test_cascade"
     assert state.status == SessionStatus.RUNNING
-    assert state.current_cell == "phase_1"
+    assert state.current_cell == "cell_1"
     assert state.depth == 0
 
 
@@ -193,11 +193,11 @@ def test_manager_update_status():
         cascade_id="test_cascade"
     )
 
-    manager.update_status("session_123", SessionStatus.RUNNING, current_cell="phase_1")
+    manager.update_status("session_123", SessionStatus.RUNNING, current_cell="cell_1")
 
     state = manager.get_session("session_123")
     assert state.status == SessionStatus.RUNNING
-    assert state.current_cell == "phase_1"
+    assert state.current_cell == "cell_1"
 
 
 def test_manager_update_status_completed():
@@ -233,13 +233,13 @@ def test_manager_update_status_error():
         "session_123",
         SessionStatus.ERROR,
         error_message="Something went wrong",
-        error_cell="phase_2"
+        error_cell="cell_2"
     )
 
     state = manager.get_session("session_123")
     assert state.status == SessionStatus.ERROR
     assert state.error_message == "Something went wrong"
-    assert state.error_cell == "phase_2"
+    assert state.error_cell == "cell_2"
 
 
 def test_manager_set_blocked():
@@ -524,11 +524,11 @@ def test_high_level_update_status():
     get_session_state_manager(use_db=False)
 
     create_session(session_id="api_test_456", cascade_id="test_cascade")
-    update_session_status("api_test_456", SessionStatus.RUNNING, current_cell="phase_1")
+    update_session_status("api_test_456", SessionStatus.RUNNING, current_cell="cell_1")
 
     state = get_session("api_test_456")
     assert state.status == SessionStatus.RUNNING
-    assert state.current_cell == "phase_1"
+    assert state.current_cell == "cell_1"
 
 
 def test_high_level_blocked_operations():

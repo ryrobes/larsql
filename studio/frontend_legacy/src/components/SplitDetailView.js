@@ -60,13 +60,13 @@ function SplitDetailView({
     });
   }, []);
 
-  // Handle phase click from PhaseBar - scroll to first message in phase
-  const handlePhaseClick = useCallback((phaseName) => {
+  // Handle cell click from CellBar - scroll to first message in cell
+  const handleCellClick = useCallback((cellName) => {
     if (!messageFlowData?.all_messages) return;
 
-    // Find the first message in this phase
+    // Find the first message in this cell
     const firstMessageIndex = messageFlowData.all_messages.findIndex(
-      msg => msg.cell_name === phaseName
+      msg => msg.cell_name === cellName
     );
 
     if (firstMessageIndex >= 0) {
@@ -77,13 +77,13 @@ function SplitDetailView({
     }
   }, [messageFlowData?.all_messages]);
 
-  // Handle sounding click from PhaseBar - scroll to first message in sounding
-  const handleSoundingClick = useCallback((phaseName, soundingIndex) => {
+  // Handle sounding click from CellBar - scroll to first message in sounding
+  const handleSoundingClick = useCallback((cellName, soundingIndex) => {
     if (!messageFlowData?.all_messages) return;
 
-    // Find the first message in this phase+sounding combination
+    // Find the first message in this cell+sounding combination
     const firstMessageIndex = messageFlowData.all_messages.findIndex(
-      msg => msg.cell_name === phaseName && msg.candidate_index === soundingIndex
+      msg => msg.cell_name === cellName && msg.candidate_index === soundingIndex
     );
 
     if (firstMessageIndex >= 0) {
@@ -221,7 +221,7 @@ function SplitDetailView({
             hideOutput={true}
             selectedMessage={selectedMessage}
             onCloseMessage={() => setSelectedMessage(null)}
-            onPhaseClick={handlePhaseClick}
+            onCellClick={handleCellClick}
             onSoundingClick={handleSoundingClick}
           />
         </div>

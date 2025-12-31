@@ -84,26 +84,6 @@ const ContextRenderer = (props) => {
   );
 };
 
-const BottleneckRenderer = (props) => {
-  const cell = props.value;
-  const pct = props.data.bottleneck_cell_pct || 0;
-
-  if (!cell || pct < 40) {
-    return <span style={{ color: '#475569' }}>-</span>;
-  }
-
-  const color = pct > 70 ? '#f87171' : '#fbbf24';
-
-  return (
-    <div style={{ color, fontWeight: '500', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-      <div>{cell}</div>
-      <div style={{ fontSize: '10px', marginTop: '2px', color: '#64748b' }}>
-        {pct.toFixed(0)}% of cascade
-      </div>
-    </div>
-  );
-};
-
 const DurationRenderer = (props) => {
   const ms = props.value || 0;
   const seconds = (ms / 1000).toFixed(1);
@@ -253,7 +233,7 @@ const ConsoleView = () => {
         session_id: session.session_id,
         cascade_id: session.cascade_id,
         status: session.status,
-        current_phase: session.current_phase || session.current_cell,
+        current_cell: session.current_cell || session.current_cell,
         started_at: session.started_at,
         completed_at: session.completed_at,
         updated_at: session.updated_at,
@@ -283,8 +263,6 @@ const ConsoleView = () => {
         cluster_run_count: session.cluster_run_count || 0,
         context_cost_pct: session.context_cost_pct || 0,
         total_context_cost_estimated: session.total_context_cost_estimated || 0,
-        bottleneck_cell: session.bottleneck_cell,
-        bottleneck_cell_pct: session.bottleneck_cell_pct || 0,
         models: session.models || [],
       }));
 
@@ -293,7 +271,7 @@ const ConsoleView = () => {
       const newHash = JSON.stringify(rows.map(r => ({
         id: r.session_id,
         status: r.status,
-        phase: r.current_phase,
+        cell: r.current_cell,
         updated: r.updated_at,
         cost: r.total_cost,
         msgs: r.message_count,
@@ -455,7 +433,7 @@ const ConsoleView = () => {
       },
     },
     {
-      field: 'current_phase',
+      field: 'current_cell',
       headerName: 'Last Cell',
       flex: 1,
       minWidth: 120,
@@ -547,27 +525,6 @@ const ConsoleView = () => {
       },
       cellStyle: {
         fontFamily: 'var(--font-mono)',
-        lineHeight: '1.4',
-        whiteSpace: 'normal',
-        paddingTop: '4px',
-        paddingBottom: '4px'
-      },
-    },
-    // BOTTLENECK CELL
-    {
-      field: 'bottleneck_cell',
-      headerName: 'Bottleneck',
-      headerTooltip: 'Cell that consumed the most cascade cost/time',
-      width: 140,
-      wrapText: true,
-      autoHeight: true,
-      cellRenderer: BottleneckRenderer,
-      tooltipValueGetter: (params) => {
-        const cell = params.value;
-        const pct = params.data.bottleneck_cell_pct || 0;
-        return cell ? `Cell '${cell}' consumed ${pct.toFixed(0)}% of cascade cost` : 'No dominant bottleneck';
-      },
-      cellStyle: {
         lineHeight: '1.4',
         whiteSpace: 'normal',
         paddingTop: '4px',
@@ -734,13 +691,6 @@ const ConsoleView = () => {
                 value={`${kpis.avg_context_pct.toFixed(0)}%`}
                 subtitle={kpis.context_trend}
                 color="#60a5fa"
-              />
-              <KPICard
-                icon="mdi:target"
-                title="Top Bottleneck"
-                value={kpis.top_bottleneck_cell}
-                subtitle={`${kpis.top_bottleneck_pct.toFixed(0)}% avg`}
-                color="#fbbf24"
               />
             </>
           )}

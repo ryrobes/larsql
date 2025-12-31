@@ -98,7 +98,7 @@
   color: #334155;
 }
 
-.nav-parent-phase {
+.nav-parent-cell {
   color: #cbd5e1;
   font-weight: 500;
 }
@@ -176,7 +176,7 @@
 }
 
 /* ============================================
-   PHASES LIST
+   CELLS LIST
    ============================================ */
 
 .nav-cells-list {
@@ -365,7 +365,7 @@
 }
 
 /* ============================================
-   PHASE COLUMNS (Expandable)
+   CELL COLUMNS (Expandable)
    ============================================ */
 
 .nav-cell-columns {
@@ -543,7 +543,7 @@
   align-items: flex-start;
 }
 
-/* Phase Types Section - Draggable Palette */
+/* Cell Types Section - Draggable Palette */
 .nav-cell-types-content {
   display: flex;
   flex-direction: row;
@@ -592,7 +592,7 @@
   letter-spacing: 0.5px;
 }
 
-/* Phase Type Subsections */
+/* Cell Type Subsections */
 .nav-cell-subsection {
   border-top: 1px solid rgba(26, 22, 40, 0.5);
   margin-top: 8px;
@@ -848,7 +848,7 @@
 }
 
 /* ============================================
-   RABBITIZE ARTIFACTS (nested in Phases)
+   RABBITIZE ARTIFACTS (nested in Cells)
    ============================================ */
 
 .nav-cell-artifacts {

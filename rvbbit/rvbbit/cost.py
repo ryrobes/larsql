@@ -29,7 +29,7 @@ class CostTracker:
             request_id: OpenRouter request ID
             trace_id: Trace node ID
             parent_id: Parent trace node ID
-            cell_name: Current phase name
+            cell_name: Current cell name
             cascade_id: Cascade identifier
             candidate_index: Sounding attempt index (if applicable)
             pending_message: Optional dict of message data to hold until cost arrives.

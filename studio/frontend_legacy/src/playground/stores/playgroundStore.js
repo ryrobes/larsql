@@ -14,7 +14,7 @@ import paletteConfig from '../palette/palette.json';
 // ============================================
 
 /**
- * Convert any string to a safe phase name (lowercase, underscores, alphanumeric)
+ * Convert any string to a safe cell name (lowercase, underscores, alphanumeric)
  * Examples:
  *   "FLUX.1 Schnell" -> "flux_1_schnell"
  *   "google/gemini-2.5-flash" -> "gemini_2_5_flash"
@@ -96,13 +96,13 @@ const usePlaygroundStore = create(
     loadedSessionId: null, // The session_id of the loaded cascade (for URL persistence)
     executionStatus: 'idle', // 'idle' | 'running' | 'completed' | 'error'
     executionError: null,
-    phaseResults: {}, // nodeId -> { status, images: [], cost, duration }
+    cellResults: {}, // nodeId -> { status, images: [], cost, duration }
     totalSessionCost: 0, // Accumulated cost for the current session
     costPollingTimer: null, // Timer ID for cost polling
     costPollingStopTime: null, // When to stop polling after completion
 
     // Session stream state (derived from unified_logs polling)
-    // phaseName -> { status, soundingsProgress, winnerIndex, soundingsOutputs, output, cost, ... }
+    // cellName -> { status, soundingsProgress, winnerIndex, soundingsOutputs, output, cost, ... }
     sessionStreamStates: {},
 
     // ============================================
@@ -190,13 +190,13 @@ const usePlaygroundStore = create(
       state.selectedNodeId = nodeId;
     }),
 
-    // Add a phase node (LLM Phase with YAML editor)
-    addPhaseNode: (position) => set((state) => {
-      const nodeId = generateNodeId('phase');
+    // Add a cell node (LLM Cell with YAML editor)
+    addCellNode: (position) => set((state) => {
+      const nodeId = generateNodeId('cell');
 
       // Generate unique name
       const existingNames = getExistingNames(state.nodes);
-      const uniqueName = generateUniqueName('llm_phase', existingNames);
+      const uniqueName = generateUniqueName('llm_cell', existingNames);
 
       const defaultYaml = `name: ${uniqueName}
 instructions: |
@@ -208,7 +208,7 @@ rules:
 
       const newNode = {
         id: nodeId,
-        type: 'phase',
+        type: 'cell',
         position,
         data: {
           name: uniqueName, // Auto-assigned unique name
@@ -223,13 +223,13 @@ rules:
       state.selectedNodeId = nodeId;
     }),
 
-    // Add a card node (Two-sided PhaseCard with flip animation)
+    // Add a card node (Two-sided CellCard with flip animation)
     addCardNode: (position) => set((state) => {
       const nodeId = generateNodeId('card');
 
       // Generate unique name
       const existingNames = getExistingNames(state.nodes);
-      const uniqueName = generateUniqueName('llm_phase', existingNames);
+      const uniqueName = generateUniqueName('llm_cell', existingNames);
 
       const defaultYaml = `name: ${uniqueName}
 instructions: |
@@ -241,7 +241,7 @@ rules:
 
       const newNode = {
         id: nodeId,
-        type: 'card',  // Uses PhaseCard component
+        type: 'card',  // Uses CellCard component
         position,
         data: {
           name: uniqueName,
@@ -333,7 +333,7 @@ rules:
       const state = get();
       const { nodes, edges } = state;
 
-      // Helper to get the phase/input name for a node (custom name or fallback to id)
+      // Helper to get the cell/input name for a node (custom name or fallback to id)
       const getNodeName = (node) => node.data.name || node.id;
 
       // Build dependency graph and topological sort
@@ -371,8 +371,8 @@ rules:
         inputs[inputName] = node.data.text || '';
       });
 
-      // Build phases from all execution nodes (phase nodes, then image nodes)
-      const phases = [];
+      // Build cells from all execution nodes (cell nodes, then image nodes)
+      const cells = [];
 
       // Helper to find text input source for a node
       const findTextSource = (node, targetHandle = null) => {
@@ -393,27 +393,27 @@ rules:
         return imageEdge ? nodeMap.get(imageEdge.source) : null;
       };
 
-      // Process phase nodes (LLM phases with YAML)
-      const phaseNodes = sortedNodes.filter(n => n.type === 'phase');
-      phaseNodes.forEach(node => {
-        // Parse the YAML to get the phase definition
-        let phaseConfig;
+      // Process cell nodes (LLM cells with YAML)
+      const cellNodes = sortedNodes.filter(n => n.type === 'cell');
+      cellNodes.forEach(node => {
+        // Parse the YAML to get the cell definition
+        let cellConfig;
         try {
-          phaseConfig = yaml.load(node.data.yaml);
+          cellConfig = yaml.load(node.data.yaml);
         } catch {
           // Skip invalid YAML
-          console.warn(`[generateCascade] Invalid YAML for phase node ${node.id}`);
+          console.warn(`[generateCascade] Invalid YAML for cell node ${node.id}`);
           return;
         }
 
         // Use custom node name if set, otherwise use name from YAML
-        const phaseName = node.data.name || phaseConfig.name || node.id;
-        const phase = {
-          ...phaseConfig,
-          name: phaseName,
+        const cellName = node.data.name || cellConfig.name || node.id;
+        const cell = {
+          ...cellConfig,
+          name: cellName,
         };
 
-        // Find all text input connections (for context from other phases)
+        // Find all text input connections (for context from other cells)
         const textEdges = edges.filter(e =>
           e.target === node.id && e.targetHandle?.startsWith('text-in')
         );
@@ -423,36 +423,36 @@ rules:
           const sourceNode = nodeMap.get(edge.source);
           if (!sourceNode) return;
 
-          if (sourceNode.type === 'phase') {
-            // Phase → Phase: Add context.from with include: ["output"]
+          if (sourceNode.type === 'cell') {
+            // Cell → Cell: Add context.from with include: ["output"]
             contextSources.push({
-              phase: getNodeName(sourceNode),
+              cell: getNodeName(sourceNode),
               include: ['output'],
             });
           }
-          // Prompt → Phase: The YAML already has {{ input.X }} references
+          // Prompt → Cell: The YAML already has {{ input.X }} references
           // which will be resolved from cascade inputs
         });
 
         // Find image input connection (for vision models)
         const imageSource = findImageSource(node);
         if (imageSource) {
-          if (imageSource.type === 'image' || imageSource.type === 'phase') {
+          if (imageSource.type === 'image' || imageSource.type === 'cell') {
             contextSources.push({
-              phase: getNodeName(imageSource),
+              cell: getNodeName(imageSource),
               include: ['images'],
             });
           }
         }
 
-        // Add context if we have upstream phase dependencies
+        // Add context if we have upstream cell dependencies
         if (contextSources.length > 0) {
-          phase.context = {
+          cell.context = {
             from: contextSources,
           };
         }
 
-        phases.push(phase);
+        cells.push(cell);
       });
 
       // Process image nodes (generators, transformers, tools)
@@ -462,26 +462,26 @@ rules:
         const paletteConfig = node.data.paletteConfig;
         if (!paletteConfig) return;
 
-        // Find connected text source (prompt or phase)
+        // Find connected text source (prompt or cell)
         const textSource = findTextSource(node);
         let promptRef = '';
 
         if (textSource?.type === 'prompt') {
           promptRef = `{{ input.${getNodeName(textSource)} }}`;
-        } else if (textSource?.type === 'phase') {
-          // Phase output - will be set via context
+        } else if (textSource?.type === 'cell') {
+          // Cell output - will be set via context
           promptRef = `{{ outputs.${getNodeName(textSource)} }}`;
         }
 
         // Find connected image input
         const imageSource = findImageSource(node);
-        const hasImageInput = imageSource?.type === 'image' || imageSource?.type === 'phase';
+        const hasImageInput = imageSource?.type === 'image' || imageSource?.type === 'cell';
 
         if (paletteConfig.openrouter) {
-          // OpenRouter image model - use model-based phase (same as LLM phases)
-          // Runner detects image models and routes to _execute_image_generation_phase()
+          // OpenRouter image model - use model-based cell (same as LLM cells)
+          // Runner detects image models and routes to _execute_image_generation_cell()
           // which uses normal Agent.run() with modalities=["text", "image"]
-          const phase = {
+          const cell = {
             name: getNodeName(node),
             model: paletteConfig.openrouter.model,
             instructions: promptRef || 'Generate a beautiful image',
@@ -494,10 +494,10 @@ rules:
           // Build context.from for upstream dependencies
           const contextSources = [];
 
-          // If text source is a phase, add context for its output
-          if (textSource?.type === 'phase') {
+          // If text source is a cell, add context for its output
+          if (textSource?.type === 'cell') {
             contextSources.push({
-              phase: getNodeName(textSource),
+              cell: getNodeName(textSource),
               include: ['output'],
             });
           }
@@ -505,23 +505,23 @@ rules:
           // If there's an image input, add context.from to inject that image
           if (hasImageInput) {
             contextSources.push({
-              phase: getNodeName(imageSource),
+              cell: getNodeName(imageSource),
               include: ['images'],
             });
           }
 
           if (contextSources.length > 0) {
-            phase.context = { from: contextSources };
+            cell.context = { from: contextSources };
           }
 
-          phases.push(phase);
+          cells.push(cell);
         } else if (paletteConfig.harbor) {
-          // Harbor tool (HuggingFace Space) - deterministic phase
+          // Harbor tool (HuggingFace Space) - deterministic cell
           const imageRef = imageSource?.type === 'image'
             ? `{{ state.output_${getNodeName(imageSource)}.images[0] }}`
             : '';
 
-          phases.push({
+          cells.push({
             name: getNodeName(node),
             tool: paletteConfig.harbor.tool,
             tool_inputs: {
@@ -530,8 +530,8 @@ rules:
             },
           });
         } else if (paletteConfig.local) {
-          // Local tool - deterministic phase
-          phases.push({
+          // Local tool - deterministic cell
+          cells.push({
             name: getNodeName(node),
             tool: paletteConfig.local.tool,
             tool_inputs: {
@@ -548,11 +548,11 @@ rules:
         inputs_schema: Object.fromEntries(
           promptNodes.map(n => [getNodeName(n), `Prompt text for ${getNodeName(n)}`])
         ),
-        phases,
+        cells,
 
         // Embed playground state for UI persistence
-        // NOTE: Don't store yaml string in node data - it's redundant with phases[]
-        // When loading, we reconstruct yaml from the phase definition
+        // NOTE: Don't store yaml string in node data - it's redundant with cells[]
+        // When loading, we reconstruct yaml from the cell definition
         _playground: {
           version: 1,
           viewport: state.viewport,
@@ -566,7 +566,7 @@ rules:
               name: n.data.name, // Persist custom names
               width: n.data.width,
               height: n.data.height,
-              // Phase node: store discoveredInputs but NOT yaml (reconstructed on load)
+              // Cell node: store discoveredInputs but NOT yaml (reconstructed on load)
               discoveredInputs: n.data.discoveredInputs,
             },
           })),
@@ -721,13 +721,13 @@ rules:
         return { success: false, error: 'Failed to generate cascade' };
       }
 
-      // Set all execution nodes (image and phase) to 'pending' status
+      // Set all execution nodes (image and cell) to 'pending' status
       set((state) => {
         state.nodes.forEach(node => {
           if (node.type === 'image') {
             node.data.status = 'pending';
             node.data.images = [];
-          } else if (node.type === 'phase') {
+          } else if (node.type === 'cell') {
             node.data.status = 'pending';
             node.data.output = '';
           }
@@ -788,20 +788,20 @@ rules:
         return { success: false, error: 'No cached session - run full cascade first' };
       }
 
-      // Get the phase name for this node (custom name or id)
+      // Get the cell name for this node (custom name or id)
       const targetNode = state.nodes.find(n => n.id === nodeId);
-      const phaseName = targetNode?.data?.name || nodeId;
+      const cellName = targetNode?.data?.name || nodeId;
 
       // Set target node to 'pending', keep upstream nodes completed, clear downstream
-      // Include both image and phase nodes in execution order
+      // Include both image and cell nodes in execution order
       const nodeOrder = state.nodes
-        .filter(n => n.type === 'image' || n.type === 'phase')
+        .filter(n => n.type === 'image' || n.type === 'cell')
         .map(n => n.id);
       const targetIdx = nodeOrder.indexOf(nodeId);
 
       set((state) => {
         state.nodes.forEach(node => {
-          if (node.type === 'image' || node.type === 'phase') {
+          if (node.type === 'image' || node.type === 'cell') {
             const nodeIdx = nodeOrder.indexOf(node.id);
             if (nodeIdx < targetIdx) {
               // Upstream: keep as completed with cached results
@@ -835,7 +835,7 @@ rules:
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cell_name: phaseName, // Use phase name (custom name or id) to match cascade phases
+            cell_name: cellName, // Use cell name (custom name or id) to match cascade cells
             cached_session_id: state.lastSuccessfulSessionId,
             cascade_yaml: cascadeYaml,
             inputs,
@@ -870,16 +870,16 @@ rules:
       }
     },
 
-    // Handle phase completion from SSE
-    handlePhaseComplete: (phaseName, result) => set((state) => {
-      console.log('[Store] handlePhaseComplete:', phaseName, 'images:', result.images, 'output:', result.output);
+    // Handle cell completion from SSE
+    handleCellComplete: (cellName, result) => set((state) => {
+      console.log('[Store] handleCellComplete:', cellName, 'images:', result.images, 'output:', result.output);
 
       // Find node by custom name OR by id (for backwards compatibility)
-      // Also check parsed phase name for phase nodes
+      // Also check parsed cell name for cell nodes
       const nodeIndex = state.nodes.findIndex(n => {
-        if (n.data.name === phaseName || n.id === phaseName) return true;
-        // For phase nodes, also check the name in their YAML
-        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        if (n.data.name === cellName || n.id === cellName) return true;
+        // For cell nodes, also check the name in their YAML
+        if (n.type === 'cell' && n.data.parsedCell?.name === cellName) return true;
         return false;
       });
 
@@ -902,8 +902,8 @@ rules:
             duration: result.duration_ms || result.duration || n.data.duration,
           };
 
-          // For phase nodes, store text output; for image nodes, store images
-          if (n.type === 'phase') {
+          // For cell nodes, store text output; for image nodes, store images
+          if (n.type === 'cell') {
             return {
               ...n,
               data: {
@@ -924,10 +924,10 @@ rules:
 
         console.log('[Store] After update, node:', state.nodes[nodeIndex].id);
       } else {
-        console.log('[Store] Node not found for phase:', phaseName, 'available nodes:', state.nodes.map(n => ({ id: n.id, name: n.data.name, type: n.type })));
+        console.log('[Store] Node not found for cell:', cellName, 'available nodes:', state.nodes.map(n => ({ id: n.id, name: n.data.name, type: n.type })));
       }
 
-      state.phaseResults[phaseName] = result;
+      state.cellResults[cellName] = result;
       // Note: Session cost is now polled from database via fetchSessionCost()
       // to avoid double-counting (SSE events can have duplicate cost values)
 
@@ -1011,17 +1011,17 @@ rules:
       get().stopCostPolling();
     },
 
-    // Handle phase start from SSE - set node status to 'running'
-    handlePhaseStart: (phaseName) => set((state) => {
-      // Find node by custom name, node id, or parsed phase name (same matching as handlePhaseComplete)
+    // Handle cell start from SSE - set node status to 'running'
+    handleCellStart: (cellName) => set((state) => {
+      // Find node by custom name, node id, or parsed cell name (same matching as handleCellComplete)
       const nodeIndex = state.nodes.findIndex(n => {
-        if (n.data.name === phaseName || n.id === phaseName) return true;
-        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        if (n.data.name === cellName || n.id === cellName) return true;
+        if (n.type === 'cell' && n.data.parsedCell?.name === cellName) return true;
         return false;
       });
 
       if (nodeIndex !== -1) {
-        console.log('[Store] Phase start for node:', state.nodes[nodeIndex].id);
+        console.log('[Store] Cell start for node:', state.nodes[nodeIndex].id);
         state.nodes = state.nodes.map((n, i) => {
           if (i !== nodeIndex) return n;
           return {
@@ -1030,16 +1030,16 @@ rules:
           };
         });
       } else {
-        console.log('[Store] Phase start - node not found for phase:', phaseName);
+        console.log('[Store] Cell start - node not found for cell:', cellName);
       }
     }),
 
     // Handle cost update from SSE
-    handleCostUpdate: (phaseName, cost) => set((state) => {
-      // Find node by custom name, node id, or parsed phase name (same matching as handlePhaseComplete)
+    handleCostUpdate: (cellName, cost) => set((state) => {
+      // Find node by custom name, node id, or parsed cell name (same matching as handleCellComplete)
       const nodeIndex = state.nodes.findIndex(n => {
-        if (n.data.name === phaseName || n.id === phaseName) return true;
-        if (n.type === 'phase' && n.data.parsedPhase?.name === phaseName) return true;
+        if (n.data.name === cellName || n.id === cellName) return true;
+        if (n.type === 'cell' && n.data.parsedCell?.name === cellName) return true;
         return false;
       });
 
@@ -1056,35 +1056,35 @@ rules:
     }),
 
     // Update session stream states (called by useSessionStream hook)
-    // This merges derived phase states from the session log stream
-    setSessionStreamStates: (phaseStates) => set((state) => {
-      state.sessionStreamStates = phaseStates;
+    // This merges derived cell states from the session log stream
+    setSessionStreamStates: (cellStates) => set((state) => {
+      state.sessionStreamStates = cellStates;
 
       // Also update node data based on the derived states
       for (const node of state.nodes) {
-        if (node.type !== 'phase') continue;
+        if (node.type !== 'cell') continue;
 
-        // Match by custom name or parsed phase name
-        const phaseName = node.data.name || node.data.parsedPhase?.name;
-        if (!phaseName) continue;
+        // Match by custom name or parsed cell name
+        const cellName = node.data.name || node.data.parsedCell?.name;
+        if (!cellName) continue;
 
-        const phaseState = phaseStates[phaseName];
-        if (!phaseState) continue;
+        const cellState = cellStates[cellName];
+        if (!cellState) continue;
 
         // Update node data with derived state
-        node.data.status = phaseState.status;
-        node.data.output = phaseState.output || '';
-        node.data.liveLog = phaseState.liveLog || [];         // Scrolling log during execution
-        node.data.finalOutput = phaseState.finalOutput || ''; // Clean winner output after completion
-        node.data.lastStatusMessage = phaseState.lastStatusMessage || ''; // Short status for footer
-        node.data.cost = phaseState.cost;
-        node.data.duration = phaseState.duration;
-        node.data.soundingsProgress = phaseState.soundingsProgress;
-        node.data.winnerIndex = phaseState.winnerIndex;
-        node.data.currentReforgeStep = phaseState.currentReforgeStep;
-        node.data.totalReforgeSteps = phaseState.totalReforgeSteps;
-        node.data.soundingsOutputs = phaseState.soundingsOutputs;
-        node.data.reforgeOutputs = phaseState.reforgeOutputs || {}; // Flattened: step -> winner content
+        node.data.status = cellState.status;
+        node.data.output = cellState.output || '';
+        node.data.liveLog = cellState.liveLog || [];         // Scrolling log during execution
+        node.data.finalOutput = cellState.finalOutput || ''; // Clean winner output after completion
+        node.data.lastStatusMessage = cellState.lastStatusMessage || ''; // Short status for footer
+        node.data.cost = cellState.cost;
+        node.data.duration = cellState.duration;
+        node.data.soundingsProgress = cellState.soundingsProgress;
+        node.data.winnerIndex = cellState.winnerIndex;
+        node.data.currentReforgeStep = cellState.currentReforgeStep;
+        node.data.totalReforgeSteps = cellState.totalReforgeSteps;
+        node.data.soundingsOutputs = cellState.soundingsOutputs;
+        node.data.reforgeOutputs = cellState.reforgeOutputs || {}; // Flattened: step -> winner content
       }
     }),
 
@@ -1095,14 +1095,14 @@ rules:
         state.sessionId = null;
         state.executionStatus = 'idle';
         state.executionError = null;
-        state.phaseResults = {};
+        state.cellResults = {};
         state.totalSessionCost = 0;
         state.sessionStreamStates = {};
         state.nodes.forEach(node => {
           if (node.type === 'image') {
             node.data.status = 'idle';
             node.data.images = [];
-          } else if (node.type === 'phase') {
+          } else if (node.type === 'cell') {
             node.data.status = 'idle';
             node.data.output = '';
             node.data.soundingsProgress = [];
@@ -1125,7 +1125,7 @@ rules:
         state.loadedSessionId = null;
         state.executionStatus = 'idle';
         state.executionError = null;
-        state.phaseResults = {};
+        state.cellResults = {};
         state.sessionStreamStates = {};
         state.selectedNodeId = null;
         state.totalSessionCost = 0;
@@ -1308,17 +1308,17 @@ rules:
                 height: n.data?.height,
               },
             };
-          } else if (n.type === 'phase') {
-            // Restore phase node - reconstruct YAML from phase definition
-            // Look up the phase by name in config.cells
-            const phaseName = n.data?.name || 'llm_phase';
-            const phaseConfig = config.cells?.find(p => p.name === phaseName);
+          } else if (n.type === 'cell') {
+            // Restore cell node - reconstruct YAML from cell definition
+            // Look up the cell by name in config.cells
+            const cellName = n.data?.name || 'llm_cell';
+            const cellConfig = config.cells?.find(p => p.name === cellName);
 
-            // Reconstruct clean YAML from the phase config (not the stringified blob)
-            let phaseYaml = n.data?.yaml || '';
-            if (phaseConfig && !phaseYaml) {
-              // Build yaml from the phase definition
-              phaseYaml = yaml.dump(phaseConfig, {
+            // Reconstruct clean YAML from the cell config (not the stringified blob)
+            let cellYaml = n.data?.yaml || '';
+            if (cellConfig && !cellYaml) {
+              // Build yaml from the cell definition
+              cellYaml = yaml.dump(cellConfig, {
                 lineWidth: 100,
                 noRefs: true,
               });
@@ -1326,10 +1326,10 @@ rules:
 
             return {
               id: n.id,
-              type: 'phase',
+              type: 'cell',
               position: n.position,
               data: {
-                yaml: phaseYaml,
+                yaml: cellYaml,
                 discoveredInputs: n.data?.discoveredInputs || [],
                 status: 'idle',
                 output: '',
@@ -1400,7 +1400,7 @@ rules:
           state.loadedSessionId = sessionId; // Track for URL
           state.executionStatus = 'idle';
           state.executionError = null;
-          state.phaseResults = {};
+          state.cellResults = {};
           state.selectedNodeId = null;
           if (playground.viewport) {
             state.viewport = playground.viewport;
@@ -1458,10 +1458,10 @@ rules:
                 placeholder: n.data?.placeholder, // Input description as placeholder
               },
             };
-          } else if (n.type === 'phase') {
+          } else if (n.type === 'cell') {
             return {
               id: n.id,
-              type: 'phase',
+              type: 'cell',
               position: n.position,
               data: {
                 yaml: n.data?.yaml || '',
@@ -1518,7 +1518,7 @@ rules:
           state.loadedSessionId = null;
           state.executionStatus = 'idle';
           state.executionError = null;
-          state.phaseResults = {};
+          state.cellResults = {};
           state.selectedNodeId = null;
           if (result.viewport) {
             state.viewport = result.viewport;

@@ -1,9 +1,9 @@
 """
 Bash as a first-class data transformation substrate.
 
-Bash scripts can read from previous phases (via stdin as CSV) and write
+Bash scripts can read from previous cells (via stdin as CSV) and write
 structured output (via stdout as CSV/JSON/JSONL) that gets materialized
-as temp tables for downstream phases.
+as temp tables for downstream cells.
 """
 
 import subprocess
@@ -33,10 +33,10 @@ def bash_data(
     _input: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
-    Execute bash script as a data transformation phase.
+    Execute bash script as a data transformation cell.
 
     Data Flow:
-    - Input: Previous phase's temp table as CSV on stdin
+    - Input: Previous cell's temp table as CSV on stdin
     - Output: Structured data (CSV/JSON/JSONL) on stdout → new temp table
 
     Persistence:
@@ -46,20 +46,20 @@ def bash_data(
 
     Args:
         script: Bash script to execute
-        input_table: Temp table name to read (default: previous cell = _{prev_phase})
+        input_table: Temp table name to read (default: previous cell = _{prev_cell})
         output_format: Format of stdout (csv, json, jsonl, auto)
         timeout: Execution timeout (e.g., "30s", "5m", default: "5m")
-        env: Additional environment variables (only for first phase if persist_session=True)
+        env: Additional environment variables (only for first cell if persist_session=True)
         persist_session: Use persistent bash process (default: True)
-        _cell_name: Injected by runner - current phase name
+        _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID
-        _outputs: Injected by runner - prior phase outputs
+        _outputs: Injected by runner - prior cell outputs
 
     Environment variables provided to script:
         $SESSION_DB: Path to session DuckDB file
         $SESSION_DIR: Path to session temp directory
         $SESSION_ID: Current session ID
-        $PHASE_NAME: Current phase name
+        $CELL_NAME: Current cell name
 
     Returns:
         {
@@ -70,7 +70,7 @@ def bash_data(
         }
 
     Example - Persistent environment:
-        # Phase 1: Setup
+        # Cell 1: Setup
         - name: setup
           tool: bash_data
           inputs:
@@ -79,7 +79,7 @@ def bash_data(
               cd /workspace/project
               function fetch() { curl -s "$1"; }
 
-        # Phase 2: Use persistent state
+        # Cell 2: Use persistent state
         - name: fetch_data
           tool: bash_data
           inputs:
@@ -99,9 +99,9 @@ def bash_data(
         session_dir = state_dir / _session_id if _session_id else state_dir
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Determine input table - try to find previous phase
+        # Determine input table - try to find previous cell
         if input_table is None and _outputs:
-            # Get the last phase with data output
+            # Get the last cell with data output
             for item in reversed(list(_outputs.items())):
                 cell_name, output = item
                 if isinstance(output, dict) and ('rows' in output or 'row_count' in output):
@@ -130,7 +130,7 @@ def bash_data(
             "SESSION_DB": session_db_path,
             "SESSION_DIR": str(session_dir),
             "SESSION_ID": _session_id or "",
-            "PHASE_NAME": _cell_name or "",
+            "CELL_NAME": _cell_name or "",
             "PATH": os.environ.get("PATH", ""),
             **os.environ,
             **(env or {})
@@ -150,11 +150,11 @@ def bash_data(
             # env is only used on first call (when session is created)
             session = get_bash_session(_session_id, session_dir, env)
 
-            # Update SESSION_DB and PHASE_NAME for each execution
-            # These change per phase, so we inject them as shell variables
+            # Update SESSION_DB and CELL_NAME for each execution
+            # These change per cell, so we inject them as shell variables
             setup_script = f"""
 export SESSION_DB='{session_db_path}'
-export PHASE_NAME='{_cell_name or ""}'
+export CELL_NAME='{_cell_name or ""}'
 """
 
             # Execute setup + user script

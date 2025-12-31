@@ -20,7 +20,7 @@ import './CheckpointRenderer.css';
  * - onSubmit: Callback when user submits (receives response object)
  * - onCancel: Optional callback for cancel action
  * - variant: 'inline' | 'modal' | 'page' (affects styling)
- * - showPhaseOutput: Whether to show the LLM's question/output above UI
+ * - showCellOutput: Whether to show the LLM's question/output above UI
  * - isSavedCheckpoint: If true, enables branching mode (ResearchCockpit)
  * - onBranchSubmit: Callback for creating branches from saved checkpoints
  */
@@ -29,7 +29,7 @@ const CheckpointRenderer = ({
   onSubmit,
   onCancel,
   variant = 'page',
-  showPhaseOutput = true,
+  showCellOutput = true,
   isSavedCheckpoint = false,
   onBranchSubmit,
   className = '',
@@ -55,11 +55,11 @@ const CheckpointRenderer = ({
 
   return (
     <div className={containerClass}>
-      {/* Phase Output (optional) */}
-      {showPhaseOutput && checkpoint.phase_output && (
-        <div className="checkpoint-phase-output">
-          <div className="phase-output-label">Question</div>
-          <div className="phase-output-text">{checkpoint.phase_output}</div>
+      {/* Cell Output (optional) */}
+      {showCellOutput && checkpoint.cell_output && (
+        <div className="checkpoint-cell-output">
+          <div className="cell-output-label">Question</div>
+          <div className="cell-output-text">{checkpoint.cell_output}</div>
         </div>
       )}
 
@@ -85,7 +85,7 @@ const CheckpointRenderer = ({
           <DynamicUI
             spec={checkpoint.ui_spec}
             onSubmit={onSubmit}
-            phaseOutput={checkpoint.phase_output}
+            cellOutput={checkpoint.cell_output}
             checkpointId={checkpoint.id}
             sessionId={checkpoint.session_id}
           />

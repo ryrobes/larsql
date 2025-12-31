@@ -1,5 +1,5 @@
-/* Phase bar - Simplified horizontal bar chart style */
-.phase-bar-container {
+/* Cell bar - Simplified horizontal bar chart style */
+.cell-bar-container {
   padding: 0.4rem 0;
   border-bottom: 1px solid #16202A;
   transition: background-color 0.2s ease, border-color 0.2s ease;
@@ -7,30 +7,30 @@
   contain: layout style;
 }
 
-.phase-bar-container:last-child {
+.cell-bar-container:last-child {
   border-bottom: none;
 }
 
-.phase-bar-container:hover {
+.cell-bar-container:hover {
   cursor: pointer;
 }
 
 /* Header: Name + Cost */
-.phase-bar-header {
+.cell-bar-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.3rem;
 }
 
-.phase-title {
+.cell-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 /* Color indicator square that matches cascade bar legend */
-.phase-color-indicator {
+.cell-color-indicator {
   width: 12px;
   height: 12px;
   border-radius: 3px;
@@ -38,19 +38,19 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.phase-name {
+.cell-name {
   font-size: 0.85rem;
   font-weight: 600;
   color: #F0F4F8;
 }
 
-.phase-metrics {
+.cell-metrics {
   display: flex;
   align-items: center;
   gap: 0.75rem;
 }
 
-.phase-cost {
+.cell-cost {
   font-size: 0.8rem;
   font-weight: 700;
   color: #4A9EDD;
@@ -58,14 +58,14 @@
 }
 
 /* Bar track and fill */
-.phase-bar-track {
+.cell-bar-track {
   height: 18px;
   background: #0B1219;
   border-radius: 4px;
   overflow: hidden;
 }
 
-.phase-bar-fill {
+.cell-bar-fill {
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s ease;
@@ -75,20 +75,20 @@
 }
 
 /* Status-based colors (for instances) */
-.phase-bar-fill.status-completed {
+.cell-bar-fill.status-completed {
   background: linear-gradient(90deg, rgba(74, 158, 221, 0.3), rgba(74, 158, 221, 0.7));
 }
 
-.phase-bar-fill.status-running {
+.cell-bar-fill.status-running {
   background: linear-gradient(90deg, rgba(217, 165, 83, 0.3), rgba(217, 165, 83, 0.7));
   animation: shimmer 2s ease-in-out infinite;
 }
 
-.phase-bar-fill.status-error {
+.cell-bar-fill.status-error {
   background: linear-gradient(90deg, rgba(207, 102, 121, 0.3), rgba(207, 102, 121, 0.7));
 }
 
-.phase-bar-fill.status-pending {
+.cell-bar-fill.status-pending {
   background: linear-gradient(90deg, rgba(44, 59, 75, 0.2), rgba(44, 59, 75, 0.3));
   opacity: 0.5;
 }
@@ -244,8 +244,8 @@
   color: #0a0a0a;
 }
 
-/* Phase message count in header */
-.phase-message-count {
+/* Cell message count in header */
+.cell-message-count {
   font-size: 0.7rem;
   font-weight: 500;
   color: #6B7280;
@@ -382,8 +382,8 @@
   color: #9CA3AF;
 }
 
-/* Clickable phase header for scroll navigation */
-.phase-bar-header.clickable {
+/* Clickable cell header for scroll navigation */
+.cell-bar-header.clickable {
   cursor: pointer;
   border-radius: 4px;
   padding: 2px 4px;
@@ -391,11 +391,11 @@
   transition: background-color 0.15s ease;
 }
 
-.phase-bar-header.clickable:hover {
+.cell-bar-header.clickable:hover {
   background-color: rgba(96, 165, 250, 0.15);
 }
 
-.phase-bar-header.clickable:active {
+.cell-bar-header.clickable:active {
   background-color: rgba(96, 165, 250, 0.25);
 }
 

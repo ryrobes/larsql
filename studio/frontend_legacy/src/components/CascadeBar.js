@@ -5,7 +5,7 @@ import './CascadeBar.css';
 
 // Curated color palette - vibrant pastels that work on dark backgrounds
 // Colors are ordered for visual appeal when adjacent
-export const PHASE_COLORS = [
+export const CELL_COLORS = [
   '#2DD4BF', // Teal (primary theme color)
   '#a78bfa', // Purple
   '#60a5fa', // Blue
@@ -20,61 +20,61 @@ export const PHASE_COLORS = [
   '#e879f9', // Fuchsia
 ];
 
-// Get a consistent color for a phase name (hash-based for consistency across renders)
-export function getPhaseColor(phaseName, index) {
-  // Simple hash of phase name for consistent color assignment
+// Get a consistent color for a cell name (hash-based for consistency across renders)
+export function getCellColor(cellName, index) {
+  // Simple hash of cell name for consistent color assignment
   let hash = 0;
-  for (let i = 0; i < phaseName.length; i++) {
-    hash = ((hash << 5) - hash) + phaseName.charCodeAt(i);
+  for (let i = 0; i < cellName.length; i++) {
+    hash = ((hash << 5) - hash) + cellName.charCodeAt(i);
     hash |= 0;
   }
   // Use absolute value and modulo to get index
-  const colorIndex = Math.abs(hash) % PHASE_COLORS.length;
-  return PHASE_COLORS[colorIndex];
+  const colorIndex = Math.abs(hash) % CELL_COLORS.length;
+  return CELL_COLORS[colorIndex];
 }
 
 // Sequential assignment for more predictable coloring (matches cascade bar order)
 export function getSequentialColor(index) {
-  return PHASE_COLORS[index % PHASE_COLORS.length];
+  return CELL_COLORS[index % CELL_COLORS.length];
 }
 
-function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
-  const [hoveredPhase, setHoveredPhase] = useState(null);
+function CascadeBar({ cells, totalCost, isRunning = false, mode = 'cost' }) {
+  const [hoveredCell, setHoveredCell] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-  const [selectedPhase, setSelectedPhase] = useState(null);  // Phase whose output is being displayed
+  const [selectedCell, setSelectedCell] = useState(null);  // Cell whose output is being displayed
 
-  // Calculate phase data with colors and percentages
-  const phaseData = useMemo(() => {
-    if (!phases || phases.length === 0) return [];
+  // Calculate cell data with colors and percentages
+  const cellData = useMemo(() => {
+    if (!cells || cells.length === 0) return [];
 
     // Use sequential colors for more pleasing adjacent color combinations
-    return phases.map((phase, idx) => {
+    return cells.map((cell, idx) => {
       const value = mode === 'cost'
-        ? (phase.avg_cost || phase.total_cost || 0)
-        : (phase.avg_duration || phase.duration || 0);
+        ? (cell.avg_cost || cell.total_cost || 0)
+        : (cell.avg_duration || cell.duration || 0);
 
       return {
-        ...phase,
+        ...cell,
         color: getSequentialColor(idx),
         value,
         index: idx
       };
     });
-  }, [phases, mode]);
+  }, [cells, mode]);
 
   // Calculate total for percentage calculation
   const total = useMemo(() => {
-    return phaseData.reduce((sum, p) => sum + p.value, 0) || 0.01;
-  }, [phaseData]);
+    return cellData.reduce((sum, p) => sum + p.value, 0) || 0.01;
+  }, [cellData]);
 
-  // Calculate percentage for each phase
-  const phasesWithPercent = useMemo(() => {
-    return phaseData.map(p => ({
+  // Calculate percentage for each cell
+  const cellsWithPercent = useMemo(() => {
+    return cellData.map(p => ({
       ...p,
       percent: (p.value / total) * 100,
       displayPercent: Math.max((p.value / total) * 100, 2) // Minimum 2% for visibility
     }));
-  }, [phaseData, total]);
+  }, [cellData, total]);
 
   const formatCost = (cost) => {
     if (!cost || cost === 0) return '$0';
@@ -94,45 +94,45 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
     return `${mins}m ${secs}s`;
   };
 
-  const handleMouseMove = (e, phase) => {
+  const handleMouseMove = (e, cell) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setTooltipPosition({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     });
-    setHoveredPhase(phase);
+    setHoveredCell(cell);
   };
 
-  if (!phases || phases.length === 0) return null;
+  if (!cells || cells.length === 0) return null;
 
   return (
     <div className={`cascade-bar-container ${isRunning ? 'is-running' : ''}`}>
       {/* Main stacked bar */}
       <div className="cascade-bar-track">
         <div className="cascade-bar-segments">
-          {phasesWithPercent.map((phase) => {
-            const isPhaseRunning = phase.status === 'running';
-            const isHovered = hoveredPhase?.index === phase.index;
+          {cellsWithPercent.map((cell) => {
+            const isCellRunning = cell.status === 'running';
+            const isHovered = hoveredCell?.index === cell.index;
 
             return (
               <div
-                key={phase.index}
-                className={`cascade-segment ${isPhaseRunning ? 'running' : ''} ${isHovered ? 'hovered' : ''}`}
+                key={cell.index}
+                className={`cascade-segment ${isCellRunning ? 'running' : ''} ${isHovered ? 'hovered' : ''}`}
                 style={{
-                  width: `${phase.displayPercent}%`,
-                  backgroundColor: phase.color,
-                  '--phase-color': phase.color
+                  width: `${cell.displayPercent}%`,
+                  backgroundColor: cell.color,
+                  '--cell-color': cell.color
                 }}
-                onMouseMove={(e) => handleMouseMove(e, phase)}
-                onMouseLeave={() => setHoveredPhase(null)}
+                onMouseMove={(e) => handleMouseMove(e, cell)}
+                onMouseLeave={() => setHoveredCell(null)}
               >
                 {/* Inner glow effect */}
                 <div className="segment-glow" />
 
                 {/* Show cost label if segment is wide enough */}
-                {phase.displayPercent > 12 && (
+                {cell.displayPercent > 12 && (
                   <span className="segment-label">
-                    {mode === 'cost' ? formatCost(phase.value) : formatDuration(phase.value)}
+                    {mode === 'cost' ? formatCost(cell.value) : formatDuration(cell.value)}
                   </span>
                 )}
               </div>
@@ -141,7 +141,7 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
         </div>
 
         {/* Tooltip */}
-        {hoveredPhase && (
+        {hoveredCell && (
           <div
             className="cascade-bar-tooltip"
             style={{
@@ -149,16 +149,16 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
               top: '-60px'
             }}
           >
-            <div className="tooltip-phase-name">
+            <div className="tooltip-cell-name">
               <span
                 className="tooltip-color-dot"
-                style={{ backgroundColor: hoveredPhase.color }}
+                style={{ backgroundColor: hoveredCell.color }}
               />
-              {hoveredPhase.name}
+              {hoveredCell.name}
             </div>
             <div className="tooltip-stats">
-              <span className="tooltip-cost">{formatCost(hoveredPhase.value)}</span>
-              <span className="tooltip-percent">{hoveredPhase.percent.toFixed(1)}%</span>
+              <span className="tooltip-cost">{formatCost(hoveredCell.value)}</span>
+              <span className="tooltip-percent">{hoveredCell.percent.toFixed(1)}%</span>
             </div>
           </div>
         )}
@@ -166,36 +166,36 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
 
       {/* Legend row */}
       <div className="cascade-bar-legend">
-        {phasesWithPercent.map((phase) => {
-          const isPhaseRunning = phase.status === 'running';
-          const isCompleted = phase.status === 'completed';
-          const isError = phase.status === 'error';
-          const hasOutput = isCompleted && phase.phase_output;
-          const isSelected = selectedPhase?.index === phase.index;
+        {cellsWithPercent.map((cell) => {
+          const isCellRunning = cell.status === 'running';
+          const isCompleted = cell.status === 'completed';
+          const isError = cell.status === 'error';
+          const hasOutput = isCompleted && cell.cell_output;
+          const isSelected = selectedCell?.index === cell.index;
 
           const handlePillClick = (e) => {
             e.stopPropagation();
             if (hasOutput) {
-              // Toggle selection - if already selected, deselect; otherwise select this phase
-              setSelectedPhase(isSelected ? null : phase);
+              // Toggle selection - if already selected, deselect; otherwise select this cell
+              setSelectedCell(isSelected ? null : cell);
             }
           };
 
           return (
             <div
-              key={phase.index}
-              className={`legend-item ${isPhaseRunning ? 'running' : ''} ${hoveredPhase?.index === phase.index ? 'hovered' : ''} ${hasOutput ? 'clickable' : ''} ${isSelected ? 'selected' : ''}`}
-              onMouseEnter={() => setHoveredPhase(phase)}
-              onMouseLeave={() => setHoveredPhase(null)}
+              key={cell.index}
+              className={`legend-item ${isCellRunning ? 'running' : ''} ${hoveredCell?.index === cell.index ? 'hovered' : ''} ${hasOutput ? 'clickable' : ''} ${isSelected ? 'selected' : ''}`}
+              onMouseEnter={() => setHoveredCell(cell)}
+              onMouseLeave={() => setHoveredCell(null)}
               onClick={handlePillClick}
-              title={hasOutput ? 'Click to view phase output' : undefined}
+              title={hasOutput ? 'Click to view cell output' : undefined}
             >
               <span
                 className="legend-color"
-                style={{ backgroundColor: phase.color }}
+                style={{ backgroundColor: cell.color }}
               />
-              <span className="legend-name">{phase.name}</span>
-              {isPhaseRunning && (
+              <span className="legend-name">{cell.name}</span>
+              {isCellRunning && (
                 <Icon icon="mdi:loading" width="12" className="spinning legend-status" />
               )}
               {isCompleted && !isSelected && (
@@ -212,25 +212,25 @@ function CascadeBar({ phases, totalCost, isRunning = false, mode = 'cost' }) {
         })}
       </div>
 
-      {/* Phase output panel */}
-      {selectedPhase && selectedPhase.phase_output && (
-        <div className="phase-output-panel" style={{ '--phase-color': selectedPhase.color }}>
-          <div className="phase-output-header">
-            <div className="phase-output-title">
-              <span className="phase-output-color" style={{ backgroundColor: selectedPhase.color }} />
-              <span className="phase-output-name">{selectedPhase.name}</span>
-              <span className="phase-output-label">output</span>
+      {/* Cell output panel */}
+      {selectedCell && selectedCell.cell_output && (
+        <div className="cell-output-panel" style={{ '--cell-color': selectedCell.color }}>
+          <div className="cell-output-header">
+            <div className="cell-output-title">
+              <span className="cell-output-color" style={{ backgroundColor: selectedCell.color }} />
+              <span className="cell-output-name">{selectedCell.name}</span>
+              <span className="cell-output-label">output</span>
             </div>
             <button
-              className="phase-output-close"
-              onClick={() => setSelectedPhase(null)}
+              className="cell-output-close"
+              onClick={() => setSelectedCell(null)}
               title="Close"
             >
               <Icon icon="mdi:close" width="16" />
             </button>
           </div>
-          <div className="phase-output-content">
-            <RichMarkdown>{selectedPhase.phase_output}</RichMarkdown>
+          <div className="cell-output-content">
+            <RichMarkdown>{selectedCell.cell_output}</RichMarkdown>
           </div>
         </div>
       )}

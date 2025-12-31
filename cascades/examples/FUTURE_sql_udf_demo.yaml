@@ -10,7 +10,7 @@ description: >
   RESEARCH: LLM-powered SQL UDF for inline data enrichment.
   This would be a killer feature - no other orchestrator does this!
 
-phases:
+cells:
   # Phase 1: Load raw product data
   - name: load_products
     tool: sql_data

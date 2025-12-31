@@ -6,9 +6,9 @@ When a cascade doesn't have _playground metadata, this can reconstruct
 the visual graph from the cascade's implicit dependencies.
 
 Sources of edge information:
-1. context.from - explicit phase dependencies
+1. context.from - explicit cell dependencies
 2. {{ input.X }} in instructions - input/prompt dependencies
-3. {{ outputs.X }} in instructions - phase output dependencies
+3. {{ outputs.X }} in instructions - cell output dependencies
 4. handoffs - routing edges (optional visualization)
 """
 
@@ -37,7 +37,7 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     edges = []
 
     # Maps for tracking
-    phase_to_node: Dict[str, str] = {}  # cell_name -> node_id
+    cell_to_node: Dict[str, str] = {}  # cell_name -> node_id
     input_to_node: Dict[str, str] = {}  # input_name -> node_id
     cell_dependencies: Dict[str, Set[str]] = defaultdict(set)  # cell -> set of cells it depends on
     cell_input_deps: Dict[str, Set[str]] = defaultdict(set)  # cell -> set of inputs it uses
@@ -84,15 +84,15 @@ def introspect_cascade(cascade_dict: dict) -> dict:
         })
 
     # =========================================================================
-    # PASS 3: Create phase nodes and collect dependencies
+    # PASS 3: Create cell nodes and collect dependencies
     # =========================================================================
-    for i, phase in enumerate(phases):
-        cell_name = phase.get('name', f'phase_{i}')
+    for i, cell in enumerate(cells):
+        cell_name = cell.get('name', f'cell_{i}')
         node_id = f"node_{i}"
-        phase_to_node[cell_name] = node_id
+        cell_to_node[cell_name] = node_id
 
         # Determine node type
-        node_type, node_data = _classify_phase(phase, cell_name)
+        node_type, node_data = _classify_cell(cell, cell_name)
 
         nodes.append({
             'id': node_id,
@@ -102,36 +102,36 @@ def introspect_cascade(cascade_dict: dict) -> dict:
         })
 
         # Collect dependencies from context.from
-        context = phase.get('context', {})
+        context = cell.get('context', {})
         context_from = context.get('from', [])
         for source in context_from:
             if isinstance(source, str):
-                phase_dependencies[cell_name].add(source)
+                cell_dependencies[cell_name].add(source)
             elif isinstance(source, dict):
-                source_phase = source.get('phase')
-                if source_phase:
-                    phase_dependencies[cell_name].add(source_phase)
+                source_cell = source.get('cell')
+                if source_cell:
+                    cell_dependencies[cell_name].add(source_cell)
 
         # Collect dependencies from {{ outputs.X }} in instructions
-        instructions = phase.get('instructions', '')
+        instructions = cell.get('instructions', '')
         if isinstance(instructions, str):
             output_refs = re.findall(r'\{\{\s*outputs\.(\w+)(?:\s*\|[^}]*)?\s*\}\}', instructions)
-            phase_dependencies[cell_name].update(output_refs)
+            cell_dependencies[cell_name].update(output_refs)
 
             # Collect input dependencies (using same pattern that handles | default(...))
             input_refs = INPUT_PATTERN.findall(instructions)
-            phase_input_deps[cell_name].update(input_refs)
+            cell_input_deps[cell_name].update(input_refs)
 
     # =========================================================================
     # PASS 4: Create edges
     # =========================================================================
     edge_set = set()  # Track (source, target) to avoid duplicates
 
-    # Input -> Phase edges
-    for cell_name, input_deps in phase_input_deps.items():
-        if cell_name not in phase_to_node:
+    # Input -> Cell edges
+    for cell_name, input_deps in cell_input_deps.items():
+        if cell_name not in cell_to_node:
             continue
-        target_id = phase_to_node[cell_name]
+        target_id = cell_to_node[cell_name]
 
         for input_name in input_deps:
             if input_name in input_to_node:
@@ -147,16 +147,16 @@ def introspect_cascade(cascade_dict: dict) -> dict:
                         'targetHandle': 'text-in',
                     })
 
-    # Phase -> Phase edges
-    for cell_name, deps in phase_dependencies.items():
-        if cell_name not in phase_to_node:
+    # Cell -> Cell edges
+    for cell_name, deps in cell_dependencies.items():
+        if cell_name not in cell_to_node:
             continue
-        target_id = phase_to_node[cell_name]
+        target_id = cell_to_node[cell_name]
         target_node = next((n for n in nodes if n['id'] == target_id), None)
 
         for dep_name in deps:
-            if dep_name in phase_to_node:
-                source_id = phase_to_node[dep_name]
+            if dep_name in cell_to_node:
+                source_id = cell_to_node[dep_name]
                 source_node = next((n for n in nodes if n['id'] == source_id), None)
 
                 # Use simple (source, target) key - handles don't matter for dedup
@@ -167,7 +167,7 @@ def introspect_cascade(cascade_dict: dict) -> dict:
                     # Determine handle types based on node types and context
                     source_handle, target_handle = _infer_handles(
                         source_node, target_node,
-                        phase_to_node, phases, dep_name, cell_name
+                        cell_to_node, cells, dep_name, cell_name
                     )
 
                     edges.append({
@@ -179,15 +179,15 @@ def introspect_cascade(cascade_dict: dict) -> dict:
                     })
 
     # Handoff edges (dashed/animated to distinguish from data flow)
-    for phase in phases:
-        cell_name = phase.get('name')
-        if cell_name not in phase_to_node:
+    for cell in cells:
+        cell_name = cell.get('name')
+        if cell_name not in cell_to_node:
             continue
-        source_id = phase_to_node[cell_name]
+        source_id = cell_to_node[cell_name]
 
-        for handoff in phase.get('handoffs', []):
-            if handoff in phase_to_node:
-                target_id = phase_to_node[handoff]
+        for handoff in cell.get('handoffs', []):
+            if handoff in cell_to_node:
+                target_id = cell_to_node[handoff]
                 edge_key = (source_id, target_id, 'handoff')
                 if edge_key not in edge_set:
                     edge_set.add(edge_key)
@@ -203,7 +203,7 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     # =========================================================================
     # PASS 5: Layout nodes using topological sort
     # =========================================================================
-    nodes = _layout_nodes(nodes, edges, input_to_node, phase_to_node)
+    nodes = _layout_nodes(nodes, edges, input_to_node, cell_to_node)
 
     # Calculate viewport to fit all nodes
     viewport = _calculate_viewport(nodes)
@@ -216,18 +216,18 @@ def introspect_cascade(cascade_dict: dict) -> dict:
     }
 
 
-def _classify_phase(phase: dict, cell_name: str) -> Tuple[str, dict]:
+def _classify_cell(cell: dict, cell_name: str) -> Tuple[str, dict]:
     """
-    Determine the node type and data for a phase.
+    Determine the node type and data for a cell.
 
     Node types:
     - 'image': Image generation models (FLUX, Gemini Image, etc.)
-    - 'phase': LLM phases and deterministic tool phases (rendered as YAML blocks)
+    - 'cell': LLM cells and deterministic tool cells (rendered as YAML blocks)
 
     Returns:
         (node_type, node_data)
     """
-    model = phase.get('model', '')
+    model = cell.get('model', '')
 
     # Check if it's an image generation model
     is_image_model = False
@@ -252,14 +252,14 @@ def _classify_phase(phase: dict, cell_name: str) -> Tuple[str, dict]:
             'images': [],
         }
     else:
-        # LLM Phase OR deterministic tool phase - both rendered as YAML blocks
+        # LLM Cell OR deterministic tool cell - both rendered as YAML blocks
         # This includes:
-        # - Regular LLM phases with instructions
-        # - Tool-only (deterministic) phases like `tool: linux_shell`
-        # - Composite phases with traits + instructions
-        return 'phase', {
+        # - Regular LLM cells with instructions
+        # - Tool-only (deterministic) cells like `tool: linux_shell`
+        # - Composite cells with traits + instructions
+        return 'cell', {
             'name': cell_name,
-            'yaml': yaml.dump(phase, default_flow_style=False, sort_keys=False),
+            'yaml': yaml.dump(cell, default_flow_style=False, sort_keys=False),
             'status': 'idle',
             'output': '',
         }
@@ -268,8 +268,8 @@ def _classify_phase(phase: dict, cell_name: str) -> Tuple[str, dict]:
 def _infer_handles(
     source_node: dict,
     target_node: dict,
-    phase_to_node: dict,
-    phases: list,
+    cell_to_node: dict,
+    cells: list,
     source_name: str,
     target_name: str
 ) -> Tuple[str, str]:
@@ -277,19 +277,19 @@ def _infer_handles(
     Infer the appropriate source and target handles for an edge.
 
     For image nodes connecting to image nodes: image-out -> image-in
-    For phase/prompt to phase: text-out -> text-in
-    For image to phase (vision): image-out -> image-in
+    For cell/prompt to cell: text-out -> text-in
+    For image to cell (vision): image-out -> image-in
     """
-    source_type = source_node.get('type', 'phase') if source_node else 'phase'
-    target_type = target_node.get('type', 'phase') if target_node else 'phase'
+    source_type = source_node.get('type', 'cell') if source_node else 'cell'
+    target_type = target_node.get('type', 'cell') if target_node else 'cell'
 
-    # Check if target phase specifically requests images from source
-    target_phase = next((p for p in phases if p.get('name') == target_name), None)
-    if target_phase:
-        context_from = target_phase.get('context', {}).get('from', [])
+    # Check if target cell specifically requests images from source
+    target_cell = next((p for p in cells if p.get('name') == target_name), None)
+    if target_cell:
+        context_from = target_cell.get('context', {}).get('from', [])
         for source in context_from:
             if isinstance(source, dict):
-                if source.get('phase') == source_name:
+                if source.get('cell') == source_name:
                     includes = source.get('include', [])
                     if 'images' in includes:
                         return 'image-out', 'image-in'
@@ -297,13 +297,13 @@ def _infer_handles(
     # Default based on node types
     if source_type == 'image' and target_type == 'image':
         return 'image-out', 'image-in'
-    elif source_type == 'image' and target_type == 'phase':
-        # Image feeding into a phase (for vision/analysis)
+    elif source_type == 'image' and target_type == 'cell':
+        # Image feeding into a cell (for vision/analysis)
         return 'image-out', 'image-in'
     elif source_type == 'prompt':
         return 'text-out', 'text-in'
     else:
-        # Phase to phase: typically text output
+        # Cell to cell: typically text output
         return 'text-out', 'text-in'
 
 
@@ -311,7 +311,7 @@ def _layout_nodes(
     nodes: List[dict],
     edges: List[dict],
     input_to_node: dict,
-    phase_to_node: dict
+    cell_to_node: dict
 ) -> List[dict]:
     """
     Layout nodes using topological sort to determine columns,

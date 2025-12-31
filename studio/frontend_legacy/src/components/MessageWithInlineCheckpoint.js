@@ -15,7 +15,7 @@ import './MessageWithInlineCheckpoint.css';
  * 3. Any text after the tool call (if present)
  */
 function MessageWithInlineCheckpoint({ checkpoint, onSubmit, isLoading, checkpointId, sessionId }) {
-  const { phase_output, ui_spec } = checkpoint;
+  const { cell_output, ui_spec } = checkpoint;
 
   // Find HTML sections in the UI spec
   const htmlSections = [];
@@ -34,10 +34,10 @@ function MessageWithInlineCheckpoint({ checkpoint, onSubmit, isLoading, checkpoi
 
   // Extract message text (remove tool call markers if present)
   const cleanMessageText = React.useMemo(() => {
-    if (!phase_output) return '';
+    if (!cell_output) return '';
 
     // Strip common tool call patterns that might appear in the output
-    let cleaned = phase_output;
+    let cleaned = cell_output;
 
     // Remove code fences with tool calls
     cleaned = cleaned.replace(/```[\w_]*\s*\n?\{[\s\S]*?"tool"[\s\S]*?\n?```/g, '');
@@ -50,10 +50,10 @@ function MessageWithInlineCheckpoint({ checkpoint, onSubmit, isLoading, checkpoi
     cleaned = cleaned.replace(/\brequest_decision\s*\([^)]*\)/g, '');
 
     return cleaned.trim();
-  }, [phase_output]);
+  }, [cell_output]);
 
   console.log('[MessageWithInlineCheckpoint] checkpoint:', checkpoint);
-  console.log('[MessageWithInlineCheckpoint] phase_output:', phase_output);
+  console.log('[MessageWithInlineCheckpoint] cell_output:', cell_output);
   console.log('[MessageWithInlineCheckpoint] cleanMessageText:', cleanMessageText);
   console.log('[MessageWithInlineCheckpoint] htmlSections:', htmlSections);
   console.log('[MessageWithInlineCheckpoint] ui_spec:', ui_spec);

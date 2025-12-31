@@ -140,11 +140,11 @@ const CascadeAggregateView = ({ cascadeId }) => {
           </div>
           <div className="card-content">
             <div className="card-value">
-              ${data.inter_phase?.estimated_waste_cost?.toFixed(4) || '0.0000'}
+              ${data.inter_cell?.estimated_waste_cost?.toFixed(4) || '0.0000'}
             </div>
             <div className="card-label">Wasted on Low-Relevance</div>
             <div className="card-detail">
-              {data.inter_phase?.total_waste_pct?.toFixed(1) || 0}% ({data.inter_phase?.total_waste_tokens?.toLocaleString() || 0} tokens)
+              {data.inter_cell?.total_waste_pct?.toFixed(1) || 0}% ({data.inter_cell?.total_waste_tokens?.toLocaleString() || 0} tokens)
             </div>
           </div>
         </div>
@@ -155,18 +155,18 @@ const CascadeAggregateView = ({ cascadeId }) => {
           </div>
           <div className="card-content">
             <div className="card-value">
-              {data.intra_phase?.best_config?.avg_savings_pct || 0}%
+              {data.intra_cell?.best_config?.avg_savings_pct || 0}%
             </div>
             <div className="card-label">Best Compression</div>
             <div className="card-detail">
-              {data.intra_phase?.best_config?.avg_tokens_saved?.toLocaleString() || 0} tokens/run
+              {data.intra_cell?.best_config?.avg_tokens_saved?.toLocaleString() || 0} tokens/run
             </div>
           </div>
         </div>
       </div>
 
       {/* Best Config Recommendation */}
-      {data.intra_phase?.best_config && (
+      {data.intra_cell?.best_config && (
         <div className="best-config-card">
           <div className="config-header">
             <Icon icon="mdi:star" width={16} />
@@ -175,30 +175,30 @@ const CascadeAggregateView = ({ cascadeId }) => {
               className="consistency-badge"
               title="Consistency across runs"
             >
-              {data.intra_phase.best_config.consistency}% consistent
+              {data.intra_cell.best_config.consistency}% consistent
             </span>
           </div>
           <div className="config-body">
             <div className="config-params">
               <div className="param">
                 <span className="param-label">window</span>
-                <span className="param-value">{data.intra_phase.best_config.window}</span>
+                <span className="param-value">{data.intra_cell.best_config.window}</span>
               </div>
               <div className="param">
                 <span className="param-label">mask_after</span>
-                <span className="param-value">{data.intra_phase.best_config.mask_after}</span>
+                <span className="param-value">{data.intra_cell.best_config.mask_after}</span>
               </div>
               <div className="param">
                 <span className="param-label">min_size</span>
-                <span className="param-value">{data.intra_phase.best_config.min_size}</span>
+                <span className="param-value">{data.intra_cell.best_config.min_size}</span>
               </div>
             </div>
             <div className="config-stats">
               <span>
-                <strong>{data.intra_phase.best_config.avg_savings_pct}%</strong> avg savings
+                <strong>{data.intra_cell.best_config.avg_savings_pct}%</strong> avg savings
               </span>
               <span>
-                <strong>{data.intra_phase.best_config.sessions_analyzed}</strong> sessions tested
+                <strong>{data.intra_cell.best_config.sessions_analyzed}</strong> sessions tested
               </span>
             </div>
           </div>
@@ -208,9 +208,9 @@ const CascadeAggregateView = ({ cascadeId }) => {
               onClick={() => {
                 const yaml = `intra_context:
   enabled: true
-  window: ${data.intra_phase.best_config.window}
-  mask_observations_after: ${data.intra_phase.best_config.mask_after}
-  min_masked_size: ${data.intra_phase.best_config.min_size}`;
+  window: ${data.intra_cell.best_config.window}
+  mask_observations_after: ${data.intra_cell.best_config.mask_after}
+  min_masked_size: ${data.intra_cell.best_config.min_size}`;
                 navigator.clipboard.writeText(yaml);
               }}
             >
@@ -222,7 +222,7 @@ const CascadeAggregateView = ({ cascadeId }) => {
       )}
 
       {/* Cell-by-Cell Waste Analysis */}
-      {data.inter_phase?.cells?.length > 0 && (
+      {data.inter_cell?.cells?.length > 0 && (
         <div className="cell-waste-section">
           <h4>Waste by Cell</h4>
           <p>Cells with consistently low-relevance context</p>
@@ -234,7 +234,7 @@ const CascadeAggregateView = ({ cascadeId }) => {
               <span>Waste Tokens</span>
               <span>Sessions</span>
             </div>
-            {data.inter_phase.cells.map(cell => (
+            {data.inter_cell.cells.map(cell => (
               <div key={cell.cell_name} className="table-row">
                 <span className="cell-name">{cell.cell_name}</span>
                 <span className="relevance">
@@ -261,11 +261,11 @@ const CascadeAggregateView = ({ cascadeId }) => {
       )}
 
       {/* All Config Options */}
-      {data.intra_phase?.all_configs?.length > 1 && (
+      {data.intra_cell?.all_configs?.length > 1 && (
         <div className="all-configs-section">
           <h4>Alternative Configurations</h4>
           <div className="configs-grid">
-            {data.intra_phase.all_configs.slice(1).map((cfg, idx) => (
+            {data.intra_cell.all_configs.slice(1).map((cfg, idx) => (
               <div key={idx} className="config-option">
                 <div className="option-params">
                   w={cfg.window} m={cfg.mask_after} s={cfg.min_size}

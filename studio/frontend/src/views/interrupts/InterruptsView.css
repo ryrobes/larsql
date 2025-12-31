@@ -260,7 +260,7 @@
   gap: 16px;
 }
 
-.detail-phase-output {
+.detail-cell-output {
   display: flex;
   flex-direction: column;
   gap: 8px;

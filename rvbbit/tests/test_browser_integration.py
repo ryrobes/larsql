@@ -5,7 +5,7 @@ These tests validate:
 1. BrowserConfig model validation
 2. BrowserSession lifecycle (start, execute, end, close)
 3. Integration with echo.state for managed sessions
-4. Cascade phase browser config parsing
+4. Cascade cell browser config parsing
 
 Note: Full cascade tests require LLM calls and are more suited for
 integration/snapshot tests rather than unit tests.
@@ -77,28 +77,28 @@ class TestBrowserConfigModel:
 
 
 class TestCellWithBrowserConfig:
-    """Test phase configuration with browser settings."""
+    """Test cell configuration with browser settings."""
 
-    def test_phase_with_browser(self):
-        """Phase can have browser config."""
-        phase = CellConfig(
-            name="browse_phase",
+    def test_cell_with_browser(self):
+        """Cell can have browser config."""
+        cell = CellConfig(
+            name="browse_cell",
             instructions="Browse the web",
             browser=BrowserConfig(url="https://example.com")
         )
-        assert phase.browser is not None
-        assert phase.browser.url == "https://example.com"
+        assert cell.browser is not None
+        assert cell.browser.url == "https://example.com"
 
-    def test_phase_without_browser(self):
-        """Phase can omit browser config (default None)."""
-        phase = CellConfig(
-            name="no_browser_phase",
+    def test_cell_without_browser(self):
+        """Cell can omit browser config (default None)."""
+        cell = CellConfig(
+            name="no_browser_cell",
             instructions="Do something else"
         )
-        assert phase.browser is None
+        assert cell.browser is None
 
     def test_cascade_with_browser_cell(self):
-        """Cascade can have phases with browser config."""
+        """Cascade can have cells with browser config."""
         cascade_json = {
             "cascade_id": "browser_test",
             "cells": [

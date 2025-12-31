@@ -877,7 +877,7 @@ class ClickHouseAdapter:
         as a single mutation operation.
 
         IMPORTANT: Only updates rows with role='assistant' to avoid propagating
-        cost data to system/phase_start rows that share the same trace_id.
+        cost data to system/cell_start rows that share the same trace_id.
         This prevents double/triple counting of costs in aggregate queries.
 
         Args:
@@ -914,7 +914,7 @@ class ClickHouseAdapter:
                 update_data['total_tokens'] = tokens_in_val + tokens_out_val
 
             if update_data:
-                # Only update the assistant row - system/phase_start rows share trace_id
+                # Only update the assistant row - system/cell_start rows share trace_id
                 # but shouldn't have cost data (prevents double-counting in SUM queries)
                 self.update_row(
                     table,
@@ -933,12 +933,12 @@ class ClickHouseAdapter:
         """
         Mark all rows in a candidate as winner/loser.
 
-        Updates is_winner for all rows matching the session/phase/candidate.
+        Updates is_winner for all rows matching the session/cell/candidate.
 
         Args:
             table: Table name (usually unified_logs)
             session_id: Session ID
-            cell_name: Phase name
+            cell_name: Cell name
             winning_index: The winning candidate index
         """
         # Mark winner
@@ -949,7 +949,7 @@ class ClickHouseAdapter:
             sync=True
         )
 
-        # Mark losers (all other candidate indexes in same phase)
+        # Mark losers (all other candidate indexes in same cell)
         start_time = time.time()
         success = True
         error_msg = None
@@ -1095,7 +1095,7 @@ class ClickHouseAdapter:
 
         Args:
             session_id: Session ID to query
-            cell_names: Optional list of phase names to filter by
+            cell_names: Optional list of cell names to filter by
             limit: Maximum number of cards to return
 
         Returns:
@@ -1104,8 +1104,8 @@ class ClickHouseAdapter:
         where_parts = [f"session_id = '{session_id}'"]
 
         if cell_names:
-            phases_str = ", ".join([f"'{p}'" for p in cell_names])
-            where_parts.append(f"cell_name IN ({phases_str})")
+            cells_str = ", ".join([f"'{p}'" for p in cell_names])
+            where_parts.append(f"cell_name IN ({cells_str})")
 
         where_clause = " AND ".join(where_parts)
 

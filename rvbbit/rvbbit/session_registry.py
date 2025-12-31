@@ -173,7 +173,7 @@ class SessionRegistry:
             pid: Process ID of the Rabbitize server
             source: Where the session was created ('ui', 'cascade', 'cli')
             cascade_id: If from cascade, the cascade ID
-            cell_name: If from cascade, the phase name
+            cell_name: If from cascade, the cell name
             rvbbit_session_id: If from cascade, the rvbbit session ID
             current_url: Current URL being viewed
             artifacts_path: Path to session artifacts

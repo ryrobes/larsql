@@ -11,7 +11,7 @@ import './CellNode.css';
 const DEFAULT_WIDTH = 320;  // 20 * 16
 const DEFAULT_HEIGHT = 288; // 18 * 16
 
-// Default YAML template for new phase nodes
+// Default YAML template for new cell nodes
 const DEFAULT_YAML = `name: llm_transform
 instructions: |
   {{ input.prompt }}
@@ -25,11 +25,11 @@ rules:
 const INPUT_PATTERN_STR = '\\{\\{\\s*input\\.(\\w+)(?:\\s*\\|[^}]*)?\\s*\\}\\}';
 
 /**
- * PhaseNode - LLM Phase node with Monaco YAML editor
+ * CellNode - LLM Cell node with Monaco YAML editor
  *
  * Displays:
  * - Node name (from YAML or custom) and status
- * - Monaco YAML editor for full phase configuration
+ * - Monaco YAML editor for full cell configuration
  * - Output preview (after execution)
  *
  * Handles (typed for connection validation):
@@ -37,7 +37,7 @@ const INPUT_PATTERN_STR = '\\{\\{\\s*input\\.(\\w+)(?:\\s*\\|[^}]*)?\\s*\\}\\}';
  * - Target (left, dynamic): text-in-X - one per {{ input.X }} in YAML (green)
  * - Source (right): text-out - for text output (green)
  */
-function PhaseNode({ id, data, selected }) {
+function CellNode({ id, data, selected }) {
   const removeNode = usePlaygroundStore((state) => state.removeNode);
   const updateNodeData = usePlaygroundStore((state) => state.updateNodeData);
   const runFromNode = usePlaygroundStore((state) => state.runFromNode);
@@ -70,8 +70,8 @@ function PhaseNode({ id, data, selected }) {
     name: customName,
   } = data;
 
-  // Parse YAML to get phase name and validate
-  const { phaseName, validationWarnings } = useMemo(() => {
+  // Parse YAML to get cell name and validate
+  const { cellName, validationWarnings } = useMemo(() => {
     try {
       const parsed = yaml.load(localYaml);
       const warnings = [];
@@ -85,19 +85,19 @@ function PhaseNode({ id, data, selected }) {
       }
 
       return {
-        phaseName: parsed?.name || 'llm_phase',
+        cellName: parsed?.name || 'llm_cell',
         validationWarnings: warnings,
       };
     } catch {
       return {
-        phaseName: 'llm_phase',
+        cellName: 'llm_cell',
         validationWarnings: [],
       };
     }
   }, [localYaml]);
 
   // Display name: custom name > YAML name > fallback
-  const displayName = customName || phaseName || 'LLM Phase';
+  const displayName = customName || cellName || 'LLM Cell';
 
   // Get dimensions from data or use defaults
   const width = dataWidth || DEFAULT_WIDTH;
@@ -152,7 +152,7 @@ function PhaseNode({ id, data, selected }) {
       // Update store with parsed data
       updateNodeData(id, {
         yaml: newValue,
-        parsedPhase: parsed,
+        parsedCell: parsed,
         discoveredInputs: inputs,
       });
     } catch (err) {
@@ -184,7 +184,7 @@ function PhaseNode({ id, data, selected }) {
     e.stopPropagation();
     const result = await runFromNode(id);
     if (!result.success) {
-      console.error('[PhaseNode] Run from here failed:', result.error);
+      console.error('[CellNode] Run from here failed:', result.error);
     }
   }, [id, runFromNode]);
 
@@ -240,7 +240,7 @@ function PhaseNode({ id, data, selected }) {
 
   // Custom dark theme - GitHub Dark inspired, pastels on black
   const handleEditorWillMount = useCallback((monaco) => {
-    monaco.editor.defineTheme('windlass-phase', {
+    monaco.editor.defineTheme('windlass-cell', {
       base: 'vs-dark',
       inherit: true,
       rules: [
@@ -315,7 +315,7 @@ function PhaseNode({ id, data, selected }) {
 
   return (
     <div
-      className={`phase-node ${selected ? 'selected' : ''} status-${status}`}
+      className={`cell-node ${selected ? 'selected' : ''} status-${status}`}
       style={{ width, height }}
     >
       {/* Delete button */}
@@ -343,7 +343,7 @@ function PhaseNode({ id, data, selected }) {
         type="target"
         position={Position.Left}
         id="image-in"
-        className="phase-handle input-handle handle-image"
+        className="cell-handle input-handle handle-image"
         style={{ top: '15%' }}
         title="Image input (for vision models)"
       />
@@ -353,14 +353,14 @@ function PhaseNode({ id, data, selected }) {
         type="target"
         position={Position.Left}
         id="text-in"
-        className="phase-handle input-handle handle-text"
+        className="cell-handle input-handle handle-text"
         style={{ top: '50%' }}
         title="Text input"
       />
 
       {/* Header */}
-      <div className="phase-node-header">
-        <div className="phase-node-icon">
+      <div className="cell-node-header">
+        <div className="cell-node-icon">
           <Icon icon="mdi:cog-play" width="16" />
         </div>
         {isEditingName ? (
@@ -376,7 +376,7 @@ function PhaseNode({ id, data, selected }) {
           />
         ) : (
           <span
-            className="phase-node-title"
+            className="cell-node-title"
             onDoubleClick={startEditingName}
             title="Double-click to rename"
           >
@@ -385,13 +385,13 @@ function PhaseNode({ id, data, selected }) {
         )}
         {validationWarnings.length > 0 && !parseError && (
           <div
-            className="phase-node-warning"
+            className="cell-node-warning"
             title={validationWarnings.join('\n')}
           >
             <Icon icon="mdi:alert-outline" width="14" />
           </div>
         )}
-        <div className={`phase-node-status ${statusInfo.className}`}>
+        <div className={`cell-node-status ${statusInfo.className}`}>
           <Icon
             icon={statusInfo.icon}
             width="14"
@@ -402,22 +402,22 @@ function PhaseNode({ id, data, selected }) {
 
       {/* Monaco YAML Editor */}
       <div
-        className="phase-node-body nodrag"
+        className="cell-node-body nodrag"
         onKeyDown={(e) => e.stopPropagation()}
         onKeyUp={(e) => e.stopPropagation()}
         onKeyPress={(e) => e.stopPropagation()}
       >
-        <div className="phase-editor-container">
+        <div className="cell-editor-container">
           <Editor
             // Key based on node id + name ensures editor remounts when loading new cascade
-            key={`${id}-${customName || phaseName}`}
+            key={`${id}-${customName || cellName}`}
             height="100%"
             defaultLanguage="yaml"
             value={localYaml}
             onChange={handleYamlChange}
             onMount={handleEditorDidMount}
             beforeMount={handleEditorWillMount}
-            theme="windlass-phase"
+            theme="windlass-cell"
             options={editorOptions}
             loading={
               <div className="editor-loading">
@@ -427,7 +427,7 @@ function PhaseNode({ id, data, selected }) {
           />
         </div>
         {parseError && (
-          <div className="phase-error">
+          <div className="cell-error">
             <Icon icon="mdi:alert" width="12" />
             <span>{parseError}</span>
           </div>
@@ -436,7 +436,7 @@ function PhaseNode({ id, data, selected }) {
 
       {/* Footer with output/cost/duration - only shown when completed */}
       {showFooter && (
-        <div className="phase-node-footer">
+        <div className="cell-node-footer">
           {output && (
             <div className="footer-output nodrag" title="LLM output (scroll to see more)">
               <div className="output-label">
@@ -468,7 +468,7 @@ function PhaseNode({ id, data, selected }) {
         type="source"
         position={Position.Right}
         id="text-out"
-        className="phase-handle output-handle handle-text"
+        className="cell-handle output-handle handle-text"
         title="Text output"
       />
 
@@ -481,4 +481,4 @@ function PhaseNode({ id, data, selected }) {
   );
 }
 
-export default memo(PhaseNode);
+export default memo(CellNode);

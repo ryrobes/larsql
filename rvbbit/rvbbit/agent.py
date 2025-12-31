@@ -770,7 +770,7 @@ class Agent:
             session_id: Session ID for logging
             trace_id: Trace ID for logging
             parent_id: Parent trace ID
-            cell_name: Phase name for cascade context
+            cell_name: Cell name for cascade context
             cascade_id: Cascade ID for cascade context
 
         Returns:
@@ -1027,7 +1027,7 @@ class Agent:
             session_id: Session ID for logging
             trace_id: Trace ID for logging
             parent_id: Parent trace ID
-            cell_name: Phase name for cascade context
+            cell_name: Cell name for cascade context
             cascade_id: Cascade ID for cascade context
 
         Returns:
