@@ -991,7 +991,7 @@ def delete_flow(flow_id):
 @browser_sessions_bp.route('/api/browser-flows/<flow_id>/register', methods=['POST'])
 def register_flow_as_tool(flow_id):
     """
-    Register a flow as a RVBBIT tackle (tool).
+    Register a flow as a RVBBIT trait (tool).
 
     This creates a dynamic tool that can be used in cascades.
     """
@@ -1006,9 +1006,9 @@ def register_flow_as_tool(flow_id):
             flow_data = json.load(f)
 
         # Import the flow registration function
-        from rvbbit.rabbitize_flows import register_flow_as_tackle
+        from rvbbit.rabbitize_flows import register_flow_as_trait
 
-        tool_name = register_flow_as_tackle(flow_data)
+        tool_name = register_flow_as_trait(flow_data)
 
         return jsonify({
             "success": True,

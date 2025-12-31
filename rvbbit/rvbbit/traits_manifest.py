@@ -2,7 +2,7 @@
 Tackle Manifest - Unified discovery for both Python functions and Cascade tools.
 
 Discovers:
-- Python functions registered in tackle registry
+- Python functions registered in traits registry
 - Cascade files with inputs_schema (usable as tools)
 - Declarative tools (.tool.json files)
 - Memory banks (conversational memory with RAG search)
@@ -17,25 +17,25 @@ from .cascade import load_cascade_config
 from .utils import get_tool_schema
 from .config import get_config
 
-_tackle_manifest_cache: Dict[str, Any] = None
+_traits_manifest_cache: Dict[str, Any] = None
 _declarative_tools_registered: bool = False
 
 def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
     """
-    Get unified manifest of all available tackle (tools).
+    Get unified manifest of all available traits (tools).
 
     Discovers:
-    - Python functions registered in tackle registry
+    - Python functions registered in traits registry
     - Declarative tools (.tool.json files) - shell, http, python, composite
     - Cascade files with inputs_schema (usable as tools)
     - Memory banks (conversational memory with RAG search)
 
     Returns dict: {tool_name: {type, description, schema/inputs, path?}}
     """
-    global _tackle_manifest_cache, _declarative_tools_registered
+    global _traits_manifest_cache, _declarative_tools_registered
 
-    if not refresh and _tackle_manifest_cache is not None:
-        return _tackle_manifest_cache
+    if not refresh and _traits_manifest_cache is not None:
+        return _traits_manifest_cache
 
     # Ensure declarative tools are registered before scanning
     if not _declarative_tools_registered:
@@ -75,17 +75,17 @@ def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
     from .trait_registry import register_cascade_as_tool, get_trait
 
     config = get_config()
-    for tackle_dir in config.tackle_dirs:
+    for traits_dir in config.traits_dirs:
         # Support both absolute and relative paths
-        if not os.path.isabs(tackle_dir):
+        if not os.path.isabs(traits_dir):
             # Try relative to cwd
-            search_path = os.path.join(os.getcwd(), tackle_dir)
+            search_path = os.path.join(os.getcwd(), traits_dir)
             if not os.path.exists(search_path):
                 # Try relative to rvbbit package (for installed package)
                 package_dir = os.path.dirname(__file__)
-                search_path = os.path.join(package_dir, tackle_dir)
+                search_path = os.path.join(package_dir, traits_dir)
         else:
-            search_path = tackle_dir
+            search_path = traits_dir
 
         if not os.path.exists(search_path):
             continue
@@ -201,7 +201,7 @@ def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
         # Harbor not available or error occurred
         pass
 
-    _tackle_manifest_cache = manifest
+    _traits_manifest_cache = manifest
     return manifest
 
 def format_manifest_for_quartermaster(manifest: Dict[str, Any]) -> str:
@@ -211,8 +211,8 @@ def format_manifest_for_quartermaster(manifest: Dict[str, Any]) -> str:
     lines = ["Available Tackle:\n"]
 
     for name, info in sorted(manifest.items()):
-        tackle_type = info["type"]
+        traits_type = info["type"]
         description = info["description"].split("\n")[0]  # First line only
-        lines.append(f"- {name} ({tackle_type}): {description}")
+        lines.append(f"- {name} ({traits_type}): {description}")
 
     return "\n".join(lines)

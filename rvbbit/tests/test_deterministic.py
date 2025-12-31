@@ -326,10 +326,10 @@ def test_load_deterministic_cascade():
     """Test that deterministic cascade configs load correctly."""
     import os
     from rvbbit.cascade import load_cascade_config
+    from rvbbit.config import get_config
 
-    # Get path to example
-    examples_dir = os.path.join(os.path.dirname(__file__), "..", "examples")
-    config_path = os.path.join(examples_dir, "deterministic_demo.json")
+    # Get path to example from config (searches cascades/examples/)
+    config_path = os.path.join(get_config().examples_dir, "json", "deterministic_demo.json")
 
     if os.path.exists(config_path):
         config = load_cascade_config(config_path)

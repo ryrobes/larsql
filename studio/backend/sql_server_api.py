@@ -320,7 +320,7 @@ def health_check():
         # Test cascade UDF
         cascade_result = conn.execute("""
             SELECT windlass_cascade_udf(
-                'tackle/process_single_item.yaml',
+                'traits/process_single_item.yaml',
                 '{"item": "test"}'
             ) as test
         """).fetchone()

@@ -683,7 +683,7 @@ def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str
 
 def register_declarative_tool(tool: ToolDefinition, source_path: str = None):
     """
-    Register a declarative tool in the tackle registry.
+    Register a declarative tool in the traits registry.
 
     Creates a wrapper function that can be called like any other tool.
     """
@@ -720,7 +720,7 @@ def register_declarative_tool(tool: ToolDefinition, source_path: str = None):
     tool_wrapper._tool_definition = tool
     tool_wrapper._source_path = source_path
 
-    # Register in tackle registry
+    # Register in traits registry
     register_trait(tool.tool_id, tool_wrapper)
 
 
@@ -728,25 +728,25 @@ def discover_and_register_declarative_tools(directories: List[str] = None):
     """
     Discover all .tool.json files in the given directories and register them.
 
-    If directories is None, uses the default tackle_dirs from config.
+    If directories is None, uses the default traits_dirs from config.
     """
     from .config import get_config
 
     if directories is None:
         config = get_config()
-        directories = config.tackle_dirs
+        directories = config.traits_dirs
 
     registered = []
 
-    for tackle_dir in directories:
+    for traits_dir in directories:
         # Support both absolute and relative paths
-        if not os.path.isabs(tackle_dir):
-            search_path = os.path.join(os.getcwd(), tackle_dir)
+        if not os.path.isabs(traits_dir):
+            search_path = os.path.join(os.getcwd(), traits_dir)
             if not os.path.exists(search_path):
                 package_dir = os.path.dirname(__file__)
-                search_path = os.path.join(package_dir, tackle_dir)
+                search_path = os.path.join(package_dir, traits_dir)
         else:
-            search_path = tackle_dir
+            search_path = traits_dir
 
         if not os.path.exists(search_path):
             continue

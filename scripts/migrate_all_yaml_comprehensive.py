@@ -52,7 +52,7 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
     elif isinstance(value, str):
         # Update string content (for SQL queries, paths, etc.)
         updated = value
-        updated = updated.replace('tackle/', 'traits/')
+        updated = updated.replace('traits/', 'traits/')
         updated = updated.replace('windlass_cascade_udf', 'rvbbit_run')
         updated = updated.replace('windlass_udf', 'rvbbit')
         # Be careful with phase_name in SQL - only in specific contexts

@@ -1,6 +1,6 @@
 {
   "cascade_id": "research_assistant_with_manifest",
-  "description": "Adaptive research assistant that manifests tackle based on full conversation context",
+  "description": "Adaptive research assistant that manifests traits based on full conversation context",
   "inputs_schema": {
     "research_topic": "The topic to research and analyze"
   },

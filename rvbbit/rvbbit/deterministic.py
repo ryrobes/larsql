@@ -111,10 +111,10 @@ def resolve_tool_function(tool_spec: str, config_path: str = None) -> Callable:
     tool_type, target, func_name = parse_tool_target(tool_spec)
 
     if tool_type == "registered":
-        # Look up in tackle registry
+        # Look up in traits registry
         func = get_trait(target)
         if func is None:
-            raise ValueError(f"Tool '{target}' not found in tackle registry")
+            raise ValueError(f"Tool '{target}' not found in traits registry")
         return func
 
     elif tool_type == "python":

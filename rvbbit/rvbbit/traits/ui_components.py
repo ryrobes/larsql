@@ -368,12 +368,12 @@ def get_ui_examples(component_type: str) -> str:
     return patterns[pattern_type]
 
 
-# Register as tools if tackle system is available
+# Register as tools if traits system is available
 try:
-    from rvbbit import register_tackle
+    from rvbbit import register_trait
 
-    register_tackle("lookup_ui_component", lookup_ui_component)
-    register_tackle("list_ui_components", list_ui_components)
-    register_tackle("get_ui_examples", get_ui_examples)
+    register_trait("lookup_ui_component", lookup_ui_component)
+    register_trait("list_ui_components", list_ui_components)
+    register_trait("get_ui_examples", get_ui_examples)
 except ImportError:
     pass  # Not running in RVBBIT context

@@ -221,11 +221,9 @@ RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
 LOG_DIR = os.path.abspath(os.getenv("RVBBIT_LOG_DIR", os.path.join(RVBBIT_ROOT, "logs")))
 DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
 GRAPH_DIR = os.path.abspath(os.getenv("RVBBIT_GRAPH_DIR", os.path.join(RVBBIT_ROOT, "graphs")))
-STATE_DIR = os.path.abspath(os.getenv("RVBBIT_STATE_DIR", os.path.join(RVBBIT_ROOT, "states")))
 IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_ROOT, "images")))
 AUDIO_DIR = os.path.abspath(os.getenv("RVBBIT_AUDIO_DIR", os.path.join(RVBBIT_ROOT, "audio")))
-EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "examples")))
-TACKLE_DIR = os.path.abspath(os.getenv("RVBBIT_TACKLE_DIR", os.path.join(RVBBIT_ROOT, "tackle")))
+EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "cascades", "examples")))
 TRAITS_DIR = os.path.abspath(os.getenv("RVBBIT_TRAITS_DIR", os.path.join(RVBBIT_ROOT, "traits")))
 CASCADES_DIR = os.path.abspath(os.getenv("RVBBIT_CASCADES_DIR", os.path.join(RVBBIT_ROOT, "cascades")))
 # Also search inside the windlass package for examples (supports YAML cascade files)
@@ -516,7 +514,7 @@ def get_cascade_definitions():
 
             search_paths = [
                 EXAMPLES_DIR,
-                TACKLE_DIR,      # Legacy traits directory
+                TRAITS_DIR,      # Legacy traits directory
                 TRAITS_DIR,      # Traits (tools that are cascades)
                 CASCADES_DIR,
                 PACKAGE_EXAMPLES_DIR,
@@ -1757,19 +1755,6 @@ def get_cascade_instances(cascade_id):
                     cascade_status = "running"
                 else:
                     cascade_status = "success"
-
-                # Check state file for status (legacy fallback)
-                try:
-                    state_path = os.path.join(STATE_DIR, f"{session_id}.json")
-                    if os.path.exists(state_path):
-                        with open(state_path) as f:
-                            state_data = json.load(f)
-                            if state_data.get("status") == "failed":
-                                cascade_status = "failed"
-                            elif state_data.get("status") == "completed":
-                                cascade_status = "success"
-                except:
-                    pass
 
             # Check if any phase has soundings
             has_soundings = any(phase.get('sounding_total', 0) > 1 for phase in phases_map.values())
@@ -3148,7 +3133,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
     Example:
         GET /api/mermaid/static/examples/simple_flow.json
         POST /api/mermaid/static
-        Body: {"cascade_path": "tackle/my_cascade.yaml"}
+        Body: {"cascade_path": "traits/my_cascade.yaml"}
     """
     try:
         # Import here to avoid circular dependency
@@ -3178,7 +3163,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
 
         # Also check common directories
         if not resolved_path.exists():
-            for subdir in ['examples', 'cascades', 'tackle']:
+            for subdir in ['cascades/examples', 'cascades', 'traits']:
                 candidate = rvbbit_root / subdir / cascade_path
                 if candidate.exists():
                     resolved_path = candidate
@@ -3190,9 +3175,9 @@ def get_static_mermaid_from_cascade(cascade_path=None):
                 'searched_paths': [
                     str(Path(cascade_path)),
                     str(rvbbit_root / cascade_path),
-                    str(rvbbit_root / 'examples' / cascade_path),
+                    str(rvbbit_root / 'cascades' / 'examples' / cascade_path),
                     str(rvbbit_root / 'cascades' / cascade_path),
-                    str(rvbbit_root / 'tackle' / cascade_path),
+                    str(rvbbit_root / 'traits' / cascade_path),
                 ]
             }), 404
 
@@ -3353,7 +3338,7 @@ def find_cascade_file(cascade_id):
     search_paths = [
         CASCADES_DIR,
         EXAMPLES_DIR,
-        TACKLE_DIR,
+        TRAITS_DIR,
         PACKAGE_EXAMPLES_DIR,
         PLAYGROUND_SCRATCHPAD_DIR,
     ]
@@ -3970,7 +3955,7 @@ def browse_cascade_files():
                 'id': 'tools',
                 'name': 'Tools (Tackle)',
                 'icon': 'mdi:tools',
-                'path': TACKLE_DIR,
+                'path': TRAITS_DIR,
                 'description': 'Reusable tool definitions',
             },
             {
@@ -4082,7 +4067,7 @@ def browse_cascade_files():
 def load_playground_cascade(cascade_id):
     """Load a playground cascade by cascade_id or session_id.
 
-    Searches multiple directories: playground_scratchpad, cascades, calliope, examples, tackle.
+    Searches multiple directories: playground_scratchpad, cascades, calliope, cascades/examples, traits.
     Returns the full cascade config including _playground metadata for restoring the graph state.
     """
     try:
@@ -4091,7 +4076,7 @@ def load_playground_cascade(cascade_id):
             PLAYGROUND_SCRATCHPAD_DIR,
             CASCADES_DIR,
             EXAMPLES_DIR,
-            TACKLE_DIR,
+            TRAITS_DIR,
         ]
 
         filepath = None
@@ -4148,13 +4133,13 @@ def save_playground_cascade_as():
     """Save a playground cascade as a named tool or cascade.
 
     This enables playground-built workflows to be reused as:
-    - Tools (saved to tackle/) - callable from other cascades via tackle: ["name"]
+    - Tools (saved to traits/) - callable from other cascades via traits: ["name"]
     - Cascades (saved to cascades/) - runnable standalone workflows
 
     Request body:
         cascade_id: The name for the cascade (required, becomes tool name)
         description: Optional description
-        save_to: "tackle" or "cascades" (default: "tackle")
+        save_to: "traits" or "cascades" (default: "traits")
         cascade_yaml: The YAML content to save
         keep_metadata: Whether to preserve _playground metadata for re-editing (default: true)
 
@@ -4169,7 +4154,7 @@ def save_playground_cascade_as():
         data = request.json
         cascade_id = data.get('cascade_id', '').strip()
         description = data.get('description', '').strip()
-        save_to = data.get('save_to', 'tackle')
+        save_to = data.get('save_to', 'traits')
         cascade_yaml = data.get('cascade_yaml')
         keep_metadata = data.get('keep_metadata', True)
 
@@ -4187,13 +4172,13 @@ def save_playground_cascade_as():
         if not cascade_yaml:
             return jsonify({'error': 'cascade_yaml is required'}), 400
 
-        # Determine target directory
-        if save_to == 'tackle':
-            target_dir = TACKLE_DIR
+        # Determine target directory (accept 'tackle' for backward compatibility)
+        if save_to in ('traits', 'tackle'):
+            target_dir = TRAITS_DIR
         elif save_to == 'cascades':
             target_dir = CASCADES_DIR
         else:
-            return jsonify({'error': f'Invalid save_to value: {save_to}. Use "tackle" or "cascades"'}), 400
+            return jsonify({'error': f'Invalid save_to value: {save_to}. Use "traits" or "cascades"'}), 400
 
         # Ensure target directory exists
         os.makedirs(target_dir, exist_ok=True)
@@ -4635,7 +4620,7 @@ def introspect_cascade_endpoint():
             filepath = data['cascade_file']
 
             # Security: only allow files from known directories
-            allowed_dirs = [EXAMPLES_DIR, TACKLE_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
+            allowed_dirs = [EXAMPLES_DIR, TRAITS_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
             filepath_abs = os.path.abspath(filepath)
 
             # Also allow relative paths from RVBBIT_ROOT
@@ -5973,20 +5958,20 @@ def get_session_human_inputs(session_id):
 @app.route('/api/available-tools', methods=['GET'])
 def get_available_tools():
     """
-    Get list of available tools (tackle) from RVBBIT.
+    Get list of available tools (traits) from RVBBIT.
     Returns both registered Python tools and cascade tools.
     Fully introspects all available tools like manifest/Quartermaster does.
     """
     try:
         # Import rvbbit to trigger all tool registrations
         import rvbbit
-        from rvbbit.tackle import get_registry
+        from rvbbit.trait_registry import get_registry
 
         tools = []
         registry = get_registry()
 
         # Get all registered Python tools
-        for name, func in registry.get_all_tackle().items():
+        for name, func in registry.get_all_traits().items():
             # Get docstring for description
             doc = func.__doc__ or ''
             # Get first non-empty line of docstring
@@ -6020,11 +6005,11 @@ def get_available_tools():
                 'type': tool_type
             })
 
-        # Add cascade tools from tackle directory
-        tackle_dir = os.path.join(RVBBIT_ROOT, 'tackle')
-        if os.path.exists(tackle_dir):
+        # Add cascade tools from traits directory
+        traits_dir = os.path.join(RVBBIT_ROOT, 'traits')
+        if os.path.exists(traits_dir):
             for ext in CASCADE_EXTENSIONS:
-                for path in glob.glob(os.path.join(tackle_dir, f'**/*.{ext}'), recursive=True):
+                for path in glob.glob(os.path.join(traits_dir, f'**/*.{ext}'), recursive=True):
                     try:
                         config = load_config_file(path)
                         name = config.get('cascade_id', os.path.basename(path).rsplit('.', 1)[0])

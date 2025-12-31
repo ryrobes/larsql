@@ -2358,7 +2358,7 @@ def find_cascade_file(cascade_id: str, config) -> str:
     search_paths = [
         config.examples_dir,
         config.cascades_dir,
-        config.tackle_dir,
+        config.traits_dir,
     ]
 
     for search_dir in search_paths:
@@ -2923,7 +2923,7 @@ def evolve_species():
         search_dirs = [
             Path(config.cascades_dir),
             Path(config.examples_dir),
-            Path(config.tackle_dir),
+            Path(config.traits_dir),
         ]
 
         cascade_file = None

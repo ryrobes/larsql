@@ -47,7 +47,7 @@ from .tracing import TraceNode, set_current_trace
 from .visualizer import generate_mermaid
 from .prompts import render_instruction
 from .artifact_resolver import enrich_outputs_with_artifacts, convert_to_multimodal_content
-from .state import update_session_state, update_phase_progress, clear_phase_progress
+from .state import update_phase_progress, clear_phase_progress
 from .session_state import (
     get_session_state_manager, create_session as create_session_state,
     update_session_status, session_heartbeat, is_session_cancelled,
@@ -4254,14 +4254,11 @@ Refinement directive: {reforge_config.honing_prompt}
         # Set visualization context
         self.echo.set_cascade_context(self.config.cascade_id)
 
-        update_session_state(self.session_id, self.config.cascade_id, "running", "init", self.depth)
-
         if self.depth > self.max_depth:
             log_message(self.session_id, "error", "Max recursion depth reached.",
                        trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="error", depth=self.depth,
                        candidate_index=self.candidate_index)
             console.print("[bold red]Max recursion depth reached.[/bold red]")
-            update_session_state(self.session_id, self.config.cascade_id, "error", "max_depth", self.depth)
             return self.echo.get_full_echo()
 
         self.echo.update_state("input", input_data)
@@ -4300,10 +4297,6 @@ Refinement directive: {reforge_config.honing_prompt}
             # Use parallel execution for independent phases
             result = self._execute_phases_parallel(input_data)
 
-            # Update session state
-            final_status = "failed" if result.get("has_errors") else "completed"
-            update_session_state(self.session_id, self.config.cascade_id, final_status, "end", self.depth)
-
             # Hooks
             if result.get("has_errors"):
                 cascade_error = Exception(f"Cascade completed with {len(result['errors'])} error(s)")
@@ -4334,8 +4327,6 @@ Refinement directive: {reforge_config.honing_prompt}
             if self._check_cancellation():
                 console.print(f"[bold yellow]⚠ Cascade cancelled before cell '{cell.name}'[/bold yellow]")
                 break
-
-            update_session_state(self.session_id, self.config.cascade_id, "running", cell.name, self.depth)
 
             # Update ClickHouse session state with current cell
             try:
@@ -4449,10 +4440,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         # Get final result with error status
         result = self.echo.get_full_echo()
-
-        # Update session state based on whether errors occurred
-        final_status = "failed" if result.get("has_errors") else "completed"
-        update_session_state(self.session_id, self.config.cascade_id, final_status, "end", self.depth)
+        final_status = "error" if result.get("has_errors") else "completed"
 
         # Hook: Cascade Complete (called for both success and error cases)
         # The hook can check result["status"] to distinguish
@@ -4850,7 +4838,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
     def _run_quartermaster(self, phase: CellConfig, input_data: dict, trace: TraceNode, phase_model: str = None) -> list[str]:
         """
-        Run the Quartermaster agent to select appropriate tackle for this phase.
+        Run the Quartermaster agent to select appropriate traits for this phase.
 
         Returns list of tool names to make available.
         """
@@ -4861,7 +4849,7 @@ Refinement directive: {reforge_config.honing_prompt}
         # Create quartermaster trace
         qm_trace = trace.create_child("quartermaster", "manifest_selection")
 
-        # Get full tackle manifest
+        # Get full traits manifest
         manifest = get_trait_manifest()
 
         # Semantic pre-filtering: Use vector search to reduce manifest size
@@ -4941,7 +4929,7 @@ Refinement directive: {reforge_config.honing_prompt}
             context_text = f"## Mission Instructions:\n{phase.instructions}\n\n## Input Data:\n{json.dumps(input_data)}"
 
         # Build quartermaster prompt
-        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant tackle (tools) for this specific mission phase.
+        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant traits (tools) for this specific mission phase.
 
 {manifest_text}
 
@@ -4976,30 +4964,30 @@ If no tools are needed, return an empty array: []
         json_match = re.search(r'\[.*\]', response_content, re.DOTALL)
         if json_match:
             try:
-                selected_tackle = json.loads(json_match.group(0))
-                if not isinstance(selected_tackle, list):
-                    selected_tackle = []
+                selected_traits = json.loads(json_match.group(0))
+                if not isinstance(selected_traits, list):
+                    selected_traits = []
             except Exception as e:
                 console.print(f"{indent}    [red]Failed to parse Quartermaster response: {e}[/red]")
                 console.print(f"{indent}    [dim]Response: {response_content}[/dim]")
-                selected_tackle = []
+                selected_traits = []
         else:
             console.print(f"{indent}    [yellow]No JSON array found in response[/yellow]")
             console.print(f"{indent}    [dim]Response: {response_content}[/dim]")
-            selected_tackle = []
+            selected_traits = []
 
         # Validate that selected tools exist
-        valid_tackle = [t for t in selected_tackle if t in manifest]
+        valid_traits = [t for t in selected_traits if t in manifest]
 
         # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "quartermaster",
-            "content": f"Selected tools: {', '.join(valid_tackle) if valid_tackle else 'none'}",
+            "content": f"Selected tools: {', '.join(valid_traits) if valid_traits else 'none'}",
             "node_type": "quartermaster_result"
         }, trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster_result",
            metadata=self._get_metadata({
                "cell_name": phase.name,
-               "selected_tackle": valid_tackle,
+               "selected_traits": valid_traits,
                "reasoning": response_content,  # Full content, no truncation
                "manifest_context": phase.manifest_context,
                "manifest_limit": phase.manifest_limit,
@@ -5011,7 +4999,7 @@ If no tools are needed, return an empty array: []
 
         console.print(f"{indent}    [dim]Reasoning: {response_content[:150]}...[/dim]")
 
-        return valid_tackle
+        return valid_traits
 
     def _fetch_winning_mutations(self, cascade_id: str, cell_name: str, species_hash: str, limit: int = 5) -> List[Dict]:
         """
@@ -6155,7 +6143,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 from .trait_registry import get_trait
                 tool_map, tools_schema, tool_descriptions = get_trait(cell.traits)
             except Exception:
-                pass  # If tackle fails, just skip tool token estimation
+                pass  # If traits fails, just skip tool token estimation
 
         # Estimate tokens for full request
         estimated_tokens = estimate_request_tokens(
@@ -10154,21 +10142,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 f"Cite sources as path#line_start-line_end."
             )
         else:
-            # No rag block on this phase - check if RAG tools are in tackle list
+            # No rag block on this phase - check if RAG tools are in traits list
             # If so, reuse the existing RAG context from an earlier phase
             from .rag.context import get_current_rag_context
             existing_ctx = get_current_rag_context()
-            rag_tools_in_tackle = {"rag_search", "rag_read_chunk", "rag_list_sources"}
+            rag_tools_in_traits = {"rag_search", "rag_read_chunk", "rag_list_sources"}
             phase_uses_rag_tools = bool(
                 phase.traits and
                 isinstance(phase.traits, list) and
-                rag_tools_in_tackle.intersection(phase.traits)
+                rag_tools_in_traits.intersection(phase.traits)
             )
 
             if existing_ctx and phase_uses_rag_tools:
                 # Reuse existing RAG context - no rebuild needed
                 rag_context = existing_ctx
-                rag_tool_names = list(rag_tools_in_tackle.intersection(phase.traits))
+                rag_tool_names = list(rag_tools_in_traits.intersection(phase.traits))
                 rag_prompt = (
                     f"\n\n## Retrieval Context\n"
                     f"A retrieval index is available for `{rag_context.directory}`, "
@@ -10330,13 +10318,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         trait_list = phase.traits
-        # Handle manifest mode: tackle can be "manifest" (string) or ["manifest"] (list)
+        # Handle manifest mode: traits can be "manifest" (string) or ["manifest"] (list)
         is_manifest = (
             phase.traits == "manifest" or
             (isinstance(phase.traits, list) and "manifest" in phase.traits)
         )
         if is_manifest:
-            console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting tackle...[/bold cyan]")
+            console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting traits...[/bold cyan]")
             trait_list = self._run_quartermaster(phase, input_data, trace, phase_model)
             console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(trait_list)}[/bold cyan]")
 
@@ -11218,7 +11206,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # Find tool - first check phase tool_map, then fall back to global registry
                             tool_func = tool_map.get(func_name)
                             if not tool_func:
-                                # Fallback to global tool registry - phase tackle only controls prompting
+                                # Fallback to global tool registry - phase traits only controls prompting
                                 tool_func = get_trait(func_name)
                             result = "Tool not found."
                         

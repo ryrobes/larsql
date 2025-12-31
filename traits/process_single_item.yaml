@@ -21,4 +21,4 @@ phases:
 
       Return ONLY valid JSON, no markdown fences.
 
-    tackle: []
+    traits: []

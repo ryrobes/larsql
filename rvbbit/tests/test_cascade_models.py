@@ -154,7 +154,7 @@ class TestCellConfig:
         assert phase.callouts is None
 
     def test_phase_with_tools(self):
-        """Phase with tackle (tools) specified."""
+        """Phase with traits (tools) specified."""
         phase = CellConfig(
             name="with_tools",
             instructions="Use tools",
@@ -162,7 +162,7 @@ class TestCellConfig:
         )
         assert phase.traits == ["linux_shell", "run_code", "smart_sql_run"]
 
-    def test_phase_with_manifest_tackle(self):
+    def test_phase_with_manifest_traits(self):
         """Phase using manifest (Quartermaster) for tool selection."""
         phase = CellConfig(
             name="with_manifest",

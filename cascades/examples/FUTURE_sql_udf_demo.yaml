@@ -132,7 +132,7 @@ phases:
       3. Market opportunity gaps
       4. Recommended product additions
 
-    tackle: []
+    traits: []
 
 ---
 # How rvbbit() would work under the hood:

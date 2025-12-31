@@ -325,7 +325,7 @@ def example_phase_lifecycle_integration():
         content=f"Starting phase: {phase.name}",
         metadata={
             "instructions": rendered_instruction,
-            "traits": phase.tackle,
+            "traits": phase.traits,
             "max_turns": phase.rules.max_turns if phase.rules else None,
         }
     )

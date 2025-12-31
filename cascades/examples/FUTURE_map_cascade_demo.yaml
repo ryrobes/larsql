@@ -116,7 +116,7 @@ phases:
       - Churn risk insights
       - Recommended actions
 
-    tackle: []
+    traits: []
 
 ---
 # traits/customer_analytics.yaml (referenced above)
@@ -159,4 +159,4 @@ phases:
         "recommendations": ["action1", "action2"]
       }
 
-    tackle: []
+    traits: []

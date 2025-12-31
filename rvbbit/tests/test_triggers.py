@@ -348,10 +348,10 @@ def test_load_cascade_with_triggers():
     """Test loading a cascade file that has triggers."""
     import os
     from rvbbit.cascade import load_cascade_config
+    from rvbbit.config import get_config
 
-    # Get path to example
-    examples_dir = os.path.join(os.path.dirname(__file__), "..", "examples")
-    config_path = os.path.join(examples_dir, "scheduled_etl_demo.json")
+    # Get path to example from config (searches cascades/examples/)
+    config_path = os.path.join(get_config().examples_dir, "json", "scheduled_etl_demo.json")
 
     if os.path.exists(config_path):
         config = load_cascade_config(config_path)

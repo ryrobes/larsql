@@ -1,7 +1,7 @@
 """
 Speech-to-Text Tools for Cascades
 
-Provides tackle (tools) for voice input in cascades:
+Provides traits (tools) for voice input in cascades:
 - listen: Interactive voice input (waits for user to speak)
 - transcribe_audio: Transcribe an existing audio file
 

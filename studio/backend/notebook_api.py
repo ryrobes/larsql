@@ -48,9 +48,9 @@ notebook_bp = Blueprint('notebook', __name__, url_prefix='/api/notebook')
 # Default paths
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
-TACKLE_DIR = os.path.join(RVBBIT_ROOT, "tackle")
+TRAITS_DIR = os.path.join(RVBBIT_ROOT, "traits")
 CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
-EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "examples")
+EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "cascades", "examples")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -379,7 +379,7 @@ def list_notebooks():
     """
     List all available data cascade notebooks.
 
-    Scans tackle/, cascades/, and examples/ directories for YAML/JSON files
+    Scans traits/, cascades/, and examples/ directories for YAML/JSON files
     that only contain deterministic phases (sql_data, python_data, js_data, clojure_data).
 
     Returns:
@@ -390,7 +390,7 @@ def list_notebooks():
 
         # Scan directories
         for base_dir, prefix in [
-            (TACKLE_DIR, 'tackle/'),
+            (TRAITS_DIR, 'traits/'),
             (CASCADES_DIR, 'cascades/'),
             (EXAMPLES_DIR, 'examples/'),
             (PLAYGROUND_SCRATCHPAD_DIR, 'playground/'),
@@ -416,7 +416,7 @@ def load_notebook():
     Load a notebook by path.
 
     Args:
-        path: Relative path to the notebook (e.g., 'tackle/my_notebook.yaml')
+        path: Relative path to the notebook (e.g., 'traits/my_notebook.yaml')
 
     Returns:
         JSON with notebook content
@@ -451,7 +451,7 @@ def save_notebook():
     Save a notebook to a file.
 
     Request body:
-        - path: Relative path to save (e.g., 'tackle/my_notebook.yaml')
+        - path: Relative path to save (e.g., 'traits/my_notebook.yaml')
         - notebook: Notebook content (cascade definition)
 
     Returns:

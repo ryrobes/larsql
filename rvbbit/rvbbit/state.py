@@ -1,9 +1,16 @@
-import os
-import json
+"""
+In-memory phase progress tracking for real-time visualization.
+
+This module provides detailed phase progress tracking (turn, attempt, tool, ward, etc.)
+for visualization purposes. The data is kept in-memory only - it's transient and only
+relevant while a cascade is running.
+
+For durable session state (status, heartbeat, blocked, etc.), see session_state.py
+which uses ClickHouse as the coordination database.
+"""
+
 import time
-import glob
 from typing import Optional, List, Dict, Any
-from .config import get_config
 
 
 class PhaseProgress:
@@ -83,14 +90,13 @@ class PhaseProgress:
 
 
 class StateManager:
-    def __init__(self):
-        self.state_dir = get_config().state_dir
-        os.makedirs(self.state_dir, exist_ok=True)
-        # In-memory phase progress tracking
-        self._phase_progress: Dict[str, PhaseProgress] = {}
+    """In-memory state manager for phase progress tracking."""
 
-    def _get_path(self, session_id: str) -> str:
-        return os.path.join(self.state_dir, f"{session_id}.json")
+    def __init__(self):
+        # In-memory phase progress tracking (keyed by session_id:cell_name)
+        self._phase_progress: Dict[str, PhaseProgress] = {}
+        # Track current cell per session for quick lookup
+        self._current_cell: Dict[str, str] = {}
 
     def get_phase_progress(self, session_id: str, cell_name: str) -> PhaseProgress:
         """Get or create phase progress tracker."""
@@ -105,65 +111,37 @@ class StateManager:
         if key in self._phase_progress:
             del self._phase_progress[key]
 
-    def update(self, session_id: str, cascade_id: str, status: str, phase: str = None, depth: int = 0, metadata: dict = None):
-        """
-        Updates the state file for a session.
-        """
-        # Get phase progress if available
-        phase_progress = None
-        if phase and status == "running":
-            progress = self._phase_progress.get(f"{session_id}:{phase}")
-            if progress:
-                phase_progress = progress.to_dict()
+    def set_current_cell(self, session_id: str, cell_name: str):
+        """Track which cell is currently running for a session."""
+        self._current_cell[session_id] = cell_name
 
-        data = {
-            "session_id": session_id,
-            "cascade_id": cascade_id,
-            "status": status,  # running, completed, error
-            "current_cell": phase,
-            "depth": depth,
-            "last_update": time.time(),
-            "last_update_iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
-            "metadata": metadata or {},
-            # NEW: Detailed phase progress for visualization
-            "phase_progress": phase_progress
-        }
+    def clear_session(self, session_id: str):
+        """Clear all state for a session when it completes."""
+        if session_id in self._current_cell:
+            del self._current_cell[session_id]
+        # Clear any lingering phase progress for this session
+        keys_to_remove = [k for k in self._phase_progress if k.startswith(f"{session_id}:")]
+        for key in keys_to_remove:
+            del self._phase_progress[key]
 
-        path = self._get_path(session_id)
-        with open(path, 'w') as f:
-            json.dump(data, f, indent=2)
+    def get_current_phase_progress(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the current phase progress for a session.
 
-    def get_active_sessions(self):
+        Returns dict with cell_name and progress, or None if not found.
         """
-        Returns a list of session states that are 'running'.
-        Checks for staleness (optional, e.g. > 1 hour).
-        """
-        sessions = []
-        files = glob.glob(os.path.join(self.state_dir, "*.json"))
-        for fpath in files:
-            try:
-                with open(fpath, 'r') as f:
-                    data = json.load(f)
-                
-                # We can filter by status
-                if data.get("status") == "running":
-                    sessions.append(data)
-            except Exception:
-                pass
-        
-        # Sort by recency
-        sessions.sort(key=lambda x: x["last_update"], reverse=True)
-        return sessions
+        cell_name = self._current_cell.get(session_id)
+        if not cell_name:
+            return None
+
+        key = f"{session_id}:{cell_name}"
+        progress = self._phase_progress.get(key)
+        if progress:
+            return progress.to_dict()
+        return None
+
 
 _state_manager = StateManager()
-
-
-def update_session_state(session_id: str, cascade_id: str, status: str, phase: str = None, depth: int = 0):
-    _state_manager.update(session_id, cascade_id, status, phase, depth)
-
-
-def list_running_sessions():
-    return _state_manager.get_active_sessions()
 
 
 def get_phase_progress(session_id: str, cell_name: str) -> PhaseProgress:
@@ -194,12 +172,15 @@ def update_phase_progress(
     tool_name: str = None
 ):
     """
-    Update detailed phase progress and persist to state file.
+    Update detailed phase progress (in-memory only).
 
     This enables real-time visualization of exactly where execution is
     within a phase (which turn, which attempt, which candidate, etc.)
     """
     progress = _state_manager.get_phase_progress(session_id, cell_name)
+
+    # Track current cell for this session
+    _state_manager.set_current_cell(session_id, cell_name)
 
     # Update fields if provided
     if stage is not None:
@@ -239,28 +220,62 @@ def update_phase_progress(
         if tool_name and tool_name not in progress.tools_called:
             progress.tools_called.append(tool_name)
 
-    # Persist to state file
-    _state_manager.update(session_id, cascade_id, "running", cell_name, depth)
-
 
 def clear_phase_progress(session_id: str, cell_name: str):
     """Clear phase progress when phase completes."""
     _state_manager.clear_phase_progress(session_id, cell_name)
 
 
-def get_session_state(session_id: str) -> dict:
+def clear_session_state(session_id: str):
+    """Clear all in-memory state for a session."""
+    _state_manager.clear_session(session_id)
+
+
+def get_current_phase_progress(session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the current phase progress for a session (in-memory).
+
+    Returns dict with phase progress, or None if not found.
+    Only works within the same process as the runner.
+    """
+    return _state_manager.get_current_phase_progress(session_id)
+
+
+def get_session_state(session_id: str) -> Optional[Dict[str, Any]]:
     """
     Get the current state for a session.
 
+    Combines data from:
+    - session_state.py (ClickHouse) for status/current_cell
+    - In-memory phase progress (if available, same process only)
+
     Returns:
-        Dict with session state or None if not found/error.
-        Keys: session_id, cascade_id, status, current_cell, depth, last_update, metadata
+        Dict with session state or None if not found.
     """
-    path = _state_manager._get_path(session_id)
     try:
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                return json.load(f)
+        from .session_state import get_session_state_manager
+
+        manager = get_session_state_manager()
+        session = manager.get_session(session_id)
+
+        if not session:
+            return None
+
+        # Build response dict
+        result = {
+            "session_id": session.session_id,
+            "cascade_id": session.cascade_id,
+            "status": session.status.value if session.status else None,
+            "current_cell": session.current_cell,
+            "depth": session.depth,
+        }
+
+        # Add in-memory phase progress if available (same process only)
+        phase_progress = get_current_phase_progress(session_id)
+        if phase_progress:
+            result["phase_progress"] = phase_progress
+
+        return result
+
     except Exception:
-        pass
-    return None
+        return None

@@ -239,7 +239,7 @@ def rvbbit_cascade_udf_impl(
     - Tool usage per row (query other data, call APIs)
 
     Args:
-        cascade_path: Path to cascade file (e.g., "tackle/fraud_check.yaml")
+        cascade_path: Path to cascade file (e.g., "traits/fraud_check.yaml")
         inputs_json: JSON string of cascade inputs (e.g., '{"customer_id": 123}')
         use_cache: Whether to use cache (default: True)
         return_field: Optional field to extract from result (e.g., "risk_score")
@@ -252,7 +252,7 @@ def rvbbit_cascade_udf_impl(
         SELECT
           customer_id,
           rvbbit_cascade_udf(
-            'tackle/fraud_check.yaml',
+            'traits/fraud_check.yaml',
             json_object('customer_id', customer_id)
           ) as fraud_analysis
         FROM transactions;
@@ -261,7 +261,7 @@ def rvbbit_cascade_udf_impl(
         SELECT
           customer_id,
           rvbbit_cascade_udf(
-            'tackle/fraud_check.yaml',
+            'traits/fraud_check.yaml',
             json_object('customer_id', customer_id),
             'risk_score'
           ) as risk_score

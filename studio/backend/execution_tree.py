@@ -64,7 +64,7 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
         'sub_session_id': meta.get('sub_session_id'),
         'winner_session_id': meta.get('winner_session_id'),
         'evaluation': meta.get('evaluation'),
-        'selected_tackle': meta.get('selected_tackle', []),
+        'selected_traits': meta.get('selected_traits', []),
         'reasoning': meta.get('reasoning'),
     }
 
@@ -369,7 +369,7 @@ class ExecutionTreeBuilder:
         if qm_entries:
             quartermaster_entry = {
                 'content': qm_entries[0].content or "",
-                'selected_tackle': qm_entries[0].metadata.get('selected_tackle', []),
+                'selected_traits': qm_entries[0].metadata.get('selected_traits', []),
                 'reasoning': qm_entries[0].metadata.get('reasoning', '')
             }
 
@@ -1049,11 +1049,11 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
             if quartermaster:
                 qm_id = f"{phase_id}_qm"
                 all_node_ids.append(qm_id)
-                selected_tackle = quartermaster.get('selected_tackle', [])
-                if selected_tackle:
-                    tools_preview = ", ".join(selected_tackle[:3])
-                    if len(selected_tackle) > 3:
-                        tools_preview += f" +{len(selected_tackle) - 3}"
+                selected_traits = quartermaster.get('selected_traits', [])
+                if selected_traits:
+                    tools_preview = ", ".join(selected_traits[:3])
+                    if len(selected_traits) > 3:
+                        tools_preview += f" +{len(selected_traits) - 3}"
                     qm_label = f"🎯 {tools_preview}"
                 else:
                     qm_label = "🎯 No tools"
@@ -1066,7 +1066,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                     'extent': 'parent',
                     'data': {
                         'label': qm_label,
-                        'selected_tackle': selected_tackle,
+                        'selected_traits': selected_traits,
                         'reasoning': quartermaster.get('reasoning', '')
                     },
                     'style': {

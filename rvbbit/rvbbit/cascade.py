@@ -943,7 +943,7 @@ class SqlMappingConfig(BaseModel):
     Example:
         for_each_row:
           table: _customers
-          cascade: "tackle/process_customer.yaml"
+          cascade: "traits/process_customer.yaml"
           inputs:
             customer_id: "{{ row.id }}"
             customer_name: "{{ row.name }}"
@@ -1022,7 +1022,7 @@ class CellConfig(BaseModel):
     # ===== Deterministic Phase Fields (new) =====
     # For deterministic phases, tool is required and specifies what to execute directly
     # Supported formats:
-    #   - "tool_name" - registered tool from tackle registry
+    #   - "tool_name" - registered tool from traits registry
     #   - "python:module.path.function" - direct Python function import
     #   - "sql:path/to/query.sql" - SQL query file
     tool: Optional[str] = None
@@ -1409,7 +1409,7 @@ class CascadeConfig(BaseModel):
     research_db: Optional[str] = None
 
     # Inline validators - cascade-scoped validator definitions
-    # These are checked before global tackle/ directory when resolving validator names
+    # These are checked before global traits/ directory when resolving validator names
     validators: Optional[Dict[str, InlineValidatorConfig]] = None
 
     # Triggers - declarative scheduling and event-based execution

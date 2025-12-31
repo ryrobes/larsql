@@ -1062,7 +1062,7 @@ def rvbbit_data(
     - soundings: Optional soundings config for best-of-N attempts
     - reforge: Optional iterative refinement config
     - wards: Optional validation (pre/post)
-    - tackle: Optional tools to make available
+    - traits: Optional tools to make available
 
     Example phase_yaml:
         instructions: |

@@ -10,7 +10,7 @@ def create_eddy(config: Dict[str, Any], tools: Dict[str, Callable]) -> Callable:
     """
     # This is a simplified version. A full Eddy might need a mini-runner.
     # For now, let's assume an Eddy is a function that tries to achieve a goal
-    # using a list of sub-tools (tackle) and retry logic.
+    # using a list of sub-tools (traits) and retry logic.
     
     # Note: To fully implement the prompt's "phases" within an Eddy, 
     # we effectively need a mini-Cascade runner. 
@@ -24,11 +24,11 @@ def create_eddy(config: Dict[str, Any], tools: Dict[str, Callable]) -> Callable:
         attempts = 0
         last_error = None
         
-        # In a real Eddy, we might orchestrate multiple tackle calls.
-        # Here we assume the 'tackle' list in config implies a sequence 
+        # In a real Eddy, we might orchestrate multiple traits calls.
+        # Here we assume the 'traits' list in config implies a sequence 
         # or we just wrap the primary function if provided.
         
-        # If 'tackle' is a list of names, we might need to know which one to call 
+        # If 'traits' is a list of names, we might need to know which one to call 
         # or if this Eddy *is* the composition.
         # Let's assume this wrapper wraps a single primary function for now, 
         # or executes the defined phases if we pass the runner context.

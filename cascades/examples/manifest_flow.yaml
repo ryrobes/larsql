@@ -1,5 +1,5 @@
 cascade_id: content_processor_with_manifest
-description: Demonstrates Quartermaster selecting appropriate tackle based on task
+description: Demonstrates Quartermaster selecting appropriate traits based on task
 inputs_schema:
   content: The content to process
   task: Description of the content processing task

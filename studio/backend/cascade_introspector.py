@@ -256,7 +256,7 @@ def _classify_phase(phase: dict, cell_name: str) -> Tuple[str, dict]:
         # This includes:
         # - Regular LLM phases with instructions
         # - Tool-only (deterministic) phases like `tool: linux_shell`
-        # - Composite phases with tackle + instructions
+        # - Composite phases with traits + instructions
         return 'phase', {
             'name': cell_name,
             'yaml': yaml.dump(phase, default_flow_style=False, sort_keys=False),

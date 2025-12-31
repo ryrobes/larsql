@@ -185,7 +185,7 @@ def map_cascade(
         - name: process_customers
           tool: map_cascade
           inputs:
-            cascade: "tackle/process_customer.yaml"
+            cascade: "traits/process_customer.yaml"
             map_over: "{{ outputs.list_customers }}"
             input_key: "customer_id"
             mode: "aggregate"

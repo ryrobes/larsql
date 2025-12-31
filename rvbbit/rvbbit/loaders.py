@@ -46,7 +46,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
         search_dirs = [
             Path(config.root_dir),  # RVBBIT_ROOT
             Path(config.examples_dir),  # RVBBIT_ROOT/examples
-            Path(config.tackle_dir),  # RVBBIT_ROOT/traits
+            Path(config.traits_dir),  # RVBBIT_ROOT/traits
             Path(config.cascades_dir),  # RVBBIT_ROOT/cascades
         ]
 
