@@ -455,12 +455,23 @@ def _build_replacement(
 
     If an annotation is provided, its prompt/model/max_tokens are injected
     as additional arguments.
+
+    Model hints from annotations are prepended to prompts so bodybuilder's
+    request mode can pick the appropriate model.
     """
     # Helper to quote a string for SQL
     def sql_quote(s: str) -> str:
         # Escape single quotes by doubling them
         escaped = s.replace("'", "''")
         return f"'{escaped}'"
+
+    def build_prompt_with_model_hint(prompt: str) -> str:
+        """Prepend model hint to prompt if annotation specifies a model."""
+        if annotation and annotation.model:
+            # Prefix with model hint for bodybuilder's planner
+            # Format: "Use {model} - {actual task}"
+            return f"Use {annotation.model} - {prompt}"
+        return prompt
 
     if func_def.name == "LLM_AGG":
         # Special case: LLM_AGG has prompt first, column second
@@ -471,7 +482,11 @@ def _build_replacement(
             # Prepend annotation to existing prompt
             existing = prompt.strip("'\"")
             combined = f"{annotation.prompt} {existing}"
-            prompt = sql_quote(combined)
+            prompt = sql_quote(build_prompt_with_model_hint(combined))
+        elif annotation and annotation.model:
+            # Just model hint, no prompt override
+            existing = prompt.strip("'\"")
+            prompt = sql_quote(build_prompt_with_model_hint(existing))
         return f"llm_agg_2({prompt}, LIST({col})::VARCHAR)"
 
     elif func_def.name == "LLM_SUMMARIZE":
@@ -479,7 +494,10 @@ def _build_replacement(
         # Determine prompt: explicit arg > annotation > none
         prompt_arg = args[1] if len(args) >= 2 else None
         if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(annotation.prompt)
+            prompt_arg = sql_quote(build_prompt_with_model_hint(annotation.prompt))
+        elif prompt_arg is None and annotation and annotation.model:
+            # Model hint but no custom prompt - use default with hint
+            prompt_arg = sql_quote(build_prompt_with_model_hint("summarize these items"))
 
         # Determine max_items: explicit arg > annotation > none
         max_items_arg = args[2] if len(args) >= 3 else None
@@ -500,7 +518,10 @@ def _build_replacement(
         # Prompt is optional 3rd arg
         prompt_arg = args[2] if len(args) >= 3 else None
         if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(annotation.prompt)
+            prompt_arg = sql_quote(build_prompt_with_model_hint(annotation.prompt))
+        elif prompt_arg is None and annotation and annotation.model:
+            # Model hint but no custom prompt - use default with hint
+            prompt_arg = sql_quote(build_prompt_with_model_hint("classify these items"))
 
         if prompt_arg is None:
             return f"llm_classify_2(LIST({col})::VARCHAR, {categories})"
@@ -509,7 +530,12 @@ def _build_replacement(
 
     elif func_def.name == "LLM_SENTIMENT":
         col = args[0]
-        # Sentiment doesn't take additional args, but we could add prompt support later
+        # Sentiment: if model annotation, create a prompt with hint
+        if annotation and annotation.model:
+            prompt_arg = sql_quote(build_prompt_with_model_hint("analyze sentiment"))
+            # Need to add sentiment variant that accepts prompt...
+            # For now, sentiment doesn't support custom prompts
+            pass
         return f"llm_sentiment_1(LIST({col})::VARCHAR)"
 
     elif func_def.name == "LLM_THEMES":
@@ -791,9 +817,28 @@ GROUP BY category;
 ```
 
 Supported annotation options:
-- Free text: Becomes the prompt/instructions
+- Free text: Becomes the prompt/instructions (can include model hints like "use a cheap model")
 - `max_tokens: N`: Limits output or sample size
-- `model: name`: Model override (future)
+- `model: provider/model-name`: Explicit model selection (e.g., `model: google/gemini-2.5-flash-lite`)
+
+Model selection follows bodybuilder's request mode:
+- Explicit `model:` annotation → uses that model directly
+- Hints in prompt text like "cheap", "fast", "powerful", "Claude" → planner picks
+- No hint → planner uses default model
+
+```sql
+-- Explicit model
+-- @ model: google/gemini-2.5-flash-lite
+SUMMARIZE(reviews) as quick_summary
+
+-- Model hint in prompt (planner picks)
+-- @ Use a cheap fast model for this basic summary
+SUMMARIZE(reviews) as basic_summary
+
+-- Powerful model hint
+-- @ Use Claude for nuanced analysis
+SUMMARIZE(reviews) as detailed_summary
+```
 
 Note: Explicit function arguments take precedence over annotations.
 

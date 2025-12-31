@@ -26,56 +26,73 @@ from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def _call_llm_direct(
+def _call_llm(
     prompt: str,
     model: str = None,
     max_tokens: int = 500
 ) -> str:
     """
-    Call LLM via bodybuilder's direct body mode (bypasses planner).
+    Call LLM via bodybuilder's request mode.
 
-    This still goes through bodybuilder for cost tracking and logging,
-    but skips the planner step that tries to parse the request as JSON.
+    Always uses request mode which goes through the full bodybuilder pipeline
+    including planning, logging, and cost tracking. The planner handles both
+    explicit model names and hints like "cheap", "fast", "Claude".
+
+    Args:
+        prompt: The request for the LLM (can include model hints)
+        model: Ignored - model selection is handled by prompt content
+        max_tokens: Ignored - handled by bodybuilder
+
+    Returns:
+        LLM response text, or "ERROR: ..." on failure
     """
     from ..traits.bodybuilder import bodybuilder
     from ..session_naming import generate_woodland_id
-    from ..config import get_config
+    from rich.console import Console
 
-    config = get_config()
-
-    # Use default model if not specified
-    if not model:
-        model = config.default_model
+    console = Console()
 
     # Generate session info
     woodland_id = generate_woodland_id()
     session_id = f"sql-agg-{woodland_id}"
+    cell_name = f"agg_{woodland_id[:8]}"
 
-    # Build explicit body (bypasses planner)
-    body = {
-        "model": model,
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": max_tokens,
-        "temperature": 0.0
-    }
+    # Build request - add instruction to return only the result
+    request = f"{prompt}\n\nReturn ONLY the result, no explanation or markdown."
+
+    prompt_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
+    console.print(f"[dim]🔧 sql_agg[/dim] [cyan]{session_id}[/cyan] [dim]|[/dim] {prompt_preview}")
 
     try:
         response = bodybuilder(
-            body=body,  # Direct mode - no planner!
+            request=request,
             _session_id=session_id,
-            _cell_name=f"agg_{woodland_id[:8]}",
+            _cell_name=cell_name,
             _cascade_id="sql_aggregate",
         )
 
         if response.get("_route") == "error":
-            return f"ERROR: {response.get('error', 'Unknown error')[:100]}"
+            error_msg = response.get("error", "Unknown error")
+            console.print(f"[red]✗ sql_agg error:[/red] {error_msg[:50]}")
+            return f"ERROR: {error_msg[:100]}"
 
-        return response.get("result") or response.get("content") or ""
+        result = response.get("result") or response.get("content") or ""
+        result = result.strip()
+
+        # Log success
+        model_used = response.get("model", "unknown")
+        result_preview = result[:50] + "..." if len(result) > 50 else result
+        console.print(f"[green]✓[/green] [dim]{model_used}[/dim] → {result_preview}")
+
+        return result
 
     except Exception as e:
+        console.print(f"[red]✗ sql_agg exception:[/red] {str(e)[:50]}")
         return f"ERROR: {str(e)[:100]}"
+
+
+# Backwards compat alias
+_call_llm_direct = _call_llm
 
 
 def _sanitize_text(text: str) -> str:
