@@ -1427,6 +1427,12 @@ class CascadeConfig(BaseModel):
     # Cell-level configs override these cascade-level defaults
     auto_context: Optional[AutoContextConfig] = None
 
+    # Parallel cell execution configuration
+    # When cells have independent dependencies (fan-out pattern), they can run in parallel
+    # This sets the maximum number of concurrent cell executions (default: 5)
+    # Example: max_parallel: 10 allows up to 10 cells to run simultaneously
+    max_parallel: Optional[int] = None
+
 # Rebuild models to resolve forward references for PolyglotValidatorConfig
 WardConfig.model_rebuild()
 RuleConfig.model_rebuild()

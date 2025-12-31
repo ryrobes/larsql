@@ -4,12 +4,13 @@ cells:
     of rich details, but staying true to the original intent. Please return ONLY the
     enriched prompt.
 
-
     Image Prompt:
 
     {{ input.prompt }}
-
-    Negative Prompt: Smoking. '
+    
+    Negative Prompt:
+    
+    {{ input.neg_prompt }}'
   model: x-ai/grok-4.1-fast
   name: llm_phase
   rules:
@@ -143,3 +144,4 @@ cells:
 description: Generated from Image Playground
 inputs_schema:
   prompt: Prompt text for prompt
+  neg_prompt: Negative prompt text for prompt

@@ -3269,6 +3269,79 @@ def cmd_tools_find(args):
     semantic_find_tools(args.query, limit=args.limit)
 
 
+def _run_server_subprocess(cmd, cwd=None, env=None):
+    """Run a server subprocess with graceful shutdown handling.
+
+    Uses Popen instead of run() to properly handle SIGINT (Ctrl+C)
+    and terminate the child process cleanly without ugly tracebacks.
+
+    Uses process groups to ensure all child processes (e.g., Gunicorn workers)
+    are also terminated on shutdown.
+    """
+    import subprocess
+    import signal
+
+    # Start process in new process group so we can kill all children
+    process = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+    shutdown_initiated = False
+
+    def signal_handler(signum, frame):
+        """Forward signal to child process group and wait for graceful shutdown."""
+        nonlocal shutdown_initiated
+        if shutdown_initiated:
+            return  # Already handling shutdown
+        shutdown_initiated = True
+
+        print("\n\n🛑 Shutting down...")
+
+        if process.poll() is None:  # Process still running
+            try:
+                # Send SIGTERM to the entire process group for graceful shutdown
+                pgid = os.getpgid(process.pid)
+                os.killpg(pgid, signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                # Process already dead or no permission
+                pass
+
+            try:
+                # Wait up to 5 seconds for graceful shutdown
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("   Force killing unresponsive process...")
+                try:
+                    # Send SIGKILL to entire process group
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGKILL)
+                except (ProcessLookupError, OSError):
+                    # Process group already dead
+                    pass
+
+                try:
+                    # Wait with timeout - don't hang forever
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    # Process won't die (maybe in D state), just exit
+                    print("   Process not responding to SIGKILL, abandoning...")
+                    return
+
+    # Register signal handlers
+    original_sigint = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm = signal.signal(signal.SIGTERM, signal_handler)
+
+    try:
+        # Wait for process to complete
+        return_code = process.wait()
+        return return_code
+    except KeyboardInterrupt:
+        # Handle case where signal handler didn't catch it
+        signal_handler(signal.SIGINT, None)
+        return 0
+    finally:
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
+
+
 def cmd_serve_studio(args):
     """Start RVBBIT Studio web UI backend."""
     import subprocess
@@ -3321,8 +3394,8 @@ def cmd_serve_studio(args):
         env['FLASK_ENV'] = 'development'
         env['FLASK_DEBUG'] = '1'
 
-        # Run app.py directly
-        subprocess.run(
+        # Run app.py directly with graceful shutdown handling
+        _run_server_subprocess(
             [sys.executable, 'app.py'],
             cwd=studio_backend_dir,
             env=env
@@ -3356,7 +3429,7 @@ def cmd_serve_studio(args):
             'app:app'
         ]
 
-        subprocess.run(cmd)
+        _run_server_subprocess(cmd)
 
 
 def cmd_serve_sql(args):

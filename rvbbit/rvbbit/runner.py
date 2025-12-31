@@ -501,12 +501,14 @@ class RVBBITRunner:
         Returns True if:
         - There are multiple cells
         - No cells have handoffs (handoffs imply sequential/routing logic)
-        - At least 2 cells have no dependencies on each other
+        - At least 2 cells can run in parallel at some point:
+          - Multiple root cells (no dependencies), OR
+          - Multiple cells share the same dependencies (fan-out pattern)
 
         Returns False if:
         - Single cell cascade
         - Any cell has handoffs (explicit routing)
-        - All cells depend on previous cells (linear chain)
+        - All cells form a strict linear chain (each depends on previous)
         """
         cells = self.config.cells
         if len(cells) <= 1:
@@ -520,11 +522,17 @@ class RVBBITRunner:
         # Analyze dependencies
         deps = self._analyze_cell_dependencies()
 
-        # Count cells with no dependencies
-        root_cells = [name for name, dep_set in deps.items() if not dep_set]
+        # Check for parallel opportunities:
+        # 1. Multiple root cells (cells with no dependencies)
+        # 2. Multiple cells with SAME dependencies (fan-out pattern)
+        #    e.g., llm_phase -> [image_gen_1, image_gen_2, ...] all depend on llm_phase
+        from collections import Counter
+        dep_sets = [frozenset(d) for d in deps.values()]
+        dep_counts = Counter(dep_sets)
 
-        # If we have 2+ root cells, parallel execution makes sense
-        return len(root_cells) >= 2
+        # If any dependency set has 2+ cells sharing it, parallelism helps
+        # This catches both root cells (empty set) and fan-out patterns
+        return any(count >= 2 for count in dep_counts.values())
 
     def _execute_cells_parallel(self, input_data: dict) -> dict:
         """
@@ -556,8 +564,10 @@ class RVBBITRunner:
         # Snapshot context for thread safety
         echo_state_snapshot = copy.deepcopy(self.echo.state)
 
-        # Determine max workers (like candidates)
-        max_workers = min(len(self.config.cells), 5)
+        # Determine max workers from config (default: 5)
+        configured_max = self.config.max_parallel or 5
+        max_workers = min(len(self.config.cells), configured_max)
+        console.print(f"{indent}  Max parallel workers: {max_workers}")
 
         def execute_single_cell(cell_name: str, cell_input: dict) -> dict:
             """Execute a single cell in a worker thread."""
