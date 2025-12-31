@@ -21,6 +21,9 @@ export { default as CheckpointRenderer } from './CheckpointRenderer';
 export { default as CheckpointModal } from './CheckpointModal';
 export { default as GhostMessage } from './GhostMessage';
 
+// App Preview (for Calliope - renders cascades via App API iframe)
+export { default as AppPreview } from './AppPreview';
+
 // Hooks
 export { useToast } from '../stores/toastStore';
 export { useModal } from '../stores/modalStore';

@@ -530,23 +530,29 @@ function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
 
-  /* shadcn/Basecoat HSL Variables */
+  /* shadcn/Basecoat HSL Variables - Matched to Studio UI */
   --background: 0 0% 0%;
-  --foreground: 210 40% 96%;
-  --card: 240 6% 4%;
-  --card-foreground: 210 40% 96%;
-  --primary: 186 100% 50%;
+  --foreground: 210 20% 92%;
+  --card: 0 0% 4%;
+  --card-foreground: 210 20% 92%;
+  --popover: 0 0% 4%;
+  --popover-foreground: 210 20% 92%;
+  --primary: 187 100% 50%;
   --primary-foreground: 0 0% 0%;
-  --secondary: 263 70% 77%;
+  --secondary: 263 70% 76%;
   --secondary-foreground: 0 0% 0%;
-  --muted: 215 16% 47%;
-  --muted-foreground: 215 20% 65%;
-  --destructive: 339 100% 50%;
+  --muted: 0 0% 8%;
+  --muted-foreground: 215 16% 55%;
+  --accent: 263 70% 76%;
+  --accent-foreground: 0 0% 0%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 186 100% 50%;
-  --input: 186 100% 50%;
-  --ring: 186 100% 50%;
+  --border: 187 30% 15%;
+  --input: 187 30% 15%;
+  --ring: 187 100% 50%;
   --radius: 6px;
+  --success: 160 84% 39%;
+  --warning: 38 92% 50%;
 
   /* Spacing */
   --space-xs: 4px;

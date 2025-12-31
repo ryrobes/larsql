@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Split from 'react-split';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
-import { Button, Badge, CheckpointRenderer, useToast } from '../../components';
+import { Button, Badge, CheckpointRenderer, AppPreview, useToast } from '../../components';
 import RichMarkdown from '../../components/RichMarkdown';
 import CascadeSpecGraph from '../../components/CascadeSpecGraph';
 import useExplorePolling from '../explore/hooks/useExplorePolling';
@@ -33,9 +33,10 @@ const CalliopeView = () => {
   const [builtCells, setBuiltCells] = useState([]);
   const [builtInputsSchema, setBuiltInputsSchema] = useState({});
 
-  // Spawned cascade tracking
+  // Spawned cascade tracking (now uses AppPreview iframe)
   const [spawnedSessionId, setSpawnedSessionId] = useState(null);
-  const [spawnedCheckpoint, setSpawnedCheckpoint] = useState(null);
+  const [spawnedState, setSpawnedState] = useState(null);  // State from iframe postMessage
+  const [spawnedCurrentCell, setSpawnedCurrentCell] = useState(null);  // Current cell from iframe
 
   // UI state
   const [splitSizes, setSplitSizes] = useState([35, 65]); // Chat narrower by default
@@ -54,59 +55,29 @@ const CalliopeView = () => {
     error
   } = useExplorePolling(sessionId);
 
-  // Use explore polling for spawned session to track cell execution
-  const {
-    logs: spawnedLogs,
-    checkpoint: spawnedCheckpointFromPolling,
-    sessionStatus: spawnedStatusFromPolling,
-  } = useExplorePolling(spawnedSessionId);
-
-  // Derive cell execution status from spawned session logs
+  // Cell status derived from iframe postMessage events (no more log polling)
   const cellStatus = useMemo(() => {
-    if (!spawnedLogs || spawnedLogs.length === 0 || !builtCells || builtCells.length === 0) {
+    if (!builtCells || builtCells.length === 0 || !spawnedCurrentCell) {
       return {};
     }
 
     const status = {};
     const cellNames = builtCells.map(c => c.name);
+    const currentCellIndex = cellNames.indexOf(spawnedCurrentCell);
 
-    // Find all cells that have been mentioned in logs
-    const executedCells = new Set();
-    let currentCell = null;
-
-    for (const log of spawnedLogs) {
-      if (log.cell_name && cellNames.includes(log.cell_name)) {
-        executedCells.add(log.cell_name);
-        currentCell = log.cell_name;
-      }
-    }
-
-    // Set status for each cell
-    for (const cellName of cellNames) {
-      if (executedCells.has(cellName)) {
-        if (cellName === currentCell) {
-          // Current cell - check if waiting for checkpoint
-          if (spawnedCheckpointFromPolling) {
-            status[cellName] = 'waiting';
-          } else if (spawnedStatusFromPolling === 'completed') {
-            status[cellName] = 'completed';
-          } else if (spawnedStatusFromPolling === 'error') {
-            status[cellName] = 'error';
-          } else {
-            status[cellName] = 'running';
-          }
-        } else {
-          // Previously executed cell
-          status[cellName] = 'completed';
-        }
+    for (let i = 0; i < cellNames.length; i++) {
+      const cellName = cellNames[i];
+      if (i < currentCellIndex) {
+        status[cellName] = 'completed';
+      } else if (cellName === spawnedCurrentCell) {
+        status[cellName] = 'current';
       } else {
-        // Not yet executed
         status[cellName] = 'pending';
       }
     }
 
     return status;
-  }, [spawnedLogs, builtCells, spawnedCheckpointFromPolling, spawnedStatusFromPolling]);
+  }, [builtCells, spawnedCurrentCell]);
 
   // Auto-restore last session on mount
   useEffect(() => {
@@ -426,95 +397,57 @@ const CalliopeView = () => {
     }
   }, [logs]);
 
-  // State for spawned session tracking
-  const [spawnedStatus, setSpawnedStatus] = useState(null); // 'running', 'completed', 'error'
-  const [spawnedError, setSpawnedError] = useState(null);
-  const feedbackSentRef = useRef(new Set()); // Track which sessions we've sent feedback for
+  // Track which sessions we've sent feedback for
+  const feedbackSentRef = useRef(new Set());
 
-  // Poll for spawned cascade checkpoint AND status
-  useEffect(() => {
-    if (!spawnedSessionId) {
-      setSpawnedCheckpoint(null);
-      setSpawnedStatus(null);
-      setSpawnedError(null);
-      return;
-    }
+  // Handle app preview session complete (from iframe postMessage)
+  const handleAppSessionComplete = useCallback(async (data) => {
+    console.log('[CalliopeView] App session completed:', data);
 
-    const pollSpawnedSession = async () => {
+    // Auto-feedback to Calliope when spawned cascade completes
+    if (calliopeCheckpoint && !feedbackSentRef.current.has(data.sessionId)) {
+      feedbackSentRef.current.add(data.sessionId);
+
+      const feedback = {
+        spawned_session: data.sessionId,
+        spawned_status: data.status,
+        spawned_state: data.state,
+      };
+
+      console.log('[CalliopeView] Auto-sending feedback to Calliope:', feedback);
+
       try {
-        // Poll checkpoints
-        const cpRes = await fetch(`http://localhost:5050/api/checkpoints?session_id=${spawnedSessionId}`);
-        const cpData = await cpRes.json();
-
-        if (cpData.checkpoints?.length > 0) {
-          const pending = cpData.checkpoints.find(cp => cp.status === 'pending');
-          // Only update if checkpoint ID changed - prevents re-render that resets form state
-          setSpawnedCheckpoint(prev => {
-            if (pending?.id !== prev?.id) {
-              return pending || null;
+        await fetch(`http://localhost:5050/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            response: {
+              feedback: `Spawned cascade ${data.status}`,
+              ...feedback,
             }
-            return prev; // Keep same reference
-          });
-        } else {
-          // Only set to null if we currently have a checkpoint
-          setSpawnedCheckpoint(prev => prev ? null : prev);
-        }
-
-        // Also poll session status
-        const statusRes = await fetch(`http://localhost:5050/api/playground/session-stream/${spawnedSessionId}?after=1970-01-01`);
-        const statusData = await statusRes.json();
-
-        if (statusData.session_status) {
-          setSpawnedStatus(statusData.session_status);
-          if (statusData.session_error) {
-            setSpawnedError(statusData.session_error);
-          }
-
-          // Auto-feedback to Calliope when spawned cascade completes
-          if ((statusData.session_status === 'completed' || statusData.session_status === 'error')
-              && calliopeCheckpoint
-              && !feedbackSentRef.current.has(spawnedSessionId)) {
-            feedbackSentRef.current.add(spawnedSessionId);
-
-            // Build feedback message
-            let feedback = {
-              spawned_session: spawnedSessionId,
-              status: statusData.session_status,
-            };
-
-            if (statusData.session_error) {
-              feedback.error = statusData.session_error;
-            }
-
-            console.log('[CalliopeView] Auto-sending feedback to Calliope:', feedback);
-
-            // Send to Calliope's checkpoint
-            try {
-              await fetch(`http://localhost:5050/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  response: {
-                    feedback: `Spawned cascade ${statusData.session_status}${statusData.session_error ? ': ' + statusData.session_error : ''}`,
-                    ...feedback,
-                  }
-                }),
-              });
-              showToast('Feedback sent to Calliope', { type: 'info' });
-            } catch (e) {
-              console.error('[CalliopeView] Failed to send feedback:', e);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[CalliopeView] Spawned session poll error:', err);
+          }),
+        });
+        showToast('Feedback sent to Calliope', { type: 'info' });
+      } catch (e) {
+        console.error('[CalliopeView] Failed to send feedback:', e);
       }
-    };
+    }
+  }, [calliopeCheckpoint, showToast]);
 
-    pollSpawnedSession();
-    const interval = setInterval(pollSpawnedSession, 1000);
-    return () => clearInterval(interval);
-  }, [spawnedSessionId, calliopeCheckpoint, showToast]);
+  // Handle cell change from iframe
+  const handleAppCellChange = useCallback((cellName, state) => {
+    console.log('[CalliopeView] App cell changed:', cellName);
+    setSpawnedCurrentCell(cellName);
+    if (state) {
+      setSpawnedState(state);
+    }
+  }, []);
+
+  // Handle app error from iframe
+  const handleAppError = useCallback((error) => {
+    console.error('[CalliopeView] App error:', error);
+    showToast(`App error: ${error.message}`, { type: 'error' });
+  }, [showToast]);
 
   // Known tool names to filter out
   const KNOWN_TOOLS = ['cascade_write', 'cascade_read', 'spawn_cascade', 'request_decision', 'set_state', 'route_to'];
@@ -746,30 +679,6 @@ const CalliopeView = () => {
     }
   };
 
-  // Handle spawned cascade checkpoint response
-  const handleSpawnedResponse = async (response) => {
-    if (!spawnedCheckpoint) return;
-
-    try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${spawnedCheckpoint.id}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        showToast(`Failed: ${data.error}`, { type: 'error' });
-        return;
-      }
-
-      showToast('Response sent', { type: 'success' });
-    } catch (err) {
-      showToast(`Error: ${err.message}`, { type: 'error' });
-    }
-  };
-
   // Test the built cascade
   const handleTestCascade = async () => {
     if (!builtCascade?.path) {
@@ -811,6 +720,8 @@ const CalliopeView = () => {
     setBuiltCascade(null);
     setBuiltCells([]);
     setSpawnedSessionId(null);
+    setSpawnedState(null);
+    setSpawnedCurrentCell(null);
     navigate(ROUTES.CALLIOPE);
   };
 
@@ -1091,7 +1002,7 @@ const CalliopeView = () => {
           </div>
 
           {/* Draggable vertical split between graph and preview */}
-          {spawnedSessionId && (spawnedCheckpoint || spawnedStatus) ? (
+          {spawnedSessionId && builtCascade ? (
             <Split
               className="cascade-vertical-split"
               sizes={rightPanelSizes}
@@ -1154,59 +1065,15 @@ const CalliopeView = () => {
                 )}
               </div>
 
-              {/* Spawned cascade status/checkpoint panel */}
-              <div className={`spawned-checkpoint-panel ${spawnedStatus === 'error' ? 'error' : ''}`}>
-                <div className="spawned-checkpoint-header">
-                  <Icon icon={spawnedStatus === 'error' ? 'mdi:alert-circle' : 'mdi:play-circle'} width="16" />
-                  <span>Live Preview</span>
-                  {spawnedStatus === 'running' && !spawnedCheckpoint && (
-                    <Badge variant="label" color="blue" size="sm" pulse>
-                      <Icon icon="mdi:loading" className="spinning" width="12" />
-                      Running
-                    </Badge>
-                  )}
-                  {spawnedCheckpoint && (
-                    <Badge variant="label" color="yellow" size="sm" pulse>
-                      Waiting
-                    </Badge>
-                  )}
-                  {spawnedStatus === 'completed' && !spawnedCheckpoint && (
-                    <Badge variant="label" color="green" size="sm">
-                      Done
-                    </Badge>
-                  )}
-                  {spawnedStatus === 'error' && (
-                    <Badge variant="label" color="red" size="sm">
-                      Error
-                    </Badge>
-                  )}
-                </div>
-                <div className="spawned-checkpoint-content">
-                  {spawnedCheckpoint ? (
-                    <CheckpointRenderer
-                      checkpoint={spawnedCheckpoint}
-                      onSubmit={handleSpawnedResponse}
-                      variant="inline"
-                      showPhaseOutput={true}
-                    />
-                  ) : spawnedError ? (
-                    <div className="spawned-error">
-                      <Icon icon="mdi:alert-circle" width="14" />
-                      <p>{spawnedError}</p>
-                    </div>
-                  ) : spawnedStatus === 'completed' ? (
-                    <div className="spawned-complete">
-                      <Icon icon="mdi:check-circle" width="14" />
-                      <p>Test completed successfully</p>
-                    </div>
-                  ) : (
-                    <div className="spawned-loading">
-                      <Icon icon="mdi:loading" className="spinning" width="14" />
-                      <p>Running...</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Live App Preview - Uses iframe with App API */}
+              {/* Note: We don't pass spawn_cascade's sessionId - apps_api creates its own session */}
+              <AppPreview
+                cascadeId={builtCascade.cascade_id}
+                onSessionComplete={handleAppSessionComplete}
+                onCellChange={handleAppCellChange}
+                onError={handleAppError}
+                onStateChange={setSpawnedState}
+              />
             </Split>
           ) : (
             /* No spawned session - just show cascade content */

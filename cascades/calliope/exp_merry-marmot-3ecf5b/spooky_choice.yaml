@@ -1,0 +1,518 @@
+cascade_id: spooky_choice
+description: A dramatic yes/no micro-app with CSS confetti and spooky ghost animations
+inputs_schema: {}
+model: null
+cells:
+- name: the_choice
+  hitl: "<style>\n  .spooky-container {\n    min-height: 100vh;\n    background: linear-gradient(135deg,\
+    \ #050505 0%, #0f0515 30%, #150820 60%, #050505 100%);\n    display: flex;\n \
+    \   flex-direction: column;\n    align-items: center;\n    justify-content: center;\n\
+    \    font-family: 'Georgia', serif;\n    color: #e8e8e8;\n    position: relative;\n\
+    \    overflow: hidden;\n  }\n  \n  /* LIGHTNING FLASH */\n  .lightning {\n   \
+    \ position: absolute;\n    top: 0; left: 0; right: 0; bottom: 0;\n    background:\
+    \ white;\n    opacity: 0;\n    animation: lightning-flash 8s ease-in-out infinite;\n\
+    \    pointer-events: none;\n    z-index: 100;\n  }\n  \n  @keyframes lightning-flash\
+    \ {\n    0%, 100% { opacity: 0; }\n    45% { opacity: 0; }\n    46% { opacity:\
+    \ 0.3; }\n    47% { opacity: 0; }\n    48% { opacity: 0.2; }\n    49% { opacity:\
+    \ 0; }\n  }\n  \n  /* Blood drips */\n  .blood-drip {\n    position: absolute;\n\
+    \    top: -5px;\n    width: 8px;\n    height: 60px;\n    background: linear-gradient(to\
+    \ bottom, #8b0000 0%, #5c0000 50%, transparent 100%);\n    border-radius: 0 0\
+    \ 50% 50%;\n    animation: drip 4s ease-in infinite;\n  }\n  \n  .blood-drip:nth-child(1)\
+    \ { left: 5%; animation-delay: 0s; height: 80px; }\n  .blood-drip:nth-child(2)\
+    \ { left: 15%; animation-delay: 1.5s; height: 50px; }\n  .blood-drip:nth-child(3)\
+    \ { left: 85%; animation-delay: 0.8s; height: 70px; }\n  .blood-drip:nth-child(4)\
+    \ { left: 95%; animation-delay: 2.2s; height: 45px; }\n  \n  @keyframes drip {\n\
+    \    0%, 100% { transform: scaleY(1); opacity: 0.7; }\n    50% { transform: scaleY(1.2);\
+    \ opacity: 1; }\n  }\n  \n  /* Flickering candles */\n  .candle {\n    position:\
+    \ absolute;\n    bottom: 50px;\n    font-size: 40px;\n    animation: candle-flicker\
+    \ 0.5s ease-in-out infinite;\n  }\n  \n  .candle-left { left: 10%; }\n  .candle-right\
+    \ { right: 10%; }\n  \n  @keyframes candle-flicker {\n    0%, 100% { opacity:\
+    \ 0.8; filter: brightness(1); }\n    25% { opacity: 0.6; filter: brightness(0.8);\
+    \ }\n    50% { opacity: 0.9; filter: brightness(1.1); }\n    75% { opacity: 0.7;\
+    \ filter: brightness(0.9); }\n  }\n  \n  /* Creepy spider */\n  .spider {\n  \
+    \  position: absolute;\n    font-size: 25px;\n    animation: spider-descend 12s\
+    \ ease-in-out infinite;\n  }\n  \n  .spider::before {\n    content: '';\n    position:\
+    \ absolute;\n    top: -200px;\n    left: 50%;\n    width: 1px;\n    height: 200px;\n\
+    \    background: rgba(255,255,255,0.2);\n  }\n  \n  .spider-1 { left: 25%; animation-delay:\
+    \ 0s; }\n  .spider-2 { right: 20%; animation-delay: 4s; font-size: 20px; }\n \
+    \ \n  @keyframes spider-descend {\n    0%, 100% { top: -30px; }\n    40%, 60%\
+    \ { top: 120px; }\n  }\n  \n  /* Flying bats - MORE! */\n  .bat {\n    position:\
+    \ absolute;\n    font-size: 28px;\n    opacity: 0.7;\n    animation: fly-bat 6s\
+    \ linear infinite;\n  }\n  \n  .bat:nth-child(6) { top: 12%; animation-duration:\
+    \ 5s; }\n  .bat:nth-child(7) { top: 22%; animation-duration: 7s; animation-delay:\
+    \ 1s; }\n  .bat:nth-child(8) { top: 8%; animation-duration: 6s; animation-delay:\
+    \ 3s; }\n  .bat:nth-child(9) { top: 32%; animation-duration: 8s; animation-delay:\
+    \ 2s; }\n  .bat:nth-child(10) { top: 18%; animation-duration: 5.5s; animation-delay:\
+    \ 4s; }\n  .bat:nth-child(11) { top: 28%; animation-duration: 6.5s; animation-delay:\
+    \ 0.5s; }\n  .bat:nth-child(12) { top: 5%; animation-duration: 9s; animation-delay:\
+    \ 2.5s; }\n  \n  @keyframes fly-bat {\n    0% { left: -60px; transform: translateY(0)\
+    \ scaleX(1); }\n    49% { transform: translateY(30px) scaleX(1); }\n    50% {\
+    \ transform: translateY(30px) scaleX(-1); }\n    100% { left: calc(100% + 60px);\
+    \ transform: translateY(0) scaleX(-1); }\n  }\n  \n  /* Floating skulls - MORE\
+    \ VISIBLE */\n  .skull {\n    position: absolute;\n    font-size: 40px;\n    opacity:\
+    \ 0.25;\n    animation: skull-float 5s ease-in-out infinite;\n  }\n  \n  .skull:nth-child(13)\
+    \ { left: 8%; top: 55%; animation-delay: 0s; }\n  .skull:nth-child(14) { right:\
+    \ 8%; top: 65%; animation-delay: 1.5s; }\n  .skull:nth-child(15) { left: 3%; top:\
+    \ 35%; animation-delay: 3s; font-size: 30px; }\n  .skull:nth-child(16) { right:\
+    \ 3%; top: 40%; animation-delay: 2s; font-size: 35px; }\n  \n  @keyframes skull-float\
+    \ {\n    0%, 100% { transform: translateY(0) rotate(-5deg); opacity: 0.2; }\n\
+    \    50% { transform: translateY(-20px) rotate(10deg); opacity: 0.35; }\n  }\n\
+    \  \n  /* Glowing red eyes in darkness */\n  .red-eyes {\n    position: absolute;\n\
+    \    font-size: 15px;\n    animation: eyes-glow 3s ease-in-out infinite;\n   \
+    \ filter: drop-shadow(0 0 10px #ff0000);\n  }\n  \n  .red-eyes-1 { top: 20%; left:\
+    \ 5%; }\n  .red-eyes-2 { top: 70%; right: 5%; animation-delay: 1s; }\n  .red-eyes-3\
+    \ { top: 45%; left: 2%; animation-delay: 2s; font-size: 12px; }\n  \n  @keyframes\
+    \ eyes-glow {\n    0%, 100% { opacity: 0.3; }\n    50% { opacity: 0.8; }\n  }\n\
+    \  \n  /* Watching eyes above */\n  .watching-eye {\n    position: absolute;\n\
+    \    top: 30px;\n    font-size: 50px;\n    opacity: 0.4;\n    animation: eye-blink\
+    \ 4s ease-in-out infinite;\n    filter: drop-shadow(0 0 15px rgba(168, 130, 255,\
+    \ 0.5));\n  }\n  \n  .eye-left { left: 30px; animation-delay: 0s; }\n  .eye-right\
+    \ { right: 30px; animation-delay: 1s; }\n  \n  @keyframes eye-blink {\n    0%,\
+    \ 40%, 60%, 100% { transform: scaleY(1); }\n    50% { transform: scaleY(0.1);\
+    \ }\n  }\n  \n  /* THE GHOST - SCARIER */\n  .ghost {\n    font-size: 140px;\n\
+    \    animation: ghost-float 2.5s ease-in-out infinite;\n    filter: drop-shadow(0\
+    \ 0 30px rgba(168, 130, 255, 0.7)) drop-shadow(0 0 60px rgba(168, 130, 255, 0.3));\n\
+    \    z-index: 10;\n  }\n  \n  @keyframes ghost-float {\n    0%, 100% { transform:\
+    \ translateY(0px) rotate(-8deg) scale(1); }\n    50% { transform: translateY(-25px)\
+    \ rotate(8deg) scale(1.05); }\n  }\n  \n  .question {\n    font-size: 2.2rem;\n\
+    \    text-align: center;\n    margin: 20px 0 15px 0;\n    text-shadow: 0 0 15px\
+    \ rgba(168, 130, 255, 0.8), 0 0 30px rgba(168, 130, 255, 0.4);\n    animation:\
+    \ text-flicker 2s ease-in-out infinite;\n    z-index: 10;\n  }\n  \n  @keyframes\
+    \ text-flicker {\n    0%, 100% { opacity: 1; text-shadow: 0 0 15px rgba(168, 130,\
+    \ 255, 0.8); }\n    92% { opacity: 1; }\n    93% { opacity: 0.5; text-shadow:\
+    \ 0 0 5px rgba(168, 130, 255, 0.3); }\n    94% { opacity: 1; }\n    96% { opacity:\
+    \ 0.7; }\n    97% { opacity: 1; }\n  }\n  \n  .sub-text {\n    font-size: 1rem;\n\
+    \    color: #8b0000;\n    margin-bottom: 30px;\n    font-style: italic;\n    animation:\
+    \ pulse-red 2s ease-in-out infinite;\n    text-shadow: 0 0 10px rgba(139, 0, 0,\
+    \ 0.5);\n    z-index: 10;\n  }\n  \n  @keyframes pulse-red {\n    0%, 100% { opacity:\
+    \ 0.5; }\n    50% { opacity: 1; }\n  }\n  \n  .buttons {\n    display: flex;\n\
+    \    gap: 40px;\n    z-index: 10;\n  }\n  \n  .spooky-btn {\n    padding: 22px\
+    \ 55px;\n    font-size: 1.6rem;\n    font-family: 'Georgia', serif;\n    border:\
+    \ 3px solid;\n    border-radius: 12px;\n    cursor: pointer;\n    transition:\
+    \ all 0.3s ease;\n    text-transform: uppercase;\n    letter-spacing: 4px;\n \
+    \ }\n  \n  .btn-yes {\n    background: linear-gradient(135deg, #2d1f4e 0%, #4a2c7a\
+    \ 100%);\n    border-color: #a882ff;\n    color: #e8e8e8;\n    animation: btn-pulse\
+    \ 2s ease-in-out infinite;\n  }\n  \n  @keyframes btn-pulse {\n    0%, 100% {\
+    \ box-shadow: 0 0 20px rgba(168, 130, 255, 0.4); }\n    50% { box-shadow: 0 0\
+    \ 40px rgba(168, 130, 255, 0.8), 0 0 60px rgba(168, 130, 255, 0.4); }\n  }\n \
+    \ \n  .btn-yes:hover {\n    background: linear-gradient(135deg, #4a2c7a 0%, #6b3fa0\
+    \ 100%);\n    box-shadow: 0 0 50px rgba(168, 130, 255, 0.9), 0 0 100px rgba(168,\
+    \ 130, 255, 0.5);\n    transform: scale(1.1);\n  }\n  \n  .btn-no {\n    background:\
+    \ linear-gradient(135deg, #1a0a0a 0%, #2d1a1a 100%);\n    border-color: #660000;\n\
+    \    color: #aa6666;\n  }\n  \n  .btn-no:hover {\n    background: linear-gradient(135deg,\
+    \ #2d1a1a 0%, #3d2a2a 100%);\n    border-color: #880000;\n    color: #cc8888;\n\
+    \    box-shadow: 0 0 30px rgba(136, 0, 0, 0.5);\n    transform: scale(1.1);\n\
+    \  }\n  \n  /* Intense fog */\n  .fog {\n    position: absolute;\n    bottom:\
+    \ 0;\n    left: 0;\n    right: 0;\n    height: 250px;\n    background: linear-gradient(transparent,\
+    \ rgba(80, 30, 100, 0.2), rgba(50, 20, 80, 0.3));\n    pointer-events: none;\n\
+    \    animation: fog-swirl 10s ease-in-out infinite;\n  }\n  \n  @keyframes fog-swirl\
+    \ {\n    0%, 100% { opacity: 0.8; transform: translateX(0); }\n    50% { opacity:\
+    \ 1; transform: translateX(20px); }\n  }\n  \n  /* Chains */\n  .chain {\n   \
+    \ position: absolute;\n    font-size: 30px;\n    opacity: 0.3;\n    animation:\
+    \ chain-sway 3s ease-in-out infinite;\n  }\n  \n  .chain-left { left: 0; top:\
+    \ 20%; }\n  .chain-right { right: 0; top: 25%; animation-delay: 1.5s; }\n  \n\
+    \  @keyframes chain-sway {\n    0%, 100% { transform: rotate(-5deg); }\n    50%\
+    \ { transform: rotate(5deg); }\n  }\n</style>\n\n<div class=\"spooky-container\"\
+    >\n  <!-- Lightning flash -->\n  <div class=\"lightning\"></div>\n  \n  <!-- Blood\
+    \ drips -->\n  <div class=\"blood-drip\"></div>\n  <div class=\"blood-drip\"></div>\n\
+    \  <div class=\"blood-drip\"></div>\n  <div class=\"blood-drip\"></div>\n  \n\
+    \  <!-- Spiders descending -->\n  <div class=\"spider spider-1\">\U0001F577️</div>\n\
+    \  <div class=\"spider spider-2\">\U0001F577️</div>\n  \n  <!-- Flying bats -->\n\
+    \  <div class=\"bat\">\U0001F987</div>\n  <div class=\"bat\">\U0001F987</div>\n\
+    \  <div class=\"bat\">\U0001F987</div>\n  <div class=\"bat\">\U0001F987</div>\n\
+    \  <div class=\"bat\">\U0001F987</div>\n  <div class=\"bat\">\U0001F987</div>\n\
+    \  <div class=\"bat\">\U0001F987</div>\n  \n  <!-- Floating skulls -->\n  <div\
+    \ class=\"skull\">\U0001F480</div>\n  <div class=\"skull\">\U0001F480</div>\n\
+    \  <div class=\"skull\">\U0001F480</div>\n  <div class=\"skull\">\U0001F480</div>\n\
+    \  \n  <!-- Red eyes in darkness -->\n  <div class=\"red-eyes\">\U0001F441️\U0001F441\
+    ️</div>\n  <div class=\"red-eyes\">\U0001F441️\U0001F441️</div>\n  <div class=\"\
+    red-eyes\">\U0001F441️\U0001F441️</div>\n  \n  <!-- Watching eyes -->\n  <div\
+    \ class=\"watching-eye eye-left\">\U0001F441️</div>\n  <div class=\"watching-eye\
+    \ eye-right\">\U0001F441️</div>\n  \n  <!-- Candles -->\n  <div class=\"candle\
+    \ candle-left\">\U0001F56F️</div>\n  <div class=\"candle candle-right\">\U0001F56F\
+    ️</div>\n  \n  <!-- Chains -->\n  <div class=\"chain chain-left\">⛓️</div>\n \
+    \ <div class=\"chain chain-right\">⛓️</div>\n  \n  <div class=\"ghost\">\U0001F47B\
+    </div>\n  <div class=\"question\">Do you DARE say... YES?</div>\n  <div class=\"\
+    sub-text\">☠️ ...the spirits hunger for your answer... ☠️</div>\n  \n  <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"\
+    outerHTML\">\n    <div class=\"buttons\">\n      <button type=\"submit\" name=\"\
+    response[choice]\" value=\"yes\" class=\"spooky-btn btn-yes\">\U0001F480 Yes \U0001F480\
+    </button>\n      <button type=\"submit\" name=\"response[choice]\" value=\"no\"\
+    \ class=\"spooky-btn btn-no\">⚰️ No ⚰️</button>\n    </div>\n  </form>\n  \n \
+    \ <div class=\"fog\"></div>\n</div>"
+  handoffs:
+  - confirm_choice
+  - confirm_choice
+- name: confirm_choice
+  hitl: "<style>\n  .spooky-container {\n    min-height: 100vh;\n    background: linear-gradient(135deg,\
+    \ #0d0d0d 0%, #1a0a2e 50%, #0d0d0d 100%);\n    display: flex;\n    flex-direction:\
+    \ column;\n    align-items: center;\n    justify-content: center;\n    font-family:\
+    \ 'Georgia', serif;\n    color: #e8e8e8;\n    position: relative;\n    overflow:\
+    \ hidden;\n  }\n  \n  /* Flickering ambient */\n  .spooky-container::before {\n\
+    \    content: '';\n    position: absolute;\n    top: 0; left: 0; right: 0; bottom:\
+    \ 0;\n    background: radial-gradient(ellipse at center, rgba(168, 130, 255, 0.05)\
+    \ 0%, transparent 70%);\n    animation: flicker 4s ease-in-out infinite;\n   \
+    \ pointer-events: none;\n  }\n  \n  @keyframes flicker {\n    0%, 100% { opacity:\
+    \ 1; }\n    50% { opacity: 0.5; }\n    52% { opacity: 0.8; }\n    54% { opacity:\
+    \ 0.4; }\n    56% { opacity: 1; }\n  }\n  \n  /* Flying bats */\n  .bat {\n  \
+    \  position: absolute;\n    font-size: 20px;\n    opacity: 0.5;\n    animation:\
+    \ fly-bat 8s linear infinite;\n  }\n  \n  .bat:nth-child(1) { top: 20%; animation-duration:\
+    \ 9s; }\n  .bat:nth-child(2) { top: 30%; animation-duration: 7s; animation-delay:\
+    \ 3s; }\n  .bat:nth-child(3) { top: 15%; animation-duration: 11s; animation-delay:\
+    \ 1s; }\n  \n  @keyframes fly-bat {\n    0% { left: -50px; transform: translateY(0)\
+    \ scaleX(1); }\n    49% { transform: translateY(15px) scaleX(1); }\n    50% {\
+    \ transform: translateY(15px) scaleX(-1); }\n    100% { left: calc(100% + 50px);\
+    \ transform: translateY(0) scaleX(-1); }\n  }\n  \n  /* Watching eyes */\n  .eyes\
+    \ {\n    position: absolute;\n    top: 50px;\n    font-size: 30px;\n    opacity:\
+    \ 0.2;\n    animation: eyes-blink 6s ease-in-out infinite;\n  }\n  \n  .eyes-left\
+    \ { left: 40px; animation-delay: 0s; }\n  .eyes-right { right: 40px; animation-delay:\
+    \ 2s; }\n  \n  @keyframes eyes-blink {\n    0%, 45%, 55%, 100% { transform: scaleY(1);\
+    \ opacity: 0.2; }\n    50% { transform: scaleY(0.1); opacity: 0.3; }\n  }\n  \n\
+    \  .ghost {\n    font-size: 100px;\n    animation: float 3s ease-in-out infinite;\n\
+    \    filter: drop-shadow(0 0 20px rgba(168, 130, 255, 0.5));\n    margin-bottom:\
+    \ 20px;\n    z-index: 10;\n  }\n  \n  @keyframes float {\n    0%, 100% { transform:\
+    \ translateY(0px) rotate(-5deg); }\n    50% { transform: translateY(-20px) rotate(5deg);\
+    \ }\n  }\n  \n  .choice-display {\n    font-size: 3rem;\n    font-weight: bold;\n\
+    \    margin-bottom: 20px;\n    animation: pulse-glow 2s ease-in-out infinite;\n\
+    \    z-index: 10;\n  }\n  \n  .choice-yes { color: #a882ff; text-shadow: 0 0 20px\
+    \ rgba(168, 130, 255, 0.8); }\n  .choice-no { color: #666; text-shadow: 0 0 10px\
+    \ rgba(100, 100, 100, 0.5); }\n  \n  @keyframes pulse-glow {\n    0%, 100% { opacity:\
+    \ 1; }\n    50% { opacity: 0.8; }\n  }\n  \n  .subtitle {\n    font-size: 1.3rem;\n\
+    \    color: #aaa;\n    margin-bottom: 40px;\n    font-style: italic;\n    z-index:\
+    \ 10;\n    animation: text-breathe 3s ease-in-out infinite;\n  }\n  \n  @keyframes\
+    \ text-breathe {\n    0%, 100% { opacity: 0.8; }\n    50% { opacity: 1; }\n  }\n\
+    \  \n  .warning-text {\n    font-size: 0.85rem;\n    color: #555;\n    margin-top:\
+    \ -30px;\n    margin-bottom: 20px;\n    font-style: italic;\n  }\n  \n  .confirm-btn\
+    \ {\n    padding: 18px 60px;\n    font-size: 1.3rem;\n    font-family: 'Georgia',\
+    \ serif;\n    background: linear-gradient(135deg, #2d1f4e 0%, #4a2c7a 100%);\n\
+    \    border: 2px solid #a882ff;\n    border-radius: 12px;\n    color: #e8e8e8;\n\
+    \    cursor: pointer;\n    transition: all 0.3s ease;\n    text-transform: uppercase;\n\
+    \    letter-spacing: 3px;\n    z-index: 10;\n  }\n  \n  .confirm-btn:hover {\n\
+    \    background: linear-gradient(135deg, #4a2c7a 0%, #6b3fa0 100%);\n    box-shadow:\
+    \ 0 0 40px rgba(168, 130, 255, 0.7), 0 0 80px rgba(168, 130, 255, 0.3);\n    transform:\
+    \ scale(1.08);\n  }\n  \n  .back-link {\n    margin-top: 30px;\n    color: #666;\n\
+    \    font-size: 0.9rem;\n    cursor: pointer;\n    transition: color 0.3s;\n \
+    \   background: none;\n    border: none;\n    font-family: 'Georgia', serif;\n\
+    \    z-index: 10;\n  }\n  \n  .back-link:hover { color: #999; }\n  \n  .fog {\n\
+    \    position: absolute;\n    bottom: 0;\n    left: 0;\n    right: 0;\n    height:\
+    \ 200px;\n    background: linear-gradient(transparent, rgba(100, 50, 150, 0.15));\n\
+    \    pointer-events: none;\n  }\n  \n  /* Creepy hand reaching up */\n  .hand\
+    \ {\n    position: absolute;\n    bottom: -20px;\n    font-size: 50px;\n    opacity:\
+    \ 0.2;\n    animation: hand-reach 4s ease-in-out infinite;\n  }\n  \n  .hand-left\
+    \ { left: 15%; animation-delay: 0s; }\n  .hand-right { right: 15%; animation-delay:\
+    \ 2s; transform: scaleX(-1); }\n  \n  @keyframes hand-reach {\n    0%, 100% {\
+    \ transform: translateY(30px); opacity: 0.1; }\n    50% { transform: translateY(0px);\
+    \ opacity: 0.25; }\n  }\n</style>\n\n<div class=\"spooky-container\">\n  <!--\
+    \ Flying bats -->\n  <div class=\"bat\">\U0001F987</div>\n  <div class=\"bat\"\
+    >\U0001F987</div>\n  <div class=\"bat\">\U0001F987</div>\n  \n  <!-- Watching\
+    \ eyes -->\n  <div class=\"eyes eyes-left\">\U0001F441️</div>\n  <div class=\"\
+    eyes eyes-right\">\U0001F441️</div>\n  \n  <!-- Creepy hands -->\n  <div class=\"\
+    hand hand-left\">\U0001F590️</div>\n  <div class=\"hand hand-right\">\U0001F590\
+    ️</div>\n  \n  <div class=\"ghost\">\U0001F47B</div>\n  \n  <div class=\"choice-display\
+    \ {% if state.choice == 'yes' %}choice-yes{% else %}choice-no{% endif %}\">\n\
+    \    You said... {{ state.choice | upper }}!\n  </div>\n  \n  <div class=\"subtitle\"\
+    >\n    {% if state.choice == 'yes' %}\n      The spirits are pleased... but are\
+    \ you certain?\n    {% else %}\n      A cautious soul... but is this truly your\
+    \ wish?\n    {% endif %}\n  </div>\n  \n  <div class=\"warning-text\">...there\
+    \ is no turning back...</div>\n  \n  <form hx-post=\"/api/checkpoints/{{ checkpoint_id\
+    \ }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <input type=\"\
+    hidden\" name=\"response[original_choice]\" value=\"{{ state.choice }}\">\n  \
+    \  <button type=\"submit\" name=\"response[action]\" value=\"confirm\" class=\"\
+    confirm-btn\">⚰️ Confirm ⚰️</button>\n  </form>\n  \n  <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <button\
+    \ type=\"submit\" name=\"response[action]\" value=\"back\" class=\"back-link\"\
+    >← Flee back to safety</button>\n  </form>\n  \n  <div class=\"fog\"></div>\n\
+    </div>"
+  handoffs:
+  - celebration
+  - sad_ghost
+  - the_choice
+- name: celebration
+  hitl: "<style>\n  .celebration-container {\n    min-height: 100vh;\n    background:\
+    \ linear-gradient(135deg, #050508 0%, #100520 30%, #1a0830 60%, #050508 100%);\n\
+    \    display: flex;\n    flex-direction: column;\n    align-items: center;\n \
+    \   justify-content: center;\n    font-family: 'Georgia', serif;\n    color: #e8e8e8;\n\
+    \    position: relative;\n    overflow: hidden;\n  }\n  \n  /* MEGA CONFETTI EXPLOSION!\
+    \ */\n  .confetti {\n    position: absolute;\n    width: 12px;\n    height: 12px;\n\
+    \    top: -20px;\n    animation: confetti-fall linear forwards;\n  }\n  \n  @keyframes\
+    \ confetti-fall {\n    0% { transform: translateY(0) rotate(0deg) scale(1); opacity:\
+    \ 1; }\n    100% { transform: translateY(110vh) rotate(1080deg) scale(0.5); opacity:\
+    \ 0.3; }\n  }\n  \n  /* 30 confetti pieces with varied colors and timing */\n\
+    \  .confetti:nth-child(1) { left: 5%; background: #a882ff; animation-duration:\
+    \ 3s; animation-delay: 0s; }\n  .confetti:nth-child(2) { left: 10%; background:\
+    \ #ff6b9d; animation-duration: 3.5s; animation-delay: 0.1s; width: 8px; height:\
+    \ 8px; }\n  .confetti:nth-child(3) { left: 15%; background: #4ade80; animation-duration:\
+    \ 2.8s; animation-delay: 0.2s; }\n  .confetti:nth-child(4) { left: 20%; background:\
+    \ #fbbf24; animation-duration: 4s; animation-delay: 0.15s; width: 15px; height:\
+    \ 15px; }\n  .confetti:nth-child(5) { left: 25%; background: #60a5fa; animation-duration:\
+    \ 3.2s; animation-delay: 0.05s; }\n  .confetti:nth-child(6) { left: 30%; background:\
+    \ #f472b6; animation-duration: 3.7s; animation-delay: 0.25s; width: 10px; height:\
+    \ 10px; }\n  .confetti:nth-child(7) { left: 35%; background: #a882ff; animation-duration:\
+    \ 2.9s; animation-delay: 0.1s; }\n  .confetti:nth-child(8) { left: 40%; background:\
+    \ #34d399; animation-duration: 3.4s; animation-delay: 0.3s; width: 14px; height:\
+    \ 14px; }\n  .confetti:nth-child(9) { left: 45%; background: #fbbf24; animation-duration:\
+    \ 3.1s; animation-delay: 0.2s; }\n  .confetti:nth-child(10) { left: 50%; background:\
+    \ #818cf8; animation-duration: 3.8s; animation-delay: 0.35s; width: 9px; height:\
+    \ 9px; }\n  .confetti:nth-child(11) { left: 55%; background: #ff6b9d; animation-duration:\
+    \ 2.7s; animation-delay: 0.4s; }\n  .confetti:nth-child(12) { left: 60%; background:\
+    \ #4ade80; animation-duration: 3.3s; animation-delay: 0.45s; width: 13px; height:\
+    \ 13px; }\n  .confetti:nth-child(13) { left: 65%; background: #a882ff; animation-duration:\
+    \ 3.6s; animation-delay: 0.5s; }\n  .confetti:nth-child(14) { left: 70%; background:\
+    \ #f472b6; animation-duration: 2.6s; animation-delay: 0.55s; width: 11px; height:\
+    \ 11px; }\n  .confetti:nth-child(15) { left: 75%; background: #60a5fa; animation-duration:\
+    \ 3.9s; animation-delay: 0.6s; }\n  .confetti:nth-child(16) { left: 80%; background:\
+    \ #fbbf24; animation-duration: 3s; animation-delay: 0.65s; width: 16px; height:\
+    \ 16px; }\n  .confetti:nth-child(17) { left: 85%; background: #34d399; animation-duration:\
+    \ 3.5s; animation-delay: 0.7s; }\n  .confetti:nth-child(18) { left: 90%; background:\
+    \ #a882ff; animation-duration: 2.8s; animation-delay: 0.75s; width: 7px; height:\
+    \ 7px; }\n  .confetti:nth-child(19) { left: 95%; background: #ff6b9d; animation-duration:\
+    \ 4.1s; animation-delay: 0.8s; }\n  .confetti:nth-child(20) { left: 3%; background:\
+    \ #818cf8; animation-duration: 3.2s; animation-delay: 0.85s; width: 12px; height:\
+    \ 12px; }\n  .confetti:nth-child(21) { left: 8%; background: #4ade80; animation-duration:\
+    \ 2.9s; animation-delay: 0.9s; }\n  .confetti:nth-child(22) { left: 13%; background:\
+    \ #fbbf24; animation-duration: 3.7s; animation-delay: 0.95s; width: 10px; height:\
+    \ 10px; }\n  .confetti:nth-child(23) { left: 18%; background: #f472b6; animation-duration:\
+    \ 3.1s; animation-delay: 1s; }\n  .confetti:nth-child(24) { left: 23%; background:\
+    \ #a882ff; animation-duration: 3.4s; animation-delay: 1.05s; width: 14px; height:\
+    \ 14px; }\n  .confetti:nth-child(25) { left: 78%; background: #60a5fa; animation-duration:\
+    \ 2.7s; animation-delay: 1.1s; }\n  .confetti:nth-child(26) { left: 83%; background:\
+    \ #34d399; animation-duration: 3.8s; animation-delay: 1.15s; width: 8px; height:\
+    \ 8px; }\n  .confetti:nth-child(27) { left: 88%; background: #ff6b9d; animation-duration:\
+    \ 3s; animation-delay: 1.2s; }\n  .confetti:nth-child(28) { left: 93%; background:\
+    \ #818cf8; animation-duration: 3.6s; animation-delay: 1.25s; width: 11px; height:\
+    \ 11px; }\n  .confetti:nth-child(29) { left: 48%; background: #a882ff; animation-duration:\
+    \ 2.8s; animation-delay: 1.3s; }\n  .confetti:nth-child(30) { left: 52%; background:\
+    \ #fbbf24; animation-duration: 3.3s; animation-delay: 1.35s; width: 13px; height:\
+    \ 13px; }\n  \n  /* FIREWORK BURSTS */\n  .firework {\n    position: absolute;\n\
+    \    width: 5px;\n    height: 5px;\n    border-radius: 50%;\n    animation: firework-burst\
+    \ 2s ease-out infinite;\n  }\n  \n  .firework-1 { top: 20%; left: 20%; background:\
+    \ #a882ff; animation-delay: 0s; }\n  .firework-2 { top: 15%; right: 25%; background:\
+    \ #ff6b9d; animation-delay: 0.7s; }\n  .firework-3 { top: 25%; left: 70%; background:\
+    \ #4ade80; animation-delay: 1.4s; }\n  .firework-4 { top: 30%; right: 15%; background:\
+    \ #fbbf24; animation-delay: 2.1s; }\n  \n  @keyframes firework-burst {\n    0%\
+    \ { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 currentColor; }\n   \
+    \ 50% { transform: scale(3); opacity: 0.8; box-shadow: 0 0 20px 10px currentColor,\
+    \ 0 -30px 0 currentColor, 0 30px 0 currentColor, 30px 0 0 currentColor, -30px\
+    \ 0 0 currentColor, 21px 21px 0 currentColor, -21px 21px 0 currentColor, 21px\
+    \ -21px 0 currentColor, -21px -21px 0 currentColor; }\n    100% { transform: scale(1);\
+    \ opacity: 0; box-shadow: 0 0 40px 20px transparent; }\n  }\n  \n  /* Dancing\
+    \ ghost spirits */\n  .mini-ghost {\n    position: absolute;\n    font-size: 40px;\n\
+    \    animation: spirit-dance 1s ease-in-out infinite;\n    filter: drop-shadow(0\
+    \ 0 15px rgba(168, 130, 255, 0.6));\n  }\n  \n  .mini-ghost-1 { top: 30%; left:\
+    \ 10%; animation-delay: 0s; }\n  .mini-ghost-2 { top: 40%; right: 10%; animation-delay:\
+    \ 0.3s; }\n  .mini-ghost-3 { bottom: 25%; left: 15%; animation-delay: 0.6s; font-size:\
+    \ 30px; }\n  .mini-ghost-4 { bottom: 30%; right: 15%; animation-delay: 0.9s; font-size:\
+    \ 35px; }\n  \n  @keyframes spirit-dance {\n    0%, 100% { transform: translateY(0)\
+    \ rotate(-15deg) scale(1); }\n    50% { transform: translateY(-20px) rotate(15deg)\
+    \ scale(1.1); }\n  }\n  \n  /* Flying celebratory skulls */\n  .party-skull {\n\
+    \    position: absolute;\n    font-size: 35px;\n    animation: skull-party 2s\
+    \ ease-in-out infinite;\n  }\n  \n  .party-skull-1 { top: 15%; left: 25%; animation-delay:\
+    \ 0s; }\n  .party-skull-2 { top: 20%; right: 25%; animation-delay: 0.5s; }\n \
+    \ \n  @keyframes skull-party {\n    0%, 100% { transform: rotate(-20deg) scale(1);\
+    \ }\n    50% { transform: rotate(20deg) scale(1.2); }\n  }\n  \n  /* MAIN CELEBRATING\
+    \ GHOST */\n  .ghost-celebrate {\n    font-size: 180px;\n    animation: ghost-party\
+    \ 0.4s ease-in-out infinite;\n    filter: drop-shadow(0 0 40px rgba(168, 130,\
+    \ 255, 0.9)) drop-shadow(0 0 80px rgba(168, 130, 255, 0.5));\n    z-index: 10;\n\
+    \  }\n  \n  @keyframes ghost-party {\n    0%, 100% { transform: rotate(-15deg)\
+    \ scale(1) translateY(0); }\n    25% { transform: rotate(10deg) scale(1.05) translateY(-10px);\
+    \ }\n    50% { transform: rotate(-10deg) scale(1.1) translateY(-20px); }\n   \
+    \ 75% { transform: rotate(15deg) scale(1.05) translateY(-10px); }\n  }\n  \n \
+    \ .celebration-text {\n    font-size: 3.5rem;\n    font-weight: bold;\n    color:\
+    \ #a882ff;\n    text-shadow: 0 0 30px rgba(168, 130, 255, 1), 0 0 60px rgba(168,\
+    \ 130, 255, 0.7), 0 0 100px rgba(168, 130, 255, 0.4);\n    margin: 20px 0;\n \
+    \   animation: text-glow 0.5s ease-in-out infinite alternate;\n    z-index: 10;\n\
+    \  }\n  \n  @keyframes text-glow {\n    0% { text-shadow: 0 0 30px rgba(168, 130,\
+    \ 255, 1), 0 0 60px rgba(168, 130, 255, 0.7); transform: scale(1); }\n    100%\
+    \ { text-shadow: 0 0 50px rgba(168, 130, 255, 1), 0 0 100px rgba(168, 130, 255,\
+    \ 0.8), 0 0 150px rgba(168, 130, 255, 0.5); transform: scale(1.02); }\n  }\n \
+    \ \n  .subtitle {\n    font-size: 1.4rem;\n    color: #ddd;\n    font-style: italic;\n\
+    \    z-index: 10;\n    animation: subtitle-bounce 1s ease-in-out infinite;\n \
+    \ }\n  \n  @keyframes subtitle-bounce {\n    0%, 100% { transform: translateY(0);\
+    \ }\n    50% { transform: translateY(-5px); }\n  }\n  \n  .emoji-rain {\n    font-size:\
+    \ 1.2rem;\n    margin-top: 10px;\n    animation: emoji-pulse 0.8s ease-in-out\
+    \ infinite;\n    z-index: 10;\n  }\n  \n  @keyframes emoji-pulse {\n    0%, 100%\
+    \ { transform: scale(1); }\n    50% { transform: scale(1.1); }\n  }\n  \n  .restart-btn\
+    \ {\n    margin-top: 40px;\n    padding: 18px 50px;\n    font-size: 1.1rem;\n\
+    \    font-family: 'Georgia', serif;\n    background: linear-gradient(135deg, #2d1f4e\
+    \ 0%, #4a2c7a 100%);\n    border: 2px solid #a882ff;\n    border-radius: 12px;\n\
+    \    color: #e8e8e8;\n    cursor: pointer;\n    transition: all 0.3s ease;\n \
+    \   z-index: 10;\n    animation: btn-glow 1s ease-in-out infinite;\n  }\n  \n\
+    \  @keyframes btn-glow {\n    0%, 100% { box-shadow: 0 0 20px rgba(168, 130, 255,\
+    \ 0.4); }\n    50% { box-shadow: 0 0 40px rgba(168, 130, 255, 0.8); }\n  }\n \
+    \ \n  .restart-btn:hover {\n    background: linear-gradient(135deg, #4a2c7a 0%,\
+    \ #6b3fa0 100%);\n    transform: scale(1.1);\n    box-shadow: 0 0 50px rgba(168,\
+    \ 130, 255, 0.9);\n  }\n  \n  /* Sparkle overlay */\n  .sparkle {\n    position:\
+    \ absolute;\n    width: 4px;\n    height: 4px;\n    background: white;\n    border-radius:\
+    \ 50%;\n    animation: sparkle-twinkle 1s ease-in-out infinite;\n  }\n  \n  .sparkle:nth-child(31)\
+    \ { top: 10%; left: 10%; animation-delay: 0s; }\n  .sparkle:nth-child(32) { top:\
+    \ 20%; left: 50%; animation-delay: 0.2s; }\n  .sparkle:nth-child(33) { top: 15%;\
+    \ right: 20%; animation-delay: 0.4s; }\n  .sparkle:nth-child(34) { top: 60%; left:\
+    \ 5%; animation-delay: 0.6s; }\n  .sparkle:nth-child(35) { top: 70%; right: 10%;\
+    \ animation-delay: 0.8s; }\n  .sparkle:nth-child(36) { bottom: 20%; left: 30%;\
+    \ animation-delay: 1s; }\n  .sparkle:nth-child(37) { bottom: 25%; right: 30%;\
+    \ animation-delay: 1.2s; }\n  .sparkle:nth-child(38) { top: 35%; left: 3%; animation-delay:\
+    \ 0.3s; }\n  .sparkle:nth-child(39) { top: 45%; right: 5%; animation-delay: 0.5s;\
+    \ }\n  .sparkle:nth-child(40) { bottom: 40%; left: 8%; animation-delay: 0.7s;\
+    \ }\n  \n  @keyframes sparkle-twinkle {\n    0%, 100% { opacity: 0; transform:\
+    \ scale(0); }\n    50% { opacity: 1; transform: scale(1.5); }\n  }\n</style>\n\
+    \n<div class=\"celebration-container\">\n  <!-- MEGA Confetti pieces -->\n  <div\
+    \ class=\"confetti\"></div><div class=\"confetti\"></div><div class=\"confetti\"\
+    ></div>\n  <div class=\"confetti\"></div><div class=\"confetti\"></div><div class=\"\
+    confetti\"></div>\n  <div class=\"confetti\"></div><div class=\"confetti\"></div><div\
+    \ class=\"confetti\"></div>\n  <div class=\"confetti\"></div><div class=\"confetti\"\
+    ></div><div class=\"confetti\"></div>\n  <div class=\"confetti\"></div><div class=\"\
+    confetti\"></div><div class=\"confetti\"></div>\n  <div class=\"confetti\"></div><div\
+    \ class=\"confetti\"></div><div class=\"confetti\"></div>\n  <div class=\"confetti\"\
+    ></div><div class=\"confetti\"></div><div class=\"confetti\"></div>\n  <div class=\"\
+    confetti\"></div><div class=\"confetti\"></div><div class=\"confetti\"></div>\n\
+    \  <div class=\"confetti\"></div><div class=\"confetti\"></div><div class=\"confetti\"\
+    ></div>\n  <div class=\"confetti\"></div><div class=\"confetti\"></div><div class=\"\
+    confetti\"></div>\n  \n  <!-- Sparkles -->\n  <div class=\"sparkle\"></div><div\
+    \ class=\"sparkle\"></div><div class=\"sparkle\"></div>\n  <div class=\"sparkle\"\
+    ></div><div class=\"sparkle\"></div><div class=\"sparkle\"></div>\n  <div class=\"\
+    sparkle\"></div><div class=\"sparkle\"></div><div class=\"sparkle\"></div>\n \
+    \ <div class=\"sparkle\"></div>\n  \n  <!-- Fireworks -->\n  <div class=\"firework\
+    \ firework-1\"></div>\n  <div class=\"firework firework-2\"></div>\n  <div class=\"\
+    firework firework-3\"></div>\n  <div class=\"firework firework-4\"></div>\n  \n\
+    \  <!-- Dancing mini ghosts -->\n  <div class=\"mini-ghost mini-ghost-1\">\U0001F47B\
+    </div>\n  <div class=\"mini-ghost mini-ghost-2\">\U0001F47B</div>\n  <div class=\"\
+    mini-ghost mini-ghost-3\">\U0001F47B</div>\n  <div class=\"mini-ghost mini-ghost-4\"\
+    >\U0001F47B</div>\n  \n  <!-- Party skulls -->\n  <div class=\"party-skull party-skull-1\"\
+    >\U0001F480</div>\n  <div class=\"party-skull party-skull-2\">\U0001F480</div>\n\
+    \  \n  <div class=\"ghost-celebrate\">\U0001F47B</div>\n  <div class=\"celebration-text\"\
+    >\U0001F389 YES! YOU DID IT! \U0001F389</div>\n  <div class=\"subtitle\">The spirits\
+    \ rejoice with you!</div>\n  <div class=\"emoji-rain\">✨\U0001F480\U0001F987\U0001F38A\
+    \U0001F47B\U0001F389\U0001F49C\U0001F577️✨</div>\n  \n  <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <button\
+    \ type=\"submit\" name=\"response[action]\" value=\"restart\" class=\"restart-btn\"\
+    >\U0001F47B Summon Again \U0001F47B</button>\n  </form>\n</div>"
+  handoffs:
+  - the_choice
+- name: sad_ghost
+  hitl: "<style>\n  .sad-container {\n    min-height: 100vh;\n    background: linear-gradient(135deg,\
+    \ #030303 0%, #0a0a0f 30%, #050508 60%, #030303 100%);\n    display: flex;\n \
+    \   flex-direction: column;\n    align-items: center;\n    justify-content: center;\n\
+    \    font-family: 'Georgia', serif;\n    color: #666;\n    position: relative;\n\
+    \    overflow: hidden;\n  }\n  \n  /* Slow ominous pulse */\n  .sad-container::before\
+    \ {\n    content: '';\n    position: absolute;\n    top: 0; left: 0; right: 0;\
+    \ bottom: 0;\n    background: radial-gradient(ellipse at center, rgba(80, 0, 0,\
+    \ 0.1) 0%, transparent 70%);\n    animation: ominous-pulse 4s ease-in-out infinite;\n\
+    \    pointer-events: none;\n  }\n  \n  @keyframes ominous-pulse {\n    0%, 100%\
+    \ { opacity: 0.3; }\n    50% { opacity: 0.6; }\n  }\n  \n  /* Heavy cobwebs */\n\
+    \  .cobweb {\n    position: absolute;\n    width: 200px;\n    height: 200px;\n\
+    \    opacity: 0.25;\n  }\n  \n  .cobweb-tl {\n    top: 0;\n    left: 0;\n    background:\
+    \ \n      radial-gradient(ellipse at top left, rgba(255,255,255,0.15) 0%, transparent\
+    \ 60%),\n      linear-gradient(45deg, transparent 45%, rgba(255,255,255,0.05)\
+    \ 50%, transparent 55%),\n      linear-gradient(-45deg, transparent 45%, rgba(255,255,255,0.05)\
+    \ 50%, transparent 55%);\n    border-top: 1px solid rgba(255,255,255,0.15);\n\
+    \    border-left: 1px solid rgba(255,255,255,0.15);\n  }\n  \n  .cobweb-tr {\n\
+    \    top: 0;\n    right: 0;\n    background: \n      radial-gradient(ellipse at\
+    \ top right, rgba(255,255,255,0.15) 0%, transparent 60%),\n      linear-gradient(-45deg,\
+    \ transparent 45%, rgba(255,255,255,0.05) 50%, transparent 55%);\n    border-top:\
+    \ 1px solid rgba(255,255,255,0.15);\n    border-right: 1px solid rgba(255,255,255,0.15);\n\
+    \  }\n  \n  .cobweb-bl {\n    bottom: 0;\n    left: 0;\n    background: radial-gradient(ellipse\
+    \ at bottom left, rgba(255,255,255,0.1) 0%, transparent 50%);\n    border-bottom:\
+    \ 1px solid rgba(255,255,255,0.1);\n    border-left: 1px solid rgba(255,255,255,0.1);\n\
+    \  }\n  \n  /* Crying ghost */\n  .sad-ghost {\n    font-size: 160px;\n    animation:\
+    \ sad-float 5s ease-in-out infinite;\n    filter: grayscale(70%) drop-shadow(0\
+    \ 0 20px rgba(60, 60, 80, 0.4));\n    opacity: 0.6;\n    z-index: 10;\n  }\n \
+    \ \n  @keyframes sad-float {\n    0%, 100% { transform: translateY(0px) scale(1);\
+    \ }\n    50% { transform: translateY(-15px) scale(0.98); }\n  }\n  \n  /* Streams\
+    \ of tears */\n  .tear {\n    position: absolute;\n    width: 10px;\n    height:\
+    \ 20px;\n    background: linear-gradient(to bottom, rgba(80, 120, 200, 0.7) 0%,\
+    \ rgba(60, 100, 180, 0.4) 50%, transparent 100%);\n    border-radius: 50% 50%\
+    \ 50% 50% / 60% 60% 40% 40%;\n    animation: tear-fall 2s ease-in infinite;\n\
+    \  }\n  \n  .tear-1 { left: calc(50% - 35px); top: 40%; animation-delay: 0s; }\n\
+    \  .tear-2 { left: calc(50% + 25px); top: 40%; animation-delay: 0.7s; }\n  .tear-3\
+    \ { left: calc(50% - 30px); top: 42%; animation-delay: 1.4s; width: 8px; height:\
+    \ 15px; }\n  .tear-4 { left: calc(50% + 20px); top: 42%; animation-delay: 2.1s;\
+    \ width: 8px; height: 15px; }\n  \n  @keyframes tear-fall {\n    0% { opacity:\
+    \ 0; transform: translateY(0); }\n    20% { opacity: 1; }\n    100% { opacity:\
+    \ 0; transform: translateY(80px); }\n  }\n  \n  /* Gravestones */\n  .grave {\n\
+    \    position: absolute;\n    bottom: 30px;\n    font-size: 50px;\n    opacity:\
+    \ 0.3;\n    filter: grayscale(100%);\n  }\n  \n  .grave-1 { left: 10%; animation:\
+    \ grave-sink 4s ease-in-out infinite; }\n  .grave-2 { right: 10%; animation: grave-sink\
+    \ 4s ease-in-out infinite; animation-delay: 2s; }\n  .grave-3 { left: 25%; font-size:\
+    \ 35px; animation: grave-sink 4s ease-in-out infinite; animation-delay: 1s; }\n\
+    \  .grave-4 { right: 25%; font-size: 40px; animation: grave-sink 4s ease-in-out\
+    \ infinite; animation-delay: 3s; }\n  \n  @keyframes grave-sink {\n    0%, 100%\
+    \ { transform: translateY(0); }\n    50% { transform: translateY(5px); }\n  }\n\
+    \  \n  /* Wilted rose falling */\n  .wilted {\n    position: absolute;\n    font-size:\
+    \ 25px;\n    opacity: 0.5;\n    animation: wilt-fall 8s ease-in infinite;\n  }\n\
+    \  \n  .wilted-1 { left: 30%; animation-delay: 0s; }\n  .wilted-2 { left: 60%;\
+    \ animation-delay: 3s; }\n  .wilted-3 { left: 45%; animation-delay: 5s; font-size:\
+    \ 20px; }\n  \n  @keyframes wilt-fall {\n    0% { top: -30px; transform: rotate(0deg);\
+    \ opacity: 0; }\n    10% { opacity: 0.5; }\n    90% { opacity: 0.3; }\n    100%\
+    \ { top: 100%; transform: rotate(360deg); opacity: 0; }\n  }\n  \n  /* Broken\
+    \ heart particles */\n  .broken-heart {\n    position: absolute;\n    font-size:\
+    \ 20px;\n    opacity: 0.4;\n    animation: heart-break 6s ease-in-out infinite;\n\
+    \  }\n  \n  .broken-heart-1 { top: 25%; left: 15%; animation-delay: 0s; }\n  .broken-heart-2\
+    \ { top: 35%; right: 15%; animation-delay: 2s; }\n  .broken-heart-3 { bottom:\
+    \ 35%; left: 20%; animation-delay: 4s; font-size: 15px; }\n  \n  @keyframes heart-break\
+    \ {\n    0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.3; }\n    50%\
+    \ { transform: scale(1.2) rotate(10deg); opacity: 0.5; }\n  }\n  \n  /* Floating\
+    \ dust/ash */\n  .ash {\n    position: absolute;\n    width: 4px;\n    height:\
+    \ 4px;\n    background: rgba(150, 150, 150, 0.3);\n    border-radius: 50%;\n \
+    \   animation: ash-float 10s linear infinite;\n  }\n  \n  .ash:nth-child(5) {\
+    \ left: 15%; animation-duration: 8s; }\n  .ash:nth-child(6) { left: 35%; animation-duration:\
+    \ 12s; animation-delay: 2s; }\n  .ash:nth-child(7) { left: 55%; animation-duration:\
+    \ 9s; animation-delay: 4s; }\n  .ash:nth-child(8) { left: 75%; animation-duration:\
+    \ 11s; animation-delay: 1s; }\n  .ash:nth-child(9) { left: 85%; animation-duration:\
+    \ 10s; animation-delay: 3s; }\n  .ash:nth-child(10) { left: 45%; animation-duration:\
+    \ 7s; animation-delay: 5s; }\n  \n  @keyframes ash-float {\n    0% { bottom: -10px;\
+    \ transform: translateX(0); opacity: 0; }\n    10% { opacity: 0.4; }\n    90%\
+    \ { opacity: 0.2; }\n    100% { bottom: 100%; transform: translateX(30px); opacity:\
+    \ 0; }\n  }\n  \n  /* Sad bats */\n  .sad-bat {\n    position: absolute;\n   \
+    \ font-size: 20px;\n    opacity: 0.3;\n    animation: sad-bat-fly 12s linear infinite;\n\
+    \    filter: grayscale(100%);\n  }\n  \n  .sad-bat-1 { top: 15%; animation-delay:\
+    \ 0s; }\n  .sad-bat-2 { top: 25%; animation-delay: 4s; font-size: 15px; }\n  \n\
+    \  @keyframes sad-bat-fly {\n    0% { left: -40px; transform: translateY(0); }\n\
+    \    50% { transform: translateY(10px); }\n    100% { left: calc(100% + 40px);\
+    \ transform: translateY(0); }\n  }\n  \n  .sad-text {\n    font-size: 2.8rem;\n\
+    \    color: #444;\n    margin: 20px 0 10px 0;\n    text-shadow: 0 0 20px rgba(0,\
+    \ 0, 0, 0.8);\n    animation: text-fade 3s ease-in-out infinite;\n    z-index:\
+    \ 10;\n  }\n  \n  @keyframes text-fade {\n    0%, 100% { opacity: 0.7; }\n   \
+    \ 50% { opacity: 1; }\n  }\n  \n  .subtitle {\n    font-size: 1.2rem;\n    color:\
+    \ #333;\n    font-style: italic;\n    margin-bottom: 20px;\n    z-index: 10;\n\
+    \  }\n  \n  .despair-text {\n    font-size: 0.9rem;\n    color: #8b0000;\n   \
+    \ opacity: 0.6;\n    margin-bottom: 30px;\n    animation: despair-pulse 2s ease-in-out\
+    \ infinite;\n    z-index: 10;\n  }\n  \n  @keyframes despair-pulse {\n    0%,\
+    \ 100% { opacity: 0.4; }\n    50% { opacity: 0.7; }\n  }\n  \n  .restart-btn {\n\
+    \    padding: 18px 50px;\n    font-size: 1.1rem;\n    font-family: 'Georgia',\
+    \ serif;\n    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);\n\
+    \    border: 2px solid #333;\n    border-radius: 12px;\n    color: #666;\n   \
+    \ cursor: pointer;\n    transition: all 0.3s ease;\n    z-index: 10;\n  }\n  \n\
+    \  .restart-btn:hover {\n    border-color: #a882ff;\n    color: #a882ff;\n   \
+    \ box-shadow: 0 0 30px rgba(168, 130, 255, 0.4);\n    transform: scale(1.05);\n\
+    \  }\n  \n  /* Dark fog */\n  .fog {\n    position: absolute;\n    bottom: 0;\n\
+    \    left: 0;\n    right: 0;\n    height: 200px;\n    background: linear-gradient(transparent,\
+    \ rgba(10, 10, 15, 0.5), rgba(5, 5, 10, 0.7));\n    pointer-events: none;\n  }\n\
+    </style>\n\n<div class=\"sad-container\">\n  <!-- Cobwebs -->\n  <div class=\"\
+    cobweb cobweb-tl\"></div>\n  <div class=\"cobweb cobweb-tr\"></div>\n  <div class=\"\
+    cobweb cobweb-bl\"></div>\n  \n  <!-- Floating ash -->\n  <div class=\"ash\"></div>\n\
+    \  <div class=\"ash\"></div>\n  <div class=\"ash\"></div>\n  <div class=\"ash\"\
+    ></div>\n  <div class=\"ash\"></div>\n  <div class=\"ash\"></div>\n  \n  <!--\
+    \ Wilted roses falling -->\n  <div class=\"wilted\">\U0001F940</div>\n  <div class=\"\
+    wilted\">\U0001F940</div>\n  <div class=\"wilted\">\U0001F940</div>\n  \n  <!--\
+    \ Broken hearts -->\n  <div class=\"broken-heart\">\U0001F494</div>\n  <div class=\"\
+    broken-heart\">\U0001F494</div>\n  <div class=\"broken-heart\">\U0001F494</div>\n\
+    \  \n  <!-- Sad bats -->\n  <div class=\"sad-bat sad-bat-1\">\U0001F987</div>\n\
+    \  <div class=\"sad-bat sad-bat-2\">\U0001F987</div>\n  \n  <!-- Gravestones -->\n\
+    \  <div class=\"grave grave-1\">\U0001FAA6</div>\n  <div class=\"grave grave-2\"\
+    >\U0001FAA6</div>\n  <div class=\"grave grave-3\">\U0001FAA6</div>\n  <div class=\"\
+    grave grave-4\">\U0001FAA6</div>\n  \n  <div style=\"position: relative;\">\n\
+    \    <div class=\"sad-ghost\">\U0001F47B</div>\n    <div class=\"tear tear-1\"\
+    ></div>\n    <div class=\"tear tear-2\"></div>\n    <div class=\"tear tear-3\"\
+    ></div>\n    <div class=\"tear tear-4\"></div>\n  </div>\n  \n  <div class=\"\
+    sad-text\">\U0001F480 Oh... you said no... \U0001F480</div>\n  <div class=\"subtitle\"\
+    >The spirits weep in the darkness...</div>\n  <div class=\"despair-text\">☠️ ...your\
+    \ rejection echoes through eternity... ☠️</div>\n  \n  <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\" hx-swap=\"outerHTML\">\n    <button\
+    \ type=\"submit\" name=\"response[action]\" value=\"restart\" class=\"restart-btn\"\
+    >⚰️ Rise From The Grave ⚰️</button>\n  </form>\n  \n  <div class=\"fog\"></div>\n\
+    </div>"
+  handoffs:
+  - the_choice
+_calliope_metadata:
+  created_at: '2025-12-31T01:27:12.010778'
+  version: 1

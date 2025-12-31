@@ -1,0 +1,257 @@
+cascade_id: feedback_review_app
+description: Professional feedback triage system - review and categorize customer
+  feedback items one by one, with summary analytics
+inputs_schema: {}
+model: claude-sonnet-4-20250514
+cells:
+- name: generate_feedback_data
+  tool: python_data
+  inputs:
+    code: "import random\nfrom datetime import datetime, timedelta\n\n# Company names\
+      \ for realistic data\ncompanies = [\n    'Acme Corp', 'TechStart Inc', 'Global\
+      \ Dynamics', 'Quantum Solutions',\n    'Alpine Industries', 'Nexus Systems',\
+      \ 'Vertex Labs', 'Pinnacle Group',\n    'Horizon Enterprises', 'Sterling & Co',\
+      \ 'Atlas Manufacturing', 'Cipher Tech'\n]\n\ncategories = ['Product', 'Support',\
+      \ 'Billing', 'Onboarding', 'Feature Request']\nsentiments = ['Positive', 'Neutral',\
+      \ 'Negative']\n\nfeedback_templates = {\n    'Positive': [\n        'Excellent\
+      \ service, the team went above and beyond.',\n        'Very impressed with the\
+      \ new features. Great work!',\n        'Quick response time and helpful support\
+      \ staff.',\n        'The product has significantly improved our workflow.',\n\
+      \        'Outstanding quality and reliability.'\n    ],\n    'Neutral': [\n\
+      \        'The service meets our basic requirements.',\n        'Average experience,\
+      \ nothing exceptional.',\n        'Works as expected but could use improvements.',\n\
+      \        'Adequate for our current needs.',\n        'Some features are good,\
+      \ others need work.'\n    ],\n    'Negative': [\n        'Disappointed with\
+      \ the response time on our tickets.',\n        'The recent update caused issues\
+      \ with our integration.',\n        'Billing discrepancies need to be addressed.',\n\
+      \        'Support was unhelpful in resolving our issue.',\n        'Performance\
+      \ has degraded since last month.'\n    ]\n}\n\nresult = []\nbase_date = datetime.now()\n\
+      \nfor i in range(12):\n    sentiment = random.choice(sentiments)\n    result.append({\n\
+      \        'id': f'FB-{str(i+1).zfill(3)}',\n        'customer': random.choice(companies),\n\
+      \        'category': random.choice(categories),\n        'sentiment': sentiment,\n\
+      \        'feedback': random.choice(feedback_templates[sentiment]),\n       \
+      \ 'date': (base_date - timedelta(days=random.randint(1, 30))).strftime('%Y-%m-%d'),\n\
+      \        'status': 'pending',\n        'decision': None\n    })"
+  handoffs:
+  - feedback_grid
+- name: feedback_grid
+  context:
+    from:
+    - generate_feedback_data
+  hitl: "<div style=\"font-family: 'Google Sans', monospace; background: #000; min-height:\
+    \ 100%;\">\n  <div style=\"background: linear-gradient(90deg, #0a0a0a 0%, #000\
+    \ 100%); border-bottom: 1px solid #00e5ff33; padding: 12px 16px; display: flex;\
+    \ justify-content: space-between; align-items: center;\">\n    <div>\n      <h1\
+    \ style=\"color: #00e5ff; margin: 0; font-size: 1.1rem; font-weight: 500;\">FEEDBACK\
+    \ TRIAGE</h1>\n      <p style=\"color: #64748b; margin: 2px 0 0 0; font-size:\
+    \ 0.75rem;\">Select an item to review</p>\n    </div>\n    <div style=\"display:\
+    \ flex; gap: 16px; font-size: 0.7rem;\">\n      <div><span style=\"color: #64748b;\"\
+    >PENDING:</span> <span style=\"color: #f59e0b;\">{{ outputs.generate_feedback_data.result\
+    \ | selectattr('status', 'equalto', 'pending') | list | length }}</span></div>\n\
+    \      <div><span style=\"color: #64748b;\">TOTAL:</span> <span style=\"color:\
+    \ #e2e8f0;\">{{ outputs.generate_feedback_data.result | length }}</span></div>\n\
+    \    </div>\n  </div>\n\n  <div style=\"padding: 8px;\">\n    <table style=\"\
+    width: 100%; border-collapse: collapse; font-size: 0.75rem;\">\n      <thead>\n\
+    \        <tr style=\"background: #0a0a0a;\">\n          <th style=\"padding: 8px\
+    \ 10px; text-align: left; color: #00e5ff; border-bottom: 1px solid #00e5ff44;\
+    \ font-weight: 500; width: 70px;\">ID</th>\n          <th style=\"padding: 8px\
+    \ 10px; text-align: left; color: #00e5ff; border-bottom: 1px solid #00e5ff44;\
+    \ font-weight: 500;\">CUSTOMER</th>\n          <th style=\"padding: 8px 10px;\
+    \ text-align: left; color: #00e5ff; border-bottom: 1px solid #00e5ff44; font-weight:\
+    \ 500; width: 100px;\">CATEGORY</th>\n          <th style=\"padding: 8px 10px;\
+    \ text-align: left; color: #00e5ff; border-bottom: 1px solid #00e5ff44; font-weight:\
+    \ 500; width: 80px;\">SENTIMENT</th>\n          <th style=\"padding: 8px 10px;\
+    \ text-align: left; color: #00e5ff; border-bottom: 1px solid #00e5ff44; font-weight:\
+    \ 500; width: 90px;\">DATE</th>\n          <th style=\"padding: 8px 10px; text-align:\
+    \ left; color: #00e5ff; border-bottom: 1px solid #00e5ff44; font-weight: 500;\
+    \ width: 80px;\">STATUS</th>\n          <th style=\"padding: 8px 10px; text-align:\
+    \ center; color: #00e5ff; border-bottom: 1px solid #00e5ff44; font-weight: 500;\
+    \ width: 70px;\">ACTION</th>\n        </tr>\n      </thead>\n      <tbody>\n \
+    \       {% for item in outputs.generate_feedback_data.result %}\n        <tr style=\"\
+    border-bottom: 1px solid #ffffff08; {% if item.status == 'pending' %}background:\
+    \ #000;{% else %}background: #0a0a0a; opacity: 0.6;{% endif %}\">\n          <td\
+    \ style=\"padding: 6px 10px; color: #64748b; font-family: monospace;\">{{ item.id\
+    \ }}</td>\n          <td style=\"padding: 6px 10px; color: #e2e8f0;\">{{ item.customer\
+    \ }}</td>\n          <td style=\"padding: 6px 10px; color: #a78bfa;\">{{ item.category\
+    \ }}</td>\n          <td style=\"padding: 6px 10px;\">\n            {% if item.sentiment\
+    \ == 'Positive' %}\n            <span style=\"color: #22d399;\">● Positive</span>\n\
+    \            {% elif item.sentiment == 'Negative' %}\n            <span style=\"\
+    color: #ef4444;\">● Negative</span>\n            {% else %}\n            <span\
+    \ style=\"color: #94a3b8;\">● Neutral</span>\n            {% endif %}\n      \
+    \    </td>\n          <td style=\"padding: 6px 10px; color: #64748b; font-family:\
+    \ monospace; font-size: 0.7rem;\">{{ item.date }}</td>\n          <td style=\"\
+    padding: 6px 10px;\">\n            {% if item.status == 'pending' %}\n       \
+    \     <span style=\"background: #f59e0b22; color: #f59e0b; padding: 2px 8px; border-radius:\
+    \ 3px; font-size: 0.65rem; text-transform: uppercase;\">Pending</span>\n     \
+    \       {% elif item.decision == 'approved' %}\n            <span style=\"background:\
+    \ #22d39922; color: #22d399; padding: 2px 8px; border-radius: 3px; font-size:\
+    \ 0.65rem; text-transform: uppercase;\">Approved</span>\n            {% else %}\n\
+    \            <span style=\"background: #ef444422; color: #ef4444; padding: 2px\
+    \ 8px; border-radius: 3px; font-size: 0.65rem; text-transform: uppercase;\">Rejected</span>\n\
+    \            {% endif %}\n          </td>\n          <td style=\"padding: 6px\
+    \ 10px; text-align: center;\">\n            {% if item.status == 'pending' %}\n\
+    \            <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\" style=\"\
+    margin: 0;\">\n              <input type=\"hidden\" name=\"response[selected_id]\"\
+    \ value=\"{{ item.id }}\">\n              <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"review\" style=\"background: #00e5ff22; color: #00e5ff; border: 1px\
+    \ solid #00e5ff44; padding: 3px 10px; border-radius: 3px; font-size: 0.65rem;\
+    \ cursor: pointer;\">REVIEW</button>\n            </form>\n            {% else\
+    \ %}\n            <span style=\"color: #475569;\">—</span>\n            {% endif\
+    \ %}\n          </td>\n        </tr>\n        {% endfor %}\n      </tbody>\n \
+    \   </table>\n  </div>\n\n  <div style=\"padding: 12px 16px; border-top: 1px solid\
+    \ #ffffff10; display: flex; justify-content: space-between; align-items: center;\"\
+    >\n    <div style=\"color: #64748b; font-size: 0.7rem;\">Click REVIEW to process\
+    \ each item individually</div>\n    <form hx-post=\"/checkpoint/respond\" hx-ext=\"\
+    json-enc\" style=\"margin: 0;\">\n      <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"finish\" style=\"background: #22d39922; color: #22d399; border: 1px\
+    \ solid #22d39944; padding: 8px 16px; border-radius: 4px; font-size: 0.75rem;\
+    \ cursor: pointer;\">FINISH & VIEW SUMMARY →</button>\n    </form>\n  </div>\n\
+    </div>"
+  handoffs:
+  - review_item
+  - summary_screen
+- name: review_item
+  context:
+    from:
+    - generate_feedback_data
+  hitl: "<div style=\"font-family: 'Google Sans', monospace; background: #000; min-height:\
+    \ 100%;\">\n  <div style=\"background: linear-gradient(90deg, #0a0a0a 0%, #000\
+    \ 100%); border-bottom: 1px solid #a78bfa33; padding: 12px 16px;\">\n    <div\
+    \ style=\"display: flex; justify-content: space-between; align-items: center;\"\
+    >\n      <div>\n        <h1 style=\"color: #a78bfa; margin: 0; font-size: 1.1rem;\
+    \ font-weight: 500;\">REVIEW FEEDBACK</h1>\n        <p style=\"color: #64748b;\
+    \ margin: 2px 0 0 0; font-size: 0.75rem;\">Item {{ state.selected_id }}</p>\n\
+    \      </div>\n      <form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\"\
+    \ style=\"margin: 0;\">\n        <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"back\" style=\"background: transparent; color: #64748b; border: 1px\
+    \ solid #ffffff20; padding: 6px 12px; border-radius: 4px; font-size: 0.7rem; cursor:\
+    \ pointer;\">← BACK TO GRID</button>\n      </form>\n    </div>\n  </div>\n\n\
+    \  {% set current_item = outputs.generate_feedback_data.result | selectattr('id',\
+    \ 'equalto', state.selected_id) | first %}\n  \n  <div style=\"padding: 16px;\
+    \ max-width: 700px;\">\n    <div style=\"background: #0a0a0a; border: 1px solid\
+    \ #ffffff15; border-radius: 6px; overflow: hidden;\">\n      <!-- Header -->\n\
+    \      <div style=\"background: #111; padding: 12px 16px; border-bottom: 1px solid\
+    \ #ffffff10; display: flex; justify-content: space-between; align-items: center;\"\
+    >\n        <div style=\"display: flex; align-items: center; gap: 12px;\">\n  \
+    \        <span style=\"color: #64748b; font-family: monospace; font-size: 0.8rem;\"\
+    >{{ current_item.id }}</span>\n          <span style=\"background: #a78bfa22;\
+    \ color: #a78bfa; padding: 2px 8px; border-radius: 3px; font-size: 0.65rem;\"\
+    >{{ current_item.category }}</span>\n        </div>\n        <span style=\"color:\
+    \ #64748b; font-size: 0.7rem;\">{{ current_item.date }}</span>\n      </div>\n\
+    \      \n      <!-- Customer -->\n      <div style=\"padding: 16px; border-bottom:\
+    \ 1px solid #ffffff08;\">\n        <div style=\"color: #64748b; font-size: 0.65rem;\
+    \ text-transform: uppercase; margin-bottom: 4px;\">Customer</div>\n        <div\
+    \ style=\"color: #e2e8f0; font-size: 1rem;\">{{ current_item.customer }}</div>\n\
+    \      </div>\n      \n      <!-- Sentiment -->\n      <div style=\"padding: 16px;\
+    \ border-bottom: 1px solid #ffffff08;\">\n        <div style=\"color: #64748b;\
+    \ font-size: 0.65rem; text-transform: uppercase; margin-bottom: 4px;\">Sentiment\
+    \ Analysis</div>\n        <div style=\"display: flex; align-items: center; gap:\
+    \ 8px;\">\n          {% if current_item.sentiment == 'Positive' %}\n         \
+    \ <span style=\"width: 10px; height: 10px; background: #22d399; border-radius:\
+    \ 50%;\"></span>\n          <span style=\"color: #22d399; font-size: 0.9rem;\"\
+    >Positive</span>\n          {% elif current_item.sentiment == 'Negative' %}\n\
+    \          <span style=\"width: 10px; height: 10px; background: #ef4444; border-radius:\
+    \ 50%;\"></span>\n          <span style=\"color: #ef4444; font-size: 0.9rem;\"\
+    >Negative</span>\n          {% else %}\n          <span style=\"width: 10px; height:\
+    \ 10px; background: #94a3b8; border-radius: 50%;\"></span>\n          <span style=\"\
+    color: #94a3b8; font-size: 0.9rem;\">Neutral</span>\n          {% endif %}\n \
+    \       </div>\n      </div>\n      \n      <!-- Feedback Content -->\n      <div\
+    \ style=\"padding: 16px;\">\n        <div style=\"color: #64748b; font-size: 0.65rem;\
+    \ text-transform: uppercase; margin-bottom: 8px;\">Feedback Content</div>\n  \
+    \      <div style=\"color: #e2e8f0; font-size: 0.9rem; line-height: 1.6; background:\
+    \ #000; padding: 12px; border-radius: 4px; border-left: 3px solid #00e5ff44;\"\
+    >\n          \"{{ current_item.feedback }}\"\n        </div>\n      </div>\n \
+    \   </div>\n    \n    <!-- Decision Buttons -->\n    <div style=\"margin-top:\
+    \ 16px; display: flex; gap: 12px;\">\n      <form hx-post=\"/checkpoint/respond\"\
+    \ hx-ext=\"json-enc\" style=\"flex: 1;\">\n        <input type=\"hidden\" name=\"\
+    response[item_id]\" value=\"{{ current_item.id }}\">\n        <input type=\"hidden\"\
+    \ name=\"response[decision]\" value=\"approved\">\n        <button type=\"submit\"\
+    \ name=\"response[action]\" value=\"decide\" style=\"width: 100%; background:\
+    \ linear-gradient(135deg, #22d399 0%, #10b981 100%); color: #000; border: none;\
+    \ padding: 14px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size:\
+    \ 0.85rem;\">✓ APPROVE</button>\n      </form>\n      <form hx-post=\"/checkpoint/respond\"\
+    \ hx-ext=\"json-enc\" style=\"flex: 1;\">\n        <input type=\"hidden\" name=\"\
+    response[item_id]\" value=\"{{ current_item.id }}\">\n        <input type=\"hidden\"\
+    \ name=\"response[decision]\" value=\"rejected\">\n        <button type=\"submit\"\
+    \ name=\"response[action]\" value=\"decide\" style=\"width: 100%; background:\
+    \ linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff; border: none;\
+    \ padding: 14px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size:\
+    \ 0.85rem;\">✗ REJECT</button>\n      </form>\n    </div>\n    \n    <!-- Optional\
+    \ Note -->\n    <div style=\"margin-top: 12px;\">\n      <textarea placeholder=\"\
+    Add a note (optional)...\" style=\"width: 100%; background: #0a0a0a; border: 1px\
+    \ solid #ffffff15; border-radius: 4px; padding: 10px; color: #94a3b8; font-size:\
+    \ 0.8rem; min-height: 60px; resize: vertical;\"></textarea>\n    </div>\n  </div>\n\
+    </div>"
+  handoffs:
+  - feedback_grid
+  - feedback_grid
+- name: summary_screen
+  context:
+    from:
+    - generate_feedback_data
+  hitl: "<div style=\"font-family: 'Google Sans', monospace; background: #000; min-height:\
+    \ 100%;\">\n  <div style=\"background: linear-gradient(90deg, #0a0a0a 0%, #000\
+    \ 100%); border-bottom: 1px solid #22d39933; padding: 12px 16px;\">\n    <h1 style=\"\
+    color: #22d399; margin: 0; font-size: 1.1rem; font-weight: 500;\">TRIAGE COMPLETE</h1>\n\
+    \    <p style=\"color: #64748b; margin: 2px 0 0 0; font-size: 0.75rem;\">Summary\
+    \ of your review session</p>\n  </div>\n\n  <div style=\"padding: 16px;\">\n \
+    \   <!-- Stats Cards -->\n    <div style=\"display: grid; grid-template-columns:\
+    \ repeat(3, 1fr); gap: 12px; margin-bottom: 20px;\">\n      <div style=\"background:\
+    \ #0a0a0a; border: 1px solid #22d39944; border-radius: 6px; padding: 16px; text-align:\
+    \ center;\">\n        <div style=\"color: #64748b; font-size: 0.65rem; text-transform:\
+    \ uppercase; margin-bottom: 4px;\">Approved</div>\n        <div style=\"color:\
+    \ #22d399; font-size: 2rem; font-weight: 600;\">{{ state.decisions | default({})\
+    \ | dict2items | selectattr('value', 'equalto', 'approved') | list | length }}</div>\n\
+    \      </div>\n      <div style=\"background: #0a0a0a; border: 1px solid #ef444444;\
+    \ border-radius: 6px; padding: 16px; text-align: center;\">\n        <div style=\"\
+    color: #64748b; font-size: 0.65rem; text-transform: uppercase; margin-bottom:\
+    \ 4px;\">Rejected</div>\n        <div style=\"color: #ef4444; font-size: 2rem;\
+    \ font-weight: 600;\">{{ state.decisions | default({}) | dict2items | selectattr('value',\
+    \ 'equalto', 'rejected') | list | length }}</div>\n      </div>\n      <div style=\"\
+    background: #0a0a0a; border: 1px solid #f59e0b44; border-radius: 6px; padding:\
+    \ 16px; text-align: center;\">\n        <div style=\"color: #64748b; font-size:\
+    \ 0.65rem; text-transform: uppercase; margin-bottom: 4px;\">Pending</div>\n  \
+    \      <div style=\"color: #f59e0b; font-size: 2rem; font-weight: 600;\">{{ outputs.generate_feedback_data.result\
+    \ | length - (state.decisions | default({}) | length) }}</div>\n      </div>\n\
+    \    </div>\n\n    <!-- Distribution Chart -->\n    <div style=\"background: #0a0a0a;\
+    \ border: 1px solid #ffffff15; border-radius: 6px; padding: 16px; margin-bottom:\
+    \ 20px;\">\n      <div style=\"color: #64748b; font-size: 0.65rem; text-transform:\
+    \ uppercase; margin-bottom: 12px;\">Decision Distribution</div>\n      <div id=\"\
+    distribution-chart\" style=\"height: 280px;\"></div>\n    </div>\n\n    <!-- Category\
+    \ Breakdown -->\n    <div style=\"background: #0a0a0a; border: 1px solid #ffffff15;\
+    \ border-radius: 6px; padding: 16px; margin-bottom: 20px;\">\n      <div style=\"\
+    color: #64748b; font-size: 0.65rem; text-transform: uppercase; margin-bottom:\
+    \ 12px;\">By Category</div>\n      <div id=\"category-chart\" style=\"height:\
+    \ 250px;\"></div>\n    </div>\n\n    <!-- Action Button -->\n    <form hx-post=\"\
+    /checkpoint/respond\" hx-ext=\"json-enc\">\n      <button type=\"submit\" name=\"\
+    response[action]\" value=\"restart\" style=\"width: 100%; background: linear-gradient(135deg,\
+    \ #00e5ff 0%, #00b4d8 100%); color: #000; border: none; padding: 14px 20px; border-radius:\
+    \ 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem;\">START NEW SESSION</button>\n\
+    \    </form>\n  </div>\n</div>\n\n<script>\n  // Decision distribution pie chart\n\
+    \  var approved = {{ state.decisions | default({}) | dict2items | selectattr('value',\
+    \ 'equalto', 'approved') | list | length }};\n  var rejected = {{ state.decisions\
+    \ | default({}) | dict2items | selectattr('value', 'equalto', 'rejected') | list\
+    \ | length }};\n  var pending = {{ outputs.generate_feedback_data.result | length\
+    \ }} - approved - rejected;\n  \n  Plotly.newPlot('distribution-chart', [{\n \
+    \   values: [approved, rejected, pending],\n    labels: ['Approved', 'Rejected',\
+    \ 'Pending'],\n    type: 'pie',\n    hole: 0.5,\n    marker: {\n      colors:\
+    \ ['#22d399', '#ef4444', '#f59e0b']\n    },\n    textinfo: 'label+value',\n  \
+    \  textfont: { color: '#e2e8f0', size: 12 }\n  }], {\n    paper_bgcolor: 'transparent',\n\
+    \    plot_bgcolor: '#000',\n    font: { color: '#cbd5e1', family: 'Google Sans,\
+    \ monospace', size: 11 },\n    margin: { t: 20, r: 20, b: 20, l: 20 },\n    showlegend:\
+    \ false\n  }, { responsive: true, displayModeBar: false });\n\n  // Category bar\
+    \ chart\n  var categories = ['Product', 'Support', 'Billing', 'Onboarding', 'Feature\
+    \ Request'];\n  var catCounts = categories.map(function(cat) {\n    return {{\
+    \ outputs.generate_feedback_data.result | tojson }}.filter(function(item) {\n\
+    \      return item.category === cat;\n    }).length;\n  });\n  \n  Plotly.newPlot('category-chart',\
+    \ [{\n    x: categories,\n    y: catCounts,\n    type: 'bar',\n    marker: {\n\
+    \      color: ['#a78bfa', '#00e5ff', '#f59e0b', '#22d399', '#ec4899']\n    }\n\
+    \  }], {\n    paper_bgcolor: 'transparent',\n    plot_bgcolor: '#000',\n    font:\
+    \ { color: '#cbd5e1', family: 'Google Sans, monospace', size: 11 },\n    margin:\
+    \ { t: 10, r: 20, b: 40, l: 40 },\n    xaxis: { gridcolor: 'rgba(255,255,255,0.05)'\
+    \ },\n    yaxis: { gridcolor: 'rgba(255,255,255,0.05)' }\n  }, { responsive: true,\
+    \ displayModeBar: false });\n</script>"
+  handoffs: []
+_calliope_metadata:
+  created_at: '2025-12-31T02:10:01.477423'
+  version: 1

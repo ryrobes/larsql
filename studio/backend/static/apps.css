@@ -1,38 +1,205 @@
 /**
- * RVBBIT Apps - Supplementary Stylesheet
+ * RVBBIT Apps - Stylesheet
  *
- * This file provides app-specific styles that complement Basecoat.
- * Most styling is handled by Tailwind CSS + Basecoat CDN.
- *
- * Note: CSS variables are defined in apps_api.py BASECOAT_HEAD
+ * Matched to RVBBIT Studio native UI design system.
+ * Uses CSS variables defined in apps_api.py BASECOAT_HEAD
  */
 
 /* ============================================================================
-   File Input Styling (not covered by Basecoat)
+   Additional Semantic Colors
    ============================================================================ */
 
+:root {
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 0%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+}
+
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
+::selection {
+    background: hsl(var(--primary) / 0.3);
+}
+
+/* Custom scrollbar - subtle like native app */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Focus styles */
+*:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+/* ============================================================================
+   Cards - Dark, subtle borders like native UI
+   ============================================================================ */
+
+.card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border) / 0.5);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.card:hover {
+    border-color: hsl(var(--border));
+}
+
+.card header,
+.card section,
+.card footer {
+    padding: 1rem 1.25rem;
+}
+
+.card header {
+    border-bottom: 1px solid hsl(var(--border) / 0.3);
+}
+
+.card footer {
+    border-top: 1px solid hsl(var(--border) / 0.3);
+    background: hsl(var(--muted) / 0.3);
+}
+
+.card-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    margin: 0;
+}
+
+.card-description {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    margin-top: 0.25rem;
+}
+
+/* ============================================================================
+   Tables - Clean, minimal like native UI
+   ============================================================================ */
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.table th {
+    text-align: left;
+    padding: 0.625rem 0.875rem;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: hsl(var(--muted-foreground));
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    background: transparent;
+}
+
+.table td {
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.3);
+    color: hsl(var(--foreground));
+}
+
+.table tbody tr:hover {
+    background: hsl(var(--muted) / 0.5);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ============================================================================
+   Form Elements - Refined styling
+   ============================================================================ */
+
+.label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    margin-bottom: 0.375rem;
+}
+
+.input,
+.textarea,
+.select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    color: hsl(var(--foreground));
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:hover,
+.textarea:hover,
+.select:hover {
+    border-color: hsl(var(--border) / 1.5);
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+    outline: none;
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: hsl(var(--muted-foreground) / 0.7);
+}
+
+/* File input */
 .file-input {
     display: block;
     width: 100%;
     padding: 0.5rem;
-    background: hsl(var(--muted));
+    font-size: 0.8125rem;
+    background: hsl(var(--muted) / 0.5);
     border: 1px dashed hsl(var(--border));
     border-radius: var(--radius);
     color: hsl(var(--muted-foreground));
-    font-size: 0.875rem;
     cursor: pointer;
-    transition: border-color 0.2s, background-color 0.2s;
+    transition: border-color 0.15s ease;
 }
 
 .file-input:hover {
-    border-color: hsl(var(--primary));
-    background: hsl(var(--muted));
-}
-
-.file-input:focus {
-    outline: none;
-    border-color: hsl(var(--ring));
-    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+    border-color: hsl(var(--primary) / 0.5);
 }
 
 .file-input::-webkit-file-upload-button {
@@ -44,248 +211,51 @@
     cursor: pointer;
     margin-right: 0.75rem;
     font-weight: 500;
-    font-size: 0.875rem;
-    transition: opacity 0.2s;
-}
-
-.file-input::-webkit-file-upload-button:hover {
-    opacity: 0.9;
+    font-size: 0.75rem;
 }
 
 /* ============================================================================
-   Additional Color Variables for Semantic States
+   Buttons - Compact, refined
    ============================================================================ */
 
-:root {
-    --warning: 43 96% 56%;
-    --warning-foreground: 0 0% 0%;
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 0%;
-    --info: 217 91% 60%;
-    --info-foreground: 0 0% 0%;
-}
-
-/* ============================================================================
-   Progress Animation for Running States
-   ============================================================================ */
-
-@keyframes progress-shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
-
-.running-shimmer {
-    position: relative;
-    overflow: hidden;
-}
-
-.running-shimmer::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        hsl(var(--primary)),
-        hsl(var(--secondary)),
-        hsl(var(--primary)),
-        transparent
-    );
-    background-size: 200% 100%;
-    animation: progress-shimmer 2s linear infinite;
-    border-radius: 9999px;
-}
-
-/* ============================================================================
-   HTMX Loading States
-   ============================================================================ */
-
-.htmx-request {
-    opacity: 0.7;
-    pointer-events: none;
-    transition: opacity 0.2s;
-}
-
-.htmx-request.htmx-indicator {
-    opacity: 1;
-}
-
-/* Pulse animation for running cells */
-@keyframes pulse-border {
-    0%, 100% { border-color: hsl(var(--warning)); }
-    50% { border-color: hsl(var(--warning) / 0.5); }
-}
-
-.cell-running {
-    animation: pulse-border 2s ease-in-out infinite;
-}
-
-/* ============================================================================
-   Smooth Scroll Behavior
-   ============================================================================ */
-
-html {
-    scroll-behavior: smooth;
-}
-
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: hsl(var(--muted));
-}
-
-::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground));
-}
-
-/* ============================================================================
-   Focus Visible Styles
-   ============================================================================ */
-
-*:focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
-}
-
-/* ============================================================================
-   Card Enhancements (ensure proper styling)
-   ============================================================================ */
-
-.card {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: var(--radius);
-}
-
-.card header,
-.card section,
-.card footer {
-    padding: 1rem 1.5rem;
-}
-
-.card header {
-    border-bottom: 1px solid hsl(var(--border) / 0.5);
-}
-
-.card footer {
-    border-top: 1px solid hsl(var(--border) / 0.5);
-}
-
-.card-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: hsl(var(--foreground));
-}
-
-.card-description {
-    font-size: 0.875rem;
-    color: hsl(var(--muted-foreground));
-}
-
-/* ============================================================================
-   Table Enhancements
-   ============================================================================ */
-
-.table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-}
-
-.table th {
-    text-align: left;
-    padding: 0.75rem 1rem;
-    font-weight: 500;
-    color: hsl(var(--muted-foreground));
-    border-bottom: 1px solid hsl(var(--border));
-    background: hsl(var(--muted) / 0.3);
-}
-
-.table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.5);
-    color: hsl(var(--foreground));
-}
-
-.table tbody tr:hover {
-    background: hsl(var(--muted) / 0.5);
-}
-
-/* ============================================================================
-   Form Elements Enhancements
-   ============================================================================ */
-
-.label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: hsl(var(--foreground));
-}
-
-.input,
-.textarea,
-.select {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    background: hsl(var(--background));
-    border: 1px solid hsl(var(--input));
-    border-radius: var(--radius);
-    color: hsl(var(--foreground));
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.input:focus,
-.textarea:focus,
-.select:focus {
-    outline: none;
-    border-color: hsl(var(--ring));
-    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
-}
-
-.input::placeholder,
-.textarea::placeholder {
-    color: hsl(var(--muted-foreground));
-}
-
-/* ============================================================================
-   Button Enhancements (ensure Basecoat styles work)
-   ============================================================================ */
-
-.btn {
+.btn,
+.btn-secondary,
+.btn-outline,
+.btn-ghost,
+.btn-destructive {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
+    font-family: inherit;
     border-radius: var(--radius);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.btn {
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
 }
 
 .btn:hover {
-    opacity: 0.9;
+    background: hsl(var(--primary) / 0.9);
+    box-shadow: 0 0 12px hsl(var(--primary) / 0.3);
 }
 
 .btn-secondary {
     background: hsl(var(--secondary));
     color: hsl(var(--secondary-foreground));
+}
+
+.btn-secondary:hover {
+    background: hsl(var(--secondary) / 0.9);
+    box-shadow: 0 0 12px hsl(var(--secondary) / 0.3);
 }
 
 .btn-outline {
@@ -296,6 +266,7 @@ html {
 
 .btn-outline:hover {
     background: hsl(var(--muted));
+    border-color: hsl(var(--border) / 1.5);
 }
 
 .btn-ghost {
@@ -312,59 +283,188 @@ html {
     color: hsl(var(--destructive-foreground));
 }
 
+.btn-destructive:hover {
+    background: hsl(var(--destructive) / 0.9);
+    box-shadow: 0 0 12px hsl(var(--destructive) / 0.3);
+}
+
 /* ============================================================================
-   Badge Enhancements
+   Badges - Compact like native UI model badges
    ============================================================================ */
 
 .badge,
 .badge-secondary,
 .badge-outline,
-.badge-destructive {
+.badge-destructive,
+.badge-success,
+.badge-warning {
     display: inline-flex;
     align-items: center;
-    padding: 0.25rem 0.625rem;
-    font-size: 0.75rem;
+    gap: 0.25rem;
+    padding: 0.1875rem 0.5rem;
+    font-size: 0.6875rem;
     font-weight: 500;
-    border-radius: 9999px;
+    border-radius: 0.25rem;
     border: 1px solid transparent;
     white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
 
 .badge {
-    background: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.3);
 }
 
 .badge-secondary {
-    background: hsl(var(--secondary));
-    color: hsl(var(--secondary-foreground));
+    background: hsl(var(--secondary) / 0.15);
+    color: hsl(var(--secondary));
+    border-color: hsl(var(--secondary) / 0.3);
 }
 
 .badge-outline {
     background: transparent;
     border-color: hsl(var(--border));
-    color: hsl(var(--foreground));
+    color: hsl(var(--muted-foreground));
 }
 
 .badge-destructive {
-    background: hsl(var(--destructive));
-    color: hsl(var(--destructive-foreground));
+    background: hsl(var(--destructive) / 0.15);
+    color: hsl(var(--destructive));
+    border-color: hsl(var(--destructive) / 0.3);
+}
+
+/* Semantic badge variants */
+.badge-success {
+    background: hsl(var(--success) / 0.15);
+    color: hsl(var(--success));
+    border-color: hsl(var(--success) / 0.3);
+}
+
+.badge-warning {
+    background: hsl(var(--warning) / 0.15);
+    color: hsl(var(--warning));
+    border-color: hsl(var(--warning) / 0.3);
 }
 
 /* ============================================================================
-   Alert Enhancements
+   Alerts
    ============================================================================ */
 
 .alert-destructive {
-    padding: 1rem;
+    padding: 0.875rem 1rem;
     border-radius: var(--radius);
     background: hsl(var(--destructive) / 0.1);
-    border: 1px solid hsl(var(--destructive) / 0.5);
+    border: 1px solid hsl(var(--destructive) / 0.3);
     color: hsl(var(--destructive));
+    font-size: 0.8125rem;
 }
 
 /* ============================================================================
-   Print Styles (hide navigation in print)
+   Progress/Status Indicators
+   ============================================================================ */
+
+/* Running shimmer animation */
+@keyframes progress-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.running-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.running-shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        hsl(var(--primary)),
+        hsl(var(--secondary)),
+        hsl(var(--primary)),
+        transparent
+    );
+    background-size: 200% 100%;
+    animation: progress-shimmer 2s linear infinite;
+}
+
+/* Pulse animation for running cells */
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 hsl(var(--warning) / 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 4px hsl(var(--warning) / 0);
+    }
+}
+
+.cell-running {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Spinner */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* ============================================================================
+   HTMX Loading States
+   ============================================================================ */
+
+.htmx-request {
+    opacity: 0.7;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* ============================================================================
+   Status Colors - Matching native UI
+   ============================================================================ */
+
+/* Text colors */
+.text-success { color: hsl(var(--success)); }
+.text-warning { color: hsl(var(--warning)); }
+.text-error { color: hsl(var(--destructive)); }
+.text-info { color: hsl(var(--info)); }
+.text-primary { color: hsl(var(--primary)); }
+.text-secondary { color: hsl(var(--secondary)); }
+.text-muted { color: hsl(var(--muted-foreground)); }
+
+/* Background colors */
+.bg-success { background: hsl(var(--success)); }
+.bg-warning { background: hsl(var(--warning)); }
+.bg-error { background: hsl(var(--destructive)); }
+
+/* ============================================================================
+   Code/Mono Text
+   ============================================================================ */
+
+.font-mono {
+    font-family: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+}
+
+pre, code {
+    font-family: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+}
+
+/* ============================================================================
+   Print Styles
    ============================================================================ */
 
 @media print {
@@ -375,5 +475,10 @@ html {
     main {
         max-width: 100% !important;
         padding: 0 !important;
+    }
+
+    .card {
+        border: 1px solid #ccc;
+        page-break-inside: avoid;
     }
 }

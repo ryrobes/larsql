@@ -839,6 +839,83 @@ def request_decision(
                   <input type="text" name="response[next_query]" placeholder="Enter your follow-up question..." style="width: 100%; margin-bottom: 12px;" />
                   <button name="response[selected]" value="continue">Continue Research</button>
                 </form>
+              - BASECOAT UI COMPONENTS (shadcn-style, CSS-only):
+                The rendering environment includes Basecoat - a shadcn/ui-style component library
+                that works with pure HTML. Use these classes for professional, consistent styling:
+
+                * BUTTONS: class="btn" with variants
+                  - btn              → Primary button (cyan gradient)
+                  - btn-secondary    → Purple accent button
+                  - btn-outline      → Transparent with border
+                  - btn-ghost        → Minimal, no background
+                  - btn-destructive  → Red danger button
+                  - btn-sm, btn-lg   → Size modifiers
+
+                * FORM INPUTS: class="input", "textarea", "select"
+                  - <input class="input" type="text">
+                  - <textarea class="textarea" rows="3"></textarea>
+                  - <select class="select"><option>...</option></select>
+                  - <input type="checkbox" class="input"> or role="switch" for toggle
+                  - <label class="label">Field Label</label>
+
+                * CARDS: class="card" with semantic sections
+                  <div class="card">
+                    <header><h2>Title</h2><p class="text-muted-foreground">Desc</p></header>
+                    <section>Content here</section>
+                    <footer><button class="btn">Action</button></footer>
+                  </div>
+
+                * BADGES: class="badge" with variants
+                  - badge            → Primary (cyan)
+                  - badge-secondary  → Purple
+                  - badge-destructive→ Red error
+                  - badge-outline    → Outline style
+
+                * TABLES: class="table"
+                  <div class="overflow-x-auto">
+                    <table class="table">
+                      <thead><tr><th>Header</th></tr></thead>
+                      <tbody><tr><td>Data</td></tr></tbody>
+                    </table>
+                  </div>
+
+                * ALERTS: class="alert" or "alert-destructive"
+                  <div class="alert"><h2>Info</h2><section>Message</section></div>
+                  <div class="alert-destructive"><h2>Error</h2><section>...</section></div>
+
+                * UTILITY CLASSES (Tailwind):
+                  - Text: text-muted-foreground, text-sm, text-lg, text-center
+                  - Layout: flex, flex-col, items-center, justify-between, gap-2, gap-4
+                  - Grid: grid, grid-cols-2, grid-cols-3
+                  - Spacing: p-4, m-4, mt-4, mb-4, pt-4
+                  - Width: w-full, max-w-md, max-w-lg
+
+                Example (Basecoat-styled form):
+                <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
+                  <div class="card">
+                    <header>
+                      <h2>Review Changes</h2>
+                      <p class="text-muted-foreground">Please review and approve</p>
+                    </header>
+                    <section class="flex flex-col gap-4">
+                      <div>
+                        <label class="label">Your Feedback</label>
+                        <textarea class="textarea" name="response[feedback]" rows="3"></textarea>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <label class="label gap-2">
+                          <input type="checkbox" class="input" name="response[urgent]" value="true">
+                          Mark as urgent
+                        </label>
+                      </div>
+                    </section>
+                    <footer class="flex gap-3">
+                      <button class="btn" name="response[action]" value="approve">Approve</button>
+                      <button class="btn-outline" name="response[action]" value="reject">Reject</button>
+                    </footer>
+                  </div>
+                </form>
+
         timeout_seconds: Maximum wait time (default 600 = 10 minutes)
 
     Returns a JSON object with:

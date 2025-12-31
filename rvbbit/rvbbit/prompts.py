@@ -4,8 +4,22 @@ from typing import Any, Dict
 
 class PromptEngine:
     def __init__(self, template_dirs: list[str] = None):
-        # Use CWD if not specified
+        # Use CWD if not specified, plus standard prompt locations
         dirs = template_dirs or [os.getcwd()]
+
+        # Add cascades/prompts directory for reusable prompt includes
+        # Check both CWD-relative and RVBBIT_ROOT-relative locations
+        cascades_prompts = os.path.join(os.getcwd(), 'cascades', 'prompts')
+        if os.path.isdir(cascades_prompts):
+            dirs.append(cascades_prompts)
+
+        # Also check RVBBIT_ROOT if set
+        rvbbit_root = os.environ.get('RVBBIT_ROOT')
+        if rvbbit_root:
+            root_prompts = os.path.join(rvbbit_root, 'cascades', 'prompts')
+            if os.path.isdir(root_prompts) and root_prompts not in dirs:
+                dirs.append(root_prompts)
+
         self.env = Environment(loader=FileSystemLoader(dirs))
         
     def render(self, template_str_or_path: str, context: Dict[str, Any]) -> str:

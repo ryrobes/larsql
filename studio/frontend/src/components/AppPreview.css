@@ -1,0 +1,162 @@
+/* AppPreview - Iframe wrapper for App API rendering */
+
+.app-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-secondary, #0a0a0a);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary, #0f0e21);
+  border-bottom: 1px solid var(--border-color, rgba(0, 229, 255, 0.15));
+  min-height: 40px;
+}
+
+.app-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #e5e5e5);
+}
+
+.app-preview-title svg {
+  color: var(--accent-cyan, #00e5ff);
+}
+
+.app-preview-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--accent-purple, #a78bfa);
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--accent-purple, #a78bfa);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono, 'Google Sans Code', monospace);
+}
+
+.app-preview-cell svg {
+  opacity: 0.7;
+}
+
+.app-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.app-preview-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary, #8e8e8e);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #e5e5e5);
+}
+
+.app-preview-btn:active {
+  transform: scale(0.95);
+}
+
+.app-preview-content {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.app-preview-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #000;
+}
+
+.app-preview-iframe.loading {
+  opacity: 0.3;
+}
+
+/* Loading State */
+.app-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-secondary, #8e8e8e);
+  font-size: 13px;
+  z-index: 10;
+}
+
+.app-preview-loading svg {
+  color: var(--accent-cyan, #00e5ff);
+}
+
+/* Error State */
+.app-preview-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--accent-red, #ff006e);
+  font-size: 13px;
+  z-index: 10;
+}
+
+.app-preview-error svg {
+  opacity: 0.7;
+}
+
+.app-preview-retry {
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--text-primary, #e5e5e5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-preview-retry:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--accent-cyan, #00e5ff);
+}
+
+/* Spinning animation for loading icon */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.app-preview-loading .spinning,
+.app-preview .spinning {
+  animation: spin 1s linear infinite;
+}

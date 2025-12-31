@@ -104,6 +104,63 @@ def get_session(cascade_id: str, session_id: str) -> Optional[AppSession]:
         return _sessions.get(key)
 
 
+def get_or_create_session(cascade_id: str, session_id: str) -> Optional[AppSession]:
+    """
+    Get a session, or create one on-the-fly for externally-spawned sessions.
+
+    This handles sessions created by spawn_cascade (from within cascades like Calliope)
+    that weren't started through the App API's /new endpoint.
+    """
+    # First try the in-memory store
+    session = get_session(cascade_id, session_id)
+    if session:
+        return session
+
+    # Check if there's a checkpoint for this session (means it's a real RVBBIT session)
+    checkpoint = get_pending_checkpoint(session_id)
+
+    # Also check if we can find session logs in ClickHouse to confirm it exists
+    # For now, just check checkpoint existence
+    if checkpoint:
+        # Load the cascade to get cell info
+        cascade = load_cascade_by_id(cascade_id)
+        if not cascade:
+            return None
+
+        # Create an AppSession on-the-fly
+        checkpoint_cell = checkpoint.get('cell_name', cascade.cells[0].name if cascade.cells else 'unknown')
+
+        session = AppSession(
+            session_id=session_id,
+            cascade_id=cascade_id,
+            current_cell=checkpoint_cell,
+            status='waiting_input',  # Has checkpoint = waiting
+            state={'_input': {}, '_external': True},  # Mark as externally created
+        )
+        save_session(session)
+        print(f"[apps_api] Created on-the-fly session for external spawn: {cascade_id}:{session_id}")
+        return session
+
+    # No checkpoint found - might still be a valid session that's running
+    # Try to create a minimal session if the cascade exists
+    cascade = load_cascade_by_id(cascade_id)
+    if cascade:
+        # Session might be running but not yet at a checkpoint
+        first_cell = cascade.cells[0].name if cascade.cells else 'unknown'
+        session = AppSession(
+            session_id=session_id,
+            cascade_id=cascade_id,
+            current_cell=first_cell,
+            status='running',
+            state={'_input': {}, '_external': True},
+        )
+        save_session(session)
+        print(f"[apps_api] Created on-the-fly session (no checkpoint yet): {cascade_id}:{session_id}")
+        return session
+
+    return None
+
+
 def save_session(session: AppSession):
     """Save a session to the store."""
     key = f"{session.cascade_id}:{session.session_id}"
@@ -406,10 +463,10 @@ class AppRenderer:
         if status is None:
             status = 'completed' if cell.name in session.cells_completed else 'pending'
 
-        # Status badges with Basecoat styling
+        # Status badges with Basecoat styling - using primary cyan for running instead of yellow
         status_badges = {
-            'running': '<span class="badge bg-yellow-500/20 text-yellow-400 border-yellow-500/30">⏳ Running</span>',
-            'completed': '<span class="badge bg-green-500/20 text-green-400 border-green-500/30">✓ Done</span>',
+            'running': '<span class="badge">● Running</span>',
+            'completed': '<span class="badge-success">✓ Done</span>',
             'error': '<span class="badge-destructive">✗ Error</span>',
             'pending': '<span class="badge-outline">○ Pending</span>'
         }
@@ -417,43 +474,43 @@ class AppRenderer:
         # Cell type badge
         cell_type_badge = ''
         if cell.tool:
-            cell_type_badge = f'<span class="badge-secondary text-xs">Tool: {cell.tool}</span>'
+            cell_type_badge = f'<span class="badge-outline text-xs">tool:{cell.tool}</span>'
         elif cell.instructions:
-            cell_type_badge = '<span class="badge-secondary text-xs">LLM Cell</span>'
+            cell_type_badge = '<span class="badge-outline text-xs">llm</span>'
 
         # Output rendering with Basecoat styling
         output_html = ''
         if output is not None:
             if isinstance(output, dict) or isinstance(output, list):
                 output_html = f'''
-                <div class="mt-4 p-4 bg-muted rounded-lg overflow-x-auto">
-                    <pre class="text-sm font-mono text-foreground whitespace-pre-wrap">{json.dumps(output, indent=2, default=str)}</pre>
+                <div class="mt-3 p-3 bg-muted/50 rounded overflow-x-auto">
+                    <pre class="text-xs font-mono text-foreground whitespace-pre-wrap">{json.dumps(output, indent=2, default=str)}</pre>
                 </div>'''
             else:
                 output_html = f'''
-                <div class="mt-4 p-4 bg-muted rounded-lg">
+                <div class="mt-3 p-3 bg-muted/50 rounded">
                     <div class="text-sm text-foreground">{output}</div>
                 </div>'''
 
-        # Card border color based on status
+        # Card border color based on status - using primary cyan for running
         border_colors = {
-            'running': 'border-l-4 border-l-yellow-500',
-            'completed': 'border-l-4 border-l-green-500',
-            'error': 'border-l-4 border-l-destructive',
-            'pending': 'border-l-4 border-l-muted-foreground/30'
+            'running': 'border-l-2 border-l-primary',
+            'completed': 'border-l-2 border-l-green-500',
+            'error': 'border-l-2 border-l-destructive',
+            'pending': 'border-l-2 border-l-muted-foreground/20'
         }
         border_class = border_colors.get(status, '')
 
         return f'''
         <div class="card {border_class}">
-            <header class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <h3 class="font-semibold text-foreground">{cell.name}</h3>
+            <header class="flex items-center justify-between py-3 px-4">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-sm font-medium text-foreground">{cell.name}</h3>
                     {cell_type_badge}
                 </div>
                 {status_badges.get(status, '')}
             </header>
-            {f'<section class="pt-0">{output_html}</section>' if output_html else ''}
+            {f'<section class="px-4 pb-3 pt-0">{output_html}</section>' if output_html else ''}
         </div>
         '''
 
@@ -803,42 +860,63 @@ BASECOAT_HEAD = '''
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Basecoat CSS Variables (required for component styling) -->
+    <!-- Basecoat CSS Variables - Matched to RVBBIT Studio native UI -->
     <style>
       :root {
-        /* shadcn/Basecoat HSL Variables - these are required! */
+        /* Core colors - matched to Studio */
         --background: 0 0% 0%;
-        --foreground: 210 40% 96%;
-        --card: 240 6% 6%;
-        --card-foreground: 210 40% 96%;
-        --popover: 240 6% 6%;
-        --popover-foreground: 210 40% 96%;
-        --primary: 186 100% 50%;
+        --foreground: 210 20% 92%;
+        --card: 0 0% 4%;
+        --card-foreground: 210 20% 92%;
+        --popover: 0 0% 4%;
+        --popover-foreground: 210 20% 92%;
+
+        /* Primary: Bright cyan (#00e5ff) */
+        --primary: 187 100% 50%;
         --primary-foreground: 0 0% 0%;
-        --secondary: 263 70% 77%;
+
+        /* Secondary: Purple/violet (#a78bfa) */
+        --secondary: 263 70% 76%;
         --secondary-foreground: 0 0% 0%;
-        --muted: 240 4% 16%;
-        --muted-foreground: 215 20% 65%;
-        --accent: 263 70% 77%;
+
+        /* Muted: Dark gray for backgrounds */
+        --muted: 0 0% 8%;
+        --muted-foreground: 215 16% 55%;
+
+        /* Accent: Same as secondary */
+        --accent: 263 70% 76%;
         --accent-foreground: 0 0% 0%;
+
+        /* Destructive: Red */
         --destructive: 0 84% 60%;
         --destructive-foreground: 0 0% 100%;
-        --border: 186 50% 20%;
-        --input: 186 50% 20%;
-        --ring: 186 100% 50%;
-        --radius: 0.5rem;
+
+        /* Borders: Very subtle cyan tint */
+        --border: 187 30% 15%;
+        --input: 187 30% 15%;
+        --ring: 187 100% 50%;
+        --radius: 0.375rem;
+
+        /* Semantic colors */
+        --success: 160 84% 39%;
+        --success-foreground: 0 0% 0%;
+        --warning: 38 92% 50%;
+        --warning-foreground: 0 0% 0%;
+        --info: 217 91% 60%;
+        --info-foreground: 0 0% 100%;
 
         /* Chart colors */
-        --chart-1: 186 100% 50%;
-        --chart-2: 263 70% 77%;
-        --chart-3: 142 71% 45%;
-        --chart-4: 43 96% 56%;
+        --chart-1: 187 100% 50%;
+        --chart-2: 160 84% 39%;
+        --chart-3: 263 70% 76%;
+        --chart-4: 38 92% 50%;
         --chart-5: 0 84% 60%;
       }
 
       /* Base styles */
       body {
         font-family: 'Quicksand', system-ui, sans-serif;
+        font-size: 13px;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
@@ -846,6 +924,11 @@ BASECOAT_HEAD = '''
       /* Ensure dark mode is always active */
       .dark {
         color-scheme: dark;
+      }
+
+      /* Selection color */
+      ::selection {
+        background: hsl(187 100% 50% / 0.3);
       }
     </style>
 
@@ -896,26 +979,31 @@ APP_INDEX_TEMPLATE = '''
     ''' + BASECOAT_HEAD + '''
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans">
-    <header class="flex items-center gap-6 p-6 border-b border-border">
-        <h1 class="text-xl font-bold text-primary">RVBBIT Apps</h1>
-        <a href="/" class="text-muted-foreground hover:text-foreground text-sm">← Back to Studio</a>
+    <!-- Header matching native Studio style -->
+    <header class="flex items-center gap-4 px-6 py-3 border-b border-border/50 bg-card">
+        <div class="flex items-center gap-3">
+            <div class="w-6 h-6 rounded bg-gradient-to-br from-primary to-secondary opacity-80"></div>
+            <h1 class="text-base font-semibold text-foreground">Apps</h1>
+        </div>
+        <div class="flex-1"></div>
+        <a href="/" class="text-muted-foreground hover:text-foreground text-xs">← Studio</a>
     </header>
 
-    <main class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 p-8">
+    <main class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
         {% for app in apps %}
-        <a href="/apps/{{ app.cascade_id }}/" class="card hover:border-primary transition-all hover:-translate-y-0.5">
-            <header class="p-4">
-                <h2 class="card-title">{{ app.name }}</h2>
-                <p class="font-mono text-sm text-muted-foreground">{{ app.cascade_id }}</p>
+        <a href="/apps/{{ app.cascade_id }}/" class="card hover:border-primary/50 transition-all group">
+            <header class="p-4 pb-2">
+                <h2 class="card-title text-sm group-hover:text-primary transition-colors">{{ app.name }}</h2>
+                <p class="font-mono text-xs text-muted-foreground mt-0.5">{{ app.cascade_id }}</p>
             </header>
             <section class="px-4 pb-4">
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap gap-1.5">
                     <span class="badge-outline">{{ app.cell_count }} cells</span>
                     {% if app.has_htmx %}
-                    <span class="badge-secondary">Has UI</span>
+                    <span class="badge-secondary">UI</span>
                     {% endif %}
                     {% if app.has_inputs %}
-                    <span class="badge bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Inputs</span>
+                    <span class="badge">Inputs</span>
                     {% endif %}
                 </div>
             </section>
@@ -924,7 +1012,7 @@ APP_INDEX_TEMPLATE = '''
 
         {% if not apps %}
         <div class="col-span-full text-center py-12 text-muted-foreground">
-            <p>No cascades found. Create a .yaml file in cascades/ or examples/</p>
+            <p class="text-sm">No cascades found. Create a .yaml file in cascades/ or examples/</p>
         </div>
         {% endif %}
     </main>
@@ -940,9 +1028,12 @@ APP_INPUT_FORM_TEMPLATE = '''
     ''' + BASECOAT_HEAD + '''
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans">
-    <header class="flex items-center gap-4 px-6 py-4 border-b border-border bg-muted">
-        <a href="/apps/" class="text-muted-foreground hover:text-foreground text-sm">← Apps</a>
-        <h1 class="text-lg font-semibold flex-1">{{ cascade.description or cascade.cascade_id }}</h1>
+    <!-- Header matching native Studio style -->
+    <header class="flex items-center gap-4 px-6 py-3 border-b border-border/50 bg-card">
+        <a href="/apps/" class="text-muted-foreground hover:text-foreground text-xs">← Apps</a>
+        <div class="w-px h-4 bg-border"></div>
+        <h1 class="text-sm font-semibold text-foreground flex-1">{{ cascade.description or cascade.cascade_id }}</h1>
+        <span class="font-mono text-xs text-muted-foreground">{{ cascade.cascade_id }}</span>
     </header>
 
     <main class="max-w-lg mx-auto p-8">
@@ -1049,32 +1140,96 @@ APP_SHELL_TEMPLATE = '''
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
     ''' + BASECOAT_HEAD + '''
+
+    <!-- RVBBIT App Events - postMessage for Calliope iframe integration -->
+    <script>
+      window.RVBBIT_APP = {
+        sessionId: '{{ session_id }}',
+        cascadeId: '{{ cascade_id }}',
+        currentCell: '{{ cell_name }}',
+
+        // Post event to parent window (Calliope)
+        postEvent: function(type, data) {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+              type: 'rvbbit_' + type,
+              session_id: this.sessionId,
+              cascade_id: this.cascadeId,
+              ...data
+            }, '*');
+          }
+        },
+
+        // Notify parent of cell change with current state
+        onCellChange: function(cellName, state) {
+          this.currentCell = cellName;
+          this.postEvent('cell_change', {
+            cell_name: cellName,
+            state: state || {}
+          });
+        },
+
+        // Notify parent of session completion
+        onComplete: function(state) {
+          this.postEvent('session_complete', {
+            status: 'completed',
+            state: state || {}
+          });
+        },
+
+        // Notify parent of error
+        onError: function(error) {
+          this.postEvent('session_error', {
+            error: typeof error === 'string' ? error : (error.message || 'Unknown error')
+          });
+        }
+      };
+
+      // Auto-post cell change on page load
+      document.addEventListener('DOMContentLoaded', function() {
+        var stateData = {{ state | tojson | safe if state else '{}' }};
+        RVBBIT_APP.onCellChange('{{ cell_name }}', stateData);
+
+        // Check if session is completed (no pending checkpoints, no running status)
+        var status = '{{ status }}';
+        if (status === 'completed') {
+          RVBBIT_APP.onComplete(stateData);
+        } else if (status === 'error') {
+          RVBBIT_APP.onError('{{ error.message if error else "Unknown error" }}');
+        }
+      });
+    </script>
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans flex flex-col">
-    <header class="flex items-center gap-4 px-6 py-3 border-b border-border bg-muted">
-        <a href="/apps/" class="text-muted-foreground hover:text-foreground text-sm">← Apps</a>
-        <h1 class="text-lg font-semibold flex-1 text-primary">{{ cascade_id }}</h1>
-        <span class="font-mono text-xs text-muted-foreground">{{ session_id }}</span>
+    <!-- Header matching native Studio style -->
+    <header class="flex items-center gap-4 px-6 py-3 border-b border-border/50 bg-card">
+        <a href="/apps/" class="text-muted-foreground hover:text-foreground text-xs">← Apps</a>
+        <div class="w-px h-4 bg-border"></div>
+        <h1 class="text-sm font-semibold text-foreground flex-1">{{ cascade_id }}</h1>
+        <span class="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{{ session_id }}</span>
     </header>
 
-    <nav class="flex gap-1 px-6 py-3 overflow-x-auto border-b border-border bg-background">
+    <!-- Progress nav with subtle styling -->
+    <nav class="flex gap-1 px-6 py-2 overflow-x-auto border-b border-border/30 bg-background">
         {% for cell in progress.cells %}
         <a href="/apps/{{ cascade_id }}/{{ session_id }}/{{ cell }}"
-           class="px-3 py-1.5 rounded text-sm whitespace-nowrap transition-all
-            {% if cell in progress.completed %}border-l-2 border-green-500 bg-green-500/10 text-green-400{% endif %}
-            {% if cell == progress.current %}border-l-2 border-yellow-500 bg-yellow-500/10 text-yellow-400{% endif %}
-            {% if cell not in progress.completed and cell != progress.current %}bg-muted text-muted-foreground{% endif %}
-            {% if cell == progress.viewing %}ring-2 ring-primary ring-offset-1 ring-offset-background{% endif %}
-            hover:bg-muted/80">
+           class="px-2.5 py-1 rounded text-xs whitespace-nowrap transition-all font-medium
+            {% if cell in progress.completed %}text-green-400 bg-green-500/10{% endif %}
+            {% if cell == progress.current and cell not in progress.completed %}text-primary bg-primary/10{% endif %}
+            {% if cell not in progress.completed and cell != progress.current %}text-muted-foreground bg-muted/50{% endif %}
+            {% if cell == progress.viewing %}ring-1 ring-primary/50{% endif %}
+            hover:bg-muted">
+            {% if cell in progress.completed %}<span class="opacity-60 mr-1">✓</span>{% endif %}
+            {% if cell == progress.current and cell not in progress.completed %}<span class="opacity-60 mr-1">●</span>{% endif %}
             {{ cell }}
         </a>
         {% endfor %}
     </nav>
 
     {% if progress.is_historical %}
-    <div class="bg-yellow-500 text-black px-6 py-2 text-center text-sm">
-        Viewing historical cell.
-        <a href="/apps/{{ cascade_id }}/{{ session_id }}/" class="font-semibold underline">Jump to current →</a>
+    <div class="bg-muted border-b border-border/30 px-6 py-2 text-center text-xs text-muted-foreground">
+        Viewing completed cell.
+        <a href="/apps/{{ cascade_id }}/{{ session_id }}/" class="text-primary hover:underline ml-1">Jump to current →</a>
     </div>
     {% endif %}
 
@@ -1097,8 +1252,7 @@ APP_SHELL_TEMPLATE = '''
         {% else %}
         <form hx-post="/apps/{{ cascade_id }}/{{ session_id }}/respond"
               hx-target="#app-content"
-              hx-swap="innerHTML"
-              hx-ext="json-enc">
+              hx-swap="innerHTML">
             {{ content | safe }}
         </form>
         {% endif %}
@@ -1235,7 +1389,7 @@ def new_session(cascade_id: str):
 @apps_bp.route('/<cascade_id>/<session_id>/')
 def view_current(cascade_id: str, session_id: str):
     """View current cell."""
-    session = get_session(cascade_id, session_id)
+    session = get_or_create_session(cascade_id, session_id)
     if not session:
         return f"Session not found: {session_id}", 404
 
@@ -1249,7 +1403,7 @@ def view_current(cascade_id: str, session_id: str):
 @apps_bp.route('/<cascade_id>/<session_id>/<cell_name>')
 def view_cell(cascade_id: str, session_id: str, cell_name: str):
     """View a specific cell."""
-    session = get_session(cascade_id, session_id)
+    session = get_or_create_session(cascade_id, session_id)
     if not session:
         return f"Session not found: {session_id}", 404
 
@@ -1275,6 +1429,16 @@ def view_cell(cascade_id: str, session_id: str, cell_name: str):
             if section.get('type') == 'html':
                 checkpoint_html = section.get('content', '')
                 break
+
+        # Strip inner <form> tags from checkpoint HTML to avoid nested forms
+        # The App API template wraps content in its own form that posts to /apps/.../respond
+        # HITL cells from spawn_cascade may have forms posting to /checkpoint/respond
+        if checkpoint_html:
+            import re
+            # Remove opening form tags (keep the content)
+            checkpoint_html = re.sub(r'<form[^>]*>', '', checkpoint_html, flags=re.IGNORECASE)
+            # Remove closing form tags
+            checkpoint_html = re.sub(r'</form>', '', checkpoint_html, flags=re.IGNORECASE)
 
         checkpoint_cell = checkpoint.get('cell_name', cell_name)
         checkpoint_id = checkpoint.get('id')
@@ -1317,19 +1481,25 @@ def view_cell(cascade_id: str, session_id: str, cell_name: str):
         progress=progress,
         session=session,
         status=status,
-        error=session.error
+        error=session.error,
+        state=session.state  # For postMessage to Calliope
     )
 
 
 @apps_bp.route('/<cascade_id>/<session_id>/respond', methods=['POST'])
 def respond(cascade_id: str, session_id: str):
     """Handle user response/action by responding to the cascade checkpoint."""
-    session = get_session(cascade_id, session_id)
+    session = get_or_create_session(cascade_id, session_id)
     if not session:
         return jsonify({'error': 'Session not found'}), 404
 
-    # Get response data from form
-    data = request.form.to_dict()
+    # Get response data - handle both JSON (from hx-ext="json-enc") and form data
+    if request.is_json:
+        data = request.get_json() or {}
+        print(f"[apps_api] Received JSON data: {data}")
+    else:
+        data = request.form.to_dict()
+        print(f"[apps_api] Received form data: {data}")
 
     # Store response in session state for our own tracking
     session.state[session.current_cell] = data
@@ -1338,6 +1508,14 @@ def respond(cascade_id: str, session_id: str):
 
     # Check for a checkpoint to respond to
     checkpoint_id = session.state.get('_checkpoint_id')
+
+    # For externally spawned sessions (e.g., from Calliope's spawn_cascade),
+    # the checkpoint_id might not be in session.state - look it up directly
+    if not checkpoint_id:
+        checkpoint = get_pending_checkpoint(session_id)
+        if checkpoint:
+            checkpoint_id = checkpoint.get('id')
+            print(f"[apps_api] Found checkpoint via direct lookup: {checkpoint_id}")
 
     if checkpoint_id:
         # Respond to the checkpoint - this will resume the cascade
@@ -1375,7 +1553,7 @@ def respond(cascade_id: str, session_id: str):
 @apps_bp.route('/<cascade_id>/<session_id>/status')
 def status(cascade_id: str, session_id: str):
     """Polling endpoint for running sessions - checks for checkpoints from the cascade runner."""
-    session = get_session(cascade_id, session_id)
+    session = get_or_create_session(cascade_id, session_id)
     if not session:
         return jsonify({'error': 'Session not found'}), 404
 
@@ -1397,6 +1575,13 @@ def status(cascade_id: str, session_id: str):
             if section.get('type') == 'html':
                 checkpoint_html = section.get('content', '')
                 break
+
+        # Strip inner <form> tags from checkpoint HTML to avoid nested forms
+        # The wrapper form posts to /apps/.../respond
+        if checkpoint_html:
+            import re
+            checkpoint_html = re.sub(r'<form[^>]*>', '', checkpoint_html, flags=re.IGNORECASE)
+            checkpoint_html = re.sub(r'</form>', '', checkpoint_html, flags=re.IGNORECASE)
 
         checkpoint_cell = checkpoint.get('cell_name', session.current_cell)
         checkpoint_id = checkpoint.get('id')

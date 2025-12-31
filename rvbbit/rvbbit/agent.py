@@ -625,7 +625,7 @@ class Agent:
             model=model_used,
             provider=provider,
             request_id=last_request_id,
-            content=f"Embedded {len(texts)} texts ({dim} dimensions) {{str(texts)}}",
+            content=f"Embedded {len(texts)} texts ({dim} dimensions)",
             metadata={"text_count": len(texts), "dimension": dim},
             tokens_in=total_tokens,
             tokens_out=None,

@@ -1,0 +1,316 @@
+cascade_id: spooky_yes_no
+description: A dramatic Yes/No micro-app with confetti celebrations and spooky ghosts
+inputs_schema: {}
+model: claude-sonnet-4-20250514
+cells:
+- name: the_question
+  hitl: "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content:\
+    \ center; background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 70%);\
+    \ font-family: system-ui, -apple-system, sans-serif; padding: 20px;\">\n  \n \
+    \ <!-- Floating ghost in background -->\n  <div style=\"position: fixed; top:\
+    \ 20%; right: 15%; font-size: 4em; opacity: 0.15; animation: ghostFloat 6s ease-in-out\
+    \ infinite;\">\U0001F47B</div>\n  <div style=\"position: fixed; bottom: 25%; left:\
+    \ 10%; font-size: 3em; opacity: 0.1; animation: ghostFloat 8s ease-in-out infinite\
+    \ reverse;\">\U0001F47B</div>\n  \n  <style>\n    @keyframes ghostFloat {\n  \
+    \    0%, 100% { transform: translateY(0) rotate(-5deg); }\n      50% { transform:\
+    \ translateY(-20px) rotate(5deg); }\n    }\n    @keyframes pulse {\n      0%,\
+    \ 100% { box-shadow: 0 0 20px rgba(167, 139, 250, 0.3); }\n      50% { box-shadow:\
+    \ 0 0 40px rgba(167, 139, 250, 0.6); }\n    }\n    @keyframes shimmer {\n    \
+    \  0% { background-position: -200% center; }\n      100% { background-position:\
+    \ 200% center; }\n    }\n  </style>\n  \n  <div style=\"text-align: center; max-width:\
+    \ 500px;\">\n    \n    <!-- Spooky icon -->\n    <div style=\"font-size: 5em;\
+    \ margin-bottom: 20px; animation: pulse 3s ease-in-out infinite;\">\U0001F3AD\
+    </div>\n    \n    <!-- The question -->\n    <h1 style=\"color: #e2e8f0; font-size:\
+    \ 2.5em; margin: 0 0 12px 0; font-weight: 300; letter-spacing: -0.02em;\">Do you\
+    \ dare?</h1>\n    <p style=\"color: #64748b; font-size: 1.1em; margin: 0 0 40px\
+    \ 0;\">Choose wisely... the spirits are watching</p>\n    \n    <!-- Buttons -->\n\
+    \    <form hx-post=\"/api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"\
+    json-enc\" style=\"display: flex; gap: 20px; justify-content: center;\">\n   \
+    \   \n      <button type=\"submit\" name=\"response[action]\" value=\"yes\"\n\
+    \              style=\"background: linear-gradient(135deg, #22c55e 0%, #16a34a\
+    \ 100%); color: white; border: none; padding: 18px 48px; border-radius: 12px;\
+    \ font-size: 1.3em; font-weight: 600; cursor: pointer; transition: all 0.3s ease;\
+    \ box-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);\"\n              onmouseover=\"\
+    this.style.transform='translateY(-4px) scale(1.05)'; this.style.boxShadow='0 8px\
+    \ 30px rgba(34, 197, 94, 0.5)';\"\n              onmouseout=\"this.style.transform='translateY(0)\
+    \ scale(1)'; this.style.boxShadow='0 4px 20px rgba(34, 197, 94, 0.3)';\">\n  \
+    \      ✓ YES\n      </button>\n      \n      <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"no\"\n              style=\"background: linear-gradient(135deg, #ef4444\
+    \ 0%, #dc2626 100%); color: white; border: none; padding: 18px 48px; border-radius:\
+    \ 12px; font-size: 1.3em; font-weight: 600; cursor: pointer; transition: all 0.3s\
+    \ ease; box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);\"\n              onmouseover=\"\
+    this.style.transform='translateY(-4px) scale(1.05)'; this.style.boxShadow='0 8px\
+    \ 30px rgba(239, 68, 68, 0.5)';\"\n              onmouseout=\"this.style.transform='translateY(0)\
+    \ scale(1)'; this.style.boxShadow='0 4px 20px rgba(239, 68, 68, 0.3)';\">\n  \
+    \      ✗ NO\n      </button>\n      \n    </form>\n    \n    <!-- Subtle footer\
+    \ -->\n    <p style=\"color: #374151; font-size: 0.8em; margin-top: 60px;\">\U0001F319\
+    \ A midnight micro-app</p>\n    \n  </div>\n</div>"
+  handoffs:
+  - confirm_yes
+  - sad_ghost
+- name: confirm_yes
+  hitl: "<div id=\"confirm-container\" style=\"min-height: 100vh; display: flex; align-items:\
+    \ center; justify-content: center; background: radial-gradient(ellipse at center,\
+    \ #1a2e1a 0%, #0a0f0a 70%); font-family: system-ui, -apple-system, sans-serif;\
+    \ padding: 20px; position: relative; overflow: hidden;\">\n  \n  <!-- Confetti\
+    \ container -->\n  <div id=\"confetti-container\" style=\"position: fixed; top:\
+    \ 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000;\"\
+    ></div>\n  \n  <!-- Celebration ghost (hidden until confirmed) -->\n  <div id=\"\
+    celebration-ghost\" style=\"position: fixed; top: 50%; left: -100px; font-size:\
+    \ 6em; transition: all 1.5s ease-out; opacity: 0; z-index: 999;\">\U0001F47B</div>\n\
+    \  \n  <style>\n    @keyframes float {\n      0%, 100% { transform: translateY(0);\
+    \ }\n      50% { transform: translateY(-10px); }\n    }\n    @keyframes confettiFall\
+    \ {\n      0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }\n  \
+    \    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }\n    }\n\
+    \    @keyframes ghostCelebrate {\n      0% { transform: translateX(0) rotate(0deg);\
+    \ }\n      25% { transform: translateX(20px) rotate(10deg); }\n      75% { transform:\
+    \ translateX(-20px) rotate(-10deg); }\n      100% { transform: translateX(0) rotate(0deg);\
+    \ }\n    }\n    @keyframes sparkle {\n      0%, 100% { opacity: 1; transform:\
+    \ scale(1); }\n      50% { opacity: 0.5; transform: scale(1.2); }\n    }\n   \
+    \ .confetti {\n      position: absolute;\n      width: 10px;\n      height: 10px;\n\
+    \      animation: confettiFall linear forwards;\n    }\n    #victory-message {\n\
+    \      display: none;\n      animation: float 2s ease-in-out infinite;\n    }\n\
+    \    #confirm-section {\n      transition: all 0.5s ease;\n    }\n  </style>\n\
+    \  \n  <div style=\"text-align: center; max-width: 500px; z-index: 10;\">\n  \
+    \  \n    <!-- Confirm section (shown initially) -->\n    <div id=\"confirm-section\"\
+    >\n      <div style=\"font-size: 4em; margin-bottom: 20px; animation: float 3s\
+    \ ease-in-out infinite;\">✨</div>\n      <h1 style=\"color: #86efac; font-size:\
+    \ 2.2em; margin: 0 0 12px 0; font-weight: 300;\">You said YES!</h1>\n      <p\
+    \ style=\"color: #64748b; font-size: 1.1em; margin: 0 0 40px 0;\">Are you absolutely\
+    \ certain? This will unleash the celebration...</p>\n      \n      <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\" style=\"display:\
+    \ flex; gap: 16px; justify-content: center; flex-wrap: wrap;\">\n        <button\
+    \ type=\"submit\" name=\"response[action]\" value=\"confirm\" onclick=\"triggerConfetti()\"\
+    \n                style=\"background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6\
+    \ 100%); color: white; border: none; padding: 16px 40px; border-radius: 12px;\
+    \ font-size: 1.2em; font-weight: 600; cursor: pointer; transition: all 0.3s ease;\
+    \ box-shadow: 0 4px 20px rgba(167, 139, 250, 0.4);\"\n                onmouseover=\"\
+    this.style.transform='scale(1.05)'; this.style.boxShadow='0 8px 30px rgba(167,\
+    \ 139, 250, 0.6)';\"\n                onmouseout=\"this.style.transform='scale(1)';\
+    \ this.style.boxShadow='0 4px 20px rgba(167, 139, 250, 0.4)';\">\n          \U0001F389\
+    \ CONFIRM!\n        </button>\n        <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"back\"\n                style=\"background: transparent; color: #64748b;\
+    \ border: 1px solid #374151; padding: 16px 32px; border-radius: 12px; font-size:\
+    \ 1em; cursor: pointer; transition: all 0.3s ease;\"\n                onmouseover=\"\
+    this.style.borderColor='#64748b'; this.style.color='#94a3b8';\"\n            \
+    \    onmouseout=\"this.style.borderColor='#374151'; this.style.color='#64748b';\"\
+    >\n          ← Go back\n        </button>\n      </form>\n    </div>\n    \n \
+    \   <!-- Victory message (shown after confetti) -->\n    <div id=\"victory-message\"\
+    >\n      <div style=\"font-size: 5em; margin-bottom: 20px;\">\U0001F38A</div>\n\
+    \      <h1 style=\"color: #86efac; font-size: 2.5em; margin: 0 0 12px 0;\">GLORIOUS!</h1>\n\
+    \      <p style=\"color: #a78bfa; font-size: 1.2em;\">The spirits celebrate your\
+    \ courage!</p>\n    </div>\n    \n  </div>\n  \n  <script>\n    function triggerConfetti()\
+    \ {\n      const container = document.getElementById('confetti-container');\n\
+    \      const colors = ['#a78bfa', '#22c55e', '#00e5ff', '#f472b6', '#fbbf24',\
+    \ '#ef4444'];\n      \n      // Create 150 confetti pieces\n      for (let i =\
+    \ 0; i < 150; i++) {\n        setTimeout(() => {\n          const confetti = document.createElement('div');\n\
+    \          confetti.className = 'confetti';\n          confetti.style.left = Math.random()\
+    \ * 100 + 'vw';\n          confetti.style.backgroundColor = colors[Math.floor(Math.random()\
+    \ * colors.length)];\n          confetti.style.animationDuration = (Math.random()\
+    \ * 3 + 2) + 's';\n          confetti.style.animationDelay = (Math.random() *\
+    \ 0.5) + 's';\n          confetti.style.borderRadius = Math.random() > 0.5 ? '50%'\
+    \ : '0';\n          confetti.style.width = (Math.random() * 10 + 5) + 'px';\n\
+    \          confetti.style.height = (Math.random() * 10 + 5) + 'px';\n        \
+    \  container.appendChild(confetti);\n          \n          // Remove after animation\n\
+    \          setTimeout(() => confetti.remove(), 5000);\n        }, i * 20);\n \
+    \     }\n      \n      // Animate the ghost across screen\n      const ghost =\
+    \ document.getElementById('celebration-ghost');\n      ghost.style.opacity = '1';\n\
+    \      ghost.style.left = '110vw';\n      ghost.style.top = '30%';\n      ghost.style.animation\
+    \ = 'ghostCelebrate 0.5s ease-in-out infinite';\n      \n      // Show victory\
+    \ message after delay\n      setTimeout(() => {\n        document.getElementById('confirm-section').style.opacity\
+    \ = '0';\n        setTimeout(() => {\n          document.getElementById('confirm-section').style.display\
+    \ = 'none';\n          document.getElementById('victory-message').style.display\
+    \ = 'block';\n        }, 500);\n      }, 1000);\n    }\n  </script>\n  \n</div>"
+  handoffs:
+  - the_question
+  - celebration_complete
+- name: sad_ghost
+  hitl: "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content:\
+    \ center; background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0f 70%);\
+    \ font-family: system-ui, -apple-system, sans-serif; padding: 20px; position:\
+    \ relative; overflow: hidden;\">\n  \n  <!-- Floating sad particles -->\n  <div\
+    \ class=\"particle\" style=\"position: fixed; top: 10%; left: 20%; font-size:\
+    \ 1.5em; opacity: 0.3; animation: drift 8s ease-in-out infinite;\">\U0001F4A7\
+    </div>\n  <div class=\"particle\" style=\"position: fixed; top: 30%; right: 25%;\
+    \ font-size: 1.2em; opacity: 0.2; animation: drift 10s ease-in-out infinite reverse;\"\
+    >\U0001F4A7</div>\n  <div class=\"particle\" style=\"position: fixed; bottom:\
+    \ 20%; left: 15%; font-size: 1em; opacity: 0.25; animation: drift 7s ease-in-out\
+    \ infinite;\">\U0001F319</div>\n  \n  <style>\n    @keyframes drift {\n      0%,\
+    \ 100% { transform: translate(0, 0) rotate(0deg); }\n      25% { transform: translate(10px,\
+    \ -15px) rotate(5deg); }\n      50% { transform: translate(-5px, -25px) rotate(-3deg);\
+    \ }\n      75% { transform: translate(-15px, -10px) rotate(3deg); }\n    }\n \
+    \   @keyframes sadBob {\n      0%, 100% { transform: translateY(0) rotate(-3deg);\
+    \ }\n      50% { transform: translateY(10px) rotate(3deg); }\n    }\n    @keyframes\
+    \ fadeInUp {\n      0% { opacity: 0; transform: translateY(20px); }\n      100%\
+    \ { opacity: 1; transform: translateY(0); }\n    }\n    @keyframes tear {\n  \
+    \    0% { opacity: 0; transform: translateY(0); }\n      50% { opacity: 1; }\n\
+    \      100% { opacity: 0; transform: translateY(30px); }\n    }\n    .tear-drop\
+    \ {\n      position: absolute;\n      font-size: 0.5em;\n      animation: tear\
+    \ 2s ease-in-out infinite;\n    }\n  </style>\n  \n  <div style=\"text-align:\
+    \ center; max-width: 500px; animation: fadeInUp 0.8s ease-out;\">\n    \n    <!--\
+    \ Sad ghost with tears -->\n    <div style=\"position: relative; display: inline-block;\
+    \ margin-bottom: 20px;\">\n      <div style=\"font-size: 7em; animation: sadBob\
+    \ 4s ease-in-out infinite; filter: grayscale(20%); opacity: 0.9;\">\U0001F47B\
+    </div>\n      <span class=\"tear-drop\" style=\"top: 35%; left: 25%; animation-delay:\
+    \ 0s;\">\U0001F4A7</span>\n      <span class=\"tear-drop\" style=\"top: 35%; right:\
+    \ 25%; animation-delay: 1s;\">\U0001F4A7</span>\n    </div>\n    \n    <!-- Sad\
+    \ message -->\n    <h1 style=\"color: #94a3b8; font-size: 2em; margin: 0 0 12px\
+    \ 0; font-weight: 300;\">The spirit is disappointed...</h1>\n    <p style=\"color:\
+    \ #475569; font-size: 1.1em; margin: 0 0 12px 0; line-height: 1.6;\">You chose\
+    \ the path of shadows.<br>The ghost weeps for what could have been.</p>\n    <p\
+    \ style=\"color: #374151; font-size: 0.9em; margin: 0 0 40px 0; font-style: italic;\"\
+    >\"Why... why would you refuse?\" \U0001F47B</p>\n    \n    <!-- Buttons -->\n\
+    \    <form hx-post=\"/api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"\
+    json-enc\" style=\"display: flex; gap: 16px; justify-content: center; flex-wrap:\
+    \ wrap;\">\n      <button type=\"submit\" name=\"response[action]\" value=\"change_mind\"\
+    \n              style=\"background: linear-gradient(135deg, #22c55e 0%, #16a34a\
+    \ 100%); color: white; border: none; padding: 16px 32px; border-radius: 12px;\
+    \ font-size: 1.1em; font-weight: 600; cursor: pointer; transition: all 0.3s ease;\
+    \ box-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);\"\n              onmouseover=\"\
+    this.style.transform='scale(1.05)'; this.style.boxShadow='0 8px 30px rgba(34,\
+    \ 197, 94, 0.5)';\"\n              onmouseout=\"this.style.transform='scale(1)';\
+    \ this.style.boxShadow='0 4px 20px rgba(34, 197, 94, 0.3)';\">\n        \U0001F49A\
+    \ Change my mind!\n      </button>\n      <button type=\"submit\" name=\"response[action]\"\
+    \ value=\"stay_no\"\n              style=\"background: transparent; color: #64748b;\
+    \ border: 1px solid #374151; padding: 16px 32px; border-radius: 12px; font-size:\
+    \ 1em; cursor: pointer; transition: all 0.3s ease;\"\n              onmouseover=\"\
+    this.style.borderColor='#ef4444'; this.style.color='#ef4444';\"\n            \
+    \  onmouseout=\"this.style.borderColor='#374151'; this.style.color='#64748b';\"\
+    >\n        \U0001F614 I stand by my choice\n      </button>\n    </form>\n   \
+    \ \n    <!-- Eerie footer -->\n    <p style=\"color: #1f2937; font-size: 0.75em;\
+    \ margin-top: 60px;\">The shadows grow longer...</p>\n    \n  </div>\n</div>"
+  handoffs:
+  - the_question
+  - darkness_ending
+- name: celebration_complete
+  hitl: "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content:\
+    \ center; background: radial-gradient(ellipse at center, #1a2e1a 0%, #0f1a0f 70%);\
+    \ font-family: system-ui, -apple-system, sans-serif; padding: 20px; position:\
+    \ relative; overflow: hidden;\">\n  \n  <!-- Permanent confetti rain -->\n  <div\
+    \ id=\"celebration-confetti\" style=\"position: fixed; top: 0; left: 0; width:\
+    \ 100%; height: 100%; pointer-events: none;\"></div>\n  \n  <!-- Happy ghosts\
+    \ -->\n  <div style=\"position: fixed; top: 15%; left: 10%; font-size: 4em; animation:\
+    \ happyFloat 4s ease-in-out infinite;\">\U0001F47B</div>\n  <div style=\"position:\
+    \ fixed; top: 25%; right: 12%; font-size: 3em; animation: happyFloat 5s ease-in-out\
+    \ infinite reverse;\">\U0001F47B</div>\n  <div style=\"position: fixed; bottom:\
+    \ 20%; left: 20%; font-size: 3.5em; animation: happyFloat 6s ease-in-out infinite;\"\
+    >\U0001F47B</div>\n  \n  <style>\n    @keyframes happyFloat {\n      0%, 100%\
+    \ { transform: translateY(0) rotate(-10deg) scale(1); }\n      50% { transform:\
+    \ translateY(-30px) rotate(10deg) scale(1.1); }\n    }\n    @keyframes sparkleRotate\
+    \ {\n      0% { transform: rotate(0deg); }\n      100% { transform: rotate(360deg);\
+    \ }\n    }\n    @keyframes rainbowPulse {\n      0% { filter: hue-rotate(0deg);\
+    \ }\n      100% { filter: hue-rotate(360deg); }\n    }\n    @keyframes confettiFall\
+    \ {\n      0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }\n  \
+    \    100% { transform: translateY(100vh) rotate(720deg); opacity: 0.5; }\n   \
+    \ }\n    .celebration-confetti {\n      position: absolute;\n      animation:\
+    \ confettiFall linear infinite;\n    }\n  </style>\n  \n  <div style=\"text-align:\
+    \ center; max-width: 600px; z-index: 10;\">\n    \n    <!-- Victory crown -->\n\
+    \    <div style=\"font-size: 6em; margin-bottom: 10px; animation: sparkleRotate\
+    \ 10s linear infinite;\">✨</div>\n    <div style=\"font-size: 4em; margin-bottom:\
+    \ 20px; animation: rainbowPulse 3s linear infinite;\">\U0001F389\U0001F3C6\U0001F389\
+    </div>\n    \n    <!-- Victory text -->\n    <h1 style=\"color: #86efac; font-size:\
+    \ 3em; margin: 0 0 16px 0; font-weight: 600; text-shadow: 0 0 30px rgba(134, 239,\
+    \ 172, 0.5);\">GLORIOUS VICTORY!</h1>\n    <p style=\"color: #a78bfa; font-size:\
+    \ 1.4em; margin: 0 0 12px 0;\">The spirits rejoice in your courage!</p>\n    <p\
+    \ style=\"color: #64748b; font-size: 1em; margin: 0 0 40px 0; line-height: 1.6;\"\
+    >You dared to say YES, and the universe rewards your bravery.<br>The ghost is\
+    \ eternally grateful. \U0001F47B\U0001F49A</p>\n    \n    <!-- Stats -->\n   \
+    \ <div style=\"display: flex; gap: 24px; justify-content: center; margin-bottom:\
+    \ 40px;\">\n      <div style=\"background: rgba(134, 239, 172, 0.1); border: 1px\
+    \ solid rgba(134, 239, 172, 0.3); padding: 16px 24px; border-radius: 12px;\">\n\
+    \        <div style=\"font-size: 2em;\">\U0001F49A</div>\n        <div style=\"\
+    color: #86efac; font-size: 0.9em;\">Courage</div>\n      </div>\n      <div style=\"\
+    background: rgba(167, 139, 250, 0.1); border: 1px solid rgba(167, 139, 250, 0.3);\
+    \ padding: 16px 24px; border-radius: 12px;\">\n        <div style=\"font-size:\
+    \ 2em;\">\U0001F47B</div>\n        <div style=\"color: #a78bfa; font-size: 0.9em;\"\
+    >Happy Ghost</div>\n      </div>\n      <div style=\"background: rgba(251, 191,\
+    \ 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); padding: 16px 24px; border-radius:\
+    \ 12px;\">\n        <div style=\"font-size: 2em;\">\U0001F38A</div>\n        <div\
+    \ style=\"color: #fbbf24; font-size: 0.9em;\">Confetti</div>\n      </div>\n \
+    \   </div>\n    \n    <!-- Play again -->\n    <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\">\n      <button type=\"submit\"\
+    \ name=\"response[action]\" value=\"restart\"\n              style=\"background:\
+    \ linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%); color: white; border: none;\
+    \ padding: 18px 48px; border-radius: 16px; font-size: 1.2em; font-weight: 600;\
+    \ cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 30px rgba(167,\
+    \ 139, 250, 0.4);\"\n              onmouseover=\"this.style.transform='scale(1.05)';\
+    \ this.style.boxShadow='0 8px 40px rgba(167, 139, 250, 0.6)';\"\n            \
+    \  onmouseout=\"this.style.transform='scale(1)'; this.style.boxShadow='0 4px 30px\
+    \ rgba(167, 139, 250, 0.4)';\">\n        \U0001F504 Play Again?\n      </button>\n\
+    \    </form>\n    \n    <p style=\"color: #374151; font-size: 0.75em; margin-top:\
+    \ 40px;\">\U0001F31F A magical midnight micro-app \U0001F31F</p>\n    \n  </div>\n\
+    \  \n  <script>\n    // Create continuous confetti\n    const container = document.getElementById('celebration-confetti');\n\
+    \    const colors = ['#a78bfa', '#22c55e', '#00e5ff', '#f472b6', '#fbbf24', '#ef4444',\
+    \ '#86efac'];\n    \n    function createConfetti() {\n      const confetti = document.createElement('div');\n\
+    \      confetti.className = 'celebration-confetti';\n      confetti.style.left\
+    \ = Math.random() * 100 + 'vw';\n      confetti.style.backgroundColor = colors[Math.floor(Math.random()\
+    \ * colors.length)];\n      confetti.style.width = (Math.random() * 8 + 4) + 'px';\n\
+    \      confetti.style.height = (Math.random() * 8 + 4) + 'px';\n      confetti.style.borderRadius\
+    \ = Math.random() > 0.5 ? '50%' : '0';\n      confetti.style.animationDuration\
+    \ = (Math.random() * 4 + 3) + 's';\n      container.appendChild(confetti);\n \
+    \     \n      setTimeout(() => confetti.remove(), 7000);\n    }\n    \n    //\
+    \ Create initial burst\n    for (let i = 0; i < 50; i++) {\n      setTimeout(createConfetti,\
+    \ i * 30);\n    }\n    \n    // Continue creating confetti\n    setInterval(createConfetti,\
+    \ 200);\n  </script>\n  \n</div>"
+  handoffs:
+  - the_question
+- name: darkness_ending
+  hitl: "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content:\
+    \ center; background: radial-gradient(ellipse at center, #0f0f1a 0%, #000000 70%);\
+    \ font-family: system-ui, -apple-system, sans-serif; padding: 20px; position:\
+    \ relative; overflow: hidden;\">\n  \n  <!-- Fading ghosts -->\n  <div style=\"\
+    position: fixed; top: 20%; left: 15%; font-size: 5em; opacity: 0.08; animation:\
+    \ fadeAway 8s ease-in-out infinite;\">\U0001F47B</div>\n  <div style=\"position:\
+    \ fixed; bottom: 30%; right: 20%; font-size: 4em; opacity: 0.05; animation: fadeAway\
+    \ 10s ease-in-out infinite reverse;\">\U0001F47B</div>\n  \n  <!-- Floating embers\
+    \ -->\n  <div style=\"position: fixed; bottom: 10%; left: 30%; font-size: 0.8em;\
+    \ opacity: 0.3; animation: ember 6s ease-in-out infinite;\">\U0001F311</div>\n\
+    \  <div style=\"position: fixed; bottom: 15%; right: 35%; font-size: 0.6em; opacity:\
+    \ 0.2; animation: ember 8s ease-in-out infinite reverse;\">\U0001F311</div>\n\
+    \  \n  <style>\n    @keyframes fadeAway {\n      0%, 100% { opacity: 0.08; transform:\
+    \ scale(1); }\n      50% { opacity: 0.03; transform: scale(0.95); }\n    }\n \
+    \   @keyframes ember {\n      0%, 100% { transform: translateY(0) rotate(0deg);\
+    \ opacity: 0.3; }\n      50% { transform: translateY(-40px) rotate(180deg); opacity:\
+    \ 0.1; }\n    }\n    @keyframes slowPulse {\n      0%, 100% { opacity: 0.6; }\n\
+    \      50% { opacity: 0.3; }\n    }\n    @keyframes gentleDrift {\n      0%, 100%\
+    \ { transform: translateX(0); }\n      50% { transform: translateX(10px); }\n\
+    \    }\n  </style>\n  \n  <div style=\"text-align: center; max-width: 500px; z-index:\
+    \ 10;\">\n    \n    <!-- Fading moon -->\n    <div style=\"font-size: 5em; margin-bottom:\
+    \ 20px; animation: slowPulse 6s ease-in-out infinite; filter: grayscale(50%);\"\
+    >\U0001F311</div>\n    \n    <!-- Somber message -->\n    <h1 style=\"color: #4b5563;\
+    \ font-size: 2.2em; margin: 0 0 16px 0; font-weight: 300;\">Into the shadows...</h1>\n\
+    \    <p style=\"color: #374151; font-size: 1.1em; margin: 0 0 12px 0; line-height:\
+    \ 1.6;\">You chose your path, and the darkness welcomes you.</p>\n    <p style=\"\
+    color: #1f2937; font-size: 0.95em; margin: 0 0 40px 0; font-style: italic; animation:\
+    \ gentleDrift 8s ease-in-out infinite;\">The ghost fades into the void, a single\
+    \ tear frozen in time... \U0001F47B\U0001F4A7</p>\n    \n    <!-- Somber stats\
+    \ -->\n    <div style=\"display: flex; gap: 24px; justify-content: center; margin-bottom:\
+    \ 40px;\">\n      <div style=\"background: rgba(75, 85, 99, 0.1); border: 1px\
+    \ solid rgba(75, 85, 99, 0.2); padding: 16px 24px; border-radius: 12px;\">\n \
+    \       <div style=\"font-size: 2em; filter: grayscale(100%); opacity: 0.5;\"\
+    >\U0001F494</div>\n        <div style=\"color: #4b5563; font-size: 0.85em;\">Chosen</div>\n\
+    \      </div>\n      <div style=\"background: rgba(75, 85, 99, 0.1); border: 1px\
+    \ solid rgba(75, 85, 99, 0.2); padding: 16px 24px; border-radius: 12px;\">\n \
+    \       <div style=\"font-size: 2em; opacity: 0.5;\">\U0001F47B</div>\n      \
+    \  <div style=\"color: #4b5563; font-size: 0.85em;\">Sad Ghost</div>\n      </div>\n\
+    \      <div style=\"background: rgba(75, 85, 99, 0.1); border: 1px solid rgba(75,\
+    \ 85, 99, 0.2); padding: 16px 24px; border-radius: 12px;\">\n        <div style=\"\
+    font-size: 2em; filter: grayscale(100%); opacity: 0.5;\">\U0001F311</div>\n  \
+    \      <div style=\"color: #4b5563; font-size: 0.85em;\">Darkness</div>\n    \
+    \  </div>\n    </div>\n    \n    <!-- Try again -->\n    <form hx-post=\"/api/checkpoints/{{\
+    \ checkpoint_id }}/respond\" hx-ext=\"json-enc\">\n      <button type=\"submit\"\
+    \ name=\"response[action]\" value=\"restart\"\n              style=\"background:\
+    \ linear-gradient(135deg, #374151 0%, #1f2937 100%); color: #9ca3af; border: 1px\
+    \ solid #4b5563; padding: 16px 40px; border-radius: 12px; font-size: 1.1em; font-weight:\
+    \ 500; cursor: pointer; transition: all 0.3s ease;\"\n              onmouseover=\"\
+    this.style.background='linear-gradient(135deg, #4b5563 0%, #374151 100%)'; this.style.color='#e5e7eb';\
+    \ this.style.boxShadow='0 4px 20px rgba(75, 85, 99, 0.3)';\"\n              onmouseout=\"\
+    this.style.background='linear-gradient(135deg, #374151 0%, #1f2937 100%)'; this.style.color='#9ca3af';\
+    \ this.style.boxShadow='none';\">\n        \U0001F504 Perhaps... try again?\n\
+    \      </button>\n    </form>\n    \n    <p style=\"color: #111827; font-size:\
+    \ 0.7em; margin-top: 50px;\">...the void remembers...</p>\n    \n  </div>\n</div>"
+  handoffs:
+  - the_question
+_calliope_metadata:
+  created_at: '2025-12-31T02:02:08.469284'
+  version: 1
