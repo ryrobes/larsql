@@ -6,7 +6,6 @@ import shutil
 import sys
 from pathlib import Path
 from rvbbit import run_cascade
-from rvbbit.event_hooks import EventPublishingHooks
 
 
 SPLASH_DIR = Path(__file__).resolve().parent.parent / "tui_images"
@@ -1043,10 +1042,7 @@ def cmd_run(args):
     print(f"Caller ID: {caller_id}")
     print()
 
-    # Enable event hooks for real-time updates
-    hooks = EventPublishingHooks()
-
-    result = run_cascade(args.config, input_data, session_id, overrides=overrides, hooks=hooks,
+    result = run_cascade(args.config, input_data, session_id, overrides=overrides,
                         caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     print()

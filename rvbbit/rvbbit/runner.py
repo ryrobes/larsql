@@ -227,10 +227,6 @@ class RVBBITRunner:
         self._audible_budget_used = {}  # cell_name -> count of audibles used
         self._audible_lock = threading.Lock()
 
-        # Narrator config (cascade-level, can be overridden per-cell)
-        self.cascade_narrator = self.config.narrator if hasattr(self.config, 'narrator') else None
-        self._narrator_service = None  # Will be initialized in run() if configured
-
         # Auto-context system for intelligent context management
         self._intra_context_builder: Optional[IntraCellContextBuilder] = None
         self._loop_validation_failures: List[Dict] = []  # Track failures for loop compression
@@ -333,55 +329,6 @@ class RVBBITRunner:
                 if not self._heartbeat_running:
                     break
                 time.sleep(1)
-
-    def _start_narrator_service(self, input_data: dict = None):
-        """Start the event-driven narrator service."""
-        from .narrator_service import NarratorService, check_tts_available
-        from .events import get_event_bus
-
-        # Check if TTS is available
-        if not check_tts_available():
-            log_message(self.session_id, "narrator", "Narrator skipped: TTS not configured (missing ELEVENLABS keys)")
-            return
-
-        try:
-            self._narrator_service = NarratorService(
-                config=self.cascade_narrator,
-                session_id=self.session_id,
-                cascade_id=self.config.cascade_id,
-                parent_session_id=self.parent_session_id,
-                cascade_input=input_data,  # Pass original cascade input for template access
-                echo=self.echo,  # Pass echo for polling mode
-            )
-            self._narrator_service.start(get_event_bus())
-            log_message(self.session_id, "narrator", "Narrator service started",
-                       metadata={"on_events": self.cascade_narrator.effective_on_events})
-        except Exception as e:
-            log_message(self.session_id, "narrator_error", f"Failed to start narrator: {e}")
-            self._narrator_service = None
-
-    def _stop_narrator_service(self):
-        """Stop the narrator service."""
-        if self._narrator_service:
-            try:
-                self._narrator_service.stop()
-                log_message(self.session_id, "narrator", "Narrator service stopped")
-            except Exception as e:
-                log_message(self.session_id, "narrator_error", f"Failed to stop narrator: {e}")
-            self._narrator_service = None
-
-    def _publish_event(self, event_type: str, data: dict):
-        """Publish an event to the event bus for narrator and other subscribers."""
-        from .events import get_event_bus, Event
-        from datetime import datetime
-
-        event_bus = get_event_bus()
-        event_bus.publish(Event(
-            type=event_type,
-            session_id=self.session_id,
-            timestamp=datetime.now().isoformat(),
-            data=data
-        ))
 
     def _check_cancellation(self) -> bool:
         """
@@ -3665,8 +3612,6 @@ To call this tool, output a JSON code block:
         def run_single_cascade_candidate(i: int) -> dict:
             """Execute a single cascade candidate. Returns result dict."""
             from .echo import Echo
-            from .events import get_event_bus, Event
-            from datetime import datetime
 
             candidate_trace = candidate_traces[i]
             candidate_session_id = f"{self.session_id}_candidate_{i}"
@@ -3689,22 +3634,6 @@ To call this tool, output a JSON code block:
                 # Don't fail the candidate if session state creation fails
                 import logging
                 logging.getLogger(__name__).debug(f"Could not create session state for cascade candidate: {state_err}")
-
-            # Emit candidate_start event for real-time UI tracking
-            event_bus = get_event_bus()
-            event_bus.publish(Event(
-                type="candidate_start",
-                session_id=self.session_id,
-                timestamp=datetime.now().isoformat(),
-                data={
-                    "cell_name": "_orchestration",
-                    "candidate_index": i,
-                    "trace_id": candidate_trace.id,
-                    "factor": factor,
-                    "cascade_candidate": True,
-                    "sub_session_id": candidate_session_id
-                }
-            ))
 
             try:
                 # Create a new runner for this candidate with candidate_index set
@@ -3738,22 +3667,6 @@ To call this tool, output a JSON code block:
 
                 console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
 
-                # Emit candidate_complete event for real-time UI tracking
-                event_bus.publish(Event(
-                    type="candidate_complete",
-                    session_id=self.session_id,
-                    timestamp=datetime.now().isoformat(),
-                    data={
-                        "cell_name": "_orchestration",
-                        "candidate_index": i,
-                        "trace_id": candidate_trace.id,
-                        "factor": factor,
-                        "cascade_candidate": True,
-                        "sub_session_id": candidate_session_id,
-                        "success": True
-                    }
-                ))
-
                 return {
                     "index": i,
                     "result": final_output,
@@ -3775,23 +3688,6 @@ To call this tool, output a JSON code block:
                     )
                 except Exception:
                     pass  # Don't fail if status update fails
-
-                # Emit candidate_complete event for real-time UI tracking (error case)
-                event_bus.publish(Event(
-                    type="candidate_complete",
-                    session_id=self.session_id,
-                    timestamp=datetime.now().isoformat(),
-                    data={
-                        "cell_name": "_orchestration",
-                        "candidate_index": i,
-                        "trace_id": candidate_trace.id,
-                        "factor": factor,
-                        "cascade_candidate": True,
-                        "sub_session_id": candidate_session_id,
-                        "success": False,
-                        "error": str(e)
-                    }
-                ))
 
                 return {
                     "index": i,
@@ -4307,6 +4203,9 @@ Refinement directive: {reforge_config.honing_prompt}
             # Use parallel execution for independent cells
             result = self._execute_cells_parallel(input_data)
 
+            # Determine final status
+            final_status = "error" if result.get("has_errors") else "completed"
+
             # Hooks
             if result.get("has_errors"):
                 cascade_error = Exception(f"Cascade completed with {len(result['errors'])} error(s)")
@@ -4595,10 +4494,6 @@ Refinement directive: {reforge_config.honing_prompt}
         # Start heartbeat thread
         self._start_heartbeat()
 
-        # Start narrator service if configured (only at depth 0 to avoid nested narrators)
-        if self.cascade_narrator and self.cascade_narrator.enabled and self.depth == 0:
-            self._start_narrator_service(input_data)
-
         try:
             # Update status to running
             try:
@@ -4828,8 +4723,6 @@ Refinement directive: {reforge_config.honing_prompt}
         finally:
             # Always stop heartbeat thread
             self._stop_heartbeat()
-            # Stop narrator service if running
-            self._stop_narrator_service()
             # Close session DuckDB connection (but keep file for replay/debugging)
             # The Studio UI can explicitly cleanup via /api/studio/cleanup-session
             # Or files can be cleaned up via TTL/manual cleanup
@@ -6813,10 +6706,7 @@ Use only numbers 0-100 for scores."""
                     f"{indent}  [yellow]⚡ Filtered {filtered_count} model(s) with insufficient context[/yellow]"
                 )
 
-                # Log filtering event to unified logs and emit event
-                from .events import get_event_bus, Event
-                from datetime import datetime
-
+                # Log filtering event to unified logs
                 filter_event_data = {
                     "cell_name": cell.name,
                     "original_models": list(set(self._assign_models(cell.candidates))),
@@ -6827,15 +6717,6 @@ Use only numbers 0-100 for scores."""
                     "required_tokens": filter_result["required_tokens"],
                     "buffer_factor": filter_result.get("buffer_factor", 1.15)
                 }
-
-                # Emit real-time event for UI observability
-                event_bus = get_event_bus()
-                event_bus.publish(Event(
-                    type="models_filtered",
-                    session_id=self.session_id,
-                    timestamp=datetime.now().isoformat(),
-                    data=filter_event_data
-                ))
 
                 # Log to unified logs for analytics
                 from .unified_logs import log_unified
@@ -7002,24 +6883,6 @@ Use only numbers 0-100 for scores."""
                          (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
                          f" [dim]({candidate_model})[/dim]")
 
-            # Emit candidate_start event for real-time UI tracking
-            from .events import get_event_bus, Event
-            from datetime import datetime
-            event_bus = get_event_bus()
-            event_bus.publish(Event(
-                type="candidate_start",
-                session_id=self.session_id,
-                timestamp=datetime.now().isoformat(),
-                data={
-                    "cell_name": cell.name,
-                    "candidate_index": i,
-                    "trace_id": candidate_trace.id,
-                    "model": candidate_model,
-                    "factor": factor,
-                    "mutation_type": mutation_info['type']
-                }
-            ))
-
             try:
                 # Create isolated runner with SAME session_id (logs go to same session)
                 candidate_runner = RVBBITRunner(
@@ -7083,25 +6946,6 @@ Use only numbers 0-100 for scores."""
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
-                # Create a preview of the result for UI display
-                result_preview = str(result)[:500] if result else None
-
-                # Emit candidate_complete event for real-time UI tracking
-                event_bus.publish(Event(
-                    type="candidate_complete",
-                    session_id=self.session_id,
-                    timestamp=datetime.now().isoformat(),
-                    data={
-                        "cell_name": cell.name,
-                        "candidate_index": i,
-                        "trace_id": candidate_trace.id,
-                        "model": candidate_model,
-                        "factor": factor,
-                        "success": True,
-                        "output": result_preview
-                    }
-                ))
-
                 return {
                     "index": i,
                     "result": result,
@@ -7117,22 +6961,6 @@ Use only numbers 0-100 for scores."""
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
-
-                # Emit candidate_complete event for real-time UI tracking (error case)
-                event_bus.publish(Event(
-                    type="candidate_complete",
-                    session_id=self.session_id,
-                    timestamp=datetime.now().isoformat(),
-                    data={
-                        "cell_name": cell.name,
-                        "candidate_index": i,
-                        "trace_id": candidate_trace.id,
-                        "model": candidate_model,
-                        "factor": factor,
-                        "success": False,
-                        "error": str(e)
-                    }
-                ))
 
                 return {
                     "index": i,
@@ -7860,25 +7688,6 @@ Use only numbers 0-100 for scores."""
         else:
             original_winner_index = winner['index']
             aggregated_indices = set()
-
-        # Emit candidate_winner event for real-time UI tracking
-        from .events import get_event_bus, Event as WinnerEvent
-        from datetime import datetime as dt_winner
-        winner_event_bus = get_event_bus()
-        winner_output = str(winner.get('result', ''))[:500] if winner.get('result') else None
-        winner_event_bus.publish(WinnerEvent(
-            type="candidate_winner",
-            session_id=self.session_id,
-            timestamp=dt_winner.now().isoformat(),
-            data={
-                "cell_name": cell.name,
-                "winner_index": original_winner_index,
-                "is_aggregated": is_aggregated,
-                "aggregated_indices": list(aggregated_indices) if is_aggregated else None,
-                "factor": factor,
-                "output": winner_output
-            }
-        ))
 
         # Compute species hash for prompt evolution tracking (once for all candidates in this cell)
         # NOTE: This should match the species_hash computed at the start of candidates (line 3374)
@@ -9176,8 +8985,8 @@ Refinement directive: {reforge_config.honing_prompt}
             # Console output
             console.print(f"{indent}  [green]✓ Generated {len(saved_paths)} image(s)[/green]")
 
-            # Hook: Cell Complete (this also publishes event via EventPublishingHooks)
-            # Pass result with images so the hook publishes them correctly
+            # Hook: Cell Complete
+            # Pass result with images for hook processing
             self.hooks.on_cell_complete(cell.name, self.session_id, {
                 **result,
                 "cell_type": "image_generation",
@@ -9861,7 +9670,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         Unlike _execute_hitl_cell which blocks for user input, this:
         - Renders the HITL template
-        - Emits an event for the apps UI to display
         - Logs for visibility
         - Does NOT create a checkpoint
         - Does NOT block - execution continues immediately
@@ -9870,7 +9678,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         """
         from .prompts import render_instruction
         from .unified_logs import log_unified
-        from .events import get_event_bus, Event
         from datetime import datetime
 
         indent = "  " * self.depth
@@ -9902,34 +9709,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         except Exception as e:
             logger.warning(f"{indent}Progress display template rendering failed: {e}")
             rendered_html = f"<div class='text-muted-foreground'>Executing {cell.name}...</div>"
-
-        # Build UI spec for the progress display
-        ui_spec = {
-            "layout": "vertical",
-            "title": cell.hitl_title or f"Progress: {cell.name}",
-            "sections": [
-                {"type": "html", "content": rendered_html, "allow_forms": False}
-            ],
-            "_meta": {
-                "type": "progress_display",
-                "blocking": False,
-                "cell_name": cell.name,
-            }
-        }
-
-        # Emit event for apps UI to pick up
-        event_bus = get_event_bus()
-        event_bus.publish(Event(
-            type="progress_display",
-            session_id=self.session_id,
-            timestamp=datetime.now().isoformat(),
-            data={
-                "cell_name": cell.name,
-                "cascade_id": self.config.cascade_id,
-                "ui_spec": ui_spec,
-                "html": rendered_html,
-            }
-        ))
 
         # Log to unified logs (non-blocking, informational)
         log_unified(

@@ -21,7 +21,6 @@ import json
 import uuid
 import threading
 
-from .events import get_event_bus, Event
 from .db_adapter import get_db_adapter
 from .schema import get_schema
 
@@ -163,7 +162,6 @@ class CheckpointManager:
                    If False, use in-memory storage only (for testing).
         """
         self.use_db = use_db
-        self.event_bus = get_event_bus()
 
         # In-memory cache for fast access (keyed by checkpoint_id)
         self._cache: Dict[str, Checkpoint] = {}
@@ -255,27 +253,6 @@ class CheckpointManager:
             self._save_checkpoint(checkpoint)
         else:
             print(f"[Checkpoints] Skipping DB save (use_db=False)")
-
-        # Publish event for UI notification
-        self.event_bus.publish(Event(
-            type="checkpoint_waiting",
-            session_id=session_id,
-            timestamp=now.isoformat(),
-            data={
-                "checkpoint_id": checkpoint_id,
-                "cascade_id": cascade_id,
-                "cell_name": cell_name,
-                "checkpoint_type": checkpoint_type.value,
-                "ui_spec": ui_spec,
-                "preview": cell_output[:1500] if cell_output else None,
-                "timeout_at": timeout_at.isoformat() if timeout_at else None,
-                "num_candidates": len(candidate_outputs) if candidate_outputs else None,
-                # Include candidate data for cross-process checkpoint sharing
-                "candidate_outputs": candidate_outputs,
-                "candidate_metadata": candidate_metadata,
-                "echo_snapshot": echo_snapshot
-            }
-        ))
 
         # Generate summary asynchronously (non-blocking)
         self._generate_summary_async(checkpoint_id, session_id, cell_output)
@@ -437,20 +414,6 @@ class CheckpointManager:
         # Persist
         if self.use_db:
             self._update_checkpoint(checkpoint)
-
-        # Publish event
-        self.event_bus.publish(Event(
-            type="checkpoint_responded",
-            session_id=checkpoint.session_id,
-            timestamp=datetime.utcnow().isoformat(),
-            data={
-                "checkpoint_id": checkpoint_id,
-                "cascade_id": checkpoint.cascade_id,
-                "cell_name": checkpoint.cell_name,
-                "response": response,
-                "winner_index": checkpoint.winner_index
-            }
-        ))
 
         # Call hooks if available (for auto-save etc.)
         try:
@@ -614,17 +577,6 @@ class CheckpointManager:
         if self.use_db:
             self._update_checkpoint(checkpoint)
 
-        # Publish event
-        self.event_bus.publish(Event(
-            type="checkpoint_cancelled",
-            session_id=checkpoint.session_id,
-            timestamp=datetime.utcnow().isoformat(),
-            data={
-                "checkpoint_id": checkpoint_id,
-                "reason": reason
-            }
-        ))
-
         return checkpoint
 
     def timeout_checkpoint(self, checkpoint_id: str, action_taken: str) -> Checkpoint:
@@ -652,17 +604,6 @@ class CheckpointManager:
         # Persist
         if self.use_db:
             self._update_checkpoint(checkpoint)
-
-        # Publish event
-        self.event_bus.publish(Event(
-            type="checkpoint_timeout",
-            session_id=checkpoint.session_id,
-            timestamp=datetime.utcnow().isoformat(),
-            data={
-                "checkpoint_id": checkpoint_id,
-                "action_taken": action_taken
-            }
-        ))
 
         return checkpoint
 

@@ -532,19 +532,6 @@ def signal_audible(session_id):
     try:
         newly_set = signal_audible_for_session(session_id)
 
-        # Publish SSE event to notify the runner
-        try:
-            from rvbbit.events import get_event_bus, Event
-            bus = get_event_bus()
-            bus.publish(Event(
-                type="audible_signal",
-                session_id=session_id,
-                timestamp=datetime.now().isoformat(),
-                data={"newly_set": newly_set}
-            ))
-        except Exception as sse_err:
-            print(f"[AUDIBLE] Warning: Could not publish SSE event: {sse_err}")
-
         return jsonify({
             "status": "signaled",
             "session_id": session_id,

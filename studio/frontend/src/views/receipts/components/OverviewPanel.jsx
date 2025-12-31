@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import KPICard from './KPICard';
 import InsightCard from './InsightCard';
 import CostTrendChart from './CostTrendChart';
@@ -31,7 +32,11 @@ const OverviewPanel = ({
   if (!data) {
     return (
       <div className="overview-panel">
-        <div className="overview-loading">Loading overview data...</div>
+        <VideoLoader
+          size="small"
+          message="Loading overview data..."
+          className="video-loader--inline"
+        />
       </div>
     );
   }

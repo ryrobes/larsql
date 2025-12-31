@@ -10,6 +10,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './CostTrendChart.css';
 
 /**
@@ -89,9 +90,7 @@ const CostTrendChart = ({ data = [], loading = false, granularity = 'daily', onP
   if (loading) {
     return (
       <div className="cost-trend-chart loading">
-        <div className="chart-loading">
-          <Icon icon="mdi:loading" className="spin" width={20} />
-        </div>
+        <VideoLoader size="small" showMessage={false} />
       </div>
     );
   }

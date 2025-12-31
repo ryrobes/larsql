@@ -24,6 +24,9 @@ export { default as GhostMessage } from './GhostMessage';
 // App Preview (for Calliope - renders cascades via App API iframe)
 export { default as AppPreview } from './AppPreview';
 
+// Loading States
+export { default as VideoLoader } from './VideoLoader';
+
 // Hooks
 export { useToast } from '../stores/toastStore';
 export { useModal } from '../stores/modalStore';

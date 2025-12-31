@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
-import { Button, useToast } from '../../components';
+import { Button, useToast, VideoLoader } from '../../components';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import KPICard from '../receipts/components/KPICard';
 import { useCredits } from '../../hooks/useCredits';
@@ -12,6 +12,13 @@ import './ConsoleView.css';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Custom loading overlay component for AG Grid
+const VideoLoadingOverlay = () => (
+  <div className="ag-overlay-loading-center" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <VideoLoader size="small" message="Loading..." />
+  </div>
+);
 
 // Cell renderer components for AG Grid
 const InputBadgeRenderer = (props) => {
@@ -759,6 +766,7 @@ const ConsoleView = () => {
               ensureDomOrder={true}
               animateRows={true}
               loading={loading}
+              loadingOverlayComponent={VideoLoadingOverlay}
               onRowClicked={handleRowClick}
               onFirstDataRendered={onFirstDataRendered}
               rowClass="console-grid-row-clickable"

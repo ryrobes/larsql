@@ -181,9 +181,6 @@ class UnifiedLogger:
                             **cost_data
                         })
 
-                        # Publish cost_update event for real-time UI
-                        self._publish_cost_event(item, cost_data)
-
                 # Batch UPDATE to ClickHouse
                 if updates:
                     try:
@@ -260,39 +257,6 @@ class UnifiedLogger:
 
         # All retries exhausted
         return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
-
-    def _publish_cost_event(self, item: Dict, cost_data: Dict):
-        """Publish cost_update event to event bus for real-time UI updates."""
-        try:
-            from .events import get_event_bus, Event
-
-            cost = cost_data.get("cost")
-            if cost is None:
-                return
-
-            bus = get_event_bus()
-            event_data = {
-                "trace_id": item.get("trace_id"),
-                "request_id": item.get("request_id"),
-                "cost": cost,
-                "tokens_in": cost_data.get("tokens_in", 0),
-                "tokens_out": cost_data.get("tokens_out", 0),
-                "cell_name": item.get("cell_name"),
-                "cascade_id": item.get("cascade_id"),
-                "candidate_index": item.get("candidate_index"),
-                "turn_number": item.get("turn_number"),
-                "model": item.get("model"),
-            }
-
-            bus.publish(Event(
-                type="cost_update",
-                session_id=item.get("session_id", "unknown"),
-                timestamp=datetime.now().isoformat(),
-                data=event_data
-            ))
-        except Exception:
-            # Don't let event publishing errors break cost tracking
-            pass
 
     def log(
         self,

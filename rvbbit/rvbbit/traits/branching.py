@@ -110,7 +110,7 @@ def launch_branch_cascade(
     """
     from ..traits.research_sessions import get_research_session
     from ..runner import run_cascade
-    from ..event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+    from ..event_hooks import ResearchSessionAutoSaveHooks
     import threading
 
     # Load parent session
@@ -273,11 +273,8 @@ def launch_branch_cascade(
             import os
             os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
-            # Combine hooks
-            hooks = CompositeHooks(
-                EventPublishingHooks(),
-                ResearchSessionAutoSaveHooks()
-            )
+            # Use research session hooks
+            hooks = ResearchSessionAutoSaveHooks()
 
             # Create a custom Echo manager to use our pre-populated Echo
             from ..echo import _session_manager

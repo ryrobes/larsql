@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
-import { Button, CheckpointRenderer, GhostMessage, useToast } from '../../components';
+import { Button, CheckpointRenderer, GhostMessage, useToast, VideoLoader } from '../../components';
 import SimpleSidebar from './components/SimpleSidebar';
 import CascadePickerModal from './components/CascadePickerModal';
 import useExplorePolling from './hooks/useExplorePolling';
@@ -226,10 +226,7 @@ const ExploreView = () => {
   // Loading state
   if (isPolling && logs.length === 0) {
     return (
-      <div className="explore-view-loading">
-        <Icon icon="mdi:loading" className="spinning" width="32" />
-        <p>Loading session...</p>
-      </div>
+      <VideoLoader size="large" message="Loading session..." />
     );
   }
 

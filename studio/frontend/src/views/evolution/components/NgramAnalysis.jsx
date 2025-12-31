@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './NgramAnalysis.css';
 
 /**
@@ -117,8 +118,7 @@ const NgramAnalysis = ({ cascadeId, cellName, speciesHash }) => {
   if (loading) {
     return (
       <div className="ngram-loading">
-        <Icon icon="mdi:loading" width="24" className="spin" />
-        <span>Analyzing phrase patterns...</span>
+        <VideoLoader size="small" message="Analyzing phrase patterns..." />
       </div>
     );
   }

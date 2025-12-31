@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './WasteScatterPlot.css';
 
 const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
@@ -238,8 +239,7 @@ const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
   if (loading) {
     return (
       <div className="waste-scatter loading">
-        <Icon icon="mdi:loading" className="spin" width={24} />
-        <span>Loading scatter data...</span>
+        <VideoLoader size="small" message="Loading scatter data..." />
       </div>
     );
   }

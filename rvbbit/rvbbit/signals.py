@@ -43,7 +43,6 @@ import secrets
 import urllib.request
 import urllib.error
 
-from .events import get_event_bus, Event
 
 
 def _utcnow() -> datetime:
@@ -277,7 +276,6 @@ class SignalManager:
             start_server: If True, start the HTTP callback server
         """
         self.use_db = use_db
-        self.event_bus = get_event_bus()
 
         # In-memory tracking for fast access
         self._signals: Dict[str, Signal] = {}
@@ -381,21 +379,6 @@ class SignalManager:
         # Persist to database
         if self.use_db:
             self._save_signal(signal)
-
-        # Publish event
-        self.event_bus.publish(Event(
-            type="signal_waiting",
-            session_id=session_id,
-            timestamp=now.isoformat(),
-            data={
-                "signal_id": signal_id,
-                "signal_name": signal_name,
-                "cascade_id": cascade_id,
-                "cell_name": cell_name,
-                "callback_url": f"http://{self._server_host}:{self._server_port}/",
-                "timeout_at": signal.timeout_at.isoformat() if signal.timeout_at else None
-            }
-        ))
 
         return signal
 
@@ -522,20 +505,6 @@ class SignalManager:
             if signal.callback_host and signal.callback_port:
                 self._send_callback(signal, payload, source)
 
-            # Publish event
-            self.event_bus.publish(Event(
-                type="signal_fired",
-                session_id=signal.session_id,
-                timestamp=_utcnow().isoformat(),
-                data={
-                    "signal_id": signal.signal_id,
-                    "signal_name": signal_name,
-                    "payload": payload,
-                    "source": source,
-                    "cascade_id": signal.cascade_id
-                }
-            ))
-
             fired_signals.append(signal)
             print(f"[Signals] Fired signal '{signal_name}' for session {signal.session_id[:8]}...")
 
@@ -621,13 +590,6 @@ class SignalManager:
 
                 if self.use_db:
                     self._update_signal(signal)
-
-                self.event_bus.publish(Event(
-                    type="signal_cancelled",
-                    session_id=signal.session_id,
-                    timestamp=_utcnow().isoformat(),
-                    data={"signal_id": signal_id, "reason": reason}
-                ))
 
     def get_signal(self, signal_id: str) -> Optional[Signal]:
         """Get a signal by ID."""

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Split from 'react-split';
 import { Icon } from '@iconify/react';
-import { Button, Badge, useToast } from '../../components';
+import { Button, Badge, useToast, VideoLoader } from '../../components';
 import CheckpointRenderer from '../../components/CheckpointRenderer';
 import CheckpointModal from '../../components/CheckpointModal';
 import { ROUTES } from '../../routes.helpers';
@@ -147,10 +147,7 @@ const InterruptsView = () => {
   // Loading state
   if (loading && checkpoints.length === 0) {
     return (
-      <div className="interrupts-view-loading">
-        <Icon icon="mdi:loading" className="spinning" width="32" />
-        <p>Loading checkpoints...</p>
-      </div>
+      <VideoLoader size="large" message="Loading checkpoints..." />
     );
   }
 

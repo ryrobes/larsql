@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './CascadeAggregateView.css';
 
 const CascadeAggregateView = ({ cascadeId }) => {
@@ -34,8 +35,7 @@ const CascadeAggregateView = ({ cascadeId }) => {
   if (loading) {
     return (
       <div className="cascade-aggregate loading">
-        <Icon icon="mdi:loading" className="spin" width={24} />
-        <span>Analyzing {days} days of runs...</span>
+        <VideoLoader size="small" message={`Analyzing ${days} days of runs...`} />
       </div>
     );
   }

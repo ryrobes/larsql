@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import CompressionTimeline from '../../../components/CompressionTimeline';
 import './IntraCellExplorer.css';
 
@@ -142,8 +143,7 @@ const IntraCellExplorer = ({ sessionId }) => {
   if (loading) {
     return (
       <div className="intra-cell-explorer loading">
-        <Icon icon="mdi:loading" className="spin" width={24} />
-        <span>Loading intra-cell data...</span>
+        <VideoLoader size="small" message="Loading intra-cell data..." />
       </div>
     );
   }

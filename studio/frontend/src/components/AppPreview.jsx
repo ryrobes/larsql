@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import VideoLoader from './VideoLoader';
 import './AppPreview.css';
 
 /**
@@ -155,10 +156,11 @@ const AppPreview = ({
 
       <div className="app-preview-content">
         {isLoading && (
-          <div className="app-preview-loading">
-            <Icon icon="mdi:loading" className="spinning" width="24" />
-            <span>Starting app...</span>
-          </div>
+          <VideoLoader
+            size="medium"
+            message="Starting app..."
+            className="video-loader--overlay"
+          />
         )}
 
         {error && !isLoading && (

@@ -3258,81 +3258,6 @@ def get_pareto_frontier(session_id):
         return jsonify({'error': str(e), 'has_pareto': False}), 500
 
 
-@app.route('/api/events/stream')
-def event_stream():
-    """SSE endpoint for real-time cascade updates.
-
-    Checkpoint events are cached for HITL workflows.
-    All other data comes from ClickHouse directly.
-    """
-    try:
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
-
-        from rvbbit.events import get_event_bus
-
-        def generate():
-            #print("[SSE] Client connected")
-            bus = get_event_bus()
-            queue = bus.subscribe()
-            #print("[SSE] Subscribed to event bus")
-
-            connection_msg = json.dumps({'type': 'connected', 'timestamp': datetime.now().isoformat()})
-            yield f"data: {connection_msg}\n\n"
-
-            # Adaptive timeout: fast when active, slow when idle
-            # Reduces CPU from ~80% to near 0% when no cascades running
-            last_event_time = time.time()
-            idle_timeout = 15.0  # Slow poll when idle
-            active_timeout = 1.0  # Fast poll when events flowing
-            heartbeat_interval = 15.0  # Send heartbeat every 15s
-            last_heartbeat = time.time()
-
-            try:
-                while True:
-                    # Use short timeout if we received an event recently (within 10s)
-                    time_since_event = time.time() - last_event_time
-                    timeout = active_timeout if time_since_event < 10.0 else idle_timeout
-
-                    try:
-                        event = queue.get(timeout=timeout)
-                        last_event_time = time.time()
-                        event_type = event.type if hasattr(event, 'type') else 'unknown'
-                        #print(f"[SSE] Event from bus: {event_type}")
-                        event_dict = event.to_dict() if hasattr(event, 'to_dict') else event
-
-                        # Note: No caching needed - CheckpointManager handles state
-
-                        yield f"data: {json.dumps(event_dict, default=str)}\n\n"
-                        last_heartbeat = time.time()  # Event counts as heartbeat
-                    except Empty:
-                        # Send heartbeat if enough time has passed
-                        if time.time() - last_heartbeat >= heartbeat_interval:
-                            yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
-                            last_heartbeat = time.time()
-            except GeneratorExit:
-                print("[SSE] Client disconnected")
-            except Exception as e:
-                print(f"[SSE] Error in generator: {e}")
-                import traceback
-                traceback.print_exc()
-
-        return Response(
-            stream_with_context(generate()),
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',
-                'Connection': 'keep-alive'
-            }
-        )
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-
 def find_cascade_file(cascade_id):
     """Find cascade JSON or YAML file by cascade_id"""
     search_paths = [
@@ -3481,7 +3406,7 @@ def run_cascade():
             cascade_path = os.path.join(RVBBIT_ROOT, cascade_path)
 
         import threading
-        from rvbbit.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        from rvbbit.event_hooks import ResearchSessionAutoSaveHooks
         from rvbbit.session_naming import generate_woodland_id
         from rvbbit.caller_context import build_ui_metadata
 
@@ -3502,11 +3427,8 @@ def run_cascade():
                 # Enable checkpoint system for HITL tools
                 os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
-                # Combine event publishing + auto-save hooks
-                hooks = CompositeHooks(
-                    EventPublishingHooks(),
-                    ResearchSessionAutoSaveHooks()
-                )
+                # Use auto-save hooks for research session tracking
+                hooks = ResearchSessionAutoSaveHooks()
 
                 execute_cascade(cascade_path, inputs, session_id, hooks=hooks,
                               caller_id=caller_id, invocation_metadata=invocation_metadata)
@@ -3535,7 +3457,6 @@ def run_cascade():
                         SessionStatus,
                         SessionState
                     )
-                    from rvbbit.events import get_event_bus, Event
                     from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
@@ -3559,21 +3480,6 @@ def run_cascade():
                         error_message=str(e),
                         error_cell="initialization"
                     )
-
-                    # Publish cascade_error event for UI
-                    event_bus = get_event_bus()
-                    event_bus.publish(Event(
-                        type="cascade_error",
-                        session_id=session_id,
-                        timestamp=now.isoformat(),
-                        data={
-                            "cascade_id": cascade_id,
-                            "error": str(e),
-                            "error_type": type(e).__name__,
-                            "traceback": error_tb,
-                            "cell": "initialization"
-                        }
-                    ))
 
                     # Log to unified logs for queryability
                     log_unified(
@@ -3657,7 +3563,7 @@ def playground_run_from():
         from rvbbit import run_cascade as execute_cascade
         from rvbbit.echo import Echo, _session_manager
         from rvbbit.loaders import load_config_string
-        from rvbbit.event_hooks import EventPublishingHooks, CompositeHooks, ResearchSessionAutoSaveHooks
+        from rvbbit.event_hooks import ResearchSessionAutoSaveHooks
         import uuid
         import shutil
         import threading
@@ -3748,10 +3654,7 @@ def playground_run_from():
             try:
                 os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
 
-                hooks = CompositeHooks(
-                    EventPublishingHooks(),
-                    ResearchSessionAutoSaveHooks()
-                )
+                hooks = ResearchSessionAutoSaveHooks()
 
                 print(f"[Playground RunFrom] Starting cascade from {node_id}")
                 execute_cascade(cascade_path, inputs, new_session_id, hooks=hooks)
@@ -3767,13 +3670,12 @@ def playground_run_from():
                 # Try to extract cascade_id from the config
                 cascade_id_for_error = cascade_data.get('cascade_id', 'unknown') if cascade_data else 'unknown'
 
-                # Update session state to ERROR and publish event
+                # Update session state to ERROR
                 try:
                     from rvbbit.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from rvbbit.events import get_event_bus, Event
                     from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
@@ -3796,22 +3698,6 @@ def playground_run_from():
                         error_message=str(e),
                         error_cell="initialization"
                     )
-
-                    # Publish cascade_error event for UI
-                    event_bus = get_event_bus()
-                    event_bus.publish(Event(
-                        type="cascade_error",
-                        session_id=new_session_id,
-                        timestamp=now.isoformat(),
-                        data={
-                            "cascade_id": cascade_id_for_error,
-                            "error": str(e),
-                            "error_type": type(e).__name__,
-                            "traceback": error_tb,
-                            "cell": "initialization",
-                            "run_from": node_id
-                        }
-                    ))
 
                     # Log to unified logs
                     log_unified(
@@ -5649,24 +5535,6 @@ def transcribe_voice():
             language=language,
             session_id=session_id,
         )
-
-        # Emit SSE event for real-time updates
-        try:
-            from rvbbit.events import get_event_bus, Event
-            bus = get_event_bus()
-            bus.publish(Event(
-                type="transcription_complete",
-                session_id=result.get('session_id', session_id or 'unknown'),
-                timestamp=datetime.now().isoformat(),
-                data={
-                    "text": result.get('text', ''),
-                    "language": result.get('language', 'auto'),
-                    "model": result.get('model', 'unknown'),
-                    "tokens": result.get('tokens', 0),
-                }
-            ))
-        except Exception:
-            pass  # Don't fail if event publishing fails
 
         return jsonify({
             'text': result.get('text', ''),

@@ -9,6 +9,7 @@ import {
   Cell
 } from 'recharts';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './ContextValueChart.css';
 
 /**
@@ -78,9 +79,7 @@ const ContextValueChart = ({ data = null, loading = false }) => {
           <Icon icon="mdi:target" width={14} />
           <span className="chart-title">Context Value</span>
         </div>
-        <div className="chart-loading">
-          <Icon icon="mdi:loading" className="spin" width={20} />
-        </div>
+        <VideoLoader size="small" showMessage={false} />
       </div>
     );
   }

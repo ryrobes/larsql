@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
-import { Button } from '../../components';
+import { Button, VideoLoader } from '../../components';
 import useStudioCascadeStore from '../../studio/stores/studioCascadeStore';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import CascadeSpecGraph from '../../components/CascadeSpecGraph';
@@ -13,6 +13,13 @@ import './CascadesView.css';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Custom loading overlay component for AG Grid
+const VideoLoadingOverlay = () => (
+  <div className="ag-overlay-loading-center" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <VideoLoader size="small" message="Loading..." />
+  </div>
+);
 
 // Cell renderers for cascade analytics
 const SuccessRateRenderer = (props) => {
@@ -1189,6 +1196,7 @@ const CascadesView = () => {
                   ensureDomOrder={true}
                   animateRows={true}
                   loading={loading}
+                  loadingOverlayComponent={VideoLoadingOverlay}
                   onRowClicked={handleRowClick}
                   onFirstDataRendered={onFirstDataRendered}
                   rowClass="cascades-grid-row-clickable"

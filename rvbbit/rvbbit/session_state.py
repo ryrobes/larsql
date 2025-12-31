@@ -27,7 +27,6 @@ import json
 import threading
 import time
 
-from .events import get_event_bus, Event
 
 
 def _utcnow() -> datetime:
@@ -160,7 +159,6 @@ class SessionStateManager:
             use_db: If True, persist to ClickHouse. If False, use in-memory only (testing).
         """
         self.use_db = use_db
-        self.event_bus = get_event_bus()
 
         # In-memory cache for fast access
         self._cache: Dict[str, SessionState] = {}
@@ -243,18 +241,6 @@ class SessionStateManager:
         if self.use_db:
             self._save_state(state)
 
-        # Publish event
-        self.event_bus.publish(Event(
-            type="session_started",
-            session_id=session_id,
-            timestamp=now.isoformat(),
-            data={
-                "cascade_id": cascade_id,
-                "parent_session_id": parent_session_id,
-                "status": state.status.value
-            }
-        ))
-
         return state
 
     def update_status(
@@ -314,18 +300,6 @@ class SessionStateManager:
         if self.use_db:
             self._save_state(state)
 
-        # Publish event
-        self.event_bus.publish(Event(
-            type="session_status_changed",
-            session_id=session_id,
-            timestamp=state.updated_at.isoformat(),
-            data={
-                "status": status.value,
-                "current_cell": current_cell,
-                "cascade_id": state.cascade_id
-            }
-        ))
-
     def set_blocked(
         self,
         session_id: str,
@@ -361,20 +335,6 @@ class SessionStateManager:
         if self.use_db:
             self._save_state(state)
 
-        # Publish event
-        self.event_bus.publish(Event(
-            type="session_blocked",
-            session_id=session_id,
-            timestamp=state.updated_at.isoformat(),
-            data={
-                "blocked_type": blocked_type.value,
-                "blocked_on": blocked_on,
-                "blocked_description": description,
-                "timeout_at": timeout_at.isoformat() if timeout_at else None,
-                "cascade_id": state.cascade_id
-            }
-        ))
-
     def set_unblocked(self, session_id: str):
         """
         Clear blocked state and return to running.
@@ -383,14 +343,6 @@ class SessionStateManager:
             session_id: Session to unblock
         """
         self.update_status(session_id, SessionStatus.RUNNING)
-
-        # Publish event
-        self.event_bus.publish(Event(
-            type="session_unblocked",
-            session_id=session_id,
-            timestamp=_utcnow().isoformat(),
-            data={}
-        ))
 
     def heartbeat(self, session_id: str):
         """
@@ -442,14 +394,6 @@ class SessionStateManager:
 
         if self.use_db:
             self._save_state(state)
-
-        # Publish event
-        self.event_bus.publish(Event(
-            type="session_cancel_requested",
-            session_id=session_id,
-            timestamp=_utcnow().isoformat(),
-            data={"reason": reason}
-        ))
 
     # =========================================================================
     # Read Operations

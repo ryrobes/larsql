@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
-import { Button } from '../../components';
+import { Button, VideoLoader } from '../../components';
 import OverviewPanel from './components/OverviewPanel';
 import AlertsPanel from './components/AlertsPanel';
 import ContextBreakdownPanel from './components/ContextBreakdownPanel';
@@ -322,10 +322,11 @@ const ReceiptsView = () => {
         )}
 
         {loading && !overviewData && (
-          <div className="receipts-loading">
-            <Icon icon="mdi:loading" className="spin" width={24} />
-            <p>Loading receipts data...</p>
-          </div>
+          <VideoLoader
+            size="medium"
+            message="Loading receipts data..."
+            className="video-loader--flex"
+          />
         )}
 
         {!loading && !error && (

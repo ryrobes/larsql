@@ -12,6 +12,7 @@ import ReactFlow, {
 } from 'reactflow';
 import dagre from 'dagre';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import 'reactflow/dist/style.css';
 import './PromptPhylogeny.css';
 
@@ -256,8 +257,7 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
   if (loading) {
     return (
       <div className="phylogeny-loading">
-        <div className="spinner"></div>
-        <p>Loading prompt evolution...</p>
+        <VideoLoader size="medium" message="Loading prompt evolution..." />
       </div>
     );
   }

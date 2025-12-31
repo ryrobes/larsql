@@ -10,12 +10,12 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 // Layout component
 import AppLayout from './shell/AppLayout';
 
-// Loading fallback
+// Components
+import { VideoLoader } from './components';
+
+// Loading fallback - uses random video from /public/videos
 const ViewLoading = () => (
-  <div className="view-loading">
-    <div className="view-loading-spinner" />
-    <p>Loading...</p>
-  </div>
+  <VideoLoader size="large" message="Loading..." />
 );
 
 // Lazy load view components for code splitting

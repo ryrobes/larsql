@@ -1,4 +1,5 @@
 cascade_id: seed_dream_test2
+max_parallel: 3
 cells:
 - instructions: 'Please rewrite and enhance this image prompt, be vivid with lots
     of rich details, but staying true to the original intent. Please return ONLY the
@@ -47,7 +48,7 @@ cells:
     height: 1024
     width: 1024
   instructions: '{{ outputs.llm_phase }}'
-  model: mistralai/pixtral-12b
+  model: sourceful/riverflow-v2-max-preview
   # context:
   #   from:
   #   - cell: llm_phase

@@ -1,5 +1,6 @@
 import React, { useState, memo } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './TopExpensiveList.css';
 
 /**
@@ -56,9 +57,7 @@ const TopExpensiveList = ({
             Top Expensive Runs
           </span>
         </div>
-        <div className="list-loading">
-          <Icon icon="mdi:loading" className="spin" width={24} />
-        </div>
+        <VideoLoader size="small" showMessage={false} />
       </div>
     );
   }

@@ -210,55 +210,6 @@ class Echo:
                 species_hash=species_hash,  # Pass species hash for prompt evolution tracking
             )
 
-            # Emit SSE events for candidate-related entries so LiveStore can receive real-time data
-            # This is critical for real-time UI updates during cascade execution
-            if node_type == "candidate_attempt" and candidate_index is not None:
-                try:
-                    from .events import get_event_bus, Event
-                    from datetime import datetime
-                    bus = get_event_bus()
-                    bus.publish(Event(
-                        type="candidate_attempt",
-                        session_id=self.session_id,
-                        timestamp=datetime.now().isoformat(),
-                        data={
-                            "trace_id": trace_id,
-                            "parent_id": parent_id,
-                            "cell_name": cell_name,
-                            "cascade_id": cascade_id,
-                            "candidate_index": candidate_index,
-                            "is_winner": is_winner,
-                            "reforge_step": reforge_step,
-                            "content": str(content)[:500] if content else None,
-                            "model": model,
-                        }
-                    ))
-                except Exception:
-                    pass  # Don't fail if event emission has issues
-
-            # Also emit evaluator entries for real-time eval reasoning display
-            if node_type == "evaluator":
-                try:
-                    from .events import get_event_bus, Event
-                    from datetime import datetime
-                    bus = get_event_bus()
-                    bus.publish(Event(
-                        type="evaluator",
-                        session_id=self.session_id,
-                        timestamp=datetime.now().isoformat(),
-                        data={
-                            "trace_id": trace_id,
-                            "parent_id": parent_id,
-                            "cell_name": cell_name,
-                            "cascade_id": cascade_id,
-                            "reforge_step": reforge_step,
-                            "content": str(content)[:1000] if content else None,
-                            "model": model,
-                        }
-                    ))
-                except Exception:
-                    pass  # Don't fail if event emission has issues
-
             # Queue context card generation for auto-context system
             # Only for substantive messages that would be useful for context selection
             if self._should_generate_context_card(node_type, role):

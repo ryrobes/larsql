@@ -10,6 +10,7 @@ import {
   ComposedChart
 } from 'recharts';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './RunsActivityChart.css';
 
 /**
@@ -97,9 +98,7 @@ const RunsActivityChart = ({ data = [], loading = false, granularity = 'daily' }
           <Icon icon="mdi:chart-line-variant" width={14} />
           <span className="chart-title">Runs & Efficiency</span>
         </div>
-        <div className="chart-loading">
-          <Icon icon="mdi:loading" className="spin" width={20} />
-        </div>
+        <VideoLoader size="small" showMessage={false} />
       </div>
     );
   }

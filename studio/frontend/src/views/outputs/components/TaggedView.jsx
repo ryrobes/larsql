@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './TaggedView.css';
 
 /**
@@ -75,10 +76,11 @@ const TaggedView = ({ selectedTags = [], onCellClick }) => {
 
   if (loading) {
     return (
-      <div className="tagged-view-loading">
-        <Icon icon="mdi:loading" className="spinning" width="32" />
-        <span>Loading tagged outputs...</span>
-      </div>
+      <VideoLoader
+        size="medium"
+        message="Loading tagged outputs..."
+        className="video-loader--flex"
+      />
     );
   }
 

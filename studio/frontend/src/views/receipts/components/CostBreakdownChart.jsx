@@ -13,6 +13,7 @@ import {
   Legend
 } from 'recharts';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './CostBreakdownChart.css';
 
 // Color palette for charts
@@ -171,9 +172,7 @@ const CostBreakdownChart = ({
             {title}
           </span>
         </div>
-        <div className="chart-loading">
-          <Icon icon="mdi:loading" className="spin" width={20} />
-        </div>
+        <VideoLoader size="small" showMessage={false} />
       </div>
     );
   }

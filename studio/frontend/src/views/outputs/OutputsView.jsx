@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../components';
 import FilterPanel from './components/FilterPanel';
 import CascadeSwimlane from './components/CascadeSwimlane';
 import CellDetailModal from './components/CellDetailModal';
@@ -255,10 +256,7 @@ const OutputsView = () => {
   if (loading && cascades.length === 0) {
     return (
       <div className="outputs-view">
-        <div className="outputs-loading">
-          <Icon icon="mdi:loading" className="spinning" width="32" />
-          <p>Loading outputs...</p>
-        </div>
+        <VideoLoader size="medium" message="Loading outputs..." className="video-loader--flex" />
       </div>
     );
   }

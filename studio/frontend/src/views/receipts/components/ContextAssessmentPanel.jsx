@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import InterCellExplorer from './InterCellExplorer';
 import IntraCellExplorer from './IntraCellExplorer';
 import WasteScatterPlot from './WasteScatterPlot';
@@ -193,10 +194,11 @@ const ContextAssessmentPanel = ({ timeRange }) => {
   if (loading) {
     return (
       <div className="context-assessment-panel">
-        <div className="assessment-loading">
-          <Icon icon="mdi:loading" className="spin" width={24} />
-          <span>Loading assessment data...</span>
-        </div>
+        <VideoLoader
+          size="medium"
+          message="Loading assessment data..."
+          className="video-loader--flex"
+        />
       </div>
     );
   }

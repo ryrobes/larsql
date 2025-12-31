@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Icon } from '@iconify/react';
+import { VideoLoader } from '../../../components';
 import './InterCellExplorer.css';
 
 const InterCellExplorer = ({ sessionId }) => {
@@ -119,8 +120,7 @@ const InterCellExplorer = ({ sessionId }) => {
   if (loading) {
     return (
       <div className="inter-cell-explorer loading">
-        <Icon icon="mdi:loading" className="spin" width={24} />
-        <span>Loading budget simulation data...</span>
+        <VideoLoader size="small" message="Loading budget simulation..." />
       </div>
     );
   }

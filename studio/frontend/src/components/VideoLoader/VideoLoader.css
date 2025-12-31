@@ -1,0 +1,99 @@
+/* ============================================
+   VIDEO LOADER - Animated video loading states
+   ============================================ */
+
+.video-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg-primary, #0a0a0a);
+}
+
+.video-loader__container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-loader__video {
+  display: block;
+  object-fit: contain;
+}
+
+/* ============================================
+   SIZE VARIANTS
+   ============================================ */
+
+/* Large - Full color 800px (for full-screen/route loading) */
+.video-loader--large {
+  min-height: 100vh;
+}
+
+.video-loader--large .video-loader__container {
+  max-width: 800px;
+  width: 60%;
+  min-width: 300px;
+}
+
+.video-loader--large .video-loader__video {
+  width: 100%;
+  height: auto;
+}
+
+/* Medium - Grayscale 340px (for panels/overlays) */
+.video-loader--medium {
+  min-height: 200px;
+}
+
+.video-loader--medium .video-loader__container {
+  max-width: 340px;
+  width: 80%;
+}
+
+.video-loader--medium .video-loader__video {
+  width: 100%;
+  height: auto;
+  opacity: 0.85;
+}
+
+/* Small - Grayscale 200px (for compact areas) */
+.video-loader--small {
+  min-height: 120px;
+}
+
+.video-loader--small .video-loader__container {
+  max-width: 200px;
+  width: 70%;
+}
+
+.video-loader--small .video-loader__video {
+  width: 100%;
+  height: auto;
+  opacity: 0.75;
+}
+
+/* ============================================
+   CONTEXT-SPECIFIC MODIFIERS
+   ============================================ */
+
+/* For overlay contexts (like AppPreview) */
+.video-loader--overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 10;
+}
+
+/* For inline contexts (no min-height) */
+.video-loader--inline {
+  min-height: unset;
+  padding: 24px;
+}
+
+/* For flex containers that need to fill space */
+.video-loader--flex {
+  flex: 1;
+}

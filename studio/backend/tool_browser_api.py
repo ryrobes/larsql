@@ -127,13 +127,12 @@ def execute_tool():
                 print(f"Error executing tool {tool_name}: {str(e)}")
                 print(error_tb)
 
-                # Update session state to ERROR and publish event
+                # Update session state to ERROR
                 try:
                     from rvbbit.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from rvbbit.events import get_event_bus, Event
                     from rvbbit.unified_logs import log_unified
                     from datetime import datetime, timezone
 
@@ -156,22 +155,6 @@ def execute_tool():
                         error_message=str(e),
                         error_cell="initialization"
                     )
-
-                    # Publish cascade_error event for UI
-                    event_bus = get_event_bus()
-                    event_bus.publish(Event(
-                        type="cascade_error",
-                        session_id=session_id,
-                        timestamp=now.isoformat(),
-                        data={
-                            "cascade_id": f"tool_browser:{tool_name}",
-                            "error": str(e),
-                            "error_type": type(e).__name__,
-                            "traceback": error_tb,
-                            "cell": "initialization",
-                            "tool_name": tool_name
-                        }
-                    ))
 
                     # Log to unified logs
                     log_unified(
