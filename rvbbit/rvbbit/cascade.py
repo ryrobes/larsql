@@ -1138,24 +1138,40 @@ class CellConfig(BaseModel):
             # hitl is just an alias - copy to htmx
             object.__setattr__(self, 'htmx', self.hitl)
 
-        # Must have exactly one of: tool, instructions, for_each_row, or htmx/hitl
+        # Validate execution type combinations
+        # A cell must have exactly one primary execution type: tool, instructions, or for_each_row
+        # EXCEPTION: htmx/hitl can be combined with tool or instructions as a "progress display"
+        #   - If htmx/hitl is the ONLY execution type: it's a blocking HITL screen
+        #   - If htmx/hitl is combined with tool/instructions: it's a progress display (non-blocking)
         has_tool = bool(self.tool)
         has_instructions = bool(self.instructions)
         has_for_each_row = bool(self.for_each_row)
         has_screen = bool(self.htmx or self.hitl)
 
-        execution_types = sum([has_tool, has_instructions, has_for_each_row, has_screen])
+        # Count primary execution types (not including htmx which can be a modifier)
+        primary_types = sum([has_tool, has_instructions, has_for_each_row])
 
-        if execution_types == 0:
+        # Pure screen (no tool/instructions) is valid
+        if has_screen and primary_types == 0:
+            return  # Valid: blocking HITL screen
+
+        # Tool/instructions/for_each_row with optional screen is valid
+        if primary_types == 1:
+            return  # Valid: with or without progress display
+
+        # No execution type at all
+        if primary_types == 0 and not has_screen:
             raise ValueError(
                 f"Cell '{self.name}' must have exactly one of: "
                 "'tool' (deterministic), 'instructions' (LLM), 'for_each_row' (SQL mapping), or 'htmx' (screen)"
             )
 
-        if execution_types > 1:
+        # Multiple primary types (tool + instructions, etc) is invalid
+        if primary_types > 1:
             raise ValueError(
-                f"Cell '{self.name}' can only have ONE of: "
-                "'tool', 'instructions', 'for_each_row', or 'htmx'"
+                f"Cell '{self.name}' can only have ONE primary execution type: "
+                "'tool', 'instructions', or 'for_each_row'. "
+                "(Note: 'htmx' can be combined with these as a progress display)"
             )
 
 

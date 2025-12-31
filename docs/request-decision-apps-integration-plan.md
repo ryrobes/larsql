@@ -1,5 +1,7 @@
 # Plan: Integrating request_decision with Apps System
 
+> **Status: IMPLEMENTED** (see `studio/backend/apps_api.py`)
+
 ## Problem Summary
 
 When an LLM cell calls `request_decision`, the checkpoint UI doesn't render properly in the apps system. The cell shows "pending" instead of the decision UI, and responding to the checkpoint doesn't work seamlessly.

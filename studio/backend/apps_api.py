@@ -48,6 +48,456 @@ _cascade_lock = threading.Lock()
 
 
 # ============================================================================
+# Checkpoint HTML Processing (for request_decision integration)
+# ============================================================================
+
+def rewrite_checkpoint_html(html: str, cascade_id: str, session_id: str, checkpoint_id: str) -> str:
+    """
+    Rewrite checkpoint HTML to work with the apps system.
+
+    This function:
+    1. Renders template variables ({{ checkpoint_id }}, {{ session_id }})
+    2. Rewrites form URLs from /api/checkpoints/.../respond to /apps/.../respond
+    3. Injects _checkpoint_id hidden field for reliable checkpoint lookup
+
+    This allows request_decision forms to work seamlessly with the apps system.
+    """
+    import re
+
+    if not html:
+        return html
+
+    # Step 1: Render template variables
+    # These are Jinja2-style placeholders that need to be filled in
+    html = html.replace('{{ checkpoint_id }}', checkpoint_id)
+    html = html.replace('{{checkpoint_id}}', checkpoint_id)
+    html = html.replace('{{ session_id }}', session_id)
+    html = html.replace('{{session_id}}', session_id)
+    html = html.replace('{{ cascade_id }}', cascade_id)
+    html = html.replace('{{cascade_id}}', cascade_id)
+
+    # Step 2: Check if HTML contains forms
+    has_form = '<form' in html.lower()
+
+    if has_form:
+        # Rewrite form action URLs from checkpoint API to apps API
+        # Pattern: /api/checkpoints/{any_id}/respond
+        apps_url = f'/apps/{cascade_id}/{session_id}/respond'
+        html = re.sub(
+            r'/api/checkpoints/[^/"\'\s]+/respond',
+            apps_url,
+            html,
+            flags=re.IGNORECASE
+        )
+
+        # Also rewrite hx-post attributes
+        html = re.sub(
+            r'(hx-post\s*=\s*["\'])/api/checkpoints/[^/"\'\s]+/respond(["\'])',
+            rf'\1{apps_url}\2',
+            html,
+            flags=re.IGNORECASE
+        )
+
+        # Inject hidden _checkpoint_id field into each form
+        # This ensures respond() can always find the right checkpoint
+        hidden_field = f'<input type="hidden" name="_checkpoint_id" value="{checkpoint_id}" />'
+
+        # Insert after opening form tag
+        def inject_hidden_field(match):
+            return match.group(0) + hidden_field
+
+        html = re.sub(
+            r'(<form[^>]*>)',
+            inject_hidden_field,
+            html,
+            flags=re.IGNORECASE
+        )
+
+    return html
+
+
+def extract_checkpoint_html(checkpoint: dict) -> str:
+    """
+    Extract or render HTML content from a checkpoint's ui_spec.
+
+    Handles:
+    - HITL screen checkpoints (have sections with type='html')
+    - request_decision with custom HTML (type='html' sections)
+    - request_decision with structured options (card_grid, confirmation, etc.)
+    - ask_human/ask_human_custom checkpoints (various section types)
+    """
+    if not checkpoint:
+        print(f"[apps_api] extract_checkpoint_html: no checkpoint")
+        return ''
+
+    ui_spec = checkpoint.get('ui_spec', {})
+    sections = ui_spec.get('sections', [])
+    columns = ui_spec.get('columns', [])
+
+    print(f"[apps_api] extract_checkpoint_html: {len(sections)} sections, {len(columns)} columns")
+
+    if not sections and not columns:
+        print(f"[apps_api] extract_checkpoint_html: no sections or columns, returning empty")
+        return ''
+
+    # First, check if there's an explicit HTML section
+    for section in sections:
+        if section.get('type') == 'html':
+            content = section.get('content', '')
+            print(f"[apps_api] extract_checkpoint_html: found HTML section, len={len(content)}")
+            return content
+
+    # No raw HTML - render the structured ui_spec to HTML
+    print(f"[apps_api] extract_checkpoint_html: rendering structured ui_spec to HTML")
+    rendered = render_ui_spec_to_html(ui_spec)
+    print(f"[apps_api] extract_checkpoint_html: rendered HTML len={len(rendered)}")
+    return rendered
+
+
+def render_ui_spec_to_html(ui_spec: dict) -> str:
+    """
+    Render a structured ui_spec to HTML for apps display.
+
+    This handles the various section types from generative_ui.py:
+    - header, text, preview
+    - confirmation, choice, card_grid
+    - text_input (text), rating
+    - image, data_table
+
+    The rendered HTML is Basecoat-styled and includes form elements
+    that work with the apps respond endpoint.
+    """
+    if not ui_spec:
+        return ''
+
+    sections = ui_spec.get('sections', [])
+    if not sections:
+        # Check for two-column layout
+        columns = ui_spec.get('columns', [])
+        if columns:
+            return _render_columns_layout(columns, ui_spec)
+        return ''
+
+    html_parts = []
+    title = ui_spec.get('title', '')
+
+    if title:
+        html_parts.append(f'<h2 class="text-lg font-semibold text-foreground mb-4">{_escape_html(title)}</h2>')
+
+    for section in sections:
+        rendered = _render_section(section)
+        if rendered:
+            html_parts.append(rendered)
+
+    # Add submit button if not already present
+    submit_label = ui_spec.get('submit_label', 'Submit')
+    if not any(s.get('type') == 'submit' for s in sections):
+        html_parts.append(f'''
+        <div class="mt-6 flex gap-3">
+            <button type="submit" class="btn">{_escape_html(submit_label)}</button>
+        </div>
+        ''')
+
+    return '\n'.join(html_parts)
+
+
+def _render_columns_layout(columns: list, ui_spec: dict) -> str:
+    """Render a two-column or multi-column layout."""
+    html_parts = []
+
+    title = ui_spec.get('title', '')
+    if title:
+        html_parts.append(f'<h2 class="text-lg font-semibold text-foreground mb-4">{_escape_html(title)}</h2>')
+
+    html_parts.append('<div class="grid grid-cols-1 md:grid-cols-2 gap-6">')
+
+    for col in columns:
+        width = col.get('width', '50%')
+        sticky = 'sticky top-4' if col.get('sticky') else ''
+        html_parts.append(f'<div class="{sticky}">')
+
+        for section in col.get('sections', []):
+            rendered = _render_section(section)
+            if rendered:
+                html_parts.append(rendered)
+
+        html_parts.append('</div>')
+
+    html_parts.append('</div>')
+
+    # Add submit button
+    submit_label = ui_spec.get('submit_label', 'Submit')
+    html_parts.append(f'''
+    <div class="mt-6 flex gap-3">
+        <button type="submit" class="btn">{_escape_html(submit_label)}</button>
+    </div>
+    ''')
+
+    return '\n'.join(html_parts)
+
+
+def _render_section(section: dict) -> str:
+    """Render a single ui_spec section to HTML."""
+    section_type = section.get('type', '')
+
+    if section_type == 'header':
+        level = section.get('level', 2)
+        text = section.get('text', '')
+        tag = f'h{level}' if 1 <= level <= 6 else 'h2'
+        return f'<{tag} class="text-lg font-semibold text-foreground mb-4">{_escape_html(text)}</{tag}>'
+
+    elif section_type == 'text':
+        # In generative_ui.py, 'text' is a text INPUT section (not display)
+        # It has: label, multiline, required, placeholder
+        label = section.get('label', '')
+        name = section.get('name', 'text')
+        placeholder = section.get('placeholder', '')
+        required = section.get('required', False)
+        multiline = section.get('multiline', False)
+        rows = section.get('rows', 3)
+
+        # But if it only has 'content' and no input-related fields, treat as display text
+        if 'content' in section and not any(k in section for k in ('multiline', 'required', 'placeholder')):
+            content = section.get('content', '')
+            if label:
+                return f'''
+                <div class="mb-4">
+                    <label class="label">{_escape_html(label)}</label>
+                    <p class="text-muted-foreground text-sm">{_escape_html(content)}</p>
+                </div>
+                '''
+            return f'<p class="text-muted-foreground mb-4">{_escape_html(content)}</p>'
+
+        # It's a text input
+        if multiline:
+            return f'''
+            <div class="mb-4">
+                {f'<label class="label">{_escape_html(label)}</label>' if label else ''}
+                <textarea name="response[{name}]" class="textarea" rows="{rows}"
+                    placeholder="{_escape_html(placeholder)}" {'required' if required else ''}></textarea>
+            </div>
+            '''
+        return f'''
+        <div class="mb-4">
+            {f'<label class="label">{_escape_html(label)}</label>' if label else ''}
+            <input type="text" name="response[{name}]" class="input"
+                placeholder="{_escape_html(placeholder)}" {'required' if required else ''}>
+        </div>
+        '''
+
+    elif section_type == 'preview':
+        content = section.get('content', '')
+        max_height = section.get('max_height', 300)
+        collapsible = section.get('collapsible', False)
+
+        if collapsible:
+            return f'''
+            <details class="card mb-4">
+                <summary class="p-4 cursor-pointer text-sm font-medium">Preview</summary>
+                <div class="p-4 pt-0 max-h-[{max_height}px] overflow-auto">
+                    <pre class="text-sm font-mono whitespace-pre-wrap">{_escape_html(content)}</pre>
+                </div>
+            </details>
+            '''
+        return f'''
+        <div class="card mb-4 p-4 max-h-[{max_height}px] overflow-auto">
+            <pre class="text-sm font-mono whitespace-pre-wrap">{_escape_html(content)}</pre>
+        </div>
+        '''
+
+    elif section_type == 'confirmation':
+        prompt = section.get('prompt', 'Confirm?')
+        yes_label = section.get('yes_label', 'Yes')
+        no_label = section.get('no_label', 'No')
+        return f'''
+        <div class="mb-4">
+            <p class="text-foreground mb-4">{_escape_html(prompt)}</p>
+            <div class="flex gap-3">
+                <button type="submit" name="response[confirmation]" value="true" class="btn">{_escape_html(yes_label)}</button>
+                <button type="submit" name="response[confirmation]" value="false" class="btn-outline">{_escape_html(no_label)}</button>
+            </div>
+        </div>
+        '''
+
+    elif section_type == 'choice':
+        prompt = section.get('prompt', '')
+        options = section.get('options', [])
+        name = section.get('input_name', 'response[choice]')
+
+        options_html = []
+        for opt in options:
+            label = opt.get('label', opt.get('title', ''))
+            value = opt.get('value', opt.get('id', label))
+            options_html.append(f'''
+            <label class="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/50 cursor-pointer">
+                <input type="radio" name="{name}" value="{_escape_html(value)}" class="text-primary" required>
+                <span class="text-foreground">{_escape_html(label)}</span>
+            </label>
+            ''')
+
+        return f'''
+        <div class="mb-4">
+            {f'<p class="text-foreground mb-3">{_escape_html(prompt)}</p>' if prompt else ''}
+            <div class="flex flex-col gap-2">
+                {''.join(options_html)}
+            </div>
+        </div>
+        '''
+
+    elif section_type == 'card_grid':
+        cards = section.get('cards', [])
+        columns = min(section.get('columns', 2), 3)
+        selection_mode = section.get('selection_mode', 'single')
+        input_name = section.get('input_name', 'response[selected]')
+
+        cards_html = []
+        for card in cards:
+            card_id = card.get('id', '')
+            title = card.get('title', '')
+            content = card.get('content', '')
+            recommended = card.get('recommended', False)
+
+            badge = '<span class="badge text-xs">Recommended</span>' if recommended else ''
+            input_type = 'radio' if selection_mode == 'single' else 'checkbox'
+
+            cards_html.append(f'''
+            <label class="card cursor-pointer hover:border-primary/50 transition-all {'border-primary/30' if recommended else ''}">
+                <div class="p-4">
+                    <div class="flex items-start gap-3">
+                        <input type="{input_type}" name="{input_name}" value="{_escape_html(card_id)}" class="mt-1" {'required' if selection_mode == 'single' else ''}>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-foreground">{_escape_html(title)}</span>
+                                {badge}
+                            </div>
+                            {f'<p class="text-sm text-muted-foreground">{_escape_html(content)}</p>' if content else ''}
+                        </div>
+                    </div>
+                </div>
+            </label>
+            ''')
+
+        return f'''
+        <div class="grid grid-cols-1 {'md:grid-cols-' + str(columns) if columns > 1 else ''} gap-3 mb-4">
+            {''.join(cards_html)}
+        </div>
+        '''
+
+    elif section_type == 'text_input':
+        # Explicit text_input type (alias for text input)
+        label = section.get('label', '')
+        name = section.get('name', 'text')
+        placeholder = section.get('placeholder', '')
+        required = section.get('required', False)
+        multiline = section.get('multiline', False)
+        rows = section.get('rows', 3)
+
+        if multiline:
+            return f'''
+            <div class="mb-4">
+                {f'<label class="label">{_escape_html(label)}</label>' if label else ''}
+                <textarea name="response[{name}]" class="textarea" rows="{rows}"
+                    placeholder="{_escape_html(placeholder)}" {'required' if required else ''}></textarea>
+            </div>
+            '''
+        return f'''
+        <div class="mb-4">
+            {f'<label class="label">{_escape_html(label)}</label>' if label else ''}
+            <input type="text" name="response[{name}]" class="input"
+                placeholder="{_escape_html(placeholder)}" {'required' if required else ''}>
+        </div>
+        '''
+
+    elif section_type == 'rating':
+        prompt = section.get('prompt', '')
+        max_rating = section.get('max', 5)
+        labels = section.get('labels', [])
+
+        stars_html = []
+        for i in range(1, max_rating + 1):
+            label_text = labels[i-1] if i <= len(labels) else str(i)
+            stars_html.append(f'''
+            <label class="flex flex-col items-center gap-1 cursor-pointer">
+                <input type="radio" name="response[rating]" value="{i}" class="sr-only peer">
+                <span class="text-2xl peer-checked:text-yellow-400 text-muted-foreground/30 hover:text-yellow-400/70">★</span>
+                <span class="text-xs text-muted-foreground">{_escape_html(label_text)}</span>
+            </label>
+            ''')
+
+        return f'''
+        <div class="mb-4">
+            {f'<p class="text-foreground mb-3">{_escape_html(prompt)}</p>' if prompt else ''}
+            <div class="flex gap-4 justify-center">
+                {''.join(stars_html)}
+            </div>
+        </div>
+        '''
+
+    elif section_type == 'image':
+        src = section.get('src', '')
+        base64_data = section.get('base64', '')
+        max_height = section.get('max_height', 400)
+
+        img_src = base64_data if base64_data else src
+        if img_src:
+            return f'''
+            <div class="mb-4">
+                <img src="{img_src}" class="max-w-full rounded-lg" style="max-height: {max_height}px;" alt="Image">
+            </div>
+            '''
+        return ''
+
+    elif section_type == 'data_table':
+        columns = section.get('columns', [])
+        data = section.get('data', [])
+        max_height = section.get('max_height', 300)
+
+        if not columns or not data:
+            return ''
+
+        headers = ''.join(f'<th class="text-left">{_escape_html(col.get("label", col.get("key", "")))}</th>' for col in columns)
+        rows_html = []
+        for row in data[:50]:  # Limit to 50 rows
+            cells = ''.join(f'<td>{_escape_html(str(row.get(col.get("key", ""), "")))}</td>' for col in columns)
+            rows_html.append(f'<tr>{cells}</tr>')
+
+        return f'''
+        <div class="card mb-4 overflow-hidden">
+            <div class="overflow-auto" style="max-height: {max_height}px;">
+                <table class="table w-full">
+                    <thead><tr>{headers}</tr></thead>
+                    <tbody>{''.join(rows_html)}</tbody>
+                </table>
+            </div>
+        </div>
+        '''
+
+    elif section_type == 'submit':
+        # Submit button is handled separately
+        return ''
+
+    else:
+        # Unknown section type - try to render as text
+        content = section.get('content', section.get('text', ''))
+        if content:
+            return f'<div class="mb-4 text-muted-foreground">{_escape_html(str(content))}</div>'
+        return ''
+
+
+def _escape_html(text: str) -> str:
+    """Escape HTML special characters."""
+    if not isinstance(text, str):
+        text = str(text)
+    return (text
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('"', '&quot;')
+        .replace("'", '&#39;')
+    )
+
+
+# ============================================================================
 # App Session Model
 # ============================================================================
 
@@ -209,16 +659,24 @@ def spawn_cascade_for_app(cascade_path: str, session_id: str, inputs: dict):
 def get_pending_checkpoint(session_id: str) -> Optional[dict]:
     """Get the pending checkpoint for a session, if any."""
     if not RVBBIT_AVAILABLE or not get_checkpoint_manager:
+        print(f"[apps_api] get_pending_checkpoint: RVBBIT not available")
         return None
 
     try:
         manager = get_checkpoint_manager()
         checkpoints = manager.get_pending_checkpoints(session_id=session_id)
+        print(f"[apps_api] get_pending_checkpoint({session_id}): found {len(checkpoints)} checkpoints")
         if checkpoints:
-            # Return the most recent pending checkpoint
-            return checkpoints[-1].to_dict()
+            cp = checkpoints[-1].to_dict()
+            print(f"[apps_api]   checkpoint: id={cp.get('id')}, cell={cp.get('cell_name')}, type={cp.get('checkpoint_type')}")
+            ui_spec = cp.get('ui_spec', {})
+            sections = ui_spec.get('sections', [])
+            print(f"[apps_api]   ui_spec: {len(sections)} sections, types={[s.get('type') for s in sections]}")
+            return cp
     except Exception as e:
         print(f"[apps_api] Error getting checkpoints: {e}")
+        import traceback
+        traceback.print_exc()
 
     return None
 
@@ -235,6 +693,130 @@ def respond_to_checkpoint(checkpoint_id: str, response: dict) -> bool:
     except Exception as e:
         print(f"[apps_api] Error responding to checkpoint: {e}")
         return False
+
+
+def get_cascade_state_from_clickhouse(session_id: str) -> dict:
+    """
+    Query ClickHouse for the cascade's current state.
+
+    Returns dict with:
+    - status: 'running', 'completed', 'error', 'cancelled', 'orphaned'
+    - current_cell: Name of the cell currently executing
+    - error_message: Error message if status == 'error'
+    """
+    try:
+        from rvbbit.db_adapter import get_db
+
+        db = get_db()
+
+        # Query session_state table for status (source of truth)
+        status_query = f"""
+            SELECT status, error_message
+            FROM session_state FINAL
+            WHERE session_id = '{session_id}'
+            LIMIT 1
+        """
+        status_result = db.query(status_query)
+
+        status = 'running'  # Default
+        error_message = None
+
+        if status_result and len(status_result) > 0:
+            status = status_result[0].get('status', 'running')
+            error_message = status_result[0].get('error_message')
+
+        # Query unified_logs for the latest cell being executed
+        # Look for phase starts (cell beginning) or the latest log entry
+        cell_query = f"""
+            SELECT cell_name, node_type, timestamp as created_at
+            FROM unified_logs
+            WHERE session_id = '{session_id}'
+              AND cell_name != ''
+              AND cell_name IS NOT NULL
+            ORDER BY timestamp DESC
+            LIMIT 5
+        """
+        cell_result = db.query(cell_query)
+
+        # Debug: log what we found
+        if cell_result:
+            cells_found = [(r.get('cell_name'), r.get('node_type')) for r in cell_result[:3]]
+            print(f"[apps_api] Cascade state query found cells: {cells_found}")
+
+        current_cell = None
+        if cell_result and len(cell_result) > 0:
+            current_cell = cell_result[0].get('cell_name')
+
+        return {
+            'status': status,
+            'current_cell': current_cell,
+            'error_message': error_message
+        }
+
+    except Exception as e:
+        print(f"[apps_api] Error querying ClickHouse for cascade state: {e}")
+        return {'status': 'running', 'current_cell': None, 'error_message': None}
+
+
+def sync_session_with_cascade(session: 'AppSession', cascade: Any) -> None:
+    """
+    Sync AppSession state with the actual cascade state from ClickHouse.
+
+    This updates:
+    - session.status based on session_state table
+    - session.current_cell based on latest log entry
+    - session.error from error_message
+    """
+    cascade_state = get_cascade_state_from_clickhouse(session.session_id)
+
+    ch_status = cascade_state['status']
+    ch_cell = cascade_state['current_cell']
+    ch_error = cascade_state['error_message']
+
+    print(f"[apps_api] sync_session: CH status={ch_status}, cell={ch_cell}, session.status={session.status}, session.cell={session.current_cell}")
+
+    # Map ClickHouse status to AppSession status
+    if ch_status == 'completed':
+        session.status = 'completed'
+        print(f"[apps_api] sync_session: Cascade completed!")
+    elif ch_status in ('error', 'cancelled', 'orphaned'):
+        session.status = 'error'
+        session.error = {'type': ch_status.title(), 'message': ch_error or f'Cascade {ch_status}'}
+    elif ch_status == 'blocked':
+        session.status = 'waiting_input'
+    else:
+        session.status = 'running'
+
+    # Update current cell if we have info from ClickHouse
+    if ch_cell:
+        # Validate cell exists in cascade
+        cell = get_cell_by_name(cascade, ch_cell)
+        if cell:
+            if session.current_cell != ch_cell:
+                print(f"[apps_api] Cell changed: {session.current_cell} -> {ch_cell}")
+                session.current_cell = ch_cell
+                if ch_cell not in session.cells_completed:
+                    # Mark previous cell as completed
+                    pass  # We don't track this precisely
+
+    # Also check if the cascade thread is still alive
+    with _cascade_lock:
+        thread = _cascade_threads.get(session.session_id)
+        if thread and not thread.is_alive():
+            # Thread finished but status might not be updated yet
+            if session.status == 'running':
+                # Re-query to get final status
+                cascade_state = get_cascade_state_from_clickhouse(session.session_id)
+                if cascade_state['status'] == 'completed':
+                    session.status = 'completed'
+                elif cascade_state['status'] in ('error', 'cancelled', 'orphaned'):
+                    session.status = 'error'
+                    session.error = {'type': 'CascadeError', 'message': cascade_state.get('error_message', 'Unknown error')}
+                else:
+                    # Thread died but no status update - assume completed
+                    session.status = 'completed'
+
+    save_session(session)
 
 
 # ============================================================================
@@ -1249,10 +1831,17 @@ APP_SHELL_TEMPLATE = '''
                 <span>Processing...</span>
             </div>
         </div>
+        {% elif content_has_form %}
+        {# Content already has forms (e.g., from request_decision) - render directly #}
+        {{ content | safe }}
         {% else %}
+        {# Wrap content in apps form for HITL screens #}
         <form hx-post="/apps/{{ cascade_id }}/{{ session_id }}/respond"
               hx-target="#app-content"
               hx-swap="innerHTML">
+            {% if checkpoint_id %}
+            <input type="hidden" name="_checkpoint_id" value="{{ checkpoint_id }}" />
+            {% endif %}
             {{ content | safe }}
         </form>
         {% endif %}
@@ -1421,27 +2010,22 @@ def view_cell(cascade_id: str, session_id: str, cell_name: str):
 
     if checkpoint:
         # Cascade is waiting at a checkpoint - get the UI from it
-        ui_spec = checkpoint.get('ui_spec', {})
-
-        # HTML is stored in sections[].content where type='html'
-        checkpoint_html = ''
-        for section in ui_spec.get('sections', []):
-            if section.get('type') == 'html':
-                checkpoint_html = section.get('content', '')
-                break
-
-        # Strip inner <form> tags from checkpoint HTML to avoid nested forms
-        # The App API template wraps content in its own form that posts to /apps/.../respond
-        # HITL cells from spawn_cascade may have forms posting to /checkpoint/respond
-        if checkpoint_html:
-            import re
-            # Remove opening form tags (keep the content)
-            checkpoint_html = re.sub(r'<form[^>]*>', '', checkpoint_html, flags=re.IGNORECASE)
-            # Remove closing form tags
-            checkpoint_html = re.sub(r'</form>', '', checkpoint_html, flags=re.IGNORECASE)
-
-        checkpoint_cell = checkpoint.get('cell_name', cell_name)
         checkpoint_id = checkpoint.get('id')
+        checkpoint_cell = checkpoint.get('cell_name', cell_name)
+
+        # Extract and process checkpoint HTML
+        checkpoint_html = extract_checkpoint_html(checkpoint)
+
+        if checkpoint_html:
+            # Rewrite URLs and render template variables for apps integration
+            # This handles request_decision forms, template variables like {{ checkpoint_id }},
+            # and injects hidden _checkpoint_id field for reliable checkpoint lookup
+            checkpoint_html = rewrite_checkpoint_html(
+                html=checkpoint_html,
+                cascade_id=cascade_id,
+                session_id=session_id,
+                checkpoint_id=checkpoint_id
+            )
 
         # Update session state to reflect current cell
         if session.current_cell != checkpoint_cell:
@@ -1450,18 +2034,39 @@ def view_cell(cascade_id: str, session_id: str, cell_name: str):
             save_session(session)
 
         # Use checkpoint HTML if available, otherwise render our own
-        content = checkpoint_html if checkpoint_html else _renderer.render_cell(cell, session, cascade_id)
+        # For non-HITL cells (like LLM cells calling request_decision), checkpoint_html
+        # contains the decision UI, so we don't need the cell to have hitl property
+        if checkpoint_html:
+            content = checkpoint_html
+        else:
+            # Fallback: try to render cell if it has UI, otherwise show waiting message
+            checkpoint_cell_obj = get_cell_by_name(cascade, checkpoint_cell)
+            if checkpoint_cell_obj and checkpoint_cell_obj.has_ui:
+                content = _renderer.render_cell(checkpoint_cell_obj, session, cascade_id)
+            else:
+                content = f'''
+                <div class="card">
+                    <section class="text-center py-8">
+                        <div class="text-4xl mb-4">⏳</div>
+                        <p class="text-muted-foreground">Waiting for input in cell: <code>{checkpoint_cell}</code></p>
+                    </section>
+                </div>
+                '''
 
         # Store checkpoint ID for respond endpoint
         session.state['_checkpoint_id'] = checkpoint_id
         save_session(session)
 
         status = 'waiting_input'
+        content_has_form = '<form' in content.lower()
+        current_checkpoint_id = checkpoint_id
     else:
         # No checkpoint - cascade is either running or completed
         # Render cell content using our renderer
         content = _renderer.render_cell(cell, session, cascade_id)
         status = session.status
+        content_has_form = '<form' in content.lower()
+        current_checkpoint_id = None
 
     # Build progress info
     progress = {
@@ -1478,6 +2083,8 @@ def view_cell(cascade_id: str, session_id: str, cell_name: str):
         session_id=session_id,
         cell_name=cell_name,
         content=content,
+        content_has_form=content_has_form,
+        checkpoint_id=current_checkpoint_id,
         progress=progress,
         session=session,
         status=status,
@@ -1501,13 +2108,20 @@ def respond(cascade_id: str, session_id: str):
         data = request.form.to_dict()
         print(f"[apps_api] Received form data: {data}")
 
+    # Extract _checkpoint_id from form data (injected by rewrite_checkpoint_html)
+    # This takes priority over session state for reliability
+    form_checkpoint_id = data.pop('_checkpoint_id', None)
+
     # Store response in session state for our own tracking
     session.state[session.current_cell] = data
     if session.current_cell not in session.cells_completed:
         session.cells_completed.append(session.current_cell)
 
-    # Check for a checkpoint to respond to
-    checkpoint_id = session.state.get('_checkpoint_id')
+    # Check for a checkpoint to respond to, in order of priority:
+    # 1. From form data (injected hidden field - most reliable)
+    # 2. From session state (stored when rendering checkpoint)
+    # 3. Direct lookup (fallback for externally spawned sessions)
+    checkpoint_id = form_checkpoint_id or session.state.get('_checkpoint_id')
 
     # For externally spawned sessions (e.g., from Calliope's spawn_cascade),
     # the checkpoint_id might not be in session.state - look it up directly
@@ -1516,6 +2130,8 @@ def respond(cascade_id: str, session_id: str):
         if checkpoint:
             checkpoint_id = checkpoint.get('id')
             print(f"[apps_api] Found checkpoint via direct lookup: {checkpoint_id}")
+    else:
+        print(f"[apps_api] Using checkpoint_id: {checkpoint_id} (from {'form' if form_checkpoint_id else 'session state'})")
 
     if checkpoint_id:
         # Respond to the checkpoint - this will resume the cascade
@@ -1561,30 +2177,30 @@ def status(cascade_id: str, session_id: str):
     if not cascade:
         return jsonify({'error': 'Cascade not found'}), 404
 
+    # Sync session state with actual cascade state from ClickHouse
+    # This updates status (running/completed/error) and current_cell
+    sync_session_with_cascade(session, cascade)
+
     # Check for pending checkpoint from the cascade runner
     # This is the key integration point - the runner creates checkpoints when it hits HITL cells
     checkpoint = get_pending_checkpoint(session_id)
 
     if checkpoint:
         # Cascade is waiting at a checkpoint - update session and show checkpoint HTML
-        ui_spec = checkpoint.get('ui_spec', {})
-
-        # HTML is stored in sections[].content where type='html'
-        checkpoint_html = ''
-        for section in ui_spec.get('sections', []):
-            if section.get('type') == 'html':
-                checkpoint_html = section.get('content', '')
-                break
-
-        # Strip inner <form> tags from checkpoint HTML to avoid nested forms
-        # The wrapper form posts to /apps/.../respond
-        if checkpoint_html:
-            import re
-            checkpoint_html = re.sub(r'<form[^>]*>', '', checkpoint_html, flags=re.IGNORECASE)
-            checkpoint_html = re.sub(r'</form>', '', checkpoint_html, flags=re.IGNORECASE)
-
-        checkpoint_cell = checkpoint.get('cell_name', session.current_cell)
         checkpoint_id = checkpoint.get('id')
+        checkpoint_cell = checkpoint.get('cell_name', session.current_cell)
+
+        # Extract and process checkpoint HTML
+        checkpoint_html = extract_checkpoint_html(checkpoint)
+
+        if checkpoint_html:
+            # Rewrite URLs and render template variables for apps integration
+            checkpoint_html = rewrite_checkpoint_html(
+                html=checkpoint_html,
+                cascade_id=cascade_id,
+                session_id=session_id,
+                checkpoint_id=checkpoint_id
+            )
 
         # Update session state
         if session.current_cell != checkpoint_cell:
@@ -1593,18 +2209,41 @@ def status(cascade_id: str, session_id: str):
         session.state['_checkpoint_id'] = checkpoint_id
         save_session(session)
 
+        # Get cell and determine content
         cell = get_cell_by_name(cascade, checkpoint_cell)
-        content = checkpoint_html if checkpoint_html else _renderer.render_cell(cell, session, cascade_id)
 
-        # For HTMX polling, return form with checkpoint HTML
-        if request.headers.get('HX-Request'):
-            return f'''
-            <form hx-post="/apps/{cascade_id}/{session_id}/respond"
-                  hx-target="#app-content"
-                  hx-swap="innerHTML">
-                {content}
-            </form>
+        if checkpoint_html:
+            content = checkpoint_html
+        elif cell and cell.has_ui:
+            content = _renderer.render_cell(cell, session, cascade_id)
+        else:
+            content = f'''
+            <div class="card">
+                <section class="text-center py-8">
+                    <div class="text-4xl mb-4">⏳</div>
+                    <p class="text-muted-foreground">Waiting for input in cell: <code>{checkpoint_cell}</code></p>
+                </section>
+            </div>
             '''
+
+        # For HTMX polling, return the content
+        # If content already has forms (from request_decision), don't wrap
+        # Otherwise wrap in apps form for HITL screens
+        if request.headers.get('HX-Request'):
+            has_form = '<form' in content.lower()
+            if has_form:
+                # Content has its own form (rewritten to use apps endpoint)
+                return content
+            else:
+                # Wrap in apps form for HITL screens without their own forms
+                return f'''
+                <form hx-post="/apps/{cascade_id}/{session_id}/respond"
+                      hx-target="#app-content"
+                      hx-swap="innerHTML">
+                    <input type="hidden" name="_checkpoint_id" value="{checkpoint_id}" />
+                    {content}
+                </form>
+                '''
         else:
             return jsonify({
                 'status': 'waiting_input',
@@ -1628,21 +2267,94 @@ def status(cascade_id: str, session_id: str):
             </form>
             '''
         elif session.status == 'running':
-            # Still running - show progress (keep polling for checkpoint)
-            content = _renderer.render_auto_card(cell, session, status='running')
+            # Still running - check for progress display from the cascade
+            current_cell_name = session.current_cell
+            current_cell_obj = get_cell_by_name(cascade, current_cell_name)
+
+            # Check for progress_display for the CURRENT cell only
+            # This ensures we don't show stale progress displays from previous cells
+            progress_html = None
+            try:
+                from rvbbit.db_adapter import get_db
+                db = get_db()
+                # Filter by both session_id AND cell_name to get progress display
+                # only for the currently executing cell
+                progress_query = f"""
+                    SELECT metadata_json, cell_name
+                    FROM unified_logs
+                    WHERE session_id = '{session_id}'
+                      AND node_type = 'progress_display'
+                      AND cell_name = '{current_cell_name}'
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                """
+                progress_result = db.query(progress_query)
+                if progress_result and len(progress_result) > 0:
+                    metadata_json = progress_result[0].get('metadata_json', '{}')
+                    if isinstance(metadata_json, str):
+                        import json
+                        metadata = json.loads(metadata_json)
+                    else:
+                        metadata = metadata_json
+                    progress_html = metadata.get('html', '')
+                    if progress_html:
+                        print(f"[apps_api] Found progress display for {current_cell_name}: {len(progress_html)} chars")
+            except Exception as e:
+                print(f"[apps_api] Error fetching progress display: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # If we have progress display HTML, show it
+            if progress_html:
+                return f'''
+                <div class="space-y-4"
+                     hx-get="/apps/{cascade_id}/{session_id}/status"
+                     hx-trigger="every 500ms"
+                     hx-target="#app-content"
+                     hx-swap="innerHTML">
+                    {progress_html}
+                </div>
+                '''
+
+            # Otherwise show default running state
+            cell_type = "LLM" if current_cell_obj and not current_cell_obj.tool else "Tool"
+            if current_cell_obj and current_cell_obj.has_ui:
+                cell_type = "HITL"
+
             return f'''
             <div class="space-y-4"
                  hx-get="/apps/{cascade_id}/{session_id}/status"
                  hx-trigger="every 500ms"
                  hx-target="#app-content"
                  hx-swap="innerHTML">
-                {content}
+
+                <div class="card">
+                    <header>
+                        <h2 class="card-title flex items-center gap-2">
+                            <svg class="animate-spin h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Running: {current_cell_name}
+                        </h2>
+                        <p class="card-description">{cell_type} cell is executing...</p>
+                    </header>
+                    <section class="py-4">
+                        <div class="flex items-center gap-2 text-muted-foreground">
+                            <span class="badge-outline text-xs">{cell_type}</span>
+                            <span class="text-sm">Cell is processing</span>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Progress indicator -->
                 <div class="flex items-center gap-3 p-4 bg-muted rounded-lg text-muted-foreground">
-                    <svg class="animate-spin h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Processing...</span>
+                    <div class="flex-1">
+                        <div class="h-1 bg-muted-foreground/20 rounded-full overflow-hidden">
+                            <div class="h-full bg-primary rounded-full animate-pulse" style="width: 60%;"></div>
+                        </div>
+                    </div>
+                    <span class="text-sm">Processing...</span>
                 </div>
             </div>
             '''
@@ -1655,15 +2367,47 @@ def status(cascade_id: str, session_id: str):
             '''
         else:
             # Completed
-            content = _renderer.render_auto_card(cell, session, status='completed')
+            # Try to show the final output from the cascade
+            final_output = None
+            try:
+                from rvbbit.db_adapter import get_db
+                db = get_db()
+                output_query = f"""
+                    SELECT content_json, cell_name
+                    FROM unified_logs
+                    WHERE session_id = '{session_id}'
+                      AND node_type IN ('phase_complete', 'cascade_complete', 'agent')
+                      AND content_json != ''
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                """
+                output_result = db.query(output_query)
+                if output_result and len(output_result) > 0:
+                    final_output = output_result[0].get('content_json', '')
+                    if len(str(final_output)) > 500:
+                        final_output = str(final_output)[:500] + '...'
+            except Exception as e:
+                print(f"[apps_api] Error fetching final output: {e}")
+
             return f'''
             <div class="space-y-4">
-                {content}
-                <div class="flex items-center gap-2 text-green-400 font-medium">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Cascade completed
+                <div class="card">
+                    <header>
+                        <h2 class="card-title flex items-center gap-2 text-green-400">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Cascade Completed
+                        </h2>
+                        <p class="card-description">All cells have finished executing</p>
+                    </header>
+                    {f'<section class="py-4"><div class="text-sm text-muted-foreground bg-muted p-3 rounded-lg whitespace-pre-wrap">{final_output}</div></section>' if final_output else ''}
+                </div>
+
+                <div class="flex gap-3">
+                    <a href="/apps/{cascade_id}/" class="btn-outline">
+                        Start New Session
+                    </a>
                 </div>
             </div>
             '''

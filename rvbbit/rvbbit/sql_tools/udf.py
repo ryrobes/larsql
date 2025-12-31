@@ -583,9 +583,9 @@ def rvbbit_map_parallel_exec(
     rows_json_array: str,
     max_workers: int,
     result_column: str
-):
+) -> str:
     """
-    Execute cascade on multiple rows in parallel, return DataFrame.
+    Execute cascade on multiple rows in parallel, return JSON array.
 
     Used by RVBBIT MAP PARALLEL syntax. Each row becomes a cascade input,
     results are joined back to original columns in order.
@@ -597,15 +597,14 @@ def rvbbit_map_parallel_exec(
         result_column: Name for result column
 
     Returns:
-        pandas DataFrame with enriched rows (DuckDB converts to relation automatically)
+        JSON array string with enriched rows (use read_json() to convert to table)
 
     Example:
         Input:  [{"id": 1, "text": "foo"}, {"id": 2, "text": "bar"}]
-        Output: DataFrame with columns [id, text, result]
+        Output: '[{"id": 1, "text": "foo", "result": "..."}, ...]'
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import json as json_module
-    import pandas as pd
 
     try:
         # Parse input rows
@@ -613,7 +612,7 @@ def rvbbit_map_parallel_exec(
         if not isinstance(rows, list):
             raise ValueError("Expected JSON array of rows")
         if len(rows) == 0:
-            return pd.DataFrame()  # Empty DataFrame
+            return "[]"  # Empty JSON array
 
         # Process rows in parallel with order preservation
         results = [None] * len(rows)
@@ -664,8 +663,8 @@ def rvbbit_map_parallel_exec(
                 index, enriched_row = future.result()
                 results[index] = enriched_row  # Preserve original order
 
-        # Return as DataFrame (DuckDB converts to relation automatically)
-        return pd.DataFrame(results)
+        # Return as JSON array (caller uses read_json() to convert to table)
+        return json_module.dumps(results, default=str)
 
     except Exception as e:
         import logging
@@ -673,8 +672,8 @@ def rvbbit_map_parallel_exec(
         logging.getLogger(__name__).error(
             f"rvbbit_map_parallel_exec error: {e}\n{traceback.format_exc()}"
         )
-        # Return error as DataFrame
-        return pd.DataFrame([{
+        # Return error as JSON array
+        return json_module.dumps([{
             "error": str(e),
             "hint": "Check cascade path and input data format"
         }])
@@ -834,10 +833,12 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
 
     # Register parallel MAP UDF (for RVBBIT MAP PARALLEL syntax)
     try:
-        # Register as table-valued function (no return_type = DuckDB infers from DataFrame)
+        # Register as scalar function returning JSON (VARCHAR)
+        # Caller uses read_json() to convert result to table
         connection.create_function(
             "rvbbit_map_parallel_exec",
-            rvbbit_map_parallel_exec
+            rvbbit_map_parallel_exec,
+            return_type="VARCHAR"
         )
     except Exception as e:
         import logging

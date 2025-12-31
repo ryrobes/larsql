@@ -1,0 +1,82 @@
+# Test Request Decision in Apps System
+#
+# This cascade tests request_decision integration with the apps system.
+# It uses a deterministic call to request_decision to ensure the checkpoint
+# is created and rendered correctly.
+#
+# Run with: Navigate to /apps/test_request_decision_app/
+
+cascade_id: test_request_decision_app
+description: Test Request Decision in Apps
+
+cells:
+  # Welcome screen (HITL)
+  - name: welcome
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">Request Decision Test</h2>
+          <p class="card-description">This tests the request_decision tool in apps.</p>
+        </header>
+        <section class="py-4">
+          <p class="text-muted-foreground">Click Start to trigger a request_decision checkpoint.</p>
+        </section>
+        <footer class="flex gap-3">
+          {{ submit_button("Start Test", route="ask_decision", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - ask_decision
+
+  # This cell uses an LLM that MUST call request_decision
+  - name: ask_decision
+    traits:
+      - request_decision
+    instructions: |
+      You MUST call the request_decision tool immediately with this exact call:
+
+      ```
+      request_decision(
+        question="Choose your favorite color",
+        options=[
+          {"id": "red", "label": "Red", "description": "The color of fire"},
+          {"id": "blue", "label": "Blue", "description": "The color of the sky"},
+          {"id": "green", "label": "Green", "description": "The color of nature"}
+        ],
+        context="This is a test of the request_decision tool in the apps system.",
+        severity="info"
+      )
+      ```
+
+      Do not say anything else. Just call the tool.
+    handoffs:
+      - show_result
+
+  # Show the result
+  - name: show_result
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">Decision Made!</h2>
+        </header>
+        <section class="py-4">
+          <p class="text-foreground">You chose: <strong class="text-primary">{{ outputs.ask_decision }}</strong></p>
+        </section>
+        <footer class="flex gap-3">
+          {{ submit_button("Try Again", route="ask_decision", variant="outline") }}
+          {{ submit_button("Done", route="done", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - ask_decision
+      - done
+
+  - name: done
+    hitl: |
+      <div class="card text-center">
+        <section class="py-8">
+          <div class="text-4xl mb-4">✅</div>
+          <h2 class="text-xl font-semibold text-foreground">Test Complete!</h2>
+          <p class="text-muted-foreground">The request_decision integration is working.</p>
+        </section>
+      </div>

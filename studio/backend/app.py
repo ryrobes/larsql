@@ -792,11 +792,19 @@ def get_cascade_definitions():
                 import traceback
                 traceback.print_exc()
 
+            # Descriptions for known virtual/dynamic cascades (no YAML file)
+            VIRTUAL_CASCADE_DESCRIPTIONS = {
+                'sql_udf': 'SQL UDF calls via rvbbit() function',
+                'calliope': 'Conversational cascade builder',
+                'analyze_context_relevance': 'Context relevance analysis (system)',
+            }
+
             # Now process results with pre-fetched data (NO queries in loop!)
             for row in result:
                 cascade_id, run_count, avg_duration, min_duration, max_duration, total_cost = row
 
                 if cascade_id in all_cascades:
+                    # Cascade has YAML file on disk - enrich with metrics
                     all_cascades[cascade_id]['metrics'] = {
                         'run_count': run_count,
                         'total_cost': float(total_cost) if total_cost else 0.0,
@@ -862,6 +870,83 @@ def get_cascade_definitions():
                                     }
                             except:
                                 all_cascades[cascade_id]['graph_complexity'] = None
+
+                else:
+                    # Dynamic/virtual cascade - exists in logs but no YAML file on disk
+                    # This includes SQL UDF calls, programmatic cascades, etc.
+                    description = VIRTUAL_CASCADE_DESCRIPTIONS.get(
+                        cascade_id,
+                        f'Virtual cascade (executed via code, no YAML definition)'
+                    )
+
+                    all_cascades[cascade_id] = {
+                        'cascade_id': cascade_id,
+                        'description': description,
+                        'phases': [],  # No phase definitions available
+                        'source_file': None,
+                        'is_dynamic': True,  # Flag for UI to style differently
+                        'metrics': {
+                            'run_count': run_count,
+                            'total_cost': float(total_cost) if total_cost else 0.0,
+                            'avg_duration_seconds': float(avg_duration) if avg_duration else 0.0,
+                            'min_duration_seconds': float(min_duration) if min_duration else 0.0,
+                            'max_duration_seconds': float(max_duration) if max_duration else 0.0,
+                        },
+                    }
+
+                    # Add cascade analytics from batch query
+                    if cascade_id in cascade_analytics_map:
+                        all_cascades[cascade_id]['analytics'] = cascade_analytics_map[cascade_id]
+                    else:
+                        all_cascades[cascade_id]['analytics'] = {
+                            'success_rate': 0.0,
+                            'outlier_rate': 0.0,
+                            'avg_context_pct': 0.0,
+                            'cost_trend_pct': 0.0,
+                            'cost_7d_avg': 0.0,
+                            'cost_30d_avg': 0.0,
+                        }
+
+                    # Add bottleneck data from batch query
+                    if cascade_id in bottleneck_map:
+                        all_cascades[cascade_id]['analytics']['common_bottleneck'] = bottleneck_map[cascade_id]['common_bottleneck']
+                        all_cascades[cascade_id]['analytics']['bottleneck_frequency'] = bottleneck_map[cascade_id]['bottleneck_frequency']
+                    else:
+                        all_cascades[cascade_id]['analytics']['common_bottleneck'] = None
+                        all_cascades[cascade_id]['analytics']['bottleneck_frequency'] = 0
+
+                    # Get latest session from batch query
+                    if cascade_id in latest_sessions_by_cascade:
+                        latest_session_id, latest_time = latest_sessions_by_cascade[cascade_id]
+                        all_cascades[cascade_id]['latest_session_id'] = latest_session_id
+                        all_cascades[cascade_id]['latest_run'] = to_iso_string(latest_time)
+
+                        # Check for mermaid and graph files (might exist even without YAML)
+                        mermaid_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.mmd")
+                        graph_json_path = os.path.join(GRAPH_DIR, f"{latest_session_id}.json")
+
+                        all_cascades[cascade_id]['has_mermaid'] = os.path.exists(mermaid_path)
+                        all_cascades[cascade_id]['mermaid_path'] = mermaid_path if os.path.exists(mermaid_path) else None
+
+                        if os.path.exists(graph_json_path):
+                            try:
+                                with open(graph_json_path) as gf:
+                                    graph_data = json.load(gf)
+                                    summary = graph_data.get('summary', {})
+                                    all_cascades[cascade_id]['graph_complexity'] = {
+                                        'total_nodes': summary.get('total_nodes', 0),
+                                        'total_phases': summary.get('total_phases', 0),
+                                        'has_soundings': summary.get('has_soundings', False),
+                                        'has_sub_cascades': summary.get('has_sub_cascades', False),
+                                    }
+                            except:
+                                all_cascades[cascade_id]['graph_complexity'] = None
+                    else:
+                        all_cascades[cascade_id]['latest_session_id'] = None
+                        all_cascades[cascade_id]['latest_run'] = None
+                        all_cascades[cascade_id]['has_mermaid'] = False
+                        all_cascades[cascade_id]['mermaid_path'] = None
+                        all_cascades[cascade_id]['graph_complexity'] = None
 
         except Exception as e:
             print(f"No log data available: {e}")

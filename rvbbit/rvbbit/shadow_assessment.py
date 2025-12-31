@@ -23,6 +23,7 @@ import uuid
 import logging
 import threading
 import queue
+from .config import get_config
 from typing import Dict, Any, List, Optional, Set, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -31,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 # Default enabled - set RVBBIT_SHADOW_ASSESSMENT_ENABLED=false to disable
 SHADOW_ASSESSMENT_ENABLED = os.getenv("RVBBIT_SHADOW_ASSESSMENT_ENABLED", "true").lower() == "true"
+
+# System cascades that should NEVER run shadow assessment (regardless of env var)
+# These are internal/meta cascades that would cause recursive assessment or waste resources
+SHADOW_ASSESSMENT_BLOCKLIST = {
+    "analyze_context_relevance",  # Meta-analysis cascade used by shadow assessment itself
+}
 
 
 @dataclass
@@ -342,11 +349,18 @@ Select the message IDs most relevant to the current task. Consider:
 - User instructions or requirements
 
 Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "brief explanation"}}"""
+            
+
+            time.sleep(5) ## wait for target cells costs to come in
+
+            config = get_config()
 
             start_time = time.time()
             selector = Agent(
                 model=self.llm_model,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                base_url=config.provider_base_url,
+                api_key=config.provider_api_key
             )
 
             # Build full request for logging
@@ -762,6 +776,10 @@ def queue_shadow_assessment(
         budget_total: Token budget for context
         llm_model: Model to use for LLM selection strategy
     """
+    # Check blocklist and env var (defense-in-depth - caller should also check)
+    if cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
+        return
+
     if not SHADOW_ASSESSMENT_ENABLED:
         return
 
@@ -809,8 +827,21 @@ def queue_shadow_assessment(
     logger.debug(f"Queued shadow assessment for {target_cell_name} with {len(candidates)} candidates")
 
 
-def is_shadow_assessment_enabled() -> bool:
-    """Check if shadow assessment is enabled."""
+def is_shadow_assessment_enabled(cascade_id: Optional[str] = None) -> bool:
+    """
+    Check if shadow assessment is enabled for a given cascade.
+
+    Args:
+        cascade_id: Optional cascade ID to check. If provided and in the blocklist,
+                   returns False regardless of the env var setting.
+
+    Returns:
+        True if shadow assessment should run, False otherwise.
+    """
+    # Check blocklist first - these cascades NEVER run shadow assessment
+    if cascade_id and cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
+        return False
+
     return SHADOW_ASSESSMENT_ENABLED
 
 
@@ -1277,6 +1308,10 @@ def queue_intra_phase_shadow_assessment(
         actual_config_enabled: Whether intra-context was actually enabled
         actual_tokens_after: Actual tokens after context building (if enabled)
     """
+    # Check blocklist and env var (defense-in-depth - caller should also check)
+    if cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
+        return
+
     if not SHADOW_ASSESSMENT_ENABLED:
         return
 

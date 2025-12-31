@@ -385,6 +385,134 @@ def _check_is_zombie(session: SessionState) -> bool:
     return elapsed > session.heartbeat_lease_seconds
 
 
+# Descriptions for known virtual cascades (matches app.py VIRTUAL_CASCADE_DESCRIPTIONS)
+VIRTUAL_CASCADE_DESCRIPTIONS = {
+    'sql_udf': 'SQL UDF calls via rvbbit() function',
+    'calliope': 'Conversational cascade builder',
+    'analyze_context_relevance': 'Context relevance analysis (system)',
+}
+
+
+def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = None, limit: int = 100) -> list:
+    """
+    Include sessions from unified_logs that don't have session_state entries.
+
+    These are "virtual" sessions from dynamic cascades like sql_udf that use
+    direct bodybuilder() calls rather than the full runner.
+    """
+    try:
+        db = get_db()
+
+        # Get existing session_ids to exclude
+        existing_ids = {s['session_id'] for s in existing_sessions}
+
+        # Build WHERE clause for cascade_id filter
+        cascade_filter = ""
+        if cascade_id_filter:
+            cascade_filter = f"AND cascade_id = '{cascade_id_filter}'"
+
+        # Query unified_logs for sessions not in session_state
+        # Group by session_id to get aggregate metrics
+        query = f"""
+            SELECT
+                session_id,
+                cascade_id,
+                MIN(timestamp) as started_at,
+                MAX(timestamp) as updated_at,
+                SUM(cost) as total_cost,
+                COUNT(*) as message_count,
+                groupArray(DISTINCT model) as models
+            FROM unified_logs
+            WHERE session_id NOT IN (
+                SELECT DISTINCT session_id FROM session_state
+            )
+            {cascade_filter}
+            GROUP BY session_id, cascade_id
+            ORDER BY started_at DESC
+            LIMIT {limit}
+        """
+
+        result = db.query(query)
+
+        # Convert to session-like dicts that match the format expected by the UI
+        for row in result:
+            sid = row.get('session_id')
+            if sid in existing_ids:
+                continue  # Skip if already in result (shouldn't happen but be safe)
+
+            cascade_id = row.get('cascade_id', 'unknown')
+            description = VIRTUAL_CASCADE_DESCRIPTIONS.get(
+                cascade_id,
+                f'Virtual cascade (no session state)'
+            )
+
+            # Create synthetic session entry
+            virtual_session = {
+                'session_id': sid,
+                'cascade_id': cascade_id,
+                'status': 'completed',  # Assume completed for virtual sessions
+                'current_phase': None,
+                'started_at': row.get('started_at').isoformat() if row.get('started_at') else None,
+                'updated_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
+                'completed_at': row.get('updated_at').isoformat() if row.get('updated_at') else None,
+                'error_message': None,
+                'cancel_requested': False,
+                'cancel_reason': None,
+                'blocked_type': None,
+                'blocked_on': None,
+                'blocked_reason': None,
+                'resumable': False,
+                'last_checkpoint_id': None,
+                'heartbeat_at': None,
+                'heartbeat_lease_seconds': 60,
+                'is_zombie': False,
+                'can_resume': False,
+                # Metrics
+                'total_cost': float(row.get('total_cost', 0) or 0),
+                'total_duration_ms': 0,  # Not available for virtual sessions
+                'message_count': int(row.get('message_count', 0) or 0),
+                'models': row.get('models', []),
+                # Flags for UI
+                'is_dynamic': True,
+                'description': description,
+                # Placeholder values for analytics fields
+                'input_data': None,
+                'output': None,
+                'genus_hash': None,
+                'input_category': None,
+                'input_char_count': 0,
+                'cost_z_score': 0.0,
+                'duration_z_score': 0.0,
+                'is_cost_outlier': False,
+                'is_duration_outlier': False,
+                'cluster_avg_cost': 0.0,
+                'cluster_avg_duration': 0.0,
+                'cluster_run_count': 0,
+                'context_cost_pct': 0.0,
+                'total_context_cost_estimated': 0.0,
+                'cells_with_context': 0,
+                'bottleneck_cell': None,
+                'bottleneck_cell_pct': 0.0,
+                'cost_diff_pct': None,
+                'messages_diff_pct': None,
+                'duration_diff_pct': None,
+            }
+            existing_sessions.append(virtual_session)
+
+        # Sort by started_at descending and limit
+        existing_sessions.sort(
+            key=lambda x: x.get('started_at') or '1970-01-01',
+            reverse=True
+        )
+        return existing_sessions[:limit]
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # On error, just return existing sessions unchanged
+        return existing_sessions
+
+
 @sessions_bp.route('/api/sessions', methods=['GET'])
 def list_all_sessions():
     """
@@ -431,6 +559,11 @@ def list_all_sessions():
             can_resume = session.resumable and session.last_checkpoint_id is not None
             result[i]['is_zombie'] = is_zombie
             result[i]['can_resume'] = can_resume
+
+        # Also include "virtual" sessions from unified_logs that don't have session_state entries
+        # These are sessions from dynamic cascades like sql_udf that use direct bodybuilder() calls
+        if not active_only and not status_filter:  # Only for "all sessions" queries
+            result = _include_virtual_sessions(result, cascade_id, limit)
 
         # Sanitize result to handle bytes (images) and other non-JSON-serializable types
         sanitized_result = [sanitize_for_json(session) for session in result]
@@ -649,23 +782,34 @@ def get_console_kpis():
         db = get_db()
 
         # 24h cost + trend
+        # IMPORTANT: Query unified_logs directly to include ALL costs (including in-progress sessions)
+        # cascade_analytics only has completed sessions, which misses long-running cascades like Calliope
         cost_24h_query = """
             SELECT
-                SUM(total_cost) as total,
-                AVG(total_cost) as avg_cost
-            FROM cascade_analytics
-            WHERE created_at > now() - INTERVAL 1 DAY
+                SUM(cost) as total,
+                COUNT(DISTINCT session_id) as session_count
+            FROM unified_logs
+            WHERE timestamp > now() - INTERVAL 1 DAY
+              AND cost > 0
+              AND role = 'assistant'
         """
-        cost_24h_result = db.query(cost_24h_query)  # Returns list of dicts
-        cost_24h = cost_24h_result[0] if len(cost_24h_result) > 0 else {'total': 0, 'avg_cost': 0}
+        cost_24h_result = db.query(cost_24h_query)
+        cost_24h = cost_24h_result[0] if len(cost_24h_result) > 0 else {'total': 0, 'session_count': 0}
+        # Calculate avg cost per session
+        cost_24h['avg_cost'] = (cost_24h['total'] / cost_24h['session_count']) if cost_24h['session_count'] > 0 else 0
 
         cost_prev_24h_query = """
-            SELECT AVG(total_cost) as avg_cost
-            FROM cascade_analytics
-            WHERE created_at BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+            SELECT
+                SUM(cost) as total,
+                COUNT(DISTINCT session_id) as session_count
+            FROM unified_logs
+            WHERE timestamp BETWEEN now() - INTERVAL 2 DAY AND now() - INTERVAL 1 DAY
+              AND cost > 0
+              AND role = 'assistant'
         """
         cost_prev_24h_result = db.query(cost_prev_24h_query)
-        cost_prev_24h = cost_prev_24h_result[0] if len(cost_prev_24h_result) > 0 else {'avg_cost': 0}
+        cost_prev_24h = cost_prev_24h_result[0] if len(cost_prev_24h_result) > 0 else {'total': 0, 'session_count': 0}
+        cost_prev_24h['avg_cost'] = (cost_prev_24h['total'] / cost_prev_24h['session_count']) if cost_prev_24h.get('session_count', 0) > 0 else 0
 
         cost_trend_pct = ((cost_24h['avg_cost'] - cost_prev_24h['avg_cost']) / cost_prev_24h['avg_cost'] * 100) if cost_prev_24h['avg_cost'] > 0 else 0
 

@@ -95,10 +95,26 @@ def get_overview():
         # Current period KPIs
         current_start = datetime.now() - timedelta(days=days)
 
+        # IMPORTANT: Query unified_logs directly for cost totals to include ALL sessions
+        # (including in-progress cascades like Calliope that never "complete")
+        # cascade_analytics only has completed sessions
+        cost_query = f"""
+            SELECT
+                SUM(cost) as total_cost_sum,
+                COUNT(DISTINCT session_id) as session_count
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
+        """
+        cost_result = db.query(cost_query)
+        cost_data = cost_result[0] if cost_result else {'total_cost_sum': 0, 'session_count': 0}
+
+        # Still use cascade_analytics for advanced metrics that require completion
+        # (outliers, context %, duration, avg cost per completed session)
         kpis_query = f"""
             SELECT
-                COUNT(*) as session_count,
-                SUM(total_cost) as total_cost_sum,
+                COUNT(*) as completed_session_count,
                 AVG(total_cost) as avg_cost,
                 AVG(context_cost_pct) as avg_context_pct,
                 countIf(is_cost_outlier OR is_duration_outlier) as outlier_count,
@@ -110,9 +126,27 @@ def get_overview():
         kpis_result = db.query(kpis_query)
         kpis = kpis_result[0] if kpis_result else {}
 
+        # Merge: use unified_logs cost total, cascade_analytics for other metrics
+        kpis['total_cost_sum'] = cost_data.get('total_cost_sum', 0)
+        kpis['session_count'] = cost_data.get('session_count', 0)
+
         # Previous period for trend comparison
         prev_start = current_start - timedelta(days=days)
         prev_end = current_start
+
+        # Use unified_logs for previous period cost too
+        prev_cost_query = f"""
+            SELECT
+                SUM(cost) as total_cost_sum,
+                COUNT(DISTINCT session_id) as session_count
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{prev_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND timestamp < toDateTime('{prev_end.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
+        """
+        prev_cost_result = db.query(prev_cost_query)
+        prev_cost_data = prev_cost_result[0] if prev_cost_result else {'total_cost_sum': 0, 'session_count': 0}
 
         prev_query = f"""
             SELECT
@@ -125,6 +159,13 @@ def get_overview():
 
         prev_result = db.query(prev_query)
         prev = prev_result[0] if prev_result else {}
+
+        # Calculate avg cost from unified_logs data (total / session count)
+        prev_session_count = prev_cost_data.get('session_count', 0)
+        if prev_session_count > 0:
+            prev['avg_cost'] = prev_cost_data.get('total_cost_sum', 0) / prev_session_count
+        else:
+            prev['avg_cost'] = 0
 
         # Calculate trends (with NaN handling)
         current_avg = safe_float(kpis.get('avg_cost'))
@@ -732,29 +773,46 @@ def get_time_series():
 
         # Map granularity to ClickHouse function
         if granularity == 'hourly':
-            bucket_func = 'toStartOfHour(created_at)'
+            bucket_func = 'toStartOfHour(timestamp)'
+            analytics_bucket_func = 'toStartOfHour(created_at)'
         elif granularity == 'weekly':
-            bucket_func = 'toStartOfWeek(created_at)'
+            bucket_func = 'toStartOfWeek(timestamp)'
+            analytics_bucket_func = 'toStartOfWeek(created_at)'
         elif granularity == 'monthly':
-            bucket_func = 'toStartOfMonth(created_at)'
+            bucket_func = 'toStartOfMonth(timestamp)'
+            analytics_bucket_func = 'toStartOfMonth(created_at)'
         else:  # daily (default)
-            bucket_func = 'toDate(created_at)'
+            bucket_func = 'toDate(timestamp)'
+            analytics_bucket_func = 'toDate(created_at)'
 
+        # IMPORTANT: Query unified_logs for cost data to include ALL sessions (including in-progress)
         query = f"""
             SELECT
                 {bucket_func} as bucket,
-                SUM(total_cost) as cost_sum,
-                COUNT(*) as run_count,
-                AVG(total_cost) as avg_cost,
-                SUM(total_context_cost_estimated) as context_cost_sum,
-                AVG(context_cost_pct) as avg_context_pct
-            FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                SUM(cost) as cost_sum,
+                COUNT(DISTINCT session_id) as run_count
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
             GROUP BY bucket
             ORDER BY bucket
         """
 
         results = db.query(query)
+
+        # Get context cost data from cascade_analytics (only available for completed sessions)
+        context_query = f"""
+            SELECT
+                {analytics_bucket_func} as bucket,
+                SUM(total_context_cost_estimated) as context_cost_sum,
+                AVG(context_cost_pct) as avg_context_pct
+            FROM cascade_analytics
+            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            GROUP BY bucket
+        """
+        context_results = db.query(context_query)
+        context_map = {str(r['bucket']): r for r in context_results} if context_results else {}
 
         series = []
         for row in results:
@@ -764,13 +822,19 @@ def get_time_series():
             else:
                 bucket_str = str(bucket)
 
+            # Get context data if available
+            context_data = context_map.get(bucket_str, {})
+
+            cost_sum = safe_float(row['cost_sum'])
+            run_count = int(row['run_count'])
+
             series.append({
                 'date': bucket_str,
-                'cost': safe_float(row['cost_sum']),
-                'runs': int(row['run_count']),
-                'avg_cost': safe_float(row['avg_cost']),
-                'context_cost': safe_float(row['context_cost_sum']),
-                'context_pct': safe_float(row['avg_context_pct']),
+                'cost': cost_sum,
+                'runs': run_count,
+                'avg_cost': safe_float(cost_sum / run_count) if run_count > 0 else 0,
+                'context_cost': safe_float(context_data.get('context_cost_sum', 0)),
+                'context_pct': safe_float(context_data.get('avg_context_pct', 0)),
             })
 
         return jsonify({'series': series})
@@ -803,25 +867,31 @@ def get_by_cascade():
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
-        # Get total for percentage calculation
+        # IMPORTANT: Query unified_logs for total to include ALL sessions (including in-progress)
+        # cascade_analytics only has completed sessions, missing long-running cascades like Calliope
         total_query = f"""
-            SELECT SUM(total_cost) as grand_total
-            FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            SELECT SUM(cost) as grand_total
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
         """
         total_result = db.query(total_query)
         grand_total = safe_float(total_result[0]['grand_total']) if total_result else 0
 
+        # Query unified_logs for per-cascade costs (includes in-progress sessions)
         query = f"""
             SELECT
                 cascade_id,
-                SUM(total_cost) as cost_sum,
-                COUNT(*) as run_count,
-                AVG(total_cost) as avg_cost,
-                countIf(is_cost_outlier) as outlier_count,
-                AVG(context_cost_pct) as avg_context_pct
-            FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                SUM(cost) as cost_sum,
+                COUNT(DISTINCT session_id) as run_count,
+                SUM(cost) / COUNT(DISTINCT session_id) as avg_cost
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
+              AND cascade_id IS NOT NULL
+              AND cascade_id != ''
             GROUP BY cascade_id
             ORDER BY cost_sum DESC
             LIMIT {limit}
@@ -829,16 +899,34 @@ def get_by_cascade():
 
         results = db.query(query)
 
+        # Get outlier counts from cascade_analytics (only for completed sessions)
+        outlier_query = f"""
+            SELECT
+                cascade_id,
+                countIf(is_cost_outlier) as outlier_count,
+                AVG(context_cost_pct) as avg_context_pct
+            FROM cascade_analytics
+            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            GROUP BY cascade_id
+        """
+        outlier_results = db.query(outlier_query)
+        outlier_map = {r['cascade_id']: r for r in outlier_results} if outlier_results else {}
+
         cascades = []
         for row in results:
+            cascade_id = row['cascade_id']
             total_cost = safe_float(row['cost_sum'])
+
+            # Get outlier/context data from cascade_analytics (if available)
+            outlier_data = outlier_map.get(cascade_id, {})
+
             cascades.append({
-                'cascade_id': row['cascade_id'],
+                'cascade_id': cascade_id,
                 'total_cost': total_cost,
                 'run_count': int(row['run_count']),
                 'avg_cost': safe_float(row['avg_cost']),
-                'outlier_count': int(row['outlier_count']),
-                'avg_context_pct': safe_float(row['avg_context_pct']),
+                'outlier_count': int(outlier_data.get('outlier_count', 0)),
+                'avg_context_pct': safe_float(outlier_data.get('avg_context_pct', 0)),
                 'pct_of_total': (total_cost / grand_total * 100) if grand_total > 0 else 0,
             })
 
@@ -870,24 +958,31 @@ def get_by_model():
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
-        # Get total for percentage calculation
+        # IMPORTANT: Query unified_logs for total to include ALL sessions (including in-progress)
         total_query = f"""
-            SELECT SUM(total_cost) as grand_total
-            FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            SELECT SUM(cost) as grand_total
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
         """
         total_result = db.query(total_query)
         grand_total = safe_float(total_result[0]['grand_total']) if total_result else 0
 
+        # Query unified_logs for per-model costs (includes in-progress sessions)
+        # Use model_requested for cleaner model names (falls back to model if not set)
         query = f"""
             SELECT
-                primary_model as model,
-                SUM(total_cost) as cost_sum,
-                COUNT(*) as run_count,
-                AVG(total_cost) as avg_cost,
-                SUM(total_tokens) as tokens_sum
-            FROM cascade_analytics
-            WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                COALESCE(nullIf(model_requested, ''), model) as model,
+                SUM(cost) as cost_sum,
+                COUNT(*) as call_count,
+                SUM(tokens_in + tokens_out) as tokens_sum
+            FROM unified_logs
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND cost > 0
+              AND role = 'assistant'
+              AND model IS NOT NULL
+              AND model != ''
             GROUP BY model
             ORDER BY cost_sum DESC
         """
@@ -908,9 +1003,9 @@ def get_by_model():
                 'model': model_name,
                 'display_name': display_name,
                 'total_cost': total_cost,
-                'run_count': int(row['run_count']),
-                'avg_cost': safe_float(row['avg_cost']),
-                'total_tokens': int(row['tokens_sum']),
+                'run_count': int(row['call_count']),
+                'avg_cost': safe_float(total_cost / row['call_count']) if row['call_count'] > 0 else 0,
+                'total_tokens': int(row['tokens_sum'] or 0),
                 'pct_of_total': (total_cost / grand_total * 100) if grand_total > 0 else 0,
             })
 

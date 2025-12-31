@@ -966,7 +966,7 @@ class RVBBITRunner:
         try:
             from .shadow_assessment import queue_intra_phase_shadow_assessment, is_shadow_assessment_enabled
 
-            if is_shadow_assessment_enabled() and self.context_messages:
+            if is_shadow_assessment_enabled(self.config.cascade_id) and self.context_messages:
                 # Get candidate index (phase-level or cascade-level)
                 candidate_index = self.current_phase_candidate_index
                 if candidate_index is None:
@@ -1727,7 +1727,7 @@ class RVBBITRunner:
             console.print(f"  [dim]No context config → clean slate[/dim]")
 
             # Shadow assessment: Even for clean slate, assess what auto-context would have done
-            if is_shadow_assessment_enabled():
+            if is_shadow_assessment_enabled(self.config.cascade_id):
                 self._queue_shadow_assessment(
                     phase=phase,
                     input_data=input_data,
@@ -1815,7 +1815,7 @@ class RVBBITRunner:
         console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
 
         # Shadow assessment: Queue background analysis of what auto-context would have done
-        if is_shadow_assessment_enabled():
+        if is_shadow_assessment_enabled(self.config.cascade_id):
             self._queue_shadow_assessment(
                 phase=phase,
                 input_data=input_data,
@@ -8746,11 +8746,21 @@ Refinement directive: {reforge_config.honing_prompt}
                 return self._execute_sql_mapping_phase(phase, input_data, trace)
 
             # Check if this is a HITL screen phase (direct HTML rendering, no LLM)
+            # Only block if the phase requires input (pure HITL screens)
+            # If requires_input is False, emit progress display and continue execution
             if phase.is_hitl_screen():
-                return self._execute_hitl_phase(phase, input_data, trace)
+                if phase.requires_input:
+                    # Pure HITL screen - block for user input
+                    return self._execute_hitl_phase(phase, input_data, trace)
+                else:
+                    # Progress display - emit event but continue execution
+                    self._emit_progress_display(phase, input_data, trace)
+                    # Fall through to tool/LLM execution below
 
             # Check if this is a deterministic (tool-based) phase
-            if phase.is_deterministic():
+            # NOTE: Use phase.tool directly, not is_deterministic() which includes has_ui
+            # This allows LLM cells with progress displays to fall through to LLM execution
+            if phase.tool:
                 return self._execute_deterministic_phase(phase, input_data, trace)
 
             # Check if this is an image generation phase (uses image model like FLUX, SDXL)
@@ -9846,6 +9856,104 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
             # No error handler - re-raise
             raise
+
+    def _emit_progress_display(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> None:
+        """
+        Emit a non-blocking progress display for cells with hitl + tool/instructions.
+
+        Unlike _execute_hitl_phase which blocks for user input, this:
+        - Renders the HITL template
+        - Emits an event for the apps UI to display
+        - Logs for visibility
+        - Does NOT create a checkpoint
+        - Does NOT block - execution continues immediately
+
+        This enables "progress displays" - HITL content shown while work happens.
+        """
+        from .prompts import render_instruction
+        from .unified_logs import log_unified
+        from .events import get_event_bus, Event
+        from datetime import datetime
+
+        indent = "  " * self.depth
+        logger = logging.getLogger(__name__)
+
+        logger.debug(f"{indent}Emitting progress display for {phase.name}")
+
+        # Build render context (same as HITL phase)
+        outputs = {}
+        for item in self.echo.lineage:
+            output = item.get("output")
+            if isinstance(output, dict):
+                outputs[item["cell"]] = output
+            else:
+                outputs[item["cell"]] = output
+
+        render_context = {
+            "input": input_data,
+            "state": self.echo.state,
+            "outputs": outputs,
+            "lineage": self.echo.lineage,
+            "history": self.echo.history,
+            "session_id": self.session_id,
+        }
+
+        # Render the HITL template
+        try:
+            rendered_html = render_instruction(phase.effective_htmx, render_context)
+        except Exception as e:
+            logger.warning(f"{indent}Progress display template rendering failed: {e}")
+            rendered_html = f"<div class='text-muted-foreground'>Executing {phase.name}...</div>"
+
+        # Build UI spec for the progress display
+        ui_spec = {
+            "layout": "vertical",
+            "title": phase.hitl_title or f"Progress: {phase.name}",
+            "sections": [
+                {"type": "html", "content": rendered_html, "allow_forms": False}
+            ],
+            "_meta": {
+                "type": "progress_display",
+                "blocking": False,
+                "cell_name": phase.name,
+            }
+        }
+
+        # Emit event for apps UI to pick up
+        event_bus = get_event_bus()
+        event_bus.publish(Event(
+            type="progress_display",
+            session_id=self.session_id,
+            timestamp=datetime.now().isoformat(),
+            data={
+                "cell_name": phase.name,
+                "cascade_id": self.config.cascade_id,
+                "ui_spec": ui_spec,
+                "html": rendered_html,
+            }
+        ))
+
+        # Log to unified logs (non-blocking, informational)
+        log_unified(
+            session_id=self.session_id,
+            trace_id=trace.id,
+            parent_id=trace.parent_id,
+            parent_session_id=self.parent_session_id,
+            node_type="progress_display",
+            role="system",
+            depth=self.depth,
+            cascade_id=self.config.cascade_id,
+            cascade_file=self.config_path if isinstance(self.config_path, str) else None,
+            cell_name=phase.name,
+            content=f"Progress display rendered ({len(rendered_html)} chars)",
+            metadata={
+                "phase_type": "progress_display",
+                "blocking": False,
+                "html": rendered_html,
+            }
+        )
+
+        logger.debug(f"{indent}Progress display emitted, continuing execution")
 
     def _execute_hitl_phase(self, phase: CellConfig, input_data: dict, trace: TraceNode) -> Any:
         """

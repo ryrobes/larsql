@@ -4,8 +4,26 @@ description: 'Comprehensive test: deterministic data, LLM soundings, validation,
 inputs_schema:
   analysis_type: Type of analysis (sales/customer/product)
 cells:
-- handoffs:
-  - enrich_data
+# SQL data extraction with progress display (non-blocking)
+- name: extract_sales_data
+  tool: sql_data
+  await_input: false  # Don't block - this is a progress display
+  hitl: |
+    <div class="card">
+      <header>
+        <h2 class="card-title flex items-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Extracting Sales Data
+        </h2>
+        <p class="card-description">Running SQL query to generate sample data...</p>
+      </header>
+      <section class="py-4">
+        <pre class="bg-muted p-3 rounded text-xs text-muted-foreground">SELECT * FROM sales...</pre>
+      </section>
+    </div>
   inputs:
     query: "-- Generate sample sales data\nSELECT * FROM (\n  VALUES\n    ('2024-12-01',\
       \ 'Electronics', 'Laptop', 1200, 5),\n    ('2024-12-02', 'Electronics', 'Phone',\
@@ -14,10 +32,33 @@ cells:
       \ 15),\n    ('2024-12-06', 'Clothing', 'Shoes', 120, 30),\n    ('2024-12-07',\
       \ 'Home', 'Desk', 450, 6),\n    ('2024-12-08', 'Electronics', 'Headphones',\
       \ 200, 20)\n) AS sales(date, category, product, price, quantity)\n"
-  name: extract_sales_data
-  tool: sql_data
-- handoffs:
-  - analyze_with_soundings
+  handoffs:
+    - enrich_data
+# Python data enrichment with progress display (non-blocking)
+- name: enrich_data
+  tool: python_data
+  await_input: false  # Don't block - this is a progress display
+  hitl: |
+    <div class="card">
+      <header>
+        <h2 class="card-title flex items-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Enriching Data
+        </h2>
+        <p class="card-description">Running Python to calculate revenue and profits...</p>
+      </header>
+      <section class="py-4 space-y-2">
+        <div class="text-sm text-muted-foreground">Processing {{ outputs.extract_sales_data | length if outputs.extract_sales_data else '?' }} rows</div>
+        <div class="flex gap-2 flex-wrap">
+          <span class="badge-outline text-xs">Revenue</span>
+          <span class="badge-outline text-xs">Profit Margin</span>
+          <span class="badge-outline text-xs">Tier Classification</span>
+        </div>
+      </section>
+    </div>
   inputs:
     code: "import pandas as pd\n\n# Access prior phase data (zero-copy from temp table!)\n\
       df = data.extract_sales_data\n\n# Calculate metrics\ndf['revenue'] = df['price']\
@@ -27,10 +68,32 @@ cells:
       \ classification\ndf['tier'] = pd.cut(df['revenue'],\n                    bins=[0,\
       \ 2000, 5000, float('inf')],\n                    labels=['Low', 'Medium', 'High'])\n\
       \nresult = df\n# Auto-creates temp table: _enrich_data\n"
-  name: enrich_data
-  tool: python_data
-- handoffs:
-  - validate_analysis
+  handoffs:
+    - analyze_with_soundings
+# LLM analysis with progress display (non-blocking during candidates)
+- name: analyze_with_soundings
+  await_input: false  # Don't block - this is a progress display
+  hitl: |
+    <div class="card">
+      <header>
+        <h2 class="card-title flex items-center gap-2">
+          <svg class="animate-spin h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          AI Analyzing Data
+        </h2>
+        <p class="card-description">Running 3 candidate analyses in parallel...</p>
+      </header>
+      <section class="py-4">
+        <div class="flex gap-2">
+          <span class="badge text-xs">Candidate 1</span>
+          <span class="badge text-xs">Candidate 2</span>
+          <span class="badge text-xs">Candidate 3</span>
+        </div>
+        <p class="text-sm text-muted-foreground mt-2">Analysis type: {{ input.analysis_type }}</p>
+      </section>
+    </div>
   instructions: "Analyze the sales data and provide business insights.\n\nFocus: {{\
     \ input.analysis_type }}\n\nYou can query the enriched data from temp table _enrich_data.\n\
     \nProvide structured analysis as JSON:\n{\n  \"key_insights\": [\"insight 1\"\
@@ -38,7 +101,8 @@ cells:
     \ metrics\"],\n  \"recommendations\": [\"actionable rec 1\", \"actionable rec\
     \ 2\"],\n  \"confidence\": 0.85\n}\n\nBe specific - reference actual products,\
     \ categories, and numbers.\n"
-  name: analyze_with_soundings
+  handoffs:
+    - validate_analysis
   output_schema:
     properties:
       confidence:

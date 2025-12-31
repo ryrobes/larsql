@@ -1,0 +1,115 @@
+# Test Non-Blocking HITL Display
+#
+# This cascade tests whether hitl content can be displayed WITHOUT blocking execution.
+# The `await_input` property controls this:
+#   - await_input: false → Show UI but continue automatically (progress display)
+#   - await_input: true → Show UI and wait for response (default for pure hitl)
+#
+# Run headless: rvbbit run examples/test_nonblocking_hitl.yaml --input '{"test": "hello"}'
+# Run in apps:  Navigate to /apps/test_nonblocking_hitl/
+
+cascade_id: test_nonblocking_hitl
+description: Test non-blocking HITL progress displays
+
+inputs_schema:
+  test: Test input value
+
+cells:
+  # Cell 1: Pure HITL (should block - requires user input)
+  - name: welcome
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">Non-Blocking HITL Test</h2>
+          <p class="card-description">Testing progress displays that don't block.</p>
+        </header>
+        <section class="py-4">
+          <p class="text-muted-foreground">Input received: <code>{{ input.test }}</code></p>
+        </section>
+        <footer class="flex gap-3">
+          {{ submit_button("Start Test", route="step_with_display", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - step_with_display
+
+  # Cell 2: Tool with hitl display (SHOULD NOT block - progress display)
+  # await_input: false means show the UI but continue executing
+  - name: step_with_display
+    tool: sql_data
+    await_input: false
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">Executing SQL Query...</h2>
+        </header>
+        <section class="text-center py-8">
+          <div class="text-4xl mb-4 animate-pulse">⚡</div>
+          <p class="text-muted-foreground">Running SQL to generate test data...</p>
+        </section>
+      </div>
+    inputs:
+      query: |
+        SELECT * FROM (
+          VALUES
+            (1, 'Alpha', 100),
+            (2, 'Beta', 200),
+            (3, 'Gamma', 300)
+        ) AS data(id, name, value)
+    handoffs:
+      - process_data
+
+  # Cell 3: LLM with hitl display (SHOULD NOT block - progress display)
+  - name: process_data
+    await_input: false
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">AI Processing...</h2>
+        </header>
+        <section class="text-center py-8">
+          <div class="text-4xl mb-4 animate-spin">🤖</div>
+          <p class="text-muted-foreground">Analyzing the data with AI...</p>
+          <p class="text-xs text-muted-foreground mt-2">Previous step output: {{ outputs.step_with_display | length }} rows</p>
+        </section>
+      </div>
+    instructions: |
+      Summarize this data briefly: {{ outputs.step_with_display }}
+      Return a short summary in 1-2 sentences.
+    handoffs:
+      - final_result
+
+  # Cell 4: Pure HITL result display (blocks for user to see result)
+  - name: final_result
+    hitl: |
+      <div class="card">
+        <header>
+          <h2 class="card-title">Test Complete! ✅</h2>
+        </header>
+        <section class="py-4 space-y-4">
+          <div>
+            <p class="font-medium text-foreground">SQL Data:</p>
+            <pre class="bg-muted p-2 rounded text-sm">{{ outputs.step_with_display | tojson(indent=2) }}</pre>
+          </div>
+          <div>
+            <p class="font-medium text-foreground">AI Summary:</p>
+            <p class="text-muted-foreground">{{ outputs.process_data }}</p>
+          </div>
+        </section>
+        <footer class="flex gap-3">
+          {{ submit_button("Run Again", route="welcome", variant="outline") }}
+          {{ submit_button("Done", route="done", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - welcome
+      - done
+
+  - name: done
+    hitl: |
+      <div class="card text-center">
+        <section class="py-8">
+          <div class="text-4xl mb-4">🎉</div>
+          <p class="text-foreground font-semibold">All done!</p>
+        </section>
+      </div>
