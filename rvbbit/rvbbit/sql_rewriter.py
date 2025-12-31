@@ -1,7 +1,12 @@
 """
-SQL Rewriter for RVBBIT MAP/RUN Syntax (Clean Version)
+SQL Rewriter for RVBBIT Extended SQL Syntax.
+
+Handles:
+- RVBBIT MAP/RUN syntax for cascade execution
+- LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
 Cell 1-2: MAP with optional PARALLEL
+Cell 3: LLM Aggregates
 """
 
 import re
@@ -48,7 +53,15 @@ class RVBBITStatement:
 # ============================================================================
 
 def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
-    """Detect and rewrite RVBBIT MAP/RUN syntax."""
+    """
+    Detect and rewrite RVBBIT extended SQL syntax.
+
+    Handles:
+    1. RVBBIT MAP/RUN statements
+    2. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
+
+    These can be combined - a query can have both RVBBIT MAP and LLM aggregates.
+    """
     # Normalize query first (remove comments, normalize whitespace)
     normalized = query.strip()
     lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
@@ -85,17 +98,44 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         plan_text_escaped = plan_text.replace("'", "''")
         return f"SELECT '{plan_text_escaped}' AS query_plan"
 
-    if not _is_rvbbit_statement(normalized):
+    result = query
+
+    # Process RVBBIT MAP/RUN statements
+    if _is_rvbbit_statement(normalized):
+        stmt = _parse_rvbbit_statement(normalized)
+
+        if stmt.mode == 'MAP':
+            result = _rewrite_map(stmt)
+        elif stmt.mode == 'RUN':
+            result = _rewrite_run(stmt)
+        else:
+            raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
+
+    # Process LLM aggregate functions (can be in original query or in rewritten query)
+    result = _rewrite_llm_aggregates(result)
+
+    return result
+
+
+def _rewrite_llm_aggregates(query: str) -> str:
+    """
+    Rewrite LLM aggregate functions to implementation calls.
+
+    Transforms:
+        SELECT category, LLM_SUMMARIZE(review_text) FROM reviews GROUP BY category
+    Into:
+        SELECT category, llm_summarize_impl(LIST(review_text)::VARCHAR) FROM reviews GROUP BY category
+    """
+    try:
+        from rvbbit.sql_tools.llm_agg_rewriter import process_llm_aggregates
+        return process_llm_aggregates(query)
+    except ImportError:
+        # Fallback if module not available
         return query
-
-    stmt = _parse_rvbbit_statement(normalized)
-
-    if stmt.mode == 'MAP':
-        return _rewrite_map(stmt)
-    elif stmt.mode == 'RUN':
-        return _rewrite_run(stmt)
-    else:
-        raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"LLM aggregate rewrite failed: {e}")
+        return query
 
 
 def _is_rvbbit_statement(query: str) -> bool:

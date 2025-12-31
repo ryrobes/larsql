@@ -10,17 +10,21 @@
   width: 100%;
   height: 100%;
   background-color: var(--color-bg-primary, #0a0a0a);
+  border: none;
 }
 
 .video-loader__container {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: none;
 }
 
 .video-loader__video {
   display: block;
   object-fit: contain;
+  border: none;
+  outline: none;
 }
 
 /* ============================================
@@ -96,4 +100,38 @@
 /* For flex containers that need to fill space */
 .video-loader--flex {
   flex: 1;
+}
+
+/* ============================================
+   BORDER RESET FOR ALL LOADER CONTEXTS
+   ============================================ */
+
+/* Remove any borders from AG Grid overlay wrappers */
+.ag-overlay-loading-center,
+.ag-overlay-loading-wrapper,
+.ag-overlay-panel {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove borders from common loading wrapper classes */
+.chart-loading,
+.list-loading,
+.ngram-loading,
+.phylogeny-loading,
+.outputs-loading,
+.assessment-loading {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure video-loader inside any wrapper has no borders */
+[class*="-loading"] .video-loader,
+[class*="-loading"] .video-loader__container,
+[class*="-loading"] .video-loader__video {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
 }

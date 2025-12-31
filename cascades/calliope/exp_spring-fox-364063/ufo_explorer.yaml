@@ -1,0 +1,287 @@
+cascade_id: ufo_explorer
+description: Interactive UFO Sightings Explorer - 80,328 documented encounters from
+  1906-2014 with timeline, geographic, shape analysis, and searchable details
+inputs_schema: {}
+model: claude-sonnet-4-20250514
+cells:
+- name: dashboard
+  hitl: "<!-- UFO Sightings Explorer Dashboard -->\n<style>\n  .ufo-dashboard { font-family:\
+    \ 'Google Sans Code', monospace; }\n  .stat-card { background: linear-gradient(135deg,\
+    \ rgba(0,229,255,0.1) 0%, rgba(167,139,250,0.1) 100%); }\n  .chart-container {\
+    \ background: rgba(0,0,0,0.3); border-radius: 8px; padding: 16px; }\n  .filter-active\
+    \ { background: rgba(0,229,255,0.2) !important; border-color: #00e5ff !important;\
+    \ }\n  .shape-icon { font-size: 1.5rem; }\n  #sightingsGrid { --ag-background-color:\
+    \ transparent; --ag-header-background-color: rgba(0,0,0,0.3); }\n</style>\n\n\
+    <div class=\"ufo-dashboard flex flex-col gap-4\">\n  <!-- Header -->\n  <div class=\"\
+    flex items-center justify-between\">\n    <div>\n      <h1 class=\"text-2xl font-bold\
+    \ bg-gradient-to-r from-cyan-400 via-purple-400 to-green-400 bg-clip-text text-transparent\"\
+    >\n        \U0001F6F8 UFO Sightings Explorer\n      </h1>\n      <p class=\"text-muted-foreground\
+    \ text-sm\">108 years of documented encounters (1906-2014)</p>\n    </div>\n \
+    \   <div class=\"flex gap-2\">\n      <select id=\"yearFilter\" class=\"select\
+    \ text-sm\" onchange=\"applyFilters()\">\n        <option value=\"\">All Years</option>\n\
+    \        <option value=\"1940-1959\">1940s-50s (Early Era)</option>\n        <option\
+    \ value=\"1960-1979\">1960s-70s (Space Age)</option>\n        <option value=\"\
+    1980-1999\">1980s-90s (X-Files Era)</option>\n        <option value=\"2000-2014\"\
+    >2000s-10s (Digital Age)</option>\n      </select>\n      <select id=\"shapeFilter\"\
+    \ class=\"select text-sm\" onchange=\"applyFilters()\">\n        <option value=\"\
+    \">All Shapes</option>\n        <option value=\"light\">Light (20.6%)</option>\n\
+    \        <option value=\"triangle\">Triangle (9.8%)</option>\n        <option\
+    \ value=\"circle\">Circle (9.5%)</option>\n        <option value=\"fireball\"\
+    >Fireball (7.7%)</option>\n        <option value=\"sphere\">Sphere (6.7%)</option>\n\
+    \        <option value=\"disk\">Disk (6.5%)</option>\n      </select>\n    </div>\n\
+    \  </div>\n\n  <!-- Stats Row -->\n  <div class=\"grid grid-cols-4 gap-3\" id=\"\
+    statsRow\">\n    <div class=\"card stat-card p-4 text-center\">\n      <div class=\"\
+    text-3xl font-bold text-cyan-400\" id=\"totalSightings\">80,328</div>\n      <div\
+    \ class=\"text-xs text-muted-foreground\">Total Sightings</div>\n    </div>\n\
+    \    <div class=\"card stat-card p-4 text-center\">\n      <div class=\"text-3xl\
+    \ font-bold text-purple-400\" id=\"peakYear\">2012</div>\n      <div class=\"\
+    text-xs text-muted-foreground\">Peak Year</div>\n    </div>\n    <div class=\"\
+    card stat-card p-4 text-center\">\n      <div class=\"text-3xl font-bold text-green-400\"\
+    \ id=\"topState\">CA</div>\n      <div class=\"text-xs text-muted-foreground\"\
+    >Most Sightings</div>\n    </div>\n    <div class=\"card stat-card p-4 text-center\"\
+    >\n      <div class=\"text-3xl font-bold text-yellow-400\" id=\"peakHour\">9 PM</div>\n\
+    \      <div class=\"text-xs text-muted-foreground\">Peak Hour</div>\n    </div>\n\
+    \  </div>\n\n  <!-- Charts Row 1 -->\n  <div class=\"grid grid-cols-2 gap-4\"\
+    >\n    <!-- Timeline Chart -->\n    <div class=\"chart-container\">\n      <div\
+    \ class=\"flex items-center justify-between mb-2\">\n        <h3 class=\"text-sm\
+    \ font-semibold\">\U0001F4C8 Sightings Over Time</h3>\n        <span class=\"\
+    badge text-xs\">Click to filter</span>\n      </div>\n      <div id=\"timelineChart\"\
+    \ style=\"height: 280px;\"></div>\n    </div>\n\n    <!-- Geographic Map -->\n\
+    \    <div class=\"chart-container\">\n      <div class=\"flex items-center justify-between\
+    \ mb-2\">\n        <h3 class=\"text-sm font-semibold\">\U0001F5FA️ Geographic\
+    \ Distribution</h3>\n        <span class=\"badge-secondary text-xs\">US Only</span>\n\
+    \      </div>\n      <div id=\"geoChart\" style=\"height: 280px;\"></div>\n  \
+    \  </div>\n  </div>\n\n  <!-- Charts Row 2 -->\n  <div class=\"grid grid-cols-3\
+    \ gap-4\">\n    <!-- Shape Analysis -->\n    <div class=\"chart-container\">\n\
+    \      <h3 class=\"text-sm font-semibold mb-2\">\U0001F47D UFO Shapes Reported</h3>\n\
+    \      <div id=\"shapeChart\" style=\"height: 240px;\"></div>\n    </div>\n\n\
+    \    <!-- Time of Day -->\n    <div class=\"chart-container\">\n      <h3 class=\"\
+    text-sm font-semibold mb-2\">\U0001F319 Time of Day</h3>\n      <div id=\"hourChart\"\
+    \ style=\"height: 240px;\"></div>\n    </div>\n\n    <!-- Duration Analysis -->\n\
+    \    <div class=\"chart-container\">\n      <h3 class=\"text-sm font-semibold\
+    \ mb-2\">⏱️ Sighting Duration</h3>\n      <div id=\"durationChart\" style=\"height:\
+    \ 240px;\"></div>\n    </div>\n  </div>\n\n  <!-- Data Table -->\n  <div class=\"\
+    chart-container\">\n    <div class=\"flex items-center justify-between mb-3\"\
+    >\n      <h3 class=\"text-sm font-semibold\">\U0001F4CB Recent Sightings</h3>\n\
+    \      <input type=\"text\" id=\"searchBox\" class=\"input text-sm w-64\" placeholder=\"\
+    Search city, state, or comments...\" oninput=\"onSearchChange(this.value)\">\n\
+    \    </div>\n    <div id=\"sightingsGrid\" style=\"height: 300px; width: 100%;\"\
+    ></div>\n  </div>\n\n  <!-- Story Insights -->\n  <div class=\"card p-4 border-purple-500/30\"\
+    >\n    <h3 class=\"text-sm font-semibold mb-3\">✨ Key Insights from the Data</h3>\n\
+    \    <div class=\"grid grid-cols-2 gap-4 text-sm\">\n      <div>\n        <div\
+    \ class=\"text-cyan-400 font-medium\">The Modern UFO Era (1947)</div>\n      \
+    \  <p class=\"text-muted-foreground text-xs mt-1\">Reports spiked after the Roswell\
+    \ incident, marking the start of widespread UFO awareness in American culture.</p>\n\
+    \      </div>\n      <div>\n        <div class=\"text-purple-400 font-medium\"\
+    >The X-Files Effect (1993-2002)</div>\n        <p class=\"text-muted-foreground\
+    \ text-xs mt-1\">Sightings increased 10x during the show's run, from ~300/year\
+    \ to 3,000+/year.</p>\n      </div>\n      <div>\n        <div class=\"text-green-400\
+    \ font-medium\">Night Owls See More</div>\n        <p class=\"text-muted-foreground\
+    \ text-xs mt-1\">60% of all sightings occur between 8 PM and midnight, peaking\
+    \ at 9-10 PM.</p>\n      </div>\n      <div>\n        <div class=\"text-yellow-400\
+    \ font-medium\">California Leads</div>\n        <p class=\"text-muted-foreground\
+    \ text-xs mt-1\">With 8,911 sightings (11% of US total), CA has nearly double\
+    \ the #2 state (Washington).</p>\n      </div>\n    </div>\n  </div>\n</div>\n\
+    \n<script>\nlet gridApi;\nlet currentFilters = { year: '', shape: '', search:\
+    \ '' };\n\n// Plotly dark theme config\nconst plotlyLayout = {\n  paper_bgcolor:\
+    \ 'transparent',\n  plot_bgcolor: 'transparent',\n  font: { color: '#94a3b8',\
+    \ family: 'Google Sans Code, monospace', size: 10 },\n  margin: { t: 10, r: 10,\
+    \ b: 40, l: 50 },\n  xaxis: { gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor:\
+    \ 'rgba(0,229,255,0.2)' },\n  yaxis: { gridcolor: 'rgba(255,255,255,0.05)', zerolinecolor:\
+    \ 'rgba(0,229,255,0.2)' }\n};\n\nconst plotlyConfig = { displayModeBar: false,\
+    \ responsive: true };\n\n// State abbreviation to full name mapping for choropleth\n\
+    const stateNames = {\n  'al':'Alabama','ak':'Alaska','az':'Arizona','ar':'Arkansas','ca':'California',\n\
+    \  'co':'Colorado','ct':'Connecticut','de':'Delaware','fl':'Florida','ga':'Georgia',\n\
+    \  'hi':'Hawaii','id':'Idaho','il':'Illinois','in':'Indiana','ia':'Iowa',\n  'ks':'Kansas','ky':'Kentucky','la':'Louisiana','me':'Maine','md':'Maryland',\n\
+    \  'ma':'Massachusetts','mi':'Michigan','mn':'Minnesota','ms':'Mississippi','mo':'Missouri',\n\
+    \  'mt':'Montana','ne':'Nebraska','nv':'Nevada','nh':'New Hampshire','nj':'New\
+    \ Jersey',\n  'nm':'New Mexico','ny':'New York','nc':'North Carolina','nd':'North\
+    \ Dakota','oh':'Ohio',\n  'ok':'Oklahoma','or':'Oregon','pa':'Pennsylvania','ri':'Rhode\
+    \ Island','sc':'South Carolina',\n  'sd':'South Dakota','tn':'Tennessee','tx':'Texas','ut':'Utah','vt':'Vermont',\n\
+    \  'va':'Virginia','wa':'Washington','wv':'West Virginia','wi':'Wisconsin','wy':'Wyoming'\n\
+    };\n\nasync function fetchSQL(sql) {\n  try {\n    const res = await fetch('http://localhost:5001/api/sql/query',\
+    \ {\n      method: 'POST',\n      headers: { 'Content-Type': 'application/json'\
+    \ },\n      body: JSON.stringify({ connection: 'csv_files', sql: sql, limit: 5000\
+    \ })\n    });\n    const data = await res.json();\n    if (data.error) {\n   \
+    \   console.error('SQL Error:', data.error);\n      return { rows: [], columns:\
+    \ [] };\n    }\n    return data;\n  } catch (e) {\n    console.error('Fetch error:',\
+    \ e);\n    return { rows: [], columns: [] };\n  }\n}\n\nasync function loadTimelineChart()\
+    \ {\n  const data = await fetchSQL(`\n    SELECT EXTRACT(YEAR FROM datetime)::INT\
+    \ as year, COUNT(*) as sightings \n    FROM csv_files.ufo_sightings \n    WHERE\
+    \ datetime IS NOT NULL \n    GROUP BY year ORDER BY year\n  `);\n  \n  const years\
+    \ = data.rows.map(r => r[0]);\n  const counts = data.rows.map(r => r[1]);\n  \n\
+    \  Plotly.newPlot('timelineChart', [{\n    x: years, y: counts,\n    type: 'scatter',\
+    \ mode: 'lines',\n    fill: 'tozeroy',\n    line: { color: '#00e5ff', width: 2\
+    \ },\n    fillcolor: 'rgba(0,229,255,0.1)'\n  }], {\n    ...plotlyLayout,\n  \
+    \  annotations: [\n      { x: 1947, y: 37, text: 'Roswell', showarrow: true, arrowhead:\
+    \ 2, arrowcolor: '#a78bfa', font: { size: 9, color: '#a78bfa' }, ay: -30 },\n\
+    \      { x: 1995, y: 1078, text: 'X-Files', showarrow: true, arrowhead: 2, arrowcolor:\
+    \ '#22d399', font: { size: 9, color: '#22d399' }, ay: -30 },\n      { x: 2012,\
+    \ y: 7357, text: 'Peak', showarrow: true, arrowhead: 2, arrowcolor: '#f59e0b',\
+    \ font: { size: 9, color: '#f59e0b' }, ay: -20 }\n    ]\n  }, plotlyConfig);\n\
+    }\n\nasync function loadGeoChart() {\n  const data = await fetchSQL(`\n    SELECT\
+    \ UPPER(state) as state, COUNT(*) as sightings \n    FROM csv_files.ufo_sightings\
+    \ \n    WHERE country = 'us' AND state IS NOT NULL \n    GROUP BY state\n  `);\n\
+    \  \n  const states = data.rows.map(r => r[0]);\n  const counts = data.rows.map(r\
+    \ => r[1]);\n  \n  Plotly.newPlot('geoChart', [{\n    type: 'choropleth',\n  \
+    \  locationmode: 'USA-states',\n    locations: states,\n    z: counts,\n    colorscale:\
+    \ [\n      [0, 'rgba(0,229,255,0.1)'],\n      [0.3, 'rgba(0,229,255,0.4)'],\n\
+    \      [0.6, 'rgba(167,139,250,0.6)'],\n      [1, 'rgba(167,139,250,1)']\n   \
+    \ ],\n    colorbar: { thickness: 10, len: 0.6, tickfont: { size: 9, color: '#94a3b8'\
+    \ } },\n    hovertemplate: '%{location}: %{z:,} sightings<extra></extra>'\n  }],\
+    \ {\n    ...plotlyLayout,\n    geo: {\n      scope: 'usa',\n      bgcolor: 'transparent',\n\
+    \      lakecolor: 'rgba(0,229,255,0.1)',\n      landcolor: 'rgba(0,0,0,0.3)',\n\
+    \      subunitcolor: 'rgba(255,255,255,0.1)',\n      showlakes: true\n    },\n\
+    \    margin: { t: 0, r: 0, b: 0, l: 0 }\n  }, plotlyConfig);\n}\n\nasync function\
+    \ loadShapeChart() {\n  const data = await fetchSQL(`\n    SELECT shape, COUNT(*)\
+    \ as count \n    FROM csv_files.ufo_sightings \n    WHERE shape IS NOT NULL \n\
+    \    GROUP BY shape ORDER BY count DESC LIMIT 10\n  `);\n  \n  const shapes =\
+    \ data.rows.map(r => r[0]);\n  const counts = data.rows.map(r => r[1]);\n  const\
+    \ colors = ['#00e5ff', '#a78bfa', '#22d399', '#f59e0b', '#ef4444', '#06b6d4',\
+    \ '#8b5cf6', '#10b981', '#f97316', '#ec4899'];\n  \n  Plotly.newPlot('shapeChart',\
+    \ [{\n    type: 'pie',\n    labels: shapes,\n    values: counts,\n    hole: 0.5,\n\
+    \    marker: { colors: colors },\n    textinfo: 'label+percent',\n    textposition:\
+    \ 'outside',\n    textfont: { size: 9, color: '#94a3b8' },\n    hovertemplate:\
+    \ '%{label}: %{value:,}<extra></extra>'\n  }], {\n    ...plotlyLayout,\n    showlegend:\
+    \ false,\n    margin: { t: 20, r: 20, b: 20, l: 20 }\n  }, plotlyConfig);\n}\n\
+    \nasync function loadHourChart() {\n  const data = await fetchSQL(`\n    SELECT\
+    \ EXTRACT(HOUR FROM datetime)::INT as hour, COUNT(*) as sightings \n    FROM csv_files.ufo_sightings\
+    \ \n    WHERE datetime IS NOT NULL \n    GROUP BY hour ORDER BY hour\n  `);\n\
+    \  \n  const hours = data.rows.map(r => r[0]);\n  const counts = data.rows.map(r\
+    \ => r[1]);\n  const labels = hours.map(h => h === 0 ? '12a' : h < 12 ? h + 'a'\
+    \ : h === 12 ? '12p' : (h-12) + 'p');\n  const colors = counts.map(c => c > 8000\
+    \ ? '#a78bfa' : c > 4000 ? '#00e5ff' : 'rgba(148,163,184,0.4)');\n  \n  Plotly.newPlot('hourChart',\
+    \ [{\n    x: labels, y: counts,\n    type: 'bar',\n    marker: { color: colors\
+    \ }\n  }], { ...plotlyLayout, margin: { t: 10, r: 10, b: 30, l: 40 } }, plotlyConfig);\n\
+    }\n\nasync function loadDurationChart() {\n  const data = await fetchSQL(`\n \
+    \   SELECT \n      CASE \n        WHEN duration_seconds < 60 THEN 'Under 1 min'\n\
+    \        WHEN duration_seconds < 300 THEN '1-5 min'\n        WHEN duration_seconds\
+    \ < 900 THEN '5-15 min'\n        WHEN duration_seconds < 3600 THEN '15-60 min'\n\
+    \        ELSE 'Over 1 hour'\n      END as duration_bucket,\n      COUNT(*) as\
+    \ count\n    FROM csv_files.ufo_sightings \n    WHERE duration_seconds IS NOT\
+    \ NULL AND duration_seconds < 86400\n    GROUP BY duration_bucket\n  `);\n  \n\
+    \  const bucketOrder = ['Under 1 min', '1-5 min', '5-15 min', '15-60 min', 'Over\
+    \ 1 hour'];\n  const sortedData = bucketOrder.map(b => {\n    const row = data.rows.find(r\
+    \ => r[0] === b);\n    return row ? row[1] : 0;\n  });\n  \n  Plotly.newPlot('durationChart',\
+    \ [{\n    x: bucketOrder, y: sortedData,\n    type: 'bar',\n    marker: { \n \
+    \     color: ['#22d399', '#00e5ff', '#a78bfa', '#f59e0b', '#ef4444']\n    }\n\
+    \  }], { ...plotlyLayout, margin: { t: 10, r: 10, b: 60, l: 40 } }, plotlyConfig);\n\
+    }\n\nasync function loadGrid() {\n  const data = await fetchSQL(`\n    SELECT\
+    \ \n      datetime, city, state, country, shape, \n      ROUND(duration_seconds/60.0,\
+    \ 1) as duration_min,\n      LEFT(comments, 200) as comments\n    FROM csv_files.ufo_sightings\
+    \ \n    WHERE datetime IS NOT NULL\n    ORDER BY datetime DESC LIMIT 500\n  `);\n\
+    \  \n  const rowData = data.rows.map(r => ({\n    datetime: r[0],\n    city: r[1],\n\
+    \    state: r[2] ? r[2].toUpperCase() : '',\n    country: r[3] ? r[3].toUpperCase()\
+    \ : '',\n    shape: r[4],\n    duration: r[5],\n    comments: r[6]\n  }));\n \
+    \ \n  const gridOptions = {\n    theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark),\n\
+    \    columnDefs: [\n      { field: 'datetime', headerName: 'Date', width: 160,\
+    \ sort: 'desc' },\n      { field: 'city', headerName: 'City', width: 120 },\n\
+    \      { field: 'state', headerName: 'State', width: 70 },\n      { field: 'shape',\
+    \ headerName: 'Shape', width: 90 },\n      { field: 'duration', headerName: 'Min',\
+    \ width: 60 },\n      { field: 'comments', headerName: 'Description', flex: 1,\
+    \ tooltipField: 'comments' }\n    ],\n    rowData: rowData,\n    pagination: true,\n\
+    \    paginationPageSize: 10,\n    defaultColDef: { sortable: true, filter: true,\
+    \ resizable: true }\n  };\n  \n  gridApi = agGrid.createGrid(document.querySelector('#sightingsGrid'),\
+    \ gridOptions);\n}\n\nfunction onSearchChange(value) {\n  if (gridApi) {\n   \
+    \ gridApi.setGridOption('quickFilterText', value);\n  }\n}\n\nfunction applyFilters()\
+    \ {\n  // For now, reload with filters applied\n  // Could be enhanced to filter\
+    \ existing data\n  console.log('Filters:', document.getElementById('yearFilter').value,\
+    \ document.getElementById('shapeFilter').value);\n}\n\n// Load all charts on page\
+    \ load\nPromise.all([\n  loadTimelineChart(),\n  loadGeoChart(),\n  loadShapeChart(),\n\
+    \  loadHourChart(),\n  loadDurationChart(),\n  loadGrid()\n]).then(() => console.log('Dashboard\
+    \ loaded!'));\n</script>\n\n<form hx-post=\"/checkpoint/respond\" hx-ext=\"json-enc\"\
+    \ class=\"mt-4\">\n  <div class=\"flex gap-3\">\n    <button class=\"btn flex-1\"\
+    \ type=\"submit\" name=\"response[action]\" value=\"explore_more\">\n      \U0001F50D\
+    \ Explore More Data\n    </button>\n    <button class=\"btn-outline\" type=\"\
+    submit\" name=\"response[action]\" value=\"done\">\n      ✅ Done\n    </button>\n\
+    \  </div>\n</form>"
+  handoffs:
+  - explore_details
+  - dashboard
+- name: explore_details
+  hitl: "<!-- Deep Dive Explorer -->\n<style>\n  .insight-card { background: linear-gradient(135deg,\
+    \ rgba(167,139,250,0.15) 0%, rgba(0,229,255,0.1) 100%); }\n</style>\n\n<div class=\"\
+    flex flex-col gap-4\">\n  <div>\n    <h1 class=\"text-xl font-bold text-purple-400\"\
+    >\U0001F52C Deep Dive Explorer</h1>\n    <p class=\"text-muted-foreground text-sm\"\
+    >Choose an analysis dimension to explore further</p>\n  </div>\n\n  <div class=\"\
+    grid grid-cols-2 gap-4\">\n    <!-- Top Cities Analysis -->\n    <div class=\"\
+    card p-4\">\n      <h3 class=\"text-sm font-semibold text-cyan-400 mb-3\">\U0001F3D9\
+    ️ Top 20 Cities</h3>\n      <div id=\"cityChart\" style=\"height: 300px;\"></div>\n\
+    \    </div>\n\n    <!-- Monthly Patterns -->\n    <div class=\"card p-4\">\n \
+    \     <h3 class=\"text-sm font-semibold text-green-400 mb-3\">\U0001F4C5 Monthly\
+    \ Patterns</h3>\n      <div id=\"monthChart\" style=\"height: 300px;\"></div>\n\
+    \    </div>\n  </div>\n\n  <!-- Correlation Analysis -->\n  <div class=\"card\
+    \ p-4\">\n    <h3 class=\"text-sm font-semibold text-yellow-400 mb-3\">\U0001F4CA\
+    \ Shape Trends Over Decades</h3>\n    <div id=\"shapeTrendChart\" style=\"height:\
+    \ 280px;\"></div>\n  </div>\n\n  <!-- Random Interesting Sightings -->\n  <div\
+    \ class=\"card p-4\">\n    <h3 class=\"text-sm font-semibold text-purple-400 mb-3\"\
+    >\U0001F440 Notable Sightings</h3>\n    <div id=\"notableGrid\" style=\"height:\
+    \ 250px;\"></div>\n  </div>\n</div>\n\n<script>\nconst plotlyLayout = {\n  paper_bgcolor:\
+    \ 'transparent',\n  plot_bgcolor: 'transparent',\n  font: { color: '#94a3b8',\
+    \ family: 'Google Sans Code, monospace', size: 10 },\n  margin: { t: 10, r: 10,\
+    \ b: 50, l: 100 },\n  xaxis: { gridcolor: 'rgba(255,255,255,0.05)' },\n  yaxis:\
+    \ { gridcolor: 'rgba(255,255,255,0.05)' }\n};\nconst plotlyConfig = { displayModeBar:\
+    \ false, responsive: true };\n\nasync function fetchSQL(sql) {\n  try {\n    const\
+    \ res = await fetch('http://localhost:5001/api/sql/query', {\n      method: 'POST',\n\
+    \      headers: { 'Content-Type': 'application/json' },\n      body: JSON.stringify({\
+    \ connection: 'csv_files', sql: sql, limit: 5000 })\n    });\n    const data =\
+    \ await res.json();\n    if (data.error) { console.error('SQL Error:', data.error);\
+    \ return { rows: [], columns: [] }; }\n    return data;\n  } catch (e) { console.error('Fetch\
+    \ error:', e); return { rows: [], columns: [] }; }\n}\n\nasync function loadCityChart()\
+    \ {\n  const data = await fetchSQL(`\n    SELECT city || ', ' || UPPER(state)\
+    \ as location, COUNT(*) as count\n    FROM csv_files.ufo_sightings\n    WHERE\
+    \ city IS NOT NULL AND state IS NOT NULL AND country = 'us'\n    GROUP BY city,\
+    \ state ORDER BY count DESC LIMIT 20\n  `);\n  \n  const cities = data.rows.map(r\
+    \ => r[0]).reverse();\n  const counts = data.rows.map(r => r[1]).reverse();\n\
+    \  \n  Plotly.newPlot('cityChart', [{\n    y: cities, x: counts, type: 'bar',\
+    \ orientation: 'h',\n    marker: { color: '#00e5ff' }\n  }], { ...plotlyLayout,\
+    \ margin: { t: 10, r: 20, b: 30, l: 120 } }, plotlyConfig);\n}\n\nasync function\
+    \ loadMonthChart() {\n  const data = await fetchSQL(`\n    SELECT EXTRACT(MONTH\
+    \ FROM datetime)::INT as month, COUNT(*) as sightings\n    FROM csv_files.ufo_sightings\
+    \ WHERE datetime IS NOT NULL\n    GROUP BY month ORDER BY month\n  `);\n  \n \
+    \ const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\n\
+    \  const counts = data.rows.map(r => r[1]);\n  \n  Plotly.newPlot('monthChart',\
+    \ [{\n    x: months, y: counts, type: 'bar',\n    marker: { color: counts.map(c\
+    \ => c > 7000 ? '#22d399' : c > 6000 ? '#00e5ff' : 'rgba(148,163,184,0.4)') }\n\
+    \  }], { ...plotlyLayout, margin: { t: 10, r: 10, b: 30, l: 50 } }, plotlyConfig);\n\
+    }\n\nasync function loadShapeTrendChart() {\n  const data = await fetchSQL(`\n\
+    \    SELECT \n      FLOOR(EXTRACT(YEAR FROM datetime)/10)*10 as decade,\n    \
+    \  shape, COUNT(*) as count\n    FROM csv_files.ufo_sightings\n    WHERE datetime\
+    \ IS NOT NULL AND shape IN ('light', 'triangle', 'circle', 'disk', 'fireball')\n\
+    \    AND EXTRACT(YEAR FROM datetime) >= 1950\n    GROUP BY decade, shape ORDER\
+    \ BY decade, shape\n  `);\n  \n  const shapes = ['light', 'triangle', 'circle',\
+    \ 'disk', 'fireball'];\n  const colors = ['#00e5ff', '#a78bfa', '#22d399', '#f59e0b',\
+    \ '#ef4444'];\n  const decades = [1950, 1960, 1970, 1980, 1990, 2000, 2010];\n\
+    \  \n  const traces = shapes.map((shape, i) => {\n    const shapeData = decades.map(d\
+    \ => {\n      const row = data.rows.find(r => r[0] === d && r[1] === shape);\n\
+    \      return row ? row[2] : 0;\n    });\n    return {\n      x: decades.map(d\
+    \ => d + 's'),\n      y: shapeData,\n      name: shape,\n      type: 'scatter',\n\
+    \      mode: 'lines+markers',\n      line: { color: colors[i], width: 2 },\n \
+    \     marker: { size: 6 }\n    };\n  });\n  \n  Plotly.newPlot('shapeTrendChart',\
+    \ traces, {\n    ...plotlyLayout,\n    margin: { t: 10, r: 10, b: 40, l: 50 },\n\
+    \    legend: { orientation: 'h', y: -0.2, font: { size: 9 } }\n  }, plotlyConfig);\n\
+    }\n\nasync function loadNotableGrid() {\n  const data = await fetchSQL(`\n   \
+    \ SELECT datetime, city, state, shape, \n           ROUND(duration_seconds/60.0,\
+    \ 1) as minutes,\n           comments\n    FROM csv_files.ufo_sightings\n    WHERE\
+    \ duration_seconds > 3600 AND comments IS NOT NULL\n    AND LENGTH(comments) >\
+    \ 100\n    ORDER BY duration_seconds DESC LIMIT 50\n  `);\n  \n  const rowData\
+    \ = data.rows.map(r => ({\n    datetime: r[0], city: r[1], state: r[2] ? r[2].toUpperCase()\
+    \ : '',\n    shape: r[3], minutes: r[4], comments: r[5]\n  }));\n  \n  agGrid.createGrid(document.querySelector('#notableGrid'),\
+    \ {\n    theme: agGrid.themeQuartz.withPart(agGrid.colorSchemeDark),\n    columnDefs:\
+    \ [\n      { field: 'datetime', headerName: 'Date', width: 140 },\n      { field:\
+    \ 'city', width: 100 },\n      { field: 'state', width: 60 },\n      { field:\
+    \ 'shape', width: 80 },\n      { field: 'minutes', headerName: 'Min', width: 60\
+    \ },\n      { field: 'comments', flex: 1 }\n    ],\n    rowData: rowData,\n  \
+    \  pagination: true,\n    paginationPageSize: 5,\n    defaultColDef: { sortable:\
+    \ true, filter: true }\n  });\n}\n\nPromise.all([loadCityChart(), loadMonthChart(),\
+    \ loadShapeTrendChart(), loadNotableGrid()]);\n</script>\n\n<form hx-post=\"/checkpoint/respond\"\
+    \ hx-ext=\"json-enc\" class=\"mt-4\">\n  <div class=\"flex gap-3\">\n    <button\
+    \ class=\"btn-outline flex-1\" type=\"submit\" name=\"response[action]\" value=\"\
+    back\">\n      ← Back to Dashboard\n    </button>\n    <button class=\"btn\" type=\"\
+    submit\" name=\"response[action]\" value=\"done\">\n      ✅ Finish\n    </button>\n\
+    \  </div>\n</form>"
+  handoffs:
+  - dashboard
+_calliope_metadata:
+  created_at: '2025-12-31T11:22:46.345119'
+  version: 1

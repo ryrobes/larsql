@@ -33,6 +33,9 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
     The database file persists at $RVBBIT_ROOT/session_dbs/<session_id>.duckdb
     and contains all temp tables created during the cascade execution.
 
+    Includes health check: if cached connection is corrupt, it's replaced
+    with a fresh one.
+
     Args:
         session_id: Unique session identifier
 
@@ -40,23 +43,38 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
         DuckDB connection for this session
     """
     with _session_db_lock:
-        if session_id not in _session_dbs:
-            # Get session database directory
-            session_db_dir = _get_session_db_dir()
+        # Check if we have a cached connection
+        if session_id in _session_dbs:
+            conn = _session_dbs[session_id]
+            # Health check: verify connection is still usable
+            try:
+                conn.execute("SELECT 1").fetchone()
+                return conn
+            except Exception as e:
+                # Connection is corrupt/closed - remove and recreate
+                print(f"[session_db] ⚠️ Cached connection for {session_id} is bad: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
+                del _session_dbs[session_id]
+                print(f"[session_db] 🔄 Will create fresh connection for {session_id}")
 
-            # Sanitize session_id for filename (replace problematic chars)
-            safe_session_id = session_id.replace("/", "_").replace("\\", "_")
+        # Create new connection
+        session_db_dir = _get_session_db_dir()
 
-            # Create or open session database
-            db_path = os.path.join(session_db_dir, f"{safe_session_id}.duckdb")
-            conn = duckdb.connect(db_path)
+        # Sanitize session_id for filename (replace problematic chars)
+        safe_session_id = session_id.replace("/", "_").replace("\\", "_")
 
-            # Configure for our use case
-            conn.execute("SET threads TO 4")
+        # Create or open session database
+        db_path = os.path.join(session_db_dir, f"{safe_session_id}.duckdb")
+        conn = duckdb.connect(db_path)
 
-            _session_dbs[session_id] = conn
+        # Configure for our use case
+        conn.execute("SET threads TO 4")
 
-        return _session_dbs[session_id]
+        _session_dbs[session_id] = conn
+        return conn
 
 
 def cleanup_session_db(session_id: str, delete_file: bool = True):
@@ -91,6 +109,31 @@ def cleanup_session_db(session_id: str, delete_file: bool = True):
                         os.remove(wal_path)
                 except Exception:
                     pass
+
+
+def force_close_session(session_id: str):
+    """
+    Force close a session's DuckDB connection and remove from cache.
+
+    Used when a connection is suspected to be corrupt (e.g., after error during
+    disconnect). Does NOT delete the database file - just closes the connection
+    so the next access creates a fresh one.
+
+    This is different from cleanup_session_db which is for normal cleanup.
+
+    Args:
+        session_id: Session to force close
+    """
+    with _session_db_lock:
+        if session_id in _session_dbs:
+            conn = _session_dbs.pop(session_id)
+            try:
+                # Try to close gracefully
+                conn.close()
+            except Exception:
+                # If close fails, the connection is truly dead - that's fine
+                pass
+            print(f"[session_db] 🔌 Force closed connection for {session_id}")
 
 
 def list_session_tables(session_id: str) -> List[str]:

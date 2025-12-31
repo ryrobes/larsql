@@ -81,14 +81,24 @@ class ClientConnection:
 
         This is called once per client connection.
         The session persists for the lifetime of the connection.
+
+        Note: get_session_db() includes health check and auto-recovery,
+        so if a previous connection left things in a bad state, we get
+        a fresh connection automatically.
         """
         try:
             # Import here to avoid circular dependencies
             from ..sql_tools.session_db import get_session_db
             from ..sql_tools.udf import register_rvbbit_udf
 
-            # Get or create session DuckDB
+            # Get or create session DuckDB (includes health check)
             self.duckdb_conn = get_session_db(self.session_id)
+
+            # Reset our transaction status to idle
+            # Note: We don't ROLLBACK here because another client may have
+            # a legitimate transaction in progress on the shared connection.
+            # Each client tracks its own transaction_status independently.
+            self.transaction_status = 'I'
 
             # Register RVBBIT UDFs (rvbbit_udf + rvbbit_cascade_udf)
             register_rvbbit_udf(self.duckdb_conn)
@@ -574,6 +584,9 @@ class ClientConnection:
           SELECT refresh_attached_views();
 
         This will create views for the newly ATTACH'd database's tables.
+
+        Note: Multiple connections share the same DuckDB, so the UDF may
+        already be registered. We silently skip if it already exists.
         """
         try:
             def refresh_attached_views() -> str:
@@ -586,7 +599,11 @@ class ClientConnection:
             print(f"[{self.session_id}]   ✅ Registered refresh_attached_views() UDF")
 
         except Exception as e:
-            print(f"[{self.session_id}]   ⚠️  Could not register refresh UDF: {e}")
+            # "already created" is expected when multiple connections share DuckDB
+            if "already created" in str(e).lower():
+                pass  # Silently skip - UDF is already there
+            else:
+                print(f"[{self.session_id}]   ⚠️  Could not register refresh UDF: {e}")
 
     def handle_startup(self, startup_params: dict):
         """
@@ -840,8 +857,7 @@ class ClientConnection:
                 except Exception as parallel_error:
                     # If parallel execution fails, log and fall back to normal path
                     print(f"[{self.session_id}]   ⚠️  Special path failed: {parallel_error}")
-                    import traceback
-                    traceback.print_exc()
+                    traceback.print_exc()  # Use module-level import
                     print(f"[{self.session_id}]      Falling back to sequential execution")
                     # Fall through to normal execution
 
@@ -934,8 +950,12 @@ class ClientConnection:
                 return
 
             if 'CURRENT_SCHEMA()' in query_upper or 'CURRENT_SCHEMAS(' in query_upper:
-                # Return default schema
-                result_df = pd.DataFrame({'current_schema': ['main']})
+                # DBeaver often sends: SELECT current_schema(),session_user
+                # We need to return both columns if both are requested
+                if 'SESSION_USER' in query_upper:
+                    result_df = pd.DataFrame({'current_schema': ['main'], 'session_user': ['rvbbit']})
+                else:
+                    result_df = pd.DataFrame({'current_schema': ['main']})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ CURRENT_SCHEMA() handled")
                 return
@@ -1998,20 +2018,46 @@ class ClientConnection:
         Clean up connection and DuckDB session.
 
         Called when client disconnects or connection errors.
+        Ensures DuckDB is left in a clean state for reconnection.
+
+        IMPORTANT: Multiple clients may share the same DuckDB connection
+        (if they connect to the same database name). We must NOT force-close
+        the connection unless it's truly corrupt, or we'll break other clients.
         """
         print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed)")
 
-        # Close socket
+        # 1. Try to rollback any open transaction to leave DuckDB in clean state
+        if self.duckdb_conn:
+            try:
+                self.duckdb_conn.execute("ROLLBACK")
+                print(f"[{self.session_id}]   ✓ Transaction rolled back")
+            except Exception as e:
+                error_msg = str(e).lower()
+                # "no transaction is active" is NORMAL - not an error
+                # Only force-close on actual connection problems
+                if "no transaction" in error_msg:
+                    # This is fine - no transaction was active
+                    print(f"[{self.session_id}]   ✓ No active transaction (clean state)")
+                elif "connection" in error_msg and "closed" in error_msg:
+                    # Connection is already dead - remove from cache
+                    print(f"[{self.session_id}]   ⚠️ Connection already closed, removing from cache")
+                    try:
+                        from ..sql_tools.session_db import force_close_session
+                        force_close_session(self.session_id)
+                    except:
+                        pass
+                else:
+                    # Unknown error - log but don't force-close (other clients may be using it)
+                    print(f"[{self.session_id}]   ⚠️ Rollback warning: {e}")
+
+        # 2. Close socket
         try:
             self.sock.close()
         except:
             pass
 
-        # Optional: cleanup DuckDB session file
-        # For now, we keep session files for debugging/analysis
-        # Uncomment to delete:
-        # from ..sql_tools.session_db import cleanup_session_db
-        # cleanup_session_db(self.session_id, delete_file=True)
+        # Note: We keep the DuckDB connection in cache for other clients
+        # and quick reconnect. Only truly dead connections are removed above.
 
 
 class RVBBITPostgresServer:

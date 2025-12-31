@@ -1,0 +1,60 @@
+cascade_id: bigfoot_summary_pipeline
+description: Fetches bigfoot sightings from SQL, summarizes all notes with an LLM,
+  and exports to CSV
+inputs_schema: {}
+model: anthropic/claude-sonnet-4-20250514
+cells:
+- name: fetch_sightings
+  tool: sql_data
+  inputs:
+    query: SELECT * FROM bigfoot_sightings
+    connection: csv_files
+  handoffs:
+  - summarize_notes
+- name: summarize_notes
+  instructions: 'You have been given a dataset of bigfoot sighting reports. Your task
+    is to read through ALL of the sighting notes/descriptions and create a cohesive,
+    well-written summary in a few paragraphs.
+
+
+    The summary should:
+
+    - Capture the common themes and patterns across sightings
+
+    - Note any interesting geographic or temporal trends
+
+    - Describe typical witness experiences and observations
+
+    - Highlight any particularly notable or unusual reports
+
+    - Be written in an engaging, documentary-style tone
+
+
+    Output ONLY the summary paragraphs - no headers, no bullet points, just flowing
+    prose.'
+  context:
+    from:
+    - fetch_sightings
+  handoffs:
+  - export_csv
+- name: export_csv
+  tool: python_data
+  inputs:
+    code: "import csv\nimport os\nfrom datetime import datetime\n\n# Get the summary\
+      \ from the LLM cell\nsummary_text = outputs.get('summarize_notes', 'No summary\
+      \ generated')\n\n# Ensure output directory exists\nos.makedirs('outputs', exist_ok=True)\n\
+      \n# Write to CSV\noutput_path = 'outputs/bigfoot_summary.csv'\nwith open(output_path,\
+      \ 'w', newline='', encoding='utf-8') as f:\n    writer = csv.writer(f)\n   \
+      \ writer.writerow(['generated_at', 'summary'])\n    writer.writerow([datetime.now().isoformat(),\
+      \ summary_text])\n\nresult = {\n    'status': 'success',\n    'output_path':\
+      \ output_path,\n    'summary_length': len(summary_text),\n    'generated_at':\
+      \ datetime.now().isoformat()\n}"
+  context:
+    from:
+    - summarize_notes
+  handoffs: []
+_calliope_metadata:
+  created_at: '2025-12-31T11:12:02.794996'
+  version: 1
+  finalized_at: '2025-12-31T11:12:45.863233'
+  status: ready

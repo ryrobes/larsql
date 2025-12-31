@@ -98,12 +98,11 @@ export function useCredits(options = {}) {
 
       if (isLowNow && !wasLowBefore && !hasShownWarningRef.current && newData.balance !== null) {
         hasShownWarningRef.current = true;
-        showToast({
-          type: 'warning',
-          title: 'Low OpenRouter Balance',
-          message: `Balance is $${newData.balance.toFixed(2)}. Consider topping up.`,
-          duration: 10000,
-        });
+        // showToast signature: (message, options) - not a single object
+        showToast(
+          `Low OpenRouter Balance: $${newData.balance.toFixed(2)}. Consider topping up.`,
+          { type: 'warning', duration: 10000 }
+        );
       }
 
       prevLowBalanceRef.current = isLowNow;

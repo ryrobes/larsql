@@ -12,6 +12,7 @@ import './CalliopeView.css';
 
 const STORAGE_KEY = 'calliope_last_session';
 const STORAGE_TIME_KEY = 'calliope_last_session_time';
+const STORAGE_GOAL_PREFIX = 'calliope_goal_';
 
 /**
  * CalliopeView - The Muse of App Building
@@ -118,6 +119,30 @@ const CalliopeView = () => {
       localStorage.setItem(STORAGE_TIME_KEY, Date.now().toString());
     }
   }, [sessionId]);
+
+  // Restore goal from localStorage or fetch from API when viewing a session
+  useEffect(() => {
+    if (sessionId && !goalInput) {
+      // First try localStorage
+      const storedGoal = localStorage.getItem(`${STORAGE_GOAL_PREFIX}${sessionId}`);
+      if (storedGoal) {
+        setGoalInput(storedGoal);
+        return;
+      }
+
+      // Fallback: fetch from session API
+      fetch(`http://localhost:5050/api/studio/session-cascade/${sessionId}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.input_data?.goal) {
+            setGoalInput(data.input_data.goal);
+            // Cache it for future
+            localStorage.setItem(`${STORAGE_GOAL_PREFIX}${sessionId}`, data.input_data.goal);
+          }
+        })
+        .catch(err => console.log('[CalliopeView] Failed to fetch session goal:', err));
+    }
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll to bottom on new messages - only if user is near bottom
   const chatContainerRef = useRef(null);
@@ -478,6 +503,89 @@ const CalliopeView = () => {
         continue;
       }
 
+      // User messages (checkpoint responses, turn inputs)
+      if (log.role === 'user' && log.content_json) {
+        try {
+          let content = log.content_json;
+
+          // Parse content_json if it's a string
+          if (typeof content === 'string') {
+            try {
+              const parsed = JSON.parse(content);
+              if (typeof parsed === 'string') {
+                content = parsed;
+              } else if (parsed && typeof parsed === 'object') {
+                // Extract text content if present
+                if (parsed.content && typeof parsed.content === 'string') {
+                  content = parsed.content;
+                } else if (parsed.text && typeof parsed.text === 'string') {
+                  content = parsed.text;
+                }
+              }
+            } catch (e) {
+              // Not JSON, use as-is
+            }
+          }
+
+          // Skip if not a string
+          if (typeof content !== 'string') {
+            continue;
+          }
+
+          // Skip framework/system messages that start with common patterns
+          const lowerContent = content.toLowerCase();
+          if (content.startsWith('## New Task') ||
+              content.startsWith('## Input Data:') ||
+              content.startsWith('## Tool Response') ||
+              content.includes('You are an AI assistant') ||
+              lowerContent.startsWith('system:')) {
+            continue;
+          }
+
+          // Check metadata for debug_only flag
+          if (log.metadata_json) {
+            try {
+              const metadata = typeof log.metadata_json === 'string'
+                ? JSON.parse(log.metadata_json)
+                : log.metadata_json;
+              if (metadata.debug_only || metadata.not_sent_to_llm) {
+                continue;
+              }
+              // Skip framework-generated task inputs (these are prompts, not user messages)
+              if (metadata.semantic_actor === 'framework' && metadata.semantic_purpose === 'task_input') {
+                continue;
+              }
+            } catch (e) {}
+          }
+
+          // Skip very short messages
+          if (content.length < 3) {
+            continue;
+          }
+
+          // Flush any pending tool calls before user message
+          if (pendingToolCalls.length > 0) {
+            msgs.push({
+              id: `toolgroup_${msgs.length}`,
+              type: 'tool_group',
+              tools: [...pendingToolCalls],
+              timestamp: pendingToolCalls[0].timestamp,
+            });
+            pendingToolCalls = [];
+          }
+
+          msgs.push({
+            id: log.message_id || `user_${msgs.length}`,
+            type: 'user',
+            content: content,
+            timestamp: log.timestamp,
+          });
+        } catch (e) {
+          console.log('[CalliopeView] Failed to parse user message:', e);
+        }
+        continue;
+      }
+
       // LLM text responses (assistant role)
       if (log.role === 'assistant' && log.content_json) {
         // First, flush any pending tool calls as a group
@@ -645,6 +753,10 @@ const CalliopeView = () => {
       }
 
       setSessionId(data.session_id);
+      // Store the goal for this session so it persists on reload
+      if (goalInput) {
+        localStorage.setItem(`${STORAGE_GOAL_PREFIX}${data.session_id}`, goalInput);
+      }
       navigate(ROUTES.calliopeWithSession(data.session_id));
       showToast('Calliope is ready!', { type: 'success' });
 
@@ -837,14 +949,22 @@ const CalliopeView = () => {
               </div>
               <div className="message-content">
                 <RichMarkdown>
-                  {`Hello! I'm **Calliope**, your creative partner in app building.${
-                    goalInput
-                      ? ` Let's build: *"${goalInput}"*`
-                      : " What would you like to create today?"
-                  }`}
+                  Hello! I'm **Calliope**, your creative partner in app building. What would you like to create today?
                 </RichMarkdown>
               </div>
             </div>
+
+            {/* User's initial request (if present) */}
+            {goalInput && (
+              <div className="message user">
+                <div className="message-avatar user-avatar">
+                  <Icon icon="mdi:account" width="16" />
+                </div>
+                <div className="message-content">
+                  <RichMarkdown>{goalInput}</RichMarkdown>
+                </div>
+              </div>
+            )}
 
             {/* Message history */}
             <AnimatePresence>
@@ -881,6 +1001,26 @@ const CalliopeView = () => {
                           ))}
                         </div>
                       )}
+                    </motion.div>
+                  );
+                }
+
+                // User message
+                if (msg.type === 'user') {
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      className="message user"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <div className="message-avatar user-avatar">
+                        <Icon icon="mdi:account" width="16" />
+                      </div>
+                      <div className="message-content">
+                        <RichMarkdown>{msg.content}</RichMarkdown>
+                      </div>
                     </motion.div>
                   );
                 }

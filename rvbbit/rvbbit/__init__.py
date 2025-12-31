@@ -32,7 +32,7 @@ from .traits.cascade_builder import cascade_write, cascade_read
 from .traits.bodybuilder import bodybuilder, execute_body, plan_and_execute
 from .traits.research_db import research_query, research_execute
 from .traits.chart import create_chart, create_vega_lite, create_plotly
-from .traits.filesystem import read_file, write_file, append_file, list_files, file_info
+from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image
 # Image generation uses normal Agent.run() with modalities=["text", "image"]
 # No separate tool needed - cells with image models are auto-detected
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
@@ -75,6 +75,7 @@ register_trait("write_file", write_file)
 register_trait("append_file", append_file)
 register_trait("list_files", list_files)
 register_trait("file_info", file_info)
+register_trait("read_image", read_image)
 
 # SQL tools (multi-database discovery and querying)
 from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections

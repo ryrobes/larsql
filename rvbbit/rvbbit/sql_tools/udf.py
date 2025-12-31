@@ -859,36 +859,52 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_materialize_table: {e}")
 
-    # TODO Cell 2B: Register parallel batch UDF when threading is implemented
-    # try:
-    #     connection.create_function(
-    #         "rvbbit_run_parallel_batch",
-    #         rvbbit_run_parallel_batch,
-    #         return_type="VARCHAR"
-    #     )
-    # except Exception as e:
-    #     import logging
-    #     logging.getLogger(__name__).warning(f"Could not register rvbbit_run_parallel_batch: {e}")
+    # Register LLM aggregate implementation functions
+    try:
+        from .llm_aggregates import register_llm_aggregates
+        register_llm_aggregates(connection, config)
+    except ImportError:
+        pass  # Module not available yet
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register LLM aggregates: {e}")
 
 
 
 def clear_udf_cache():
-    """Clear all UDF result caches (simple and cascade)."""
+    """Clear all UDF result caches (simple, cascade, and aggregate)."""
     global _udf_cache, _cascade_udf_cache
     _udf_cache.clear()
     _cascade_udf_cache.clear()
 
+    # Also clear aggregate cache
+    try:
+        from .llm_aggregates import clear_agg_cache
+        clear_agg_cache()
+    except ImportError:
+        pass
+
 
 def get_udf_cache_stats() -> Dict[str, Any]:
     """Get UDF cache statistics."""
-    return {
+    stats = {
         "simple_udf": {
             "cached_entries": len(_udf_cache),
-            "cache_size_bytes": sum(len(k) + len(v) for k, v in _udf_cache.items())
+            "cache_size_bytes": sum(len(k) + len(v[0]) for k, v in _udf_cache.items())
         },
         "cascade_udf": {
             "cached_entries": len(_cascade_udf_cache),
-            "cache_size_bytes": sum(len(k) + len(v) for k, v in _cascade_udf_cache.items())
+            "cache_size_bytes": sum(len(k) + len(v[0]) for k, v in _cascade_udf_cache.items())
         },
         "total_entries": len(_udf_cache) + len(_cascade_udf_cache)
     }
+
+    # Include aggregate cache stats
+    try:
+        from .llm_aggregates import get_agg_cache_stats
+        stats["aggregate_udf"] = get_agg_cache_stats()
+        stats["total_entries"] += stats["aggregate_udf"]["cached_entries"]
+    except ImportError:
+        pass
+
+    return stats

@@ -352,3 +352,54 @@ def _format_size(size: int) -> str:
             return f"{size:.1f} {unit}" if unit != 'B' else f"{size} {unit}"
         size /= 1024
     return f"{size:.1f} PB"
+
+
+# Supported image extensions for read_image
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif'}
+
+
+@simple_eddy
+def read_image(path: str) -> dict:
+    """
+    Read an image file for vision model processing.
+
+    The image will be automatically encoded and injected into the LLM conversation
+    as a multi-modal message. The runner handles resizing (max 1280px) and encoding.
+
+    Args:
+        path: Path to the image file (absolute or relative). Supports ~ for home directory.
+              Supported formats: PNG, JPG, JPEG, GIF, WEBP, BMP, TIFF.
+
+    Returns:
+        Image data structure that the runner will process into a vision message.
+
+    Examples:
+        - Read a product photo: read_image("/data/products/item_001.jpg")
+        - Read from home: read_image("~/screenshots/screenshot.png")
+        - Analyze a chart: read_image("./charts/sales_q4.png")
+    """
+    resolved = _safe_path(path)
+
+    log_message(None, "system", f"read_image: {resolved}",
+                metadata={"tool": "read_image", "path": resolved})
+
+    if not os.path.exists(resolved):
+        return {"error": f"Image not found: {resolved}"}
+
+    if not os.path.isfile(resolved):
+        return {"error": f"Path is not a file: {resolved}"}
+
+    # Check extension
+    ext = os.path.splitext(resolved)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        return {"error": f"Unsupported image format: {ext}. Supported: {', '.join(sorted(IMAGE_EXTENSIONS))}"}
+
+    # Get file size for the content message
+    size = os.path.getsize(resolved)
+    size_str = _format_size(size)
+
+    # Return standard image protocol - runner handles encoding and injection
+    return {
+        "content": f"Loaded image: {os.path.basename(resolved)} ({size_str})",
+        "images": [resolved]
+    }

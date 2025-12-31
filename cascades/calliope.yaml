@@ -8,7 +8,8 @@ inputs_schema:
   goal: What the user wants to build (optional - Calliope will ask if not provided)
 
 #model: anthropic/claude-sonnet-4
-model: anthropic/claude-opus-4.5::high
+#model: anthropic/claude-opus-4.5::high
+model: openrouter/auto
 
 cells:
   - name: converse
@@ -798,6 +799,7 @@ cells:
       - lookup_ui_component
       - list_ui_components
       - get_ui_examples
+      - manifest
 
     handoffs:
       - converse  # Loop back for continued conversation

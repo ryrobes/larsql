@@ -237,9 +237,9 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
     hitl_screen: { icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
-  // Determine cell type - check for hitl key first (HTMX screens)
-  const cellType = cell.hitl ? 'hitl_screen' :
-    (cell.tool || (cell.instructions ? 'llm_cell' : 'python_data'));
+  // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)
+  const cellType = cell.tool || (cell.hitl ? 'hitl_screen' :
+    (cell.instructions ? 'llm_cell' : 'python_data'));
   const { icon: toolIcon, color: toolColor } = toolStyles[cellType] || toolStyles.python_data;
 
   return (

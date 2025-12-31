@@ -55,6 +55,7 @@ class CandidateMessage:
     embedding: Optional[List[float]] = None
     keywords: Optional[List[str]] = None
     summary: Optional[str] = None
+    message_category: str = "content"  # content, tool_definition, constraints, task_definition
 
 
 @dataclass
@@ -322,8 +323,12 @@ class ShadowAssessor:
                 summary = candidate.summary or candidate.content[:150] if candidate.content else "No content"
                 summary = summary.replace("\n", " ")[:150]
                 tokens = candidate.estimated_tokens
+                # Include category tag for foundational context
+                category_tag = ""
+                if candidate.message_category != "content":
+                    category_tag = f" [{candidate.message_category}]"
 
-                menu_lines.append(f"[{hash_short}] {role} ({cell}, ~{tokens} tok): {summary}")
+                menu_lines.append(f"[{hash_short}] {role}{category_tag} ({cell}, ~{tokens} tok): {summary}")
 
             if not menu_lines:
                 return {"selected": [], "reasoning": "No candidates"}
@@ -347,6 +352,13 @@ Select the message IDs most relevant to the current task. Consider:
 - Important decisions or findings
 - Error messages that might be relevant
 - User instructions or requirements
+
+**FOUNDATIONAL CONTEXT LENIENCY:**
+Messages marked [tool_definition], [task_definition], or [constraints] are often critical even if not directly quoted:
+- Tool definitions: Relevant if the task involves calling functions OR if the agent made decisions about which tools to use/avoid
+- Task definitions: Usually high relevance - they define WHAT to do and HOW
+- Constraints: Relevant if they shaped what the agent DIDN'T do (negative influence)
+When in doubt about system messages and foundational context, err on the side of inclusion.
 
 Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "brief explanation"}}"""
             
@@ -474,6 +486,19 @@ Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "
         # LLM is binary - convert to score
         llm_norm = 1.0 if result.llm_selected else 0.0
 
+        # Role-based baseline boosts for foundational context
+        # These ensure system messages/tool definitions aren't unfairly penalized
+        foundational_boost = 0.0
+        candidate = result.candidate
+        if candidate.message_category == "task_definition":
+            foundational_boost = 0.25  # Task definitions are usually critical
+        elif candidate.message_category == "tool_definition":
+            foundational_boost = 0.15  # Tool definitions shape decision space
+        elif candidate.message_category == "constraints":
+            foundational_boost = 0.20  # Constraints shape what DIDN'T happen
+        elif candidate.is_callout:
+            foundational_boost = 0.20  # User explicitly marked as important
+
         # Weighted combination (adjust weights as needed)
         weights = {"heuristic": 0.3, "semantic": 0.3, "llm": 0.4}
 
@@ -481,11 +506,14 @@ Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "
             # Redistribute semantic weight
             weights = {"heuristic": 0.4, "semantic": 0.0, "llm": 0.6}
 
-        result.composite_score = (
+        base_score = (
             weights["heuristic"] * heuristic_norm +
             weights["semantic"] * semantic_norm +
             weights["llm"] * llm_norm
-        ) * 100  # Scale to 0-100
+        )
+
+        # Apply foundational boost (additive, capped at 1.0)
+        result.composite_score = min(1.0, base_score + foundational_boost) * 100  # Scale to 0-100
 
     def _assign_rankings(self, results: List[AssessmentResult]):
         """Assign rankings based on scores."""
@@ -802,6 +830,7 @@ def queue_shadow_assessment(
             embedding=c.get("embedding"),
             keywords=c.get("keywords"),
             summary=c.get("summary"),
+            message_category=c.get("message_category", "content"),  # NEW: foundational context category
         ))
 
     request = ShadowAssessmentRequest(

@@ -174,9 +174,9 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
     hitl_screen: { language: 'html', codeKey: 'hitl', source: 'cell' }, // HTMX screen content
   };
-  // Determine cell type - check for hitl key first (HTMX screens)
-  const cellType = isHitl ? 'hitl_screen' :
-    (cell.tool || (isLLMCell ? 'llm_cell' : 'python_data'));
+  // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)
+  const cellType = cell.tool || (isHitl ? 'hitl_screen' :
+    (isLLMCell ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Detect custom editors for this cell

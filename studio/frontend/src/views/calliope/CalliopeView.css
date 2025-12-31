@@ -239,12 +239,12 @@
 }
 
 .message.assistant {
-  align-self: flex-start;
+  align-self: flex-end;
+  flex-direction: row-reverse;
 }
 
 .message.user {
-  align-self: flex-end;
-  flex-direction: row-reverse;
+  align-self: flex-start;
 }
 
 .message-avatar {
@@ -289,6 +289,12 @@
   background: rgba(167, 139, 250, 0.15);
   border-color: rgba(167, 139, 250, 0.3);
   color: #e2e8f0;
+}
+
+.message.user .user-avatar {
+  background: rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #a78bfa;
 }
 
 /* Tool messages */

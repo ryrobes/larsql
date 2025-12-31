@@ -536,13 +536,6 @@ class RVBBITRunner:
                     "parallel_execution": True,
                 })
 
-                # Publish cell_start event
-                self._publish_event("cell_start", {
-                    "cell_name": cell.name,
-                    "cascade_id": self.config.cascade_id,
-                    "parallel_execution": True,
-                })
-
                 # Log cell start
                 log_message(self.session_id, "system", f"Cell {cell.name} starting (parallel)",
                            trace_id=cell_trace.id, parent_id=cell_trace.parent_id,
@@ -1838,14 +1831,26 @@ class RVBBITRunner:
                                 "auto_context_injection"):
                     continue
 
-                # Skip system messages
+                # Include ALL messages including system messages (tool definitions, constraints)
+                # Previously skipped system messages, but they're often foundational context
                 role = entry.get("role", "")
-                if role == "system":
-                    continue
 
                 content = entry.get("content", "")
                 if not content:
                     continue
+
+                # Categorize message for leniency scoring
+                # System messages get special treatment as foundational context
+                message_category = "content"
+                if role == "system":
+                    content_lower = content.lower()
+                    semantic_purpose = meta.get("semantic_purpose", "")
+                    if semantic_purpose == "instructions" or "tool" in content_lower or "function" in content_lower:
+                        message_category = "tool_definition"
+                    elif any(kw in content_lower for kw in ["must", "never", "always", "constraint", "rule"]):
+                        message_category = "constraints"
+                    else:
+                        message_category = "task_definition"
 
                 # Build candidate dict
                 content_hash = entry.get("content_hash") or entry.get("_content_hash", "")
@@ -1859,6 +1864,7 @@ class RVBBITRunner:
                     "content_hash": content_hash,
                     "source_cell_name": entry_cell,
                     "role": role,
+                    "message_category": message_category,  # NEW: for leniency scoring
                     "content": str(content)[:2000] if content else "",
                     "estimated_tokens": entry.get("estimated_tokens") or len(str(content)) // 4,
                     "turn_number": meta.get("turn_number"),
@@ -4212,13 +4218,6 @@ Refinement directive: {reforge_config.honing_prompt}
                 self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
             self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
 
-            # Publish event
-            self._publish_event("cascade_complete", {
-                "cascade_id": self.config.cascade_id,
-                "status": final_status,
-                "parallel_execution": True,
-            })
-
             return result
 
         # Sequential execution (original behavior)
@@ -4359,14 +4358,6 @@ Refinement directive: {reforge_config.honing_prompt}
             self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
 
         self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
-
-        # Publish cascade_complete event (for narrator and other subscribers)
-        self._publish_event("cascade_complete", {
-            "cascade_id": self.config.cascade_id,
-            "status": final_status,
-            "final_output": str(result.get("final_output", ""))[:500] if result else None,
-            "error_count": len(result.get("errors", [])) if result else 0,
-        })
 
         # Log cascade completion with status
         log_message(self.session_id, "system", f"Cascade {final_status}: {self.config.cascade_id}",
@@ -4649,14 +4640,6 @@ Refinement directive: {reforge_config.honing_prompt}
                     cascade_error = Exception(f"Cascade completed with {len(result.get('errors', []))} error(s)")
                     self.hooks.on_cascade_error(self.config.cascade_id, self.session_id, cascade_error)
                 self.hooks.on_cascade_complete(self.config.cascade_id, self.session_id, result)
-
-                # Publish cascade_complete event (for narrator, UI, and other subscribers)
-                self._publish_event("cascade_complete", {
-                    "cascade_id": self.config.cascade_id,
-                    "status": final_status_str,
-                    "final_output": str(result.get("final_output", ""))[:500] if result else None,
-                    "error_count": len(result.get("errors", [])) if result else 0,
-                })
 
                 # Log cascade completion with status
                 log_message(self.session_id, "system", f"Cascade {final_status_str}: {self.config.cascade_id}",
@@ -10097,14 +10080,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                    cell_name=cell.name, cascade_id=self.config.cascade_id,
                    species_hash=cell_species_hash, cell_config=cell.dict() if cell_species_hash else None)
 
-        # Publish cell_start event (for narrator and other subscribers)
-        self._publish_event("cell_start", {
-            "cell_name": cell.name,
-            "cascade_id": self.config.cascade_id,
-            "model": cell_model,
-            "trace_id": trace.id if trace else None,
-        })
-
         # Resolve tools (Tackle) - Check if Quartermaster needed
         trait_list = cell.traits
         # Handle manifest mode: traits can be "manifest" (string) or ["manifest"] (list)
@@ -10890,20 +10865,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                     self._update_graph()
 
-                    # Publish turn_complete event (for narrator and other subscribers)
-                    # Include recent conversation history so narrator has full context
-                    recent_history = self.echo.history[-10:] if len(self.echo.history) > 0 else []
-                    self._publish_event("turn_complete", {
-                        "cell_name": cell.name,
-                        "cascade_id": self.config.cascade_id,
-                        "turn_number": i + 1,
-                        "max_turns": max_turns,
-                        "tool_calls": [{"name": tc.get("function", {}).get("name", "unknown")} for tc in (tool_calls or [])],
-                        "trace_id": turn_trace.id if turn_trace else None,
-                        "recent_history": recent_history,  # Last 10 messages from echo
-                        "assistant_response": content,  # The response content from this turn
-                    })
-
                     response_content = content
                     tool_outputs = []  # Track tool outputs for validation
 
@@ -11047,18 +11008,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                      "result": str(result)
                                  })
                                  console.print(f"{indent}    [dim cyan][DEBUG] tool_outputs.append() - now has {len(tool_outputs)} item(s)[/dim cyan]")
-
-                                 # Publish tool_complete event (for narrator and other subscribers)
-                                 # Include tool result so narrator knows what the tool did
-                                 self._publish_event("tool_complete", {
-                                     "cell_name": cell.name,
-                                     "cascade_id": self.config.cascade_id,
-                                     "tool_name": func_name,
-                                     "tool_result": str(result)[:500],  # First 500 chars of result
-                                     "turn_number": i + 1,
-                                     "max_turns": max_turns,
-                                     "trace_id": turn_trace.id if turn_trace else None,
-                                 })
 
                             # Handle Smart Image Injection logic
                             parsed_result = result
@@ -11326,18 +11275,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         tool_outputs.append({
                                             "tool": func_name,
                                             "result": str(result)
-                                        })
-
-                                        # Publish tool_complete event (follow-up)
-                                        # Include tool result so narrator knows what the tool did
-                                        self._publish_event("tool_complete", {
-                                            "cell_name": cell.name,
-                                            "cascade_id": self.config.cascade_id,
-                                            "tool_name": func_name,
-                                            "tool_result": str(result)[:500],  # First 500 chars of result
-                                            "turn_number": i + 1,
-                                            "max_turns": max_turns,
-                                            "trace_id": turn_trace.id if turn_trace else None,
                                         })
 
                                         # Add tool result to context
@@ -12037,16 +11974,6 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # If human input was received, it can be accessed via self.echo.state or passed to next cell
         # For now, we just log it and continue - the response is in the history
-
-        # Publish cell_complete event (for narrator and other subscribers)
-        self._publish_event("cell_complete", {
-            "cell_name": cell.name,
-            "cascade_id": self.config.cascade_id,
-            "output": str(response_content)[:500] if response_content else None,
-            "turn_number": max_turns,
-            "max_turns": max_turns,
-            "trace_id": trace.id if trace else None,
-        })
 
         return chosen_next_cell if chosen_next_cell else response_content
 

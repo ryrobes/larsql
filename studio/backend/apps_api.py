@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import uuid
+import random
 import threading
 import tempfile
 from pathlib import Path
@@ -1780,6 +1781,19 @@ APP_SHELL_TEMPLATE = '''
           RVBBIT_APP.onError('{{ error.message if error else "Unknown error" }}');
         }
       });
+
+      // Video loader - picks a random video for loading animations
+      window.RVBBIT_VIDEO = {
+        // Available full-color 800px videos (only these exist)
+        largeVideos: [1, 2, 4, 6, 8, 10, 12, 14],
+
+        getRandomVideo: function() {
+          var indices = this.largeVideos;
+          var randomIndex = indices[Math.floor(Math.random() * indices.length)];
+          var paddedIndex = String(randomIndex).padStart(3, '0');
+          return '/apps/videos/' + paddedIndex + '.mp4';
+        }
+      };
     </script>
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans flex flex-col">
@@ -1817,19 +1831,29 @@ APP_SHELL_TEMPLATE = '''
 
     <main id="app-content" class="flex-1 p-8 max-w-3xl mx-auto w-full">
         {% if status == 'running' %}
-        <div class="running-container relative"
+        <div class="running-container"
              hx-get="/apps/{{ cascade_id }}/{{ session_id }}/status"
              hx-trigger="every 500ms"
              hx-target="#app-content"
              hx-swap="innerHTML">
-            {{ content | safe }}
-            <div class="flex items-center gap-3 mt-4 p-4 bg-muted rounded-lg text-muted-foreground">
-                <svg class="animate-spin h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Processing...</span>
+            <!-- Video loader for running state -->
+            <div class="video-loader video-loader--inline">
+                <div class="video-loader__container">
+                    <video autoplay loop muted playsinline class="video-loader__video" id="loading-video">
+                        <source src="" type="video/mp4" />
+                    </video>
+                </div>
             </div>
+            <script>
+                // Set random video source on load
+                (function() {
+                    var video = document.getElementById('loading-video');
+                    if (video && window.RVBBIT_VIDEO) {
+                        video.querySelector('source').src = window.RVBBIT_VIDEO.getRandomVideo();
+                        video.load();
+                    }
+                })();
+            </script>
         </div>
         {% elif content_has_form %}
         {# Content already has forms (e.g., from request_decision) - render directly #}
@@ -2316,45 +2340,23 @@ def status(cascade_id: str, session_id: str):
                 </div>
                 '''
 
-            # Otherwise show default running state
-            cell_type = "LLM" if current_cell_obj and not current_cell_obj.tool else "Tool"
-            if current_cell_obj and current_cell_obj.has_ui:
-                cell_type = "HITL"
+            # Otherwise show default running state with video loader
+            video_indices = [1, 2, 4, 6, 8, 10, 12, 14]  # Available full-color 800px videos
+            random_video = f"{random.choice(video_indices):03d}.mp4"
 
             return f'''
-            <div class="space-y-4"
+            <div class="running-container"
                  hx-get="/apps/{cascade_id}/{session_id}/status"
                  hx-trigger="every 500ms"
                  hx-target="#app-content"
                  hx-swap="innerHTML">
-
-                <div class="card">
-                    <header>
-                        <h2 class="card-title flex items-center gap-2">
-                            <svg class="animate-spin h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Running: {current_cell_name}
-                        </h2>
-                        <p class="card-description">{cell_type} cell is executing...</p>
-                    </header>
-                    <section class="py-4">
-                        <div class="flex items-center gap-2 text-muted-foreground">
-                            <span class="badge-outline text-xs">{cell_type}</span>
-                            <span class="text-sm">Cell is processing</span>
-                        </div>
-                    </section>
-                </div>
-
-                <!-- Progress indicator -->
-                <div class="flex items-center gap-3 p-4 bg-muted rounded-lg text-muted-foreground">
-                    <div class="flex-1">
-                        <div class="h-1 bg-muted-foreground/20 rounded-full overflow-hidden">
-                            <div class="h-full bg-primary rounded-full animate-pulse" style="width: 60%;"></div>
-                        </div>
+                <!-- Video loader for running state -->
+                <div class="video-loader video-loader--inline">
+                    <div class="video-loader__container">
+                        <video autoplay loop muted playsinline class="video-loader__video">
+                            <source src="/apps/videos/{random_video}" type="video/mp4" />
+                        </video>
                     </div>
-                    <span class="text-sm">Processing...</span>
                 </div>
             </div>
             '''
@@ -2428,8 +2430,17 @@ def status(cascade_id: str, session_id: str):
 # Path to static files directory
 STATIC_DIR = Path(__file__).parent / 'static'
 
+# Path to frontend videos (for loading animations)
+FRONTEND_VIDEOS_DIR = Path(__file__).parent.parent / 'frontend' / 'public' / 'videos'
+
 
 @apps_bp.route('/static/<path:filename>')
 def serve_static(filename):
     """Serve static files for apps."""
     return send_from_directory(STATIC_DIR, filename)
+
+
+@apps_bp.route('/videos/<path:filename>')
+def serve_video(filename):
+    """Serve video files for loading animations."""
+    return send_from_directory(FRONTEND_VIDEOS_DIR, filename)

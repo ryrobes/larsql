@@ -215,9 +215,9 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     linux_shell_dangerous: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize (host)
     hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
-  // Determine cell type - check for hitl key first (HTMX screens)
-  const cellType = cell.hitl ? 'hitl_screen' :
-    (cell.tool || (cell.instructions ? 'llm_cell' : 'python_data'));
+  // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)
+  const cellType = cell.tool || (cell.hitl ? 'hitl_screen' :
+    (cell.instructions ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.python_data;
 
   // Status icon
