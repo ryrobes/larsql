@@ -403,7 +403,7 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = 
     try:
         db = get_db()
 
-        # Get existing session_ids to exclude
+        # Get existing session_ids to exclude (from session_state results)
         existing_ids = {s['session_id'] for s in existing_sessions}
 
         # Build WHERE clause for cascade_id filter
@@ -411,8 +411,8 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = 
         if cascade_id_filter:
             cascade_filter = f"AND cascade_id = '{cascade_id_filter}'"
 
-        # Query unified_logs for sessions not in session_state
-        # Group by session_id to get aggregate metrics
+        # Query unified_logs for ALL recent sessions, grouped by session_id
+        # We'll filter out existing_ids in Python (avoids ClickHouse subquery issues)
         query = f"""
             SELECT
                 session_id,
@@ -423,22 +423,23 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = 
                 COUNT(*) as message_count,
                 groupArray(DISTINCT model) as models
             FROM unified_logs
-            WHERE session_id NOT IN (
-                SELECT DISTINCT session_id FROM session_state
-            )
+            WHERE timestamp > now() - INTERVAL 7 DAY
             {cascade_filter}
             GROUP BY session_id, cascade_id
             ORDER BY started_at DESC
-            LIMIT {limit}
+            LIMIT {limit * 2}
         """
 
         result = db.query(query)
+
+        # Count how many virtual sessions we find
+        virtual_count = 0
 
         # Convert to session-like dicts that match the format expected by the UI
         for row in result:
             sid = row.get('session_id')
             if sid in existing_ids:
-                continue  # Skip if already in result (shouldn't happen but be safe)
+                continue  # Skip sessions that already came from session_state
 
             cascade_id = row.get('cascade_id', 'unknown')
             description = VIRTUAL_CASCADE_DESCRIPTIONS.get(
@@ -498,6 +499,11 @@ def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = 
                 'duration_diff_pct': None,
             }
             existing_sessions.append(virtual_session)
+            virtual_count += 1
+
+        # Debug log
+        if virtual_count > 0:
+            print(f"[sessions_api] Added {virtual_count} virtual sessions from unified_logs")
 
         # Sort by started_at descending and limit
         existing_sessions.sort(
