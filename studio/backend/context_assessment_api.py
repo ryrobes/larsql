@@ -272,7 +272,7 @@ def get_overview(session_id):
         except Exception as e:
             print(f"Best config query error: {e}")
 
-        # Calculate potential cost savings (rough estimate: $0.001 per 1000 tokens)
+        # Calculate potential cost savings using actual model pricing
         total_potential_tokens = 0
         if result['inter_phase']:
             total_potential_tokens += result['inter_phase'].get('potential_token_savings', 0)
@@ -280,10 +280,12 @@ def get_overview(session_id):
             total_potential_tokens += result['best_intra_config'].get('total_saved', 0)
 
         if total_potential_tokens > 0:
-            # Rough estimate at $0.001 per 1000 tokens (avg input/output)
+            # Get actual model used in this session for accurate pricing
+            session_model = get_session_model(session_id)
             result['potential_savings'] = {
                 'tokens': total_potential_tokens,
-                'cost_estimated': total_potential_tokens * 0.000001  # $0.001/1k
+                'cost_estimated': estimate_cost(total_potential_tokens, model=session_model),
+                'model_used': session_model
             }
 
         return jsonify(result)
@@ -750,17 +752,19 @@ def get_relevance_scatter(session_id):
                 'would_include': bool(row['would_include_hybrid'])
             })
 
-        # Calculate waste metrics
+        # Calculate waste metrics with actual model pricing
         waste_messages = [m for m in messages if m['was_included'] and m['composite_score'] < 40]
         waste_tokens = sum(m['tokens'] for m in waste_messages)
+        session_model = get_session_model(session_id)
 
         return jsonify({
             'session_id': session_id,
             'messages': messages,
+            'model_used': session_model,
             'waste_summary': {
                 'count': len(waste_messages),
                 'tokens': waste_tokens,
-                'estimated_cost': waste_tokens * 0.000001  # Rough estimate
+                'estimated_cost': estimate_cost(waste_tokens, model=session_model)
             }
         })
 
@@ -1188,14 +1192,20 @@ def get_cascade_aggregate(cascade_id):
         total_tokens = sum(safe_int(c["total_tokens"]) for c in cell_waste)
         waste_pct = (total_waste_tokens / total_tokens * 100) if total_tokens > 0 else 0
 
-        # Estimate cost savings
+        # Get actual model used for this cascade for accurate pricing
+        cascade_model = get_cascade_model(cascade_id, days)
+
+        # Estimate cost savings using actual model pricing
         estimated_savings_per_run = estimate_cost(
-            best_config["avg_tokens_saved"] if best_config else 0
+            best_config["avg_tokens_saved"] if best_config else 0,
+            model=cascade_model
         )
+        estimated_waste_cost = estimate_cost(total_waste_tokens, model=cascade_model)
 
         return jsonify({
             "cascade_id": cascade_id,
             "session_count": session_count,
+            "model_used": cascade_model,
             "date_range": {
                 "first": str(session_stats[0]["first_run"]) if session_stats else None,
                 "last": str(session_stats[0]["last_run"]) if session_stats else None,
@@ -1212,7 +1222,8 @@ def get_cascade_aggregate(cascade_id):
                     "waste_pct": round(safe_int(c["waste_tokens"]) / max(safe_int(c["total_tokens"]), 1) * 100, 1)
                 } for c in cell_waste],
                 "total_waste_tokens": total_waste_tokens,
-                "total_waste_pct": round(waste_pct, 1)
+                "total_waste_pct": round(waste_pct, 1),
+                "estimated_waste_cost": round(estimated_waste_cost, 4)
             },
             "intra_phase": {
                 "best_config": best_config,
@@ -1225,8 +1236,8 @@ def get_cascade_aggregate(cascade_id):
                 } for c in config_stats[:10]]
             },
             "recommendations": {
-                "estimated_savings_per_run": round(estimated_savings_per_run, 4),
-                "estimated_monthly_savings": round(estimated_savings_per_run * session_count, 2),
+                "estimated_savings_per_run": round(estimated_savings_per_run, 6),
+                "estimated_monthly_savings": round(estimated_savings_per_run * session_count, 4),
                 "confidence": "high" if session_count >= 20 else "medium" if session_count >= 10 else "low"
             }
         })
@@ -1300,13 +1311,15 @@ def get_waste_analysis(session_id):
             cells[cell]["waste_tokens"] += tokens
             total_waste_tokens += tokens
 
-        # Estimate savings
-        estimated_cost_savings = estimate_cost(total_waste_tokens)
+        # Get actual model and estimate savings with real pricing
+        session_model = get_session_model(session_id)
+        estimated_cost_savings = estimate_cost(total_waste_tokens, model=session_model)
 
         return jsonify({
             "session_id": session_id,
             "threshold": threshold,
             "min_tokens": min_tokens,
+            "model_used": session_model,
             "summary": {
                 "total_waste_messages": len(results),
                 "total_waste_tokens": total_waste_tokens,
@@ -1316,7 +1329,7 @@ def get_waste_analysis(session_id):
             "cells": sorted(cells.values(), key=lambda c: c["waste_tokens"], reverse=True),
             "recommendation": (
                 f"Pruning {len(results)} low-relevance messages would save ~{total_waste_tokens:,} tokens "
-                f"(~${estimated_cost_savings:.4f}) with minimal quality impact (all scored <{threshold}/100)."
+                f"(~${estimated_cost_savings:.6f}) with minimal quality impact (all scored <{threshold}/100)."
             )
         })
 
@@ -1466,4 +1479,50 @@ intra_context:
   compress_loops: true
   preserve_reasoning: true
   preserve_errors: true"""
+
+
+@context_assessment_bp.route("/api/context-assessment/model-pricing", methods=["GET"])
+def get_pricing_info():
+    """
+    Get model pricing information for cost transparency.
+
+    Query params:
+        model: Specific model ID to get pricing for (optional)
+
+    Returns pricing per token for prompt and completion.
+    """
+    try:
+        model_id = request.args.get("model")
+
+        if model_id:
+            pricing = get_model_pricing(model_id)
+            return jsonify({
+                "model_id": model_id,
+                "prompt_price_per_token": pricing["prompt"],
+                "completion_price_per_token": pricing["completion"],
+                "prompt_price_per_million": pricing["prompt"] * 1_000_000,
+                "completion_price_per_million": pricing["completion"] * 1_000_000
+            })
+
+        # Return all pricing if no specific model requested
+        all_pricing = get_model_pricing()
+        formatted = []
+        for model, prices in all_pricing.items():
+            formatted.append({
+                "model_id": model,
+                "prompt_per_million": round(prices["prompt"] * 1_000_000, 4),
+                "completion_per_million": round(prices["completion"] * 1_000_000, 4)
+            })
+
+        return jsonify({
+            "models": sorted(formatted, key=lambda x: x["prompt_per_million"], reverse=True)[:50],
+            "total_models": len(all_pricing),
+            "default_prompt_per_million": DEFAULT_PROMPT_PRICE * 1_000_000,
+            "default_completion_per_million": DEFAULT_COMPLETION_PRICE * 1_000_000
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 

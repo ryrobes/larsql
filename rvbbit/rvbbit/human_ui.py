@@ -305,14 +305,60 @@ OUTPUT TO PRESENT:
 
 CONTEXT:
 - Checkpoint ID will be available as {{{{ checkpoint_id }}}}
-- Submit to: POST /api/checkpoint/{{{{ checkpoint_id }}}}/respond
-- Use HTMX attributes for interactivity
+- Submit to: POST /api/checkpoints/{{{{ checkpoint_id }}}}/respond
+- Use HTMX attributes for interactivity (hx-post, hx-swap, hx-ext="json-enc")
 
-Generate clean, accessible HTML with HTMX attributes. Include:
-1. Clear presentation of the output
-2. Interactive elements as needed
-3. Submit button
-4. Use Tailwind CSS classes for styling
+AVAILABLE UI COMPONENTS (Basecoat - shadcn/ui for HTML):
+Use these pre-styled components instead of raw Tailwind classes:
+
+Buttons:
+- <button class="btn btn-primary">Primary</button>
+- <button class="btn btn-secondary">Secondary</button>
+- <button class="btn btn-destructive">Delete</button>
+- <button class="btn btn-outline">Outline</button>
+- <button class="btn btn-ghost">Ghost</button>
+
+Forms:
+- <input class="input" type="text" placeholder="...">
+- <textarea class="textarea" rows="4"></textarea>
+- <select class="select"><option>...</option></select>
+- <input type="checkbox" class="checkbox">
+- <input type="radio" class="radio">
+- <label class="label">Label text</label>
+
+Cards:
+- <div class="card">
+    <div class="card-header"><h3 class="card-title">Title</h3><p class="card-description">Desc</p></div>
+    <div class="card-content">Content</div>
+    <div class="card-footer">Footer</div>
+  </div>
+
+Badges & Alerts:
+- <span class="badge">Default</span>
+- <span class="badge badge-secondary">Secondary</span>
+- <div class="alert"><p>Alert message</p></div>
+- <div class="alert alert-destructive"><p>Error</p></div>
+
+Tables:
+- <table class="table"><thead>...</thead><tbody>...</tbody></table>
+
+Interactive (require data-bc-* attributes):
+- Tabs: <div data-bc-tabs>...</div>
+- Dropdown: <div data-bc-dropdown>...</div>
+- Dialog: <dialog class="dialog" data-bc-dialog="id">...</dialog>
+- Accordion: <div data-bc-accordion>...</div>
+
+Layout utilities (Tailwind):
+- Spacing: p-4, m-2, gap-4
+- Flex: flex, flex-col, items-center, justify-between
+- Grid: grid, grid-cols-2, grid-cols-3
+
+Generate clean, accessible HTML. Include:
+1. Clear presentation of the output (use cards for structure)
+2. Interactive form elements as needed
+3. Submit button with btn btn-primary class
+4. Form must use: hx-post="/api/checkpoints/{{{{ checkpoint_id }}}}/respond" hx-ext="json-enc" hx-swap="outerHTML"
+5. Form fields should use name="response[field_name]" pattern
 
 Return the HTML template only, no explanation."""
 
@@ -342,16 +388,21 @@ Return the HTML template only, no explanation."""
             return {
                 "type": "htmx",
                 "template": f"""
-                <div class="p-4">
-                    <div class="bg-gray-100 p-4 rounded mb-4">
-                        <pre class="whitespace-pre-wrap">{phase_output[:500]}</pre>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Output</h3>
                     </div>
-                    <form hx-post="/api/checkpoint/{{{{ checkpoint_id }}}}/respond"
-                          hx-swap="outerHTML">
-                        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">
-                            Continue
-                        </button>
-                    </form>
+                    <div class="card-content">
+                        <pre class="whitespace-pre-wrap text-sm">{phase_output[:500]}</pre>
+                    </div>
+                    <div class="card-footer">
+                        <form hx-post="/api/checkpoints/{{{{ checkpoint_id }}}}/respond"
+                              hx-ext="json-enc" hx-swap="outerHTML">
+                            <button type="submit" class="btn btn-primary">
+                                Continue
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 """,
                 "_meta": {"type": "htmx", "fallback": True, "error": str(e)}

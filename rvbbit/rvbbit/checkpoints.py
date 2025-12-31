@@ -534,14 +534,26 @@ class CheckpointManager:
 
         try:
             while True:
-                # CRITICAL: Force reload from database (not cache) to see updates from API
-                # The API endpoint runs in a different process and updates the DB
+                # Check cache first - apps_api may have updated it in the same process
+                # This handles the case where apps_api and runner share memory
+                with self._cache_lock:
+                    cached = self._cache.get(checkpoint_id)
+                    if cached and cached.status == CheckpointStatus.RESPONDED:
+                        console.print(f"[green]✓ Received human response (from cache)[/green]")
+                        return cached.response
+
+                # Also check database for cross-process updates (multi-worker deployments)
                 if self.use_db:
                     checkpoint = self._load_checkpoint(checkpoint_id)
-                    # Update cache with fresh data
+                    # Only update cache if DB has newer status (don't overwrite RESPONDED with PENDING)
                     if checkpoint:
                         with self._cache_lock:
-                            self._cache[checkpoint_id] = checkpoint
+                            existing = self._cache.get(checkpoint_id)
+                            if not existing or existing.status != CheckpointStatus.RESPONDED:
+                                self._cache[checkpoint_id] = checkpoint
+                            else:
+                                # Cache already has RESPONDED, use that instead of stale DB data
+                                checkpoint = existing
                 else:
                     checkpoint = self.get_checkpoint(checkpoint_id)
 

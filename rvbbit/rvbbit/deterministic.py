@@ -189,31 +189,48 @@ def render_inputs(
     """
     Render Jinja2-templated inputs for a deterministic phase.
 
+    Uses NativeEnvironment to properly evaluate Python expressions and return
+    native Python objects (lists, dicts, etc.) instead of string representations.
+
     Args:
         input_templates: Dict of input_name -> Jinja2 template string
         render_context: Context for Jinja2 rendering (input, state, outputs, etc.)
 
     Returns:
-        Dict of input_name -> rendered value
+        Dict of input_name -> rendered value (native Python objects)
     """
     if not input_templates:
         return {}
 
-    rendered = {}
-    for name, template in input_templates.items():
-        try:
-            # Render the template
-            rendered_value = render_instruction(template, render_context)
+    from jinja2.nativetypes import NativeEnvironment
+    from datetime import datetime
+    import re
 
-            # Try to parse as JSON if it looks like JSON
-            stripped = rendered_value.strip()
-            if stripped.startswith(("{", "[", '"')) or stripped in ("true", "false", "null"):
-                try:
-                    rendered[name] = json.loads(stripped)
-                except json.JSONDecodeError:
-                    rendered[name] = rendered_value
-            else:
+    # Use NativeEnvironment to get native Python objects from expressions
+    jinja_env = NativeEnvironment(autoescape=False)
+
+    # Register common filters
+    jinja_env.filters['tojson'] = json.dumps
+
+    # Register common global functions for templates
+    jinja_env.globals['now'] = datetime.now
+    jinja_env.globals['datetime'] = datetime
+
+    rendered = {}
+    for name, value in input_templates.items():
+        try:
+            if isinstance(value, str) and ('{{' in value or '{%' in value):
+                # Remove | tojson from expressions since NativeEnvironment
+                # returns native Python objects - tojson would convert to string
+                # which then can't be used in Python operations
+                processed_value = re.sub(r'\|\s*tojson\s*}}', '}}', value)
+
+                template = jinja_env.from_string(processed_value)
+                rendered_value = template.render(**render_context)
                 rendered[name] = rendered_value
+            else:
+                # Not a template, use as-is
+                rendered[name] = value
 
         except Exception as e:
             raise ValueError(f"Failed to render input '{name}': {e}")
@@ -565,6 +582,38 @@ def execute_hitl_phase(
         if isinstance(output, dict):
             outputs[item["cell"]] = output
 
+    # Define HITL helper functions for templates
+    def route_button(label: str, target: str, **attrs) -> str:
+        """Create a button that routes to another cell."""
+        attr_str = ' '.join(f'{k.replace("_", "-")}="{v}"' for k, v in attrs.items())
+        return f'<button type="submit" name="_route" value="{target}" {attr_str}>{label}</button>'
+
+    def submit_button(label: str, action: str = None, route: str = None, **attrs) -> str:
+        """Create a submit button with action or route."""
+        attr_str = ' '.join(f'{k.replace("_", "-")}="{v}"' for k, v in attrs.items())
+        if route:
+            return f'<button type="submit" name="_route" value="{route}" {attr_str}>{label}</button>'
+        elif action:
+            return f'<button type="submit" name="action" value="{action}" {attr_str}>{label}</button>'
+        else:
+            return f'<button type="submit" {attr_str}>{label}</button>'
+
+    def tabs(items: list, current: str = None) -> str:
+        """Create a tab bar. items: [(label, cell_name), ...]"""
+        html = '<div class="app-tabs">'
+        for item in items:
+            if len(item) == 2:
+                label, cell = item
+                active = cell == current
+            elif len(item) == 3:
+                label, cell, active = item
+            else:
+                continue
+            active_class = 'active' if active else ''
+            html += f'<button type="submit" name="_route" value="{cell}" class="tab {active_class}">{label}</button>'
+        html += '</div>'
+        return html
+
     render_context = {
         "input": input_data,
         "state": echo.state,
@@ -572,11 +621,17 @@ def execute_hitl_phase(
         "lineage": echo.lineage,
         "history": echo.history,
         "session_id": session_id,
+        # HITL helper functions
+        "route_button": route_button,
+        "submit_button": submit_button,
+        "tabs": tabs,
     }
 
     # Render the HITL HTML template
+    # Use effective_htmx to support both hitl and htmx keys
+    template_content = phase.effective_htmx
     try:
-        rendered_html = render_instruction(phase.hitl, render_context)
+        rendered_html = render_instruction(template_content, render_context)
         console.print(f"{indent}  [dim]HTML template rendered ({len(rendered_html)} chars)[/dim]")
     except Exception as e:
         console.print(f"{indent}  [red]✗ Template rendering failed: {e}[/red]")
@@ -720,12 +775,12 @@ def _determine_hitl_routing(
     route_key = None
 
     if isinstance(result, dict):
-        # Check common HITL response fields
+        # Check common HITL response fields (in priority order)
         route_key = (
             result.get("action") or
             result.get("selected") or
             result.get("_route") or
-            result.get("response", {}).get("action") if isinstance(result.get("response"), dict) else None
+            (result.get("response", {}).get("action") if isinstance(result.get("response"), dict) else None)
         )
 
     # If routing config exists, use it

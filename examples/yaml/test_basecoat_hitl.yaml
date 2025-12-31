@@ -1,0 +1,157 @@
+cascade_id: test_basecoat_hitl
+description: Test Basecoat/shadcn-style components in HITL screens
+
+cells:
+  - name: basecoat_showcase
+    hitl: |
+      <div class="flex flex-col gap-6 p-4">
+        <!-- Header Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Basecoat Component Showcase</h3>
+            <p class="card-description">Testing shadcn-style components in HTMX/HITL screens</p>
+          </div>
+        </div>
+
+        <!-- Buttons Section -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Buttons</h3>
+          </div>
+          <div class="card-content">
+            <div class="flex flex-wrap gap-2">
+              <button class="btn btn-primary">Primary</button>
+              <button class="btn btn-secondary">Secondary</button>
+              <button class="btn btn-destructive">Destructive</button>
+              <button class="btn btn-outline">Outline</button>
+              <button class="btn btn-ghost">Ghost</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Badges Section -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Badges</h3>
+          </div>
+          <div class="card-content">
+            <div class="flex flex-wrap gap-2">
+              <span class="badge">Default</span>
+              <span class="badge badge-secondary">Secondary</span>
+              <span class="badge badge-destructive">Error</span>
+              <span class="badge badge-outline">Outline</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Elements -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Form Elements</h3>
+          </div>
+          <div class="card-content">
+            <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
+                  hx-ext="json-enc"
+                  hx-swap="outerHTML"
+                  class="flex flex-col gap-4">
+
+              <div class="flex flex-col gap-2">
+                <label class="label">Text Input</label>
+                <input class="input" type="text" name="response[text_input]" placeholder="Enter some text...">
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <label class="label">Select Dropdown</label>
+                <select class="select" name="response[select_value]">
+                  <option value="">Choose an option...</option>
+                  <option value="option1">Option 1</option>
+                  <option value="option2">Option 2</option>
+                  <option value="option3">Option 3</option>
+                </select>
+              </div>
+
+              <div class="flex flex-col gap-2">
+                <label class="label">Textarea</label>
+                <textarea class="textarea" name="response[textarea_value]" rows="3" placeholder="Enter longer text..."></textarea>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="checkbox" id="agree" name="response[agreed]" value="true">
+                <label for="agree" class="text-sm">I agree to the terms</label>
+              </div>
+
+              <div class="flex gap-3 mt-2">
+                <button type="submit" name="response[action]" value="submit" class="btn btn-primary">
+                  Submit Form
+                </button>
+                <button type="submit" name="response[action]" value="skip" class="btn btn-outline">
+                  Skip
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Alert Section -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Alerts</h3>
+          </div>
+          <div class="card-content flex flex-col gap-3">
+            <div class="alert">
+              <p>This is a default alert message.</p>
+            </div>
+            <div class="alert alert-destructive">
+              <p>This is a destructive/error alert.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Section -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Data Table</h3>
+          </div>
+          <div class="card-content">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Status</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Buttons</td>
+                  <td><span class="badge">Testing</span></td>
+                  <td>5 variants</td>
+                </tr>
+                <tr>
+                  <td>Cards</td>
+                  <td><span class="badge badge-secondary">Active</span></td>
+                  <td>Header, content, footer</td>
+                </tr>
+                <tr>
+                  <td>Forms</td>
+                  <td><span class="badge">Testing</span></td>
+                  <td>Input, select, textarea</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    hitl_title: "Basecoat Component Test"
+    hitl_description: "Verify shadcn-style components render correctly"
+    handoffs: [show_result]
+
+  - name: show_result
+    instructions: |
+      The user just submitted the Basecoat component test form.
+
+      Their response was: {{ outputs.basecoat_showcase }}
+
+      Summarize what they submitted and confirm the test was successful.
+      Comment on the visual quality of the components if the form rendered correctly.
+    handoffs: []

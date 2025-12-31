@@ -155,3 +155,90 @@ def set_state(key: str, value: str) -> str:
         logging.getLogger(__name__).debug(f"Could not persist state to cascade_state table: {e}")
 
     return f"State updated: {key} = {value}"
+
+
+@simple_eddy
+def append_state(key: str, value) -> str:
+    """
+    Appends a value to a list in session state.
+
+    If the key doesn't exist, creates a new list with the value.
+    If the key exists but isn't a list, converts it to a list first.
+
+    This is the preferred way to accumulate items (expenses, messages, etc.)
+    without manually handling the read-append-write pattern.
+
+    Example:
+        append_state("expenses", {"merchant": "Starbucks", "amount": 5.50})
+        append_state("messages", "User clicked submit")
+    """
+    session_id = current_session_context.get()
+    if not session_id:
+        return "Error: No active session context found."
+
+    cascade_id = current_cascade_context.get()
+    cell_name = current_phase_context.get()
+
+    # Get current state
+    echo = get_echo(session_id)
+    current = echo.state.get(key)
+
+    # Ensure it's a list
+    if current is None:
+        new_list = [value]
+    elif isinstance(current, list):
+        new_list = current + [value]
+    else:
+        # Convert existing value to list, then append
+        new_list = [current, value]
+
+    # Update Echo state
+    echo.update_state(key, new_list)
+
+    # Persist to ClickHouse
+    try:
+        from ..db_adapter import get_db
+        from datetime import datetime
+        import json
+
+        db = get_db()
+        value_json = json.dumps(new_list)
+
+        db.insert_rows(
+            'cascade_state',
+            [{
+                'session_id': session_id,
+                'cascade_id': cascade_id or 'unknown',
+                'key': key,
+                'value': value_json,
+                'cell_name': cell_name or 'unknown',
+                'created_at': datetime.now(),
+                'value_type': 'array'
+            }],
+            columns=['session_id', 'cascade_id', 'key', 'value', 'cell_name', 'created_at', 'value_type']
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"Could not persist state to cascade_state table: {e}")
+
+    return f"Appended to {key}: now has {len(new_list)} item(s)"
+
+
+@simple_eddy
+def get_state(key: str, default=None):
+    """
+    Retrieves a value from session state.
+
+    Returns the default value if key doesn't exist.
+    Useful in deterministic cells that need to read state.
+
+    Example:
+        expenses = get_state("expenses", [])
+        total = sum(e["amount"] for e in expenses)
+    """
+    session_id = current_session_context.get()
+    if not session_id:
+        return default
+
+    echo = get_echo(session_id)
+    return echo.state.get(key, default)

@@ -1,0 +1,402 @@
+{
+  "_meta": {
+    "library": "Basecoat",
+    "version": "0.3.9",
+    "description": "shadcn/ui components for HTML/HTMX - no React required",
+    "docs_url": "https://basecoatui.com/",
+    "github": "https://github.com/hunvreus/basecoat",
+    "cdn_css": "https://cdn.jsdelivr.net/npm/@aspect/basecoat@0.3.9/index.css",
+    "cdn_js": "https://cdn.jsdelivr.net/npm/@aspect/basecoat@0.3.9/index.min.js"
+  },
+  "components": {
+    "button": {
+      "category": "action",
+      "description": "Interactive click elements with multiple variants and sizes",
+      "classes": {
+        "base": "btn",
+        "variants": ["btn-primary", "btn-secondary", "btn-destructive", "btn-outline", "btn-ghost", "btn-link"],
+        "sizes": ["btn-sm", "btn-lg"],
+        "modifiers": ["btn-icon"]
+      },
+      "combinable": true,
+      "combination_pattern": "btn-{size}-{modifier}-{variant}",
+      "examples": [
+        "<button class=\"btn\">Primary</button>",
+        "<button class=\"btn-secondary\">Secondary</button>",
+        "<button class=\"btn-destructive\">Delete</button>",
+        "<button class=\"btn-outline\">Outline</button>",
+        "<button class=\"btn-ghost\">Ghost</button>",
+        "<button class=\"btn-link\">Link</button>",
+        "<button class=\"btn-lg\">Large Button</button>",
+        "<button class=\"btn-sm-icon-outline\"><svg>...</svg></button>",
+        "<button class=\"btn\" disabled><svg class=\"animate-spin\">...</svg>Loading</button>"
+      ],
+      "requires_js": false
+    },
+    "card": {
+      "category": "container",
+      "description": "Content containers with header, content, and footer sections",
+      "classes": {
+        "base": "card"
+      },
+      "structure": {
+        "container": "<div class=\"card\">",
+        "header": "<header> or <div class=\"card-header\">",
+        "title": "<h2> or <h3 class=\"card-title\">",
+        "description": "<p class=\"card-description\">",
+        "content": "<section> or <div class=\"card-content\">",
+        "footer": "<footer> or <div class=\"card-footer\">"
+      },
+      "examples": [
+        "<div class=\"card\">\n  <header>\n    <h2>Title</h2>\n    <p>Description</p>\n  </header>\n  <section>Content here</section>\n  <footer>\n    <button class=\"btn\">Action</button>\n  </footer>\n</div>"
+      ],
+      "requires_js": false
+    },
+    "input": {
+      "category": "form",
+      "description": "Text entry fields with validation states",
+      "classes": {
+        "base": "input"
+      },
+      "attributes": {
+        "invalid": "aria-invalid=\"true\"",
+        "disabled": "disabled"
+      },
+      "examples": [
+        "<input class=\"input\" type=\"text\" placeholder=\"Enter text...\">",
+        "<input class=\"input\" type=\"email\" placeholder=\"Email\" aria-invalid=\"true\">",
+        "<input class=\"input\" type=\"text\" disabled>"
+      ],
+      "requires_js": false
+    },
+    "textarea": {
+      "category": "form",
+      "description": "Multi-line text input fields",
+      "classes": {
+        "base": "textarea"
+      },
+      "attributes": {
+        "invalid": "aria-invalid=\"true\"",
+        "disabled": "disabled"
+      },
+      "examples": [
+        "<textarea class=\"textarea\" placeholder=\"Type your message...\"></textarea>",
+        "<textarea class=\"textarea\" rows=\"4\" aria-invalid=\"true\"></textarea>"
+      ],
+      "requires_js": false
+    },
+    "select": {
+      "category": "form",
+      "description": "Dropdown value selectors",
+      "classes": {
+        "base": "select"
+      },
+      "examples": [
+        "<select class=\"select\">\n  <option value=\"\">Select option...</option>\n  <option value=\"1\">Option 1</option>\n  <option value=\"2\">Option 2</option>\n</select>",
+        "<select class=\"select w-[180px]\">\n  <optgroup label=\"Group\">\n    <option>Item 1</option>\n    <option>Item 2</option>\n  </optgroup>\n</select>"
+      ],
+      "requires_js": false,
+      "notes": "Basic native select. Advanced searchable select requires JS."
+    },
+    "checkbox": {
+      "category": "form",
+      "description": "Binary selection inputs",
+      "classes": {
+        "base": "input"
+      },
+      "examples": [
+        "<input type=\"checkbox\" class=\"input\">",
+        "<label class=\"label gap-3\">\n  <input type=\"checkbox\" class=\"input\">\n  Accept terms\n</label>",
+        "<input type=\"checkbox\" class=\"input\" disabled>"
+      ],
+      "requires_js": false
+    },
+    "switch": {
+      "category": "form",
+      "description": "Toggle controls (styled checkbox)",
+      "classes": {
+        "base": "input"
+      },
+      "attributes": {
+        "role": "role=\"switch\""
+      },
+      "examples": [
+        "<input type=\"checkbox\" role=\"switch\" class=\"input\">",
+        "<label class=\"label\">\n  <input type=\"checkbox\" role=\"switch\" class=\"input\">\n  Airplane Mode\n</label>"
+      ],
+      "requires_js": false
+    },
+    "label": {
+      "category": "form",
+      "description": "Form field labels",
+      "classes": {
+        "base": "label"
+      },
+      "examples": [
+        "<label class=\"label\">Field Label</label>",
+        "<label class=\"label gap-3\">\n  <input type=\"checkbox\" class=\"input\">\n  Label with checkbox\n</label>"
+      ],
+      "requires_js": false
+    },
+    "badge": {
+      "category": "display",
+      "description": "Status indicators and labels",
+      "classes": {
+        "base": "badge",
+        "variants": ["badge-secondary", "badge-destructive", "badge-outline"]
+      },
+      "examples": [
+        "<span class=\"badge\">Primary</span>",
+        "<span class=\"badge-secondary\">Secondary</span>",
+        "<span class=\"badge-destructive\">Error</span>",
+        "<span class=\"badge-outline\">Outline</span>",
+        "<span class=\"badge-destructive\"><svg>...</svg>With Icon</span>",
+        "<a href=\"#\" class=\"badge-outline\">Link Badge</a>"
+      ],
+      "requires_js": false
+    },
+    "alert": {
+      "category": "feedback",
+      "description": "Status and notification messaging",
+      "classes": {
+        "base": "alert",
+        "variants": ["alert-destructive"]
+      },
+      "structure": {
+        "container": "<div class=\"alert\">",
+        "icon": "<svg> (optional)",
+        "title": "<h2>",
+        "description": "<section> (optional)"
+      },
+      "examples": [
+        "<div class=\"alert\">\n  <h2>Info</h2>\n  <section>This is an informational message.</section>\n</div>",
+        "<div class=\"alert-destructive\">\n  <svg>...</svg>\n  <h2>Error</h2>\n  <section>Something went wrong.</section>\n</div>"
+      ],
+      "requires_js": false
+    },
+    "table": {
+      "category": "data",
+      "description": "Data grid displays",
+      "classes": {
+        "base": "table"
+      },
+      "structure": {
+        "wrapper": "<div class=\"overflow-x-auto\">",
+        "table": "<table class=\"table\">",
+        "elements": ["<caption>", "<thead>", "<tbody>", "<tfoot>", "<tr>", "<th>", "<td>"]
+      },
+      "examples": [
+        "<div class=\"overflow-x-auto\">\n  <table class=\"table\">\n    <thead>\n      <tr><th>Name</th><th>Status</th></tr>\n    </thead>\n    <tbody>\n      <tr><td>Item 1</td><td><span class=\"badge\">Active</span></td></tr>\n    </tbody>\n  </table>\n</div>"
+      ],
+      "requires_js": false
+    },
+    "tabs": {
+      "category": "navigation",
+      "description": "Content section switching",
+      "classes": {
+        "base": "tabs"
+      },
+      "attributes": {
+        "tablist": "role=\"tablist\" aria-orientation=\"horizontal\"",
+        "tab": "role=\"tab\" aria-controls=\"{panel-id}\" aria-selected=\"true|false\" tabindex=\"0\"",
+        "panel": "role=\"tabpanel\" aria-labelledby=\"{tab-id}\" aria-selected=\"true|false\""
+      },
+      "examples": [
+        "<div class=\"tabs w-full\">\n  <nav role=\"tablist\" aria-orientation=\"horizontal\">\n    <button role=\"tab\" aria-selected=\"true\">Tab 1</button>\n    <button role=\"tab\" aria-selected=\"false\">Tab 2</button>\n  </nav>\n  <div role=\"tabpanel\" aria-selected=\"true\">Content 1</div>\n  <div role=\"tabpanel\" aria-selected=\"false\" hidden>Content 2</div>\n</div>"
+      ],
+      "requires_js": true,
+      "js_file": "tabs.min.js"
+    },
+    "accordion": {
+      "category": "navigation",
+      "description": "Collapsible content sections",
+      "classes": {
+        "base": "accordion"
+      },
+      "structure": {
+        "container": "<div class=\"accordion\">",
+        "item": "<details class=\"group\">",
+        "trigger": "<summary>",
+        "content": "Content inside <details>"
+      },
+      "examples": [
+        "<div class=\"accordion\">\n  <details class=\"group\">\n    <summary>Section 1</summary>\n    <div>Content for section 1</div>\n  </details>\n  <details class=\"group\">\n    <summary>Section 2</summary>\n    <div>Content for section 2</div>\n  </details>\n</div>"
+      ],
+      "requires_js": true,
+      "notes": "Uses native <details>/<summary>. JS provides single-open behavior."
+    },
+    "dialog": {
+      "category": "overlay",
+      "description": "Modal windows and dialogs",
+      "classes": {
+        "base": "dialog"
+      },
+      "attributes": {
+        "accessibility": "aria-labelledby=\"{title-id}\" aria-describedby=\"{desc-id}\"",
+        "backdrop_close": "onclick=\"if (event.target === this) this.close()\""
+      },
+      "structure": {
+        "dialog": "<dialog class=\"dialog\">",
+        "header": "<header>",
+        "content": "<section>",
+        "footer": "<footer>"
+      },
+      "methods": {
+        "open": "document.getElementById('dialog-id').showModal()",
+        "close": "this.closest('dialog').close()"
+      },
+      "examples": [
+        "<button class=\"btn\" onclick=\"document.getElementById('my-dialog').showModal()\">Open</button>\n<dialog id=\"my-dialog\" class=\"dialog\" onclick=\"if (event.target === this) this.close()\">\n  <header><h2>Title</h2></header>\n  <section>Dialog content</section>\n  <footer>\n    <button class=\"btn-outline\" onclick=\"this.closest('dialog').close()\">Cancel</button>\n    <button class=\"btn\">Save</button>\n  </footer>\n</dialog>"
+      ],
+      "requires_js": false,
+      "notes": "Uses native <dialog> element. No external JS required."
+    },
+    "dropdown-menu": {
+      "category": "overlay",
+      "description": "Contextual action menus",
+      "classes": {
+        "base": "dropdown-menu"
+      },
+      "attributes": {
+        "trigger": "aria-haspopup=\"menu\" aria-controls=\"{menu-id}\" aria-expanded=\"true|false\"",
+        "popover": "data-popover",
+        "menu": "role=\"menu\" aria-labelledby=\"{trigger-id}\"",
+        "item": "role=\"menuitem\"",
+        "checkbox": "role=\"menuitemcheckbox\" aria-checked=\"true|false\"",
+        "radio": "role=\"menuitemradio\" aria-checked=\"true|false\"",
+        "separator": "role=\"separator\"",
+        "disabled": "aria-disabled=\"true\""
+      },
+      "examples": [
+        "<div class=\"dropdown-menu\">\n  <button class=\"btn-outline\" aria-haspopup=\"menu\">Open Menu</button>\n  <div data-popover>\n    <div role=\"menu\">\n      <button role=\"menuitem\">Item 1</button>\n      <button role=\"menuitem\">Item 2</button>\n      <div role=\"separator\"></div>\n      <button role=\"menuitem\" aria-disabled=\"true\">Disabled</button>\n    </div>\n  </div>\n</div>"
+      ],
+      "requires_js": true
+    },
+    "tooltip": {
+      "category": "overlay",
+      "description": "Contextual help text on hover/focus",
+      "classes": {},
+      "attributes": {
+        "text": "data-tooltip=\"Tooltip text\"",
+        "side": "data-side=\"top|bottom|left|right\"",
+        "align": "data-align=\"start|center|end\""
+      },
+      "examples": [
+        "<button class=\"btn\" data-tooltip=\"Add to library\">Hover me</button>",
+        "<button class=\"btn-outline\" data-tooltip=\"Right tooltip\" data-side=\"right\">Right</button>",
+        "<button class=\"btn-ghost\" data-tooltip=\"Bottom start\" data-side=\"bottom\" data-align=\"start\">Bottom</button>"
+      ],
+      "requires_js": true
+    },
+    "popover": {
+      "category": "overlay",
+      "description": "Floating content panels",
+      "classes": {},
+      "attributes": {
+        "container": "data-popover",
+        "side": "data-side=\"top|bottom|left|right\"",
+        "align": "data-align=\"start|center|end\""
+      },
+      "requires_js": true
+    },
+    "progress": {
+      "category": "feedback",
+      "description": "Visual progress indicators (utility-based, no dedicated class)",
+      "classes": {},
+      "structure": {
+        "track": "<div class=\"bg-primary/20 h-2 w-full overflow-hidden rounded-full\">",
+        "indicator": "<div class=\"bg-primary h-full transition-all\" style=\"width: 66%\">"
+      },
+      "examples": [
+        "<div class=\"bg-primary/20 relative h-2 w-full overflow-hidden rounded-full\">\n  <div class=\"bg-primary h-full transition-all\" style=\"width: 66%\"></div>\n</div>"
+      ],
+      "requires_js": false,
+      "notes": "No dedicated class - uses Tailwind utilities directly."
+    },
+    "spinner": {
+      "category": "feedback",
+      "description": "Loading animations",
+      "classes": {
+        "animation": "animate-spin"
+      },
+      "examples": [
+        "<svg class=\"animate-spin h-5 w-5\" viewBox=\"0 0 24 24\">...</svg>",
+        "<button class=\"btn\" disabled>\n  <svg class=\"animate-spin h-4 w-4\">...</svg>\n  Loading...\n</button>"
+      ],
+      "requires_js": false
+    },
+    "skeleton": {
+      "category": "feedback",
+      "description": "Loading placeholders",
+      "classes": {
+        "base": "skeleton"
+      },
+      "examples": [
+        "<div class=\"skeleton h-4 w-full\"></div>",
+        "<div class=\"skeleton h-12 w-12 rounded-full\"></div>"
+      ],
+      "requires_js": false
+    },
+    "avatar": {
+      "category": "display",
+      "description": "User profile images with fallback",
+      "classes": {
+        "base": "avatar"
+      },
+      "examples": [
+        "<div class=\"avatar\">\n  <img src=\"user.jpg\" alt=\"User\">\n</div>",
+        "<div class=\"avatar\">\n  <span>JD</span>\n</div>"
+      ],
+      "requires_js": false
+    },
+    "separator": {
+      "category": "layout",
+      "description": "Visual dividers",
+      "classes": {
+        "base": "separator"
+      },
+      "examples": [
+        "<div class=\"separator\"></div>",
+        "<hr class=\"separator\">"
+      ],
+      "requires_js": false
+    },
+    "form": {
+      "category": "form",
+      "description": "Form container with styled children",
+      "classes": {
+        "base": "form"
+      },
+      "examples": [
+        "<form class=\"form flex flex-col gap-4\">\n  <div class=\"grid gap-3\">\n    <label class=\"label\">Email</label>\n    <input class=\"input\" type=\"email\">\n  </div>\n  <button class=\"btn\" type=\"submit\">Submit</button>\n</form>"
+      ],
+      "requires_js": false
+    }
+  },
+  "utility_classes": {
+    "text": {
+      "muted": "text-muted-foreground",
+      "sizes": ["text-xs", "text-sm", "text-base", "text-lg"],
+      "alignment": ["text-left", "text-center", "text-right"]
+    },
+    "layout": {
+      "flex": ["flex", "flex-col", "flex-row", "items-center", "items-start", "justify-between", "justify-center"],
+      "grid": ["grid", "grid-cols-2", "grid-cols-3", "gap-2", "gap-3", "gap-4", "gap-6"],
+      "spacing": ["p-2", "p-4", "p-6", "m-2", "m-4", "mt-4", "mb-4", "pt-4", "pb-4"],
+      "width": ["w-full", "w-[180px]", "max-w-md", "max-w-lg"]
+    },
+    "scrollbar": "scrollbar",
+    "overflow": ["overflow-x-auto", "overflow-y-auto", "overflow-hidden"]
+  },
+  "categories": {
+    "action": ["button"],
+    "container": ["card"],
+    "form": ["input", "textarea", "select", "checkbox", "switch", "label", "form"],
+    "display": ["badge", "avatar"],
+    "feedback": ["alert", "progress", "spinner", "skeleton"],
+    "data": ["table"],
+    "navigation": ["tabs", "accordion"],
+    "overlay": ["dialog", "dropdown-menu", "tooltip", "popover"],
+    "layout": ["separator"]
+  }
+}

@@ -28,6 +28,7 @@ const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
 const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
 const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
+const AppsView = lazy(() => import('./views/apps/AppsView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -123,6 +124,12 @@ export const router = createBrowserRouter([
       {
         path: 'calliope/:sessionId',
         element: withSuspense(CalliopeView),
+      },
+
+      // Apps - RVBBIT Apps (cascade-powered interfaces)
+      {
+        path: 'apps',
+        element: withSuspense(AppsView),
       },
 
       // Catch-all - redirect to home

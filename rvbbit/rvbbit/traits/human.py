@@ -1158,40 +1158,34 @@ def _build_html_decision_ui(html: str, question: str, context: str, severity: st
 
     # Inject system extras INSIDE the form (before closing </form> tag)
     # This ensures they're submitted with the LLM's form data
-    # UPDATED: AppShell theme styling (pure black, cyan accents, data-dense)
+    # Uses Basecoat classes - rendered in HTMLSection iframe which has Basecoat CSS
     extras_html = """
 <!-- System-provided extras (always included, auto-merged with form) -->
-<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0, 229, 255, 0.15);">
-  <div style="margin-bottom: 8px;">
-    <label style="display: block; margin-bottom: 4px; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;">
-      Additional Notes (optional)
-    </label>
-    <textarea
-      name="response[notes]"
-      placeholder="Add context, feedback, or clarifications..."
-      rows="2"
-      style="width: 100%; background: #000; border: 1px solid rgba(0, 229, 255, 0.15); color: #cbd5e1; padding: 6px 8px; border-radius: 4px; font-family: 'Google Sans Code', monospace; font-size: 11px; resize: vertical; transition: all 0.15s;"
-      onfocus="this.style.borderColor='#00e5ff'; this.style.boxShadow='0 0 0 2px rgba(0, 229, 255, 0.1)';"
-      onblur="this.style.borderColor='rgba(0, 229, 255, 0.15)'; this.style.boxShadow='none';"></textarea>
-  </div>
+<div class="card mt-4 border-t border-border">
+  <div class="card-content pt-4">
+    <div class="flex flex-col gap-1.5 mb-4">
+      <label class="label">Additional Notes (optional)</label>
+      <textarea
+        name="response[notes]"
+        class="textarea"
+        placeholder="Add context, feedback, or clarifications..."
+        rows="2"></textarea>
+    </div>
 
-  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-    <label style="display: flex; align-items: center; gap: 6px; color: #94a3b8; font-size: 10px; cursor: pointer;">
-      <input
-        type="checkbox"
-        name="response[include_screenshot]"
-        value="true"
-        style="accent-color: #00e5ff; width: 14px; height: 14px; cursor: pointer;">
-      <span>Include screenshot</span>
-    </label>
+    <div class="flex items-center justify-between gap-4">
+      <label class="flex items-center gap-2 text-muted-foreground text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          name="response[include_screenshot]"
+          value="true"
+          class="checkbox">
+        <span>Include screenshot</span>
+      </label>
 
-    <button
-      type="submit"
-      style="background: linear-gradient(135deg, #00e5ff 0%, #a78bfa 100%); color: #000; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; transition: all 0.15s; white-space: nowrap;"
-      onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 0 16px rgba(0, 229, 255, 0.4)';"
-      onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
-      Submit
-    </button>
+      <button type="submit" class="btn btn-primary">
+        Submit
+      </button>
+    </div>
   </div>
 </div>
 """
@@ -1442,169 +1436,190 @@ def _build_screenshot_html(body_html: str) -> str:
     Build complete HTML document for screenshot capture.
 
     Mirrors the iframe template from frontend HTMLSection.js
+    Uses Quicksand for sans-serif and Google Sans Mono for monospace.
     """
     base_css = """
-/* RVBBIT AppShell Theme - Data-dense HTMX forms (synced with frontend) */
+/* RVBBIT AppShell Theme - Screenshot capture (synced with HTMLSection.js) */
 :root {
-  --bg-darkest: #000000;
-  --bg-dark: #000000;
-  --bg-card: rgba(0, 0, 0, 0.4);
-  --border-default: rgba(0, 229, 255, 0.15);
-  --border-subtle: rgba(0, 229, 255, 0.1);
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
-  --accent-cyan: #00e5ff;
-  --accent-purple: #a78bfa;
-  --accent-green: #34d399;
-  --accent-red: #f87171;
-  --accent-yellow: #fbbf24;
+  /* Backgrounds */
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #0a0a0a;
+  --color-bg-card: #000000;
+  --color-bg-input: #000000;
+
+  /* Borders */
+  --color-border-dim: rgba(0, 229, 255, 0.15);
+  --color-border-medium: rgba(0, 229, 255, 0.25);
+
+  /* Text Colors */
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-text-dim: #64748b;
+
+  /* Accent Colors */
+  --color-accent-cyan: #00e5ff;
+  --color-accent-purple: #a78bfa;
+  --color-accent-green: #34d399;
+  --color-accent-red: #f87171;
+  --color-accent-yellow: #fbbf24;
+
+  /* Typography */
+  --font-sans: 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Google Sans Mono', 'IBM Plex Mono', monospace;
+  --radius: 6px;
 }
+
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  padding: 8px;
-  font-family: 'Google Sans Code', 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-secondary);
-  background: var(--bg-dark);
+  padding: 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-primary);
   -webkit-font-smoothing: antialiased;
 }
 
-* { box-sizing: border-box; }
-
 h1, h2, h3, h4, h5, h6 {
-  color: var(--accent-cyan);
+  font-family: var(--font-sans);
+  color: var(--color-accent-cyan);
   font-weight: 700;
-  margin: 0 0 6px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  margin: 0 0 8px 0;
 }
 
-h1 { font-size: 13px; }
-h2 { font-size: 12px; }
-h3 { font-size: 11px; }
+h1 { font-size: 16px; }
+h2 { font-size: 14px; }
+h3 { font-size: 13px; }
 
-p {
-  margin: 0 0 6px 0;
-  font-size: 11px;
-  line-height: 1.4;
-}
+p { margin: 0 0 8px 0; }
 
-input, select, textarea {
-  background: #000;
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-family: 'Google Sans Code', monospace;
-  font-size: 11px;
+/* Buttons - Basecoat style */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
   transition: all 0.15s;
+  border: 1px solid transparent;
 }
 
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
-}
-
-textarea {
-  resize: vertical;
-  min-height: 40px;
-  line-height: 1.4;
-}
-
-button {
-  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-purple) 100%);
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent-cyan) 0%, var(--color-accent-purple) 100%);
   color: #000;
   border: none;
-  padding: 6px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+}
+
+.btn-secondary {
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--color-accent-purple);
+  border-color: var(--color-accent-purple);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-medium);
+}
+
+/* Form Inputs - Basecoat style */
+.input, .textarea, .select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
   transition: all 0.15s;
 }
 
-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.4);
+.input:focus, .textarea:focus, .select:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.1);
 }
 
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none;
-}
+.textarea { resize: vertical; min-height: 60px; }
 
-code, pre {
-  font-family: 'Google Sans Code', monospace;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: 4px;
-}
-
-code {
-  padding: 1px 4px;
-  font-size: 10px;
-  color: var(--accent-purple);
-}
-
-pre {
-  padding: 8px;
-  overflow-x: auto;
-  border: 1px solid var(--border-subtle);
-  line-height: 1.4;
-  font-size: 10px;
-}
-
-label {
+.label {
   display: block;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.checkbox, .radio {
+  accent-color: var(--color-accent-cyan);
+  width: 16px;
+  height: 16px;
+}
+
+/* Cards - Basecoat style */
+.card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-dim);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.card-header { padding: 12px 16px; border-bottom: 1px solid var(--color-border-dim); }
+.card-content { padding: 16px; }
+.card-title { color: var(--color-text-primary); font-size: 13px; font-weight: 700; margin: 0; }
+.card-description { color: var(--color-text-muted); font-size: 11px; margin: 4px 0 0 0; }
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
   font-size: 10px;
   font-weight: 600;
-  margin-bottom: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--color-accent-cyan);
+  border: 1px solid rgba(0, 229, 255, 0.3);
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 10px;
-}
+/* Tables */
+.table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.table th, .table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--color-border-dim); }
+.table th { color: var(--color-accent-cyan); font-weight: 700; font-size: 10px; text-transform: uppercase; }
+.table tr:hover { background: rgba(0, 229, 255, 0.03); }
 
-th, td {
-  padding: 5px 6px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-subtle);
-}
+/* Code */
+code, pre { font-family: var(--font-mono); }
+code { padding: 2px 6px; background: rgba(167, 139, 250, 0.1); color: var(--color-accent-purple); border-radius: 4px; font-size: 11px; }
+pre { padding: 12px; background: var(--color-bg-secondary); border: 1px solid var(--color-border-dim); border-radius: var(--radius); overflow-x: auto; }
 
-th {
-  color: var(--accent-cyan);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  font-size: 9px;
-}
+/* Links */
+a { color: var(--color-accent-cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-tr:hover {
-  background: rgba(0, 229, 255, 0.03);
-}
-
-a {
-  color: var(--accent-cyan);
-  text-decoration: none;
-  transition: all 0.15s;
-}
-
-a:hover {
-  text-decoration: underline;
-  filter: brightness(1.2);
-}
+/* Utility classes */
+.text-muted-foreground { color: var(--color-text-muted); }
+.text-sm { font-size: 11px; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-4 { gap: 16px; }
+.mt-4 { margin-top: 16px; }
+.mb-4 { margin-bottom: 16px; }
+.pt-4 { padding-top: 16px; }
+.border-t { border-top-width: 1px; }
+.border-border { border-color: var(--color-border-dim); }
 """
 
     return f"""<!DOCTYPE html>
@@ -1614,7 +1629,7 @@ a:hover {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>{base_css}</style>
 
   <!-- Visualization libraries -->

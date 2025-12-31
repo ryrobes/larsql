@@ -97,6 +97,15 @@
   color: #34d399;
 }
 
+.summary-item.model {
+  border-color: rgba(148, 163, 184, 0.3);
+  cursor: help;
+}
+
+.summary-item.model svg {
+  color: #94a3b8;
+}
+
 .summary-item .value {
   font-size: 14px;
   font-weight: 600;

@@ -976,6 +976,7 @@ Select the message IDs most relevant to the current task. Consider:
 
 Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "brief explanation"}}"""
 
+            print("[auto-context]")
             cfg = get_config()
             selector = Agent(
                 model=cfg.context_selector_model,

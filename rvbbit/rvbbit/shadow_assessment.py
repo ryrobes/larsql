@@ -321,6 +321,7 @@ class ShadowAssessor:
             if not menu_lines:
                 return {"selected": [], "reasoning": "No candidates"}
 
+            print("[shadow-context]")
             menu = "\n".join(menu_lines)
             system_prompt = "You are a context selection assistant. Be concise and precise. Return valid JSON only."
 

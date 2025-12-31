@@ -109,6 +109,14 @@ const CascadeAggregateView = ({ cascadeId }) => {
         </span>
       </div>
 
+      {/* Model Badge */}
+      {data.model_used && (
+        <div className="model-badge" title={`Pricing based on ${data.model_used}`}>
+          <Icon icon="mdi:chip" width={14} />
+          <span>{data.model_used}</span>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="summary-cards">
         <div className="summary-card savings">
@@ -117,11 +125,11 @@ const CascadeAggregateView = ({ cascadeId }) => {
           </div>
           <div className="card-content">
             <div className="card-value">
-              ${data.recommendations?.estimated_monthly_savings?.toFixed(2) || '0.00'}
+              ${data.recommendations?.estimated_monthly_savings?.toFixed(4) || '0.0000'}
             </div>
             <div className="card-label">Est. Monthly Savings</div>
             <div className="card-detail">
-              ${data.recommendations?.estimated_savings_per_run?.toFixed(4) || '0'}/run
+              ${data.recommendations?.estimated_savings_per_run?.toFixed(6) || '0'}/run
             </div>
           </div>
         </div>
@@ -132,11 +140,11 @@ const CascadeAggregateView = ({ cascadeId }) => {
           </div>
           <div className="card-content">
             <div className="card-value">
-              {data.inter_phase?.total_waste_pct?.toFixed(1) || 0}%
+              ${data.inter_phase?.estimated_waste_cost?.toFixed(4) || '0.0000'}
             </div>
-            <div className="card-label">Avg. Context Waste</div>
+            <div className="card-label">Wasted on Low-Relevance</div>
             <div className="card-detail">
-              {data.inter_phase?.total_waste_tokens?.toLocaleString() || 0} tokens
+              {data.inter_phase?.total_waste_pct?.toFixed(1) || 0}% ({data.inter_phase?.total_waste_tokens?.toLocaleString() || 0} tokens)
             </div>
           </div>
         </div>

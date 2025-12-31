@@ -45,6 +45,9 @@ export const ROUTES = {
   CALLIOPE: '/calliope',
   calliopeWithSession: (sessionId) => `/calliope/${encodeURIComponent(sessionId)}`,
 
+  // Apps - RVBBIT Apps (cascade-powered interfaces)
+  APPS: '/apps',
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -90,6 +93,7 @@ export function getViewFromPath(pathname) {
     'evolution': 'evolution',
     'interrupts': 'interrupts',
     'calliope': 'calliope',
+    'apps': 'apps',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -123,6 +127,7 @@ export function getRouteForView(viewId) {
     'evolution': ROUTES.EVOLUTION,
     'interrupts': ROUTES.INTERRUPTS,
     'calliope': ROUTES.CALLIOPE,
+    'apps': ROUTES.APPS,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,

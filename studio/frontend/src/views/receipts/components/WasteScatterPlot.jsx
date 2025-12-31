@@ -33,7 +33,7 @@ const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
     fetchData();
   }, [sessionId]);
 
-  // Calculate waste stats
+  // Calculate waste stats using actual model pricing from API
   const wasteStats = useMemo(() => {
     if (!data?.messages) return null;
 
@@ -43,11 +43,18 @@ const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
     const wasteTokens = wasteMessages.reduce((sum, m) => sum + m.tokens, 0);
     const totalTokens = data.messages.reduce((sum, m) => sum + m.tokens, 0);
 
+    // Use the backend's waste_summary cost as the base rate when threshold is 40
+    // Otherwise scale proportionally (this is an approximation when threshold differs)
+    const baseCost = data.waste_summary?.estimated_cost || 0;
+    const baseTokens = data.waste_summary?.tokens || 1;
+    const costPerToken = baseTokens > 0 ? baseCost / baseTokens : 0.000003;
+
     return {
       wasteCount: wasteMessages.length,
       wasteTokens,
       wastePct: totalTokens > 0 ? (wasteTokens / totalTokens * 100) : 0,
-      estimatedSavings: wasteTokens * 0.000003 // ~$3 per 1M tokens
+      estimatedSavings: wasteTokens * costPerToken,
+      modelUsed: data.model_used
     };
   }, [data, threshold]);
 
@@ -296,9 +303,15 @@ const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
           </div>
           <div className="summary-item savings">
             <Icon icon="mdi:currency-usd" width={16} />
-            <span className="value">${wasteStats.estimatedSavings.toFixed(4)}</span>
+            <span className="value">${wasteStats.estimatedSavings.toFixed(6)}</span>
             <span className="label">potential savings</span>
           </div>
+          {wasteStats.modelUsed && (
+            <div className="summary-item model" title={`Pricing based on ${wasteStats.modelUsed}`}>
+              <Icon icon="mdi:chip" width={16} />
+              <span className="label">{wasteStats.modelUsed.split('/').pop()}</span>
+            </div>
+          )}
         </div>
       )}
 

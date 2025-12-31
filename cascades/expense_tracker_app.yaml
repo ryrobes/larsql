@@ -1,0 +1,270 @@
+# Expense Tracker App - Demonstrates AI-powered RVBBIT Apps with Basecoat UI
+#
+# This app shows:
+# - LLM cells with hitl for custom UI
+# - Form handling with Basecoat components
+# - Routing between screens
+# - Mix of AI and deterministic cells
+#
+# Features:
+# - Manual expense entry with styled forms
+# - Expense summary view with stats cards
+# - Category breakdown table
+#
+# Run with: Navigate to /apps/expense_tracker/
+
+cascade_id: expense_tracker
+description: AI Expense Tracker
+
+inputs_schema:
+  department: Department name (optional)
+
+cells:
+  # Home screen - dashboard
+  - name: home
+    hitl: |
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-foreground">Expense Tracker</h1>
+            {% if input.department %}
+            <p class="text-muted-foreground">Department: <span class="text-primary">{{ input.department }}</span></p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="card text-center">
+            <section class="py-4">
+              <span class="block text-3xl font-bold text-primary">{{ state.expenses | length if state.expenses else 0 }}</span>
+              <span class="text-sm text-muted-foreground">Expenses</span>
+            </section>
+          </div>
+          <div class="card text-center">
+            <section class="py-4">
+              <span class="block text-3xl font-bold text-green-400">${{ "%.2f" | format(state.expenses | sum(attribute='amount') if state.expenses else 0) }}</span>
+              <span class="text-sm text-muted-foreground">Total</span>
+            </section>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3">
+          {{ submit_button("+ Add Expense", route="add_expense", variant="default") }}
+          {% if state.expenses %}
+          {{ submit_button("View Summary", route="summary", variant="secondary") }}
+          {% endif %}
+        </div>
+
+        <!-- Recent Expenses Table -->
+        {% if state.expenses %}
+        <div class="card">
+          <header>
+            <h2 class="card-title">Recent Expenses</h2>
+            <p class="card-description">Last 5 entries</p>
+          </header>
+          <section class="p-0">
+            <div class="overflow-x-auto">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Merchant</th>
+                    <th>Category</th>
+                    <th class="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for exp in state.expenses[-5:] | reverse %}
+                  <tr>
+                    <td class="font-mono text-sm">{{ exp.date }}</td>
+                    <td>{{ exp.merchant }}</td>
+                    <td><span class="badge-outline text-xs">{{ exp.category | title }}</span></td>
+                    <td class="text-right font-mono text-green-400">${{ "%.2f" | format(exp.amount) }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        {% else %}
+        <div class="card">
+          <section class="text-center py-8">
+            <div class="text-4xl mb-4">💰</div>
+            <p class="text-muted-foreground">No expenses yet. Add your first expense!</p>
+          </section>
+        </div>
+        {% endif %}
+      </div>
+    handoffs:
+      - add_expense
+      - summary
+
+  # Add expense form
+  - name: add_expense
+    hitl: |
+      <div class="card max-w-lg mx-auto">
+        <header>
+          <h2 class="card-title">Add Expense</h2>
+          <p class="card-description">Enter the expense details</p>
+        </header>
+
+        <section class="space-y-4">
+          <div class="flex flex-col gap-2">
+            <label for="merchant" class="label">Merchant <span class="text-destructive">*</span></label>
+            <input type="text" name="merchant" id="merchant" class="input" placeholder="Store name..." required>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-2">
+              <label for="amount" class="label">Amount ($) <span class="text-destructive">*</span></label>
+              <input type="number" name="amount" id="amount" class="input" step="0.01" min="0" placeholder="0.00" required>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <label for="date" class="label">Date <span class="text-destructive">*</span></label>
+              <input type="date" name="date" id="date" class="input" required>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label for="category" class="label">Category</label>
+            <select name="category" id="category" class="select">
+              <option value="food">Food & Dining</option>
+              <option value="transport">Transport</option>
+              <option value="office">Office Supplies</option>
+              <option value="travel">Travel</option>
+              <option value="entertainment">Entertainment</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label for="notes" class="label">Notes <span class="text-muted-foreground text-xs">(optional)</span></label>
+            <textarea name="notes" id="notes" class="textarea" rows="2" placeholder="Additional details..."></textarea>
+          </div>
+        </section>
+
+        <footer class="flex gap-3 pt-4">
+          {{ submit_button("Cancel", route="home", variant="outline") }}
+          {{ submit_button("Save Expense", action="save", variant="default") }}
+        </footer>
+      </div>
+    routing:
+      save: save_expense
+    handoffs:
+      - save_expense
+      - home
+
+  # Save expense - using append_state for cleaner accumulation
+  - name: save_expense
+    tool: append_state
+    inputs:
+      key: expenses
+      value: |
+        {{ {
+          'merchant': state.add_expense.merchant,
+          'amount': state.add_expense.amount | float,
+          'date': state.add_expense.date,
+          'category': state.add_expense.category,
+          'notes': state.add_expense.notes or ''
+        } }}
+    handoffs:
+      - expense_saved
+
+  # Confirmation
+  - name: expense_saved
+    hitl: |
+      <div class="card max-w-lg mx-auto text-center">
+        <section class="py-8">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+            <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-semibold text-foreground mb-2">Expense Saved!</h2>
+          <p class="text-muted-foreground">
+            Added <span class="text-green-400 font-semibold">${{ state.add_expense.amount }}</span> expense at
+            <span class="text-primary">{{ state.add_expense.merchant }}</span>.
+          </p>
+        </section>
+
+        <footer class="flex gap-3 justify-center pt-4">
+          {{ submit_button("Add Another", route="add_expense", variant="outline") }}
+          {{ submit_button("Back to Dashboard", route="home", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - add_expense
+      - home
+
+  # Summary view
+  - name: summary
+    hitl: |
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <h1 class="text-2xl font-bold text-foreground">Expense Summary</h1>
+          {{ submit_button("Back", route="home", variant="outline") }}
+        </div>
+
+        {% set expenses = state.expenses or [] %}
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="card text-center">
+            <section class="py-4">
+              <span class="block text-2xl font-bold text-primary">{{ expenses | length }}</span>
+              <span class="text-xs text-muted-foreground">Total Expenses</span>
+            </section>
+          </div>
+          <div class="card text-center">
+            <section class="py-4">
+              <span class="block text-2xl font-bold text-green-400">${{ "%.2f" | format(expenses | sum(attribute='amount')) }}</span>
+              <span class="text-xs text-muted-foreground">Total Amount</span>
+            </section>
+          </div>
+          <div class="card text-center">
+            <section class="py-4">
+              <span class="block text-2xl font-bold text-secondary">${{ "%.2f" | format((expenses | sum(attribute='amount')) / (expenses | length) if expenses else 0) }}</span>
+              <span class="text-xs text-muted-foreground">Average</span>
+            </section>
+          </div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="card">
+          <header>
+            <h2 class="card-title">By Category</h2>
+            <p class="card-description">Breakdown of expenses by category</p>
+          </header>
+          <section class="p-0">
+            <div class="overflow-x-auto">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th class="text-center">Count</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% set categories = expenses | groupby('category') %}
+                  {% for cat, items in categories %}
+                  <tr>
+                    <td>
+                      <span class="badge-secondary text-xs">{{ cat | title }}</span>
+                    </td>
+                    <td class="text-center font-mono">{{ items | length }}</td>
+                    <td class="text-right font-mono text-green-400">${{ "%.2f" | format(items | sum(attribute='amount')) }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    handoffs:
+      - home

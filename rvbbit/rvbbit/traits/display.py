@@ -30,10 +30,19 @@ def show_ui(
     - Anything you can build with HTML/CSS/JS
 
     Available libraries in the rendered HTML:
+    - Basecoat UI - shadcn-style components (btn, card, input, badge, table, etc.)
+    - Tailwind CSS - Utility classes for layout
     - Plotly.js - Interactive charts (Plotly.newPlot)
     - Vega-Lite - Grammar of graphics (vegaEmbed)
     - Vanilla JavaScript - Full DOM access
     - RVBBIT dark theme CSS variables
+
+    Basecoat component examples:
+    - <button class="btn btn-primary">Action</button>
+    - <div class="card"><div class="card-content">...</div></div>
+    - <input class="input" placeholder="...">
+    - <span class="badge">Status</span>
+    - <table class="table">...</table>
 
     Arguments:
         html: HTML content to display. Can include <script> tags for visualizations.

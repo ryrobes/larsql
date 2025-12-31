@@ -1,0 +1,174 @@
+# Quick Notes App - Demonstrates RVBBIT Apps with Basecoat UI
+#
+# This is a simple note-taking app that shows:
+# - Input form auto-generation from inputs_schema
+# - htmx screens with Basecoat component styling
+# - Navigation via routing and _route
+# - State accumulation across cells
+#
+# Run with: Navigate to /apps/quick_notes/
+
+cascade_id: quick_notes
+description: Quick Notes - A simple note-taking app
+
+# Input schema - auto-generates a form before app starts
+inputs_schema:
+  user_name: Your name (optional)
+
+cells:
+  # Home screen - shows welcome and navigation
+  - name: home
+    htmx: |
+      <div class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-foreground">Quick Notes</h1>
+            <p class="text-muted-foreground">
+              Welcome{% if input.user_name %}, <span class="text-primary">{{ input.user_name }}</span>{% endif %}!
+            </p>
+          </div>
+          <span class="badge">{{ state.notes | length if state.notes else 0 }} notes</span>
+        </div>
+
+        {% if state.notes %}
+        <div class="space-y-3">
+          {% for note in state.notes %}
+          <div class="card border-l-4 border-l-primary">
+            <header class="pb-2">
+              <h3 class="font-semibold text-foreground">{{ note.title }}</h3>
+              <span class="text-xs text-muted-foreground">{{ note.created }}</span>
+            </header>
+            <section class="pt-0">
+              <p class="text-sm text-muted-foreground">
+                {{ note.content[:100] }}{% if note.content|length > 100 %}...{% endif %}
+              </p>
+            </section>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card">
+          <section class="text-center py-8">
+            <div class="text-4xl mb-4">📝</div>
+            <p class="text-muted-foreground">No notes yet. Create your first note!</p>
+          </section>
+        </div>
+        {% endif %}
+
+        <div class="flex gap-3">
+          {{ submit_button("+ New Note", route="add_note", variant="default") }}
+          {% if state.notes %}
+          {{ submit_button("Clear All", route="clear_confirm", variant="destructive") }}
+          {% endif %}
+        </div>
+      </div>
+    handoffs:
+      - add_note
+      - clear_confirm
+
+  # Add note form
+  - name: add_note
+    htmx: |
+      <div class="card max-w-lg mx-auto">
+        <header>
+          <h2 class="card-title">New Note</h2>
+          <p class="card-description">Create a new note to save</p>
+        </header>
+
+        <section class="space-y-4">
+          <div class="flex flex-col gap-2">
+            <label for="title" class="label">Title <span class="text-destructive">*</span></label>
+            <input type="text" name="title" id="title" class="input" placeholder="Note title..." required>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label for="content" class="label">Content</label>
+            <textarea name="content" id="content" class="textarea" rows="6" placeholder="Write your note..."></textarea>
+          </div>
+        </section>
+
+        <footer class="flex gap-3 pt-4">
+          {{ submit_button("Cancel", route="home", variant="outline") }}
+          {{ submit_button("Save Note", action="save", variant="default") }}
+        </footer>
+      </div>
+    routing:
+      save: save_note
+    handoffs:
+      - save_note
+      - home
+
+  # Save note (deterministic - updates state)
+  - name: save_note
+    tool: set_state
+    inputs:
+      key: notes
+      value: |
+        {{ (state.notes or []) + [{
+          'title': state.add_note.title,
+          'content': state.add_note.content,
+          'created': now().strftime('%Y-%m-%d %H:%M')
+        }] | tojson }}
+    handoffs:
+      - saved_confirmation
+
+  # Confirmation screen after save
+  - name: saved_confirmation
+    htmx: |
+      <div class="card max-w-lg mx-auto text-center">
+        <section class="py-8">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+            <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-semibold text-foreground mb-2">Note Saved!</h2>
+          <p class="text-muted-foreground">
+            Your note "<span class="text-primary">{{ state.add_note.title }}</span>" has been saved.
+          </p>
+        </section>
+
+        <footer class="flex gap-3 justify-center pt-4">
+          {{ submit_button("Add Another", route="add_note", variant="outline") }}
+          {{ submit_button("Back to Notes", route="home", variant="default") }}
+        </footer>
+      </div>
+    handoffs:
+      - add_note
+      - home
+
+  # Clear confirmation
+  - name: clear_confirm
+    htmx: |
+      <div class="card max-w-lg mx-auto">
+        <header>
+          <div class="w-12 h-12 mb-4 rounded-full bg-destructive/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </div>
+          <h2 class="card-title text-destructive">Clear All Notes?</h2>
+          <p class="card-description">
+            This will delete all <span class="font-semibold text-foreground">{{ state.notes | length }}</span> notes. This cannot be undone.
+          </p>
+        </header>
+
+        <footer class="flex gap-3 pt-4">
+          {{ submit_button("Cancel", route="home", variant="outline") }}
+          {{ submit_button("Yes, Clear All", action="confirm", variant="destructive") }}
+        </footer>
+      </div>
+    routing:
+      confirm: do_clear
+    handoffs:
+      - do_clear
+      - home
+
+  # Actually clear notes
+  - name: do_clear
+    tool: set_state
+    inputs:
+      key: notes
+      value: "[]"
+    handoffs:
+      - home

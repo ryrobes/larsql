@@ -1,0 +1,22 @@
+/**
+ * AppsView Styles
+ *
+ * Full-bleed iframe container for RVBBIT Apps.
+ * The iframe takes the entire right panel area.
+ */
+
+.apps-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+}
+
+.apps-iframe {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #0a0a0a;
+}

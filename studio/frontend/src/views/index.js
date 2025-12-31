@@ -90,6 +90,14 @@ export const views = {
     enabled: true,
   },
 
+  apps: {
+    component: lazy(() => import('./apps/AppsView')),
+    icon: 'mdi:apps',
+    label: 'Apps',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

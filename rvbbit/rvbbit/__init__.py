@@ -26,7 +26,7 @@ from .traits.research_sessions import (
     _fetch_mermaid_graph,
     _fetch_checkpoints_for_session
 )
-from .traits.state_tools import set_state
+from .traits.state_tools import set_state, append_state, get_state
 from .traits.system import spawn_cascade, map_cascade
 from .traits.cascade_builder import cascade_write, cascade_read
 from .traits.bodybuilder import bodybuilder, execute_body, plan_and_execute
@@ -53,6 +53,8 @@ register_trait("save_research_session", save_research_session)
 register_trait("list_research_sessions", list_research_sessions)
 register_trait("get_research_session", get_research_session)
 register_trait("set_state", set_state)
+register_trait("append_state", append_state)
+register_trait("get_state", get_state)
 register_trait("spawn_cascade", spawn_cascade)
 register_trait("map_cascade", map_cascade)
 register_trait("cascade_write", cascade_write)
@@ -112,6 +114,12 @@ if stt_available():
 from .traits.web_search import brave_web_search, is_available as brave_search_available
 if brave_search_available():
     register_trait("brave_web_search", brave_web_search)
+
+# UI Component Lookup - Basecoat component reference for HITL screen generation
+from .traits.ui_components import lookup_ui_component, list_ui_components, get_ui_examples
+register_trait("lookup_ui_component", lookup_ui_component)
+register_trait("list_ui_components", list_ui_components)
+register_trait("get_ui_examples", get_ui_examples)
 
 # Browser automation - Visual browser control
 from .traits.rabbitize import (

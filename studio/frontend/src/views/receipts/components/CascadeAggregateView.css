@@ -109,6 +109,25 @@
   color: #64748b;
 }
 
+/* Model Badge */
+.model-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #121218;
+  border: 1px solid #2a2a32;
+  border-radius: 6px;
+  width: fit-content;
+  font-size: 11px;
+  color: #94a3b8;
+  cursor: help;
+}
+
+.model-badge svg {
+  color: #64748b;
+}
+
 /* Summary Cards */
 .summary-cards {
   display: grid;

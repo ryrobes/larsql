@@ -964,25 +964,44 @@ class CellConfig(BaseModel):
     # ===== SQL-Native Mapping =====
     for_each_row: Optional[SqlMappingConfig] = None  # SQL table row fan-out
 
-    # ===== HITL Screen Cell (Calliope) =====
-    # For HITL screens, hitl contains raw HTML/HTMX that gets displayed and blocks for user input.
+    # ===== HTMX Screen Cell (Apps & HITL) =====
+    # For screen cells, htmx contains HTML/HTMX that gets displayed.
     # This is deterministic (no LLM needed) - the HTML is rendered directly.
-    # Forms should use: hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc"
     # Jinja2 templating supported: {{ input.* }}, {{ state.* }}, {{ outputs.cell_name.* }}
+    #
+    # In App mode:
+    #   Forms should use: hx-post="/apps/{{ cascade_id }}/{{ session_id }}/respond"
+    #   Navigation: <button name="_route" value="target_cell">
+    #
+    # In traditional HITL mode:
+    #   Forms should use: hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc"
     #
     # Example:
     #   - name: review_screen
-    #     hitl: |
+    #     htmx: |
     #       <h2>Review Items</h2>
     #       <div id="items">{{ outputs.load_data.result | tojson }}</div>
-    #       <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond" hx-ext="json-enc">
-    #         <button name="response[action]" value="approve">Approve</button>
-    #         <button name="response[action]" value="reject">Reject</button>
+    #       <form hx-post="/apps/{{ cascade_id }}/{{ session_id }}/respond">
+    #         <button name="action" value="approve">Approve</button>
+    #         <button name="action" value="reject">Reject</button>
     #       </form>
     #     handoffs: [process_approved, review_screen]
+    htmx: Optional[str] = None
+
+    # Legacy alias for htmx (backwards compatibility)
     hitl: Optional[str] = None
-    hitl_title: Optional[str] = None  # Title shown in checkpoint header
+    hitl_title: Optional[str] = None  # Title shown in checkpoint/app header
     hitl_description: Optional[str] = None  # Description/context shown above the HTML
+
+    # ===== App Screen Configuration =====
+    # await_input controls whether the cascade pauses at this cell waiting for user input.
+    # Default behavior:
+    #   - If htmx present AND no tool/instructions: await_input=True (pure screen, must wait)
+    #   - If htmx present WITH tool/instructions: await_input=False (progress display, auto-advance)
+    # Set explicitly to override:
+    #   - await_input: true  → Always wait for user response
+    #   - await_input: false → Show htmx but continue automatically
+    await_input: Optional[bool] = None
 
     # ===== LLM Phase Fields (existing) =====
     # For LLM phases, instructions is required and defines the agent's task
@@ -1077,34 +1096,66 @@ class CellConfig(BaseModel):
     # Overrides cascade-level auto_context.intra_phase settings
     intra_context: Optional[IntraPhaseContextConfig] = None
 
+    @property
+    def effective_htmx(self) -> Optional[str]:
+        """Get the htmx template (prefers htmx over hitl for backwards compat)."""
+        return self.htmx or self.hitl
+
+    @property
+    def has_ui(self) -> bool:
+        """Check if this cell has custom UI (htmx or hitl template)."""
+        return bool(self.htmx or self.hitl)
+
+    @property
+    def requires_input(self) -> bool:
+        """
+        Determine if this cell should pause for user input.
+
+        Logic:
+        - If await_input is explicitly set, use that value
+        - If cell has htmx/hitl but NO tool/instructions: requires input (pure screen)
+        - If cell has htmx/hitl WITH tool/instructions: doesn't require input (progress display)
+        """
+        if self.await_input is not None:
+            return self.await_input
+        # Pure htmx screen (no execution logic) requires input
+        if self.has_ui and not self.tool and not self.instructions:
+            return True
+        return False
+
     def is_deterministic(self) -> bool:
-        """Check if this phase is deterministic (tool-based or hitl) vs LLM-based."""
-        return self.tool is not None or self.hitl is not None
+        """Check if this phase is deterministic (tool-based or htmx) vs LLM-based."""
+        return self.tool is not None or self.has_ui
 
     def is_hitl_screen(self) -> bool:
-        """Check if this phase is a HITL screen (direct HTML rendering)."""
-        return self.hitl is not None
+        """Check if this phase is a screen cell (direct HTML rendering)."""
+        return self.has_ui
 
     def model_post_init(self, __context) -> None:
         """Validate phase configuration after initialization."""
-        # Must have exactly one of: tool, instructions, for_each_row, or hitl
+        # Normalize hitl to htmx for internal consistency
+        if self.hitl and not self.htmx:
+            # hitl is just an alias - copy to htmx
+            object.__setattr__(self, 'htmx', self.hitl)
+
+        # Must have exactly one of: tool, instructions, for_each_row, or htmx/hitl
         has_tool = bool(self.tool)
         has_instructions = bool(self.instructions)
         has_for_each_row = bool(self.for_each_row)
-        has_hitl = bool(self.hitl)
+        has_screen = bool(self.htmx or self.hitl)
 
-        execution_types = sum([has_tool, has_instructions, has_for_each_row, has_hitl])
+        execution_types = sum([has_tool, has_instructions, has_for_each_row, has_screen])
 
         if execution_types == 0:
             raise ValueError(
                 f"Cell '{self.name}' must have exactly one of: "
-                "'tool' (deterministic), 'instructions' (LLM), 'for_each_row' (SQL mapping), or 'hitl' (screen)"
+                "'tool' (deterministic), 'instructions' (LLM), 'for_each_row' (SQL mapping), or 'htmx' (screen)"
             )
 
         if execution_types > 1:
             raise ValueError(
                 f"Cell '{self.name}' can only have ONE of: "
-                "'tool', 'instructions', 'for_each_row', or 'hitl'"
+                "'tool', 'instructions', 'for_each_row', or 'htmx'"
             )
 
 
