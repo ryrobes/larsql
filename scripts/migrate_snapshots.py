@@ -22,8 +22,8 @@ def migrate_snapshot(snapshot_file: Path):
                 # Update field names within each cell
                 if "cell_name" in cell:
                     cell["cell_name"] = cell.pop("cell_name")
-                if "sounding_index" in cell:
-                    cell["candidate_index"] = cell.pop("sounding_index")
+                if "candidate_index" in cell:
+                    cell["candidate_index"] = cell.pop("candidate_index")
 
     # Update expectations
     if "expectations" in data:

@@ -119,7 +119,7 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
 
     # Generate unique session ID (include candidate index if provided)
     if candidate_index is not None:
-        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}_sounding_{candidate_index}"
+        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}_candidate_{candidate_index}"
     else:
         session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}"
 

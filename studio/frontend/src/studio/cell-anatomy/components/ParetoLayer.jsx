@@ -22,12 +22,12 @@ const ParetoLayer = ({ paretoData }) => {
 
   // Process data for visualization
   const { frontierData, dominatedData, winnerData, frontierLine, modelColors, stats } = useMemo(() => {
-    if (!paretoData || !paretoData.all_soundings) {
+    if (!paretoData || !paretoData.all_candidates) {
       return { frontierData: [], dominatedData: [], winnerData: [], frontierLine: [], modelColors: {}, stats: null };
     }
 
     // Generate consistent colors for each model
-    const uniqueModels = [...new Set(paretoData.all_soundings.map(s => s.model))];
+    const uniqueModels = [...new Set(paretoData.all_candidates.map(s => s.model))];
     const colorPalette = [
       '#a78bfa', // purple
       '#60a5fa', // blue
@@ -46,20 +46,20 @@ const ParetoLayer = ({ paretoData }) => {
     const dominated = [];
     let winner = null;
 
-    paretoData.all_soundings.forEach((sounding) => {
+    paretoData.all_candidates.forEach((candidate) => {
       const point = {
-        ...sounding,
+        ...candidate,
         // Scale cost to be visible (multiply by 1000 for display in millicents)
-        displayCost: sounding.cost * 1000,
-        color: colors[sounding.model],
-        shortModel: sounding.model.split('/').pop(),
+        displayCost: candidate.cost * 1000,
+        color: colors[candidate.model],
+        shortModel: candidate.model.split('/').pop(),
       };
 
-      if (sounding.is_winner) {
+      if (candidate.is_winner) {
         winner = point;
       }
 
-      if (sounding.is_pareto_optimal) {
+      if (candidate.is_pareto_optimal) {
         frontier.push(point);
       } else {
         dominated.push(point);
@@ -70,8 +70,8 @@ const ParetoLayer = ({ paretoData }) => {
     const sortedFrontier = [...frontier].sort((a, b) => a.cost - b.cost);
 
     // Calculate stats
-    const allCosts = paretoData.all_soundings.map(s => s.cost);
-    const allQualities = paretoData.all_soundings.map(s => s.quality);
+    const allCosts = paretoData.all_candidates.map(s => s.cost);
+    const allQualities = paretoData.all_candidates.map(s => s.quality);
     const calculatedStats = {
       minCost: Math.min(...allCosts),
       maxCost: Math.max(...allCosts),
@@ -79,7 +79,7 @@ const ParetoLayer = ({ paretoData }) => {
       maxQuality: Math.max(...allQualities),
       frontierSize: frontier.length,
       dominatedSize: dominated.length,
-      totalSoundings: paretoData.all_soundings.length,
+      totalCandidates: paretoData.all_candidates.length,
     };
 
     return {
@@ -195,7 +195,7 @@ const ParetoLayer = ({ paretoData }) => {
     return `$${(value / 1000).toFixed(3)}`;
   };
 
-  if (!paretoData || !paretoData.all_soundings || paretoData.all_soundings.length === 0) {
+  if (!paretoData || !paretoData.all_candidates || paretoData.all_candidates.length === 0) {
     return null; // Don't render empty state in anatomy panel
   }
 

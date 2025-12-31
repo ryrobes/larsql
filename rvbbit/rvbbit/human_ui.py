@@ -408,7 +408,7 @@ Return the HTML template only, no explanation."""
                 "_meta": {"type": "htmx", "fallback": True, "error": str(e)}
             }
 
-    def generate_sounding_comparison_ui(
+    def generate_candidate_comparison_ui(
         self,
         outputs: List[str],
         metadata: List[Dict[str, Any]],
@@ -454,7 +454,7 @@ Return the HTML template only, no explanation."""
             attempts.append(attempt)
 
         return {
-            "type": "sounding_comparison",
+            "type": "candidate_comparison",
             "presentation": config.presentation.value,
             "selection_mode": config.selection_mode.value,
             "attempts": attempts,

@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     semantic_actor LowCardinality(Nullable(String)),
     semantic_purpose LowCardinality(Nullable(String)),
 
-    -- Execution Context (Soundings/Reforge)
+    -- Execution Context (Candidates/Reforge)
     candidate_index Nullable(Int32),
     is_winner Nullable(Bool),
     reforge_step Nullable(Int32),
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     -- Type classification
     checkpoint_type Enum8(
         'cell_input' = 1,
-        'sounding_eval' = 2,
+        'candidate_eval' = 2,
         'free_text' = 3,
         'choice' = 4,
         'multi_choice' = 5,
@@ -190,8 +190,8 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     trace_context Nullable(String),
 
     -- For candidate evaluation
-    sounding_outputs Nullable(String),
-    sounding_metadata Nullable(String),
+    candidate_outputs Nullable(String),
+    candidate_metadata Nullable(String),
 
     -- Human response
     response Nullable(String),
@@ -1052,7 +1052,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     session_id String,
     cascade_id String,
     cell_name String,
-    candidate_index Nullable(Int16),       -- NULL if not in soundings, else 0, 1, 2...
+    candidate_index Nullable(Int16),       -- NULL if not in candidates, else 0, 1, 2...
     turn_number UInt16,                    -- Turn within this cell (0-indexed)
     is_loop_retry Bool DEFAULT false,      -- Is this a loop_until retry turn?
 

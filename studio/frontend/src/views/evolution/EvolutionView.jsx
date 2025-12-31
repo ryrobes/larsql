@@ -66,7 +66,7 @@ const EvolutionView = () => {
     }
   }, [initialCascade, initialSession]);
 
-  // Fetch available cascades with sounding data
+  // Fetch available cascades with candidate data
   useEffect(() => {
     fetchCascades();
   }, []);
@@ -322,7 +322,7 @@ const EvolutionView = () => {
               </div>
               <div className="stat-item">
                 <Icon icon="mdi:graph-outline" width="16" />
-                <span>{phylogenyMetadata.total_soundings || 0} attempts</span>
+                <span>{phylogenyMetadata.total_candidates || 0} attempts</span>
               </div>
             </div>
           ) : selectedCascadeData ? (

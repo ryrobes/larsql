@@ -30,8 +30,8 @@ class CellProgress:
 
         # Sounding tracking
         self.candidate_index: Optional[int] = None
-        self.sounding_factor: Optional[int] = None
-        self.sounding_stage: Optional[str] = None  # executing, evaluating, complete
+        self.candidate_factor: Optional[int] = None
+        self.candidate_stage: Optional[str] = None  # executing, evaluating, complete
 
         # Reforge tracking
         self.reforge_step: Optional[int] = None
@@ -65,8 +65,8 @@ class CellProgress:
             },
             "candidate": {
                 "index": self.candidate_index,
-                "factor": self.sounding_factor,
-                "stage": self.sounding_stage
+                "factor": self.candidate_factor,
+                "stage": self.candidate_stage
             } if self.candidate_index is not None else None,
             "reforge": {
                 "step": self.reforge_step,
@@ -161,8 +161,8 @@ def update_cell_progress(
     attempt: int = None,
     max_attempts: int = None,
     candidate_index: int = None,
-    sounding_factor: int = None,
-    sounding_stage: str = None,
+    candidate_factor: int = None,
+    candidate_stage: str = None,
     reforge_step: int = None,
     reforge_total_steps: int = None,
     ward_name: str = None,
@@ -199,10 +199,10 @@ def update_cell_progress(
 
     if candidate_index is not None:
         progress.candidate_index = candidate_index
-    if sounding_factor is not None:
-        progress.sounding_factor = sounding_factor
-    if sounding_stage is not None:
-        progress.sounding_stage = sounding_stage
+    if candidate_factor is not None:
+        progress.candidate_factor = candidate_factor
+    if candidate_stage is not None:
+        progress.candidate_stage = candidate_stage
 
     if reforge_step is not None:
         progress.reforge_step = reforge_step

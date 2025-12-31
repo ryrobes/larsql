@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check Elasticsearch status
 
-CONTAINER_NAME="windlass-elasticsearch"
+CONTAINER_NAME="rvbbit-elasticsearch"
 ES_PORT="9200"
 
 if ! docker ps | grep -q "$CONTAINER_NAME"; then

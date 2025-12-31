@@ -32,7 +32,7 @@ try:
     from rvbbit.agent import Agent
     from rvbbit.unified_logs import log_unified
 except ImportError as e:
-    print(f"Warning: Could not import windlass modules: {e}")
+    print(f"Warning: Could not import rvbbit modules: {e}")
     run_cascade = None
     get_config = None
     sql_data = None

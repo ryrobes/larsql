@@ -339,7 +339,7 @@ def test_load_deterministic_cascade():
         validate_cell = config.cells[0]
         assert validate_cell.name == "validate_query"
         assert validate_cell.is_deterministic()
-        assert validate_cell.tool == "python:windlass.demo_tools.validate_sql"
+        assert validate_cell.tool == "python:rvbbit.demo_tools.validate_sql"
 
         fix_cell = config.cells[1]
         assert fix_cell.name == "fix_query"

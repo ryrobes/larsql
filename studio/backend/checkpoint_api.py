@@ -26,7 +26,7 @@ if _RVBBIT_DIR not in sys.path:
 try:
     from rvbbit.checkpoints import get_checkpoint_manager, CheckpointStatus
 except ImportError as e:
-    print(f"Warning: Could not import windlass checkpoint modules: {e}")
+    print(f"Warning: Could not import rvbbit checkpoint modules: {e}")
     get_checkpoint_manager = None
     CheckpointStatus = None
 
@@ -326,7 +326,7 @@ def list_checkpoints():
                 "cell_output_preview": cp.cell_output[:500] if cp.cell_output else None,
                 "response": cp.response,  # User response for display in timeline
                 "summary": cp.summary,  # AI-generated summary
-                "num_soundings": len(cp.sounding_outputs) if cp.sounding_outputs else None
+                "num_candidates": len(cp.candidate_outputs) if cp.candidate_outputs else None
             })
 
         return jsonify({
@@ -369,8 +369,8 @@ def get_checkpoint(checkpoint_id):
                 "responded_at": cp.responded_at.isoformat() if cp.responded_at else None,
                 "ui_spec": resolved_ui_spec,
                 "cell_output": cp.cell_output,
-                "sounding_outputs": cp.sounding_outputs,
-                "sounding_metadata": cp.sounding_metadata,
+                "candidate_outputs": cp.candidate_outputs,
+                "candidate_metadata": cp.candidate_metadata,
                 "response": cp.response,
                 "response_reasoning": cp.response_reasoning,
                 "response_confidence": cp.response_confidence,

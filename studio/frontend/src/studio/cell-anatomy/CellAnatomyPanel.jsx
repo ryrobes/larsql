@@ -59,7 +59,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
       const metadata = parseMetadata(log.metadata_json);
 
       // Track winning candidate (check both old and new field names)
-      const logWinner = log.winner_index ?? log.winning_sounding_index ?? metadata.winner_index;
+      const logWinner = log.winner_index ?? log.winning_candidate_index ?? metadata.winner_index;
       if (logWinner !== null && logWinner !== undefined && logWinner >= 0) {
         winnerIndex = logWinner;
       }
@@ -72,7 +72,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
         }
         evaluatorResult = {
           content: typeof content === 'string' ? content : (content?.content || content?.reasoning || JSON.stringify(content)),
-          winnerIndex: log.winning_sounding_index,
+          winnerIndex: log.winning_candidate_index,
           model: log.model,
           timestamp: log.timestamp_iso
         };
@@ -230,8 +230,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
         // Accumulate cost
         if (log.cost) candidate.cost += parseFloat(log.cost);
 
-        // Track completion from sounding_attempt or cell_complete
-        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
+        // Track completion from candidate_attempt or cell_complete
+        if (log.role === 'candidate_attempt' || log.node_type === 'candidate_attempt') {
           // Mark all turns as complete
           candidate.status = 'complete';
           candidate.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });

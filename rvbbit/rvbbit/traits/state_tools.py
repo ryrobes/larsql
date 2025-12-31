@@ -12,7 +12,7 @@ current_cell_context = ContextVar("current_cell_context", default=None)
 current_cascade_context = ContextVar("current_cascade_context", default=None)
 
 # ContextVar to track current candidate index (for parallel candidate decisions)
-current_sounding_context = ContextVar("current_sounding_context", default=None)
+current_candidate_context = ContextVar("current_candidate_context", default=None)
 
 # ContextVar to track resolved model for current execution context (for downstream_model)
 current_model_context = ContextVar("current_model_context", default=None)
@@ -39,10 +39,10 @@ def get_current_cascade_id():
     return current_cascade_context.get()
 
 def set_current_candidate_index(candidate_index):
-    return current_sounding_context.set(candidate_index)
+    return current_candidate_context.set(candidate_index)
 
 def get_current_candidate_index():
-    return current_sounding_context.get()
+    return current_candidate_context.get()
 
 def set_current_model(model):
     """Set the resolved model for current execution context."""

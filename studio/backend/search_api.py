@@ -16,7 +16,7 @@ import json
 from typing import Optional
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path
+# Add rvbbit to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 from rvbbit.db_adapter import get_db
@@ -160,7 +160,7 @@ def rag_search_endpoint():
                 "error": f"Cannot search - embedding dimension mismatch",
                 "details": f"Index: {embedding_dim} dims | Current model '{embed_model}': {actual_query_dim} dims",
                 "hint": "Your RAG index was created with different embeddings than what the model currently returns. This can happen if: (1) The model API changed, (2) A different model was actually used during indexing, or (3) Dimensions were truncated.",
-                "solution": f"Re-index to fix: windlass rag index <directory> --rag-id {rag_id}"
+                "solution": f"Re-index to fix: rvbbit rag index <directory> --rag-id {rag_id}"
             }), 400
 
         # Execute search

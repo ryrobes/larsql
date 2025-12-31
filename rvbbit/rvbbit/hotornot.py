@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     mutation_applied Nullable(String),  -- What mutation was applied (if any)
 
     -- Sounding context (for A/B comparisons)
-    sounding_outputs_json Nullable(String),  -- JSON: All candidate outputs for comparison
+    candidate_outputs_json Nullable(String),  -- JSON: All candidate outputs for comparison
 
     -- Flags and notes
     flagged Bool DEFAULT false,         -- User flagged for review
@@ -132,7 +132,7 @@ class EvaluationsLogger:
             "prompt_text": prompt_text,
             "output_text": output_text,
             "mutation_applied": mutation_applied,
-            "sounding_outputs_json": None,
+            "candidate_outputs_json": None,
             "flagged": False,
             "flag_reason": None,
             "notes": notes,
@@ -151,7 +151,7 @@ class EvaluationsLogger:
         cell_name: str,
         preferred_index: int,
         system_winner_index: int,
-        sounding_outputs: List[Dict],
+        candidate_outputs: List[Dict],
         cascade_id: str = None,
         cascade_file: str = None,
         prompt_text: str = None,
@@ -182,7 +182,7 @@ class EvaluationsLogger:
             "prompt_text": prompt_text,
             "output_text": None,
             "mutation_applied": None,
-            "sounding_outputs_json": json.dumps(sounding_outputs),
+            "candidate_outputs_json": json.dumps(candidate_outputs),
             "flagged": False,
             "flag_reason": None,
             "notes": notes,
@@ -227,7 +227,7 @@ class EvaluationsLogger:
             "prompt_text": None,
             "output_text": output_text,
             "mutation_applied": None,
-            "sounding_outputs_json": None,
+            "candidate_outputs_json": None,
             "flagged": True,
             "flag_reason": flag_reason,
             "notes": notes,
@@ -288,14 +288,14 @@ def log_preference_eval(
     cell_name: str,
     preferred_index: int,
     system_winner_index: int,
-    sounding_outputs: List[Dict],
+    candidate_outputs: List[Dict],
     **kwargs
 ) -> str:
     """Convenience function to log a preference evaluation."""
     logger = get_evaluations_logger()
     return logger.log_preference(
         session_id, cell_name, preferred_index,
-        system_winner_index, sounding_outputs, **kwargs
+        system_winner_index, candidate_outputs, **kwargs
     )
 
 
@@ -412,11 +412,11 @@ def get_evaluation_stats() -> Dict:
         }
 
 
-def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
+def get_unevaluated_candidates(limit: int = 50) -> pd.DataFrame:
     """
     Get candidate outputs that haven't been evaluated yet.
 
-    Finds sessions with soundings that don't have corresponding evaluations.
+    Finds sessions with candidates that don't have corresponding evaluations.
     Returns data needed for the Hot or Not UI.
     """
     db = _get_db()
@@ -436,7 +436,7 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
 
     # Get candidate attempts from unified_logs
     try:
-        soundings_df = db.query_df(f"""
+        candidates_df = db.query_df(f"""
             SELECT
                 session_id,
                 cell_name,
@@ -457,20 +457,20 @@ def get_unevaluated_soundings(limit: int = 50) -> pd.DataFrame:
             LIMIT {limit * 5}
         """)
 
-        if soundings_df.empty:
+        if candidates_df.empty:
             return pd.DataFrame()
 
         # Filter out already evaluated
-        mask = soundings_df.apply(
+        mask = candidates_df.apply(
             lambda row: (row['session_id'], row['cell_name']) not in evaluated_set,
             axis=1
         )
-        unevaluated = soundings_df[mask]
+        unevaluated = candidates_df[mask]
 
         return unevaluated.head(limit)
 
     except Exception as e:
-        print(f"[Hot or Not] Error getting unevaluated soundings: {e}")
+        print(f"[Hot or Not] Error getting unevaluated candidates: {e}")
         return pd.DataFrame()
 
 
@@ -487,31 +487,31 @@ def get_cell_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
     cell_dir = os.path.join(image_dir, session_id, cell_name)
 
     # Group images by candidate index
-    images_by_sounding = {}
+    images_by_candidate = {}
 
     if os.path.exists(cell_dir):
         for filename in sorted(os.listdir(cell_dir)):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                # Check for candidate prefix: sounding_N_image_M.ext
-                match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', filename)
+                # Check for candidate prefix: candidate_N_image_M.ext
+                match = re.match(r'candidate_(\d+)_image_\d+\.\w+$', filename)
                 if match:
-                    sounding_idx = int(match.group(1))
+                    candidate_idx = int(match.group(1))
                 else:
                     # No candidate prefix - use None as key
-                    sounding_idx = None
+                    candidate_idx = None
 
-                if sounding_idx not in images_by_sounding:
-                    images_by_sounding[sounding_idx] = []
+                if candidate_idx not in images_by_candidate:
+                    images_by_candidate[candidate_idx] = []
 
-                images_by_sounding[sounding_idx].append({
+                images_by_candidate[candidate_idx].append({
                     'filename': filename,
                     'url': f'/api/images/{session_id}/{cell_name}/{filename}'
                 })
 
-    return images_by_sounding
+    return images_by_candidate
 
 
-def get_sounding_group(session_id: str, cell_name: str) -> Dict:
+def get_candidate_group(session_id: str, cell_name: str) -> Dict:
     """
     Get all candidate attempts for a specific session+cell.
 
@@ -521,7 +521,7 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
         - cell_name
         - cascade_id
         - cascade_file
-        - soundings: List of candidate outputs with index, content, is_winner, etc.
+        - candidates: List of candidate outputs with index, content, is_winner, etc.
         - images: List of image URLs from filesystem for this cell
         - system_winner_index: Which one the evaluator picked
     """
@@ -556,7 +556,7 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
         # Get images from filesystem for this cell
         cell_images = get_cell_images(session_id, cell_name)
 
-        soundings = []
+        candidates = []
         system_winner = None
         cascade_id = None
         cascade_file = None
@@ -592,16 +592,16 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
             except (TypeError, ValueError):
                 is_winner = False
 
-            sounding_idx = int(row['candidate_index'])
+            candidate_idx = int(row['candidate_index'])
 
             # Get images for this specific candidate
-            sounding_images = cell_images.get(sounding_idx, [])
+            candidate_images = cell_images.get(candidate_idx, [])
             # Also include non-candidate images (legacy) if no candidate-specific ones
-            if not sounding_images and None in cell_images:
-                sounding_images = cell_images.get(None, [])
+            if not candidate_images and None in cell_images:
+                candidate_images = cell_images.get(None, [])
 
-            sounding_data = {
-                "index": sounding_idx,
+            candidate_data = {
+                "index": candidate_idx,
                 "content": content,
                 "instructions": instructions,  # Per-candidate instructions (may be mutated)
                 "is_winner": is_winner,
@@ -609,12 +609,12 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
                 "tokens": int(row['tokens_out']) if row['tokens_out'] is not None and not pd.isna(row['tokens_out']) else None,
                 "model": row['model'] if row['model'] is not None and not pd.isna(row['model']) else None,
                 "mutation_applied": row.get('mutation_applied') if row.get('mutation_applied') is not None and not pd.isna(row.get('mutation_applied')) else None,
-                "images": sounding_images,  # Images specific to this candidate
+                "images": candidate_images,  # Images specific to this candidate
             }
-            soundings.append(sounding_data)
+            candidates.append(candidate_data)
 
-            if sounding_data["is_winner"]:
-                system_winner = sounding_data["index"]
+            if candidate_data["is_winner"]:
+                system_winner = candidate_data["index"]
 
             if not cascade_id:
                 cascade_id = row['cascade_id']
@@ -625,7 +625,7 @@ def get_sounding_group(session_id: str, cell_name: str) -> Dict:
             "cell_name": cell_name,
             "cascade_id": cascade_id,
             "cascade_file": cascade_file,
-            "candidates": soundings,  # Each candidate has its own "images" array
+            "candidates": candidates,  # Each candidate has its own "images" array
             "system_winner_index": system_winner
         }
 

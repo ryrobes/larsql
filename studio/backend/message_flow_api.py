@@ -8,7 +8,7 @@ import time
 from flask import Blueprint, jsonify, request
 import os
 
-# Add windlass to path for imports
+# Add rvbbit to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 from rvbbit.db_adapter import get_db
 
@@ -26,7 +26,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
     Categories:
         - 'llm_call': Actual LLM API call (has full_request_json with messages)
         - 'conversation': User/assistant/tool messages in the conversation flow
-        - 'evaluator': Evaluator reasoning (soundings, reforge)
+        - 'evaluator': Evaluator reasoning (candidates, reforge)
         - 'quartermaster': Tool selection reasoning
         - 'ward': Validation checks (pre/post wards)
         - 'lifecycle': Cascade/cell/turn start/complete events
@@ -57,14 +57,14 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
 
     # Metadata/logging types (internal)
     metadata_types = {
-        'sounding_attempt', 'soundings_result', 'cost_update',
+        'candidate_attempt', 'candidates_result', 'cost_update',
         'context_injection', 'checkpoint', 'human_input_request'
     }
 
     # Ward/validation types
     ward_types = {
         'pre_ward', 'post_ward', 'ward_block', 'ward_advisory',
-        'sounding_validator'
+        'candidate_validator'
     }
 
     # Evaluator types (these ARE LLM calls but logged separately)
@@ -118,7 +118,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
 def get_message_flow(session_id):
     """
     Get complete message flow for a session showing:
-    - All soundings as parallel branches
+    - All candidates as parallel branches
     - Reforge steps
     - Actual messages sent to LLM (from full_request_json)
     """
@@ -167,16 +167,16 @@ def get_message_flow(session_id):
 
         # Build structured response
         messages = []
-        soundings_by_cell = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
+        candidates_by_cell = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
         reforge_steps = {}  # reforge_step -> {messages: []} (flat, for backward compat)
         reforge_by_cell = {}  # cell_name -> {reforge_step -> {messages: [], is_winner: bool}}
 
-        # Track evaluators by cell for later attachment to soundings blocks
+        # Track evaluators by cell for later attachment to candidates blocks
         evaluators_by_cell = {}  # cell_name -> evaluator message
 
-        # Track the most recent cell that had soundings - reforges inherit this
-        # (Reforge is always the refinement step after soundings complete)
-        last_sounding_cell = None
+        # Track the most recent cell that had candidates - reforges inherit this
+        # (Reforge is always the refinement step after candidates complete)
+        last_candidate_cell = None
 
         for row in result:
             (timestamp, role, node_type, candidate_index, reforge_step, turn_number,
@@ -246,10 +246,10 @@ def get_message_flow(session_id):
                 'estimated_tokens': int(estimated_tokens) if estimated_tokens else 0
             }
 
-            # Track evaluator messages by cell (for cell-level soundings)
+            # Track evaluator messages by cell (for cell-level candidates)
             # Also track reforge_evaluator using inherited cell
             if node_type in ('evaluator', 'reforge_evaluator'):
-                evaluator_cell = cell_name or last_sounding_cell
+                evaluator_cell = cell_name or last_candidate_cell
                 if evaluator_cell:
                     # Update message's cell_name so it groups correctly in frontend
                     if not cell_name and evaluator_cell:
@@ -264,8 +264,8 @@ def get_message_flow(session_id):
                         'tokens_in': int(tokens_in) if tokens_in else 0,
                         'tokens_out': int(tokens_out) if tokens_out else 0,
                         'winner_index': metadata.get('winner_index') if metadata else None,
-                        'total_soundings': metadata.get('total_soundings') if metadata else None,
-                        'valid_soundings': metadata.get('valid_soundings') if metadata else None,
+                        'total_candidates': metadata.get('total_candidates') if metadata else None,
+                        'valid_candidates': metadata.get('valid_candidates') if metadata else None,
                         'evaluation': metadata.get('evaluation') if metadata else content,
                         # NEW: Full evaluator input observability
                         'evaluator_prompt': metadata.get('evaluator_prompt') if metadata else None,
@@ -275,7 +275,7 @@ def get_message_flow(session_id):
                         'cost_aware': metadata.get('cost_aware') if metadata else False,
                         'quality_weight': metadata.get('quality_weight') if metadata else None,
                         'cost_weight': metadata.get('cost_weight') if metadata else None,
-                        'sounding_costs': metadata.get('sounding_costs') if metadata else None,
+                        'candidate_costs': metadata.get('candidate_costs') if metadata else None,
                         'winner_cost': metadata.get('winner_cost') if metadata else None,
                         # Pareto frontier info
                         'pareto_enabled': metadata.get('pareto_enabled') if metadata else False,
@@ -289,33 +289,33 @@ def get_message_flow(session_id):
             # Categorize message for parallel branch visualization
             # Use int() to normalize candidate_index (may be returned as float for nullable int)
             if candidate_index is not None:
-                sounding_key = int(candidate_index)
+                candidate_key = int(candidate_index)
                 cell_key = cell_name or '_unknown_'
 
-                # Track the cell for soundings - reforges will inherit this
+                # Track the cell for candidates - reforges will inherit this
                 if cell_name:
-                    last_sounding_cell = cell_name
+                    last_candidate_cell = cell_name
 
-                if cell_key not in soundings_by_cell:
-                    soundings_by_cell[cell_key] = {}
+                if cell_key not in candidates_by_cell:
+                    candidates_by_cell[cell_key] = {}
 
-                if sounding_key not in soundings_by_cell[cell_key]:
-                    soundings_by_cell[cell_key][sounding_key] = {
-                        'index': sounding_key,
+                if candidate_key not in candidates_by_cell[cell_key]:
+                    candidates_by_cell[cell_key][candidate_key] = {
+                        'index': candidate_key,
                         'cell_name': cell_key,
                         'messages': [],
                         'is_winner': False,
-                        'first_timestamp': timestamp  # Track when this sounding started
+                        'first_timestamp': timestamp  # Track when this candidate started
                     }
-                soundings_by_cell[cell_key][sounding_key]['messages'].append(msg)
+                candidates_by_cell[cell_key][candidate_key]['messages'].append(msg)
                 if is_winner:
-                    soundings_by_cell[cell_key][sounding_key]['is_winner'] = True
+                    candidates_by_cell[cell_key][candidate_key]['is_winner'] = True
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
-                # Reforges inherit cell from their parent sounding when cell_name is NULL
-                # (Reforge is always the final refinement step after soundings complete)
-                inherited_cell = cell_name or last_sounding_cell
+                # Reforges inherit cell from their parent candidate when cell_name is NULL
+                # (Reforge is always the final refinement step after candidates complete)
+                inherited_cell = cell_name or last_candidate_cell
                 cell_key = inherited_cell or '_unknown_'
 
                 # Update message's cell_name so it groups correctly in frontend
@@ -330,7 +330,7 @@ def get_message_flow(session_id):
                     }
                 reforge_steps[reforge_key]['messages'].append(msg)
 
-                # Cell-organized structure (like soundings)
+                # Cell-organized structure (like candidates)
                 if cell_key not in reforge_by_cell:
                     reforge_by_cell[cell_key] = {}
                 if reforge_key not in reforge_by_cell[cell_key]:
@@ -347,35 +347,35 @@ def get_message_flow(session_id):
 
             messages.append(msg)
 
-        # Convert soundings_by_cell to structured list with cell info
-        # Each cell gets a soundings block with all its parallel attempts
-        soundings_blocks = []
-        for cell_key in soundings_by_cell:
-            cell_soundings = soundings_by_cell[cell_key]
-            sorted_soundings = [cell_soundings[k] for k in sorted(cell_soundings.keys())]
+        # Convert candidates_by_cell to structured list with cell info
+        # Each cell gets a candidates block with all its parallel attempts
+        candidates_blocks = []
+        for cell_key in candidates_by_cell:
+            cell_candidates = candidates_by_cell[cell_key]
+            sorted_candidates = [cell_candidates[k] for k in sorted(cell_candidates.keys())]
 
-            # Find first timestamp across all soundings in this cell (for ordering)
-            timestamps = [s['first_timestamp'] for s in sorted_soundings if s.get('first_timestamp')]
+            # Find first timestamp across all candidates in this cell (for ordering)
+            timestamps = [s['first_timestamp'] for s in sorted_candidates if s.get('first_timestamp')]
             first_ts = min(timestamps) if timestamps else 0
 
             # Get evaluator for this cell if present
             evaluator = evaluators_by_cell.get(cell_key)
 
-            soundings_blocks.append({
+            candidates_blocks.append({
                 'cell_name': cell_key,
-                'soundings': sorted_soundings,
+                'candidates': sorted_candidates,
                 'first_timestamp': first_ts,
-                'winner_index': next((s['index'] for s in sorted_soundings if s['is_winner']), None),
+                'winner_index': next((s['index'] for s in sorted_candidates if s['is_winner']), None),
                 'evaluator': evaluator  # Include evaluation step data
             })
 
-        # Sort soundings blocks by first_timestamp to maintain chronological order
-        soundings_blocks.sort(key=lambda x: x['first_timestamp'])
+        # Sort candidates blocks by first_timestamp to maintain chronological order
+        candidates_blocks.sort(key=lambda x: x['first_timestamp'])
 
         # Convert reforge steps to list (flat, for backward compat)
         reforge_list = [reforge_steps[k] for k in sorted(reforge_steps.keys())]
 
-        # Convert reforge_by_cell to structured list (like soundings_blocks)
+        # Convert reforge_by_cell to structured list (like candidates_blocks)
         reforge_blocks = []
         for cell_key in reforge_by_cell:
             cell_reforges = reforge_by_cell[cell_key]
@@ -395,34 +395,34 @@ def get_message_flow(session_id):
         # Sort reforge blocks by first_timestamp to maintain chronological order
         reforge_blocks.sort(key=lambda x: x['first_timestamp'])
 
-        # Identify winner sounding cells and indexes
-        winner_sounding_keys = set()  # (cell_name, candidate_index) tuples
-        for block in soundings_blocks:
-            for s in block['soundings']:
+        # Identify winner candidate cells and indexes
+        winner_candidate_keys = set()  # (cell_name, candidate_index) tuples
+        for block in candidates_blocks:
+            for s in block['candidates']:
                 if s['is_winner']:
-                    winner_sounding_keys.add((s['cell_name'], s['index']))
+                    winner_candidate_keys.add((s['cell_name'], s['index']))
 
         winner_reforge_steps = set(r['step'] for r in reforge_list if any(m['is_winner'] for m in r['messages']))
 
         # Build main flow with ALL messages (for debug view)
         # We include everything but mark internal vs conversational via is_internal flag
-        # For soundings/reforge, we still filter to winner's path for main flow
-        # (non-winners are shown in the soundings blocks section)
+        # For candidates/reforge, we still filter to winner's path for main flow
+        # (non-winners are shown in the candidates blocks section)
         main_flow = []
         for msg in messages:
-            # Normalize cell_name to match how we store it in soundings_by_cell
+            # Normalize cell_name to match how we store it in candidates_by_cell
             msg_cell_key = msg['cell_name'] or '_unknown_'
 
             # Include message if:
-            # 1. Not in any sounding/reforge (pre/post branching messages)
-            # 2. OR it's in a winner sounding (all messages from winning branch)
+            # 1. Not in any candidate/reforge (pre/post branching messages)
+            # 2. OR it's in a winner candidate (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
-            # Note: Non-winner soundings are shown separately in soundings_by_cell blocks
+            # Note: Non-winner candidates are shown separately in candidates_by_cell blocks
             if msg['candidate_index'] is None and msg['reforge_step'] is None:
                 # Pre/post branching messages - always in main flow
                 main_flow.append(msg)
-            elif msg['candidate_index'] is not None and (msg_cell_key, msg['candidate_index']) in winner_sounding_keys:
-                # All messages from winner sounding branch
+            elif msg['candidate_index'] is not None and (msg_cell_key, msg['candidate_index']) in winner_candidate_keys:
+                # All messages from winner candidate branch
                 main_flow.append(msg)
             elif msg['reforge_step'] is not None and msg['reforge_step'] in winner_reforge_steps:
                 # All messages from winner reforge step
@@ -453,10 +453,10 @@ def get_message_flow(session_id):
                     'turn_number': msg.get('turn_number')
                 }
 
-        # Flatten soundings for backward compatibility (total count)
-        all_soundings_flat = []
-        for block in soundings_blocks:
-            all_soundings_flat.extend(block['soundings'])
+        # Flatten candidates for backward compatibility (total count)
+        all_candidates_flat = []
+        for block in candidates_blocks:
+            all_candidates_flat.extend(block['candidates'])
 
         # Build hash_index: map of content_hash -> list of message indices/metadata
         # This enables O(1) lookup for context lineage and cross-referencing
@@ -495,8 +495,8 @@ def get_message_flow(session_id):
         return jsonify({
             'session_id': session_id,
             'total_messages': len(messages),
-            'soundings': all_soundings_flat,  # Backward compatible flat list
-            'soundings_by_cell': soundings_blocks,  # New: organized by cell with timestamps
+            'candidates': all_candidates_flat,  # Backward compatible flat list
+            'candidates_by_cell': candidates_blocks,  # New: organized by cell with timestamps
             'reforge_steps': reforge_list,  # Backward compatible flat list
             'reforge_by_cell': reforge_blocks,  # New: organized by cell with timestamps
             'main_flow': main_flow,

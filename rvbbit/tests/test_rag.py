@@ -2,7 +2,7 @@
 RAG (Retrieval Augmented Generation) indexer tests.
 
 This test requires:
-- ClickHouse database (WINDLASS_CLICKHOUSE_HOST)
+- ClickHouse database (RVBBIT_CLICKHOUSE_HOST)
 
 Skip with: pytest -m "not integration"
 """
@@ -21,7 +21,7 @@ from rvbbit.rag.store import list_sources, read_chunk, search_chunks  # noqa: E4
 @pytest.fixture(autouse=True)
 def deterministic_embeddings(monkeypatch):
     # Force deterministic embeddings for offline, repeatable tests.
-    monkeypatch.setenv("WINDLASS_EMBED_BACKEND", "deterministic")
+    monkeypatch.setenv("RVBBIT_EMBED_BACKEND", "deterministic")
     yield
 
 

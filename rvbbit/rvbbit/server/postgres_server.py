@@ -2077,7 +2077,7 @@ class RVBBITPostgresServer:
 
         # Print startup banner
         print("=" * 70)
-        print("🌊 WINDLASS POSTGRESQL SERVER")
+        print("🌊 RVBBIT POSTGRESQL SERVER")
         print("=" * 70)
         print(f"📡 Listening on: {self.host}:{self.port}")
         print(f"🔗 Connection string: postgresql://rvbbit@localhost:{self.port}/default")
@@ -2087,7 +2087,7 @@ class RVBBITPostgresServer:
         print("     → Simple LLM extraction/classification")
         print()
         print("   • rvbbit_cascade_udf(cascade_path, json_inputs)")
-        print("     → Full multi-cell cascade per row (with soundings!)")
+        print("     → Full multi-cell cascade per row (with candidates!)")
         print()
         print("📚 Connect from:")
         print(f"   • psql:      psql postgresql://localhost:{self.port}/default")

@@ -32,7 +32,7 @@ from rich.text import Text
 from rich import box
 
 # Configuration
-DB_PATH = os.path.join(os.environ.get("WINDLASS_ROOT", "."), "research_dbs", "market_research.duckdb")
+DB_PATH = os.path.join(os.environ.get("RVBBIT_ROOT", "."), "research_dbs", "market_research.duckdb")
 REQUEST_TIMEOUT = 30
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 

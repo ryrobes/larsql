@@ -24,7 +24,7 @@ from datetime import datetime
 
 # Add parent directory to path to import rvbbit
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-# Go up 2 levels: backend -> dashboard, then add windlass package
+# Go up 2 levels: backend -> dashboard, then add rvbbit package
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
 _RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
 if _RVBBIT_DIR not in sys.path:
@@ -34,7 +34,7 @@ try:
     from rvbbit.config import get_config
     from rvbbit.session_registry import get_session_registry, SessionRegistry
 except ImportError as e:
-    print(f"Warning: Could not import windlass modules: {e}")
+    print(f"Warning: Could not import rvbbit modules: {e}")
     get_config = None
     get_session_registry = None
     SessionRegistry = None
@@ -803,7 +803,7 @@ def proxy_mjpeg_stream(session_id):
             stream_url = f"{session.base_url}{session.streams.mjpeg}"
         else:
             # Default stream path
-            stream_url = f"{session.base_url}/stream/windlass/{session_id}/{session_id}"
+            stream_url = f"{session.base_url}/stream/rvbbit/{session_id}/{session_id}"
 
         def generate():
             """Generator that proxies the MJPEG stream."""

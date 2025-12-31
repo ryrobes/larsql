@@ -214,14 +214,14 @@ def example_image_injection_integration():
 
 
 # ============================================================================
-# EXAMPLE 4: Soundings with Index Tracking
+# EXAMPLE 4: Candidates with Index Tracking
 # ============================================================================
 
-def example_soundings_integration():
+def example_candidates_integration():
     """
-    Shows how to log soundings with index tracking.
+    Shows how to log candidates with index tracking.
 
-    Location in runner.py: Around line 885 (cell soundings)
+    Location in runner.py: Around line 885 (cell candidates)
     """
 
     # BEFORE (existing code):
@@ -230,8 +230,8 @@ def example_soundings_integration():
         # Run candidate attempt
         output = self._run_cell_logic(...)
 
-        log_message(session_id, "sounding_complete", f"Sounding {i+1} completed",
-                   {"attempt": i}, sounding_trace.id, soundings_trace.id, "candidate",
+        log_message(session_id, "candidate_complete", f"Sounding {i+1} completed",
+                   {"attempt": i}, candidate_trace.id, candidates_trace.id, "candidate",
                    candidate_index=i, is_winner=False)
 
 
@@ -244,16 +244,16 @@ def example_soundings_integration():
             output = self._run_cell_logic(...)
 
         # Existing logging (keep as-is)
-        log_message(session_id, "sounding_complete", f"Sounding {i+1} completed",
-                   {"attempt": i}, sounding_trace.id, soundings_trace.id, "candidate",
+        log_message(session_id, "candidate_complete", f"Sounding {i+1} completed",
+                   {"attempt": i}, candidate_trace.id, candidates_trace.id, "candidate",
                    candidate_index=i, is_winner=False)
 
         # NEW: Comprehensive echo logging
         log_echo(
-            session_id=sounding_session_id,  # Sub-session ID
-            trace_id=sounding_trace.id,
-            parent_id=soundings_trace.id,
-            node_type="sounding_attempt",
+            session_id=candidate_session_id,  # Sub-session ID
+            trace_id=candidate_trace.id,
+            parent_id=candidates_trace.id,
+            node_type="candidate_attempt",
             role="candidate",
             depth=depth,
             candidate_index=i,  # Track which attempt
@@ -265,7 +265,7 @@ def example_soundings_integration():
             metadata={
                 "attempt": i,
                 "factor": factor,
-                "sounding_session_id": sounding_session_id,
+                "candidate_session_id": candidate_session_id,
             }
         )
 

@@ -2,10 +2,10 @@ import os
 import sys
 import json
 
-# Ensure we can import windlass if running from repo root
+# Ensure we can import rvbbit if running from repo root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from windlass import run_cascade, set_provider
+from rvbbit import run_cascade, set_provider
 
 def main():
     # Setup provider (ensure OPENROUTER_API_KEY is in env)

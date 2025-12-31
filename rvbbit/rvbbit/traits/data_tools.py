@@ -1059,7 +1059,7 @@ def rvbbit_data(
     - instructions: The prompt template (can use {{outputs.cell_name}}, {{input.x}}, {{state.x}})
     - model: Optional model override (default: system default)
     - output_schema: JSON schema for structured output (REQUIRED - must return structured data)
-    - soundings: Optional soundings config for best-of-N attempts
+    - candidates: Optional candidates config for best-of-N attempts
     - reforge: Optional iterative refinement config
     - wards: Optional validation (pre/post)
     - traits: Optional tools to make available
@@ -1206,7 +1206,7 @@ def rvbbit_data(
         # Add metadata about the LLM execution
         formatted['_llm_execution'] = {
             'model': cell_config.get('model', 'default'),
-            'had_soundings': 'soundings' in cell_config,
+            'had_candidates': 'candidates' in cell_config,
             'had_reforge': 'reforge' in cell_config,
         }
 

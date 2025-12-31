@@ -1099,8 +1099,8 @@ def _request_decision_via_checkpoint(
         timeout_seconds=timeout_seconds
     )
 
-    sounding_label = f" [cyan](Sounding {candidate_index})[/cyan]" if candidate_index is not None else ""
-    console.print(f"\n[bold magenta]🔀 Decision point{sounding_label}:[/bold magenta] {question}")
+    candidate_label = f" [cyan](Sounding {candidate_index})[/cyan]" if candidate_index is not None else ""
+    console.print(f"\n[bold magenta]🔀 Decision point{candidate_label}:[/bold magenta] {question}")
     if context:
         console.print(f"[dim]{context[:200]}{'...' if len(context) > 200 else ''}[/dim]")
     console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")

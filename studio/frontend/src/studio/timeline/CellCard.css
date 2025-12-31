@@ -54,7 +54,7 @@
   min-width: 240px;
   max-width: 240px;
   min-height: 90px;
-  max-height: 130px; /* Allow expansion for soundings row */
+  max-height: 130px; /* Allow expansion for candidates row */
   background-color: #0c0a1a;
   border: 2px solid #1a1628;
   border-radius: 8px;
@@ -112,7 +112,7 @@
 }
 
 /* ============================================
-   STACKED CARD EFFECT (for soundings/parallel cells)
+   STACKED CARD EFFECT (for candidates/parallel cells)
    ============================================ */
 
 .cell-card-stacked {
@@ -512,7 +512,7 @@
   color: #34d399;
 }
 
-.cell-card-badge-soundings {
+.cell-card-badge-candidates {
   background-color: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
@@ -523,7 +523,7 @@
 }
 
 /* ============================================
-   SOUNDINGS INDICATOR ROW
+   CANDIDATES INDICATOR ROW
    ============================================ */
 
 .cell-card-candidates-row {

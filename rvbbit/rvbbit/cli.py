@@ -248,7 +248,7 @@ def main():
         help='Show evaluation statistics'
     )
 
-    # hotornot list - List unevaluated soundings
+    # hotornot list - List unevaluated candidates
     list_uneval_parser = hotornot_subparsers.add_parser(
         'list',
         help='List unevaluated candidate outputs'
@@ -1199,7 +1199,7 @@ def cmd_analyze(args):
             print("This could mean:")
             print("  • Not enough runs yet (need at least", args.min_runs, ")")
             print("  • No clear winner (< 60% win rate)")
-            print("  • No soundings configured in cascade")
+            print("  • No candidates configured in cascade")
             sys.exit(0)
 
         # Display suggestions
@@ -1539,7 +1539,7 @@ def cmd_embed_status(args):
     print()
 
     # Database stats
-    # Count embeddable rows: assistant/user roles OR sounding_attempt/evaluator node types
+    # Count embeddable rows: assistant/user roles OR candidate_attempt/evaluator node types
     try:
         result = db.query("""
             SELECT
@@ -1547,8 +1547,8 @@ def cmd_embed_status(args):
                 countIf(
                     length(content_embedding) = 0
                     AND length(content_json) > 10
-                    AND (role IN ('assistant', 'user') OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up'))
-                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+                    AND (role IN ('assistant', 'user') OR node_type IN ('candidate_attempt', 'evaluator', 'agent', 'follow_up'))
+                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'candidates', 'validation', 'validation_start')
                 ) as unembedded,
                 COUNT(*) as total
             FROM unified_logs
@@ -1612,8 +1612,8 @@ def cmd_embed_run(args):
     print()
 
     # Query for un-embedded messages
-    # Include: assistant/user roles AND sounding_attempt/evaluator node types
-    # (sounding_attempt is where is_winner is set - critical for analysis!)
+    # Include: assistant/user roles AND candidate_attempt/evaluator node types
+    # (candidate_attempt is where is_winner is set - critical for analysis!)
     query = f"""
         SELECT
             message_id,
@@ -1629,9 +1629,9 @@ def cmd_embed_run(args):
           AND length(content_json) > 10
           AND (
               role IN ('assistant', 'user')
-              OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up')
+              OR node_type IN ('candidate_attempt', 'evaluator', 'agent', 'follow_up')
           )
-          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'candidates', 'validation', 'validation_start')
         ORDER BY timestamp DESC
         LIMIT {batch_size}
     """
@@ -1878,22 +1878,22 @@ def cmd_hotornot_stats(args):
 
 
 def cmd_hotornot_list(args):
-    """List unevaluated soundings."""
-    from rvbbit.hotornot import get_unevaluated_soundings
+    """List unevaluated candidates."""
+    from rvbbit.hotornot import get_unevaluated_candidates
 
-    df = get_unevaluated_soundings(limit=args.limit)
+    df = get_unevaluated_candidates(limit=args.limit)
 
     if df.empty:
         print()
-        print("No unevaluated soundings found!")
+        print("No unevaluated candidates found!")
         print()
-        print("Run some cascades with soundings first:")
-        print("  rvbbit examples/soundings_flow.json --input '{}'")
+        print("Run some cascades with candidates first:")
+        print("  rvbbit examples/candidates_flow.json --input '{}'")
         return
 
     print()
     print("="*60)
-    print(f"Unevaluated Soundings (showing {len(df)})")
+    print(f"Unevaluated Candidates (showing {len(df)})")
     print("="*60)
     print()
 
@@ -1906,7 +1906,7 @@ def cmd_hotornot_list(args):
 
         print(f"Session: {session_id[:30]}...")
         print(f"  Cell: {cell_name}")
-        print(f"  Soundings: {len(group)} variants")
+        print(f"  Candidates: {len(group)} variants")
         print(f"  System winner: #{winner_idx}")
         print()
 
@@ -1946,7 +1946,7 @@ def cmd_hotornot_quick(args):
 def cmd_hotornot_rate(args):
     """Interactive rating session with WASD controls."""
     from rvbbit.hotornot import (
-        get_unevaluated_soundings, get_sounding_group,
+        get_unevaluated_candidates, get_candidate_group,
         log_binary_eval, log_preference_eval, log_flag_eval,
         flush_evaluations
     )
@@ -1973,15 +1973,15 @@ def cmd_hotornot_rate(args):
     print("  W / Up Arrow    = FLAG for review")
     print("  Q               = Quit")
     print()
-    print("Loading soundings to rate...")
+    print("Loading candidates to rate...")
     print()
 
     # Get items to rate
-    df = get_unevaluated_soundings(limit=args.limit * 3)  # Get extra in case of grouping
+    df = get_unevaluated_candidates(limit=args.limit * 3)  # Get extra in case of grouping
 
     if df.empty:
-        print("No soundings to rate!")
-        print("Run cascades with soundings first.")
+        print("No candidates to rate!")
+        print("Run cascades with candidates first.")
         return
 
     # Get unique session+cell combinations
@@ -2002,8 +2002,8 @@ def cmd_hotornot_rate(args):
         cell_name = row['cell_name']
 
         # Get the candidate group
-        group = get_sounding_group(session_id, cell_name)
-        if not group or not group.get('soundings'):
+        group = get_candidate_group(session_id, cell_name)
+        if not group or not group.get('candidates'):
             continue
 
         # Clear screen (simple version)
@@ -2020,21 +2020,21 @@ def cmd_hotornot_rate(args):
 
         # Show system winner
         winner_idx = group.get('system_winner_index', 0)
-        winner_sounding = None
-        for s in group['soundings']:
+        winner_candidate = None
+        for s in group['candidates']:
             if s['index'] == winner_idx:
-                winner_sounding = s
+                winner_candidate = s
                 break
 
-        if winner_sounding:
+        if winner_candidate:
             print("-"*60)
             print(f"System picked: Sounding #{winner_idx + 1}")
-            if winner_sounding.get('mutation_applied'):
-                print(f"Mutation: {winner_sounding['mutation_applied'][:60]}...")
+            if winner_candidate.get('mutation_applied'):
+                print(f"Mutation: {winner_candidate['mutation_applied'][:60]}...")
             print("-"*60)
             print()
 
-            content = winner_sounding.get('content', '')
+            content = winner_candidate.get('content', '')
             if isinstance(content, dict):
                 content = json.dumps(content, indent=2)
             elif isinstance(content, list):
@@ -2066,8 +2066,8 @@ def cmd_hotornot_rate(args):
                 is_good=False,
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None,
-                mutation_applied=winner_sounding.get('mutation_applied') if winner_sounding else None
+                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None,
+                mutation_applied=winner_candidate.get('mutation_applied') if winner_candidate else None
             )
             rated_count += 1
             bad_count += 1
@@ -2080,8 +2080,8 @@ def cmd_hotornot_rate(args):
                 is_good=True,
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None,
-                mutation_applied=winner_sounding.get('mutation_applied') if winner_sounding else None
+                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None,
+                mutation_applied=winner_candidate.get('mutation_applied') if winner_candidate else None
             )
             rated_count += 1
             good_count += 1
@@ -2098,7 +2098,7 @@ def cmd_hotornot_rate(args):
                 flag_reason="Flagged during interactive rating",
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_sounding.get('content', ''))[:1000] if winner_sounding else None
+                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None
             )
             rated_count += 1
             flag_count += 1

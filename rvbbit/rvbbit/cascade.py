@@ -84,7 +84,7 @@ class HumanEvalSelectionMode(str, Enum):
 
 class HumanSoundingEvalConfig(BaseModel):
     """
-    Configuration for human evaluation of soundings.
+    Configuration for human evaluation of candidates.
 
     Usage:
     {
@@ -200,21 +200,21 @@ class WardsConfig(BaseModel):
 class ReforgeConfig(BaseModel):
     steps: int = 1  # Number of refinement iterations
     honing_prompt: str  # Additional refinement instructions
-    factor_per_step: int = 2  # Soundings per reforge step
+    factor_per_step: int = 2  # Candidates per reforge step
     mutate: bool = False  # Apply built-in variation strategies
     evaluator_override: Optional[str] = None  # Custom evaluator for refinement steps
     threshold: Optional[WardConfig] = None  # Early stopping validation (ward-like)
 
 class ModelConfig(BaseModel):
-    """Per-model configuration for multi-model soundings."""
-    factor: int = 1  # How many soundings for this model
+    """Per-model configuration for multi-model candidates."""
+    factor: int = 1  # How many candidates for this model
     temperature: Optional[float] = None  # Model-specific temperature override
     max_tokens: Optional[int] = None  # Model-specific max_tokens override
 
 
 class CostAwareEvaluation(BaseModel):
     """
-    Cost-aware evaluation settings for multi-model soundings.
+    Cost-aware evaluation settings for multi-model candidates.
 
     When enabled, the evaluator considers both output quality and cost
     when selecting the winning candidate.
@@ -228,7 +228,7 @@ class CostAwareEvaluation(BaseModel):
 
 class ParetoFrontier(BaseModel):
     """
-    Pareto frontier analysis settings for multi-model soundings.
+    Pareto frontier analysis settings for multi-model candidates.
 
     When enabled, computes the Pareto frontier of cost vs quality,
     identifies non-dominated solutions, and selects winner from the frontier
@@ -258,19 +258,19 @@ class CandidatesConfig(BaseModel):
     aggregator_instructions: Optional[str] = None  # LLM instructions for combining outputs (if None, simple concatenation)
     aggregator_model: Optional[str] = None  # Model to use for aggregation (defaults to cell model)
 
-    # Pre-evaluation validator - filters soundings before evaluator sees them
+    # Pre-evaluation validator - filters candidates before evaluator sees them
     # Useful for code execution (only evaluate code that runs) or format validation
     # Can be:
     #   - string: Name of validator tool/cascade (e.g., "my_validator")
     #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
     validator: Optional[Union[str, "PolyglotValidatorConfig"]] = None
 
-    # Multi-model soundings (Cell 1: Simple Model Pool)
+    # Multi-model candidates (Cell 1: Simple Model Pool)
     models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
-    model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across soundings
+    model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across candidates
 
     # Cost-aware evaluation (Cell 2: Cost-Aware Evaluation)
-    cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model soundings
+    cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model candidates
 
     # Pareto frontier analysis (Cell 3: Pareto Frontier Analysis)
     pareto_frontier: Optional[ParetoFrontier] = None  # Enable Pareto frontier computation and selection

@@ -923,7 +923,7 @@ class ClickHouseAdapter:
                     sync=False  # Don't wait for each individual update
                 )
 
-    def mark_sounding_winner(
+    def mark_candidate_winner(
         self,
         table: str,
         session_id: str,

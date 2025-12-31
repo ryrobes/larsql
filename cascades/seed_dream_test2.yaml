@@ -47,22 +47,22 @@ cells:
     width: 1024
   instructions: '{{ outputs.llm_phase }}'
   model: mistralai/pixtral-12b
-  context:
-    from:
-    - cell: llm_phase
-      include:
-      - output
+  # context:
+  #   from:
+  #   - cell: llm_phase
+  #     include:
+  #     - output
 - name: image_gen_9
   image_config:
     height: 1024
     width: 1024
   instructions: '{{ outputs.llm_phase }}'
   model: google/gemini-3-pro-image-preview
-  context:
-    from:
-    - cell: llm_phase
-      include:
-      - output
+  # context:
+  #   from:
+  #   - cell: llm_phase
+  #     include:
+  #     - output
 - context:
     from:
     - cell: llm_phase

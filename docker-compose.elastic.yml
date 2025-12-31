@@ -3,7 +3,7 @@ version: '3.8'
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: windlass-elasticsearch
+    container_name: rvbbit-elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -13,9 +13,9 @@ services:
       - "9200:9200"
       - "9300:9300"
     volumes:
-      - windlass-es-data:/usr/share/elasticsearch/data
+      - rvbbit-es-data:/usr/share/elasticsearch/data
     networks:
-      - windlass
+      - rvbbit
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -24,22 +24,22 @@ services:
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.3
-    container_name: windlass-kibana
+    container_name: rvbbit-kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - xpack.security.enabled=false
     ports:
       - "5601:5601"
     networks:
-      - windlass
+      - rvbbit
     depends_on:
       elasticsearch:
         condition: service_healthy
 
 volumes:
-  windlass-es-data:
+  rvbbit-es-data:
     driver: local
 
 networks:
-  windlass:
+  rvbbit:
     driver: bridge

@@ -105,7 +105,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
 
   // Extract model - from cell YAML or cellState (executed) or default
   // Only show for LLM cells (deterministic data cells don't use models)
-  const isLLMCell = !!(cell.tool === 'windlass_data' || cell.instructions);
+  const isLLMCell = !!(cell.tool === 'rvbbit_data' || cell.instructions);
   const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
 
   // Extract candidates config from YAML (before execution)
@@ -135,8 +135,8 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
       const metadata = parseMetadata(log.metadata_json);
 
       // Track winning candidate index
-      if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
-        winningIndex = log.winning_sounding_index;
+      if (log.winning_candidate_index !== null && log.winning_candidate_index !== undefined) {
+        winningIndex = log.winning_candidate_index;
       }
 
       // Track max_turns for the cell (same for all candidates)
@@ -173,7 +173,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
         }
 
         // 2. Explicit completion markers
-        if (log.role === 'sounding_attempt' || log.node_type === 'sounding_attempt') {
+        if (log.role === 'candidate_attempt' || log.node_type === 'candidate_attempt') {
           candidate.status = 'complete';
         }
 
@@ -209,7 +209,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
-    windlass_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    rvbbit_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     bodybuilder: { label: 'Bodybuilder', icon: 'mdi:dumbbell', color: '#ff6b35' },
     linux_shell: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize
     linux_shell_dangerous: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize (host)

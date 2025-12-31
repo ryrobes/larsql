@@ -1,19 +1,19 @@
 #!/bin/bash
-# Start the Windlass Debug UI Backend
+# Start the Rvbbit Debug UI Backend
 
 cd "$(dirname "$0")/backend"
 source ../venv/bin/activate
 
-export WINDLASS_LOG_DIR=/home/ryanr/repos/rvbbit/logs
-export WINDLASS_GRAPH_DIR=/home/ryanr/repos/rvbbit/graphs
-export WINDLASS_STATE_DIR=/home/ryanr/repos/rvbbit/states
-export WINDLASS_IMAGE_DIR=/home/ryanr/repos/rvbbit/images
+export RVBBIT_LOG_DIR=/home/ryanr/repos/rvbbit/logs
+export RVBBIT_GRAPH_DIR=/home/ryanr/repos/rvbbit/graphs
+export RVBBIT_STATE_DIR=/home/ryanr/repos/rvbbit/states
+export RVBBIT_IMAGE_DIR=/home/ryanr/repos/rvbbit/images
 
 echo "Starting RVBBIT UI Backend..."
-echo "  Logs:   $WINDLASS_LOG_DIR"
-echo "  Graphs: $WINDLASS_GRAPH_DIR"
-echo "  States: $WINDLASS_STATE_DIR"
-echo "  Images: $WINDLASS_IMAGE_DIR"
+echo "  Logs:   $RVBBIT_LOG_DIR"
+echo "  Graphs: $RVBBIT_GRAPH_DIR"
+echo "  States: $RVBBIT_STATE_DIR"
+echo "  Images: $RVBBIT_IMAGE_DIR"
 echo ""
 
 python app.py

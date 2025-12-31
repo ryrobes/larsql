@@ -38,9 +38,9 @@ class TestBasicSubstitution:
         result = render_instruction(template, {
             "greeting": "Hi",
             "name": "Alice",
-            "place": "Windlass"
+            "place": "Rvbbit"
         })
-        assert result == "Hi, Alice! Welcome to Windlass."
+        assert result == "Hi, Alice! Welcome to Rvbbit."
 
     def test_repeated_variable(self):
         """Same variable used multiple times."""

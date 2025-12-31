@@ -260,7 +260,7 @@ function SchemaTree() {
       <div className="schema-tree-empty">
         No SQL connections configured.
         <br />
-        Run <code>windlass sql chart</code> to index schemas.
+        Run <code>rvbbit sql chart</code> to index schemas.
       </div>
     );
   }

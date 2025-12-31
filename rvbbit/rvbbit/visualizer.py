@@ -27,7 +27,7 @@ from .config import get_config
 class ExecutionNode:
     """Represents a node in the execution tree."""
     id: str
-    node_type: str  # cascade, cell, turn, tool, soundings, reforge, etc.
+    node_type: str  # cascade, cell, turn, tool, candidates, reforge, etc.
     name: str
     role: str = ""
     content: str = ""
@@ -192,7 +192,7 @@ def _log_invalid_mermaid(content: str, error: str, context: Optional[Dict], outp
         "content_stats": {
             "line_count": len(content.split('\n')),
             "char_count": len(content),
-            "has_soundings": "fork" in content.lower(),
+            "has_candidates": "fork" in content.lower(),
             "has_reforge": "reforge" in content.lower(),
         }
     }
@@ -351,7 +351,7 @@ def extract_metadata(entry: Dict) -> Dict:
         'cell_name': meta.get('cell_name'),
         'cascade_id': meta.get('cascade_id'),
         'factor': meta.get('factor'),
-        'has_soundings': meta.get('has_soundings'),
+        'has_candidates': meta.get('has_candidates'),
         'has_wards': meta.get('has_wards'),
         'has_sub_cascades': meta.get('has_sub_cascades'),
         'handoffs': meta.get('handoffs', []),
@@ -375,7 +375,7 @@ def extract_metadata(entry: Dict) -> Dict:
         # Retry/validation-specific
         'attempt': meta.get('attempt'),
         'max_attempts': meta.get('max_attempts'),
-        # Mutation-specific (for soundings)
+        # Mutation-specific (for candidates)
         'mutation_applied': meta.get('mutation_applied'),
         'mutation_type': meta.get('mutation_type'),
         'mutation_template': meta.get('mutation_template'),
@@ -765,7 +765,7 @@ def extract_state_changes(history: List[Dict]) -> Dict[str, List[str]]:
     return state_changes
 
 
-def extract_sounding_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]]:
+def extract_candidate_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]]:
     """
     Extract mutation information for candidate attempts.
 
@@ -776,7 +776,7 @@ def extract_sounding_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]
 
     for entry in history:
         node_type = entry.get("node_type", "")
-        if node_type == "sounding_attempt":
+        if node_type == "candidate_attempt":
             meta = extract_metadata(entry)
             cell_name = meta.get("cell_name", "unknown")
             candidate_index = meta.get("candidate_index", 0)
@@ -850,15 +850,15 @@ def format_cell_progress_indicator(cell_progress: dict) -> str:
         parts.append(f"A{current_attempt}/{max_attempts}")
 
     # Sounding info
-    sounding_info = cell_progress.get("candidate")
-    if sounding_info:
-        sounding_idx = sounding_info.get("index")
-        sounding_factor = sounding_info.get("factor", 1)
-        sounding_stage = sounding_info.get("stage", "executing")
+    candidate_info = cell_progress.get("candidate")
+    if candidate_info:
+        candidate_idx = candidate_info.get("index")
+        candidate_factor = candidate_info.get("factor", 1)
+        candidate_stage = candidate_info.get("stage", "executing")
 
-        if sounding_idx is not None:
-            stage_icon = "⚖️" if sounding_stage == "evaluating" else "🔱"
-            parts.append(f"{stage_icon}S{sounding_idx + 1}/{sounding_factor}")
+        if candidate_idx is not None:
+            stage_icon = "⚖️" if candidate_stage == "evaluating" else "🔱"
+            parts.append(f"{stage_icon}S{candidate_idx + 1}/{candidate_factor}")
 
     # Reforge info
     reforge_info = cell_progress.get("reforge")
@@ -925,15 +925,15 @@ def get_running_internal_node_id(cell_progress: dict, pid: str) -> Optional[str]
 
     # Main stage - could be turn, candidate, or reforge
     elif stage == "main":
-        sounding_info = cell_progress.get("candidate")
-        if sounding_info:
-            sounding_idx = sounding_info.get("index")
-            sounding_stage = sounding_info.get("stage")
+        candidate_info = cell_progress.get("candidate")
+        if candidate_info:
+            candidate_idx = candidate_info.get("index")
+            candidate_stage = candidate_info.get("stage")
 
-            if sounding_stage == "evaluating":
+            if candidate_stage == "evaluating":
                 return f"{pid}_eval"
-            elif sounding_idx is not None:
-                return f"{pid}_a{sounding_idx}"
+            elif candidate_idx is not None:
+                return f"{pid}_a{candidate_idx}"
 
         reforge_info = cell_progress.get("reforge")
         if reforge_info:
@@ -1032,18 +1032,18 @@ def collect_cells(nodes_map: Dict[str, ExecutionNode]) -> List[ExecutionNode]:
     return cells
 
 
-def collect_soundings(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
+def collect_candidates(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
     """Collect candidate attempts for a cell, grouped by candidate_index."""
-    soundings: Dict[int, List[ExecutionNode]] = {}
+    candidates: Dict[int, List[ExecutionNode]] = {}
 
     for node in nodes_map.values():
         if node.parent_id == cell_id or (node.parent_id and nodes_map.get(node.parent_id, ExecutionNode("", "", "")).parent_id == cell_id):
             if node.candidate_index is not None:
-                if node.candidate_index not in soundings:
-                    soundings[node.candidate_index] = []
-                soundings[node.candidate_index].append(node)
+                if node.candidate_index not in candidates:
+                    candidates[node.candidate_index] = []
+                candidates[node.candidate_index].append(node)
 
-    return soundings
+    return candidates
 
 
 def collect_reforge_steps(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
@@ -1190,7 +1190,7 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
 
             # This mapping is session_id-based, UI can match by pattern
             # Store with a generic key that UI can search
-            sub_cascade_mapping[f"sounding_{candidate_index}"] = {
+            sub_cascade_mapping[f"candidate_{candidate_index}"] = {
                 "session_id": sub_session_id,
                 "cascade_id": cascade_id,
                 "candidate_index": candidate_index
@@ -1275,8 +1275,8 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
             rf_type = "cellNode"
         elif node.node_type == "cascade":
             rf_type = "cascadeNode"
-        elif node.node_type in ("sounding_attempt", "soundings"):
-            rf_type = "soundingNode"
+        elif node.node_type in ("candidate_attempt", "candidates"):
+            rf_type = "candidateNode"
         elif node.node_type in ("reforge_step", "reforge_attempt"):
             rf_type = "reforgeNode"
         elif node.node_type == "tool_result":
@@ -1379,7 +1379,7 @@ def generate_mermaid_string(echo: Echo) -> str:
     The diagram shows:
     - Cascade as the outer container
     - Cells as nodes connected by handoffs
-    - Soundings as parallel branches with winner highlighting
+    - Candidates as parallel branches with winner highlighting
     - Reforge as sequential refinement steps
     - Sub-cascades as nested groups
 
@@ -1404,7 +1404,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         "    classDef system fill:#16202A,stroke:#60a5fa,color:#F0F4F8;",
         "    classDef user fill:#16202A,stroke:#D9A553,color:#F0F4F8;",
         "    classDef tool fill:#16202A,stroke:#f472b6,color:#F0F4F8;",
-        "    classDef soundings_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef candidates_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef attempt fill:#16202A,stroke:#D9A553,stroke-dasharray:3 3,color:#F0F4F8;",
         "    classDef winner fill:#16202A,stroke:#F0F4F8,stroke-width:4px,color:#F0F4F8;",
         "    classDef loser fill:#16202A,stroke:#9AA5B1,stroke-dasharray:5 5,color:#9AA5B1;",
@@ -1430,8 +1430,8 @@ def generate_mermaid_string(echo: Echo) -> str:
     # Collect structural entries from history with their metadata
     cascade_entry = None
     cell_entries = []
-    soundings_entries = []
-    sounding_attempts = []
+    candidates_entries = []
+    candidate_attempts = []
     evaluator_entries = []
     ward_entries = []
     quartermaster_entries = []
@@ -1451,9 +1451,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                 continue
             cell_entries.append(entry)
         elif node_type == "candidates":
-            soundings_entries.append(entry)
-        elif node_type == "sounding_attempt":
-            sounding_attempts.append(entry)
+            candidates_entries.append(entry)
+        elif node_type == "candidate_attempt":
+            candidate_attempts.append(entry)
         elif node_type in ("evaluator", "evaluation"):
             evaluator_entries.append(entry)
         elif node_type in ("pre_ward", "post_ward"):
@@ -1467,17 +1467,17 @@ def generate_mermaid_string(echo: Echo) -> str:
         elif node_type == "validation_retry":
             # Retry messages are already captured as user messages
             pass
-        elif node_type == "cascade_soundings":
-            # Cascade-level soundings start marker
+        elif node_type == "cascade_candidates":
+            # Cascade-level candidates start marker
             pass  # Collected separately below
-        elif node_type == "cascade_sounding_attempt":
+        elif node_type == "cascade_candidate_attempt":
             # Individual cascade candidate attempt
             pass  # Collected separately below
         elif node_type == "cascade_evaluator":
-            # Cascade soundings evaluator
+            # Cascade candidates evaluator
             pass  # Collected separately below
-        elif node_type == "cascade_soundings_result":
-            # Cascade soundings result/winner
+        elif node_type == "cascade_candidates_result":
+            # Cascade candidates result/winner
             pass  # Collected separately below
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
             # Reforge entries - collected separately by cell
@@ -1501,13 +1501,13 @@ def generate_mermaid_string(echo: Echo) -> str:
     # Diagram renders cells directly without outer border box
 
     # Group candidate attempts by cell
-    soundings_by_cell: Dict[str, List[Dict]] = {}
-    for sa in sounding_attempts:
+    candidates_by_cell: Dict[str, List[Dict]] = {}
+    for sa in candidate_attempts:
         meta = extract_metadata(sa)
         cell_name = meta.get("cell_name", "unknown")
-        if cell_name not in soundings_by_cell:
-            soundings_by_cell[cell_name] = []
-        soundings_by_cell[cell_name].append(sa)
+        if cell_name not in candidates_by_cell:
+            candidates_by_cell[cell_name] = []
+        candidates_by_cell[cell_name].append(sa)
 
     # Group evaluator entries by cell
     evaluators_by_cell: Dict[str, Dict] = {}
@@ -1591,31 +1591,31 @@ def generate_mermaid_string(echo: Echo) -> str:
         else:
             return "-"  # Pending
 
-    # Collect cascade-level soundings entries
-    cascade_soundings_start = None
-    cascade_sounding_attempts = []
+    # Collect cascade-level candidates entries
+    cascade_candidates_start = None
+    cascade_candidate_attempts = []
     cascade_evaluator = None
-    cascade_soundings_result = None
+    cascade_candidates_result = None
 
     for entry in history:
         node_type = entry.get("node_type")
-        if node_type == "cascade_soundings":
-            cascade_soundings_start = entry
-        elif node_type == "cascade_sounding_attempt":
-            cascade_sounding_attempts.append(entry)
+        if node_type == "cascade_candidates":
+            cascade_candidates_start = entry
+        elif node_type == "cascade_candidate_attempt":
+            cascade_candidate_attempts.append(entry)
         elif node_type == "cascade_evaluator":
             cascade_evaluator = entry
-        elif node_type == "cascade_soundings_result":
-            cascade_soundings_result = entry
+        elif node_type == "cascade_candidates_result":
+            cascade_candidates_result = entry
 
-    # Render cascade-level soundings if present (appears before cells)
-    cascade_soundings_node_id = None
-    if cascade_soundings_start and cascade_sounding_attempts:
-        cs_meta = extract_metadata(cascade_soundings_start)
-        factor = cs_meta.get("factor", len(cascade_sounding_attempts))
-        cs_id = "n_cascade_soundings"
+    # Render cascade-level candidates if present (appears before cells)
+    cascade_candidates_node_id = None
+    if cascade_candidates_start and cascade_candidate_attempts:
+        cs_meta = extract_metadata(cascade_candidates_start)
+        factor = cs_meta.get("factor", len(cascade_candidate_attempts))
+        cs_id = "n_cascade_candidates"
 
-        lines.append(f'        subgraph {cs_id}["Cascade Soundings ({factor} executions)"]')
+        lines.append(f'        subgraph {cs_id}["Cascade Candidates ({factor} executions)"]')
         lines.append("        direction TB")
 
         # Render attempts as boxes with sub-session links
@@ -1624,24 +1624,24 @@ def generate_mermaid_string(echo: Echo) -> str:
 
         attempt_ids = []
         winner_index = None
-        if cascade_soundings_result:
-            result_meta = extract_metadata(cascade_soundings_result)
+        if cascade_candidates_result:
+            result_meta = extract_metadata(cascade_candidates_result)
             winner_index = result_meta.get("winner_index")
 
-        # Group cells by candidate_index for cascade-level soundings
-        cells_by_sounding: Dict[int, List[Dict]] = {}
+        # Group cells by candidate_index for cascade-level candidates
+        cells_by_candidate: Dict[int, List[Dict]] = {}
         for cell_entry in cell_entries:
             cell_meta = extract_metadata(cell_entry)
-            sounding_idx = cell_meta.get("candidate_index")
-            if sounding_idx is not None:
-                if sounding_idx not in cells_by_sounding:
-                    cells_by_sounding[sounding_idx] = []
-                cells_by_sounding[sounding_idx].append(cell_entry)
+            candidate_idx = cell_meta.get("candidate_index")
+            if candidate_idx is not None:
+                if candidate_idx not in cells_by_candidate:
+                    cells_by_candidate[candidate_idx] = []
+                cells_by_candidate[candidate_idx].append(cell_entry)
 
-        for attempt in sorted(cascade_sounding_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
+        for attempt in sorted(cascade_candidate_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
             a_meta = extract_metadata(attempt)
             idx = a_meta.get("candidate_index", 0)
-            sub_session_id = a_meta.get("sub_session_id", f"sounding_{idx}")
+            sub_session_id = a_meta.get("sub_session_id", f"candidate_{idx}")
             is_winner = (winner_index is not None and idx == winner_index)
 
             attempt_id = f"{cs_id}_a{idx}"
@@ -1669,16 +1669,16 @@ def generate_mermaid_string(echo: Echo) -> str:
                     lines.append(f"                class {attempt_id} loser")
             else:
                 # Fallback: Try to reconstruct from cells in parent history
-                sounding_cells = cells_by_sounding.get(idx, [])
+                candidate_cells = cells_by_candidate.get(idx, [])
 
-                if sounding_cells:
+                if candidate_cells:
                     # Render as subgraph containing the cells
                     winner_mark = " ✓" if is_winner else ""
                     lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                     lines.append("                direction TB")
 
                     # Render each cell in this candidate
-                    for j, cell_entry in enumerate(sounding_cells):
+                    for j, cell_entry in enumerate(candidate_cells):
                         cell_content = cell_entry.get("content", "")
                         cell_name = cell_content.replace("Cell: ", "") if cell_content.startswith("Cell: ") else cell_content
                         cell_id = f"{attempt_id}_p{j}"
@@ -1731,12 +1731,12 @@ def generate_mermaid_string(echo: Echo) -> str:
             lines.append(f'            {winner_out}(["* Cascade #{winner_index+1} selected"])')
             lines.append(f"            class {winner_out} winner")
             lines.append(f"            {eval_id} ==> {winner_out}")
-            cascade_soundings_node_id = winner_out
+            cascade_candidates_node_id = winner_out
         else:
-            cascade_soundings_node_id = eval_id
+            cascade_candidates_node_id = eval_id
 
         lines.append("        end")
-        lines.append(f"        class {cs_id} soundings_group")
+        lines.append(f"        class {cs_id} candidates_group")
 
     # Render cells and their connections
     cell_ids = []
@@ -1745,7 +1745,7 @@ def generate_mermaid_string(echo: Echo) -> str:
     for i, cell_entry in enumerate(cell_entries):
         meta = extract_metadata(cell_entry)
 
-        # Skip cells that belong to cascade-level soundings (they're already rendered inside candidate boxes)
+        # Skip cells that belong to cascade-level candidates (they're already rendered inside candidate boxes)
         if meta.get("candidate_index") is not None:
             continue
 
@@ -1758,17 +1758,17 @@ def generate_mermaid_string(echo: Echo) -> str:
         # Get cell status
         status_icon = get_cell_status(cell_name)
 
-        has_soundings = meta.get("has_soundings", False) or cell_name in soundings_by_cell
+        has_candidates = meta.get("has_candidates", False) or cell_name in candidates_by_cell
         has_wards = meta.get("has_wards", False) or cell_name in wards_by_cell
         cell_wards = wards_by_cell.get(cell_name, {"pre": [], "post": []})
 
-        if has_soundings and cell_name in soundings_by_cell:
-            # Render soundings group
+        if has_candidates and cell_name in candidates_by_cell:
+            # Render candidates group
             lines.append(f'        subgraph {cell_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
             lines.append("        direction TB")
 
             # Get candidate attempts for this cell
-            attempts = soundings_by_cell[cell_name]
+            attempts = candidates_by_cell[cell_name]
             winner_index = None
 
             # Build attempts info with content
@@ -1791,17 +1791,17 @@ def generate_mermaid_string(echo: Echo) -> str:
             sub_cascade_mermaid = load_sub_cascade_mermaid(f"{echo.session_id}_sub")
 
             # Also group sub-cascade cells by candidate_index as fallback
-            # (happens when cell has both soundings + sub_cascades)
-            cells_by_sounding_idx: Dict[int, List[Dict]] = {}
+            # (happens when cell has both candidates + sub_cascades)
+            cells_by_candidate_idx: Dict[int, List[Dict]] = {}
             for pe in cell_entries:
                 pe_meta = extract_metadata(pe)
-                pe_sounding_idx = pe_meta.get("candidate_index")
+                pe_candidate_idx = pe_meta.get("candidate_index")
                 # Check if this cell belongs to a candidate of the current cell we're rendering
-                if pe_sounding_idx is not None and pe_meta.get("cell_name") != cell_name:
+                if pe_candidate_idx is not None and pe_meta.get("cell_name") != cell_name:
                     # This is a sub-cascade cell inside a candidate
-                    if pe_sounding_idx not in cells_by_sounding_idx:
-                        cells_by_sounding_idx[pe_sounding_idx] = []
-                    cells_by_sounding_idx[pe_sounding_idx].append(pe)
+                    if pe_candidate_idx not in cells_by_candidate_idx:
+                        cells_by_candidate_idx[pe_candidate_idx] = []
+                    cells_by_candidate_idx[pe_candidate_idx].append(pe)
 
             # Render parallel attempts
             if attempts_info:
@@ -1837,16 +1837,16 @@ def generate_mermaid_string(echo: Echo) -> str:
                             lines.append(f"                class {attempt_id} loser")
                     else:
                         # Fallback: Check if this candidate has sub-cascade cells to render
-                        sounding_cells = cells_by_sounding_idx.get(idx, [])
+                        candidate_cells = cells_by_candidate_idx.get(idx, [])
 
-                        if sounding_cells:
+                        if candidate_cells:
                             # Render as subgraph containing the sub-cascade cells
                             winner_mark = " ✓" if info["is_winner"] else ""
                             lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                             lines.append("                direction TB")
 
                             # Render each sub-cascade cell in this candidate
-                            for j, sub_cell_entry in enumerate(sounding_cells):
+                            for j, sub_cell_entry in enumerate(candidate_cells):
                                 sub_cell_content = sub_cell_entry.get("content", "")
                                 sub_cell_name = sub_cell_content.replace("Cell: ", "") if sub_cell_content.startswith("Cell: ") else sub_cell_content
                                 sub_cell_id = f"{attempt_id}_p{j}"
@@ -1990,7 +1990,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                             last_node_id = rf_step_winner if rf_winner_index is not None else rf_eval_id
 
             lines.append("        end")
-            lines.append(f"        class {cell_id} soundings_group")
+            lines.append(f"        class {cell_id} candidates_group")
 
         elif cell_wards["pre"] or cell_wards["post"]:
             # Cell with wards - render as subgraph with checkpoints
@@ -2310,9 +2310,9 @@ def generate_mermaid_string(echo: Echo) -> str:
                 lines.append(f'        {cell_id}["{status_icon} {sanitize_label(cell_name, 35)}"]')
                 lines.append(f"        class {cell_id} cell")
 
-    # If we have cascade soundings, connect the winner to the first cell
-    if cascade_soundings_node_id and cell_ids:
-        lines.append(f"        {cascade_soundings_node_id} ==> {cell_ids[0]}")
+    # If we have cascade candidates, connect the winner to the first cell
+    if cascade_candidates_node_id and cell_ids:
+        lines.append(f"        {cascade_candidates_node_id} ==> {cell_ids[0]}")
 
     # Connect cells using handoffs from metadata, or in order
     # Only connect cells that were actually rendered (not filtered out)
@@ -2483,7 +2483,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     state_changes = extract_state_changes(history)
 
     # Extract candidate mutations
-    sounding_mutations = extract_sounding_mutations(history)
+    candidate_mutations = extract_candidate_mutations(history)
 
     # Extract validation retries (loop_until / max_attempts > 1)
     validation_retries = extract_validation_retries(history)
@@ -2529,14 +2529,14 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
     # Collect all entries by type
     cell_entries = []
-    soundings_by_cell: Dict[str, List[Dict]] = {}
+    candidates_by_cell: Dict[str, List[Dict]] = {}
     reforge_by_cell: Dict[str, Dict[int, Dict]] = {}
     wards_by_cell: Dict[str, Dict[str, List[Dict]]] = {}
     tools_by_cell: Dict[str, List[str]] = {}
     turns_by_cell: Dict[str, int] = {}
     handoffs_by_cell: Dict[str, List[str]] = {}  # cell_name -> list of available handoff targets
-    cascade_sounding_attempts = []
-    cascade_soundings_result = None
+    cascade_candidate_attempts = []
+    cascade_candidates_result = None
     checkpoint_entries: List[Dict] = []  # checkpoint_created entries
     checkpoint_resume_entries: List[Dict] = []  # checkpoint_resume entries
 
@@ -2555,11 +2555,11 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 if handoffs:
                     handoffs_by_cell[cell_name] = handoffs
 
-        elif node_type == "sounding_attempt":
+        elif node_type == "candidate_attempt":
             cell_name = meta.get("cell_name", "unknown")
-            if cell_name not in soundings_by_cell:
-                soundings_by_cell[cell_name] = []
-            soundings_by_cell[cell_name].append(entry)
+            if cell_name not in candidates_by_cell:
+                candidates_by_cell[cell_name] = []
+            candidates_by_cell[cell_name].append(entry)
 
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
             cell_name = meta.get("cell_name", "unknown")
@@ -2602,11 +2602,11 @@ def generate_state_diagram_string(echo: Echo) -> str:
             cell_name = meta.get("cell_name", "unknown")
             turns_by_cell[cell_name] = turns_by_cell.get(cell_name, 0) + 1
 
-        elif node_type == "cascade_sounding_attempt":
-            cascade_sounding_attempts.append(entry)
+        elif node_type == "cascade_candidate_attempt":
+            cascade_candidate_attempts.append(entry)
 
-        elif node_type == "cascade_soundings_result":
-            cascade_soundings_result = entry
+        elif node_type == "cascade_candidates_result":
+            cascade_candidates_result = entry
 
         elif node_type == "checkpoint_created":
             checkpoint_entries.append(entry)
@@ -2700,24 +2700,24 @@ def generate_state_diagram_string(echo: Echo) -> str:
     running_cell_ids = []
     failed_cell_ids = []
 
-    # Cascade-level soundings (if present)
+    # Cascade-level candidates (if present)
     first_state = None
-    if cascade_sounding_attempts:
-        cs_meta = extract_metadata(cascade_soundings_result) if cascade_soundings_result else {}
+    if cascade_candidate_attempts:
+        cs_meta = extract_metadata(cascade_candidates_result) if cascade_candidates_result else {}
         winner_index = cs_meta.get("winner_index")
-        factor = len(cascade_sounding_attempts)
+        factor = len(cascade_candidate_attempts)
 
-        lines.append("    state cascade_soundings {")
-        lines.append("        cs_label : 🔱 Cascade Soundings")
+        lines.append("    state cascade_candidates {")
+        lines.append("        cs_label : 🔱 Cascade Candidates")
         lines.append("        [*] --> cs_fork")
         lines.append("        state cs_fork <<fork>>")
 
-        for attempt in sorted(cascade_sounding_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
+        for attempt in sorted(cascade_candidate_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
             a_meta = extract_metadata(attempt)
             idx = a_meta.get("candidate_index", 0)
             is_winner = (winner_index is not None and idx == winner_index)
             marker = " ✓" if is_winner else ""
-            sub_session_id = a_meta.get("sub_session_id", f"sounding_{idx}")
+            sub_session_id = a_meta.get("sub_session_id", f"candidate_{idx}")
 
             # Try to load the complete mermaid diagram for this cascade candidate
             sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
@@ -2762,7 +2762,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
         lines.append("    }")
         lines.append("")
-        first_state = "cascade_soundings"
+        first_state = "cascade_candidates"
 
     # =========================================================================
     # RENDER EACH CELL
@@ -2781,7 +2781,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
         status = status_icon(cell_name, completed_cells)
 
         # Determine what complexity this cell has
-        has_soundings = cell_name in soundings_by_cell
+        has_candidates = cell_name in candidates_by_cell
         has_reforge = cell_name in reforge_by_cell
         has_wards = cell_name in wards_by_cell and (wards_by_cell[cell_name]["pre"] or wards_by_cell[cell_name]["post"])
         has_sub_cascades = cell_name in sub_cascades_by_cell_name
@@ -2870,7 +2870,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
         # Decide if cell needs composite state
         # Note: errors alone don't force composite - show as simple failed cell
         # Only render composite if there's meaningful internal structure to show
-        needs_composite = (has_soundings or has_reforge or has_wards or has_sub_cascades
+        needs_composite = (has_candidates or has_reforge or has_wards or has_sub_cascades
                           or has_multi_turns or has_qm_selection or has_many_tool_calls)
 
         if not needs_composite:
@@ -2887,8 +2887,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
             # Cell label with status
             label_parts = [status, sanitize_label(cell_name, 25)]
-            if has_soundings:
-                factor = len(soundings_by_cell[cell_name])
+            if has_candidates:
+                factor = len(candidates_by_cell[cell_name])
                 label_parts.append(f"🔱{factor}")
             if has_reforge:
                 steps = len(reforge_by_cell[cell_name])
@@ -2986,9 +2986,9 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         first_internal = ward_id
                     last_node = ward_id
 
-            # SOUNDINGS
-            if has_soundings:
-                attempts = soundings_by_cell[cell_name]
+            # CANDIDATES
+            if has_candidates:
+                attempts = candidates_by_cell[cell_name]
                 attempts_info = {}
                 winner_index = None
 
@@ -3010,7 +3010,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     first_internal = fork_id
 
                 # Attempts - include mutation info if available
-                cell_mutations = sounding_mutations.get(cell_name, {})
+                cell_mutations = candidate_mutations.get(cell_name, {})
                 for idx in sorted(attempts_info.keys()):
                     info = attempts_info[idx]
                     marker = " ✓" if info["is_winner"] else ""
@@ -3031,7 +3031,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         mutation_label = " [baseline]"
 
                     # Always try to load sub-cascade diagram for this candidate attempt
-                    # For cell-level soundings with sub-cascades, the session ID pattern is:
+                    # For cell-level candidates with sub-cascades, the session ID pattern is:
                     # {parent_session_id}_sub_{candidate_index}
                     sub_session_id = f"{echo.session_id}_sub_{idx}"
                     sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
@@ -3079,7 +3079,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 else:
                     last_node = eval_id
 
-                # REFORGE (chains after soundings)
+                # REFORGE (chains after candidates)
                 if has_reforge:
                     for step_num in sorted(reforge_by_cell[cell_name].keys()):
                         step_data = reforge_by_cell[cell_name][step_num]
@@ -3205,7 +3205,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = ward_id
 
             # TURNS (show individual turn progression for multi-turn cells)
-            if has_multi_turns and not has_soundings:  # Don't show turns if soundings handles it
+            if has_multi_turns and not has_candidates:  # Don't show turns if candidates handles it
                 lines.append("")
                 lines.append(f"        %% Turn progression")
                 turn_ids = []
@@ -3218,7 +3218,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
                     # Show turn with tool indicator and content preview
                     tool_mark = "🔧" if has_tools else ""
-                    # Add short content preview like soundings do with mutations
+                    # Add short content preview like candidates do with mutations
                     context_label = ""
                     if content_preview:
                         # Truncate and clean for Mermaid
@@ -3238,7 +3238,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = turn_ids[-1]
 
             # TOOL CALLS (show individual tool calls for cells with many tools but not multi-turn)
-            if has_many_tool_calls and not has_multi_turns and not has_soundings:
+            if has_many_tool_calls and not has_multi_turns and not has_candidates:
                 lines.append("")
                 lines.append(f"        %% Tool calls")
                 tool_ids = []
@@ -3432,7 +3432,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 checkpoint_node_ids.append(cp_node_id)
 
                 # Show checkpoint type indicator
-                if checkpoint_type == "sounding_eval":
+                if checkpoint_type == "candidate_eval":
                     cp_label = "⏸️ HITL Sounding Eval"
                 else:
                     cp_label = "⏸️ HITL Input"
@@ -3571,23 +3571,23 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
 
     # Collect candidate attempts
     for entry in history:
-        if entry.get("node_type") == "sounding_attempt":
+        if entry.get("node_type") == "candidate_attempt":
             meta = extract_metadata(entry)
             cell_name = meta.get("cell_name", "unknown")
             candidate_index = meta.get("candidate_index", 0)
             is_winner = meta.get("is_winner", False)
             trace_id = entry.get("trace_id", "")
             pid = sid(cell_name)
-            sounding_id = f"{pid}_a{candidate_index}"
+            candidate_id = f"{pid}_a{candidate_index}"
 
-            node_map[sounding_id] = {
-                "node_id": sounding_id,
+            node_map[candidate_id] = {
+                "node_id": candidate_id,
                 "cell_name": cell_name,
                 "candidate_index": candidate_index,
                 "is_winner": is_winner,
                 "trace_id": trace_id,
                 "parent_id": entry.get("parent_id"),
-                "node_type": "sounding_attempt"
+                "node_type": "candidate_attempt"
             }
 
     # Collect ward info
@@ -3726,7 +3726,7 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
 
     The diagram shows:
     - Cells as composite states with internal complexity
-    - Soundings as fork/join parallel branches with winner highlighting
+    - Candidates as fork/join parallel branches with winner highlighting
     - Reforge as nested refinement states
     - Sub-cascades as nested composite states
     - Wards as entry/exit validation states

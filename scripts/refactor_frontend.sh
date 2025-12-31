@@ -4,7 +4,7 @@
 
 set -e
 
-cd /home/ryanr/repos/windlass/dashboard/frontend
+cd /home/ryanr/repos/rvbbit/dashboard/frontend
 
 echo "=== RVBBIT Frontend Refactoring ==="
 echo ""
@@ -32,12 +32,12 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bCellsRail\b/CellsRail/g
 ' {} +
 
-# Soundings* → Candidates*
+# Candidates* → Candidates*
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/\bSoundingsExplorer\b/CandidatesExplorer/g
+    s/\bCandidatesExplorer\b/CandidatesExplorer/g
     s/\bSoundingComparison\b/CandidateComparison/g
     s/\bSoundingLane\b/CandidateLane/g
-    s/\bSoundingsLayer\b/CandidatesLayer/g
+    s/\bCandidatesLayer\b/CandidatesLayer/g
 ' {} +
 
 # Tackle* → Trait*
@@ -61,8 +61,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bcurrentCell\b/currentCell/g
     s/\bselectedCell\b/selectedCell/g
     s/\btackleList\b/traitList/g
-    s/\bsoundingIndex\b/candidateIndex/g
-    s/\bsoundingFactor\b/candidateFactor/g
+    s/\bcandidateIndex\b/candidateIndex/g
+    s/\bcandidateFactor\b/candidateFactor/g
 ' {} +
 
 echo "✓ Props and variables updated"
@@ -81,8 +81,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/'\''cells'\''/'\''cells'\''/g
     s/"tackle"/"traits"/g
     s/'\''tackle'\''/'\''traits'\''/g
-    s/"soundings"/"candidates"/g
-    s/'\''soundings'\''/'\''candidates'\''/g
+    s/"candidates"/"candidates"/g
+    s/'\''candidates'\''/'\''candidates'\''/g
 ' {} +
 
 echo "✓ API field names updated"
@@ -96,8 +96,8 @@ find src -type f -name "*.css" -exec sed -i '
     s/\.cell-card/.cell-card/g
     s/\.cell-anatomy/.cell-anatomy/g
     s/\.cell-detail/.cell-detail/g
-    s/\.soundings-explorer/.candidates-explorer/g
-    s/\.sounding-lane/.candidate-lane/g
+    s/\.candidates-explorer/.candidates-explorer/g
+    s/\.candidate-lane/.candidate-lane/g
     s/\.tackle-pill/.trait-pill/g
 ' {} +
 
@@ -105,7 +105,7 @@ find src -type f -name "*.css" -exec sed -i '
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/className="cell-/className="cell-/g
     s/className='\''cell-/className='\''cell-/g
-    s/className="soundings-/className="candidates-/g
+    s/className="candidates-/className="candidates-/g
     s/className="tackle-/className="trait-/g
 ' {} +
 
@@ -119,7 +119,7 @@ echo "[5/5] Updating UI text strings..."
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/>Cell</>Cell</g
     s/>Cells</>Cells</g
-    s/>Soundings</>Candidates</g
+    s/>Candidates</>Candidates</g
     s/>Tackle</>Traits</g
     s/"Cell "/"Cell "/g
     s/"Cells "/"Cells "/g

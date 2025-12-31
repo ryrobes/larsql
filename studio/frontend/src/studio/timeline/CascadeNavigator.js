@@ -232,7 +232,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     js_data: { icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { icon: 'mdi:brain', color: '#a78bfa' },
-    windlass_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    rvbbit_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches
     linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
     hitl_screen: { icon: 'mdi:monitor-dashboard', color: '#f97316' },

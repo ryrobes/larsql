@@ -910,7 +910,7 @@ def get_cascade_costs(cascade_id: str) -> 'pd.DataFrame':
     return db.query_df(query)
 
 
-def get_soundings_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
+def get_candidates_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
     """Analyze candidate attempts for a specific cell in a session."""
     from .db_adapter import get_db
 
@@ -985,7 +985,7 @@ def get_model_usage_stats() -> 'pd.DataFrame':
     return db.query_df(query)
 
 
-def mark_sounding_winner(session_id: str, cell_name: str, winning_index: int):
+def mark_candidate_winner(session_id: str, cell_name: str, winning_index: int):
     """
     Mark all messages in winning candidate with is_winner=True.
 
@@ -994,4 +994,4 @@ def mark_sounding_winner(session_id: str, cell_name: str, winning_index: int):
     """
     from .db_adapter import get_db
     db = get_db()
-    db.mark_sounding_winner('unified_logs', session_id, cell_name, winning_index)
+    db.mark_candidate_winner('unified_logs', session_id, cell_name, winning_index)

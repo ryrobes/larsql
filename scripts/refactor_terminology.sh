@@ -4,7 +4,7 @@
 
 set -e
 
-cd /home/ryanr/repos/windlass/windlass
+cd /home/ryanr/repos/rvbbit/rvbbit
 
 echo "=== RVBBIT Terminology Refactoring ==="
 echo "Working directory: $(pwd)"
@@ -23,8 +23,8 @@ echo "[1/8] Updating class names..."
 # CellConfig → CellConfig
 find rvbbit -name "*.py" -type f -exec sed -i 's/\bCellConfig\b/CellConfig/g' {} +
 
-# SoundingsConfig → CandidatesConfig
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bSoundingsConfig\b/CandidatesConfig/g' {} +
+# CandidatesConfig → CandidatesConfig
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bCandidatesConfig\b/CandidatesConfig/g' {} +
 
 # ToolRegistry → TraitRegistry
 find rvbbit -name "*.py" -type f -exec sed -i 's/\bToolRegistry\b/TraitRegistry/g' {} +
@@ -48,8 +48,8 @@ find rvbbit -name "*.py" -type f -exec sed -i 's/\blist_tackle\b/list_traits/g' 
 # run_cell → run_cell
 find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_cell\b/run_cell/g' {} +
 
-# run_soundings → run_candidates
-find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_soundings\b/run_candidates/g' {} +
+# run_candidates → run_candidates
+find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_candidates\b/run_candidates/g' {} +
 
 echo "✓ Function names updated"
 
@@ -74,21 +74,21 @@ find rvbbit -name "*.py" -type f -exec sed -i "s/'cell_json'/'cell_json'/g" {} +
 find rvbbit -name "*.py" -type f -exec sed -i 's/"tackle":/"traits":/g' {} +
 find rvbbit -name "*.py" -type f -exec sed -i "s/'tackle':/'traits':/g" {} +
 
-# "soundings": → "candidates":
-find rvbbit -name "*.py" -type f -exec sed -i 's/"soundings":/"candidates":/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'soundings':/'candidates':/g" {} +
+# "candidates": → "candidates":
+find rvbbit -name "*.py" -type f -exec sed -i 's/"candidates":/"candidates":/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'candidates':/'candidates':/g" {} +
 
-# "sounding_index" → "candidate_index"
-find rvbbit -name "*.py" -type f -exec sed -i 's/"sounding_index"/"candidate_index"/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'sounding_index'/'candidate_index'/g" {} +
+# "candidate_index" → "candidate_index"
+find rvbbit -name "*.py" -type f -exec sed -i 's/"candidate_index"/"candidate_index"/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'candidate_index'/'candidate_index'/g" {} +
 
-# "winning_sounding_index" → "winning_candidate_index"
-find rvbbit -name "*.py" -type f -exec sed -i 's/"winning_sounding_index"/"winning_candidate_index"/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'winning_sounding_index'/'winning_candidate_index'/g" {} +
+# "winning_candidate_index" → "winning_candidate_index"
+find rvbbit -name "*.py" -type f -exec sed -i 's/"winning_candidate_index"/"winning_candidate_index"/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'winning_candidate_index'/'winning_candidate_index'/g" {} +
 
-# "sounding_factor" → "candidate_factor"
-find rvbbit -name "*.py" -type f -exec sed -i 's/"sounding_factor"/"candidate_factor"/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'sounding_factor'/'candidate_factor'/g" {} +
+# "candidate_factor" → "candidate_factor"
+find rvbbit -name "*.py" -type f -exec sed -i 's/"candidate_factor"/"candidate_factor"/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'candidate_factor'/'candidate_factor'/g" {} +
 
 echo "✓ Field names updated"
 
@@ -117,9 +117,9 @@ find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_name\b/trait_name/g' {
 # tackle_list → trait_list
 find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_list\b/trait_list/g' {} +
 
-# sounding → candidate (for loop variables)
-find rvbbit -name "*.py" -type f -exec sed -i 's/for sounding in /for candidate in /g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bsounding\b/candidate/g' {} +
+# candidate → candidate (for loop variables)
+find rvbbit -name "*.py" -type f -exec sed -i 's/for candidate in /for candidate in /g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bcandidate\b/candidate/g' {} +
 
 echo "✓ Variable names updated"
 
@@ -131,8 +131,8 @@ echo "[5/8] Updating SQL column references..."
 # This will update column names in SQL queries within Python strings
 find rvbbit -name "*.py" -type f -exec sed -i 's/cell_name/cell_name/g' {} +
 find rvbbit -name "*.py" -type f -exec sed -i 's/cell_json/cell_json/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/sounding_index/candidate_index/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/winning_sounding_index/winning_candidate_index/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/candidate_index/candidate_index/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/winning_candidate_index/winning_candidate_index/g' {} +
 
 echo "✓ SQL column references updated"
 
@@ -141,9 +141,9 @@ echo "✓ SQL column references updated"
 # =============================================================================
 echo "[6/8] Updating comments and docstrings..."
 
-# Windlass → RVBBIT
-find rvbbit -name "*.py" -type f -exec sed -i 's/Windlass/RVBBIT/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i 's/windlass/rvbbit/g' {} +
+# Rvbbit → RVBBIT
+find rvbbit -name "*.py" -type f -exec sed -i 's/Rvbbit/RVBBIT/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i 's/rvbbit/rvbbit/g' {} +
 
 echo "✓ Comments and docstrings updated"
 
@@ -152,8 +152,8 @@ echo "✓ Comments and docstrings updated"
 # =============================================================================
 echo "[7/8] Updating environment variable names..."
 
-# WINDLASS_ → RVBBIT_
-find rvbbit -name "*.py" -type f -exec sed -i 's/WINDLASS_/RVBBIT_/g' {} +
+# RVBBIT_ → RVBBIT_
+find rvbbit -name "*.py" -type f -exec sed -i 's/RVBBIT_/RVBBIT_/g' {} +
 
 echo "✓ Environment variable names updated"
 
@@ -162,11 +162,11 @@ echo "✓ Environment variable names updated"
 # =============================================================================
 echo "[8/8] Updating SQL UDF function names..."
 
-# windlass_udf → rvbbit
-find rvbbit -name "*.py" -type f -exec sed -i 's/windlass_udf/rvbbit/g' {} +
+# rvbbit_udf → rvbbit
+find rvbbit -name "*.py" -type f -exec sed -i 's/rvbbit_udf/rvbbit/g' {} +
 
-# windlass_cascade_udf → rvbbit_run
-find rvbbit -name "*.py" -type f -exec sed -i 's/windlass_cascade_udf/rvbbit_run/g' {} +
+# rvbbit_cascade_udf → rvbbit_run
+find rvbbit -name "*.py" -type f -exec sed -i 's/rvbbit_cascade_udf/rvbbit_run/g' {} +
 
 echo "✓ SQL UDF function names updated"
 
@@ -180,8 +180,8 @@ echo ""
 echo "Changes made:"
 echo "  - Cell → Cell (classes, variables, fields)"
 echo "  - Tackle → Traits (functions, variables, fields)"
-echo "  - Soundings → Candidates (classes, variables, fields)"
-echo "  - Windlass → RVBBIT (strings, comments)"
+echo "  - Candidates → Candidates (classes, variables, fields)"
+echo "  - Rvbbit → RVBBIT (strings, comments)"
 echo "  - SQL column names updated"
 echo "  - Environment variables updated"
 echo "  - SQL UDF names updated"

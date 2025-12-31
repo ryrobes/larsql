@@ -34,7 +34,7 @@ def review_failures(graph_dir: str = "./graphs"):
     sessions = set()
     stats = {
         "total_failures": len(failures),
-        "with_soundings": 0,
+        "with_candidates": 0,
         "with_reforge": 0,
         "avg_line_count": 0,
     }
@@ -53,8 +53,8 @@ def review_failures(graph_dir: str = "./graphs"):
                 sessions.add(data["context"]["session_id"])
 
             # Aggregate stats
-            if data.get("content_stats", {}).get("has_soundings"):
-                stats["with_soundings"] += 1
+            if data.get("content_stats", {}).get("has_candidates"):
+                stats["with_candidates"] += 1
             if data.get("content_stats", {}).get("has_reforge"):
                 stats["with_reforge"] += 1
             stats["avg_line_count"] += data.get("content_stats", {}).get("line_count", 0)
@@ -77,7 +77,7 @@ def review_failures(graph_dir: str = "./graphs"):
     print("=" * 80)
     print(f"Total failures:       {stats['total_failures']}")
     print(f"Unique sessions:      {len(sessions)}")
-    print(f"With soundings:       {stats['with_soundings']} ({stats['with_soundings']/stats['total_failures']*100:.1f}%)")
+    print(f"With candidates:       {stats['with_candidates']} ({stats['with_candidates']/stats['total_failures']*100:.1f}%)")
     print(f"With reforge:         {stats['with_reforge']} ({stats['with_reforge']/stats['total_failures']*100:.1f}%)")
     if stats['total_failures'] > 0:
         print(f"Avg lines per diagram: {stats['avg_line_count']/stats['total_failures']:.0f}")

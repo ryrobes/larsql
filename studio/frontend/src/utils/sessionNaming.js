@@ -96,6 +96,6 @@ export function generateSessionId(style = 'woodland') {
  * @returns {string} Session ID
  */
 export function autoGenerateSessionId() {
-  const style = localStorage.getItem('windlass_session_id_style') || 'woodland';
+  const style = localStorage.getItem('rvbbit_session_id_style') || 'woodland';
   return generateSessionId(style);
 }

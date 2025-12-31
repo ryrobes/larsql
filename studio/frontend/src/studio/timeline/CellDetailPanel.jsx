@@ -158,7 +158,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const isPython = cell.tool === 'python_data';
   const isJs = cell.tool === 'js_data';
   const isClojure = cell.tool === 'clojure_data';
-  const isWindlass = cell.tool === 'windlass_data';
+  const isRvbbit = cell.tool === 'rvbbit_data';
   const isHitl = !!cell.hitl;
   const isLLMCell = !cell.tool && !cell.hitl && cell.instructions;
 
@@ -168,7 +168,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
     llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
-    windlass_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
+    rvbbit_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
     bodybuilder: { language: 'markdown', codeKey: 'request', source: 'inputs' }, // Natural language LLM request
     linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
     linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
@@ -337,8 +337,8 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     }
 
     for (const log of cellLogs) {
-      if (log.winning_sounding_index !== null && log.winning_sounding_index !== undefined) {
-        winningIndex = log.winning_sounding_index;
+      if (log.winning_candidate_index !== null && log.winning_candidate_index !== undefined) {
+        winningIndex = log.winning_candidate_index;
       }
     }
 
@@ -817,7 +817,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
         </div>
 
         <div className="cell-detail-header-center">
-          {isWindlass && (
+          {isRvbbit && (
             <>
               <button
                 className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
@@ -835,7 +835,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
               </button>
             </>
           )}
-          {!isWindlass && !hasCustomEditors && (
+          {!isRvbbit && !hasCustomEditors && (
             <div className="cell-detail-mode-label">
               <Icon icon="mdi:code-braces" width="16" />
               Code Editor
@@ -849,7 +849,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
               </button>
             </div>
           )}
-          {!isWindlass && hasCustomEditors && (
+          {!isRvbbit && hasCustomEditors && (
             <>
               <button
                 className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
@@ -912,7 +912,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
 
       {/* Tab Content */}
       <div className="cell-detail-body">
-        {activeTab === 'config' && isWindlass ? (
+        {activeTab === 'config' && isRvbbit ? (
           <div className="cell-detail-config">
             <div className="cell-detail-config-section">
               <h4>LLM Configuration</h4>

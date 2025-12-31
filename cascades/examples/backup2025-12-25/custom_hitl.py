@@ -2,10 +2,10 @@ import os
 import sys
 import json
 
-# Ensure we can import windlass
+# Ensure we can import rvbbit
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from windlass import run_cascade, register_trait
+from rvbbit import run_cascade, register_trait
 
 # Example of a CUSTOM Callback implementation
 # This demonstrates how an app could inject its own logic

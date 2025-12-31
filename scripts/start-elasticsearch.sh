@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start Elasticsearch in Docker with 16GB memory for Windlass search
+# Start Elasticsearch in Docker with 16GB memory for Rvbbit search
 
 CONTAINER_NAME="rvbbit-elasticsearch"
 ES_VERSION="8.11.3"

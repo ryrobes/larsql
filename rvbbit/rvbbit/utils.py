@@ -69,7 +69,7 @@ def compute_species_hash(cell_config: Optional[Dict[str, Any]], input_data: Opti
             'input_data': input_data or {},
 
             # Candidates config affects prompt generation strategy
-            'candidates': cell_config.get('candidates') or cell_config.get('soundings'),
+            'candidates': cell_config.get('candidates') or cell_config.get('candidates'),
 
             # Rules affect execution behavior
             'rules': cell_config.get('rules'),
@@ -473,8 +473,8 @@ def get_next_image_index(session_id: str, cell_name: str, candidate_index: int =
     existing_indices = set()
     for filename in os.listdir(cell_dir):
         if candidate_index is not None:
-            # Match pattern: sounding_N_image_M.ext
-            match = re.match(rf'sounding_{candidate_index}_image_(\d+)\.\w+$', filename)
+            # Match pattern: candidate_N_image_M.ext
+            match = re.match(rf'candidate_{candidate_index}_image_(\d+)\.\w+$', filename)
         else:
             # Match pattern: image_N.ext (without candidate prefix)
             match = re.match(r'image_(\d+)\.\w+$', filename)
@@ -491,7 +491,7 @@ def get_image_save_path(session_id: str, cell_name: str, image_index: int, exten
     """
     Generate standardized path for saving images.
     Format: images/{session_id}/{cell_name}/image_{index}.{ext}
-    Or with candidate: images/{session_id}/{cell_name}/sounding_{s}_image_{index}.{ext}
+    Or with candidate: images/{session_id}/{cell_name}/candidate_{s}_image_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -500,7 +500,7 @@ def get_image_save_path(session_id: str, cell_name: str, image_index: int, exten
     images_dir = config.image_dir
 
     if candidate_index is not None:
-        filename = f"sounding_{candidate_index}_image_{image_index}.{extension}"
+        filename = f"candidate_{candidate_index}_image_{image_index}.{extension}"
     else:
         filename = f"image_{image_index}.{extension}"
 
@@ -526,8 +526,8 @@ def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int =
     existing_indices = set()
     for filename in os.listdir(cell_dir):
         if candidate_index is not None:
-            # Match pattern: sounding_N_audio_M.ext
-            match = re.match(rf'sounding_{candidate_index}_audio_(\d+)\.\w+$', filename)
+            # Match pattern: candidate_N_audio_M.ext
+            match = re.match(rf'candidate_{candidate_index}_audio_(\d+)\.\w+$', filename)
         else:
             # Match pattern: audio_N.ext (without candidate prefix)
             match = re.match(r'audio_(\d+)\.\w+$', filename)
@@ -544,7 +544,7 @@ def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, exten
     """
     Generate standardized path for saving audio files.
     Format: audio/{session_id}/{cell_name}/audio_{index}.{ext}
-    Or with candidate: audio/{session_id}/{cell_name}/sounding_{s}_audio_{index}.{ext}
+    Or with candidate: audio/{session_id}/{cell_name}/candidate_{s}_audio_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -553,7 +553,7 @@ def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, exten
     audio_dir = config.audio_dir
 
     if candidate_index is not None:
-        filename = f"sounding_{candidate_index}_audio_{audio_index}.{extension}"
+        filename = f"candidate_{candidate_index}_audio_{audio_index}.{extension}"
     else:
         filename = f"audio_{audio_index}.{extension}"
 
@@ -667,8 +667,8 @@ def get_next_video_index(session_id: str, cell_name: str, candidate_index: int =
     existing_indices = set()
     for filename in os.listdir(cell_dir):
         if candidate_index is not None:
-            # Match pattern: sounding_N_video_M.ext
-            match = re.match(rf'sounding_{candidate_index}_video_(\d+)\.\w+$', filename)
+            # Match pattern: candidate_N_video_M.ext
+            match = re.match(rf'candidate_{candidate_index}_video_(\d+)\.\w+$', filename)
         else:
             # Match pattern: video_N.ext (without candidate prefix)
             match = re.match(r'video_(\d+)\.\w+$', filename)
@@ -685,7 +685,7 @@ def get_video_save_path(session_id: str, cell_name: str, video_index: int, exten
     """
     Generate standardized path for saving videos.
     Format: videos/{session_id}/{cell_name}/video_{index}.{ext}
-    Or with candidate: videos/{session_id}/{cell_name}/sounding_{s}_video_{index}.{ext}
+    Or with candidate: videos/{session_id}/{cell_name}/candidate_{s}_video_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -694,7 +694,7 @@ def get_video_save_path(session_id: str, cell_name: str, video_index: int, exten
     video_dir = config.video_dir
 
     if candidate_index is not None:
-        filename = f"sounding_{candidate_index}_video_{video_index}.{extension}"
+        filename = f"candidate_{candidate_index}_video_{video_index}.{extension}"
     else:
         filename = f"video_{video_index}.{extension}"
 

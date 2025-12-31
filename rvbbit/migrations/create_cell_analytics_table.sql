@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS cell_analytics (
     cell_tokens UInt32,
     message_count UInt16,                   -- Messages within this cell
     turn_count UInt8,                       -- Conversation turns
-    candidate_count UInt8 DEFAULT 0,        -- Soundings used
+    candidate_count UInt8 DEFAULT 0,        -- Candidates used
     error_occurred Bool DEFAULT false,
 
     -- ============================================

@@ -1,5 +1,5 @@
 docker run -d \
-  --name windlass-clickhouser \
+  --name rvbbit-clickhouser \
   --ulimit nofile=262144:262144 \
   -p 8123:8123 \
   -p 9000:9000 \
@@ -9,6 +9,6 @@ docker run -d \
   clickhouse/clickhouse-server:25.11
 
 
-# docker run -it --rm --network=container:windlass-clickhouse --entrypoint clickhouse-client clickhouse/clickhouse-server
+# docker run -it --rm --network=container:rvbbit-clickhouse --entrypoint clickhouse-client clickhouse/clickhouse-server
 # # OR
 # docker exec -it some-clickhouse-server clickhouse-client

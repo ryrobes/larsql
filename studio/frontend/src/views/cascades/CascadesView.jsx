@@ -727,7 +727,7 @@ const CascadesView = () => {
 
       // Has Candidates toggle
       if (filters.hasCandidates !== null) {
-        const hasCandidates = cascade.graph_complexity?.has_soundings || false;
+        const hasCandidates = cascade.graph_complexity?.has_candidates || false;
         if (hasCandidates !== filters.hasCandidates) return false;
       }
 

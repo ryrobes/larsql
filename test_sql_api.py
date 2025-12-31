@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Quick test script for Windlass SQL API.
+Quick test script for Rvbbit SQL API.
 
 Run this to verify the SQL server is working before connecting from DBeaver!
 """
 
 import sys
-sys.path.insert(0, 'windlass')
+sys.path.insert(0, 'rvbbit')
 
 from rvbbit.client import RVBBITClient
 import json
@@ -16,7 +16,7 @@ def test_sql_api():
     """Test all SQL API features."""
 
     print("=" * 70)
-    print("🌊 WINDLASS SQL API TEST SUITE")
+    print("🌊 RVBBIT SQL API TEST SUITE")
     print("=" * 70)
 
     # Create client
@@ -28,7 +28,7 @@ def test_sql_api():
     try:
         health = client.health_check()
         print(f"✅ Status: {health['status']}")
-        print(f"✅ Simple UDF registered: {health['windlass_udf_registered']}")
+        print(f"✅ Simple UDF registered: {health['rvbbit_udf_registered']}")
         print(f"✅ Cascade UDF registered: {health['cascade_udf_registered']}")
     except Exception as e:
         print(f"❌ Health check failed: {e}")
@@ -45,14 +45,14 @@ def test_sql_api():
         print(f"❌ Simple query failed: {e}")
         return False
 
-    # Test 3: windlass_udf()
-    print("\n🤖 Test 3: windlass_udf() - Simple LLM Extraction")
+    # Test 3: rvbbit_udf()
+    print("\n🤖 Test 3: rvbbit_udf() - Simple LLM Extraction")
     print("-" * 70)
     try:
         df = client.execute("""
             SELECT
               product,
-              windlass_udf('Extract the brand name only', product) as brand
+              rvbbit_udf('Extract the brand name only', product) as brand
             FROM (VALUES
               ('Apple iPhone 15 Pro Max'),
               ('Samsung Galaxy S24 Ultra'),
@@ -79,9 +79,9 @@ def test_sql_api():
             SELECT
               product_name,
               price,
-              windlass_udf('Extract brand', product_name) as brand,
-              windlass_udf('Extract color', product_name) as color,
-              windlass_udf('Classify: budget/mid-range/premium/luxury', product_name || ' - $' || price) as tier
+              rvbbit_udf('Extract brand', product_name) as brand,
+              rvbbit_udf('Extract color', product_name) as color,
+              rvbbit_udf('Classify: budget/mid-range/premium/luxury', product_name || ' - $' || price) as tier
             FROM products
         """)
         print(df.to_string(index=False))
@@ -91,15 +91,15 @@ def test_sql_api():
         return False
 
     # Test 5: Cascade UDF
-    print("\n⚡ Test 5: windlass_cascade_udf() - Full Cascade Per Row")
+    print("\n⚡ Test 5: rvbbit_cascade_udf() - Full Cascade Per Row")
     print("-" * 70)
     print("⏳ Running full cascade (this takes ~10 seconds)...")
     try:
         df = client.execute(f"""
             SELECT
               customer,
-              windlass_cascade_udf(
-                '/home/ryanr/repos/windlass/tackle/analyze_customer.yaml',
+              rvbbit_cascade_udf(
+                '/home/ryanr/repos/rvbbit/tackle/analyze_customer.yaml',
                 json_object(
                   'customer_id', '999',
                   'customer_name', customer,
@@ -151,7 +151,7 @@ def test_sql_api():
             SELECT
               name,
               price,
-              windlass_udf('Extract first word', name) as first_word
+              rvbbit_udf('Extract first word', name) as first_word
             FROM test_products
         """, session_id="persistence_test")
 
@@ -166,7 +166,7 @@ def test_sql_api():
     print("\n" + "=" * 70)
     print("🎉 ALL TESTS PASSED!")
     print("=" * 70)
-    print("\n✨ Windlass SQL API is fully operational!")
+    print("\n✨ Rvbbit SQL API is fully operational!")
     print("\n📚 Next steps:")
     print("   1. Connect from Python: from rvbbit.client import RVBBITClient")
     print("   2. Try in Jupyter notebook")

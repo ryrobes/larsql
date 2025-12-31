@@ -3,7 +3,7 @@ Sextant API - Prompt optimization and analysis endpoints
 
 Endpoints:
 - GET /api/sextant/cascades - List cascades with optimization potential
-- GET /api/sextant/analyze/<cascade_id> - Analyze a cascade's soundings
+- GET /api/sextant/analyze/<cascade_id> - Analyze a cascade's candidates
 - GET /api/sextant/winner-loser-analysis/<cascade_id>/<cell_name> - Winners vs losers with LLM synopsis
 - GET /api/sextant/suggestions/<cascade_id> - Get/generate improvement suggestions
 - POST /api/sextant/apply - Apply a suggestion to a cascade file
@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path
+# Add rvbbit to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 from rvbbit.db_adapter import get_db
@@ -28,23 +28,23 @@ sextant_bp = Blueprint('sextant', __name__, url_prefix='/api/sextant')
 
 
 @sextant_bp.route('/cascades', methods=['GET'])
-def list_cascades_with_soundings():
+def list_cascades_with_candidates():
     """
-    List all cascades that have sounding data available for analysis.
+    List all cascades that have candidate data available for analysis.
 
     Returns cascades sorted by analysis potential (run count, winner diversity).
     """
     db = get_db()
 
     try:
-        # Find cascades with soundings data
+        # Find cascades with candidates data
         query = """
             SELECT
                 cascade_id,
                 COUNT(DISTINCT session_id) as session_count,
                 COUNT(DISTINCT cell_name) as cell_count,
                 SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
-                COUNT(DISTINCT candidate_index) as sounding_diversity,
+                COUNT(DISTINCT candidate_index) as candidate_diversity,
                 MIN(timestamp) as first_run,
                 MAX(timestamp) as last_run,
                 SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
@@ -67,7 +67,7 @@ def list_cascades_with_soundings():
                 'session_count': row['session_count'],
                 'cell_count': row['cell_count'],
                 'winner_count': row['winner_count'],
-                'sounding_diversity': row['sounding_diversity'],
+                'candidate_diversity': row['candidate_diversity'],
                 'first_run': str(row['first_run']) if row['first_run'] else None,
                 'last_run': str(row['last_run']) if row['last_run'] else None,
                 'total_cost': float(row['total_cost']) if row['total_cost'] else 0,
@@ -86,7 +86,7 @@ def list_species(cascade_id, cell_name):
     List distinct species (cell template DNA hashes) for a cascade/cell.
 
     Species represents the "DNA" of the prompt template - the instructions,
-    soundings config, and rules that define how prompts are generated.
+    candidates config, and rules that define how prompts are generated.
 
     Returns:
     - species: List of species with counts and metadata
@@ -113,7 +113,7 @@ def list_species(cascade_id, cell_name):
                 AND agent.role = 'assistant'
             WHERE sa.cascade_id = '{cascade_id}'
               AND sa.cell_name = '{cell_name}'
-              AND sa.node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
+              AND sa.node_type IN ('candidate_attempt', 'cascade_candidate_attempt')
               AND sa.species_hash IS NOT NULL
             GROUP BY sa.species_hash
             ORDER BY session_count DESC
@@ -133,7 +133,7 @@ def list_species(cascade_id, cell_name):
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
                   AND species_hash = '{species_hash}'
-                  AND node_type IN ('sounding_attempt', 'cascade_sounding_attempt')
+                  AND node_type IN ('candidate_attempt', 'cascade_candidate_attempt')
                 LIMIT 1
             """
             sample = db.query(sample_query, output_format='dict')
@@ -242,10 +242,10 @@ def list_species(cascade_id, cell_name):
 @sextant_bp.route('/analyze/<cascade_id>', methods=['GET'])
 def analyze_cascade(cascade_id):
     """
-    Analyze a cascade's sounding patterns.
+    Analyze a cascade's candidate patterns.
 
     Returns per-cell analysis with:
-    - Win rate by MODEL (the causal factor, not arbitrary sounding index)
+    - Win rate by MODEL (the causal factor, not arbitrary candidate index)
     - Win rate by MUTATION TYPE (when mutations are used)
     - Cost/quality metrics per model
     - Detected patterns in winning responses
@@ -254,7 +254,7 @@ def analyze_cascade(cascade_id):
     min_runs = request.args.get('min_runs', 3, type=int)
 
     try:
-        # Get cells with soundings for this cascade
+        # Get cells with candidates for this cascade
         cells_query = f"""
             SELECT
                 cell_name,
@@ -264,7 +264,7 @@ def analyze_cascade(cascade_id):
             WHERE cascade_id = '{cascade_id}'
               AND candidate_index IS NOT NULL
               AND cell_name IS NOT NULL
-              AND node_type = 'sounding_attempt'
+              AND node_type = 'candidate_attempt'
             GROUP BY cell_name
             ORDER BY session_count DESC
         """
@@ -286,7 +286,7 @@ def analyze_cascade(cascade_id):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                   AND model IS NOT NULL
                 GROUP BY model
                 ORDER BY wins DESC
@@ -303,7 +303,7 @@ def analyze_cascade(cascade_id):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                 GROUP BY mutation_type
                 ORDER BY wins DESC
             """
@@ -330,7 +330,7 @@ def analyze_cascade(cascade_id):
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
                   AND is_winner = true
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                 LIMIT 5
             """
             samples = db.query(sample_query, output_format='dict')
@@ -435,7 +435,7 @@ def winner_loser_analysis(cascade_id, cell_name):
         species_clause = f"AND species_hash = '{species_filter}'" if species_filter else ""
         species_clause_a = f"AND a.species_hash = '{species_filter}'" if species_filter else ""
 
-        # Get winning PROMPTS (join agent rows with sounding_attempt for is_winner)
+        # Get winning PROMPTS (join agent rows with candidate_attempt for is_winner)
         winners_query = f"""
             SELECT
                 a.trace_id,
@@ -454,7 +454,7 @@ def winner_loser_analysis(cascade_id, cell_name):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                   AND is_winner = true
                   {species_clause}
             ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
@@ -500,7 +500,7 @@ def winner_loser_analysis(cascade_id, cell_name):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                   AND (is_winner = false OR is_winner IS NULL)
                   {species_clause}
             ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
@@ -838,7 +838,7 @@ def get_suggestions(cascade_id):
         for s in analysis['suggestions']:
             suggestion = {
                 'cell': s['cell'],
-                'dominant_sounding': s.get('dominant_sounding'),
+                'dominant_candidate': s.get('dominant_candidate'),
                 'win_rate': s['win_rate'],
                 'wins': s['wins'],
                 'total_attempts': s.get('total_attempts', 0),
@@ -929,8 +929,8 @@ def get_winning_samples(cascade_id, cell_name):
     """
     Get sample winning outputs for a specific cell.
 
-    Useful for understanding WHY certain soundings win.
-    Note: is_winner is marked on sounding_attempt rows, not assistant rows.
+    Useful for understanding WHY certain candidates win.
+    Note: is_winner is marked on candidate_attempt rows, not assistant rows.
     Now supports species_hash filtering for apples-to-apples comparison.
     """
     db = get_db()
@@ -954,7 +954,7 @@ def get_winning_samples(cascade_id, cell_name):
             WHERE cascade_id = '{cascade_id}'
               AND cell_name = '{cell_name}'
               AND is_winner = true
-              AND node_type = 'sounding_attempt'
+              AND node_type = 'candidate_attempt'
               {species_clause}
             ORDER BY timestamp DESC
             LIMIT {limit}
@@ -1038,7 +1038,7 @@ def embedding_hotspots(cascade_id, cell_name):
             except:
                 return ""
 
-        # Get PROMPTS from agent rows, joined with sounding_attempt for is_winner
+        # Get PROMPTS from agent rows, joined with candidate_attempt for is_winner
         # Include cost for cost analysis
         query = f"""
             SELECT
@@ -1056,7 +1056,7 @@ def embedding_hotspots(cascade_id, cell_name):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                   {species_clause_sub}
             ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
@@ -1312,7 +1312,7 @@ def text_heatmap(cascade_id, cell_name):
             FROM unified_logs
             WHERE cascade_id = '{cascade_id}'
               AND cell_name = '{cell_name}'
-              AND node_type = 'sounding_attempt'
+              AND node_type = 'candidate_attempt'
               AND length(content_embedding) > 0
             ORDER BY timestamp DESC
             LIMIT 200
@@ -1655,17 +1655,17 @@ def prompt_heatmap(cascade_id, cell_name):
     This is the key insight: analyze what CAUSED winning, not the outputs.
 
     Process:
-    1. Get all prompts that led to soundings (from full_request_json in agent rows)
+    1. Get all prompts that led to candidates (from full_request_json in agent rows)
     2. Build prompt-embedding → win/lose mapping
     3. Compute winner/loser prompt centroids
     4. For a sample prompt, chunk and show heat per chunk
 
     Query params:
-    - candidate_index: Specific sounding to analyze (optional, defaults to winner)
+    - candidate_index: Specific candidate to analyze (optional, defaults to winner)
     - chunk_size: Approximate chars per chunk (default 150)
     """
     db = get_db()
-    target_sounding_idx = request.args.get('candidate_index', type=int)
+    target_candidate_idx = request.args.get('candidate_index', type=int)
     chunk_size = request.args.get('chunk_size', 150, type=int)
 
     try:
@@ -1676,8 +1676,8 @@ def prompt_heatmap(cascade_id, cell_name):
 
         config = get_config()
 
-        # Step 1: Get all agent rows with prompts for this cell, joined with is_winner from sounding_attempts
-        # Agent rows have the prompts but sounding_attempt rows have the is_winner flag
+        # Step 1: Get all agent rows with prompts for this cell, joined with is_winner from candidate_attempts
+        # Agent rows have the prompts but candidate_attempt rows have the is_winner flag
         query = f"""
             SELECT
                 a.trace_id,
@@ -1692,7 +1692,7 @@ def prompt_heatmap(cascade_id, cell_name):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
             ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
               AND a.cell_name = '{cell_name}'
@@ -1707,7 +1707,7 @@ def prompt_heatmap(cascade_id, cell_name):
 
         if len(results) < 3:
             return jsonify({
-                'error': f'Not enough sounding prompts (found {len(results)}, need at least 3)',
+                'error': f'Not enough candidate prompts (found {len(results)}, need at least 3)',
                 'cascade_id': cascade_id,
                 'cell_name': cell_name,
             })
@@ -1743,7 +1743,7 @@ def prompt_heatmap(cascade_id, cell_name):
 
         if not winners or not losers:
             return jsonify({
-                'error': 'Need both winning and losing soundings for comparison',
+                'error': 'Need both winning and losing candidates for comparison',
                 'winner_count': len(winners),
                 'loser_count': len(losers),
             })
@@ -1778,10 +1778,10 @@ def prompt_heatmap(cascade_id, cell_name):
         loser_centroid = loser_centroid / (np.linalg.norm(loser_centroid) + 1e-9)
 
         # Step 4: Get target prompt to analyze
-        if target_sounding_idx is not None:
-            target = next((r for r in results if r['candidate_index'] == target_sounding_idx), None)
+        if target_candidate_idx is not None:
+            target = next((r for r in results if r['candidate_index'] == target_candidate_idx), None)
             if not target:
-                return jsonify({'error': f'Sounding index {target_sounding_idx} not found'})
+                return jsonify({'error': f'Sounding index {target_candidate_idx} not found'})
         else:
             # Default to first winner for interesting visualization
             target = winners[0] if winners else results[0]
@@ -1928,7 +1928,7 @@ def prompt_patterns(cascade_id, cell_name):
         # Build species filter clause
         species_clause = f"AND species_hash = '{species_filter}'" if species_filter else ""
 
-        # Step 1: Get all prompts (from agent rows joined with sounding_attempt for is_winner)
+        # Step 1: Get all prompts (from agent rows joined with candidate_attempt for is_winner)
         # Use INNER JOIN to ensure species filtering is respected
         query = f"""
             SELECT
@@ -1946,7 +1946,7 @@ def prompt_patterns(cascade_id, cell_name):
                 FROM unified_logs
                 WHERE cascade_id = '{cascade_id}'
                   AND cell_name = '{cell_name}'
-                  AND node_type = 'sounding_attempt'
+                  AND node_type = 'candidate_attempt'
                   {species_clause}
             ) s ON a.candidate_index = s.candidate_index AND a.session_id = s.session_id
             WHERE a.cascade_id = '{cascade_id}'
@@ -2452,7 +2452,7 @@ def get_prompt_evolution(session_id):
         cell_filter = request.args.get('cell_name')
 
         # 1. Get metadata for the current session (cascade_id, cell_name, species_hash, timestamp)
-        # IMPORTANT: Pick the cell with the MOST sounding data (most candidates)
+        # IMPORTANT: Pick the cell with the MOST candidate data (most candidates)
         # This ensures we show the most interesting evolution, not a random cell
         session_query = f"""
             SELECT
@@ -2467,7 +2467,7 @@ def get_prompt_evolution(session_id):
               AND species_hash != ''
               AND cell_name IS NOT NULL
               AND candidate_index IS NOT NULL
-              AND node_type = 'sounding_attempt'
+              AND node_type = 'candidate_attempt'
             GROUP BY cascade_id, cell_name, species_hash
             ORDER BY candidate_count DESC
             LIMIT 1
@@ -2501,8 +2501,8 @@ def get_prompt_evolution(session_id):
             # Include future but mark them
             future_filter = f", (timestamp > '{session_timestamp}') as is_future"
 
-        # 3. Query all soundings for this species
-        # NOTE: Cost is on agent rows, not sounding_attempt rows
+        # 3. Query all candidates for this species
+        # NOTE: Cost is on agent rows, not candidate_attempt rows
         # For baseline candidates (mutation_applied IS NULL), get the actual prompt from user messages
         evolution_query = f"""
             SELECT
@@ -2531,7 +2531,7 @@ def get_prompt_evolution(session_id):
               AND sa.cell_name = '{cell_name}'
               AND sa.species_hash = '{species_hash}'
               AND sa.candidate_index IS NOT NULL
-              AND sa.node_type = 'sounding_attempt'
+              AND sa.node_type = 'candidate_attempt'
               {time_filter.replace('timestamp', 'sa.timestamp') if time_filter else ''}
             GROUP BY sa.session_id, sa.candidate_index, sa.mutation_applied,
                      sa.mutation_type, sa.mutation_template, sa.is_winner,
@@ -2563,11 +2563,11 @@ def get_prompt_evolution(session_id):
                 generations[sess_id] = {
                     'session_id': sess_id,
                     'timestamp': row['timestamp'],
-                    'soundings': [],
+                    'candidates': [],
                     'is_future': row.get('is_future', False) if 'is_future' in row else False
                 }
 
-            # For baseline soundings (mutation_applied is NULL), use the actual baseline prompt
+            # For baseline candidates (mutation_applied is NULL), use the actual baseline prompt
             # Otherwise use the mutated prompt (mutation_applied)
             if row['mutation_applied']:
                 prompt_text = row['mutation_applied']
@@ -2577,7 +2577,7 @@ def get_prompt_evolution(session_id):
             else:
                 prompt_text = '[Baseline - No prompt data available]'
 
-            generations[sess_id]['soundings'].append({
+            generations[sess_id]['candidates'].append({
                 'candidate_index': row['candidate_index'],
                 'prompt': prompt_text,
                 'type': row['mutation_type'],
@@ -2598,7 +2598,7 @@ def get_prompt_evolution(session_id):
         edges = []
 
         # Track all winners across generations (gene pool)
-        gene_pool = []  # List of (gen_idx, session_id, sounding)
+        gene_pool = []  # List of (gen_idx, session_id, candidate)
 
         for gen_idx, generation in enumerate(gen_list):
             is_current_session = generation['session_id'] == session_id
@@ -2609,21 +2609,21 @@ def get_prompt_evolution(session_id):
             x = gen_idx * 700
 
             # Get winner(s) from this generation for connections
-            winners = [s for s in generation['soundings'] if s['is_winner']]
+            winners = [s for s in generation['candidates'] if s['is_winner']]
 
             # Get immediate parents (previous generation winners)
             immediate_parents = []
             if gen_idx > 0:
                 prev_generation = gen_list[gen_idx - 1]
                 immediate_parents = [(gen_idx - 1, prev_generation['session_id'], s)
-                                    for s in prev_generation['soundings'] if s['is_winner']]
+                                    for s in prev_generation['candidates'] if s['is_winner']]
 
-            for sound_idx, sounding in enumerate(generation['soundings']):
-                # Vertical position (y) based on sounding index within generation
+            for sound_idx, candidate in enumerate(generation['candidates']):
+                # Vertical position (y) based on candidate index within generation
                 # Increased from 180 to 250 to accommodate taller nodes
                 y = sound_idx * 250
 
-                node_id = f"{generation['session_id']}_{sounding['candidate_index']}"
+                node_id = f"{generation['session_id']}_{candidate['candidate_index']}"
 
                 # Build parent winners list for DNA inheritance bar
                 # IMPORTANT: Only use the last N winners (active training set), not entire gene pool
@@ -2631,12 +2631,12 @@ def get_prompt_evolution(session_id):
                 active_gene_pool = gene_pool[-winner_limit:] if len(gene_pool) > winner_limit else gene_pool
 
                 parent_winners = []
-                for parent_gen_idx, parent_session_id, parent_sounding in active_gene_pool:
+                for parent_gen_idx, parent_session_id, parent_candidate in active_gene_pool:
                     parent_winners.append({
                         'generation': parent_gen_idx + 1,
                         'session_id': parent_session_id,
-                        'candidate_index': parent_sounding['candidate_index'],
-                        'prompt_snippet': (parent_sounding['prompt'] or '')[:100]  # Increased from 30 to 100 chars
+                        'candidate_index': parent_candidate['candidate_index'],
+                        'prompt_snippet': (parent_candidate['prompt'] or '')[:100]  # Increased from 30 to 100 chars
                     })
 
                 nodes.append({
@@ -2645,13 +2645,13 @@ def get_prompt_evolution(session_id):
                     'position': {'x': x, 'y': y},
                     'data': {
                         'generation': gen_idx + 1,
-                        'candidate_index': sounding['candidate_index'],
-                        'prompt': sounding['prompt'],
-                        'mutation_type': sounding['type'],
-                        'mutation_template': sounding['template'],
-                        'is_winner': sounding['is_winner'],
-                        'model': sounding['model'],
-                        'cost': sounding.get('cost', 0),
+                        'candidate_index': candidate['candidate_index'],
+                        'prompt': candidate['prompt'],
+                        'mutation_type': candidate['type'],
+                        'mutation_template': candidate['template'],
+                        'is_winner': candidate['is_winner'],
+                        'model': candidate['model'],
+                        'cost': candidate.get('cost', 0),
                         'is_current_session': is_current_session,
                         'is_future': is_future,
                         'session_id': generation['session_id'],
@@ -2663,8 +2663,8 @@ def get_prompt_evolution(session_id):
 
                 # GENETIC LINEAGE EDGES: Connect to ALL previous winners (gene pool)
                 if gen_idx > 0:
-                    for parent_gen_idx, parent_session_id, parent_sounding in gene_pool:
-                        source_id = f"{parent_session_id}_{parent_sounding['candidate_index']}"
+                    for parent_gen_idx, parent_session_id, parent_candidate in gene_pool:
+                        source_id = f"{parent_session_id}_{parent_candidate['candidate_index']}"
 
                         # Check if this is an immediate parent (last generation)
                         is_immediate_parent = parent_gen_idx == gen_idx - 1
@@ -2683,10 +2683,10 @@ def get_prompt_evolution(session_id):
                         if is_immediate_parent:
                             # Immediate parents: Thicker, no labels, prominent
                             edge_data.update({
-                                'animated': sounding['is_winner'],
+                                'animated': candidate['is_winner'],
                                 'style': {
-                                    'stroke': '#22c55e' if sounding['is_winner'] else '#9ca3af',
-                                    'strokeWidth': 4 if sounding['is_winner'] else 2.5,
+                                    'stroke': '#22c55e' if candidate['is_winner'] else '#9ca3af',
+                                    'strokeWidth': 4 if candidate['is_winner'] else 2.5,
                                     'opacity': 0.3 if is_future else 0.9
                                 },
                                 'className': 'immediate-parent-edge'
@@ -2752,7 +2752,7 @@ def get_prompt_evolution(session_id):
                 'session_count': len(gen_list),
                 'as_of_timestamp': str(session_timestamp),
                 'current_session_generation': current_gen_index + 1 if current_gen_index >= 0 else None,
-                'total_soundings': len(nodes),
+                'total_candidates': len(nodes),
                 'winner_count': sum(1 for n in nodes if n['data']['is_winner'])
             }
         })
@@ -2812,7 +2812,7 @@ def get_species_info(session_id):
                     session_id,
                     MIN(timestamp) as first_seen,
                     MAX(timestamp) as last_seen,
-                    COUNT(DISTINCT candidate_index) as sounding_count,
+                    COUNT(DISTINCT candidate_index) as candidate_count,
                     SUM(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as winner_count,
                     SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost
                 FROM unified_logs
@@ -2833,7 +2833,7 @@ def get_species_info(session_id):
                 rel_session_id = rel_row['session_id']
                 first_seen = rel_row['first_seen']
                 last_seen = rel_row['last_seen']
-                sounding_count = rel_row['sounding_count']
+                candidate_count = rel_row['candidate_count']
                 winner_count = rel_row['winner_count']
                 total_cost = rel_row['total_cost'] or 0.0
 
@@ -2846,7 +2846,7 @@ def get_species_info(session_id):
                     'is_current': rel_session_id == session_id,
                     'first_seen': str(first_seen),
                     'last_seen': str(last_seen),
-                    'sounding_count': sounding_count,
+                    'candidate_count': candidate_count,
                     'winner_count': winner_count,
                     'total_cost': float(total_cost)
                 })

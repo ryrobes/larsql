@@ -1,39 +1,39 @@
 #!/bin/bash
 
-# Windlass UI Startup Script
+# Rvbbit UI Startup Script
 # Starts both backend and frontend servers
 
-echo "🌊 Starting Windlass UI..."
+echo "🌊 Starting Rvbbit UI..."
 echo ""
 
-# Detect Windlass root (default to repo root, 2 levels up from this script)
+# Detect Rvbbit root (default to repo root, 2 levels up from this script)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Set WINDLASS_ROOT (can be overridden by environment)
-export WINDLASS_ROOT="${WINDLASS_ROOT:-$DEFAULT_ROOT}"
+# Set RVBBIT_ROOT (can be overridden by environment)
+export RVBBIT_ROOT="${RVBBIT_ROOT:-$DEFAULT_ROOT}"
 
 echo "Configuration:"
-echo "  WINDLASS_ROOT: $WINDLASS_ROOT"
+echo "  RVBBIT_ROOT: $RVBBIT_ROOT"
 echo ""
 echo "Data directories:"
-echo "  data/      → $WINDLASS_ROOT/data"
-echo "  logs/      → $WINDLASS_ROOT/logs"
-echo "  graphs/    → $WINDLASS_ROOT/graphs"
-echo "  states/    → $WINDLASS_ROOT/states"
-echo "  images/    → $WINDLASS_ROOT/images"
+echo "  data/      → $RVBBIT_ROOT/data"
+echo "  logs/      → $RVBBIT_ROOT/logs"
+echo "  graphs/    → $RVBBIT_ROOT/graphs"
+echo "  states/    → $RVBBIT_ROOT/states"
+echo "  images/    → $RVBBIT_ROOT/images"
 echo ""
 echo "Content directories:"
-echo "  examples/  → $WINDLASS_ROOT/examples"
-echo "  tackle/    → $WINDLASS_ROOT/tackle"
-echo "  cascades/  → $WINDLASS_ROOT/cascades"
+echo "  examples/  → $RVBBIT_ROOT/examples"
+echo "  tackle/    → $RVBBIT_ROOT/tackle"
+echo "  cascades/  → $RVBBIT_ROOT/cascades"
 echo ""
 
 # Check if data directory exists
-if [ ! -d "$WINDLASS_ROOT/data" ]; then
-    echo "⚠️  Warning: Unified logs not found at $WINDLASS_ROOT/data"
+if [ ! -d "$RVBBIT_ROOT/data" ]; then
+    echo "⚠️  Warning: Unified logs not found at $RVBBIT_ROOT/data"
     echo "   Run some cascades first to generate data:"
-    echo "   windlass run examples/simple_flow.json --input '{}'"
+    echo "   rvbbit run examples/simple_flow.json --input '{}'"
     echo ""
 fi
 
@@ -80,7 +80,7 @@ cd ..
 
 echo ""
 echo "════════════════════════════════════════════"
-echo "✅ Windlass UI Started"
+echo "✅ Rvbbit UI Started"
 echo "════════════════════════════════════════════"
 echo ""
 echo "🌐 Open: http://localhost:5550"

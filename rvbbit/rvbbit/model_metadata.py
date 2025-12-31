@@ -2,7 +2,7 @@
 Model Metadata Cache for RVBBIT - Context Limit Filtering
 
 Fetches model metadata from OpenRouter API and caches it locally.
-Used to filter models for multi-model soundings based on context limits.
+Used to filter models for multi-model candidates based on context limits.
 
 Key Features:
 - Fetch model context limits from OpenRouter /api/v1/models endpoint
@@ -54,7 +54,7 @@ class ModelMetadataCache:
     Cache for OpenRouter model metadata with TTL support.
 
     Provides fast lookup of model context limits for filtering
-    during multi-model soundings execution.
+    during multi-model candidates execution.
     """
 
     def __init__(

@@ -375,7 +375,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         });
 
         // Store cleanup functions
-        iframe._windlassCleanup = () => {
+        iframe._rvbbitCleanup = () => {
           resizeObserver.disconnect();
         };
       };
@@ -385,8 +385,8 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
       // Cleanup
       return () => {
         iframe.removeEventListener('load', handleLoad);
-        if (iframe._windlassCleanup) {
-          iframe._windlassCleanup();
+        if (iframe._rvbbitCleanup) {
+          iframe._rvbbitCleanup();
         }
       };
     } catch (err) {

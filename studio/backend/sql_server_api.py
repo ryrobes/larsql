@@ -2,7 +2,7 @@
 SQL Server API - HTTP endpoint for external SQL clients.
 
 This allows ANY HTTP client to execute SQL queries against RVBBIT DuckDB
-with full access to windlass_udf() and windlass_cascade_udf().
+with full access to rvbbit_udf() and rvbbit_cascade_udf().
 
 Perfect for:
 - Python clients (pandas, SQLAlchemy-like usage)
@@ -26,7 +26,7 @@ def execute_sql():
 
     POST /api/sql/execute
     {
-      "query": "SELECT windlass_udf('Extract brand', product_name) FROM products LIMIT 10",
+      "query": "SELECT rvbbit_udf('Extract brand', product_name) FROM products LIMIT 10",
       "session_id": "optional_session_id",
       "format": "json|csv|records"
     }
@@ -45,7 +45,7 @@ def execute_sql():
         import requests
 
         response = requests.post('http://localhost:5050/api/sql/execute', json={
-            "query": "SELECT windlass_udf('Extract brand', 'Apple iPhone 15') as brand"
+            "query": "SELECT rvbbit_udf('Extract brand', 'Apple iPhone 15') as brand"
         })
 
         print(response.json()['data'])
@@ -296,7 +296,7 @@ def health_check():
     Returns:
     {
       "status": "ok",
-      "windlass_udf_registered": true,
+      "rvbbit_udf_registered": true,
       "cascade_udf_registered": true
     }
     """
@@ -314,12 +314,12 @@ def health_check():
         register_rvbbit_udf(conn)
 
         # Test simple UDF
-        simple_result = conn.execute("SELECT windlass_udf('Test', 'input') as test").fetchone()
+        simple_result = conn.execute("SELECT rvbbit_udf('Test', 'input') as test").fetchone()
         simple_udf_works = simple_result is not None
 
         # Test cascade UDF
         cascade_result = conn.execute("""
-            SELECT windlass_cascade_udf(
+            SELECT rvbbit_cascade_udf(
                 'traits/process_single_item.yaml',
                 '{"item": "test"}'
             ) as test
@@ -332,7 +332,7 @@ def health_check():
 
         return jsonify({
             "status": "ok",
-            "windlass_udf_registered": simple_udf_works,
+            "rvbbit_udf_registered": simple_udf_works,
             "cascade_udf_registered": cascade_udf_works,
             "version": "1.0.0"
         })

@@ -143,7 +143,7 @@ class EmbeddingWorker:
         # Query for messages without embeddings
         # Focus on:
         # - assistant/user roles (chat messages)
-        # - sounding_attempt node_type (where is_winner is set - critical for analysis!)
+        # - candidate_attempt node_type (where is_winner is set - critical for analysis!)
         # - evaluator responses
         # Exclude: embeddings, tool calls, structural/metadata nodes
         query = f"""
@@ -161,9 +161,9 @@ class EmbeddingWorker:
               AND length(content_json) > 10
               AND (
                   role IN ('assistant', 'user')
-                  OR node_type IN ('sounding_attempt', 'evaluator', 'agent', 'follow_up')
+                  OR node_type IN ('candidate_attempt', 'evaluator', 'agent', 'follow_up')
               )
-              AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'soundings', 'validation', 'validation_start')
+              AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'candidates', 'validation', 'validation_start')
             ORDER BY timestamp DESC
             LIMIT {self.batch_size}
         """

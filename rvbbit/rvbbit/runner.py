@@ -169,7 +169,7 @@ class RVBBITRunner:
         self.max_depth = 5
         self.hooks = hooks or RVBBITHooks()
         self.context_messages: List[Dict[str, str]] = []
-        self.candidate_index = candidate_index  # Track which candidate attempt this is (for cascade-level soundings)
+        self.candidate_index = candidate_index  # Track which candidate attempt this is (for cascade-level candidates)
         self.current_cell_candidate_index = None  # Track candidate index within current cell
         self.current_reforge_step = None  # Track which reforge step we're in
         self.current_winning_candidate_index = None  # Track which initial candidate won (for reforge)
@@ -260,9 +260,9 @@ class RVBBITRunner:
         if not self.memory_name or not self.memory_system:
             return
 
-        # Skip saving losing soundings (they're alternate universes, not canon)
+        # Skip saving losing candidates (they're alternate universes, not canon)
         if self.current_cell_candidate_index is not None or self.candidate_index is not None:
-            # We're inside soundings - don't save until we know if we're a winner
+            # We're inside candidates - don't save until we know if we're a winner
             return
 
         # NOTE: No longer filtering system messages - we want to see ALL messages
@@ -476,15 +476,15 @@ class RVBBITRunner:
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
 
-            # 3. Check soundings.factor for template variable references (for dynamic factors)
+            # 3. Check candidates.factor for template variable references (for dynamic factors)
             if cell.candidates and isinstance(cell.candidates.factor, str):
-                # Find {{ outputs.X }} references in soundings.factor
+                # Find {{ outputs.X }} references in candidates.factor
                 for match in outputs_pattern.finditer(cell.candidates.factor):
                     ref_cell = match.group(1)
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
 
-                # Find {{ state.output_X }} references in soundings.factor
+                # Find {{ state.output_X }} references in candidates.factor
                 for match in state_output_pattern.finditer(cell.candidates.factor):
                     ref_cell = match.group(1)
                     if ref_cell in cell_names and ref_cell != cell.name:
@@ -556,7 +556,7 @@ class RVBBITRunner:
         # Snapshot context for thread safety
         echo_state_snapshot = copy.deepcopy(self.echo.state)
 
-        # Determine max workers (like soundings)
+        # Determine max workers (like candidates)
         max_workers = min(len(self.config.cells), 5)
 
         def execute_single_cell(cell_name: str, cell_input: dict) -> dict:
@@ -701,9 +701,9 @@ class RVBBITRunner:
 
         Semantic Actors (WHO is speaking):
             - main_agent: Primary LLM doing cell work
-            - sounding_agent: Main agent in a candidate attempt
+            - candidate_agent: Main agent in a candidate attempt
             - reforge_agent: Main agent in a reforge iteration
-            - evaluator: LLM judging soundings/reforge quality
+            - evaluator: LLM judging candidates/reforge quality
             - quartermaster: LLM selecting tools
             - validator: LLM/function checking output (wards, loop_until)
             - mutator: LLM rewriting prompts for mutation
@@ -753,7 +753,7 @@ class RVBBITRunner:
             if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
                 meta["semantic_actor"] = "reforge_agent"
             elif self.current_cell_candidate_index is not None or self.candidate_index is not None:
-                meta["semantic_actor"] = "sounding_agent"
+                meta["semantic_actor"] = "candidate_agent"
 
         return meta
 
@@ -1603,7 +1603,7 @@ class RVBBITRunner:
                 role = entry.get('role')
                 content = entry.get('content')
 
-                if not content or role in ['cascade_soundings', 'cascade_sounding_attempt', 'evaluator']:
+                if not content or role in ['cascade_candidates', 'cascade_candidate_attempt', 'evaluator']:
                     continue
 
                 # Apply message filtering
@@ -3594,18 +3594,18 @@ To call this tool, output a JSON code block:
 
         return auto_calls
 
-    def _run_with_cascade_soundings(self, input_data: dict = None) -> dict:
+    def _run_with_cascade_candidates(self, input_data: dict = None) -> dict:
         """
-        Execute cascade with soundings (Tree of Thought at cascade level).
+        Execute cascade with candidates (Tree of Thought at cascade level).
         Spawns N complete cascade executions in parallel, evaluates them, and returns only the winner.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
         indent = "  " * self.depth
 
-        # Resolve soundings factor (may be Jinja2 template string)
+        # Resolve candidates factor (may be Jinja2 template string)
         if isinstance(self.config.candidates.factor, str):
             from .prompts import render_instruction
-            # For cascade-level soundings, we have limited context (just inputs)
+            # For cascade-level candidates, we have limited context (just inputs)
             render_context = {
                 "input": input_data or {},
                 "state": {},
@@ -3617,7 +3617,7 @@ To call this tool, output a JSON code block:
             try:
                 factor = int(rendered_factor.strip())
             except ValueError:
-                console.print(f"{indent}[red]⚠ Warning: Could not parse cascade soundings factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                console.print(f"{indent}[red]⚠ Warning: Could not parse cascade candidates factor '{rendered_factor}' as integer, defaulting to 1[/red]")
                 factor = 1
         else:
             factor = self.config.candidates.factor
@@ -3625,17 +3625,17 @@ To call this tool, output a JSON code block:
         max_parallel = self.config.candidates.max_parallel or 3
         max_workers = min(factor, max_parallel)
 
-        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Soundings (Parallel: {max_workers} workers)...[/bold blue]")
+        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Candidates (Parallel: {max_workers} workers)...[/bold blue]")
 
-        # Create soundings trace node
-        soundings_trace = self.trace.create_child("cascade_soundings", f"{self.config.cascade_id}_soundings")
+        # Create candidates trace node
+        candidates_trace = self.trace.create_child("cascade_candidates", f"{self.config.cascade_id}_candidates")
 
         # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
-            "role": "cascade_soundings",
-            "content": f"🔱 Running {factor} cascade soundings",
-            "node_type": "cascade_soundings"
-        }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cascade_soundings",
+            "role": "cascade_candidates",
+            "content": f"🔱 Running {factor} cascade candidates",
+            "node_type": "cascade_candidates"
+        }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cascade_candidates",
            metadata={
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",  # Ensure UI can query this
@@ -3645,22 +3645,22 @@ To call this tool, output a JSON code block:
                "semantic_purpose": "lifecycle"
            })
 
-        # Pre-create traces for all soundings (must be done sequentially for proper hierarchy)
-        sounding_traces = []
+        # Pre-create traces for all candidates (must be done sequentially for proper hierarchy)
+        candidate_traces = []
         for i in range(factor):
-            trace = soundings_trace.create_child("cascade_sounding_attempt", f"attempt_{i+1}")
-            sounding_traces.append(trace)
+            trace = candidates_trace.create_child("cascade_candidate_attempt", f"attempt_{i+1}")
+            candidate_traces.append(trace)
 
         # Define the worker function for parallel execution
-        def run_single_cascade_sounding(i: int) -> dict:
+        def run_single_cascade_candidate(i: int) -> dict:
             """Execute a single cascade candidate. Returns result dict."""
             from .echo import Echo
             from .events import get_event_bus, Event
             from datetime import datetime
 
-            sounding_trace = sounding_traces[i]
-            sounding_session_id = f"{self.session_id}_sounding_{i}"
-            sounding_echo = Echo(sounding_session_id, parent_session_id=self.session_id)
+            candidate_trace = candidate_traces[i]
+            candidate_session_id = f"{self.session_id}_candidate_{i}"
+            candidate_echo = Echo(candidate_session_id, parent_session_id=self.session_id)
 
             console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
 
@@ -3668,55 +3668,55 @@ To call this tool, output a JSON code block:
             # This ensures the UI can track sub-cascade sessions correctly
             try:
                 create_session_state(
-                    session_id=sounding_session_id,
+                    session_id=candidate_session_id,
                     cascade_id=self.config.cascade_id,
                     parent_session_id=self.session_id,
                     depth=self.depth,
-                    metadata={"cascade_sounding": True, "candidate_index": i, "factor": factor}
+                    metadata={"cascade_candidate": True, "candidate_index": i, "factor": factor}
                 )
-                update_session_status(sounding_session_id, SessionStatus.RUNNING)
+                update_session_status(candidate_session_id, SessionStatus.RUNNING)
             except Exception as state_err:
                 # Don't fail the candidate if session state creation fails
                 import logging
                 logging.getLogger(__name__).debug(f"Could not create session state for cascade candidate: {state_err}")
 
-            # Emit sounding_start event for real-time UI tracking
+            # Emit candidate_start event for real-time UI tracking
             event_bus = get_event_bus()
             event_bus.publish(Event(
-                type="sounding_start",
+                type="candidate_start",
                 session_id=self.session_id,
                 timestamp=datetime.now().isoformat(),
                 data={
                     "cell_name": "_orchestration",
                     "candidate_index": i,
-                    "trace_id": sounding_trace.id,
+                    "trace_id": candidate_trace.id,
                     "factor": factor,
-                    "cascade_sounding": True,
-                    "sub_session_id": sounding_session_id
+                    "cascade_candidate": True,
+                    "sub_session_id": candidate_session_id
                 }
             ))
 
             try:
                 # Create a new runner for this candidate with candidate_index set
-                sounding_runner = RVBBITRunner(
+                candidate_runner = RVBBITRunner(
                     config_path=self.config_path,
-                    session_id=sounding_session_id,
+                    session_id=candidate_session_id,
                     overrides=self.overrides,
                     depth=self.depth,
-                    parent_trace=sounding_trace,
+                    parent_trace=candidate_trace,
                     hooks=self.hooks,
                     candidate_index=i,  # Mark this runner as part of a candidate
                     parent_session_id=self.session_id  # Link child to parent session
                 )
 
                 # Run the cascade with candidate metadata
-                result = sounding_runner._run_cascade_internal(input_data)
+                result = candidate_runner._run_cascade_internal(input_data)
 
                 # Update session status to COMPLETED in ClickHouse
                 try:
                     final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
                     update_session_status(
-                        sounding_session_id,
+                        candidate_session_id,
                         final_status,
                         error_message=str(result.get("errors", [])[:1]) if result.get("has_errors") else None
                     )
@@ -3728,18 +3728,18 @@ To call this tool, output a JSON code block:
 
                 console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
 
-                # Emit sounding_complete event for real-time UI tracking
+                # Emit candidate_complete event for real-time UI tracking
                 event_bus.publish(Event(
-                    type="sounding_complete",
+                    type="candidate_complete",
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
                         "cell_name": "_orchestration",
                         "candidate_index": i,
-                        "trace_id": sounding_trace.id,
+                        "trace_id": candidate_trace.id,
                         "factor": factor,
-                        "cascade_sounding": True,
-                        "sub_session_id": sounding_session_id,
+                        "cascade_candidate": True,
+                        "sub_session_id": candidate_session_id,
                         "success": True
                     }
                 ))
@@ -3747,10 +3747,10 @@ To call this tool, output a JSON code block:
                 return {
                     "index": i,
                     "result": final_output,
-                    "echo": sounding_echo,
-                    "trace_id": sounding_trace.id,
+                    "echo": candidate_echo,
+                    "trace_id": candidate_trace.id,
                     "full_result": result,
-                    "session_id": sounding_session_id
+                    "session_id": candidate_session_id
                 }
 
             except Exception as e:
@@ -3759,25 +3759,25 @@ To call this tool, output a JSON code block:
                 # Update session status to ERROR in ClickHouse
                 try:
                     update_session_status(
-                        sounding_session_id,
+                        candidate_session_id,
                         SessionStatus.ERROR,
                         error_message=str(e)[:500]
                     )
                 except Exception:
                     pass  # Don't fail if status update fails
 
-                # Emit sounding_complete event for real-time UI tracking (error case)
+                # Emit candidate_complete event for real-time UI tracking (error case)
                 event_bus.publish(Event(
-                    type="sounding_complete",
+                    type="candidate_complete",
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
                         "cell_name": "_orchestration",
                         "candidate_index": i,
-                        "trace_id": sounding_trace.id,
+                        "trace_id": candidate_trace.id,
                         "factor": factor,
-                        "cascade_sounding": True,
-                        "sub_session_id": sounding_session_id,
+                        "cascade_candidate": True,
+                        "sub_session_id": candidate_session_id,
                         "success": False,
                         "error": str(e)
                     }
@@ -3787,40 +3787,40 @@ To call this tool, output a JSON code block:
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "echo": None,
-                    "trace_id": sounding_trace.id,
+                    "trace_id": candidate_trace.id,
                     "full_result": {},
-                    "session_id": sounding_session_id,
+                    "session_id": candidate_session_id,
                     "failed": True,
                     "error": str(e)
                 }
 
-        # Execute soundings in parallel
-        sounding_results = []
+        # Execute candidates in parallel
+        candidate_results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(run_single_cascade_sounding, i): i for i in range(factor)}
+            futures = {executor.submit(run_single_cascade_candidate, i): i for i in range(factor)}
 
             for future in as_completed(futures):
                 result = future.result()
-                sounding_results.append(result)
+                candidate_results.append(result)
 
         # Sort results by index to maintain consistent ordering
-        sounding_results.sort(key=lambda x: x['index'])
+        candidate_results.sort(key=lambda x: x['index'])
 
         # Log results to echo history (must be done sequentially after parallel execution)
-        for sr in sounding_results:
+        for sr in candidate_results:
             i = sr['index']
             if sr.get('failed'):
-                log_message(self.session_id, "cascade_sounding_error", sr.get('error', 'Unknown error'),
-                           trace_id=sr['trace_id'], parent_id=soundings_trace.id,
-                           node_type="sounding_error", depth=self.depth,
+                log_message(self.session_id, "cascade_candidate_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=candidates_trace.id,
+                           node_type="candidate_error", depth=self.depth,
                            candidate_index=i, is_winner=False,
-                           metadata={"cell_name": "_orchestration", "error": sr.get('error'), "cascade_sounding": True})
+                           metadata={"cell_name": "_orchestration", "error": sr.get('error'), "cascade_candidate": True})
             else:
                 self.echo.add_history({
-                    "role": "cascade_sounding_attempt",
+                    "role": "cascade_candidate_attempt",
                     "content": str(sr['result'])[:150] if sr['result'] else "Completed",
-                    "node_type": "cascade_sounding_attempt"
-                }, trace_id=sr['trace_id'], parent_id=soundings_trace.id, node_type="cascade_sounding_attempt",
+                    "node_type": "cascade_candidate_attempt"
+                }, trace_id=sr['trace_id'], parent_id=candidates_trace.id, node_type="cascade_candidate_attempt",
                    metadata={
                        "cascade_id": self.config.cascade_id,
                        "cell_name": "_orchestration",
@@ -3828,25 +3828,25 @@ To call this tool, output a JSON code block:
                        "sub_session_id": sr['session_id'],
                        "is_winner": False,  # Updated later when winner is selected
                        "result_preview": str(sr['result'])[:200],
-                       "semantic_actor": "sounding_agent",
+                       "semantic_actor": "candidate_agent",
                        "semantic_purpose": "generation"
                    })
 
-        # Now evaluate all soundings
-        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(sounding_results)} cascade executions...[/bold yellow]")
+        # Now evaluate all candidates
+        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(candidate_results)} cascade executions...[/bold yellow]")
 
         # Create evaluator trace
-        evaluator_trace = soundings_trace.create_child("evaluator", "cascade_evaluation")
+        evaluator_trace = candidates_trace.create_child("evaluator", "cascade_evaluation")
 
         # Build evaluation prompt
         eval_prompt = f"{self.config.candidates.evaluator_instructions}\n\n"
         eval_prompt += "Please evaluate the following complete cascade executions and select the best one.\n\n"
 
-        for i, candidate in enumerate(sounding_results):
+        for i, candidate in enumerate(candidate_results):
             eval_prompt += f"## Cascade Execution {i+1}\n"
             eval_prompt += f"Result: {candidate['result']}\n\n"
 
-        eval_prompt += f"\nRespond with ONLY the number of the best execution (1-{len(sounding_results)}) and a brief explanation."
+        eval_prompt += f"\nRespond with ONLY the number of the best execution (1-{len(candidate_results)}) and a brief explanation."
 
         # Create evaluator agent
         evaluator_agent = Agent(
@@ -3884,7 +3884,7 @@ To call this tool, output a JSON code block:
             session_id=self.session_id,
             parent_session_id=getattr(self, 'parent_session_id', None),
             trace_id=evaluator_trace.id,
-            parent_id=soundings_trace.id,
+            parent_id=candidates_trace.id,
             node_type="cascade_evaluator",
             role="assistant",
             depth=self.depth,
@@ -3915,7 +3915,7 @@ To call this tool, output a JSON code block:
             "role": "cascade_evaluator",
             "content": eval_content if eval_content else "Evaluating...",
             "node_type": "cascade_evaluator"
-        }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="cascade_evaluator",
+        }, trace_id=evaluator_trace.id, parent_id=candidates_trace.id, node_type="cascade_evaluator",
            metadata=self._get_metadata({
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",
@@ -3930,10 +3930,10 @@ To call this tool, output a JSON code block:
         match = re.search(r'\b([1-9]\d*)\b', eval_content)
         if match:
             winner_index = int(match.group(1)) - 1  # Convert to 0-indexed
-            if winner_index >= len(sounding_results):
+            if winner_index >= len(candidate_results):
                 winner_index = 0
 
-        winner = sounding_results[winner_index]
+        winner = candidate_results[winner_index]
 
         console.print(f"{indent}[bold green]🏆 Winner: Cascade Sounding {winner_index + 1}[/bold green]")
 
@@ -3956,27 +3956,27 @@ To call this tool, output a JSON code block:
                     "role": "cell_result",
                     "content": f"Cell {cell_name} completed (from candidate #{winner_index})",
                     "node_type": "cell_result"
-                }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cell_result",
+                }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cell_result",
                    metadata={
                        "cascade_id": self.config.cascade_id,
                        "cell_name": cell_name,
-                       "source_sounding": winner_index,
+                       "source_candidate": winner_index,
                        "output_preview": str(output_content)[:200] if output_content else "",
                        "semantic_actor": "framework",
                        "semantic_purpose": "lifecycle"
                    })
 
-        # Add soundings result to history (auto-logs via unified_logs)
+        # Add candidates result to history (auto-logs via unified_logs)
         self.echo.add_history({
-            "role": "cascade_soundings_result",
+            "role": "cascade_candidates_result",
             "content": f"🏆 Winner: Cascade #{winner_index + 1}",
-            "node_type": "cascade_soundings_result"
-        }, trace_id=soundings_trace.id, parent_id=self.trace.id, node_type="cascade_soundings_result",
+            "node_type": "cascade_candidates_result"
+        }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cascade_candidates_result",
            metadata={
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",  # Ensure UI can query this
                "winner_index": winner_index,
-               "winner_session_id": f"{self.session_id}_sounding_{winner_index}",
+               "winner_session_id": f"{self.session_id}_candidate_{winner_index}",
                "factor": factor,
                "evaluation": eval_content,  # Full content, no truncation
                "winner_trace_id": winner['trace_id'],
@@ -3988,7 +3988,7 @@ To call this tool, output a JSON code block:
 
         self._update_graph()
 
-        # Check if reforge is configured for cascade soundings
+        # Check if reforge is configured for cascade candidates
         if self.config.candidates.reforge:
             # Track which candidate won so reforge messages can reference it
             self.current_winning_candidate_index = winner_index
@@ -3996,8 +3996,8 @@ To call this tool, output a JSON code block:
             winner = self._reforge_cascade_winner(
                 winner=winner,
                 input_data=input_data,
-                trace=soundings_trace,
-                reforge_step=0  # Initial soundings = step 0
+                trace=candidates_trace,
+                reforge_step=0  # Initial candidates = step 0
             )
 
             # Reset after reforge completes
@@ -4007,7 +4007,7 @@ To call this tool, output a JSON code block:
 
     def _reforge_cascade_winner(self, winner: dict, input_data: dict, trace: TraceNode, reforge_step: int) -> dict:
         """
-        Reforge (refine) the winning cascade execution through iterative soundings.
+        Reforge (refine) the winning cascade execution through iterative candidates.
         Each step runs complete cascade executions with honing prompt to progressively improve quality.
         """
         indent = "  " * self.depth
@@ -4047,7 +4047,7 @@ Refinement directive: {reforge_config.honing_prompt}
                        trace_id=reforge_trace.id, parent_id=trace.id,
                        node_type="cascade_reforge", depth=self.depth, reforge_step=step)
 
-            # Run mini-soundings for this reforge step (complete cascade executions) - IN PARALLEL
+            # Run mini-candidates for this reforge step (complete cascade executions) - IN PARALLEL
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
             factor_per_step = reforge_config.factor_per_step
@@ -4241,7 +4241,7 @@ Refinement directive: {reforge_config.honing_prompt}
         return winner
 
     def _run_cascade_internal(self, input_data: dict = None) -> dict:
-        """Internal cascade execution (separated to allow soundings wrapper)."""
+        """Internal cascade execution (separated to allow candidates wrapper)."""
         # Set context for tools
         session_context_token = set_current_session_id(self.session_id)
         cascade_context_token = set_current_cascade_id(self.config.cascade_id)
@@ -4350,7 +4350,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Log Cell Structure with rich metadata
             cell_meta = {
                 "cell_name": cell.name,
-                "has_soundings": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1),
+                "has_candidates": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1),
                 "has_wards": cell.wards is not None,
                 "has_sub_cascades": len(cell.sub_cascades) > 0 if cell.sub_cascades else False,
                 "handoffs": [h.target if hasattr(h, 'target') else h for h in cell.handoffs] if cell.handoffs else []
@@ -4470,7 +4470,7 @@ Refinement directive: {reforge_config.honing_prompt}
     def run(self, input_data: dict = None) -> dict:
         """
         Main entry point for cascade execution.
-        Checks if cascade-level soundings are configured and delegates appropriately.
+        Checks if cascade-level candidates are configured and delegates appropriately.
 
         Manages durable execution via:
         - Session state creation in ClickHouse
@@ -4596,11 +4596,11 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Don't fail if status update fails
 
-            # Check if cascade has soundings configured
+            # Check if cascade has candidates configured
             if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):
-                result = self._run_with_cascade_soundings(input_data)
+                result = self._run_with_cascade_candidates(input_data)
             else:
-                # Normal execution (no cascade soundings)
+                # Normal execution (no cascade candidates)
                 result = self._run_cascade_internal(input_data)
 
             # Update final status in ClickHouse
@@ -4734,8 +4734,8 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Credit tracking is optional, never fail cascade
 
-            # For cascade soundings, emit cascade_complete event here since
-            # _run_with_cascade_soundings doesn't call _run_cascade_internal for the parent
+            # For cascade candidates, emit cascade_complete event here since
+            # _run_with_cascade_candidates doesn't call _run_cascade_internal for the parent
             if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):
                 final_status_str = "error" if result.get("has_errors") else "completed"
 
@@ -5501,7 +5501,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 cascade_path = manifest[validator_name]["path"]
                 validator_input = {"content": content}
 
-                # Generate unique ward session ID (include candidate index if inside soundings)
+                # Generate unique ward session ID (include candidate index if inside candidates)
                 ward_candidate_index = None
                 if self.current_cell_candidate_index is not None:
                     ward_session_id = f"{self.session_id}_ward_{self.current_cell_candidate_index}"
@@ -5599,7 +5599,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _run_sounding_validator(self, validator_spec: Union[str, PolyglotValidatorConfig], content: str, candidate_index: int, trace: TraceNode) -> dict:
+    def _run_candidate_validator(self, validator_spec: Union[str, PolyglotValidatorConfig], content: str, candidate_index: int, trace: TraceNode) -> dict:
         """
         Run a validator on a candidate result to determine if it should be evaluated.
 
@@ -5614,7 +5614,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Check if validator is a PolyglotValidatorConfig (inline polyglot code)
         if isinstance(validator_spec, PolyglotValidatorConfig):
-            validator_trace = trace.create_child("sounding_validator", f"polyglot_{candidate_index}")
+            validator_trace = trace.create_child("candidate_validator", f"polyglot_{candidate_index}")
 
             result = self._run_polyglot_validator(
                 validator_spec,
@@ -5635,7 +5635,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         validator_name = validator_spec
 
         # Create validator trace
-        validator_trace = trace.create_child("sounding_validator", f"{validator_name}_{candidate_index}")
+        validator_trace = trace.create_child("candidate_validator", f"{validator_name}_{candidate_index}")
 
         # Try to get validator as Python function first
         validator_tool = get_trait(validator_name)
@@ -5652,7 +5652,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 validator_input = {"content": content}
 
                 # Generate unique validator session ID
-                validator_session_id = f"{self.session_id}_sounding_validator_{candidate_index}"
+                validator_session_id = f"{self.session_id}_candidate_validator_{candidate_index}"
 
                 try:
                     # Run the validator cascade
@@ -6013,15 +6013,15 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _assign_models(self, soundings_config, resolved_factor: int = None) -> List[str]:
+    def _assign_models(self, candidates_config, resolved_factor: int = None) -> List[str]:
         """
         Assign models to candidate attempts based on configuration.
 
         Returns a list of model names, one per candidate attempt.
 
         Args:
-            soundings_config: CandidatesConfig with optional multi-model settings
-            resolved_factor: Resolved factor value (optional, overrides soundings_config.factor)
+            candidates_config: CandidatesConfig with optional multi-model settings
+            resolved_factor: Resolved factor value (optional, overrides candidates_config.factor)
 
         Returns:
             List of model names to use for each candidate
@@ -6031,21 +6031,21 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         # Use resolved_factor if provided, otherwise get from config (and handle string/int)
         if resolved_factor is not None:
             factor = resolved_factor
-        elif isinstance(soundings_config.factor, str):
+        elif isinstance(candidates_config.factor, str):
             # If factor is still a string template, we can't resolve it here
             # This shouldn't happen if caller passes resolved_factor
-            raise ValueError(f"Cannot assign models with unresolved factor template: {soundings_config.factor}")
+            raise ValueError(f"Cannot assign models with unresolved factor template: {candidates_config.factor}")
         else:
-            factor = soundings_config.factor
+            factor = candidates_config.factor
 
         # Case 1: No multi-model configuration - use default model for all
-        if soundings_config.models is None:
+        if candidates_config.models is None:
             return [self.model] * factor
 
         # Case 2: List of models - apply strategy (round-robin, random, etc.)
-        if isinstance(soundings_config.models, list):
-            models = soundings_config.models
-            strategy = soundings_config.model_strategy
+        if isinstance(candidates_config.models, list):
+            models = candidates_config.models
+            strategy = candidates_config.model_strategy
 
             if strategy == "round_robin":
                 # Cycle through models in order
@@ -6060,9 +6060,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 return [models[i % len(models)] for i in range(factor)]
 
         # Case 3: Dict with per-model factors - expand based on each model's factor
-        elif isinstance(soundings_config.models, dict):
+        elif isinstance(candidates_config.models, dict):
             assigned = []
-            for model_name, config in soundings_config.models.items():
+            for model_name, config in candidates_config.models.items():
                 # Add this model N times based on its factor
                 assigned.extend([model_name] * config.factor)
             return assigned
@@ -6284,7 +6284,7 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
         return aggregated_content
 
-    def _get_sounding_costs(self, sounding_results: List[Dict], timeout: float = 5.0) -> List[float]:
+    def _get_candidate_costs(self, candidate_results: List[Dict], timeout: float = 5.0) -> List[float]:
         """
         Get costs for each candidate attempt from unified logs.
 
@@ -6292,7 +6292,7 @@ Please combine/synthesize these outputs according to the instructions above. Pro
         Falls back to cost estimation if costs aren't available.
 
         Args:
-            sounding_results: List of candidate result dicts with trace_id
+            candidate_results: List of candidate result dicts with trace_id
             timeout: Max seconds to wait for costs
 
         Returns:
@@ -6304,12 +6304,12 @@ Please combine/synthesize these outputs according to the instructions above. Pro
         time.sleep(min(timeout, 2.0))
 
         costs = []
-        for sr in sounding_results:
+        for sr in candidate_results:
             trace_id = sr.get("trace_id")
             model = sr.get("model", self.model)
 
             # Try to get cost from logs
-            cost = self._query_sounding_cost(trace_id)
+            cost = self._query_candidate_cost(trace_id)
 
             if cost is None or cost == 0:
                 # Estimate cost based on model and typical token usage
@@ -6319,7 +6319,7 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
         return costs
 
-    def _query_sounding_cost(self, trace_id: str) -> Optional[float]:
+    def _query_candidate_cost(self, trace_id: str) -> Optional[float]:
         """Query unified logs for cost of a specific trace."""
         try:
             from .unified_logs import query_unified
@@ -6398,24 +6398,24 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
     def _build_cost_aware_eval_prompt(
         self,
-        sounding_results: List[Dict],
+        candidate_results: List[Dict],
         costs: List[float],
-        soundings_config,
+        candidates_config,
         base_instructions: str
     ) -> str:
         """
         Build an evaluation prompt that includes cost information.
 
         Args:
-            sounding_results: List of candidate result dicts
+            candidate_results: List of candidate result dicts
             costs: List of costs per candidate
-            soundings_config: CandidatesConfig with cost_aware_evaluation settings
+            candidates_config: CandidatesConfig with cost_aware_evaluation settings
             base_instructions: Original evaluator instructions
 
         Returns:
             Complete evaluation prompt with cost context
         """
-        cost_config = soundings_config.cost_aware_evaluation
+        cost_config = candidates_config.cost_aware_evaluation
 
         eval_prompt = f"{base_instructions}\n\n"
 
@@ -6432,7 +6432,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
         eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
-        for i, candidate in enumerate(sounding_results):
+        for i, candidate in enumerate(candidate_results):
             eval_prompt += f"## Attempt {i+1}\n"
 
             if cost_config.show_costs_to_evaluator:
@@ -6443,13 +6443,13 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
             eval_prompt += f"Result: {candidate['result']}\n\n"
 
-        eval_prompt += f"\nRespond with ONLY the number of the best attempt (1-{len(sounding_results)}) and a brief explanation."
+        eval_prompt += f"\nRespond with ONLY the number of the best attempt (1-{len(candidate_results)}) and a brief explanation."
 
         return eval_prompt
 
     def _compute_pareto_frontier(
         self,
-        sounding_results: List[Dict],
+        candidate_results: List[Dict],
         quality_scores: List[float],
         costs: List[float]
     ) -> tuple:
@@ -6460,7 +6460,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
         both cheaper AND higher quality.
 
         Args:
-            sounding_results: List of candidate result dicts
+            candidate_results: List of candidate result dicts
             quality_scores: List of quality scores (higher is better)
             costs: List of costs (lower is better)
 
@@ -6470,7 +6470,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
             - dominated_map: Dict mapping dominated index -> dominating index
             - pareto_ranks: Dict mapping index -> rank (1 = frontier, 2+ = dominated)
         """
-        n = len(sounding_results)
+        n = len(candidate_results)
         frontier_indices = []
         dominated_map = {}
 
@@ -6511,7 +6511,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
     def _select_from_pareto_frontier(
         self,
-        sounding_results: List[Dict],
+        candidate_results: List[Dict],
         frontier_indices: List[int],
         quality_scores: List[float],
         costs: List[float],
@@ -6521,10 +6521,10 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
         Select winner from Pareto frontier based on policy.
 
         Args:
-            sounding_results: List of candidate result dicts
+            candidate_results: List of candidate result dicts
             frontier_indices: Indices of frontier members
-            quality_scores: Quality scores for all soundings
-            costs: Costs for all soundings
+            quality_scores: Quality scores for all candidates
+            costs: Costs for all candidates
             policy: Selection policy
 
         Returns:
@@ -6556,7 +6556,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
             # Show options and prompt user (dev/research mode)
             console.print(f"\n{indent}[bold yellow]Pareto Frontier (non-dominated solutions):[/bold yellow]")
             for i, idx in enumerate(frontier_indices):
-                model = sounding_results[idx].get("model", "unknown")
+                model = candidate_results[idx].get("model", "unknown")
                 quality = quality_scores[idx]
                 cost = costs[idx]
                 console.print(f"{indent}  [{i+1}] Model: {model}, Quality: {quality:.2f}, Cost: ${cost:.6f}")
@@ -6579,7 +6579,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
     def _get_quality_scores_from_evaluator(
         self,
-        sounding_results: List[Dict],
+        candidate_results: List[Dict],
         evaluator_instructions: str,
         evaluator_trace
     ) -> tuple:
@@ -6608,7 +6608,7 @@ Rate each of the following attempts on a scale of 0-100 for quality.
 Consider clarity, completeness, accuracy, and usefulness.
 
 """
-        for i, candidate in enumerate(sounding_results):
+        for i, candidate in enumerate(candidate_results):
             score_prompt += f"## Attempt {i+1}\n"
             # Include model info if available for multi-model comparison
             if candidate.get("model"):
@@ -6657,7 +6657,7 @@ Use only numbers 0-100 for scores."""
 
         # Build score list in order
         score_map = {int(m[0]): float(m[1]) for m in matches}
-        for i in range(len(sounding_results)):
+        for i in range(len(candidate_results)):
             scores.append(score_map.get(i + 1, 50.0))  # Default to 50 if not found
 
         return scores, score_content, score_cost, score_tokens_in, score_tokens_out, score_request_id, score_model
@@ -6666,7 +6666,7 @@ Use only numbers 0-100 for scores."""
         self,
         session_id: str,
         cell_name: str,
-        sounding_results: List[Dict],
+        candidate_results: List[Dict],
         frontier_indices: List[int],
         dominated_map: Dict[int, int],
         quality_scores: List[float],
@@ -6687,7 +6687,7 @@ Use only numbers 0-100 for scores."""
             "frontier": [
                 {
                     "candidate_index": idx,
-                    "model": sounding_results[idx].get("model", "unknown"),
+                    "model": candidate_results[idx].get("model", "unknown"),
                     "quality": quality_scores[idx],
                     "cost": costs[idx],
                     "is_winner": idx == winner_index
@@ -6698,13 +6698,13 @@ Use only numbers 0-100 for scores."""
                 {
                     "candidate_index": idx,
                     "dominated_by": dom_idx,
-                    "model": sounding_results[idx].get("model", "unknown"),
+                    "model": candidate_results[idx].get("model", "unknown"),
                     "quality": quality_scores[idx],
                     "cost": costs[idx]
                 }
                 for idx, dom_idx in dominated_map.items()
             ],
-            "all_soundings": [
+            "all_candidates": [
                 {
                     "index": i,
                     "model": sr.get("model", "unknown"),
@@ -6713,7 +6713,7 @@ Use only numbers 0-100 for scores."""
                     "is_pareto_optimal": i in frontier_indices,
                     "is_winner": i == winner_index
                 }
-                for i, sr in enumerate(sounding_results)
+                for i, sr in enumerate(candidate_results)
             ]
         }
 
@@ -6725,16 +6725,16 @@ Use only numbers 0-100 for scores."""
 
         console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
 
-    def _execute_cell_with_soundings(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def _execute_cell_with_candidates(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
         """
-        Execute a cell with soundings (Tree of Thought).
+        Execute a cell with candidates (Tree of Thought).
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
         from .unified_logs import log_unified
 
         indent = "  " * self.depth
 
-        # Resolve soundings factor FIRST (may be Jinja2 template string)
+        # Resolve candidates factor FIRST (may be Jinja2 template string)
         # Build context for rendering
         outputs = {item['cell']: item['output'] for item in self.echo.lineage}
         render_context = {
@@ -6752,7 +6752,7 @@ Use only numbers 0-100 for scores."""
             try:
                 resolved_factor = int(rendered_factor.strip())
             except ValueError:
-                console.print(f"{indent}[red]⚠ Warning: Could not parse soundings factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                console.print(f"{indent}[red]⚠ Warning: Could not parse candidates factor '{rendered_factor}' as integer, defaulting to 1[/red]")
                 resolved_factor = 1
         else:
             resolved_factor = cell.candidates.factor
@@ -6760,7 +6760,7 @@ Use only numbers 0-100 for scores."""
         # Assign models using resolved factor
         assigned_models = self._assign_models(cell.candidates, resolved_factor)
 
-        # Filter models by context window if multi-model soundings
+        # Filter models by context window if multi-model candidates
         if cell.candidates.models and len(set(assigned_models)) > 1:
             filter_result = self._filter_models_by_context(
                 models=assigned_models,
@@ -6842,22 +6842,22 @@ Use only numbers 0-100 for scores."""
                     metadata=filter_event_data
                 )
 
-        # When using dict-based models with per-model factors, the actual number of soundings
+        # When using dict-based models with per-model factors, the actual number of candidates
         # is determined by the model assignments, not the top-level factor
         if isinstance(cell.candidates.models, dict):
             factor = len(assigned_models)
             if resolved_factor != factor:
-                console.print(f"{indent}[yellow]Note: Using {factor} soundings from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
+                console.print(f"{indent}[yellow]Note: Using {factor} candidates from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
         else:
             factor = resolved_factor
 
-        console.print(f"{indent}[bold blue]🔱 Taking {factor} Soundings (Parallel Attempts)...[/bold blue]")
+        console.print(f"{indent}[bold blue]🔱 Taking {factor} Candidates (Parallel Attempts)...[/bold blue]")
 
-        # Create soundings trace node
-        soundings_trace = trace.create_child("soundings", f"{cell.name}_soundings")
+        # Create candidates trace node
+        candidates_trace = trace.create_child("candidates", f"{cell.name}_candidates")
 
-        # Add soundings structure to Echo for visualization (auto-logs via unified_logs)
-        soundings_meta = {
+        # Add candidates structure to Echo for visualization (auto-logs via unified_logs)
+        candidates_meta = {
             "cell_name": cell.name,
             "factor": factor,
             "has_reforge": cell.candidates.reforge is not None,
@@ -6866,19 +6866,19 @@ Use only numbers 0-100 for scores."""
         }
         self.echo.add_history({
             "role": "structure",
-            "content": f"Soundings: {cell.name}",
-            "node_type": "soundings"
-        }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings",
-           metadata=soundings_meta)
+            "content": f"Candidates: {cell.name}",
+            "node_type": "candidates"
+        }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates",
+           metadata=candidates_meta)
 
-        # Snapshot current context state (before any soundings)
+        # Snapshot current context state (before any candidates)
         context_snapshot = self.context_messages.copy()
         echo_state_snapshot = self.echo.state.copy()
         echo_history_snapshot = self.echo.history.copy()
         echo_lineage_snapshot = self.echo.lineage.copy()
 
         # Store all candidate results
-        sounding_results = []
+        candidate_results = []
 
         # Determine mutations to apply
         mutations_to_use = []
@@ -6941,14 +6941,14 @@ Use only numbers 0-100 for scores."""
         # Show which models will be used (already assigned earlier)
         console.print(f"{indent}  [dim]Models: {', '.join(set(assigned_models))}[/dim]")
 
-        # Pre-create traces for all soundings (must be done sequentially for proper hierarchy)
-        sounding_traces = []
+        # Pre-create traces for all candidates (must be done sequentially for proper hierarchy)
+        candidate_traces = []
         for i in range(factor):
-            trace_node = soundings_trace.create_child("sounding_attempt", f"attempt_{i+1}")
-            sounding_traces.append(trace_node)
+            trace_node = candidates_trace.create_child("candidate_attempt", f"attempt_{i+1}")
+            candidate_traces.append(trace_node)
 
-        # Pre-compute mutations for all soundings (some need LLM calls)
-        sounding_mutations = []
+        # Pre-compute mutations for all candidates (some need LLM calls)
+        candidate_mutations = []
         for i in range(factor):
             mutation_template = None
             mutation_applied = None
@@ -6962,13 +6962,13 @@ Use only numbers 0-100 for scores."""
                     # For rewrite modes: use LLM to rewrite the prompt
                     console.print(f"{indent}  [dim]Pre-computing mutation {i+1}: rewriting prompt...[/dim]")
                     mutation_applied = self._rewrite_prompt_with_llm(
-                        cell, input_data, mutation_template, soundings_trace,
+                        cell, input_data, mutation_template, candidates_trace,
                         mutation_mode=mutation_mode, species_hash=cell_species_hash
                     )
                 else:
                     mutation_applied = mutation_template
 
-            sounding_mutations.append({
+            candidate_mutations.append({
                 "template": mutation_template,
                 "applied": mutation_applied,
                 "type": mutation_type
@@ -6982,29 +6982,29 @@ Use only numbers 0-100 for scores."""
         console.print(f"{indent}  [dim]Parallel workers: {max_workers}[/dim]")
 
         # Define worker function that creates isolated runner with SAME session_id
-        def run_single_sounding(i: int) -> dict:
+        def run_single_candidate(i: int) -> dict:
             """Execute a single candidate with isolated state but same session for logging."""
-            mutation_info = sounding_mutations[i]
-            sounding_trace = sounding_traces[i]
-            sounding_model = assigned_models[i]
+            mutation_info = candidate_mutations[i]
+            candidate_trace = candidate_traces[i]
+            candidate_model = assigned_models[i]
 
             console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" +
                          (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
-                         f" [dim]({sounding_model})[/dim]")
+                         f" [dim]({candidate_model})[/dim]")
 
-            # Emit sounding_start event for real-time UI tracking
+            # Emit candidate_start event for real-time UI tracking
             from .events import get_event_bus, Event
             from datetime import datetime
             event_bus = get_event_bus()
             event_bus.publish(Event(
-                type="sounding_start",
+                type="candidate_start",
                 session_id=self.session_id,
                 timestamp=datetime.now().isoformat(),
                 data={
                     "cell_name": cell.name,
                     "candidate_index": i,
-                    "trace_id": sounding_trace.id,
-                    "model": sounding_model,
+                    "trace_id": candidate_trace.id,
+                    "model": candidate_model,
                     "factor": factor,
                     "mutation_type": mutation_info['type']
                 }
@@ -7012,12 +7012,12 @@ Use only numbers 0-100 for scores."""
 
             try:
                 # Create isolated runner with SAME session_id (logs go to same session)
-                sounding_runner = RVBBITRunner(
+                candidate_runner = RVBBITRunner(
                     config_path=self.config_path,
                     session_id=self.session_id,  # SAME session_id - all logs go here
                     overrides=self.overrides,
                     depth=self.depth,
-                    parent_trace=sounding_trace,
+                    parent_trace=candidate_trace,
                     hooks=self.hooks,
                     candidate_index=i,
                     parent_session_id=self.parent_session_id
@@ -7025,67 +7025,67 @@ Use only numbers 0-100 for scores."""
 
                 # Replace echo with fresh ISOLATED instance (bypasses SessionManager singleton)
                 # Same session_id means logs still go to the same session in DB
-                sounding_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
-                sounding_runner.echo.state = echo_state_snapshot.copy()
-                sounding_runner.echo.history = echo_history_snapshot.copy()
-                sounding_runner.echo.lineage = echo_lineage_snapshot.copy()
+                candidate_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
+                candidate_runner.echo.state = echo_state_snapshot.copy()
+                candidate_runner.echo.history = echo_history_snapshot.copy()
+                candidate_runner.echo.lineage = echo_lineage_snapshot.copy()
 
                 # Copy context and model
-                sounding_runner.context_messages = context_snapshot.copy()
-                sounding_runner.model = sounding_model
+                candidate_runner.context_messages = context_snapshot.copy()
+                candidate_runner.model = candidate_model
 
                 # Set candidate tracking state
-                sounding_runner.current_cell_candidate_index = i
-                sounding_runner._current_sounding_factor = factor  # For Jinja2 templates
-                sounding_runner.current_mutation_applied = mutation_info['applied']
-                sounding_runner.current_mutation_type = mutation_info['type']
-                sounding_runner.current_mutation_template = mutation_info['template']
+                candidate_runner.current_cell_candidate_index = i
+                candidate_runner._current_candidate_factor = factor  # For Jinja2 templates
+                candidate_runner.current_mutation_applied = mutation_info['applied']
+                candidate_runner.current_mutation_type = mutation_info['type']
+                candidate_runner.current_mutation_template = mutation_info['template']
 
                 # CRITICAL: Set context vars IN THIS THREAD (candidate thread)
                 # Context vars are thread-local, must be set in each candidate thread
-                session_token = set_current_session_id(sounding_runner.session_id)
+                session_token = set_current_session_id(candidate_runner.session_id)
                 cell_token = set_current_cell_name(cell.name)
-                cascade_token = set_current_cascade_id(sounding_runner.config.cascade_id)
-                sounding_token = set_current_candidate_index(i)
+                cascade_token = set_current_cascade_id(candidate_runner.config.cascade_id)
+                candidate_token = set_current_candidate_index(i)
 
                 # Set model context for downstream_model propagation
-                model_token = set_current_model(sounding_model)
+                model_token = set_current_model(candidate_model)
                 downstream_token = set_downstream_model(
                     cell.candidates.downstream_model if cell.candidates else False
                 )
 
-                print(f"[Sounding {i}] Set context vars: session={sounding_runner.session_id}, cell={cell.name}, candidate_index={i}, model={sounding_model}, downstream={cell.candidates.downstream_model if cell.candidates else False}")
+                print(f"[Sounding {i}] Set context vars: session={candidate_runner.session_id}, cell={cell.name}, candidate_index={i}, model={candidate_model}, downstream={cell.candidates.downstream_model if cell.candidates else False}")
 
                 # Execute the cell on isolated runner
-                result = sounding_runner._execute_cell_internal(
-                    cell, input_data, sounding_trace,
+                result = candidate_runner._execute_cell_internal(
+                    cell, input_data, candidate_trace,
                     initial_injection=initial_injection,
                     mutation=mutation_info['applied'],
                     mutation_mode=mutation_mode
                 )
 
                 # Capture context generated during this candidate
-                sounding_context = sounding_runner.context_messages[len(context_snapshot):]
+                candidate_context = candidate_runner.context_messages[len(context_snapshot):]
 
                 # Extract images for evaluator
                 from .utils import extract_images_from_messages
-                sounding_images = extract_images_from_messages(sounding_context)
+                candidate_images = extract_images_from_messages(candidate_context)
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
                 # Create a preview of the result for UI display
                 result_preview = str(result)[:500] if result else None
 
-                # Emit sounding_complete event for real-time UI tracking
+                # Emit candidate_complete event for real-time UI tracking
                 event_bus.publish(Event(
-                    type="sounding_complete",
+                    type="candidate_complete",
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
                         "cell_name": cell.name,
                         "candidate_index": i,
-                        "trace_id": sounding_trace.id,
-                        "model": sounding_model,
+                        "trace_id": candidate_trace.id,
+                        "model": candidate_model,
                         "factor": factor,
                         "success": True,
                         "output": result_preview
@@ -7095,29 +7095,29 @@ Use only numbers 0-100 for scores."""
                 return {
                     "index": i,
                     "result": result,
-                    "context": sounding_context,
-                    "images": sounding_images,
-                    "trace_id": sounding_trace.id,
-                    "final_state": sounding_runner.echo.state.copy(),
+                    "context": candidate_context,
+                    "images": candidate_images,
+                    "trace_id": candidate_trace.id,
+                    "final_state": candidate_runner.echo.state.copy(),
                     "mutation_applied": mutation_info['applied'],
                     "mutation_type": mutation_info['type'],
                     "mutation_template": mutation_info['template'],
-                    "model": sounding_model
+                    "model": candidate_model
                 }
 
             except Exception as e:
                 console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
 
-                # Emit sounding_complete event for real-time UI tracking (error case)
+                # Emit candidate_complete event for real-time UI tracking (error case)
                 event_bus.publish(Event(
-                    type="sounding_complete",
+                    type="candidate_complete",
                     session_id=self.session_id,
                     timestamp=datetime.now().isoformat(),
                     data={
                         "cell_name": cell.name,
                         "candidate_index": i,
-                        "trace_id": sounding_trace.id,
-                        "model": sounding_model,
+                        "trace_id": candidate_trace.id,
+                        "model": candidate_model,
                         "factor": factor,
                         "success": False,
                         "error": str(e)
@@ -7129,33 +7129,33 @@ Use only numbers 0-100 for scores."""
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
                     "images": [],
-                    "trace_id": sounding_trace.id,
+                    "trace_id": candidate_trace.id,
                     "final_state": {},
                     "mutation_applied": mutation_info['applied'],
                     "mutation_type": mutation_info['type'],
                     "mutation_template": mutation_info['template'],
-                    "model": sounding_model,
+                    "model": candidate_model,
                     "failed": True,
                     "error": str(e)
                 }
 
-        # Execute soundings in parallel - all logs go to same session
-        sounding_results = []
+        # Execute candidates in parallel - all logs go to same session
+        candidate_results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(run_single_sounding, i): i for i in range(factor)}
+            futures = {executor.submit(run_single_candidate, i): i for i in range(factor)}
 
             for future in as_completed(futures):
                 result = future.result()
-                sounding_results.append(result)
+                candidate_results.append(result)
 
         # Sort results by index to maintain consistent ordering for evaluator
-        sounding_results.sort(key=lambda x: x['index'])
+        candidate_results.sort(key=lambda x: x['index'])
 
         # Log errors after parallel completion
-        for sr in sounding_results:
+        for sr in candidate_results:
             if sr.get('failed'):
-                log_message(self.session_id, "sounding_error", sr.get('error', 'Unknown error'),
-                           trace_id=sr['trace_id'], parent_id=soundings_trace.id, node_type="sounding_error", depth=self.depth,
+                log_message(self.session_id, "candidate_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=candidates_trace.id, node_type="candidate_error", depth=self.depth,
                            candidate_index=sr['index'], metadata={"cell_name": cell.name, "error": sr.get('error'), "model": sr.get('model')})
 
         # Clear mutation tracking
@@ -7170,21 +7170,21 @@ Use only numbers 0-100 for scores."""
         self.echo.lineage = echo_lineage_snapshot.copy()
 
         # Pre-evaluation validation (if configured)
-        # Filters out soundings that fail validation before sending to evaluator
-        valid_sounding_results = sounding_results
+        # Filters out candidates that fail validation before sending to evaluator
+        valid_candidate_results = candidate_results
         if cell.candidates.validator:
             validator_spec = cell.candidates.validator
             validator_display_name = _format_validator_name(validator_spec)
             console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_display_name}'...[/bold cyan]")
 
             validation_results = []
-            for sr in sounding_results:
+            for sr in candidate_results:
                 result_content = str(sr.get("result", ""))
-                validation = self._run_sounding_validator(
+                validation = self._run_candidate_validator(
                     validator_spec,
                     result_content,
                     sr["index"],
-                    soundings_trace
+                    candidates_trace
                 )
                 sr["validation"] = validation
                 validation_results.append(validation)
@@ -7194,31 +7194,31 @@ Use only numbers 0-100 for scores."""
                 else:
                     console.print(f"{indent}  [red]✗ Sounding {sr['index']+1}: INVALID[/red] - {validation['reason'][:60]}...")
 
-            # Filter to only valid soundings
-            valid_sounding_results = [sr for sr in sounding_results if sr.get("validation", {}).get("valid", True)]
+            # Filter to only valid candidates
+            valid_candidate_results = [sr for sr in candidate_results if sr.get("validation", {}).get("valid", True)]
 
-            # Handle edge case: all soundings failed validation
-            if not valid_sounding_results:
-                console.print(f"{indent}[bold red]⚠️  All {len(sounding_results)} soundings failed validation![/bold red]")
-                console.print(f"{indent}[yellow]Falling back to evaluating all soundings (validation results will be shown to evaluator)[/yellow]")
+            # Handle edge case: all candidates failed validation
+            if not valid_candidate_results:
+                console.print(f"{indent}[bold red]⚠️  All {len(candidate_results)} candidates failed validation![/bold red]")
+                console.print(f"{indent}[yellow]Falling back to evaluating all candidates (validation results will be shown to evaluator)[/yellow]")
                 # Fall back to all results, but evaluator will see validation info
-                valid_sounding_results = sounding_results
+                valid_candidate_results = candidate_results
             else:
-                console.print(f"{indent}[bold green]✓ {len(valid_sounding_results)}/{len(sounding_results)} soundings passed validation[/bold green]")
+                console.print(f"{indent}[bold green]✓ {len(valid_candidate_results)}/{len(candidate_results)} candidates passed validation[/bold green]")
 
         # AGGREGATE MODE: Combine all outputs instead of picking one winner
         if cell.candidates.mode == "aggregate":
-            console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_sounding_results)} outputs...[/bold cyan]")
+            console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_candidate_results)} outputs...[/bold cyan]")
 
             # Update cell progress
             update_cell_progress(
                 self.session_id, self.config.cascade_id, cell.name, self.depth,
-                sounding_stage="aggregating"
+                candidate_stage="aggregating"
             )
 
             # Gather all successful outputs
             all_outputs = []
-            for sr in valid_sounding_results:
+            for sr in valid_candidate_results:
                 output = str(sr.get("result", ""))
                 if output.strip():
                     all_outputs.append({
@@ -7233,7 +7233,7 @@ Use only numbers 0-100 for scores."""
                 raise ValueError("All candidate outputs were empty or failed")
 
             # Create aggregator trace
-            aggregator_trace = soundings_trace.create_child("aggregator", "sounding_aggregation")
+            aggregator_trace = candidates_trace.create_child("aggregator", "candidate_aggregation")
 
             # Aggregate the outputs
             if cell.candidates.aggregator_instructions:
@@ -7263,11 +7263,11 @@ Use only numbers 0-100 for scores."""
 
             # Create synthetic "winner" with aggregated output
             # Use the first valid result's context as the base
-            winner = valid_sounding_results[0].copy()
+            winner = valid_candidate_results[0].copy()
             winner["result"] = aggregated_output
             winner["is_aggregated"] = True
             winner["aggregated_count"] = len(all_outputs)
-            winner["aggregated_indices"] = [o["index"] for o in all_outputs]  # Store which soundings contributed
+            winner["aggregated_indices"] = [o["index"] for o in all_outputs]  # Store which candidates contributed
             winner["images"] = all_images  # Combine all images
             winner_index = 0  # synthetic index
 
@@ -7277,7 +7277,7 @@ Use only numbers 0-100 for scores."""
             self.echo.add_history({
                 "role": "aggregator",
                 "content": f"Aggregated {len(all_outputs)} candidate outputs"
-            }, trace_id=aggregator_trace.id, parent_id=soundings_trace.id, node_type="aggregator",
+            }, trace_id=aggregator_trace.id, parent_id=candidates_trace.id, node_type="aggregator",
                metadata={
                    "cell_name": cell.name,
                    "aggregated_count": len(all_outputs),
@@ -7291,7 +7291,7 @@ Use only numbers 0-100 for scores."""
             # Set variables needed by post-evaluation code
             eval_prompt = None
             eval_content = f"[Aggregate mode] Combined {len(all_outputs)} outputs"
-            sounding_costs = None
+            candidate_costs = None
             quality_scores = None
             frontier_indices = None
             dominated_map = None
@@ -7304,15 +7304,15 @@ Use only numbers 0-100 for scores."""
 
             # Skip directly to winner processing (below)
         else:
-            # Now evaluate soundings (only valid ones, unless all failed)
+            # Now evaluate candidates (only valid ones, unless all failed)
             # Update cell progress for evaluation stage
             update_cell_progress(
                 self.session_id, self.config.cascade_id, cell.name, self.depth,
-                sounding_stage="evaluating"
+                candidate_stage="evaluating"
             )
 
             # Create evaluator trace
-            evaluator_trace = soundings_trace.create_child("evaluator", "sounding_evaluation")
+            evaluator_trace = candidates_trace.create_child("evaluator", "candidate_evaluation")
 
             # Check for human evaluation mode
             use_human_eval = cell.candidates.evaluator == "human"
@@ -7322,12 +7322,12 @@ Use only numbers 0-100 for scores."""
         # Human evaluation: block for human to pick winner via UI
         if use_human_eval or use_hybrid_eval:
             # For hybrid: first do LLM prefilter, then human picks from top N
-            eval_candidates = valid_sounding_results
+            eval_candidates = valid_candidate_results
             if use_hybrid_eval and cell.candidates.llm_prefilter:
                 prefilter_n = cell.candidates.llm_prefilter
                 console.print(f"{indent}[bold cyan]🔀 Hybrid mode: LLM prefiltering to top {prefilter_n}...[/bold cyan]")
-                eval_candidates = self._llm_prefilter_soundings(
-                    valid_sounding_results,
+                eval_candidates = self._llm_prefilter_candidates(
+                    valid_candidate_results,
                     prefilter_n,
                     cell.candidates.llm_prefilter_instructions or cell.candidates.evaluator_instructions,
                     evaluator_trace
@@ -7337,17 +7337,17 @@ Use only numbers 0-100 for scores."""
             console.print(f"{indent}[bold yellow]👤 Human Evaluation: Waiting for human to pick winner...[/bold yellow]")
 
             # Get costs for each candidate from unified logs
-            sounding_costs = self._get_sounding_costs(eval_candidates)
+            candidate_costs = self._get_candidate_costs(eval_candidates)
 
             # Build candidate outputs and metadata for the UI
-            sounding_outputs = [str(sr.get("result", "")) for sr in eval_candidates]
-            sounding_metadata = []
+            candidate_outputs = [str(sr.get("result", "")) for sr in eval_candidates]
+            candidate_metadata = []
             for idx, sr in enumerate(eval_candidates):
                 # Extract images from candidate results
                 # Images are stored as (base64_data_url, description) tuples
-                sounding_images = sr.get("images", [])
+                candidate_images = sr.get("images", [])
                 image_urls = []
-                for img_data in sounding_images:
+                for img_data in candidate_images:
                     if isinstance(img_data, tuple) and len(img_data) >= 1:
                         # First element is base64 data URL
                         image_urls.append(img_data[0])
@@ -7357,7 +7357,7 @@ Use only numbers 0-100 for scores."""
 
                 meta = {
                     "index": sr["index"],
-                    "cost": sounding_costs[idx] if idx < len(sounding_costs) else None,
+                    "cost": candidate_costs[idx] if idx < len(candidate_costs) else None,
                     "tokens": None,  # Could extract from trace
                     "model": sr.get("model"),
                     "mutation_applied": sr.get("mutation_applied"),
@@ -7365,12 +7365,12 @@ Use only numbers 0-100 for scores."""
                     "validation": sr.get("validation"),
                     "images": image_urls,
                 }
-                sounding_metadata.append(meta)
+                candidate_metadata.append(meta)
 
             # Build UI spec from human_eval config
             human_eval_config = cell.candidates.human_eval
             ui_spec = {
-                "type": "sounding_comparison",
+                "type": "candidate_comparison",
                 "presentation": human_eval_config.presentation.value if human_eval_config else "side_by_side",
                 "selection_mode": human_eval_config.selection_mode.value if human_eval_config else "pick_one",
                 "attempts": [
@@ -7379,7 +7379,7 @@ Use only numbers 0-100 for scores."""
                         "output": output,
                         "metadata": meta,
                     }
-                    for i, (output, meta) in enumerate(zip(sounding_outputs, sounding_metadata))
+                    for i, (output, meta) in enumerate(zip(candidate_outputs, candidate_metadata))
                 ],
                 "options": {
                     "show_index": human_eval_config.show_index if human_eval_config else False,
@@ -7399,12 +7399,12 @@ Use only numbers 0-100 for scores."""
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
                 cell_name=cell.name,
-                checkpoint_type=CheckpointType.SOUNDING_EVAL,
+                checkpoint_type=CheckpointType.CANDIDATE_EVAL,
                 ui_spec=ui_spec,
                 echo_snapshot=self.echo.get_full_echo(),
                 cell_output=f"Comparing {len(eval_candidates)} candidate attempts",
-                sounding_outputs=sounding_outputs,
-                sounding_metadata=sounding_metadata,
+                candidate_outputs=candidate_outputs,
+                candidate_metadata=candidate_metadata,
                 timeout_seconds=human_eval_config.timeout_seconds if human_eval_config else None
             )
 
@@ -7442,16 +7442,16 @@ Use only numbers 0-100 for scores."""
                 # Got human response
                 if response.get("reject_all"):
                     # Human rejected all - could retry or abort
-                    console.print(f"{indent}[yellow]⚠ Human rejected all soundings[/yellow]")
+                    console.print(f"{indent}[yellow]⚠ Human rejected all candidates[/yellow]")
                     raise ValueError("Human rejected all candidate attempts")
 
                 # Get winner index (relative to eval_candidates)
                 relative_winner_index = response.get("winner_index", 0)
 
-                # Map back to original index in valid_sounding_results
+                # Map back to original index in valid_candidate_results
                 winner_candidate = eval_candidates[relative_winner_index]
                 winner_index = next(
-                    i for i, sr in enumerate(valid_sounding_results)
+                    i for i, sr in enumerate(valid_candidate_results)
                     if sr["index"] == winner_candidate["index"]
                 )
 
@@ -7460,7 +7460,7 @@ Use only numbers 0-100 for scores."""
                 eval_content = f"[Human selection] Selected attempt {winner_candidate['index'] + 1}"
                 if reasoning:
                     eval_content += f"\nReasoning: {reasoning}"
-                eval_prompt = f"[Human Evaluation] {len(eval_candidates)} soundings presented to human evaluator"
+                eval_prompt = f"[Human Evaluation] {len(eval_candidates)} candidates presented to human evaluator"
 
                 console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_candidate['index'] + 1}[/bold green]")
                 if reasoning:
@@ -7473,7 +7473,7 @@ Use only numbers 0-100 for scores."""
                     cell_name=cell.name,
                     preferred_index=winner_candidate["index"],
                     system_winner_index=-1,  # No system winner in pure human eval
-                    sounding_outputs=[
+                    candidate_outputs=[
                         {"index": sr["index"], "content": str(sr.get("result", "")), "metadata": sr}
                         for sr in eval_candidates
                     ],
@@ -7488,7 +7488,7 @@ Use only numbers 0-100 for scores."""
                 )
 
         # Initialize variables used in both human eval and LLM eval paths
-        sounding_costs = None
+        candidate_costs = None
         quality_scores = None
         frontier_indices = None
         dominated_map = None
@@ -7500,7 +7500,7 @@ Use only numbers 0-100 for scores."""
         # Only run LLM evaluation if we didn't do human eval (or fell back from timeout)
         # Also skip if winner_already_set (aggregate mode)
         if not (use_human_eval or use_hybrid_eval or winner_already_set):
-            console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_sounding_results)} soundings...[/bold yellow]")
+            console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_candidate_results)} candidates...[/bold yellow]")
 
             # Cell 3: Pareto Frontier Analysis
             if use_pareto:
@@ -7511,16 +7511,16 @@ Use only numbers 0-100 for scores."""
 
                 # Get costs
                 console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
-                sounding_costs = self._get_sounding_costs(valid_sounding_results)
-                for i, sr in enumerate(valid_sounding_results):
-                    sr["cost"] = sounding_costs[i]
-                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
+                candidate_costs = self._get_candidate_costs(valid_candidate_results)
+                for i, sr in enumerate(valid_candidate_results):
+                    sr["cost"] = candidate_costs[i]
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in candidate_costs)}[/dim]")
 
                 # Get quality scores
                 console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
                 (quality_scores, evaluator_reasoning, eval_cost, eval_tokens_in,
                  eval_tokens_out, eval_request_id, eval_model) = self._get_quality_scores_from_evaluator(
-                    valid_sounding_results,
+                    valid_candidate_results,
                     cell.candidates.evaluator_instructions,
                     evaluator_trace
                 )
@@ -7530,7 +7530,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=soundings_trace.id,
+                    parent_id=candidates_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -7546,17 +7546,17 @@ Use only numbers 0-100 for scores."""
                     request_id=eval_request_id,
                 )
 
-                for i, sr in enumerate(valid_sounding_results):
+                for i, sr in enumerate(valid_candidate_results):
                     sr["quality_score"] = quality_scores[i]
                 console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
 
                 # Compute Pareto frontier
                 frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
-                    valid_sounding_results, quality_scores, sounding_costs
+                    valid_candidate_results, quality_scores, candidate_costs
                 )
 
                 # Store Pareto data in candidate results
-                for i, sr in enumerate(valid_sounding_results):
+                for i, sr in enumerate(valid_candidate_results):
                     sr["is_pareto_optimal"] = i in frontier_indices
                     sr["dominated_by"] = dominated_map.get(i)
                     sr["pareto_rank"] = pareto_ranks.get(i, 2)
@@ -7564,24 +7564,24 @@ Use only numbers 0-100 for scores."""
                 # Display frontier
                 console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
                 for idx in frontier_indices:
-                    model = valid_sounding_results[idx].get("model", "unknown")
+                    model = valid_candidate_results[idx].get("model", "unknown")
                     quality = quality_scores[idx]
-                    cost = sounding_costs[idx]
-                    console.print(f"{indent}    • Sounding {valid_sounding_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+                    cost = candidate_costs[idx]
+                    console.print(f"{indent}    • Sounding {valid_candidate_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
 
                 # Select winner from frontier
                 winner_index = self._select_from_pareto_frontier(
-                    valid_sounding_results,
+                    valid_candidate_results,
                     frontier_indices,
                     quality_scores,
-                    sounding_costs,
+                    candidate_costs,
                     cell.candidates.pareto_frontier.policy
                 )
 
                 # Build comprehensive eval_content with quality reasoning + Pareto selection
-                winner_model = valid_sounding_results[winner_index].get("model", "unknown")
+                winner_model = valid_candidate_results[winner_index].get("model", "unknown")
                 winner_quality = quality_scores[winner_index]
-                winner_cost = sounding_costs[winner_index]
+                winner_cost = candidate_costs[winner_index]
 
                 eval_content = f"""## Quality Assessment
 
@@ -7589,16 +7589,16 @@ Use only numbers 0-100 for scores."""
 
 ## Pareto Frontier Analysis
 
-- **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_sounding_results)} total
+- **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_candidate_results)} total
 - **Selection policy:** `{cell.candidates.pareto_frontier.policy}`
 - **Winner:** Attempt {winner_index + 1} ({winner_model}) - Quality: {winner_quality:.1f}, Cost: ${winner_cost:.6f}
 
 ### Frontier Members:
 """
                 for idx in frontier_indices:
-                    model = valid_sounding_results[idx].get("model", "unknown")
+                    model = valid_candidate_results[idx].get("model", "unknown")
                     quality = quality_scores[idx]
-                    cost = sounding_costs[idx]
+                    cost = candidate_costs[idx]
                     is_winner = "**WINNER**" if idx == winner_index else ""
                     eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
 
@@ -7607,52 +7607,52 @@ Use only numbers 0-100 for scores."""
                     self._log_pareto_frontier(
                         self.session_id,
                         cell.name,
-                        valid_sounding_results,
+                        valid_candidate_results,
                         frontier_indices,
                         dominated_map,
                         quality_scores,
-                        sounding_costs,
+                        candidate_costs,
                         winner_index
                     )
 
             # Cell 2: Cost-Aware Evaluation
             elif use_cost_aware:
                 console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
-                sounding_costs = self._get_sounding_costs(valid_sounding_results)
+                candidate_costs = self._get_candidate_costs(valid_candidate_results)
                 normalized_costs = self._normalize_costs(
-                    sounding_costs,
+                    candidate_costs,
                     cell.candidates.cost_aware_evaluation.cost_normalization
                 )
                 # Store costs in candidate results for logging
-                for i, sr in enumerate(valid_sounding_results):
-                    sr["cost"] = sounding_costs[i]
+                for i, sr in enumerate(valid_candidate_results):
+                    sr["cost"] = candidate_costs[i]
                     sr["normalized_cost"] = normalized_costs[i]
 
                 # Build cost-aware evaluation prompt
                 eval_prompt = self._build_cost_aware_eval_prompt(
-                    valid_sounding_results,
-                    sounding_costs,
+                    valid_candidate_results,
+                    candidate_costs,
                     cell.candidates,
                     cell.candidates.evaluator_instructions
                 )
-                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in sounding_costs)}[/dim]")
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in candidate_costs)}[/dim]")
 
-                # Check if any soundings have images for multi-modal evaluation
-                any_images = any(candidate.get('images') for candidate in valid_sounding_results)
+                # Check if any candidates have images for multi-modal evaluation
+                any_images = any(candidate.get('images') for candidate in valid_candidate_results)
                 eval_context_messages = []
 
                 if any_images:
                     # Build multi-modal context messages with images
                     # Images are shown with clear attempt labels for association
-                    for i, candidate in enumerate(valid_sounding_results):
-                        sounding_images = candidate.get('images', [])
-                        if sounding_images:
-                            num_images = len(sounding_images)
+                    for i, candidate in enumerate(valid_candidate_results):
+                        candidate_images = candidate.get('images', [])
+                        if candidate_images:
+                            num_images = len(candidate_images)
                             attempt_content = [{
                                 "type": "text",
                                 "text": f"═══ ATTEMPT {i+1} VISUAL OUTPUT ({num_images} image{'s' if num_images > 1 else ''}) ═══"
                             }]
-                            for img_idx, (img_data, desc) in enumerate(sounding_images):
+                            for img_idx, (img_data, desc) in enumerate(candidate_images):
                                 attempt_content.append({
                                     "type": "image_url",
                                     "image_url": {"url": img_data}
@@ -7665,7 +7665,7 @@ Use only numbers 0-100 for scores."""
                                 "role": "user",
                                 "content": attempt_content
                             })
-                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_candidate_results)} total images[/cyan]")
 
                 # Create evaluator agent and run
                 evaluator_agent = Agent(
@@ -7690,7 +7690,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=soundings_trace.id,
+                    parent_id=candidates_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -7712,7 +7712,7 @@ Use only numbers 0-100 for scores."""
                 match = re.search(r'\b([1-9]\d*)\b', eval_content)
                 if match:
                     winner_index = int(match.group(1)) - 1
-                    if winner_index >= len(valid_sounding_results):
+                    if winner_index >= len(valid_candidate_results):
                         winner_index = 0
 
             # Cell 1: Standard quality-only evaluation
@@ -7720,21 +7720,21 @@ Use only numbers 0-100 for scores."""
                 eval_prompt = f"{cell.candidates.evaluator_instructions}\n\n"
                 eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
-                # Check if any soundings have images
-                any_images = any(candidate.get('images') for candidate in valid_sounding_results)
+                # Check if any candidates have images
+                any_images = any(candidate.get('images') for candidate in valid_candidate_results)
 
                 if any_images:
                     # Multi-modal evaluation: build context with images
                     # Each attempt gets its own message with clear labeling: text result + images together
                     eval_context_messages = []
 
-                    for i, candidate in enumerate(valid_sounding_results):
-                        sounding_images = candidate.get('images', [])
-                        num_images = len(sounding_images)
+                    for i, candidate in enumerate(valid_candidate_results):
+                        candidate_images = candidate.get('images', [])
+                        num_images = len(candidate_images)
 
                         # Build content block with clear attempt identification
                         header = f"═══════════════════════════════════════\n"
-                        header += f"ATTEMPT {i+1} OF {len(valid_sounding_results)}\n"
+                        header += f"ATTEMPT {i+1} OF {len(valid_candidate_results)}\n"
                         header += f"═══════════════════════════════════════\n\n"
                         header += f"Text Result:\n{candidate['result']}"
 
@@ -7744,7 +7744,7 @@ Use only numbers 0-100 for scores."""
                         attempt_content = [{"type": "text", "text": header}]
 
                         # Add images immediately after the header (same message = clear association)
-                        for img_idx, (img_data, desc) in enumerate(sounding_images):
+                        for img_idx, (img_data, desc) in enumerate(candidate_images):
                             attempt_content.append({
                                 "type": "image_url",
                                 "image_url": {"url": img_data}
@@ -7761,19 +7761,19 @@ Use only numbers 0-100 for scores."""
                         })
 
                     # Add final evaluation instruction
-                    eval_prompt += f"\n\nI've shown you {len(valid_sounding_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
+                    eval_prompt += f"\n\nI've shown you {len(valid_candidate_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
                     eval_prompt += f"Compare both the text quality AND visual output quality. "
-                    eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_sounding_results)}) and a brief explanation."
+                    eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_candidate_results)}) and a brief explanation."
 
-                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_sounding_results)} total images[/cyan]")
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_candidate_results)} total images[/cyan]")
                 else:
                     # Text-only evaluation (original behavior)
                     eval_context_messages = []
-                    for i, candidate in enumerate(valid_sounding_results):
+                    for i, candidate in enumerate(valid_candidate_results):
                         eval_prompt += f"## Attempt {i+1}\n"
                         eval_prompt += f"Result: {candidate['result']}\n\n"
 
-                    eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_sounding_results))
+                    eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_candidate_results))
 
                 # Create evaluator agent and run
                 evaluator_agent = Agent(
@@ -7798,7 +7798,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=soundings_trace.id,
+                    parent_id=candidates_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -7820,13 +7820,13 @@ Use only numbers 0-100 for scores."""
                 match = re.search(r'\b([1-9]\d*)\b', eval_content)
                 if match:
                     winner_index = int(match.group(1)) - 1
-                    if winner_index >= len(valid_sounding_results):
+                    if winner_index >= len(valid_candidate_results):
                         winner_index = 0
 
-        # Get winner from valid_sounding_results (winner_index is relative to this filtered list)
+        # Get winner from valid_candidate_results (winner_index is relative to this filtered list)
         # Skip if winner was already set by aggregate mode
         if not winner_already_set:
-            winner = valid_sounding_results[winner_index]
+            winner = valid_candidate_results[winner_index]
 
         # Display winner with original index for clarity
         if winner.get("is_aggregated"):
@@ -7842,7 +7842,7 @@ Use only numbers 0-100 for scores."""
         self.current_cell_candidate_index = None
 
         # Track original winner index for metadata logging
-        # In aggregate mode, all valid soundings contribute (no single winner)
+        # In aggregate mode, all valid candidates contribute (no single winner)
         is_aggregated = winner.get("is_aggregated", False)
         if is_aggregated:
             original_winner_index = -1  # Sentinel value for aggregate mode
@@ -7851,13 +7851,13 @@ Use only numbers 0-100 for scores."""
             original_winner_index = winner['index']
             aggregated_indices = set()
 
-        # Emit sounding_winner event for real-time UI tracking
+        # Emit candidate_winner event for real-time UI tracking
         from .events import get_event_bus, Event as WinnerEvent
         from datetime import datetime as dt_winner
         winner_event_bus = get_event_bus()
         winner_output = str(winner.get('result', ''))[:500] if winner.get('result') else None
         winner_event_bus.publish(WinnerEvent(
-            type="sounding_winner",
+            type="candidate_winner",
             session_id=self.session_id,
             timestamp=dt_winner.now().isoformat(),
             data={
@@ -7870,20 +7870,20 @@ Use only numbers 0-100 for scores."""
             }
         ))
 
-        # Compute species hash for prompt evolution tracking (once for all soundings in this cell)
-        # NOTE: This should match the species_hash computed at the start of soundings (line 3374)
+        # Compute species hash for prompt evolution tracking (once for all candidates in this cell)
+        # NOTE: This should match the species_hash computed at the start of candidates (line 3374)
         # We re-compute here instead of passing it through to avoid coupling
         cell_config_dict = cell.model_dump() if hasattr(cell, 'model_dump') else None
         cell_species_hash = compute_species_hash(cell_config_dict, input_data)
 
         # Add all candidate attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
-        for sr in sounding_results:
-            # In aggregate mode, all contributing soundings are "winners"
+        for sr in candidate_results:
+            # In aggregate mode, all contributing candidates are "winners"
             if is_aggregated:
                 is_winner = sr["index"] in aggregated_indices
             else:
                 is_winner = sr["index"] == original_winner_index
-            sounding_metadata = {
+            candidate_metadata = {
                 "cell_name": cell.name,
                 "candidate_index": sr["index"],
                 "is_winner": is_winner,
@@ -7891,32 +7891,32 @@ Use only numbers 0-100 for scores."""
                 "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
                 "mutation_type": sr.get("mutation_type"),  # Log mutation type: rewrite, augment, approach
                 "mutation_template": sr.get("mutation_template"),  # Log mutation template/instruction
-                "model": sr.get("model"),  # Log which model was used (Cell 1: Multi-Model Soundings)
+                "model": sr.get("model"),  # Log which model was used (Cell 1: Multi-Model Candidates)
                 "validation": sr.get("validation"),  # Log validation result if validator was used
                 "species_hash": cell_species_hash,  # Track prompt template DNA for evolution analysis
             }
             # Add cost data if available (Cell 2: Cost-Aware Evaluation)
             if sr.get("cost") is not None:
-                sounding_metadata["cost"] = sr["cost"]
-                sounding_metadata["normalized_cost"] = sr.get("normalized_cost")
+                candidate_metadata["cost"] = sr["cost"]
+                candidate_metadata["normalized_cost"] = sr.get("normalized_cost")
             # Add Pareto data if available (Cell 3: Pareto Frontier Analysis)
             if sr.get("quality_score") is not None:
-                sounding_metadata["quality_score"] = sr["quality_score"]
+                candidate_metadata["quality_score"] = sr["quality_score"]
             if sr.get("is_pareto_optimal") is not None:
-                sounding_metadata["is_pareto_optimal"] = sr["is_pareto_optimal"]
-                sounding_metadata["dominated_by"] = sr.get("dominated_by")
-                sounding_metadata["pareto_rank"] = sr.get("pareto_rank")
+                candidate_metadata["is_pareto_optimal"] = sr["is_pareto_optimal"]
+                candidate_metadata["dominated_by"] = sr.get("dominated_by")
+                candidate_metadata["pareto_rank"] = sr.get("pareto_rank")
 
             # Add semantic classification
-            sounding_metadata["semantic_actor"] = "sounding_agent"
-            sounding_metadata["semantic_purpose"] = "generation"
+            candidate_metadata["semantic_actor"] = "candidate_agent"
+            candidate_metadata["semantic_purpose"] = "generation"
 
             self.echo.add_history({
-                "role": "sounding_attempt",
+                "role": "candidate_attempt",
                 "content": str(sr["result"])[:200] if sr["result"] else "",
-                "node_type": "sounding_attempt"
-            }, trace_id=sr["trace_id"], parent_id=soundings_trace.id, node_type="sounding_attempt",
-               metadata=sounding_metadata)
+                "node_type": "candidate_attempt"
+            }, trace_id=sr["trace_id"], parent_id=candidates_trace.id, node_type="candidate_attempt",
+               metadata=candidate_metadata)
 
         # Log evaluator entry (skip in aggregate mode - there's no evaluator)
         if not is_aggregated:
@@ -7927,9 +7927,9 @@ Use only numbers 0-100 for scores."""
             # Build per-attempt summary
             attempt_summaries = []
             total_images_evaluated = 0
-            for i, candidate in enumerate(valid_sounding_results):
-                sounding_images = candidate.get('images', [])
-                num_images = len(sounding_images)
+            for i, candidate in enumerate(valid_candidate_results):
+                candidate_images = candidate.get('images', [])
+                num_images = len(candidate_images)
                 total_images_evaluated += num_images
                 attempt_summaries.append({
                     "attempt_number": i + 1,
@@ -7945,9 +7945,9 @@ Use only numbers 0-100 for scores."""
 
             evaluator_input_summary = {
                 "is_multimodal": total_images_evaluated > 0,
-                "total_attempts_shown": len(valid_sounding_results),
-                "total_soundings_run": len(sounding_results),
-                "filtered_count": len(sounding_results) - len(valid_sounding_results),
+                "total_attempts_shown": len(valid_candidate_results),
+                "total_candidates_run": len(candidate_results),
+                "filtered_count": len(candidate_results) - len(valid_candidate_results),
                 "total_images": total_images_evaluated,
                 "attempts": attempt_summaries,
                 "evaluation_mode": "cost_aware" if use_cost_aware else ("pareto" if use_pareto else "quality_only"),
@@ -7960,20 +7960,20 @@ Use only numbers 0-100 for scores."""
                 "winner_trace_id": winner['trace_id'],
                 "evaluation": eval_content,
                 "model": self.model,
-                "total_soundings": len(sounding_results),
-                "valid_soundings": len(valid_sounding_results),
+                "total_candidates": len(candidate_results),
+                "valid_candidates": len(valid_candidate_results),
                 # NEW: Full evaluator input observability
                 "evaluator_prompt": eval_prompt,  # The full text prompt sent to evaluator
                 "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
                 "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
             }
-            # Add cost-aware evaluation info (Cell 2: Multi-Model Soundings)
+            # Add cost-aware evaluation info (Cell 2: Multi-Model Candidates)
             if use_cost_aware:
                 evaluator_metadata["cost_aware"] = True
                 evaluator_metadata["quality_weight"] = cell.candidates.cost_aware_evaluation.quality_weight
                 evaluator_metadata["cost_weight"] = cell.candidates.cost_aware_evaluation.cost_weight
-                if sounding_costs:
-                    evaluator_metadata["sounding_costs"] = sounding_costs
+                if candidate_costs:
+                    evaluator_metadata["candidate_costs"] = candidate_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
             # Add Pareto frontier info (Cell 3: Pareto Frontier Analysis)
             if use_pareto:
@@ -7983,8 +7983,8 @@ Use only numbers 0-100 for scores."""
                 if quality_scores:
                     evaluator_metadata["quality_scores"] = quality_scores
                     evaluator_metadata["winner_quality"] = winner.get("quality_score")
-                if sounding_costs:
-                    evaluator_metadata["sounding_costs"] = sounding_costs
+                if candidate_costs:
+                    evaluator_metadata["candidate_costs"] = candidate_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
 
             # Add semantic classification to evaluator metadata
@@ -7999,39 +7999,39 @@ Use only numbers 0-100 for scores."""
                 "role": "evaluator",
                 "content": eval_content,  # Full content, no truncation
                 "node_type": "evaluator"
-            }, trace_id=evaluator_trace.id, parent_id=soundings_trace.id, node_type="evaluator",
+            }, trace_id=evaluator_trace.id, parent_id=candidates_trace.id, node_type="evaluator",
                metadata=evaluator_metadata, skip_unified_log=skip_auto_log)
 
         # Add winning result to history
         # IMPORTANT: Include candidate_index and is_winner so UI can identify winning model
         # CRITICAL: Store actual winner output in "content" for fallback extraction
         if is_aggregated:
-            # Aggregate mode: all contributing soundings are "winners"
+            # Aggregate mode: all contributing candidates are "winners"
             self.echo.add_history({
-                "role": "soundings_result",
+                "role": "candidates_result",
                 "content": winner.get('result'),  # Actual aggregated output
                 "winner_index": -1,  # No single winner
                 "evaluation": eval_content,
                 "is_aggregated": True,
                 "aggregated_indices": list(aggregated_indices)
-            }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
+            }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates_result",
                metadata={"cell_name": cell.name, "winner_index": -1, "factor": factor,
                          "is_aggregated": True, "aggregated_count": winner.get('aggregated_count', 0),
                          "aggregated_indices": list(aggregated_indices),
                          "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
-            # Mark all contributing soundings as winners in database
-            from .unified_logs import mark_sounding_winner
+            # Mark all contributing candidates as winners in database
+            from .unified_logs import mark_candidate_winner
             for idx in aggregated_indices:
-                mark_sounding_winner(self.session_id, cell.name, idx)
+                mark_candidate_winner(self.session_id, cell.name, idx)
         else:
             # Single winner mode
             self.echo.add_history({
-                "role": "soundings_result",
+                "role": "candidates_result",
                 "content": winner.get('result'),  # Actual winner output
                 "winner_index": winner_index + 1,
                 "evaluation": eval_content
-            }, trace_id=soundings_trace.id, parent_id=trace.id, node_type="soundings_result",
+            }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates_result",
                metadata={"cell_name": cell.name, "winner_index": winner_index, "factor": factor,
                          "candidate_index": original_winner_index, "is_winner": True,
                          "model": winner.get('model'),  # Track winning model for UI highlighting
@@ -8040,8 +8040,8 @@ Use only numbers 0-100 for scores."""
             # Mark winning candidate in database for prompt evolution learning
             # This updates all rows in the winning candidate thread with is_winner=True
             # so _fetch_winning_mutations() can find them for rewrite mode learning
-            from .unified_logs import mark_sounding_winner
-            mark_sounding_winner(self.session_id, cell.name, original_winner_index)
+            from .unified_logs import mark_candidate_winner
+            mark_candidate_winner(self.session_id, cell.name, original_winner_index)
 
         self._update_graph()
 
@@ -8058,9 +8058,9 @@ Use only numbers 0-100 for scores."""
                     winner=winner,
                     cell=cell,
                     input_data=input_data,
-                    trace=soundings_trace,
+                    trace=candidates_trace,
                     context_snapshot=context_snapshot,
-                    reforge_step=0  # Initial soundings = step 0
+                    reforge_step=0  # Initial candidates = step 0
                 )
 
                 # Reset after reforge completes
@@ -8319,8 +8319,8 @@ Use only numbers 0-100 for scores."""
     def _reforge_winner(self, winner: dict, cell: CellConfig, input_data: dict, trace: TraceNode,
                         context_snapshot: list, reforge_step: int) -> dict:
         """
-        Reforge (refine) the winning output through iterative soundings.
-        Each step runs mini-soundings with honing prompt to progressively improve quality.
+        Reforge (refine) the winning output through iterative candidates.
+        Each step runs mini-candidates with honing prompt to progressively improve quality.
         """
         indent = "  " * self.depth
         reforge_config = cell.candidates.reforge
@@ -8378,7 +8378,7 @@ Refinement directive: {reforge_config.honing_prompt}
             refine_cell = deepcopy(cell)
             refine_cell.instructions = refinement_instructions
 
-            # Snapshot state before reforge soundings
+            # Snapshot state before reforge candidates
             echo_state_snapshot = self.echo.state.copy()
             echo_history_snapshot = self.echo.history.copy()
             echo_lineage_snapshot = self.echo.lineage.copy()
@@ -8434,7 +8434,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
                     # Set tracking state
                     refinement_runner.current_cell_candidate_index = i
-                    refinement_runner._current_sounding_factor = factor_per_step  # For Jinja2 templates
+                    refinement_runner._current_candidate_factor = factor_per_step  # For Jinja2 templates
                     refinement_runner.current_reforge_step = step
 
                     # Execute the cell on isolated runner
@@ -8522,7 +8522,7 @@ Refinement directive: {reforge_config.honing_prompt}
             eval_prompt = f"{eval_instructions}\n\n"
             eval_prompt += "Please evaluate the following refinements and select the best one.\n\n"
 
-            # Check if any refinements have images (multi-modal evaluation like soundings)
+            # Check if any refinements have images (multi-modal evaluation like candidates)
             any_images = any(refinement.get('images') for refinement in reforge_results)
 
             if any_images:
@@ -8604,7 +8604,7 @@ Refinement directive: {reforge_config.honing_prompt}
                        tokens_out=eval_tokens_out, request_id=eval_request_id,
                        cell_name=cell.name)
 
-            # Build evaluator input summary for observability (like soundings)
+            # Build evaluator input summary for observability (like candidates)
             total_images_evaluated = sum(len(r.get('images', [])) for r in reforge_results)
             refinement_summaries = []
             for i, refinement in enumerate(reforge_results):
@@ -8673,8 +8673,8 @@ Refinement directive: {reforge_config.honing_prompt}
                })
 
             # Mark reforge winner in database for prompt evolution learning
-            from .unified_logs import mark_sounding_winner
-            mark_sounding_winner(self.session_id, cell.name, winner_index)
+            from .unified_logs import mark_candidate_winner
+            mark_candidate_winner(self.session_id, cell.name, winner_index)
 
             # Check threshold ward if configured
             if reforge_config.threshold:
@@ -8756,9 +8756,9 @@ Refinement directive: {reforge_config.honing_prompt}
             if Agent.is_image_generation_model(cell_model):
                 return self._execute_image_generation_cell(cell, input_data, trace)
 
-            # Check if soundings (Tree of Thought) is enabled
+            # Check if candidates (Tree of Thought) is enabled
             if cell.candidates and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1):
-                return self._execute_cell_with_soundings(cell, input_data, trace, initial_injection)
+                return self._execute_cell_with_candidates(cell, input_data, trace, initial_injection)
 
             return self._execute_cell_internal(cell, input_data, trace, initial_injection)
 
@@ -8794,7 +8794,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     "error_message": display_msg,
                     "cell_name": cell.name,
                     "cell_type": "deterministic" if cell.is_deterministic() else "llm",
-                    "has_soundings": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1) if cell.candidates else False,
+                    "has_candidates": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1) if cell.candidates else False,
                 }
             )
 
@@ -10114,8 +10114,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "lineage": self.echo.lineage,
             # Sounding context - enables fan-out patterns like {{ state.items[candidate_index] }}
             "candidate_index": self.current_cell_candidate_index if self.current_cell_candidate_index is not None else 0,
-            "candidate_factor": getattr(self, '_current_sounding_factor', 1),  # Total soundings in this cell
-            "is_sounding": self.current_cell_candidate_index is not None,
+            "candidate_factor": getattr(self, '_current_candidate_factor', 1),  # Total candidates in this cell
+            "is_candidate": self.current_cell_candidate_index is not None,
         }
 
         # Build/update RAG index if configured for this cell
@@ -10615,7 +10615,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 console.print(f"{indent}  ↳ [bold yellow]Routing to Sub-Cascade: {sub.ref}[/bold yellow] (In:{sub.context_in}, Out:{sub.context_out})")
                 log_message(self.session_id, "sub_cascade_start", sub.ref, trace_id=trace.id, parent_id=trace.parent_id, node_type="link")
 
-                # Generate unique sub-cascade session ID (include candidate index if inside soundings)
+                # Generate unique sub-cascade session ID (include candidate index if inside candidates)
                 # Also determine which candidate_index to pass through to child
                 sub_candidate_index = None
                 if self.current_cell_candidate_index is not None:
@@ -10742,14 +10742,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                 # Add turn structure to Echo for visualization
                 # Include candidate_index so turn messages group correctly with their candidate branch
-                current_sounding = self.current_cell_candidate_index or self.candidate_index
+                current_candidate = self.current_cell_candidate_index or self.candidate_index
                 self.echo.add_history({
                     "role": "structure",
                     "content": f"Turn {i+1}",
                     "node_type": "turn"
                 }, trace_id=turn_trace.id, parent_id=trace.id, node_type="turn",
                    metadata={"cell_name": cell.name, "turn_number": i+1, "max_turns": max_turns,
-                             "candidate_index": current_sounding,  # Tag with candidate for correct grouping
+                             "candidate_index": current_candidate,  # Tag with candidate for correct grouping
                              "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
                 if max_turns > 1:
@@ -11939,7 +11939,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             "original_input": input_data
                         }
 
-                        # Generate unique validator session ID (include candidate index if inside soundings)
+                        # Generate unique validator session ID (include candidate index if inside candidates)
                         validator_candidate_index = None
                         if self.current_cell_candidate_index is not None:
                             validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_cell_candidate_index}"

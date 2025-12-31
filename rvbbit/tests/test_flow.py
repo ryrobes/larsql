@@ -33,7 +33,7 @@ def test_full_flow():
     
     config_path = os.path.join(os.path.dirname(__file__), "test_cascade.json")
     
-    input_data = {"user_name": "WindlassUser"}
+    input_data = {"user_name": "RvbbitUser"}
     
     # Run the cascade
     result = run_cascade(config_path, input_data, session_id="test_session_1")

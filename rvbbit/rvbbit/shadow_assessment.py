@@ -1303,7 +1303,7 @@ def queue_intra_cell_shadow_assessment(
         cell_name: Name of the cell
         full_history: Full message history for context building
         turn_number: Current turn number (0-indexed)
-        candidate_index: Candidate index if in soundings (None otherwise)
+        candidate_index: Candidate index if in candidates (None otherwise)
         is_loop_retry: Whether this is a loop_until retry turn
         actual_config_enabled: Whether intra-context was actually enabled
         actual_tokens_after: Actual tokens after context building (if enabled)

@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path for imports
+# Add rvbbit to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from rvbbit.db_adapter import get_db

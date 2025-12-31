@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS cascade_analytics (
     cell_count UInt8,                       -- Count of cells executed
     error_count UInt8,                      -- Count of errors
     candidate_count UInt8 DEFAULT 0,        -- Total candidates used
-    winner_candidate_index Nullable(Int8),  -- Which candidate won (if soundings)
+    winner_candidate_index Nullable(Int8),  -- Which candidate won (if candidates)
 
     -- ============================================
     -- CONTEXT-AWARE BASELINES

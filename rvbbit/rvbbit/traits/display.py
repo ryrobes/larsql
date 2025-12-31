@@ -166,13 +166,13 @@ def show_ui(
 
         screenshot_service = get_screenshot_service()
         complete_html = _build_screenshot_html(html)
-        sounding_idx = get_current_candidate_index()
+        candidate_idx = get_current_candidate_index()
 
         screenshot_service.capture_htmx_render(
             html=complete_html,
             session_id=session_id,
             cell_name=cell_name or "show_ui",
-            candidate_index=sounding_idx,
+            candidate_index=candidate_idx,
             render_type="display"
         )
         print(f"[Screenshots] 📸 show_ui screenshot queued (overwrites)")

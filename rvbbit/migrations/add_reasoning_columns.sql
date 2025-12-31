@@ -11,7 +11,7 @@
 -- - max_tokens: explicit token budget for reasoning
 -- - exclude: hide reasoning from response (just return final answer)
 --
--- Windlass embeds this config in the model string using :: delimiter:
+-- Rvbbit embeds this config in the model string using :: delimiter:
 --   xai/grok-4::high              # effort=high
 --   xai/grok-4::16000             # max_tokens=16000
 --   xai/grok-4::high(8000)        # effort + budget hint

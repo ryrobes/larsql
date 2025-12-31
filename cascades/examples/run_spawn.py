@@ -3,10 +3,10 @@ import sys
 import json
 import time
 
-# Ensure we can import windlass
+# Ensure we can import rvbbit
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from windlass import run_cascade, set_provider
+from rvbbit import run_cascade, set_provider
 
 def main():
     set_provider(model="x-ai/grok-4.1-fast:free")

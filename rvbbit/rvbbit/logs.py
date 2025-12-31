@@ -97,13 +97,13 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
     )
 
     # Emit SSE event for candidate errors so LiveStore gets real-time updates
-    if node_type == "sounding_error" and candidate_index is not None:
+    if node_type == "candidate_error" and candidate_index is not None:
         try:
             from .events import get_event_bus, Event
             from datetime import datetime
             bus = get_event_bus()
             bus.publish(Event(
-                type="sounding_error",
+                type="candidate_error",
                 session_id=session_id,
                 timestamp=datetime.now().isoformat(),
                 data={

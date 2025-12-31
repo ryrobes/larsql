@@ -1,7 +1,7 @@
 #!/bin/bash
 # Stop Elasticsearch container
 
-CONTAINER_NAME="windlass-elasticsearch"
+CONTAINER_NAME="rvbbit-elasticsearch"
 
 if docker ps | grep -q "$CONTAINER_NAME"; then
     echo "Stopping Elasticsearch..."

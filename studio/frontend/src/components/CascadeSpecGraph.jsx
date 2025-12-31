@@ -71,7 +71,7 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
-    windlass_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    rvbbit_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
     linux_shell_dangerous: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
     hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },
@@ -82,9 +82,9 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
     (cell.tool || cell.deterministic_tool || (cell.instructions ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.llm_cell;
 
-  // Check for candidates/soundings
-  const hasCandidates = cell.candidates?.factor > 1 || cell.soundings_factor > 1 || cell.has_soundings;
-  const candidatesFactor = cell.candidates?.factor || cell.soundings_factor;
+  // Check for candidates/candidates
+  const hasCandidates = cell.candidates?.factor > 1 || cell.candidates_factor > 1 || cell.has_candidates;
+  const candidatesFactor = cell.candidates?.factor || cell.candidates_factor;
 
   // Check for wards
   const hasWards = cell.has_wards || cell.ward_count > 0;

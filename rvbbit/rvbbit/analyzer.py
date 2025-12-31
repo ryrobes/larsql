@@ -1,7 +1,7 @@
 """
 Prompt optimization through candidate analysis.
 
-The key insight: Soundings generate training data automatically.
+The key insight: Candidates generate training data automatically.
 Every candidate run = A/B test with cost, time, quality metrics.
 
 After N runs, analyze which candidate approaches win most often,
@@ -72,10 +72,10 @@ class SoundingAnalyzer:
 
         print(f"Found {len(sessions)} runs")
 
-        # Analyze each cell that has soundings
+        # Analyze each cell that has candidates
         suggestions = []
 
-        # Get cells with soundings (use cell_name column directly)
+        # Get cells with candidates (use cell_name column directly)
         # Search by both cascade_file and cascade_id
         cells_query = f"""
             SELECT DISTINCT cell_name
@@ -94,7 +94,7 @@ class SoundingAnalyzer:
             print(f"Error querying cells: {e}")
             cells = set()
 
-        print(f"Analyzing {len(cells)} cell(s) with soundings data...")
+        print(f"Analyzing {len(cells)} cell(s) with candidates data...")
         print()
 
         for cell_name in cells:
@@ -153,7 +153,7 @@ class SoundingAnalyzer:
             return None
 
         # Parse candidate data
-        sounding_attempts = {}  # {candidate_index: {"wins": N, "costs": [], "content": []}}
+        candidate_attempts = {}  # {candidate_index: {"wins": N, "costs": [], "content": []}}
 
         for row in events:
             try:
@@ -166,22 +166,22 @@ class SoundingAnalyzer:
                 if candidate_index is None:
                     continue
 
-                if candidate_index not in sounding_attempts:
-                    sounding_attempts[candidate_index] = {
+                if candidate_index not in candidate_attempts:
+                    candidate_attempts[candidate_index] = {
                         "wins": 0,
                         "total": 0,
                         "costs": [],
                         "content": []
                     }
 
-                sounding_attempts[candidate_index]["total"] += 1
+                candidate_attempts[candidate_index]["total"] += 1
 
                 if is_winner:
-                    sounding_attempts[candidate_index]["wins"] += 1
+                    candidate_attempts[candidate_index]["wins"] += 1
 
                 # Track cost if available
                 if cost:
-                    sounding_attempts[candidate_index]["costs"].append(cost)
+                    candidate_attempts[candidate_index]["costs"].append(cost)
 
                 # Track agent responses for pattern extraction
                 if role == "assistant" and content:
@@ -191,19 +191,19 @@ class SoundingAnalyzer:
                             content = json.loads(content)
                         except:
                             pass
-                    sounding_attempts[candidate_index]["content"].append(str(content) if content else "")
+                    candidate_attempts[candidate_index]["content"].append(str(content) if content else "")
 
             except:
                 continue
 
-        if not sounding_attempts:
+        if not candidate_attempts:
             return None
 
         # Find dominant winner
         dominant = None
         max_wins = 0
 
-        for idx, data in sounding_attempts.items():
+        for idx, data in candidate_attempts.items():
             if data["wins"] > max_wins:
                 max_wins = data["wins"]
                 dominant = (idx, data)
@@ -216,8 +216,8 @@ class SoundingAnalyzer:
         # Calculate win rate correctly:
         # - total_competitions = number of times ANY candidate was selected as winner
         # - win_rate = this candidate's wins / total competitions
-        total_competitions = sum(d["wins"] for d in sounding_attempts.values())
-        total_rows = sum(d["total"] for d in sounding_attempts.values())
+        total_competitions = sum(d["wins"] for d in candidate_attempts.values())
+        total_rows = sum(d["total"] for d in candidate_attempts.values())
         win_rate = dominant_data["wins"] / total_competitions if total_competitions > 0 else 0
 
         if win_rate < min_confidence:
@@ -228,7 +228,7 @@ class SoundingAnalyzer:
 
         # Calculate loser metrics for comparison
         loser_costs = []
-        for idx, data in sounding_attempts.items():
+        for idx, data in candidate_attempts.items():
             if idx != dominant_index:
                 loser_costs.extend(data["costs"])
 
@@ -239,7 +239,7 @@ class SoundingAnalyzer:
 
         return {
             "cell": cell_name,
-            "dominant_sounding": dominant_index,
+            "dominant_candidate": dominant_index,
             "win_rate": win_rate,
             "total_attempts": total_competitions,  # Number of competitions (sessions with winners)
             "total_rows": total_rows,  # Total log rows analyzed

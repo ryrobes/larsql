@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add windlass to path
+# Add rvbbit to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 from rvbbit.traits_manifest import get_trait_manifest
@@ -106,7 +106,7 @@ def execute_tool():
         with open(cascade_path, 'w') as f:
             json.dump(cascade, f, indent=2)
 
-        # Import windlass run_cascade directly (same pattern as app.py run-cascade endpoint)
+        # Import rvbbit run_cascade directly (same pattern as app.py run-cascade endpoint)
         from rvbbit import run_cascade as execute_cascade
 
         # Run the cascade in a background thread (async execution)

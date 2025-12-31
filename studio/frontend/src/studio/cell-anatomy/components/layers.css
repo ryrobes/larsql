@@ -392,7 +392,7 @@
 }
 
 /* ============================================
-   SOUNDINGS LAYER
+   CANDIDATES LAYER
    ============================================ */
 
 .cell-anatomy-layer-candidates {
@@ -588,7 +588,7 @@
 }
 
 /* ============================================
-   SOUNDING LANES CONTAINER
+   CANDIDATE LANES CONTAINER
    ============================================ */
 
 .layer-candidates-lanes {
@@ -599,7 +599,7 @@
 }
 
 /* ============================================
-   SOUNDING LANE
+   CANDIDATE LANE
    ============================================ */
 
 .candidate-lane {
@@ -862,7 +862,7 @@
   color: #f87171;
 }
 
-/* Inline validation failure reason in sounding lane turns */
+/* Inline validation failure reason in candidate lane turns */
 .candidate-lane-turn-validation-failure {
   display: flex;
   align-items: flex-start;
@@ -1801,7 +1801,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* Duration styling in sounding lanes */
+/* Duration styling in candidate lanes */
 .candidate-lane-duration {
   display: flex;
   align-items: center;

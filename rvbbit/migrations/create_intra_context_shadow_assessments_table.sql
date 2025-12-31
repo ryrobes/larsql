@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     session_id String,
     cascade_id String,
     cell_name String,
-    candidate_index Nullable(Int16),       -- NULL if not in soundings, else 0, 1, 2...
+    candidate_index Nullable(Int16),       -- NULL if not in candidates, else 0, 1, 2...
     turn_number UInt16,                    -- Turn within this cell (0-indexed)
     is_loop_retry Bool DEFAULT false,      -- Is this a loop_until retry turn?
 

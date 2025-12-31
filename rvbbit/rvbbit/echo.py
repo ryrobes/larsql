@@ -8,7 +8,7 @@ class Echo:
     The history entries contain rich metadata for visualization:
     - trace_id: Unique ID for this entry
     - parent_id: Parent trace ID for tree structure
-    - node_type: cascade, cell, turn, tool, soundings, reforge, etc.
+    - node_type: cascade, cell, turn, tool, candidates, reforge, etc.
     - metadata: Dict with additional context (cell_name, candidate_index, etc.)
     """
     def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None,
@@ -76,7 +76,7 @@ class Echo:
         # Generate for substantive content
         return node_type in ("agent", "tool", "tool_result", "tool_call",
                              "user", "message", "turn_input", "evaluator",
-                             "sounding_attempt")
+                             "candidate_attempt")
 
     def update_state(self, key: str, value: Any):
         self.state[key] = value
@@ -143,7 +143,7 @@ class Echo:
             cell_name = meta.get("cell_name")
             cascade_id = meta.get("cascade_id")
             model = meta.get("model")  # Extract model from metadata
-            mutation_applied = meta.get("mutation_applied")  # Extract mutation for soundings
+            mutation_applied = meta.get("mutation_applied")  # Extract mutation for candidates
             mutation_type = meta.get("mutation_type")  # 'augment', 'rewrite', or None
             mutation_template = meta.get("mutation_template")  # For rewrite: the instruction used
 
@@ -202,7 +202,7 @@ class Echo:
                 has_base64=has_base64,
                 audio=audio,
                 mermaid_content=mermaid_content,
-                mutation_applied=mutation_applied,  # Pass mutation for soundings
+                mutation_applied=mutation_applied,  # Pass mutation for candidates
                 mutation_type=mutation_type,
                 mutation_template=mutation_template,
                 is_callout=is_callout,  # Pass callout info
@@ -212,13 +212,13 @@ class Echo:
 
             # Emit SSE events for candidate-related entries so LiveStore can receive real-time data
             # This is critical for real-time UI updates during cascade execution
-            if node_type == "sounding_attempt" and candidate_index is not None:
+            if node_type == "candidate_attempt" and candidate_index is not None:
                 try:
                     from .events import get_event_bus, Event
                     from datetime import datetime
                     bus = get_event_bus()
                     bus.publish(Event(
-                        type="sounding_attempt",
+                        type="candidate_attempt",
                         session_id=self.session_id,
                         timestamp=datetime.now().isoformat(),
                         data={

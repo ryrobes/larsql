@@ -6,7 +6,7 @@ any LLM calls or external dependencies. They ensure:
 1. Valid configurations parse correctly
 2. Invalid configurations raise ValidationError with helpful messages
 3. Optional fields have correct defaults
-4. Nested configs (soundings, wards, context) parse correctly
+4. Nested configs (candidates, wards, context) parse correctly
 5. Edge cases are handled appropriately
 
 These tests can be used as part of the cascade execution process
@@ -24,7 +24,7 @@ from rvbbit.cascade import (
     # Context system
     ContextConfig,
     ContextSourceConfig,
-    # Soundings
+    # Candidates
     CandidatesConfig,
     ReforgeConfig,
     ModelConfig,
@@ -333,35 +333,35 @@ class TestContextConfig:
 
 
 # =============================================================================
-# SOUNDINGS (Tree of Thought) VALIDATION
+# CANDIDATES (Tree of Thought) VALIDATION
 # =============================================================================
 
-class TestSoundingsConfig:
-    """Test soundings/Tree-of-Thought configuration."""
+class TestCandidatesConfig:
+    """Test candidates/Tree-of-Thought configuration."""
 
-    def test_basic_soundings(self):
-        """Basic soundings with evaluator."""
-        soundings = CandidatesConfig(
+    def test_basic_candidates(self):
+        """Basic candidates with evaluator."""
+        candidates = CandidatesConfig(
             factor=3,
             evaluator_instructions="Pick the most creative response."
         )
-        assert soundings.factor == 3
-        assert soundings.mutate is True  # Default
-        assert soundings.max_parallel == 3  # Default
+        assert candidates.factor == 3
+        assert candidates.mutate is True  # Default
+        assert candidates.max_parallel == 3  # Default
 
-    def test_soundings_defaults(self):
-        """Verify soundings defaults."""
-        soundings = CandidatesConfig()
-        assert soundings.factor == 1
-        assert soundings.max_parallel == 3
-        assert soundings.evaluator_instructions is None
-        assert soundings.mutate is True
-        assert soundings.mutation_mode == "rewrite"
-        assert soundings.mutations is None
+    def test_candidates_defaults(self):
+        """Verify candidates defaults."""
+        candidates = CandidatesConfig()
+        assert candidates.factor == 1
+        assert candidates.max_parallel == 3
+        assert candidates.evaluator_instructions is None
+        assert candidates.mutate is True
+        assert candidates.mutation_mode == "rewrite"
+        assert candidates.mutations is None
 
-    def test_soundings_with_mutations(self):
+    def test_candidates_with_mutations(self):
         """Custom mutations for prompt variation."""
-        soundings = CandidatesConfig(
+        candidates = CandidatesConfig(
             factor=5,
             mutate=True,
             mutation_mode="augment",
@@ -371,17 +371,17 @@ class TestSoundingsConfig:
                 "Be concise and direct."
             ]
         )
-        assert soundings.mutation_mode == "augment"
-        assert len(soundings.mutations) == 3
+        assert candidates.mutation_mode == "augment"
+        assert len(candidates.mutations) == 3
 
-    def test_soundings_with_validator(self):
-        """Pre-evaluation validator to filter soundings."""
-        soundings = CandidatesConfig(
+    def test_candidates_with_validator(self):
+        """Pre-evaluation validator to filter candidates."""
+        candidates = CandidatesConfig(
             factor=5,
             validator="code_executes",
             evaluator_instructions="Pick the cleanest code that runs."
         )
-        assert soundings.validator == "code_executes"
+        assert candidates.validator == "code_executes"
 
     def test_reforge_config(self):
         """Reforge (iterative refinement) configuration."""
@@ -394,9 +394,9 @@ class TestSoundingsConfig:
         assert reforge.steps == 3
         assert reforge.factor_per_step == 2
 
-    def test_soundings_with_reforge(self):
-        """Soundings with reforge loop."""
-        soundings = CandidatesConfig(
+    def test_candidates_with_reforge(self):
+        """Candidates with reforge loop."""
+        candidates = CandidatesConfig(
             factor=3,
             evaluator_instructions="Pick best approach.",
             reforge=ReforgeConfig(
@@ -404,29 +404,29 @@ class TestSoundingsConfig:
                 honing_prompt="Refine and polish."
             )
         )
-        assert soundings.reforge.steps == 2
+        assert candidates.reforge.steps == 2
 
-    def test_multi_model_soundings_list(self):
-        """Multi-model soundings with list of models."""
-        soundings = CandidatesConfig(
+    def test_multi_model_candidates_list(self):
+        """Multi-model candidates with list of models."""
+        candidates = CandidatesConfig(
             factor=6,
             models=["openai/gpt-4o", "anthropic/claude-sonnet-4", "google/gemini-2.5-flash"],
             model_strategy="round_robin"
         )
-        assert len(soundings.models) == 3
-        assert soundings.model_strategy == "round_robin"
+        assert len(candidates.models) == 3
+        assert candidates.model_strategy == "round_robin"
 
-    def test_multi_model_soundings_dict(self):
-        """Multi-model soundings with per-model config."""
-        soundings = CandidatesConfig(
+    def test_multi_model_candidates_dict(self):
+        """Multi-model candidates with per-model config."""
+        candidates = CandidatesConfig(
             models={
                 "openai/gpt-4o": ModelConfig(factor=2, temperature=0.7),
                 "anthropic/claude-sonnet-4": ModelConfig(factor=3, temperature=0.5),
             },
             model_strategy="weighted"
         )
-        assert soundings.models["openai/gpt-4o"].factor == 2
-        assert soundings.models["anthropic/claude-sonnet-4"].temperature == 0.5
+        assert candidates.models["openai/gpt-4o"].factor == 2
+        assert candidates.models["anthropic/claude-sonnet-4"].temperature == 0.5
 
     def test_cost_aware_evaluation(self):
         """Cost-aware evaluation settings."""
@@ -449,8 +449,8 @@ class TestSoundingsConfig:
         assert pareto.policy == "balanced"
 
     def test_human_evaluation(self):
-        """Human evaluation of soundings."""
-        soundings = CandidatesConfig(
+        """Human evaluation of candidates."""
+        candidates = CandidatesConfig(
             factor=3,
             evaluator="human",
             human_eval=HumanSoundingEvalConfig(
@@ -459,8 +459,8 @@ class TestSoundingsConfig:
                 require_reasoning=True
             )
         )
-        assert soundings.evaluator == "human"
-        assert soundings.human_eval.require_reasoning is True
+        assert candidates.evaluator == "human"
+        assert candidates.human_eval.require_reasoning is True
 
 
 # =============================================================================
@@ -870,8 +870,8 @@ class TestFullCascadeConfig:
         )
         assert config.memory == "conversation_history"
 
-    def test_cascade_level_soundings(self):
-        """Cascade-level soundings (Tree of Thought)."""
+    def test_cascade_level_candidates(self):
+        """Cascade-level candidates (Tree of Thought)."""
         config = CascadeConfig(
             cascade_id="parallel_approaches",
             candidates=CandidatesConfig(

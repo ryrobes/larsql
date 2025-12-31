@@ -4,14 +4,14 @@ Test script to verify Ollama model enumeration.
 
 This demonstrates:
 1. Fetching local Ollama models via ModelRegistry
-2. Using Ollama models with Windlass Agent
+2. Using Ollama models with Rvbbit Agent
 """
 
 import os
 import sys
 
-# Add windlass to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "windlass"))
+# Add rvbbit to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "rvbbit"))
 
 from rvbbit.model_registry import ModelRegistry
 from rvbbit.agent import Agent
@@ -134,8 +134,8 @@ if __name__ == "__main__":
     console.print('[dim]   model: "ollama/gpt-oss:20b"[/dim]\n')
 
     console.print("[cyan]2. Environment Variable:[/cyan]")
-    console.print('[dim]   export WINDLASS_PROVIDER_BASE_URL="http://localhost:11434"[/dim]')
-    console.print('[dim]   export WINDLASS_DEFAULT_MODEL="gpt-oss:20b"[/dim]\n')
+    console.print('[dim]   export RVBBIT_PROVIDER_BASE_URL="http://localhost:11434"[/dim]')
+    console.print('[dim]   export RVBBIT_DEFAULT_MODEL="gpt-oss:20b"[/dim]\n')
 
     console.print("[cyan]3. Runtime Configuration:[/cyan]")
     console.print('[dim]   from rvbbit.config import set_provider[/dim]')

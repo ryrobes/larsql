@@ -289,14 +289,14 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
             <details style={{ marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
               <summary style={{ cursor: 'pointer' }}>What is species_hash?</summary>
               <p style={{ marginTop: '8px', lineHeight: '1.5' }}>
-                Species hash is a unique identifier for your cell configuration (instructions, rules, soundings settings).
+                Species hash is a unique identifier for your cell configuration (instructions, rules, candidates settings).
                 It ensures we only compare prompts with the same "DNA" template for fair analysis.
               </p>
             </details>
           </div>
         ) : (
           <p className="empty-detail">
-            Run this cascade multiple times with candidates (soundings) to see prompt evolution!
+            Run this cascade multiple times with candidates (candidates) to see prompt evolution!
             {errorMessage && <><br/><br/><strong>Error:</strong> {errorMessage}</>}
           </p>
         )}
@@ -322,12 +322,12 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
             <strong>{metadata.session_count}</strong> generations
           </span>
           <span className="stat">
-            <strong>{metadata.total_soundings}</strong> total attempts
+            <strong>{metadata.total_candidates}</strong> total attempts
           </span>
-          {metadata.total_soundings && metadata.session_count && (
+          {metadata.total_candidates && metadata.session_count && (
             <span className="stat" title="Candidates per generation">
               <Icon icon="mdi:information-outline" width="14" />
-              <strong>{Math.round(metadata.total_soundings / metadata.session_count)}</strong> per gen
+              <strong>{Math.round(metadata.total_candidates / metadata.session_count)}</strong> per gen
             </span>
           )}
           <span className="stat">

@@ -26,7 +26,7 @@ try:
     from rvbbit.config import get_config
     from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
-    print(f"Warning: Could not import windlass modules: {e}")
+    print(f"Warning: Could not import rvbbit modules: {e}")
     load_sql_connections = None
     load_discovery_metadata = None
     get_config = None
@@ -217,7 +217,7 @@ def get_schema(connection):
                 "connection": connection,
                 "type": config.type,
                 "schemas": [],
-                "error": "Schema not indexed. Run 'windlass sql chart' to index."
+                "error": "Schema not indexed. Run 'rvbbit sql chart' to index."
             })
 
         # Build schema tree from samples directory structure

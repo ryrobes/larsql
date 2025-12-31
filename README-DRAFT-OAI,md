@@ -3,19 +3,19 @@ Here’s a complete, opinionated README draft you can drop in and tweak. I’ve 
 ---
 
 ````markdown
-# Windlass ⚓
+# Rvbbit ⚓
 
-Windlass is a small, opinionated framework for building **LLM pipelines that produce artifacts**  
+Rvbbit is a small, opinionated framework for building **LLM pipelines that produce artifacts**  
 (dashboards, reports, charts, code, etc.) instead of chat transcripts.
 
 It grew out of building big data-analytics flows where “a couple of prompts and a tool call”
 turn into **hundreds of messages, retries, checks, and UI interrupts**.
 
-Windlass keeps all that complexity **inside the box**:
+Rvbbit keeps all that complexity **inside the box**:
 
 - You define a pipeline as a few **cells** wired together.
 - Each cell is a self-contained reactor that can:
-  - fan out with **soundings** (parallel attempts),
+  - fan out with **candidates** (parallel attempts),
   - refine winners with **reforge**,
   - run **validators** and **HITL checkpoints**,
   - manage its own context and token budget.
@@ -28,7 +28,7 @@ discover_schema → write_query → analyze_results → create_chart → summari
 
 ---
 
-## Why Windlass?
+## Why Rvbbit?
 
 If you’ve tried to build anything non-trivial with LLMs you’ve probably hit some of these:
 
@@ -40,15 +40,15 @@ If you’ve tried to build anything non-trivial with LLMs you’ve probably hit 
 Most current “agent / orchestration” tools double down on this:
 they give you a visual builder and let you draw bigger graphs.
 
-Windlass takes the opposite approach:
+Rvbbit takes the opposite approach:
 
 > **Put the spaghetti in the bowl.**
-> Each cell encapsulates its own loops, retries, validation, and soundings.
+> Each cell encapsulates its own loops, retries, validation, and candidates.
 > At the top level you just connect a few boxes.
 
 ---
 
-## What Windlass gives you
+## What Rvbbit gives you
 
 **1. Cells & cascades – hierarchical, not flat graphs**
 
@@ -57,11 +57,11 @@ Windlass takes the opposite approach:
 
   * call tools,
   * run multiple LLM turns,
-  * fan out with soundings,
+  * fan out with candidates,
   * loop internally for refinement.
 * Cells can be reused, nested, or called as tools from other cascades.
 
-**2. Soundings & Reforge – parallel exploration instead of retry hell**
+**2. Candidates & Reforge – parallel exploration instead of retry hell**
 
 * Run **N attempts in parallel** (different prompts, models, or strategies).
 * Filter out broken outputs via **validators**.
@@ -70,18 +70,18 @@ Windlass takes the opposite approach:
 
 Crucial bit that’s easy to miss:
 
-> Running 3–4 soundings is usually **similar cost** to running
+> Running 3–4 candidates is usually **similar cost** to running
 > 3–4 validation/retry loops on a single attempt –
 > but it’s **faster**, **simpler**, and produces **better results**.
 
 Either way you’re going to “waste” some tokens on bad attempts.
-Windlass just makes that **explicit and parallel**:
+Rvbbit just makes that **explicit and parallel**:
 
 ```text
 Traditional:
   attempt → validate → retry → validate → retry → give up
 
-Windlass:
+Rvbbit:
   fan out 4 attempts in one go
     ↓
   auto-filter with validator
@@ -113,7 +113,7 @@ Validation is a first-class concept:
 
 **4. Context as a lens, not an accident**
 
-* Inside a cell, Windlass keeps its own **local history** as it loops and refines.
+* Inside a cell, Rvbbit keeps its own **local history** as it loops and refines.
 * Between cells, **nothing is shared by default.**
 * You declare context like a query:
 
@@ -156,21 +156,21 @@ Production-minded features baked-in:
 
 ## Optional “Mission Control” UI
 
-Windlass ships with a small, optional UI aimed at **observability**, not authoring.
+Rvbbit ships with a small, optional UI aimed at **observability**, not authoring.
 
 You still define cascades as JSON/Python.
 The UI is a **black box recorder** for runs:
 
 * **Cell timeline**
   See each cell’s duration and token cost at a glance.
-* **Soundings made visible**
+* **Candidates made visible**
   For cells that fan out, see all attempts, which one won, and how much each cost.
 * **Artifact gallery**
   Browse charts, images, and summaries that each cell produced.
 * **Run controls**
   Re-run in debug mode, or **freeze** a successful run into a snapshot test.
 
-Because it just consumes the Windlass event/log stream, you can ignore it, extend it,
+Because it just consumes the Rvbbit event/log stream, you can ignore it, extend it,
 or build your own dashboards on the same data.
 
 ---
@@ -181,19 +181,19 @@ Even without the UI, every run is fully instrumented:
 
 * **DuckDB / Parquet logs** – one file per run:
 
-  * `session_id`, `cell_name`, `sounding_index`, `is_winner`,
+  * `session_id`, `cell_name`, `candidate_index`, `is_winner`,
   * `reforge_step`, `cost_usd`, model name, and full content.
 * **CLI SQL helper**:
 
 ```bash
 # How much does each cell cost?
-windlass sql "SELECT cell_name, SUM(cost_usd) AS cost FROM all_data GROUP BY cell_name ORDER BY cost DESC"
+rvbbit sql "SELECT cell_name, SUM(cost_usd) AS cost FROM all_data GROUP BY cell_name ORDER BY cost DESC"
 
-# Compare sounding winners vs losers
-windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE sounding_index IS NOT NULL"
+# Compare candidate winners vs losers
+rvbbit sql "SELECT candidate_index, is_winner, content_json FROM all_data WHERE candidate_index IS NOT NULL"
 ```
 
-* **Mermaid graphs** showing cascades, soundings, and reforge steps.
+* **Mermaid graphs** showing cascades, candidates, and reforge steps.
 * **Event bus / SSE** for live monitoring or custom UIs.
 
 ---
@@ -203,8 +203,8 @@ windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE
 * **Cascade** – a JSON/Python definition of your workflow.
 * **Cell** – a self-contained box inside the cascade with its own:
 
-  * tools, prompts, loops, soundings, validators, and context rules.
-* **Soundings** – parallel attempts; think “Tree-of-Thought, but configurable”.
+  * tools, prompts, loops, candidates, validators, and context rules.
+* **Candidates** – parallel attempts; think “Tree-of-Thought, but configurable”.
 * **Reforge** – a refinement loop that polishes the winning artifact.
 * **Ward** – a validator that can block, retry, or advise.
 * **Tackle** – a tool (Python function, HTTP call, etc.).
@@ -215,7 +215,7 @@ windlass sql "SELECT sounding_index, is_winner, content_json FROM all_data WHERE
 
 ## Quick example
 
-Simple two-cell cascade with soundings and a validator:
+Simple two-cell cascade with candidates and a validator:
 
 ```json
 {
@@ -223,7 +223,7 @@ Simple two-cell cascade with soundings and a validator:
   "cells": [
     {
       "name": "write_query",
-      "soundings": {
+      "candidates": {
         "count": 4,
         "mutation_mode": "approach",
         "models": [
@@ -258,7 +258,7 @@ Simple two-cell cascade with soundings and a validator:
 Run it from Python:
 
 ```python
-from windlass import run_cascade
+from rvbbit import run_cascade
 
 result = run_cascade(
     "examples/sql_chart_flow.json",
@@ -277,21 +277,21 @@ print(result["state"])
 ## Getting started
 
 ```bash
-pip install windlass
+pip install rvbbit
 ```
 
 Minimal run:
 
 ```bash
 # Run an example cascade
-windlass run examples/simple_flow.json --input '{"question": "Hello, Windlass?"}'
+rvbbit run examples/simple_flow.json --input '{"question": "Hello, Rvbbit?"}'
 ```
 
 Then:
 
 * Browse `examples/` for more patterns:
 
-  * soundings + reforge,
+  * candidates + reforge,
   * multi-model / Pareto cost-quality flows,
   * context selection demos,
   * wards & loop_until,
@@ -300,17 +300,17 @@ Then:
 
 ---
 
-## When Windlass is a good fit
+## When Rvbbit is a good fit
 
-Use Windlass when you want to:
+Use Rvbbit when you want to:
 
 * Build pipelines that **create artifacts** (not just answer chat questions).
 * Keep **top-level graphs small**, but still have all the loops and retries you need.
-* **Parallelize exploration** (soundings) instead of writing custom retry logic.
+* **Parallelize exploration** (candidates) instead of writing custom retry logic.
 * Treat **validation, cost, and context** as first-class concerns.
 * Have **real observability** over what your LLM system is doing in production.
 
-If you just need a single agent that calls a couple of tools, Windlass is overkill.
+If you just need a single agent that calls a couple of tools, Rvbbit is overkill.
 If you’re staring at a huge hand-rolled loop of prompts, validators, and tools,
 it’s probably exactly what you wanted before you knew you wanted it.
 

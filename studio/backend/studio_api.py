@@ -28,7 +28,7 @@ try:
     from rvbbit.config import get_config
     from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
-    print(f"Warning: Could not import windlass SQL modules: {e}")
+    print(f"Warning: Could not import rvbbit SQL modules: {e}")
     load_sql_connections = None
     load_discovery_metadata = None
     get_config = None
@@ -41,7 +41,7 @@ try:
     from rvbbit.agent import Agent
     from rvbbit.unified_logs import log_unified
 except ImportError as e:
-    print(f"Warning: Could not import windlass notebook modules: {e}")
+    print(f"Warning: Could not import rvbbit notebook modules: {e}")
     run_cascade = None
     sql_data = None
     python_data = None
@@ -246,7 +246,7 @@ def get_schema(connection):
                 "connection": connection,
                 "type": config.type,
                 "schemas": [],
-                "error": "Schema not indexed. Run 'windlass sql chart' to index."
+                "error": "Schema not indexed. Run 'rvbbit sql chart' to index."
             })
 
         # Build schema tree from samples directory structure
@@ -1729,7 +1729,7 @@ def _fetch_ollama_models_from_db():
         List of model dicts compatible with OpenRouter schema
     """
     try:
-        # Use ClickHouse connection from windlass (not DuckDB)
+        # Use ClickHouse connection from rvbbit (not DuckDB)
         from rvbbit.db_adapter import get_db
 
         db = get_db()

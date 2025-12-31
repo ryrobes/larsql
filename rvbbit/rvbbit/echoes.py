@@ -55,7 +55,7 @@ class EchoLogger:
         role: str = None,
         depth: int = 0,
 
-        # Soundings/Reforge metadata
+        # Candidates/Reforge metadata
         candidate_index: int = None,
         is_winner: bool = None,
         reforge_step: int = None,
@@ -134,7 +134,7 @@ class EchoLogger:
             "role": role,
             "depth": depth,
 
-            # Soundings/Reforge (typed)
+            # Candidates/Reforge (typed)
             "candidate_index": candidate_index,
             "is_winner": is_winner,
             "reforge_step": reforge_step,
@@ -348,7 +348,7 @@ def query_echoes_parquet(where_clause: str = None) -> pd.DataFrame:
         import json
         df['content_parsed'] = df['content'].apply(lambda x: json.loads(x) if x else None)
 
-        # Query soundings
+        # Query candidates
         df = query_echoes_parquet("candidate_index IS NOT NULL")
 
         # Query with JSON field (DuckDB syntax for JSON strings)

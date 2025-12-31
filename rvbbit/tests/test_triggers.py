@@ -227,7 +227,7 @@ def test_export_kubernetes():
         config,
         "/app/cascade.json",
         namespace="production",
-        image="mycompany/windlass:v1.0"
+        image="mycompany/rvbbit:v1.0"
     )
 
     assert "apiVersion: batch/v1" in output
@@ -236,7 +236,7 @@ def test_export_kubernetes():
     assert 'namespace: production' in output
     assert 'schedule: "0 6 * * *"' in output
     assert 'timeZone: "America/New_York"' in output
-    assert "mycompany/windlass:v1.0" in output
+    assert "mycompany/rvbbit:v1.0" in output
 
 
 def test_export_systemd():
@@ -254,8 +254,8 @@ def test_export_systemd():
 
     timer_content, service_content = export_systemd(
         config,
-        "/opt/windlass/cascade.json",
-        user="windlass"
+        "/opt/rvbbit/cascade.json",
+        user="rvbbit"
     )
 
     # Check timer
@@ -264,9 +264,9 @@ def test_export_systemd():
 
     # Check service
     assert "[Service]" in service_content
-    assert "User=windlass" in service_content
+    assert "User=rvbbit" in service_content
     assert "ExecStart=" in service_content
-    assert "rvbbit run /opt/windlass/cascade.json" in service_content
+    assert "rvbbit run /opt/rvbbit/cascade.json" in service_content
 
 
 def test_export_airflow():

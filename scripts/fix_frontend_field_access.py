@@ -16,26 +16,26 @@ def fix_field_accesses(content: str) -> str:
         # .cells → .cells (but not in function params or declarations)
         (r'(\w+)\.cells\b', r'\1.cells'),
 
-        # .soundings → .candidates
-        (r'(\w+)\.soundings\b', r'\1.candidates'),
+        # .candidates → .candidates
+        (r'(\w+)\.candidates\b', r'\1.candidates'),
 
         # .tackle → .traits
         (r'(\w+)\.tackle\b', r'\1.traits'),
 
         # String literals in object keys
         (r'["\']cells["\']\s*:', '"cells":'),
-        (r'["\']soundings["\']\s*:', '"candidates":'),
+        (r'["\']candidates["\']\s*:', '"candidates":'),
         (r'["\']tackle["\']\s*:', '"traits":'),
 
         # Object destructuring with quotes
         (r'\["cells"\]', '["cells"]'),
-        (r'\["soundings"\]', '["candidates"]'),
+        (r'\["candidates"\]', '["candidates"]'),
         (r'\["tackle"\]', '["traits"]'),
 
         # Common patterns
         (r'cell_name', 'cell_name'),
         (r'cellIndex', 'cellIndex'),
-        (r'\.sounding_index\b', '.candidate_index'),
+        (r'\.candidate_index\b', '.candidate_index'),
     ]
 
     result = content

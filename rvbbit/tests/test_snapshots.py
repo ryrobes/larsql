@@ -67,7 +67,7 @@ def test_snapshots_exist():
         pytest.skip("No cascade_snapshots directory found")
 
     if not snapshot_files:
-        pytest.skip("No snapshot files found. Create with: windlass test freeze <session_id> --name <name>")
+        pytest.skip("No snapshot files found. Create with: rvbbit test freeze <session_id> --name <name>")
 
 
 if __name__ == "__main__":

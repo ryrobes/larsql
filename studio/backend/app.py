@@ -226,8 +226,8 @@ AUDIO_DIR = os.path.abspath(os.getenv("RVBBIT_AUDIO_DIR", os.path.join(RVBBIT_RO
 EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "cascades", "examples")))
 TRAITS_DIR = os.path.abspath(os.getenv("RVBBIT_TRAITS_DIR", os.path.join(RVBBIT_ROOT, "traits")))
 CASCADES_DIR = os.path.abspath(os.getenv("RVBBIT_CASCADES_DIR", os.path.join(RVBBIT_ROOT, "cascades")))
-# Also search inside the windlass package for examples (supports YAML cascade files)
-PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(RVBBIT_ROOT, "windlass", "examples"))
+# Also search inside the rvbbit package for examples (supports YAML cascade files)
+PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(RVBBIT_ROOT, "rvbbit", "examples"))
 # Playground scratchpad for auto-generated cascades from the image playground
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
@@ -538,17 +538,17 @@ def get_cascade_definitions():
                                 cells_data = []
                                 for p in config.get("cells", config.get("cells", [])):
                                     rules = p.get("rules", {})
-                                    soundings = p.get("soundings", {})
+                                    candidates = p.get("candidates", {})
                                     wards = p.get("wards", {})
 
                                     cells_data.append({
                                         "name": p["name"],
                                         "instructions": p.get("instructions", ""),
-                                        # Soundings
-                                        "has_soundings": "soundings" in p,
-                                        "soundings_factor": soundings.get("factor") if soundings else None,
-                                        "reforge_steps": soundings.get("reforge", {}).get("steps") if soundings.get("reforge") else None,
-                                        "candidates": soundings if soundings else None,
+                                        # Candidates
+                                        "has_candidates": "candidates" in p,
+                                        "candidates_factor": candidates.get("factor") if candidates else None,
+                                        "reforge_steps": candidates.get("reforge", {}).get("steps") if candidates.get("reforge") else None,
+                                        "candidates": candidates if candidates else None,
                                         # Wards
                                         "has_wards": bool(wards),
                                         "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
@@ -592,7 +592,7 @@ def get_cascade_definitions():
                                     'memory': config.get('memory'),
                                     'tool_caching': config.get('tool_caching'),
                                     'triggers': config.get('triggers'),
-                                    'cascade_soundings': config.get('soundings'),  # Cascade-level soundings
+                                    'cascade_candidates': config.get('candidates'),  # Cascade-level candidates
                                     'metrics': {
                                         'run_count': 0,
                                         'total_cost': 0.0,
@@ -863,7 +863,7 @@ def get_cascade_definitions():
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
                                         'total_cells': summary.get('total_cells', 0),
-                                        'has_soundings': summary.get('has_soundings', False),
+                                        'has_candidates': summary.get('has_candidates', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
                             except:
@@ -934,7 +934,7 @@ def get_cascade_definitions():
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
                                         'total_cells': summary.get('total_cells', 0),
-                                        'has_soundings': summary.get('has_soundings', False),
+                                        'has_candidates': summary.get('has_candidates', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
                             except:
@@ -1130,7 +1130,7 @@ def get_cascade_instances(cascade_id):
 
         # Batch 3: Get cascade-level errors for all sessions
         # Only cascade_failed, cascade_error, cascade_killed indicate true failure
-        # sounding_error, cell errors are expected and don't mark cascade as failed
+        # candidate_error, cell errors are expected and don't mark cascade as failed
         errors_by_session = {}
         if session_ids:
             try:
@@ -1386,10 +1386,10 @@ def get_cascade_instances(cascade_id):
                     """.format(','.join('?' * len(session_ids)))
                 turn_results = conn.execute(turn_query, session_ids).fetchall()
 
-                for sid, t_cell, t_sounding, t_turn, t_cost in turn_results:
+                for sid, t_cell, t_candidate, t_turn, t_cost in turn_results:
                     if sid not in turn_costs_by_session:
                         turn_costs_by_session[sid] = {}
-                    key = (t_cell, t_sounding)
+                    key = (t_cell, t_candidate)
                     if key not in turn_costs_by_session[sid]:
                         turn_costs_by_session[sid][key] = []
                     turn_costs_by_session[sid][key].append({
@@ -1443,13 +1443,13 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch tool calls query: {e}")
 
-        # Batch 10: Get sounding data for all sessions
+        # Batch 10: Get candidate data for all sessions
         # Only count 'assistant' role costs to avoid double-counting
-        soundings_by_session = {}
+        candidates_by_session = {}
         if session_ids:
             try:
-                model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as sounding_model" if has_model else "NULL as sounding_model"
-                soundings_query = f"""
+                model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as candidate_model" if has_model else "NULL as candidate_model"
+                candidates_query = f"""
                 SELECT
                     session_id,
                     cell_name,
@@ -1463,13 +1463,13 @@ def get_cascade_instances(cascade_id):
                 GROUP BY session_id, cell_name, candidate_index
                 ORDER BY session_id, cell_name, candidate_index
                 """
-                sounding_results = conn.execute(soundings_query, session_ids).fetchall()
+                candidate_results = conn.execute(candidates_query, session_ids).fetchall()
 
-                for sid, s_cell, s_idx, s_winner, s_cost, s_model in sounding_results:
-                    if sid not in soundings_by_session:
-                        soundings_by_session[sid] = {}
-                    if s_cell not in soundings_by_session[sid]:
-                        soundings_by_session[sid][s_cell] = {
+                for sid, s_cell, s_idx, s_winner, s_cost, s_model in candidate_results:
+                    if sid not in candidates_by_session:
+                        candidates_by_session[sid] = {}
+                    if s_cell not in candidates_by_session[sid]:
+                        candidates_by_session[sid][s_cell] = {
                             'total': 0,
                             'winner_index': None,
                             'attempts': [],
@@ -1477,17 +1477,17 @@ def get_cascade_instances(cascade_id):
                         }
 
                     s_idx_int = int(s_idx) if s_idx is not None else 0
-                    soundings_by_session[sid][s_cell]['total'] = max(soundings_by_session[sid][s_cell]['total'], s_idx_int + 1)
+                    candidates_by_session[sid][s_cell]['total'] = max(candidates_by_session[sid][s_cell]['total'], s_idx_int + 1)
 
                     if s_winner:
-                        soundings_by_session[sid][s_cell]['winner_index'] = s_idx_int
+                        candidates_by_session[sid][s_cell]['winner_index'] = s_idx_int
 
-                    # Get turn breakdown for this sounding (from batch 8)
+                    # Get turn breakdown for this candidate (from batch 8)
                     turn_key = (s_cell, s_idx_int)
                     turns = turn_costs_by_session.get(sid, {}).get(turn_key, [])
-                    soundings_by_session[sid][s_cell]['max_turns'] = max(soundings_by_session[sid][s_cell]['max_turns'], len(turns))
+                    candidates_by_session[sid][s_cell]['max_turns'] = max(candidates_by_session[sid][s_cell]['max_turns'], len(turns))
 
-                    soundings_by_session[sid][s_cell]['attempts'].append({
+                    candidates_by_session[sid][s_cell]['attempts'].append({
                         'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
@@ -1495,7 +1495,7 @@ def get_cascade_instances(cascade_id):
                         'model': s_model
                     })
             except Exception as e:
-                print(f"[ERROR] Batch soundings query: {e}")
+                print(f"[ERROR] Batch candidates query: {e}")
 
         # Batch 11: Get message counts for all sessions
         message_counts_by_session = {}
@@ -1548,7 +1548,7 @@ def get_cascade_instances(cascade_id):
                 cell_results = conn.execute(cells_query, session_ids).fetchall()
 
                 for p_row in cell_results:
-                    sid, p_name, p_node_type, p_role, p_content, p_model, max_sounding, has_winner, cell_start, cell_end = p_row
+                    sid, p_name, p_node_type, p_role, p_content, p_model, max_candidate, has_winner, cell_start, cell_end = p_row
                     if sid not in cells_data_by_session:
                         cells_data_by_session[sid] = {}
                     cells_data_by_session[sid][p_name] = {
@@ -1556,7 +1556,7 @@ def get_cascade_instances(cascade_id):
                         'last_role': p_role,
                         'last_content': p_content,
                         'last_model': p_model,
-                        'max_candidate_index': max_sounding,
+                        'max_candidate_index': max_candidate,
                         'has_winner': has_winner
                     }
             except Exception as e:
@@ -1605,8 +1605,8 @@ def get_cascade_instances(cascade_id):
             # Get tool calls from batch query (Batch 9)
             tool_calls_map = tool_calls_by_session.get(session_id, {})
 
-            # Get sounding data from batch query (Batch 10)
-            soundings_map = soundings_by_session.get(session_id, {})
+            # Get candidate data from batch query (Batch 10)
+            candidates_map = candidates_by_session.get(session_id, {})
 
             # Get message counts from batch query (Batch 11)
             message_counts = message_counts_by_session.get(session_id, {})
@@ -1627,9 +1627,9 @@ def get_cascade_instances(cascade_id):
             # Build cells_map from batched data
             cells_map = {}
             for p_name, p_data in cells_data.items():
-                sounding_data = soundings_map.get(p_name, {})
+                candidate_data = candidates_map.get(p_name, {})
 
-                # Get turn data for non-sounding cells
+                # Get turn data for non-candidate cells
                 turn_key = (p_name, None)
                 turns = turn_costs_map.get(turn_key, [])
 
@@ -1658,8 +1658,8 @@ def get_cascade_instances(cascade_id):
                 # Determine status based on node_type AND role
                 is_cell_complete = (p_node_type == "cell_complete") or (p_node_type == "cell" and p_role == "cell_complete")
                 is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
-                # Cascade-level soundings have _orchestration cell that completes with cascade_soundings_result
-                is_cascade_complete = p_node_type in ("cascade_soundings_result", "cascade_completed", "cascade_evaluator")
+                # Cascade-level candidates have _orchestration cell that completes with cascade_candidates_result
+                is_cascade_complete = p_node_type in ("cascade_candidates_result", "cascade_completed", "cascade_evaluator")
                 is_error = p_node_type == "error" or (p_node_type and "error" in str(p_node_type).lower())
 
                 if is_cell_complete or is_agent_output or is_cascade_complete:
@@ -1700,11 +1700,11 @@ def get_cascade_instances(cascade_id):
                     "cell_output": cell_output,
                     "error_message": error_message,
                     "model": p_model,
-                    "has_soundings": p_name in soundings_map,
-                    "sounding_total": sounding_data.get('total', 0),
-                    "sounding_winner": sounding_data.get('winner_index'),
-                    "sounding_attempts": sounding_data.get('attempts', []),
-                    "max_turns_actual": sounding_data.get('max_turns', len(turns)),
+                    "has_candidates": p_name in candidates_map,
+                    "candidate_total": candidate_data.get('total', 0),
+                    "candidate_winner": candidate_data.get('winner_index'),
+                    "candidate_attempts": candidate_data.get('attempts', []),
+                    "max_turns_actual": candidate_data.get('max_turns', len(turns)),
                     "max_turns": max_turns_config,
                     "turn_costs": turns,
                     "tool_calls": tool_calls_map.get(p_name, []),
@@ -1713,9 +1713,9 @@ def get_cascade_instances(cascade_id):
                     "avg_duration": 0.0
                 }
 
-                # Handle soundings winner model (still need this for multi-model cells)
-                if sounding_data and sounding_data.get('winner_index') is not None:
-                    cells_map[p_name]["has_soundings"] = True
+                # Handle candidates winner model (still need this for multi-model cells)
+                if candidate_data and candidate_data.get('winner_index') is not None:
+                    cells_map[p_name]["has_candidates"] = True
 
             # Get final output from batch query
             final_output = outputs_by_session.get(session_id, None)
@@ -1756,8 +1756,8 @@ def get_cascade_instances(cascade_id):
                 else:
                     cascade_status = "success"
 
-            # Check if any cell has soundings
-            has_soundings = any(cell.get('sounding_total', 0) > 1 for cell in cells_map.values())
+            # Check if any cell has candidates
+            has_candidates = any(cell.get('candidate_total', 0) > 1 for cell in cells_map.values())
 
             instances.append({
                 'session_id': session_id,
@@ -1778,7 +1778,7 @@ def get_cascade_instances(cascade_id):
                 'error_count': error_count,
                 'errors': error_list,
                 'token_timeseries': token_timeseries_by_session.get(session_id, []),
-                'has_soundings': has_soundings,
+                'has_candidates': has_candidates,
                 'children': [],
                 '_source': 'sql'  # Indicate data source for debugging
             })
@@ -1903,7 +1903,7 @@ def get_session_execution_flow(session_id):
     """
     Get execution data for flow visualization.
     Returns structured data for CascadeFlowModal execution overlay.
-    Includes rich content: outputs, sounding previews, images, models, ward results.
+    Includes rich content: outputs, candidate previews, images, models, ward results.
     """
     try:
         conn = get_db_connection()
@@ -1974,14 +1974,14 @@ def get_session_execution_flow(session_id):
                     'cost': 0.0,
                     'duration': 0.0,
                     'turnCount': 0,
-                    'soundingWinner': None,
+                    'candidateWinner': None,
                     'model': None,
                     'tokensIn': 0,
                     'tokensOut': 0,
                     'output': None,
                     'images': [],
                     'details': {
-                        'soundings': {
+                        'candidates': {
                             'winnerIndex': None,
                             'attempts': []
                         },
@@ -2033,14 +2033,14 @@ def get_session_execution_flow(session_id):
                 except:
                     pass
 
-            # Track sounding winner
+            # Track candidate winner
             if winning_candidate_index is not None:
-                cell_data['soundingWinner'] = winning_candidate_index
-                cell_data['details']['soundings']['winnerIndex'] = winning_candidate_index
+                cell_data['candidateWinner'] = winning_candidate_index
+                cell_data['details']['candidates']['winnerIndex'] = winning_candidate_index
 
-            # Track sounding attempts with richer data
+            # Track candidate attempts with richer data
             if candidate_index is not None and role == 'assistant':
-                attempts = cell_data['details']['soundings']['attempts']
+                attempts = cell_data['details']['candidates']['attempts']
                 while len(attempts) <= candidate_index:
                     attempts.append({
                         'status': 'pending',
@@ -2086,7 +2086,7 @@ def get_session_execution_flow(session_id):
                 if is_winner:
                     attempt['is_winner'] = True
 
-            # Track final output (last assistant message that's not a sounding or is the winner)
+            # Track final output (last assistant message that's not a candidate or is the winner)
             if role == 'assistant' and content_preview:
                 is_final_output = (candidate_index is None) or is_winner
                 if is_final_output:
@@ -2206,7 +2206,7 @@ def get_model_filters(session_id):
     Get model filtering events for a session.
 
     Returns list of model_filter events showing which models were filtered
-    during multi-model soundings due to insufficient context limits.
+    during multi-model candidates due to insufficient context limits.
     """
     try:
         conn = get_db_connection()
@@ -2313,18 +2313,18 @@ def dump_session(session_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/soundings-tree/<session_id>', methods=['GET'])
-def get_soundings_tree(session_id):
+@app.route('/api/candidates-tree/<session_id>', methods=['GET'])
+def get_candidates_tree(session_id):
     """
-    Returns hierarchical soundings data for visualization.
+    Returns hierarchical candidates data for visualization.
 
-    Shows all soundings across all cells, evaluator reasoning,
+    Shows all candidates across all cells, evaluator reasoning,
     and the winner path through the cascade execution.
 
     Data source: ClickHouse unified_logs table
     """
     try:
-        # Query ClickHouse for soundings data
+        # Query ClickHouse for candidates data
         conn = get_db_connection()
         query = """
         SELECT
@@ -2348,7 +2348,7 @@ def get_soundings_tree(session_id):
         FROM unified_logs
         WHERE session_id = ?
           AND candidate_index IS NOT NULL
-          AND node_type IN ('sounding_attempt', 'sounding_error', 'agent')
+          AND node_type IN ('candidate_attempt', 'candidate_error', 'agent')
         ORDER BY timestamp, reforge_step, candidate_index, turn_number
         """
         df = conn.execute(query, [session_id]).fetchdf()
@@ -2358,7 +2358,7 @@ def get_soundings_tree(session_id):
             return jsonify({"cells": [], "winner_path": []})
 
         # Debug: log available columns and sample data
-        print(f"[API] soundings-tree columns: {list(df.columns)}")
+        print(f"[API] candidates-tree columns: {list(df.columns)}")
         print(f"[API] Total rows from ClickHouse: {len(df)}")
         if 'mutation_type' in df.columns:
             mutation_types = df['mutation_type'].dropna().unique().tolist()
@@ -2366,7 +2366,7 @@ def get_soundings_tree(session_id):
             # Show sample row with mutation
             sample = df[df['mutation_type'].notna()].head(1)
             if not sample.empty:
-                print(f"[API] Sample row with mutation: sounding={sample.iloc[0]['candidate_index']}, cell={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
+                print(f"[API] Sample row with mutation: candidate={sample.iloc[0]['candidate_index']}, cell={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
         if 'full_request_json' in df.columns:
             has_full_request = df['full_request_json'].notna().sum()
             print(f"[API] full_request_json non-null count: {has_full_request}/{len(df)}")
@@ -2378,20 +2378,20 @@ def get_soundings_tree(session_id):
 
         for _, row in df.iterrows():
             cell_name = row['cell_name']
-            sounding_idx = int(row['candidate_index'])
+            candidate_idx = int(row['candidate_index'])
             reforge_step = row['reforge_step']
 
             if cell_name not in cells_dict:
                 cells_dict[cell_name] = {
                     'name': cell_name,
-                    'soundings': {},
+                    'candidates': {},
                     'reforge_steps': {},
                     'eval_reasoning': None
                 }
                 # Track execution order by first appearance (preserves timestamp order from query)
                 cell_order.append(cell_name)
 
-            # Separate initial soundings from reforge refinements
+            # Separate initial candidates from reforge refinements
             is_reforge = pd.notna(reforge_step)
 
             if is_reforge:
@@ -2408,15 +2408,15 @@ def get_soundings_tree(session_id):
                     }
 
                 # Initialize refinement if needed
-                if sounding_idx not in cells_dict[cell_name]['reforge_steps'][step_num]['refinements']:
+                if candidate_idx not in cells_dict[cell_name]['reforge_steps'][step_num]['refinements']:
                     is_winner_val = row['is_winner']
                     if pd.isna(is_winner_val):
                         is_winner = False
                     else:
                         is_winner = bool(is_winner_val)
 
-                    cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx] = {
-                        'index': sounding_idx,
+                    cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][candidate_idx] = {
+                        'index': candidate_idx,
                         'cost': 0,
                         'turns': [],
                         'is_winner': is_winner,
@@ -2434,7 +2434,7 @@ def get_soundings_tree(session_id):
                         'prompt': None
                     }
 
-                refinement = cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][sounding_idx]
+                refinement = cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][candidate_idx]
 
                 # Update is_winner if definitive
                 is_winner_val = row['is_winner']
@@ -2538,8 +2538,8 @@ def get_soundings_tree(session_id):
 
                 continue  # Skip to next row (reforge handled)
 
-            # INITIAL SOUNDING (reforge_step IS NULL)
-            if sounding_idx not in cells_dict[cell_name]['soundings']:
+            # INITIAL CANDIDATE (reforge_step IS NULL)
+            if candidate_idx not in cells_dict[cell_name]['candidates']:
                 # Handle NA values for is_winner (agent rows may not have this set)
                 is_winner_val = row['is_winner']
                 if pd.isna(is_winner_val):
@@ -2547,8 +2547,8 @@ def get_soundings_tree(session_id):
                 else:
                     is_winner = bool(is_winner_val)
 
-                cells_dict[cell_name]['soundings'][sounding_idx] = {
-                    'index': sounding_idx,
+                cells_dict[cell_name]['candidates'][candidate_idx] = {
+                    'index': candidate_idx,
                     'cost': 0,
                     'turns': [],
                     'is_winner': is_winner,
@@ -2566,50 +2566,50 @@ def get_soundings_tree(session_id):
                     'prompt': None
                 }
 
-            sounding = cells_dict[cell_name]['soundings'][sounding_idx]
+            candidate = cells_dict[cell_name]['candidates'][candidate_idx]
 
-            # Update is_winner if we have a definitive value (sounding_attempt rows have this)
+            # Update is_winner if we have a definitive value (candidate_attempt rows have this)
             is_winner_val = row['is_winner']
             if pd.notna(is_winner_val) and bool(is_winner_val):
-                sounding['is_winner'] = True
+                candidate['is_winner'] = True
 
-            # Detect failed soundings from node_type='sounding_error'
+            # Detect failed candidates from node_type='candidate_error'
             node_type = row.get('node_type')
-            if node_type == 'sounding_error':
-                sounding['failed'] = True
+            if node_type == 'candidate_error':
+                candidate['failed'] = True
                 # Extract error message from content_json
                 try:
                     error_content = row.get('content_json')
                     if pd.notna(error_content):
                         if isinstance(error_content, str):
                             try:
-                                sounding['error'] = json.loads(error_content)
+                                candidate['error'] = json.loads(error_content)
                             except:
-                                sounding['error'] = error_content
+                                candidate['error'] = error_content
                         else:
-                            sounding['error'] = str(error_content)
+                            candidate['error'] = str(error_content)
                 except:
                     pass
 
             # Set model if we haven't already (take first non-null value)
-            if pd.notna(row['model']) and not sounding['model']:
-                sounding['model'] = row['model']
+            if pd.notna(row['model']) and not candidate['model']:
+                candidate['model'] = row['model']
 
             # Extract mutation data (take first non-null values)
             mutation_type_val = row.get('mutation_type')
-            if pd.notna(mutation_type_val) and not sounding['mutation_type']:
-                sounding['mutation_type'] = mutation_type_val
-                print(f"[API] Found mutation_type={mutation_type_val} for cell={cell_name}, sounding={sounding_idx}")
-            if pd.notna(row.get('mutation_applied')) and not sounding['mutation_applied']:
-                sounding['mutation_applied'] = row['mutation_applied']
-            if pd.notna(row.get('mutation_template')) and not sounding['mutation_template']:
-                sounding['mutation_template'] = row['mutation_template']
+            if pd.notna(mutation_type_val) and not candidate['mutation_type']:
+                candidate['mutation_type'] = mutation_type_val
+                print(f"[API] Found mutation_type={mutation_type_val} for cell={cell_name}, candidate={candidate_idx}")
+            if pd.notna(row.get('mutation_applied')) and not candidate['mutation_applied']:
+                candidate['mutation_applied'] = row['mutation_applied']
+            if pd.notna(row.get('mutation_template')) and not candidate['mutation_template']:
+                candidate['mutation_template'] = row['mutation_template']
 
             # Extract prompt from full_request_json (take first non-null)
             # Note: System message contains tool descriptions, USER message contains actual instructions
             full_req = row.get('full_request_json')
-            if pd.notna(full_req) and not sounding['prompt']:
-                print(f"[API] Found full_request_json for cell={cell_name}, sounding={sounding_idx}")
+            if pd.notna(full_req) and not candidate['prompt']:
+                print(f"[API] Found full_request_json for cell={cell_name}, candidate={candidate_idx}")
                 try:
                     full_request = json.loads(full_req)
                     messages = full_request.get('messages', [])
@@ -2619,11 +2619,11 @@ def get_soundings_tree(session_id):
                         if msg.get('role') == 'user':
                             content = msg.get('content', '')
                             if isinstance(content, str):
-                                sounding['prompt'] = content
+                                candidate['prompt'] = content
                             elif isinstance(content, list):
                                 # Handle multi-part content (extract text parts)
                                 text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
-                                sounding['prompt'] = '\n'.join(text_parts)
+                                candidate['prompt'] = '\n'.join(text_parts)
                             break
                 except:
                     pass
@@ -2632,14 +2632,14 @@ def get_soundings_tree(session_id):
             if pd.notna(row['timestamp']):
                 timestamp = timestamp_to_float(row['timestamp'])
                 if timestamp is not None:
-                    if sounding['start_time'] is None or timestamp < sounding['start_time']:
-                        sounding['start_time'] = timestamp
-                    if sounding['end_time'] is None or timestamp > sounding['end_time']:
-                        sounding['end_time'] = timestamp
+                    if candidate['start_time'] is None or timestamp < candidate['start_time']:
+                        candidate['start_time'] = timestamp
+                    if candidate['end_time'] is None or timestamp > candidate['end_time']:
+                        candidate['end_time'] = timestamp
 
             # Accumulate data
-            sounding['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
-            sounding['turns'].append({
+            candidate['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
+            candidate['turns'].append({
                 'turn': int(row['turn_number']) if pd.notna(row['turn_number']) else 0,
                 'cost': float(row['cost']) if pd.notna(row['cost']) else 0
             })
@@ -2653,16 +2653,16 @@ def get_soundings_tree(session_id):
                         try:
                             parsed = json.loads(content)
                             if isinstance(parsed, str):
-                                sounding['output'] += parsed + '\n'
+                                candidate['output'] += parsed + '\n'
                             elif isinstance(parsed, dict) and 'content' in parsed:
-                                sounding['output'] += str(parsed['content']) + '\n'
+                                candidate['output'] += str(parsed['content']) + '\n'
                             else:
-                                sounding['output'] += str(parsed) + '\n'
+                                candidate['output'] += str(parsed) + '\n'
                         except (json.JSONDecodeError, TypeError):
                             # If JSON parsing fails, treat as plain string
-                            sounding['output'] += content + '\n'
+                            candidate['output'] += content + '\n'
                     else:
-                        sounding['output'] += str(content) + '\n'
+                        candidate['output'] += str(content) + '\n'
             except Exception as e:
                 pass
 
@@ -2674,8 +2674,8 @@ def get_soundings_tree(session_id):
                         for tool_call in tool_calls:
                             if isinstance(tool_call, dict) and 'tool' in tool_call:
                                 tool_name = tool_call['tool']
-                                if tool_name not in sounding['tool_calls']:
-                                    sounding['tool_calls'].append(tool_name)
+                                if tool_name not in candidate['tool_calls']:
+                                    candidate['tool_calls'].append(tool_name)
             except:
                 pass
 
@@ -2684,8 +2684,8 @@ def get_soundings_tree(session_id):
                 if pd.notna(row['metadata_json']):
                     metadata = json.loads(row['metadata_json'])
                     if isinstance(metadata, dict) and metadata.get('error'):
-                        sounding['error'] = metadata.get('error')
-                        sounding['failed'] = True
+                        candidate['error'] = metadata.get('error')
+                        candidate['failed'] = True
             except:
                 pass
 
@@ -2694,7 +2694,7 @@ def get_soundings_tree(session_id):
             if pd.notna(is_winner_val) and bool(is_winner_val) and cell_name not in [w['cell_name'] for w in winner_path]:
                 winner_path.append({
                     'cell_name': cell_name,
-                    'candidate_index': sounding_idx
+                    'candidate_index': candidate_idx
                 })
 
         # Query for eval reasoning (evaluator agent messages, including reforge)
@@ -2765,11 +2765,11 @@ def get_soundings_tree(session_id):
                             content_text = str(content)
 
                         # Heuristic: if content mentions evaluation-related keywords, it's likely evaluator reasoning
-                        eval_keywords = ['sounding', 'evaluate', 'winner', 'attempt', 'explanation', 'best', 'refinement', 'reforge']
+                        eval_keywords = ['candidate', 'evaluate', 'winner', 'attempt', 'explanation', 'best', 'refinement', 'reforge']
                         has_eval_keyword = any(keyword in content_text.lower() for keyword in eval_keywords)
 
                         if content_text and has_eval_keyword:
-                            # Check if this is reforge eval or initial soundings eval
+                            # Check if this is reforge eval or initial candidates eval
                             if pd.notna(reforge_step):
                                 # Reforge step evaluation
                                 step_num = int(reforge_step)
@@ -2777,7 +2777,7 @@ def get_soundings_tree(session_id):
                                     if not cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning']:
                                         cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
                             else:
-                                # Initial soundings evaluation
+                                # Initial candidates evaluation
                                 if not cells_dict[cell_name]['eval_reasoning']:
                                     # Store full eval reasoning (no truncation)
                                     cells_dict[cell_name]['eval_reasoning'] = content_text
@@ -2789,73 +2789,73 @@ def get_soundings_tree(session_id):
         cells = []
         for cell_name in cell_order:
             cell = cells_dict[cell_name]
-            soundings_list = list(cell['soundings'].values())
+            candidates_list = list(cell['candidates'].values())
 
-            # Calculate duration for each sounding
-            for sounding in soundings_list:
-                if sounding['start_time'] and sounding['end_time']:
-                    sounding['duration'] = sounding['end_time'] - sounding['start_time']
+            # Calculate duration for each candidate
+            for candidate in candidates_list:
+                if candidate['start_time'] and candidate['end_time']:
+                    candidate['duration'] = candidate['end_time'] - candidate['start_time']
                 else:
-                    sounding['duration'] = 0
+                    candidate['duration'] = 0
                 # Remove raw timestamps (don't need to send to frontend)
-                del sounding['start_time']
-                del sounding['end_time']
+                del candidate['start_time']
+                del candidate['end_time']
 
-            cell['soundings'] = sorted(soundings_list, key=lambda s: s['index'])
+            cell['candidates'] = sorted(candidates_list, key=lambda s: s['index'])
 
-            # Attach images to soundings
+            # Attach images to candidates
             import re
 
-            # METHOD 1: Check for cell-level sounding images (filename pattern)
-            # Pattern: images/{session_id}/{cell_name}/sounding_{s}_image_{index}.{ext}
+            # METHOD 1: Check for cell-level candidate images (filename pattern)
+            # Pattern: images/{session_id}/{cell_name}/candidate_{s}_image_{index}.{ext}
             cell_dir = os.path.join(IMAGE_DIR, session_id, cell_name)
             if os.path.exists(cell_dir):
                 for img_file in sorted(os.listdir(cell_dir)):
                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                        # Check if this is a sounding-specific image (has sounding_N_ prefix)
-                        sounding_file_match = re.match(r'sounding_(\d+)_image_\d+\.\w+$', img_file)
-                        if sounding_file_match:
-                            sounding_idx = int(sounding_file_match.group(1))
-                            # Find corresponding sounding in our list
-                            for sounding in soundings_list:
-                                if sounding['index'] == sounding_idx:
-                                    if 'images' not in sounding:
-                                        sounding['images'] = []
+                        # Check if this is a candidate-specific image (has candidate_N_ prefix)
+                        candidate_file_match = re.match(r'candidate_(\d+)_image_\d+\.\w+$', img_file)
+                        if candidate_file_match:
+                            candidate_idx = int(candidate_file_match.group(1))
+                            # Find corresponding candidate in our list
+                            for candidate in candidates_list:
+                                if candidate['index'] == candidate_idx:
+                                    if 'images' not in candidate:
+                                        candidate['images'] = []
                                     # Avoid duplicates
                                     img_url = f'/api/images/{session_id}/{cell_name}/{img_file}'
-                                    if not any(img['url'] == img_url for img in sounding['images']):
-                                        sounding['images'].append({
+                                    if not any(img['url'] == img_url for img in candidate['images']):
+                                        candidate['images'].append({
                                             'filename': img_file,
                                             'url': img_url
                                         })
                                     break
                         else:
-                            # Non-sounding image - could be main output, add to all soundings or skip
-                            # For now, skip non-sounding-specific images in soundings view
+                            # Non-candidate image - could be main output, add to all candidates or skip
+                            # For now, skip non-candidate-specific images in candidates view
                             pass
 
-            # METHOD 2: Check cascade-level sounding images (directory pattern)
-            # Pattern: images/{session_id}_sounding_{index}/{cell_name}/
+            # METHOD 2: Check cascade-level candidate images (directory pattern)
+            # Pattern: images/{session_id}_candidate_{index}/{cell_name}/
             parent_dir = os.path.dirname(os.path.join(IMAGE_DIR, session_id))
             if os.path.exists(parent_dir):
                 for entry in os.listdir(parent_dir):
-                    if entry.startswith(f"{session_id}_sounding_"):
-                        sounding_match = re.search(r'_sounding_(\d+)$', entry)
-                        if sounding_match:
-                            sounding_idx = int(sounding_match.group(1))
-                            sounding_img_dir = os.path.join(parent_dir, entry, cell_name)
-                            if os.path.exists(sounding_img_dir):
-                                # Find corresponding sounding in our list
-                                for sounding in soundings_list:
-                                    if sounding['index'] == sounding_idx:
-                                        if 'images' not in sounding:
-                                            sounding['images'] = []
-                                        for img_file in sorted(os.listdir(sounding_img_dir)):
+                    if entry.startswith(f"{session_id}_candidate_"):
+                        candidate_match = re.search(r'_candidate_(\d+)$', entry)
+                        if candidate_match:
+                            candidate_idx = int(candidate_match.group(1))
+                            candidate_img_dir = os.path.join(parent_dir, entry, cell_name)
+                            if os.path.exists(candidate_img_dir):
+                                # Find corresponding candidate in our list
+                                for candidate in candidates_list:
+                                    if candidate['index'] == candidate_idx:
+                                        if 'images' not in candidate:
+                                            candidate['images'] = []
+                                        for img_file in sorted(os.listdir(candidate_img_dir)):
                                             if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                                                 # Avoid duplicates
                                                 img_url = f'/api/images/{entry}/{cell_name}/{img_file}'
-                                                if not any(img['url'] == img_url for img in sounding['images']):
-                                                    sounding['images'].append({
+                                                if not any(img['url'] == img_url for img in candidate['images']):
+                                                    candidate['images'].append({
                                                         'filename': img_file,
                                                         'url': img_url
                                                     })
@@ -2936,7 +2936,7 @@ def get_soundings_tree(session_id):
         return jsonify(sanitize_for_json(result))
 
     except Exception as e:
-        print(f"[ERROR] Failed to get soundings tree: {e}")
+        print(f"[ERROR] Failed to get candidates tree: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -3126,7 +3126,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             'cascade_id': str,     # Cascade ID from config
             'cascade_path': str,   # Resolved file path
             'cells_count': int,   # Number of cells
-            'has_soundings': bool, # Whether any cells have soundings
+            'has_candidates': bool, # Whether any cells have candidates
             'has_routing': bool    # Whether any cells have routing/handoffs
         }
 
@@ -3200,8 +3200,8 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             }), 500
 
         # Extract metadata from config
-        has_soundings = any(
-            cell.soundings and cell.soundings.factor > 1
+        has_candidates = any(
+            cell.candidates and cell.candidates.factor > 1
             for cell in cascade_config.cells
         )
         has_routing = any(
@@ -3214,7 +3214,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             'cascade_id': cascade_config.cascade_id,
             'cascade_path': str(resolved_path),
             'cells_count': len(cascade_config.cells),
-            'has_soundings': has_soundings,
+            'has_candidates': has_candidates,
             'has_routing': has_routing,
             'description': cascade_config.description
         })
@@ -3230,11 +3230,11 @@ def get_static_mermaid_from_cascade(cascade_path=None):
 def get_pareto_frontier(session_id):
     """Get Pareto frontier data for visualization.
 
-    Returns cost vs quality scatter plot data for multi-model soundings,
+    Returns cost vs quality scatter plot data for multi-model candidates,
     including frontier points, dominated points, and winner selection.
 
     The data is read from graphs/pareto_{session_id}.json which is written
-    by RVBBITRunner when pareto_frontier is enabled in soundings config.
+    by RVBBITRunner when pareto_frontier is enabled in candidates config.
     """
     try:
         # Look for Pareto data file
@@ -4275,7 +4275,7 @@ def playground_session_stream(session_id):
 
     This endpoint replaces fragmented SSE events with a single polling endpoint
     that returns all relevant execution data since a given timestamp. The UI
-    derives cell states, soundings progress, winner, etc. from these log rows.
+    derives cell states, candidates progress, winner, etc. from these log rows.
 
     Query params:
         after: ISO timestamp to fetch logs after (default: 1970-01-01)
@@ -4901,16 +4901,16 @@ def hotornot_stats():
 
 @app.route('/api/hotornot/queue', methods=['GET'])
 def hotornot_queue():
-    """Get unevaluated soundings for the Hot or Not UI."""
+    """Get unevaluated candidates for the Hot or Not UI."""
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from rvbbit.hotornot import get_unevaluated_soundings
+        from rvbbit.hotornot import get_unevaluated_candidates
 
         limit = request.args.get('limit', 50, type=int)
         show_all = request.args.get('show_all', 'false').lower() == 'true'
-        df = get_unevaluated_soundings(limit=limit * 3 if show_all else limit)
+        df = get_unevaluated_candidates(limit=limit * 3 if show_all else limit)
 
         if df.empty:
             return jsonify([])
@@ -4918,7 +4918,7 @@ def hotornot_queue():
         items = []
 
         if show_all:
-            # Show ALL individual soundings (for detailed review)
+            # Show ALL individual candidates (for detailed review)
             for _, row in df.iterrows():
                 # Parse content
                 content = row.get('content_json', '')
@@ -4978,16 +4978,16 @@ def hotornot_queue():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/hotornot/sounding-group/<session_id>/<cell_name>', methods=['GET'])
-def hotornot_sounding_group(session_id, cell_name):
-    """Get all soundings for a specific session+cell for comparison."""
+@app.route('/api/hotornot/candidate-group/<session_id>/<cell_name>', methods=['GET'])
+def hotornot_candidate_group(session_id, cell_name):
+    """Get all candidates for a specific session+cell for comparison."""
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from rvbbit.hotornot import get_sounding_group
+        from rvbbit.hotornot import get_candidate_group
 
-        result = get_sounding_group(session_id, cell_name)
+        result = get_candidate_group(session_id, cell_name)
 
         if not result:
             return jsonify({'error': 'Sounding group not found'}), 404
@@ -5059,7 +5059,7 @@ def hotornot_prefer():
         cell_name = data.get('cell_name')
         preferred_index = data.get('preferred_index')
         system_winner_index = data.get('system_winner_index')
-        sounding_outputs = data.get('sounding_outputs', [])
+        candidate_outputs = data.get('candidate_outputs', [])
 
         if not all([session_id, cell_name, preferred_index is not None, system_winner_index is not None]):
             return jsonify({'error': 'session_id, cell_name, preferred_index, and system_winner_index required'}), 400
@@ -5069,7 +5069,7 @@ def hotornot_prefer():
             cell_name=cell_name,
             preferred_index=preferred_index,
             system_winner_index=system_winner_index,
-            sounding_outputs=sounding_outputs,
+            candidate_outputs=candidate_outputs,
             cascade_id=data.get('cascade_id'),
             cascade_file=data.get('cascade_file'),
             prompt_text=data.get('prompt_text'),
@@ -5180,21 +5180,21 @@ def get_session_images(session_id):
     """
     Get list of all images for a session.
     Images are stored in IMAGE_DIR/{session_id}/{cell_name}/image_{N}.{ext}
-    Also scans for sounding images in IMAGE_DIR/{session_id}_sounding_{N}/{cell_name}/sounding_{N}_image_{M}.{ext}
+    Also scans for candidate images in IMAGE_DIR/{session_id}_candidate_{N}/{cell_name}/candidate_{N}_image_{M}.{ext}
     """
     import re
     try:
         images = []
 
-        # Helper function to extract sounding index from session_id or filename
-        def extract_sounding_info(scan_session_id, filename):
-            # Check if this is a sounding session (session_id ends with _sounding_N)
-            sounding_match = re.search(r'_sounding_(\d+)$', scan_session_id)
-            if sounding_match:
-                return int(sounding_match.group(1))
+        # Helper function to extract candidate index from session_id or filename
+        def extract_candidate_info(scan_session_id, filename):
+            # Check if this is a candidate session (session_id ends with _candidate_N)
+            candidate_match = re.search(r'_candidate_(\d+)$', scan_session_id)
+            if candidate_match:
+                return int(candidate_match.group(1))
 
-            # Check if filename has sounding prefix (sounding_N_image_M.ext)
-            filename_match = re.search(r'^sounding_(\d+)_', filename)
+            # Check if filename has candidate prefix (candidate_N_image_M.ext)
+            filename_match = re.search(r'^candidate_(\d+)_', filename)
             if filename_match:
                 return int(filename_match.group(1))
 
@@ -5220,8 +5220,8 @@ def get_session_images(session_id):
                     # Get file modification time for sorting
                     mtime = os.path.getmtime(full_path)
 
-                    # Extract sounding index from filename if present
-                    candidate_index = extract_sounding_info(session_id, filename)
+                    # Extract candidate index from filename if present
+                    candidate_index = extract_candidate_info(session_id, filename)
 
                     images.append({
                         'filename': filename,
@@ -5232,25 +5232,25 @@ def get_session_images(session_id):
                         'mtime': mtime
                     })
 
-        # Scan for sounding subdirectories (session_id_sounding_0, session_id_sounding_1, etc.)
+        # Scan for candidate subdirectories (session_id_candidate_0, session_id_candidate_1, etc.)
         parent_dir = os.path.dirname(session_image_dir)
         if os.path.exists(parent_dir):
             for entry in os.listdir(parent_dir):
-                # Look for directories matching pattern: {session_id}_sounding_{N}
-                if entry.startswith(f"{session_id}_sounding_"):
-                    sounding_dir = os.path.join(parent_dir, entry)
-                    if not os.path.isdir(sounding_dir):
+                # Look for directories matching pattern: {session_id}_candidate_{N}
+                if entry.startswith(f"{session_id}_candidate_"):
+                    candidate_dir = os.path.join(parent_dir, entry)
+                    if not os.path.isdir(candidate_dir):
                         continue
 
-                    # Walk this sounding directory
-                    for root, dirs, files in os.walk(sounding_dir):
+                    # Walk this candidate directory
+                    for root, dirs, files in os.walk(candidate_dir):
                         for filename in files:
                             ext = filename.lower().split('.')[-1] if '.' in filename else ''
                             if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
                                 continue
 
                             full_path = os.path.join(root, filename)
-                            rel_path = os.path.relpath(full_path, sounding_dir)
+                            rel_path = os.path.relpath(full_path, candidate_dir)
 
                             # Extract cell name
                             path_parts = rel_path.split(os.sep)
@@ -5258,8 +5258,8 @@ def get_session_images(session_id):
 
                             mtime = os.path.getmtime(full_path)
 
-                            # Extract sounding index from the directory name
-                            candidate_index = extract_sounding_info(entry, filename)
+                            # Extract candidate index from the directory name
+                            candidate_index = extract_candidate_info(entry, filename)
 
                             images.append({
                                 'filename': filename,
@@ -5389,7 +5389,7 @@ def get_session_images(session_id):
 
                 # Match images without candidate_index to reforge windows
                 for img in images:
-                    # Skip images that already have candidate_index (they're sounding images)
+                    # Skip images that already have candidate_index (they're candidate images)
                     if img.get('candidate_index') is not None:
                         continue
 
@@ -5406,34 +5406,34 @@ def get_session_images(session_id):
                             img['reforge_is_winner'] = window['is_final_step']
                             break
 
-            # Also enrich sounding images with winner information
-            # Query for sounding_attempt entries with is_winner=True
+            # Also enrich candidate images with winner information
+            # Query for candidate_attempt entries with is_winner=True
             try:
                 conn = get_db_connection()
-                sounding_winner_df = conn.execute(
-                    "SELECT DISTINCT cell_name, candidate_index FROM unified_logs WHERE session_id = ? AND role = 'sounding_attempt' AND is_winner = true",
+                candidate_winner_df = conn.execute(
+                    "SELECT DISTINCT cell_name, candidate_index FROM unified_logs WHERE session_id = ? AND role = 'candidate_attempt' AND is_winner = true",
                     [session_id]
                 ).fetchdf()
                 conn.close()
-                if not sounding_winner_df.empty:
+                if not candidate_winner_df.empty:
                     # Build a set of (cell_name, candidate_index) pairs that are winners
-                    sounding_winners = set()
-                    for _, row in sounding_winner_df.iterrows():
+                    candidate_winners = set()
+                    for _, row in candidate_winner_df.iterrows():
                         cell = row.get('cell_name')
                         idx = row.get('candidate_index')
                         if cell and idx is not None:
-                            sounding_winners.add((cell, int(idx)))
+                            candidate_winners.add((cell, int(idx)))
 
-                    # Mark winning sounding images
+                    # Mark winning candidate images
                     for img in images:
                         if img.get('candidate_index') is not None:
                             key = (img.get('cell_name'), img.get('candidate_index'))
-                            if key in sounding_winners:
-                                img['sounding_is_winner'] = True
+                            if key in candidate_winners:
+                                img['candidate_is_winner'] = True
             except Exception as e:
-                print(f"Warning: Could not query sounding winners: {e}")
+                print(f"Warning: Could not query candidate winners: {e}")
 
-        # Sort by cell, then sounding index, then reforge step, then modification time
+        # Sort by cell, then candidate index, then reforge step, then modification time
         images.sort(key=lambda x: (
             x['cell_name'] or '',
             x['candidate_index'] if x['candidate_index'] is not None else -1,
@@ -5441,17 +5441,17 @@ def get_session_images(session_id):
             x['mtime']
         ))
 
-        # Find sounding winner index for "refined from" label
-        sounding_winner_idx = None
+        # Find candidate winner index for "refined from" label
+        candidate_winner_idx = None
         for img in images:
-            if img.get('sounding_is_winner'):
-                sounding_winner_idx = img.get('candidate_index')
+            if img.get('candidate_is_winner'):
+                candidate_winner_idx = img.get('candidate_index')
                 break
 
         return jsonify({
             'session_id': session_id,
             'images': images,
-            'sounding_winner_index': sounding_winner_idx
+            'candidate_winner_index': candidate_winner_idx
         })
 
     except Exception as e:
@@ -6053,7 +6053,7 @@ def get_available_tools():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # Comprehensive fallback list if windlass import fails
+        # Comprehensive fallback list if rvbbit import fails
         fallback_tools = [
             # Special
             {'name': 'manifest', 'description': 'Auto-select tools based on context (Quartermaster)', 'type': 'special'},

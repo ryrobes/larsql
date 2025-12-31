@@ -19,17 +19,17 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
                 new_key = 'cells'
             elif key == 'tackle':
                 new_key = 'traits'
-            elif key == 'soundings':
+            elif key == 'candidates':
                 new_key = 'candidates'
             elif key == 'cell_name':
                 new_key = 'cell_name'
             elif key == 'cell_json':
                 new_key = 'cell_json'
-            elif key == 'sounding_index':
+            elif key == 'candidate_index':
                 new_key = 'candidate_index'
-            elif key == 'sounding_factor':
+            elif key == 'candidate_factor':
                 new_key = 'candidate_factor'
-            elif key == 'winning_sounding_index':
+            elif key == 'winning_candidate_index':
                 new_key = 'winning_candidate_index'
             elif key == 'current_cell':
                 new_key = 'current_cell'
@@ -53,8 +53,8 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
         # Update string content (for SQL queries, paths, etc.)
         updated = value
         updated = updated.replace('traits/', 'traits/')
-        updated = updated.replace('windlass_cascade_udf', 'rvbbit_run')
-        updated = updated.replace('windlass_udf', 'rvbbit')
+        updated = updated.replace('rvbbit_cascade_udf', 'rvbbit_run')
+        updated = updated.replace('rvbbit_udf', 'rvbbit')
         # Be careful with cell_name in SQL - only in specific contexts
         # Don't blindly replace "cell" as it's a common word
         return updated
