@@ -708,6 +708,137 @@ Return ONLY a decimal number between 0.0 (no match) and 1.0 (perfect match), not
     return score
 
 
+def llm_match_pair_impl(
+    left: str,
+    right: str,
+    relationship: str = "same entity",
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """
+    Check if two values have the specified relationship. Perfect for fuzzy JOINs.
+
+    Use for entity matching, deduplication, and fuzzy joins:
+
+        SELECT c.*, s.*
+        FROM customers c, suppliers s
+        WHERE match_pair(c.company_name, s.vendor_name, 'same company')
+        LIMIT 100;
+
+    Args:
+        left: First value (e.g., customer name)
+        right: Second value (e.g., supplier name)
+        relationship: What relationship to check (default: "same entity")
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        True if the values have the specified relationship
+    """
+    if not left or not right:
+        return False
+
+    left = _sanitize_text(str(left))
+    right = _sanitize_text(str(right))
+
+    if not left or not right:
+        return False
+
+    # Check cache - order-independent key (sorted)
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        # Make cache key order-independent for symmetric relationships
+        pair_key = "|".join(sorted([left[:100], right[:100]]))
+        cache_key = _agg_cache_key("match_pair", relationship, pair_key)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached.lower() == "true"
+
+    prompt = f"""Do these two values refer to the {relationship}?
+
+Value 1: {left[:500]}
+Value 2: {right[:500]}
+
+Answer with ONLY "yes" or "no", nothing else."""
+
+    result = _call_llm(prompt, model=model)
+    result_lower = result.strip().lower()
+
+    # Parse yes/no
+    is_match = result_lower in ("yes", "true", "1", "y")
+
+    # Cache result
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
+
+    return is_match
+
+
+def llm_match_template_impl(
+    template: str,
+    *args,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """
+    Check if values match using a custom template. Most flexible option.
+
+    Use for complex matching conditions:
+
+        SELECT c.*, s.*
+        FROM customers c, suppliers s
+        WHERE match_template(
+            '{0} (customer) and {1} (supplier) are the same company',
+            c.company_name,
+            s.vendor_name
+        )
+        LIMIT 100;
+
+    Args:
+        template: Template string with {0}, {1}, etc. placeholders
+        *args: Values to substitute into template
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        True if the LLM determines the statement is true
+    """
+    if not template:
+        return False
+
+    # Substitute args into template
+    try:
+        filled = template.format(*[_sanitize_text(str(a))[:500] for a in args])
+    except (IndexError, KeyError) as e:
+        return False
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        cache_key = _agg_cache_key("match_template", template[:50], filled[:200])
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached.lower() == "true"
+
+    prompt = f"""Is the following statement true?
+
+"{filled}"
+
+Answer with ONLY "yes" or "no", nothing else."""
+
+    result = _call_llm(prompt, model=model)
+    result_lower = result.strip().lower()
+
+    # Parse yes/no
+    is_match = result_lower in ("yes", "true", "1", "y")
+
+    # Cache result
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
+
+    return is_match
+
+
 # ============================================================================
 # Map-Reduce for Large Collections
 # ============================================================================
@@ -893,6 +1024,54 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
     for name in ["llm_score", "score"]:
         try:
             connection.create_function(name, score_2, return_type="DOUBLE")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== MATCH_PAIR - for fuzzy JOINs ==========
+    # match_pair(left, right) or match_pair(left, right, relationship)
+
+    def match_pair_2(left: str, right: str) -> bool:
+        return llm_match_pair_impl(left, right)
+
+    def match_pair_3(left: str, right: str, relationship: str) -> bool:
+        return llm_match_pair_impl(left, right, relationship)
+
+    for name, func in [
+        ("match_pair", match_pair_3),      # 3-arg version (with relationship)
+        ("llm_match_pair", match_pair_3),  # Alias
+    ]:
+        try:
+            connection.create_function(name, func, return_type="BOOLEAN")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # Also register 2-arg version with default relationship
+    try:
+        connection.create_function("match_pair_2", match_pair_2, return_type="BOOLEAN")
+    except Exception as e:
+        log.warning(f"Could not register match_pair_2: {e}")
+
+    # ========== MATCH_TEMPLATE - flexible templated matching ==========
+    # match_template(template, arg1, arg2, ...)
+
+    def match_template_2(template: str, arg1: str) -> bool:
+        return llm_match_template_impl(template, arg1)
+
+    def match_template_3(template: str, arg1: str, arg2: str) -> bool:
+        return llm_match_template_impl(template, arg1, arg2)
+
+    def match_template_4(template: str, arg1: str, arg2: str, arg3: str) -> bool:
+        return llm_match_template_impl(template, arg1, arg2, arg3)
+
+    for name, func in [
+        ("match_template_2", match_template_2),
+        ("match_template_3", match_template_3),
+        ("match_template", match_template_3),      # Default to 3-arg (template + 2 values)
+        ("llm_match_template", match_template_3),  # Alias
+        ("match_template_4", match_template_4),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="BOOLEAN")
         except Exception as e:
             log.warning(f"Could not register {name}: {e}")
 

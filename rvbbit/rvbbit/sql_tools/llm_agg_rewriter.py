@@ -879,4 +879,81 @@ FROM bigfoot
 WHERE score('dramatic encounter', title) > 0.5
 GROUP BY classification;
 ```
+
+## Fuzzy JOINs with MATCH_PAIR
+
+### MATCH_PAIR / LLM_MATCH_PAIR
+Entity matching for fuzzy joins and deduplication:
+
+```sql
+-- Basic fuzzy join: find matching companies
+SELECT c.*, s.*
+FROM customers c, suppliers s
+WHERE match_pair(c.company_name, s.vendor_name, 'same company')
+LIMIT 100;
+
+-- With explicit relationship
+SELECT *
+FROM products p1, products p2
+WHERE p1.id < p2.id  -- avoid self-matches and duplicates
+  AND match_pair(p1.name, p2.name, 'same product')
+LIMIT 50;
+
+-- Default relationship is "same entity"
+SELECT *
+FROM table1 t1, table2 t2
+WHERE match_pair_2(t1.name, t2.name)  -- uses "same entity"
+LIMIT 100;
+```
+
+### MATCH_TEMPLATE / LLM_MATCH_TEMPLATE
+Flexible templated matching for complex conditions:
+
+```sql
+-- Custom template with placeholders
+SELECT c.*, s.*
+FROM customers c, suppliers s
+WHERE match_template(
+  '{0} (a customer) and {1} (a supplier) represent the same business entity',
+  c.company_name,
+  s.vendor_name
+)
+LIMIT 100;
+
+-- More complex relationships
+SELECT *
+FROM products p, categories c
+WHERE match_template(
+  'The product "{0}" belongs in the category "{1}"',
+  p.description,
+  c.category_name
+)
+LIMIT 100;
+```
+
+### Performance Tips for Fuzzy JOINs
+
+**ALWAYS use LIMIT** - without it, you'll evaluate N×M pairs:
+```sql
+-- DANGEROUS: 1000 x 1000 = 1,000,000 LLM calls!
+SELECT * FROM big_table1, big_table2
+WHERE match_pair(t1.name, t2.name, 'same');
+
+-- SAFE: Limit pairs evaluated
+SELECT * FROM big_table1, big_table2
+WHERE match_pair(t1.name, t2.name, 'same')
+LIMIT 100;
+```
+
+**Use blocking for large tables** - pre-filter with cheap conditions:
+```sql
+-- First cheap filter, then LLM match
+SELECT c.*, s.*
+FROM customers c, suppliers s
+WHERE LEFT(c.company_name, 2) = LEFT(s.vendor_name, 2)  -- Blocking
+  AND match_pair(c.company_name, s.vendor_name, 'same company')
+LIMIT 100;
+```
+
+**Caching helps** - same pairs return cached results.
 """
