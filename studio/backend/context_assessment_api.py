@@ -959,23 +959,131 @@ def get_budget_simulation(session_id):
 # Phase 4 Endpoints: Intelligence Layer + Multi-Run Analysis
 # =============================================================================
 
-# Approximate token costs per model ($ per 1M tokens)
-MODEL_COSTS = {
-    "gpt-4": {"input": 30.0, "output": 60.0},
-    "gpt-4-turbo": {"input": 10.0, "output": 30.0},
-    "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
-    "claude-3-opus": {"input": 15.0, "output": 75.0},
-    "claude-3-sonnet": {"input": 3.0, "output": 15.0},
-    "claude-3-haiku": {"input": 0.25, "output": 1.25},
-    "default": {"input": 3.0, "output": 10.0}  # Conservative estimate
-}
+# Model pricing cache (refreshed periodically)
+_model_pricing_cache = {}
+_cache_timestamp = None
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# Default fallback pricing per token (conservative estimate)
+DEFAULT_PROMPT_PRICE = 0.000003  # $3 per 1M tokens
+DEFAULT_COMPLETION_PRICE = 0.00001  # $10 per 1M tokens
 
 
-def estimate_cost(tokens, model="default", direction="input"):
-    """Estimate cost in dollars for a token count."""
-    rates = MODEL_COSTS.get(model, MODEL_COSTS["default"])
-    rate = rates.get(direction, rates["input"])
-    return (tokens / 1_000_000) * rate
+def get_model_pricing(model_id=None):
+    """
+    Get model pricing from openrouter_models table.
+
+    Returns dict with prompt_price and completion_price per token.
+    Uses caching to avoid repeated database queries.
+    """
+    global _model_pricing_cache, _cache_timestamp
+
+    import time
+    current_time = time.time()
+
+    # Refresh cache if expired or empty
+    if not _model_pricing_cache or not _cache_timestamp or (current_time - _cache_timestamp) > _CACHE_TTL_SECONDS:
+        try:
+            db = get_db()
+            query = """
+                SELECT model_id, prompt_price, completion_price
+                FROM openrouter_models
+                WHERE prompt_price > 0 OR completion_price > 0
+            """
+            results = db.query(query)
+            _model_pricing_cache = {
+                row["model_id"]: {
+                    "prompt": safe_float(row["prompt_price"], DEFAULT_PROMPT_PRICE),
+                    "completion": safe_float(row["completion_price"], DEFAULT_COMPLETION_PRICE)
+                }
+                for row in results
+            }
+            _cache_timestamp = current_time
+        except Exception as e:
+            print(f"Error loading model pricing: {e}")
+            # Keep existing cache if query fails
+
+    if model_id:
+        return _model_pricing_cache.get(model_id, {
+            "prompt": DEFAULT_PROMPT_PRICE,
+            "completion": DEFAULT_COMPLETION_PRICE
+        })
+    return _model_pricing_cache
+
+
+def get_session_model(session_id):
+    """
+    Get the primary model used in a session from cell_analytics.
+
+    Returns the model_id used most frequently in the session.
+    """
+    try:
+        db = get_db()
+        query = f"""
+            SELECT model, COUNT(*) as cnt
+            FROM cell_analytics
+            WHERE session_id = '{session_id}'
+              AND model IS NOT NULL
+              AND model != ''
+            GROUP BY model
+            ORDER BY cnt DESC
+            LIMIT 1
+        """
+        result = db.query(query)
+        if result and result[0].get("model"):
+            return result[0]["model"]
+    except Exception as e:
+        print(f"Error getting session model: {e}")
+    return None
+
+
+def get_cascade_model(cascade_id, days=30):
+    """
+    Get the most commonly used model for a cascade.
+
+    Returns the model_id used most frequently across sessions.
+    """
+    try:
+        db = get_db()
+        query = f"""
+            SELECT model, COUNT(*) as cnt
+            FROM cell_analytics
+            WHERE cascade_id = '{cascade_id}'
+              AND model IS NOT NULL
+              AND model != ''
+              AND created_at >= now() - INTERVAL {days} DAY
+            GROUP BY model
+            ORDER BY cnt DESC
+            LIMIT 1
+        """
+        result = db.query(query)
+        if result and result[0].get("model"):
+            return result[0]["model"]
+    except Exception as e:
+        print(f"Error getting cascade model: {e}")
+    return None
+
+
+def estimate_cost(tokens, model=None, direction="input"):
+    """
+    Estimate cost in dollars for a token count using real model pricing.
+
+    Args:
+        tokens: Number of tokens
+        model: Model ID (e.g., "x-ai/grok-4.1-fast") or None for default
+        direction: "input" or "output"
+
+    Returns:
+        Cost in dollars
+    """
+    pricing = get_model_pricing(model)
+
+    if direction == "output":
+        rate = pricing.get("completion", DEFAULT_COMPLETION_PRICE)
+    else:
+        rate = pricing.get("prompt", DEFAULT_PROMPT_PRICE)
+
+    return tokens * rate
 
 
 @context_assessment_bp.route("/api/context-assessment/cascade-aggregate/<cascade_id>", methods=["GET"])
