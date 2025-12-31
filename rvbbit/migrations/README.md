@@ -63,6 +63,8 @@ with open('windlass/migrations/add_callouts_columns.sql') as f:
 - `create_cell_analytics_table.sql` - Creates `cell_analytics` table for per-cell performance metrics (2025-12-27)
 - `add_context_attribution_columns.sql` - Adds context cost attribution columns to expose hidden context injection costs (2025-12-27)
 - `create_output_tags_table.sql` - Creates `tag_definitions` and `output_tags` tables for output tagging system (2025-12-29)
+- `create_context_shadow_assessments_table.sql` - Creates `context_shadow_assessments` table for shadow analysis of inter-phase auto-context relevance (2025-12-30)
+- `create_intra_context_shadow_assessments_table.sql` - Creates `intra_context_shadow_assessments` table for shadow analysis of intra-phase context management configs (2025-12-30)
 
 ## Notes
 

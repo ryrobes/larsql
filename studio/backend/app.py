@@ -78,6 +78,7 @@ from budget_api import budget_bp
 from spec_api import spec_bp
 from outputs_api import outputs_bp
 from credits_api import credits_bp
+from context_assessment_api import context_assessment_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -93,6 +94,7 @@ app.register_blueprint(budget_bp)
 # New unified Studio API (combines SQL Query + Notebook)
 app.register_blueprint(studio_bp)
 app.register_blueprint(receipts_bp)
+app.register_blueprint(context_assessment_bp)
 app.register_blueprint(spec_bp)
 app.register_blueprint(outputs_bp)
 app.register_blueprint(credits_bp)

@@ -1,0 +1,102 @@
+.compression-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #0a0a0a;
+  border: 1px solid #2a2a32;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.compression-timeline.empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.timeline-legend {
+  display: flex;
+  gap: 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.legend-item.before {
+  color: #64748b;
+}
+
+.legend-item.after {
+  color: #00e5ff;
+}
+
+.legend-line {
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legend-line.dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    #64748b 0px,
+    #64748b 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.legend-line.solid {
+  background: #00e5ff;
+}
+
+.timeline-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.summary-savings {
+  font-size: 14px;
+  font-weight: 600;
+  color: #34d399;
+}
+
+.summary-tokens {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Canvas container */
+.compression-timeline canvas {
+  border-radius: 4px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .timeline-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .timeline-legend {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

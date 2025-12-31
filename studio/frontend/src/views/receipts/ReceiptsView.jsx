@@ -5,6 +5,7 @@ import { Button } from '../../components';
 import OverviewPanel from './components/OverviewPanel';
 import AlertsPanel from './components/AlertsPanel';
 import ContextBreakdownPanel from './components/ContextBreakdownPanel';
+import ContextAssessmentPanel from './components/ContextAssessmentPanel';
 import { ROUTES } from '../../routes.helpers';
 import './ReceiptsView.css';
 
@@ -299,6 +300,13 @@ const ReceiptsView = () => {
             <span className="receipts-tab-badge">{breakdownData.length}</span>
           )}
         </button>
+        <button
+          className={`receipts-tab ${activeView === 'assessment' ? 'active' : ''}`}
+          onClick={() => setActiveView('assessment')}
+        >
+          <Icon icon="mdi:clipboard-check-outline" width={14} />
+          <span>Context Assessment</span>
+        </button>
       </div>
 
       {/* Content Area */}
@@ -341,6 +349,9 @@ const ReceiptsView = () => {
             )}
             {activeView === 'breakdown' && (
               <ContextBreakdownPanel breakdown={breakdownData} />
+            )}
+            {activeView === 'assessment' && (
+              <ContextAssessmentPanel timeRange={timeRange} />
             )}
           </>
         )}

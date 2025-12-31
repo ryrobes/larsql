@@ -62,6 +62,7 @@ from .traits.state_tools import (
 from .traits.research_db import set_current_research_db
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
+from .shadow_assessment import queue_shadow_assessment, is_shadow_assessment_enabled
 from .browser_manager import (
     BrowserSession, BrowserSessionManager,
     create_browser_session, close_browser_session, get_browser_manager
@@ -939,6 +940,7 @@ class RVBBITRunner:
         - Getting the right config for the phase
         - Passing loop validation failures
         - Logging context selection stats
+        - Queueing intra-phase shadow assessment for config comparison
 
         Args:
             phase: The phase config
@@ -957,6 +959,40 @@ class RVBBITRunner:
             is_loop_retry=is_loop_retry,
             loop_validation_failures=self._loop_validation_failures
         )
+
+        # Queue intra-phase shadow assessment for config comparison
+        # This evaluates ~60 config scenarios (window × mask_after × min_size)
+        # to suggest optimal intra-context settings based on actual execution patterns
+        try:
+            from .shadow_assessment import queue_intra_phase_shadow_assessment, is_shadow_assessment_enabled
+
+            if is_shadow_assessment_enabled() and self.context_messages:
+                # Get candidate index (phase-level or cascade-level)
+                candidate_index = self.current_phase_candidate_index
+                if candidate_index is None:
+                    candidate_index = self.candidate_index
+
+                # Determine if intra-context was actually enabled
+                intra_config = phase.intra_context
+                actual_enabled = intra_config and intra_config.enabled
+
+                # Get actual tokens after (if intra-context was enabled)
+                actual_tokens_after = stats.tokens_estimated_after if actual_enabled else None
+
+                queue_intra_phase_shadow_assessment(
+                    session_id=self.session_id,
+                    cascade_id=self.config.cascade_id,
+                    cell_name=phase.name,
+                    full_history=self.context_messages,
+                    turn_number=turn_number,
+                    candidate_index=candidate_index,
+                    is_loop_retry=is_loop_retry,
+                    actual_config_enabled=actual_enabled,
+                    actual_tokens_after=actual_tokens_after
+                )
+        except Exception as e:
+            # Don't let shadow assessment failures break execution
+            logger.debug(f"Intra-phase shadow assessment queueing failed: {e}")
 
         return context, stats
 
@@ -1689,6 +1725,16 @@ class RVBBITRunner:
         # No context config = clean slate (selective-by-default)
         if not phase.context:
             console.print(f"  [dim]No context config → clean slate[/dim]")
+
+            # Shadow assessment: Even for clean slate, assess what auto-context would have done
+            if is_shadow_assessment_enabled():
+                self._queue_shadow_assessment(
+                    phase=phase,
+                    input_data=input_data,
+                    actual_context_messages=[],  # Nothing was included
+                    actual_mode="clean_slate"
+                )
+
             return []
 
         # AUTO MODE: Use InterPhaseContextBuilder for intelligent selection
@@ -1767,7 +1813,132 @@ class RVBBITRunner:
                         messages.extend(injection_messages)
 
         console.print(f"  [dim]Built context: {len(messages)} message(s) from {len(phase.context.from_)} source(s)[/dim]")
+
+        # Shadow assessment: Queue background analysis of what auto-context would have done
+        if is_shadow_assessment_enabled():
+            self._queue_shadow_assessment(
+                phase=phase,
+                input_data=input_data,
+                actual_context_messages=messages,
+                actual_mode="explicit"
+            )
+
         return messages
+
+    def _queue_shadow_assessment(
+        self,
+        phase: CellConfig,
+        input_data: dict,
+        actual_context_messages: List[Dict],
+        actual_mode: str
+    ):
+        """
+        Queue shadow assessment to analyze what auto-context would have selected.
+
+        This runs in the background and logs results to context_shadow_assessments table.
+
+        Args:
+            phase: Target phase we're building context for
+            input_data: Original cascade input
+            actual_context_messages: Messages that were actually included
+            actual_mode: 'explicit' or 'auto'
+        """
+        try:
+            # Get executed phase names
+            executed_phases = [
+                entry.get("cell") or entry.get("phase")
+                for entry in self.echo.lineage
+                if (entry.get("cell") or entry.get("phase")) and
+                   (entry.get("cell") or entry.get("phase")) != phase.name
+            ]
+
+            if not executed_phases:
+                return  # No prior phases to assess
+
+            # Collect content hashes of actually included messages
+            actual_included_hashes = set()
+            for msg in actual_context_messages:
+                if msg.get("_content_hash"):
+                    actual_included_hashes.add(msg["_content_hash"])
+                elif msg.get("content_hash"):
+                    actual_included_hashes.add(msg["content_hash"])
+
+            # Gather candidate messages from echo.history
+            candidates = []
+            for entry in self.echo.history:
+                meta = entry.get("metadata", {})
+                entry_cell = meta.get("cell_name") or entry.get("cell_name")
+
+                # Only include messages from executed phases
+                if entry_cell not in executed_phases:
+                    continue
+
+                # Skip structural/lifecycle entries
+                node_type = entry.get("node_type", "")
+                if node_type in ("context_injection", "context_selection", "lifecycle",
+                                "cascade", "phase", "structure", "auto_context_start",
+                                "auto_context_sources", "auto_context_result",
+                                "auto_context_injection"):
+                    continue
+
+                # Skip system messages
+                role = entry.get("role", "")
+                if role == "system":
+                    continue
+
+                content = entry.get("content", "")
+                if not content:
+                    continue
+
+                # Build candidate dict
+                content_hash = entry.get("content_hash") or entry.get("_content_hash", "")
+                if not content_hash:
+                    # Generate a hash if not present
+                    import hashlib
+                    content_str = str(content)[:2000]
+                    content_hash = hashlib.sha256(content_str.encode()).hexdigest()[:16]
+
+                candidates.append({
+                    "content_hash": content_hash,
+                    "source_cell_name": entry_cell,
+                    "role": role,
+                    "content": str(content)[:2000] if content else "",
+                    "estimated_tokens": entry.get("estimated_tokens") or len(str(content)) // 4,
+                    "turn_number": meta.get("turn_number"),
+                    "is_callout": entry.get("is_callout", False) or meta.get("is_callout", False),
+                    "callout_name": entry.get("callout_name") or meta.get("callout_name"),
+                    "message_timestamp": entry.get("timestamp"),
+                    "embedding": entry.get("embedding"),
+                    "keywords": entry.get("keywords"),
+                    "summary": entry.get("summary"),
+                })
+
+            if not candidates:
+                return  # No candidates to assess
+
+            # Get budget from config or default
+            budget_total = 30000
+            if self.config.auto_context and self.config.auto_context.inter_phase:
+                if self.config.auto_context.inter_phase.selection:
+                    budget_total = self.config.auto_context.inter_phase.selection.max_tokens
+
+            # Queue the assessment
+            queue_shadow_assessment(
+                session_id=self.session_id,
+                cascade_id=self.config.cascade_id,
+                target_cell_name=phase.name,
+                target_cell_instructions=phase.instructions or "",
+                candidates=candidates,
+                actual_included_hashes=actual_included_hashes,
+                actual_mode=actual_mode,
+                budget_total=budget_total,
+            )
+
+            console.print(f"  [dim magenta]👻 Queued shadow assessment: {len(candidates)} candidates[/dim magenta]")
+
+        except Exception as e:
+            # Don't let shadow assessment errors affect main execution
+            console.print(f"  [dim red]Shadow assessment error: {e}[/dim red]")
 
     def _build_auto_context(self, phase: CellConfig, input_data: dict, trace: 'TraceNode') -> List[Dict]:
         """

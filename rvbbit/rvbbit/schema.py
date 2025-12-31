@@ -709,6 +709,99 @@ TTL message_timestamp + INTERVAL 90 DAY;
 
 
 # =============================================================================
+# CONTEXT SHADOW ASSESSMENTS TABLE - Auto-Context Analysis
+# =============================================================================
+# Shadow assessment of auto-context relevance for all context candidates.
+# When running cascades with explicit context, we still assess what auto-context
+# WOULD have done. This enables comparing explicit vs auto decisions.
+#
+# Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (default: true)
+
+CONTEXT_SHADOW_ASSESSMENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS context_shadow_assessments (
+    -- Identity
+    assessment_id UUID DEFAULT generateUUIDv4(),
+    timestamp DateTime64(6) DEFAULT now64(6),
+
+    -- Session context
+    session_id String,
+    cascade_id String,
+    target_cell_name String,
+    target_cell_instructions String,
+
+    -- Candidate message being assessed
+    source_cell_name String,
+    content_hash String,
+    message_role LowCardinality(String),
+    content_preview String,
+    estimated_tokens UInt32,
+    message_turn_number Nullable(UInt32),
+
+    -- Heuristic strategy scores
+    heuristic_score Float32,
+    heuristic_keyword_overlap UInt16,
+    heuristic_recency_score Float32,
+    heuristic_callout_boost Float32,
+    heuristic_role_boost Float32,
+
+    -- Semantic strategy scores
+    semantic_score Nullable(Float32),
+    semantic_embedding_available Bool DEFAULT false,
+
+    -- LLM strategy results
+    llm_selected Bool DEFAULT false,
+    llm_reasoning String DEFAULT '',
+    llm_model String DEFAULT '',
+    llm_cost Nullable(Float64),
+
+    -- Composite determination
+    composite_score Float32,
+    would_include_heuristic Bool,
+    would_include_semantic Bool,
+    would_include_llm Bool,
+    would_include_hybrid Bool,
+
+    -- Rankings
+    rank_heuristic UInt16,
+    rank_semantic Nullable(UInt16),
+    rank_composite UInt16,
+    total_candidates UInt16,
+
+    -- Budget context
+    budget_total UInt32,
+    cumulative_tokens_at_rank UInt32,
+    would_fit_budget Bool,
+
+    -- Actual vs hypothetical
+    was_actually_included Bool,
+    actual_mode LowCardinality(String),
+
+    -- Assessment metadata
+    assessment_duration_ms UInt32,
+    assessment_batch_id String,
+
+    -- Indexes
+    INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_target_cell target_cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_source_cell source_cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_content_hash content_hash TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_batch assessment_batch_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_would_include_heuristic would_include_heuristic TYPE set(2) GRANULARITY 1,
+    INDEX idx_would_include_llm would_include_llm TYPE set(2) GRANULARITY 1,
+    INDEX idx_was_included was_actually_included TYPE set(2) GRANULARITY 1,
+    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+    INDEX idx_composite_score composite_score TYPE minmax GRANULARITY 1
+)
+ENGINE = MergeTree()
+ORDER BY (session_id, target_cell_name, rank_composite)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 30 DAY
+SETTINGS index_granularity = 8192;
+"""
+
+
+# =============================================================================
 # UI SQL LOG TABLE - Query Performance Tracking
 # =============================================================================
 # Stores all SQL queries made by the UI backend for performance analysis.
@@ -935,6 +1028,90 @@ PARTITION BY toYYYYMM(created_at);
 
 
 # =============================================================================
+# INTRA-CONTEXT SHADOW ASSESSMENTS TABLE - Intra-Phase Context Analysis
+# =============================================================================
+# Shadow assessment of intra-phase context management across multiple config scenarios.
+# Intra-phase context management controls HOW messages within a cell's turn loop are
+# compressed/masked. This is purely local computation (no LLM calls), so we can cheaply
+# evaluate many config scenarios to suggest optimal settings.
+#
+# Config parameters we vary:
+#   - window: [3, 5, 7, 10, 15] - turns to keep in full fidelity
+#   - mask_observations_after: [2, 3, 5, 7] - when to start masking tool results
+#   - min_masked_size: [100, 200, 500] - minimum chars before masking
+#
+# Controlled by: RVBBIT_SHADOW_ASSESSMENT_ENABLED (same as inter-phase)
+
+INTRA_CONTEXT_SHADOW_ASSESSMENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
+    -- Identity
+    assessment_id UUID DEFAULT generateUUIDv4(),
+    timestamp DateTime64(6) DEFAULT now64(6),
+
+    -- Session context
+    session_id String,
+    cascade_id String,
+    cell_name String,
+    candidate_index Nullable(Int16),       -- NULL if not in soundings, else 0, 1, 2...
+    turn_number UInt16,                    -- Turn within this cell (0-indexed)
+    is_loop_retry Bool DEFAULT false,      -- Is this a loop_until retry turn?
+
+    -- Config scenario being evaluated
+    config_window UInt8,                   -- window parameter value
+    config_mask_after UInt8,               -- mask_observations_after parameter value
+    config_min_masked_size UInt16,         -- min_masked_size parameter value
+    config_compress_loops Bool,            -- compress_loops parameter value
+    config_preserve_reasoning Bool,        -- preserve_reasoning parameter value
+    config_preserve_errors Bool,           -- preserve_errors parameter value
+
+    -- Turn-level aggregate metrics
+    full_history_size UInt16,              -- Total messages before context building
+    context_size UInt16,                   -- Messages after context building
+    tokens_before UInt32,                  -- Estimated tokens before
+    tokens_after UInt32,                   -- Estimated tokens after
+    tokens_saved UInt32,                   -- tokens_before - tokens_after
+    compression_ratio Float32,             -- tokens_after / tokens_before
+    messages_masked UInt16,                -- Count of masked messages
+    messages_preserved UInt16,             -- Count of preserved messages
+    messages_truncated UInt16,             -- Count of truncated messages
+
+    -- Per-message breakdown (JSON array)
+    -- Each entry: {msg_index, role, original_tokens, action, result_tokens, reason}
+    message_breakdown String DEFAULT '[]',
+
+    -- Comparison flags (vs baseline/actual)
+    tokens_vs_baseline_saved UInt32,       -- How much this config saves vs disabled
+    tokens_vs_baseline_pct Float32,        -- Percentage saved vs disabled
+
+    -- Actual vs shadow comparison
+    actual_config_enabled Bool,            -- Was intra-context enabled for this turn?
+    actual_tokens_after Nullable(UInt32),  -- What tokens_after was in actual execution
+    differs_from_actual Bool,              -- Would this config produce different result?
+
+    -- Assessment metadata
+    assessment_batch_id String,            -- Groups assessments from same turn
+
+    -- Indexes
+    INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_candidate candidate_index TYPE set(100) GRANULARITY 1,
+    INDEX idx_turn turn_number TYPE set(100) GRANULARITY 1,
+    INDEX idx_batch assessment_batch_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+    INDEX idx_compression compression_ratio TYPE minmax GRANULARITY 1,
+    INDEX idx_window config_window TYPE set(20) GRANULARITY 1,
+    INDEX idx_mask_after config_mask_after TYPE set(20) GRANULARITY 1
+)
+ENGINE = MergeTree()
+ORDER BY (session_id, cell_name, turn_number, config_window, config_mask_after)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 30 DAY
+SETTINGS index_granularity = 8192;
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -1005,6 +1182,8 @@ def get_all_schemas() -> dict:
         "session_state": SESSION_STATE_SCHEMA,
         "research_sessions": RESEARCH_SESSIONS_SCHEMA,
         "context_cards": CONTEXT_CARDS_SCHEMA,
+        "context_shadow_assessments": CONTEXT_SHADOW_ASSESSMENTS_SCHEMA,
+        "intra_context_shadow_assessments": INTRA_CONTEXT_SHADOW_ASSESSMENTS_SCHEMA,
         "ui_sql_log": UI_SQL_LOG_SCHEMA,
         "openrouter_models": OPENROUTER_MODELS_SCHEMA,
         "hf_spaces": HF_SPACES_SCHEMA,

@@ -149,8 +149,8 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_phases: list,
         phase_tool = getattr(phase, 'tool', None)
         phase_inputs = getattr(phase, 'inputs', None)
 
-        print(f"[ArtifactResolver] Checking phase: {cell_name}, tool: {phase_tool}, inputs type: {type(phase_inputs)}")
-        print(f"[ArtifactResolver]   Phase attributes: {dir(phase)[:20]}")  # Debug what's available
+        # print(f"[ArtifactResolver] Checking phase: {cell_name}, tool: {phase_tool}, inputs type: {type(phase_inputs)}")
+        # print(f"[ArtifactResolver]   Phase attributes: {dir(phase)[:20]}")  # Debug what's available
 
         is_shell_tool = phase_tool in ('linux_shell', 'linux_shell_dangerous')
 
