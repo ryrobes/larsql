@@ -31,6 +31,7 @@ dependencies = [
     "miniaudio",  # For ElevenLabs TTS audio playback
     "requests",  # For ElevenLabs API calls and Rabbitize REST API
     "ruamel.yaml",  # For YAML cascade/tool definition support
+    "sqlglot",  # For SQL fingerprinting and UDF type extraction in SQL Trail
 ]
 
 [project.optional-dependencies]

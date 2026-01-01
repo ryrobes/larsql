@@ -28,6 +28,10 @@ export const ROUTES = {
   // Receipts
   RECEIPTS: '/receipts',
 
+  // SQL Trail
+  SQL_TRAIL: '/sql-trail',
+  sqlTrailWithQuery: (callerId) => `/sql-trail/${encodeURIComponent(callerId)}`,
+
   // Explore
   EXPLORE: '/explore',
   exploreWithSession: (sessionId) => `/explore/${encodeURIComponent(sessionId)}`,
@@ -93,6 +97,7 @@ export function getViewFromPath(pathname) {
     'console': 'console',
     'outputs': 'outputs',
     'receipts': 'receipts',
+    'sql-trail': 'sqltrail',
     'explore': 'explore',
     'evolution': 'evolution',
     'interrupts': 'interrupts',
@@ -128,6 +133,7 @@ export function getRouteForView(viewId) {
     'console': ROUTES.CONSOLE,
     'outputs': ROUTES.OUTPUTS,
     'receipts': ROUTES.RECEIPTS,
+    'sqltrail': ROUTES.SQL_TRAIL,
     'explore': ROUTES.EXPLORE,
     'evolution': ROUTES.EVOLUTION,
     'interrupts': ROUTES.INTERRUPTS,

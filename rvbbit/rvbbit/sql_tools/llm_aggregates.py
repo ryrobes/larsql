@@ -102,8 +102,12 @@ def _sanitize_text(text: str) -> str:
     Removes/replaces characters that can break JSON parsing or confuse LLMs:
     - Control characters
     - Null bytes
+    - Invalid escape sequences (like backslash-quote from SQL or random backslash-x)
     - Excessive whitespace
     - Non-printable characters
+
+    The goal is to preserve semantic meaning while removing characters that
+    could break JSON parsing in the LLM response.
     """
     if not text:
         return ""
@@ -111,8 +115,20 @@ def _sanitize_text(text: str) -> str:
     # Remove null bytes
     text = text.replace('\x00', '')
 
+    # Fix invalid escape sequences that break JSON parsing
+    # JSON only allows: \" \\ \/ \b \f \n \r \t \uXXXX
+    # Replace backslash followed by invalid escape char with just the char
+    # This handles SQL escapes like \' and random \q \a etc.
+    text = re.sub(r"\\(?![\"\\\/bfnrtu])", "", text)
+
+    # Also handle doubled single quotes from SQL ('' -> ')
+    text = text.replace("''", "'")
+
     # Remove other control characters except newline/tab
     text = re.sub(r'[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Remove any remaining non-printable/weird unicode
+    text = re.sub(r'[\x80-\x9f]', '', text)
 
     # Replace multiple whitespace with single space (except newlines)
     text = re.sub(r'[^\S\n]+', ' ', text)
@@ -774,6 +790,142 @@ Answer with ONLY "yes" or "no", nothing else."""
     return is_match
 
 
+def llm_implies_impl(
+    premise: str,
+    conclusion: str,
+    context: str = None,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """
+    Check if one statement semantically implies another.
+
+    Use for logical inference checking:
+
+        SELECT title, observed
+        FROM bigfoot
+        WHERE implies(title, 'visual contact was made')
+
+        -- Or in WHERE clause
+        WHERE title IMPLIES 'the witness saw something'
+
+    Args:
+        premise: The premise statement (if this is true...)
+        conclusion: The conclusion to check (...does this follow?)
+        context: Optional context to help with interpretation
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        True if the premise implies the conclusion
+    """
+    if not premise or not conclusion:
+        return False
+
+    premise = _sanitize_text(str(premise))
+    conclusion = _sanitize_text(str(conclusion))
+
+    if not premise or not conclusion:
+        return False
+
+    # Check cache - order matters for implication
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        cache_key = _agg_cache_key("implies", f"{premise[:100]}|{conclusion[:100]}", context or "")
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached.lower() == "true"
+
+    context_str = f"\nContext: {context}" if context else ""
+
+    prompt = f"""Does the first statement logically imply or entail the second statement?
+{context_str}
+Statement 1 (premise): {premise[:500]}
+Statement 2 (conclusion): {conclusion[:500]}
+
+If Statement 1 is true, would Statement 2 necessarily or very likely be true?
+Answer with ONLY "yes" or "no", nothing else."""
+
+    result = _call_llm(prompt, model=model)
+    result_lower = result.strip().lower()
+
+    is_implied = result_lower in ("yes", "true", "1", "y")
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, "true" if is_implied else "false", ttl=None)
+
+    return is_implied
+
+
+def llm_contradicts_impl(
+    statement1: str,
+    statement2: str,
+    context: str = None,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """
+    Check if two statements contradict each other.
+
+    Use for finding inconsistencies:
+
+        SELECT title, observed
+        FROM bigfoot
+        WHERE contradicts(title, observed)
+
+        -- Find reports where title contradicts observation
+        WHERE title CONTRADICTS observed
+
+    Args:
+        statement1: First statement
+        statement2: Second statement
+        context: Optional context to help with interpretation
+        model: Optional model override
+        use_cache: Whether to cache results (default True)
+
+    Returns:
+        True if the statements contradict each other
+    """
+    if not statement1 or not statement2:
+        return False
+
+    statement1 = _sanitize_text(str(statement1))
+    statement2 = _sanitize_text(str(statement2))
+
+    if not statement1 or not statement2:
+        return False
+
+    # Check cache - order-independent for contradiction
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        pair_key = "|".join(sorted([statement1[:100], statement2[:100]]))
+        cache_key = _agg_cache_key("contradicts", pair_key, context or "")
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached.lower() == "true"
+
+    context_str = f"\nContext: {context}" if context else ""
+
+    prompt = f"""Do these two statements contradict each other? That is, can they both be true at the same time?
+{context_str}
+Statement 1: {statement1[:500]}
+Statement 2: {statement2[:500]}
+
+If they contradict (cannot both be true), answer "yes".
+If they are compatible (can both be true), answer "no".
+Answer with ONLY "yes" or "no", nothing else."""
+
+    result = _call_llm(prompt, model=model)
+    result_lower = result.strip().lower()
+
+    is_contradiction = result_lower in ("yes", "true", "1", "y")
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, "true" if is_contradiction else "false", ttl=None)
+
+    return is_contradiction
+
+
 def llm_match_template_impl(
     template: str,
     *args,
@@ -940,6 +1092,258 @@ Return ONLY the exact result value, nothing else."""
         _cache_set(_agg_cache, cache_key, result, ttl=None)
 
     return result
+
+
+# ============================================================================
+# Semantic Clustering Aggregates
+# ============================================================================
+
+def llm_dedupe_impl(
+    values_json: str,
+    criteria: Optional[str] = None,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Deduplicate values by semantic similarity.
+
+    Returns JSON array of unique representatives (one per semantic cluster).
+
+    Args:
+        values_json: JSON array of text values to deduplicate
+        criteria: Description of what makes items "the same" (default: "same entity")
+        model: Model override
+        use_cache: Whether to cache results
+
+    Returns:
+        JSON array of deduplicated representative values
+
+    Example SQL:
+        SELECT llm_dedupe_impl(LIST(company_name)::VARCHAR, 'same company')
+        FROM suppliers
+
+        -- Returns: ["IBM", "Microsoft", "Google"]
+        -- (instead of ["IBM", "IBM Corp", "International Business Machines", ...])
+    """
+    try:
+        values = json.loads(values_json)
+        if not isinstance(values, list):
+            values = [values]
+    except json.JSONDecodeError:
+        values = [values_json]
+
+    values = _sanitize_values(values)
+    values = [v for v in values if v]
+
+    if not values:
+        return "[]"
+
+    if len(values) == 1:
+        return json.dumps(values)
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        values_hash = _hash_values(values)
+        cache_key = _agg_cache_key("dedupe", criteria or "same", values_hash)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached:
+            return cached
+
+    criteria = criteria or "the same entity or concept"
+
+    # For small sets, use direct LLM deduplication
+    if len(values) <= 50:
+        items_list = "\n".join(f"- {v}" for v in values)
+
+        prompt = f"""Deduplicate these items by semantic similarity. Group items that represent {criteria}.
+Return ONLY the unique representatives (one per group).
+
+Items:
+{items_list}
+
+Return a JSON array of the unique representative values (pick the clearest/most canonical form from each group).
+Example: ["Representative1", "Representative2", ...]
+Return ONLY the JSON array, nothing else."""
+
+        result = _call_llm(prompt, model=model)
+    else:
+        # For larger sets, sample and cluster
+        import random
+        sampled = random.sample(values, 50)
+        items_list = "\n".join(f"- {v}" for v in sampled)
+
+        prompt = f"""Deduplicate these items by semantic similarity. Group items that represent {criteria}.
+Return ONLY the unique representatives (one per group).
+
+Items (sample of {len(values)} total):
+{items_list}
+
+Return a JSON array of the unique representative values.
+Return ONLY the JSON array, nothing else."""
+
+        result = _call_llm(prompt, model=model)
+
+    # Clean up result
+    result = result.strip()
+    if not result.startswith('['):
+        match = re.search(r'\[.*?\]', result, re.DOTALL)
+        if match:
+            result = match.group(0)
+        else:
+            result = json.dumps(values[:10])  # Fallback
+
+    try:
+        json.loads(result)
+    except json.JSONDecodeError:
+        result = json.dumps(values[:10])
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
+def llm_cluster_impl(
+    values_json: str,
+    num_clusters: Optional[int] = None,
+    criteria: Optional[str] = None,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Cluster values by semantic similarity.
+
+    Returns JSON object mapping each value to its cluster label.
+
+    Args:
+        values_json: JSON array of text values to cluster
+        num_clusters: Suggested number of clusters (auto-determined if not specified)
+        criteria: Description of how to cluster (e.g., "by topic", "by sentiment")
+        model: Model override
+        use_cache: Whether to cache results
+
+    Returns:
+        JSON object: {"value1": "cluster_label1", "value2": "cluster_label2", ...}
+
+    Example SQL:
+        SELECT llm_cluster_impl(LIST(category)::VARCHAR, 5, 'by product type')
+        FROM products
+
+        -- Returns: {"laptop": "electronics", "phone": "electronics", "shirt": "apparel", ...}
+    """
+    try:
+        values = json.loads(values_json)
+        if not isinstance(values, list):
+            values = [values]
+    except json.JSONDecodeError:
+        values = [values_json]
+
+    values = _sanitize_values(values)
+    values = [v for v in values if v]
+
+    if not values:
+        return "{}"
+
+    if len(values) == 1:
+        return json.dumps({values[0]: values[0]})
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        values_hash = _hash_values(values)
+        cache_key = _agg_cache_key("cluster", f"{num_clusters or 'auto'}_{criteria or 'semantic'}", values_hash)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached:
+            return cached
+
+    criteria = criteria or "semantic similarity"
+    cluster_hint = f"into approximately {num_clusters} groups" if num_clusters else "into natural groupings"
+
+    # Sample if too large
+    working_values = values
+    if len(values) > 100:
+        import random
+        working_values = random.sample(values, 100)
+
+    items_list = "\n".join(f"- {v}" for v in working_values)
+
+    prompt = f"""Cluster these items {cluster_hint} based on {criteria}.
+
+Items:
+{items_list}
+
+Return a JSON object mapping each item to its cluster label.
+Use short, descriptive cluster labels.
+Example: {{"item1": "cluster_a", "item2": "cluster_a", "item3": "cluster_b"}}
+Return ONLY the JSON object, nothing else."""
+
+    result = _call_llm(prompt, model=model)
+
+    # Clean up result
+    result = result.strip()
+    if not result.startswith('{'):
+        match = re.search(r'\{.*?\}', result, re.DOTALL)
+        if match:
+            result = match.group(0)
+        else:
+            # Fallback: each value is its own cluster
+            result = json.dumps({v: v for v in working_values})
+
+    try:
+        parsed = json.loads(result)
+        # Validate structure
+        if not isinstance(parsed, dict):
+            result = json.dumps({v: v for v in working_values})
+    except json.JSONDecodeError:
+        result = json.dumps({v: v for v in working_values})
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
+def llm_cluster_label_impl(
+    value: str,
+    all_values_json: str,
+    num_clusters: Optional[int] = None,
+    criteria: Optional[str] = None,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Get the cluster label for a single value given all values.
+
+    This is the scalar version used for GROUP BY MEANING().
+    It clusters all values and returns the label for the specific value.
+
+    Args:
+        value: The specific value to get cluster label for
+        all_values_json: JSON array of all values in the group
+        num_clusters: Suggested number of clusters
+        criteria: Description of how to cluster
+        model: Model override
+        use_cache: Whether to cache
+
+    Returns:
+        Cluster label string for the given value
+    """
+    clusters_json = llm_cluster_impl(all_values_json, num_clusters, criteria, model, use_cache)
+
+    try:
+        clusters = json.loads(clusters_json)
+        if isinstance(clusters, dict):
+            # Direct lookup
+            if value in clusters:
+                return clusters[value]
+            # Try case-insensitive
+            for k, v in clusters.items():
+                if k.lower() == value.lower():
+                    return v
+        return value  # Fallback to original value
+    except json.JSONDecodeError:
+        return value
 
 
 # ============================================================================
@@ -1154,6 +1558,42 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
     except Exception as e:
         log.warning(f"Could not register match_pair_2: {e}")
 
+    # ========== IMPLIES - logical implication ==========
+
+    def implies_2(premise: str, conclusion: str) -> bool:
+        return llm_implies_impl(premise, conclusion)
+
+    def implies_3(premise: str, conclusion: str, context: str) -> bool:
+        return llm_implies_impl(premise, conclusion, context)
+
+    for name, func in [
+        ("implies", implies_2),
+        ("implies_3", implies_3),
+        ("llm_implies", implies_2),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="BOOLEAN")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== CONTRADICTS - contradiction detection ==========
+
+    def contradicts_2(stmt1: str, stmt2: str) -> bool:
+        return llm_contradicts_impl(stmt1, stmt2)
+
+    def contradicts_3(stmt1: str, stmt2: str, context: str) -> bool:
+        return llm_contradicts_impl(stmt1, stmt2, context)
+
+    for name, func in [
+        ("contradicts", contradicts_2),
+        ("contradicts_3", contradicts_3),
+        ("llm_contradicts", contradicts_2),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="BOOLEAN")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
     # ========== MATCH_TEMPLATE - flexible templated matching ==========
     # match_template(template, arg1, arg2, ...)
 
@@ -1231,6 +1671,73 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
         ("llm_case_8", semantic_case_8),
         ("llm_case_9", semantic_case_9),
         ("llm_case_10", semantic_case_10),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== LLM_DEDUPE (Semantic Deduplication) ==========
+
+    def dedupe_1(values_json: str) -> str:
+        return llm_dedupe_impl(values_json)
+
+    def dedupe_2(values_json: str, criteria: str) -> str:
+        return llm_dedupe_impl(values_json, criteria)
+
+    for name, func in [
+        ("llm_dedupe_impl", dedupe_1),
+        ("llm_dedupe_impl_2", dedupe_2),
+        ("dedupe", dedupe_1),
+        ("dedupe_2", dedupe_2),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== LLM_CLUSTER (Semantic Clustering) ==========
+
+    def cluster_1(values_json: str) -> str:
+        return llm_cluster_impl(values_json)
+
+    def cluster_2(values_json: str, num_clusters: int) -> str:
+        return llm_cluster_impl(values_json, num_clusters)
+
+    def cluster_3(values_json: str, num_clusters: int, criteria: str) -> str:
+        return llm_cluster_impl(values_json, num_clusters, criteria)
+
+    for name, func in [
+        ("llm_cluster_impl", cluster_1),
+        ("llm_cluster_impl_2", cluster_2),
+        ("llm_cluster_impl_3", cluster_3),
+        ("cluster", cluster_1),
+        ("cluster_2", cluster_2),
+        ("cluster_3", cluster_3),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== LLM_CLUSTER_LABEL (For GROUP BY MEANING) ==========
+
+    def cluster_label_2(value: str, all_values_json: str) -> str:
+        return llm_cluster_label_impl(value, all_values_json)
+
+    def cluster_label_3(value: str, all_values_json: str, num_clusters: int) -> str:
+        return llm_cluster_label_impl(value, all_values_json, num_clusters)
+
+    def cluster_label_4(value: str, all_values_json: str, num_clusters: int, criteria: str) -> str:
+        return llm_cluster_label_impl(value, all_values_json, num_clusters, criteria)
+
+    for name, func in [
+        ("llm_cluster_label", cluster_label_2),
+        ("llm_cluster_label_3", cluster_label_3),
+        ("llm_cluster_label_4", cluster_label_4),
+        ("meaning", cluster_label_2),
+        ("meaning_3", cluster_label_3),
+        ("meaning_4", cluster_label_4),
     ]:
         try:
             connection.create_function(name, func, return_type="VARCHAR")

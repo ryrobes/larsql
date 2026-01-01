@@ -24,6 +24,7 @@ const StudioPage = lazy(() => import('./studio/StudioPage'));
 const ConsoleView = lazy(() => import('./views/console/ConsoleView'));
 const OutputsView = lazy(() => import('./views/outputs/OutputsView'));
 const ReceiptsView = lazy(() => import('./views/receipts/ReceiptsView'));
+const SqlTrailView = lazy(() => import('./views/sql-trail/SqlTrailView'));
 const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
 const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
@@ -85,6 +86,16 @@ export const router = createBrowserRouter([
       {
         path: 'receipts',
         element: withSuspense(ReceiptsView),
+      },
+
+      // SQL Trail - query-level analytics for SQL semantic workflows
+      {
+        path: 'sql-trail',
+        element: withSuspense(SqlTrailView),
+      },
+      {
+        path: 'sql-trail/:callerId',
+        element: withSuspense(SqlTrailView),
       },
 
       // Explore

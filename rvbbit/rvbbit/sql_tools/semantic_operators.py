@@ -4,12 +4,17 @@ Semantic SQL Operators.
 Transforms semantic SQL syntax into UDF calls:
 
     col MEANS 'x'           → matches('x', col)
+    col NOT MEANS 'x'       → NOT matches('x', col)
     col ABOUT 'x'           → score('x', col) > 0.5
     col ABOUT 'x' > 0.7     → score('x', col) > 0.7
+    col NOT ABOUT 'x'       → score('x', col) <= 0.5
+    col NOT ABOUT 'x' > 0.3 → score('x', col) <= 0.3
     a ~ b                   → match_pair(a, b, 'same entity')
+    a !~ b                  → NOT match_pair(a, b, 'same entity')
     a ~ b AS 'relationship' → match_pair(a, b, 'relationship')
-    ORDER BY col RELEVANCE TO 'x'  → ORDER BY score('x', col) DESC
-    SEMANTIC JOIN t ON a ~ b       → CROSS JOIN t WHERE match_pair(a, b, ...)
+    ORDER BY col RELEVANCE TO 'x'      → ORDER BY score('x', col) DESC
+    ORDER BY col NOT RELEVANCE TO 'x'  → ORDER BY score('x', col) ASC
+    SEMANTIC JOIN t ON a ~ b           → CROSS JOIN t WHERE match_pair(a, b, ...)
 
 Supports annotation hints (-- @) for model selection and prompt customization:
 
@@ -147,14 +152,24 @@ def has_semantic_operators(query: str) -> bool:
     """Check if query contains any semantic SQL operators."""
     query_upper = query.upper()
 
-    # Check for semantic operators
+    # Check for semantic operators (including negated forms)
     patterns = [
-        r'\bMEANS\s+\'',           # col MEANS 'x'
-        r'\bABOUT\s+\'',           # col ABOUT 'x'
-        r'\w+\s*~\s*\w+',          # a ~ b (tilde operator)
-        r'\bSEMANTIC\s+JOIN\b',    # SEMANTIC JOIN
-        r'\bRELEVANCE\s+TO\s+\'',  # ORDER BY col RELEVANCE TO 'x'
-        r'\bSEMANTIC\s+DISTINCT\b', # SEMANTIC DISTINCT
+        r'\bMEANS\s+\'',             # col MEANS 'x'
+        r'\bNOT\s+MEANS\s+\'',       # col NOT MEANS 'x'
+        r'\bABOUT\s+\'',             # col ABOUT 'x'
+        r'\bNOT\s+ABOUT\s+\'',       # col NOT ABOUT 'x'
+        r'\w+\s*~\s*\w+',            # a ~ b (tilde operator)
+        r'\w+\s*!~\s*\w+',           # a !~ b (negated tilde)
+        r'\bSEMANTIC\s+JOIN\b',      # SEMANTIC JOIN
+        r'\bRELEVANCE\s+TO\s+\'',    # ORDER BY col RELEVANCE TO 'x'
+        r'\bNOT\s+RELEVANCE\s+TO\s+\'',  # ORDER BY col NOT RELEVANCE TO 'x'
+        r'\bSEMANTIC\s+DISTINCT\b',  # SEMANTIC DISTINCT
+        r'\bGROUP\s+BY\s+MEANING\s*\(', # GROUP BY MEANING(col)
+        r'\bGROUP\s+BY\s+TOPICS\s*\(',  # GROUP BY TOPICS(col)
+        r'\bIMPLIES\s+\'',           # col IMPLIES 'x'
+        r'\bIMPLIES\s+\w+',          # col IMPLIES other_col
+        r'\bCONTRADICTS\s+\'',       # col CONTRADICTS 'x'
+        r'\bCONTRADICTS\s+\w+',      # col CONTRADICTS other_col
     ]
 
     for pattern in patterns:
@@ -232,6 +247,25 @@ def rewrite_semantic_operators(query: str) -> str:
     # SEMANTIC JOIN followed by WHERE on a separate line
     result = _fix_double_where(result)
 
+    # Get annotation prefix for query-level rewrites
+    # Use the first annotation if present
+    annotation_prefix = ""
+    if annotations:
+        first_annotation = annotations[0][2]  # (line_num, end_pos, annotation)
+        if first_annotation.prompt:
+            annotation_prefix = first_annotation.prompt + " - "
+
+    # Query-level rewrites (these transform the entire query structure)
+
+    # SEMANTIC DISTINCT: SELECT SEMANTIC DISTINCT col FROM table
+    result = _rewrite_semantic_distinct(result, annotation_prefix)
+
+    # GROUP BY MEANING(col): Cluster values semantically
+    result = _rewrite_group_by_meaning(result, annotation_prefix)
+
+    # GROUP BY TOPICS(col, n): Group by extracted themes
+    result = _rewrite_group_by_topics(result, annotation_prefix)
+
     return result
 
 
@@ -247,11 +281,20 @@ def _find_next_code_line(lines: list, start: int) -> Optional[int]:
 def _has_semantic_operator_in_line(line: str) -> bool:
     """Check if a line contains any semantic operator."""
     patterns = [
-        r'\bMEANS\s+\'',           # col MEANS 'x'
-        r'\bABOUT\s+\'',           # col ABOUT 'x'
-        r'\w+\s*~\s*\w+',          # a ~ b (but not in comments)
-        r'\bSEMANTIC\s+JOIN\b',    # SEMANTIC JOIN
-        r'\bRELEVANCE\s+TO\s+\'',  # RELEVANCE TO 'x'
+        r'\bMEANS\s+\'',              # col MEANS 'x'
+        r'\bNOT\s+MEANS\s+\'',        # col NOT MEANS 'x'
+        r'\bABOUT\s+\'',              # col ABOUT 'x'
+        r'\bNOT\s+ABOUT\s+\'',        # col NOT ABOUT 'x'
+        r'\w+\s*~\s*\w+',             # a ~ b (but not in comments)
+        r'\w+\s*!~\s*\w+',            # a !~ b (negated tilde)
+        r'\bSEMANTIC\s+JOIN\b',       # SEMANTIC JOIN
+        r'\bSEMANTIC\s+DISTINCT\b',   # SEMANTIC DISTINCT
+        r'\bRELEVANCE\s+TO\s+\'',     # RELEVANCE TO 'x'
+        r'\bNOT\s+RELEVANCE\s+TO\s+\'',  # NOT RELEVANCE TO 'x'
+        r'\bGROUP\s+BY\s+MEANING\s*\(', # GROUP BY MEANING(col)
+        r'\bGROUP\s+BY\s+TOPICS\s*\(',  # GROUP BY TOPICS(col)
+        r'\bIMPLIES\s+[\'"\w]',        # col IMPLIES 'x' or col IMPLIES other
+        r'\bCONTRADICTS\s+[\'"\w]',    # col CONTRADICTS 'x' or col CONTRADICTS other
     ]
 
     # Ignore if line is a comment
@@ -317,22 +360,45 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
         default_threshold = annotation.threshold
 
     # ORDER MATTERS: Process compound operators before simple ones
+    # Also process negated forms BEFORE non-negated to avoid partial matches
 
     # 1. Rewrite: SEMANTIC JOIN (must be before ~ so we can match the full pattern)
     result = _rewrite_semantic_join(result, annotation_prefix)
 
-    # 2. Rewrite: ORDER BY col RELEVANCE TO 'query'  →  ORDER BY score('query', col) DESC
+    # 2. Rewrite: ORDER BY col NOT RELEVANCE TO 'query' → ORDER BY score('query', col) ASC
+    # Must be before RELEVANCE TO
+    result = _rewrite_not_relevance_to(result, annotation_prefix)
+
+    # 3. Rewrite: ORDER BY col RELEVANCE TO 'query' → ORDER BY score('query', col) DESC
     result = _rewrite_relevance_to(result, annotation_prefix)
 
-    # 3. Rewrite: col MEANS 'criteria'  →  matches('criteria', col)
+    # 4. Rewrite: col NOT MEANS 'criteria' → NOT matches('criteria', col)
+    # Must be before MEANS
+    result = _rewrite_not_means(result, annotation_prefix)
+
+    # 5. Rewrite: col MEANS 'criteria' → matches('criteria', col)
     result = _rewrite_means(result, annotation_prefix)
 
-    # 4. Rewrite: col ABOUT 'criteria' [> threshold]  →  score('criteria', col) > threshold
+    # 6. Rewrite: col NOT ABOUT 'criteria' → score('criteria', col) <= threshold
+    # Must be before ABOUT
+    result = _rewrite_not_about(result, annotation_prefix, default_threshold)
+
+    # 7. Rewrite: col ABOUT 'criteria' [> threshold] → score('criteria', col) > threshold
     result = _rewrite_about(result, annotation_prefix, default_threshold)
 
-    # 5. Rewrite: a ~ b [AS 'relationship']  →  match_pair(a, b, 'relationship')
+    # 8. Rewrite: a !~ b → NOT match_pair(a, b, 'same entity')
+    # Must be before ~ to avoid partial match
+    result = _rewrite_not_tilde(result, annotation_prefix)
+
+    # 9. Rewrite: a ~ b [AS 'relationship'] → match_pair(a, b, 'relationship')
     # Must be LAST since other patterns may contain ~
     result = _rewrite_tilde(result, annotation_prefix)
+
+    # 10. Rewrite: col IMPLIES 'conclusion' → implies(col, 'conclusion')
+    result = _rewrite_implies(result, annotation_prefix)
+
+    # 11. Rewrite: col CONTRADICTS other_col → contradicts(col, other_col)
+    result = _rewrite_contradicts(result, annotation_prefix)
 
     return result
 
@@ -357,6 +423,28 @@ def _rewrite_means(line: str, annotation_prefix: str) -> str:
         # Inject annotation prefix into criteria
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
         return f"matches('{full_criteria}', {col})"
+
+    return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
+
+
+def _rewrite_not_means(line: str, annotation_prefix: str) -> str:
+    """
+    Rewrite NOT MEANS operator.
+
+    col NOT MEANS 'sustainable'  →  NOT matches('sustainable', col)
+
+    With annotation:
+    -- @ use a fast model
+    col NOT MEANS 'sustainable'  →  NOT matches('use a fast model - sustainable', col)
+    """
+    # Pattern: identifier NOT MEANS 'string'
+    pattern = r'(\w+(?:\.\w+)?)\s+NOT\s+MEANS\s+\'([^\']+)\''
+
+    def replacer(match):
+        col = match.group(1)
+        criteria = match.group(2)
+        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
+        return f"NOT matches('{full_criteria}', {col})"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -393,6 +481,56 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
         return f"score('{full_criteria}', {col}) > {default_threshold}"
+
+    result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
+
+    return result
+
+
+def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: float) -> str:
+    """
+    Rewrite NOT ABOUT operator (inverts threshold comparison).
+
+    col NOT ABOUT 'topic'         →  score('topic', col) <= 0.5
+    col NOT ABOUT 'topic' > 0.7   →  score('topic', col) <= 0.7
+
+    The threshold from the query is used as the cutoff for exclusion.
+    """
+    # Pattern with explicit threshold: col NOT ABOUT 'x' > 0.7
+    # Note: The > threshold in NOT ABOUT means "exclude anything scoring above this"
+    pattern_with_threshold = r'(\w+(?:\.\w+)?)\s+NOT\s+ABOUT\s+\'([^\']+)\'\s*(>|>=)\s*([\d.]+)'
+
+    def replacer_with_threshold(match):
+        col = match.group(1)
+        criteria = match.group(2)
+        # For NOT ABOUT with >, we invert: NOT ABOUT 'x' > 0.7 means score <= 0.7
+        threshold = match.group(4)
+        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
+        return f"score('{full_criteria}', {col}) <= {threshold}"
+
+    result = re.sub(pattern_with_threshold, replacer_with_threshold, line, flags=re.IGNORECASE)
+
+    # Pattern with < threshold: col NOT ABOUT 'x' < 0.3
+    # This means "exclude anything scoring below 0.3" → score >= 0.3
+    pattern_with_lt = r'(\w+(?:\.\w+)?)\s+NOT\s+ABOUT\s+\'([^\']+)\'\s*(<|<=)\s*([\d.]+)'
+
+    def replacer_with_lt(match):
+        col = match.group(1)
+        criteria = match.group(2)
+        threshold = match.group(4)
+        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
+        return f"score('{full_criteria}', {col}) >= {threshold}"
+
+    result = re.sub(pattern_with_lt, replacer_with_lt, result, flags=re.IGNORECASE)
+
+    # Pattern without threshold: col NOT ABOUT 'x' (uses inverted default)
+    pattern_simple = r'(\w+(?:\.\w+)?)\s+NOT\s+ABOUT\s+\'([^\']+)\'(?!\s*[><])'
+
+    def replacer_simple(match):
+        col = match.group(1)
+        criteria = match.group(2)
+        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
+        return f"score('{full_criteria}', {col}) <= {default_threshold}"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -438,6 +576,44 @@ def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
     return result
 
 
+def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
+    """
+    Rewrite negated tilde (!~) operator for semantic inequality.
+
+    a.company !~ b.vendor                    →  NOT match_pair(a.company, b.vendor, 'same entity')
+    a.company !~ b.vendor AS 'same business' →  NOT match_pair(a.company, b.vendor, 'same business')
+
+    With annotation:
+    -- @ use a fast model
+    a !~ b  →  NOT match_pair(a, b, 'use a fast model - same entity')
+    """
+    # Pattern with AS: a !~ b AS 'relationship'
+    pattern_with_as = r'(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)\s+AS\s+\'([^\']+)\''
+
+    def replacer_with_as(match):
+        left = match.group(1)
+        right = match.group(2)
+        relationship = match.group(3)
+        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
+        return f"NOT match_pair({left}, {right}, '{full_relationship}')"
+
+    result = re.sub(pattern_with_as, replacer_with_as, line, flags=re.IGNORECASE)
+
+    # Pattern simple: a !~ b (no AS)
+    pattern_simple = r'(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)(?!\s+AS\b)'
+
+    def replacer_simple(match):
+        left = match.group(1)
+        right = match.group(2)
+        relationship = "same entity"
+        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
+        return f"NOT match_pair({left}, {right}, '{full_relationship}')"
+
+    result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
+
+    return result
+
+
 def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
     """
     Rewrite RELEVANCE TO in ORDER BY.
@@ -460,6 +636,105 @@ def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
         return f"ORDER BY score('{full_query}', {col}) {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
+
+
+def _rewrite_not_relevance_to(line: str, annotation_prefix: str) -> str:
+    """
+    Rewrite NOT RELEVANCE TO in ORDER BY (inverts to ASC).
+
+    ORDER BY col NOT RELEVANCE TO 'query'      →  ORDER BY score('query', col) ASC
+    ORDER BY col NOT RELEVANCE TO 'query' DESC →  ORDER BY score('query', col) DESC
+
+    NOT RELEVANCE TO defaults to ASC (least relevant first), which is useful
+    for filtering out irrelevant results or finding outliers.
+    """
+    # Pattern: ORDER BY col NOT RELEVANCE TO 'query' [ASC|DESC]
+    pattern = r'ORDER\s+BY\s+(\w+(?:\.\w+)?)\s+NOT\s+RELEVANCE\s+TO\s+\'([^\']+)\'(?:\s+(ASC|DESC))?'
+
+    def replacer(match):
+        col = match.group(1)
+        query = match.group(2)
+        direction = match.group(3) or 'ASC'  # Default to ASC (least relevant first for NOT)
+        full_query = f"{annotation_prefix}{query}" if annotation_prefix else query
+        return f"ORDER BY score('{full_query}', {col}) {direction}"
+
+    return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
+
+
+def _rewrite_implies(line: str, annotation_prefix: str) -> str:
+    """
+    Rewrite IMPLIES operator.
+
+    col IMPLIES 'conclusion'  →  implies(col, 'conclusion')
+    col IMPLIES other_col     →  implies(col, other_col)
+
+    With annotation:
+    -- @ check for visual contact
+    title IMPLIES 'witness saw creature'  →  implies(title, 'check for visual contact - witness saw creature')
+    """
+    # Pattern: col IMPLIES 'string'
+    pattern_string = r'(\w+(?:\.\w+)?)\s+IMPLIES\s+\'([^\']+)\''
+
+    def replacer_string(match):
+        col = match.group(1)
+        conclusion = match.group(2)
+        full_conclusion = f"{annotation_prefix}{conclusion}" if annotation_prefix else conclusion
+        return f"implies({col}, '{full_conclusion}')"
+
+    result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
+
+    # Pattern: col IMPLIES other_col (column reference, not string literal)
+    # Be careful not to match already-rewritten implies()
+    pattern_col = r'(\w+(?:\.\w+)?)\s+IMPLIES\s+(\w+(?:\.\w+)?)(?!\s*[,\)])'
+
+    def replacer_col(match):
+        col1 = match.group(1)
+        col2 = match.group(2)
+        # Don't rewrite if col2 looks like it's part of implies() call
+        if col1.lower() == 'implies':
+            return match.group(0)
+        return f"implies({col1}, {col2})"
+
+    result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
+
+    return result
+
+
+def _rewrite_contradicts(line: str, annotation_prefix: str) -> str:
+    """
+    Rewrite CONTRADICTS operator.
+
+    col CONTRADICTS 'statement'  →  contradicts(col, 'statement')
+    col CONTRADICTS other_col    →  contradicts(col, other_col)
+
+    With annotation:
+    -- @ check for logical inconsistency
+    title CONTRADICTS observed  →  contradicts(title, observed)
+    """
+    # Pattern: col CONTRADICTS 'string'
+    pattern_string = r'(\w+(?:\.\w+)?)\s+CONTRADICTS\s+\'([^\']+)\''
+
+    def replacer_string(match):
+        col = match.group(1)
+        statement = match.group(2)
+        full_statement = f"{annotation_prefix}{statement}" if annotation_prefix else statement
+        return f"contradicts({col}, '{full_statement}')"
+
+    result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
+
+    # Pattern: col CONTRADICTS other_col (column reference)
+    pattern_col = r'(\w+(?:\.\w+)?)\s+CONTRADICTS\s+(\w+(?:\.\w+)?)(?!\s*[,\)])'
+
+    def replacer_col(match):
+        col1 = match.group(1)
+        col2 = match.group(2)
+        if col1.lower() == 'contradicts':
+            return match.group(0)
+        return f"contradicts({col1}, {col2})"
+
+    result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
+
+    return result
 
 
 def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:
@@ -528,30 +803,189 @@ def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:
 # Additional Semantic Operators (Future)
 # ============================================================================
 
-def _rewrite_semantic_distinct(query: str) -> str:
+def _rewrite_semantic_distinct(query: str, annotation_prefix: str = "") -> str:
     """
-    Rewrite SEMANTIC DISTINCT (placeholder for Phase 2).
+    Rewrite SEMANTIC DISTINCT to use LLM deduplication.
 
-    SELECT SEMANTIC DISTINCT company FROM t
+    SELECT SEMANTIC DISTINCT company FROM suppliers
     →
-    WITH _distinct AS (SELECT DISTINCT company FROM t),
-    _clustered AS (SELECT * FROM rvbbit_cluster(...))
-    SELECT representative FROM _clustered WHERE is_rep = true
-    """
-    # TODO: Implement in Phase 2
-    return query
+    WITH _distinct_vals AS (
+        SELECT to_json(LIST(company)) as _vals FROM (SELECT DISTINCT company FROM suppliers) _src
+    ),
+    _deduped AS (
+        SELECT dedupe_2(_vals, 'same entity') as _json FROM _distinct_vals
+    )
+    SELECT unnest(from_json(_json, '["VARCHAR"]')) as value FROM _deduped
 
-
-def _rewrite_group_by_meaning(query: str) -> str:
-    """
-    Rewrite GROUP BY MEANING(col) (placeholder for Phase 2).
-
-    GROUP BY MEANING(category)
+    With criteria:
+    SELECT SEMANTIC DISTINCT company AS 'same business' FROM suppliers
     →
-    Inject clustering CTE and rewrite to GROUP BY cluster_id
+    Uses dedupe(..., 'same business')
+
+    Also supports subqueries:
+    SELECT SEMANTIC DISTINCT county FROM (SELECT * FROM bigfoot LIMIT 100)
+
+    Key: Uses to_json(LIST()) to produce proper JSON format ["a","b"] instead of
+    DuckDB's list format [a, b] which isn't valid JSON.
     """
-    # TODO: Implement in Phase 2
-    return query
+    # Pattern: SELECT SEMANTIC DISTINCT col [AS 'criteria'] FROM (table_or_subquery)
+    # Match either a simple table name OR a parenthesized subquery
+    pattern = r"SELECT\s+SEMANTIC\s+DISTINCT\s+(\w+(?:\.\w+)?)\s*(?:AS\s+'([^']+)')?\s+FROM\s+(\([^)]+\)|\w+)"
+
+    def replacer(match):
+        col = match.group(1)
+        criteria = match.group(2) or "same entity"
+        source = match.group(3)  # Could be table name or (subquery)
+
+        if annotation_prefix:
+            criteria = f"{annotation_prefix}{criteria}"
+
+        # Use CTE to properly aggregate, call dedupe, then unnest JSON array
+        # Key insight: LIST()::VARCHAR produces DuckDB list format [a, b, c]
+        # but dedupe_2 expects JSON format ["a", "b", "c"]
+        # Use to_json(LIST()) to get proper JSON array
+        return f"""WITH _distinct_vals AS (
+    SELECT to_json(LIST({col})) as _vals FROM (SELECT DISTINCT {col} FROM {source}) _src
+),
+_deduped AS (
+    SELECT dedupe_2(_vals, '{criteria}') as _json FROM _distinct_vals
+)
+SELECT unnest(from_json(_json, '["VARCHAR"]')) as value FROM _deduped"""
+
+    return re.sub(pattern, replacer, query, flags=re.IGNORECASE)
+
+
+def _rewrite_group_by_meaning(query: str, annotation_prefix: str = "") -> str:
+    """
+    Rewrite GROUP BY MEANING(col) to use semantic clustering.
+
+    SELECT category, COUNT(*) FROM products GROUP BY MEANING(category)
+    →
+    SELECT _semantic_cluster as category, COUNT(*)
+    FROM (
+        SELECT *, meaning(category, (SELECT LIST(category)::VARCHAR FROM products)) as _semantic_cluster
+        FROM products
+    ) _clustered
+    GROUP BY _semantic_cluster
+
+    With number of clusters:
+    GROUP BY MEANING(category, 5)
+
+    With criteria:
+    GROUP BY MEANING(category, 5, 'product type')
+    """
+    # Pattern: GROUP BY MEANING(col) or MEANING(col, n) or MEANING(col, n, 'criteria')
+    pattern = r"GROUP\s+BY\s+MEANING\s*\(\s*(\w+(?:\.\w+)?)\s*(?:,\s*(\d+))?\s*(?:,\s*'([^']+)')?\s*\)"
+
+    match = re.search(pattern, query, flags=re.IGNORECASE)
+    if not match:
+        return query
+
+    col = match.group(1)
+    num_clusters = match.group(2)
+    criteria = match.group(3)
+
+    if annotation_prefix and criteria:
+        criteria = f"{annotation_prefix}{criteria}"
+    elif annotation_prefix:
+        criteria = annotation_prefix.rstrip(" -")
+
+    # Find the FROM clause to determine the table
+    from_match = re.search(r"FROM\s+(\w+)", query, flags=re.IGNORECASE)
+    if not from_match:
+        return query
+
+    table = from_match.group(1)
+
+    # Build the meaning function call
+    # Use to_json(LIST()) to get proper JSON format instead of DuckDB list format
+    if num_clusters and criteria:
+        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {table}), {num_clusters}, '{criteria}')"
+    elif num_clusters:
+        meaning_call = f"meaning_3({col}, (SELECT to_json(LIST({col})) FROM {table}), {num_clusters})"
+    elif criteria:
+        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {table}), NULL, '{criteria}')"
+    else:
+        meaning_call = f"meaning({col}, (SELECT to_json(LIST({col})) FROM {table}))"
+
+    # Split query into parts: SELECT ... FROM table ... GROUP BY ... [rest]
+    # Replace GROUP BY MEANING(...) with GROUP BY _semantic_cluster
+    new_query = re.sub(pattern, "GROUP BY _semantic_cluster", query, flags=re.IGNORECASE)
+
+    # Find the SELECT columns and replace the grouped column with _semantic_cluster
+    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", new_query, flags=re.IGNORECASE | re.DOTALL)
+    if select_match:
+        select_cols = select_match.group(1)
+        new_select_cols = re.sub(rf'\b{col}\b', '_semantic_cluster', select_cols)
+        new_query = new_query[:select_match.start(1)] + new_select_cols + new_query[select_match.end(1):]
+
+    # Find FROM table and wrap with subquery
+    from_pattern = rf"FROM\s+{table}\b"
+    new_query = re.sub(
+        from_pattern,
+        f"FROM (SELECT *, {meaning_call} as _semantic_cluster FROM {table}) _clustered",
+        new_query,
+        count=1,
+        flags=re.IGNORECASE
+    )
+
+    return new_query
+
+
+def _rewrite_group_by_topics(query: str, annotation_prefix: str = "") -> str:
+    """
+    Rewrite GROUP BY TOPICS(col, n) to extract topics and group by them.
+
+    SELECT title, COUNT(*) FROM articles GROUP BY TOPICS(content, 3)
+    →
+    SELECT _topic as title, COUNT(*)
+    FROM (
+        SELECT t.*, topic._topic
+        FROM articles t,
+        LATERAL (SELECT unnest(themes(content, 3)::JSON::VARCHAR[]) as _topic) topic
+    ) _with_topics
+    GROUP BY _topic
+
+    This is useful when you want to categorize items by their themes.
+    """
+    # Pattern: GROUP BY TOPICS(col, n) or TOPICS(col)
+    pattern = r"GROUP\s+BY\s+TOPICS\s*\(\s*(\w+(?:\.\w+)?)\s*(?:,\s*(\d+))?\s*\)"
+
+    match = re.search(pattern, query, flags=re.IGNORECASE)
+    if not match:
+        return query
+
+    col = match.group(1)
+    num_topics = match.group(2) or "5"
+
+    # Find the FROM clause
+    from_match = re.search(r"FROM\s+(\w+)", query, flags=re.IGNORECASE)
+    if not from_match:
+        return query
+
+    table = from_match.group(1)
+
+    # Replace GROUP BY TOPICS(...) with GROUP BY _topic
+    new_query = re.sub(pattern, "GROUP BY _topic", query, flags=re.IGNORECASE)
+
+    # Find the SELECT columns and replace the grouped column with _topic
+    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", new_query, flags=re.IGNORECASE | re.DOTALL)
+    if select_match:
+        select_cols = select_match.group(1)
+        new_select_cols = re.sub(rf'\b{col}\b', '_topic', select_cols)
+        new_query = new_query[:select_match.start(1)] + new_select_cols + new_query[select_match.end(1):]
+
+    # Replace FROM table with subquery that extracts topics
+    from_pattern = rf"FROM\s+{table}\b"
+    subquery = f"""FROM (
+    SELECT t.*, _topic_val._topic
+    FROM {table} t,
+    LATERAL (SELECT unnest(themes({col}, {num_topics})::JSON::VARCHAR[]) as _topic) _topic_val
+) _with_topics"""
+
+    new_query = re.sub(from_pattern, subquery, new_query, count=1, flags=re.IGNORECASE)
+
+    return new_query
 
 
 # ============================================================================
@@ -561,32 +995,77 @@ def _rewrite_group_by_meaning(query: str) -> str:
 def get_semantic_operators_info() -> Dict[str, Any]:
     """Get information about supported semantic operators."""
     return {
-        'version': '0.1.0',
+        'version': '0.4.0',
         'supported_operators': {
             'MEANS': {
                 'syntax': "col MEANS 'criteria'",
                 'rewrites_to': "matches('criteria', col)",
                 'description': 'Semantic boolean match'
             },
+            'NOT MEANS': {
+                'syntax': "col NOT MEANS 'criteria'",
+                'rewrites_to': "NOT matches('criteria', col)",
+                'description': 'Negated semantic boolean match'
+            },
             'ABOUT': {
                 'syntax': "col ABOUT 'criteria' [> threshold]",
                 'rewrites_to': "score('criteria', col) > threshold",
                 'description': 'Semantic score with threshold'
+            },
+            'NOT ABOUT': {
+                'syntax': "col NOT ABOUT 'criteria' [> threshold]",
+                'rewrites_to': "score('criteria', col) <= threshold",
+                'description': 'Negated semantic score (excludes matches above threshold)'
             },
             '~': {
                 'syntax': "a ~ b [AS 'relationship']",
                 'rewrites_to': "match_pair(a, b, 'relationship')",
                 'description': 'Semantic equality for JOINs'
             },
+            '!~': {
+                'syntax': "a !~ b [AS 'relationship']",
+                'rewrites_to': "NOT match_pair(a, b, 'relationship')",
+                'description': 'Negated semantic equality'
+            },
             'RELEVANCE TO': {
                 'syntax': "ORDER BY col RELEVANCE TO 'query'",
                 'rewrites_to': "ORDER BY score('query', col) DESC",
-                'description': 'Semantic ordering'
+                'description': 'Semantic ordering (most relevant first)'
+            },
+            'NOT RELEVANCE TO': {
+                'syntax': "ORDER BY col NOT RELEVANCE TO 'query'",
+                'rewrites_to': "ORDER BY score('query', col) ASC",
+                'description': 'Inverted semantic ordering (least relevant first)'
             },
             'SEMANTIC JOIN': {
                 'syntax': "SEMANTIC JOIN t ON a ~ b",
                 'rewrites_to': "CROSS JOIN t WHERE match_pair(a, b, ...)",
                 'description': 'Fuzzy JOIN'
+            },
+            'SEMANTIC DISTINCT': {
+                'syntax': "SELECT SEMANTIC DISTINCT col [AS 'criteria'] FROM table",
+                'rewrites_to': "SELECT unnest(dedupe(LIST(col), 'criteria'))",
+                'description': 'Deduplicate by semantic similarity'
+            },
+            'GROUP BY MEANING': {
+                'syntax': "GROUP BY MEANING(col[, n][, 'criteria'])",
+                'rewrites_to': "GROUP BY meaning(col, all_values[, n][, 'criteria'])",
+                'description': 'Group by semantic clusters'
+            },
+            'GROUP BY TOPICS': {
+                'syntax': "GROUP BY TOPICS(col[, n])",
+                'rewrites_to': "GROUP BY unnest(themes(col, n))",
+                'description': 'Group by extracted themes/topics'
+            },
+            'IMPLIES': {
+                'syntax': "a IMPLIES b / a IMPLIES 'conclusion'",
+                'rewrites_to': "implies(a, b)",
+                'description': 'Check if statement a implies statement b'
+            },
+            'CONTRADICTS': {
+                'syntax': "a CONTRADICTS b / a CONTRADICTS 'statement'",
+                'rewrites_to': "contradicts(a, b)",
+                'description': 'Check if statements contradict each other'
             }
         },
         'annotation_support': {
@@ -659,6 +1138,28 @@ ORDER BY content RELEVANCE TO 'quarterly earnings'
 
 -- Ascending (least relevant first)
 ORDER BY content RELEVANCE TO 'financial reports' ASC
+```
+
+## Negation Operators
+
+```sql
+-- NOT MEANS: Exclude semantic matches
+SELECT * FROM products
+WHERE description NOT MEANS 'contains plastic'
+
+-- NOT ABOUT: Exclude content scoring above threshold
+SELECT * FROM articles
+WHERE content NOT ABOUT 'politics' > 0.3
+
+-- !~: Negated semantic equality (not the same entity)
+SELECT * FROM transactions t1, transactions t2
+WHERE t1.merchant !~ t2.merchant
+  AND t1.amount = t2.amount
+
+-- NOT RELEVANCE TO: Order by least relevant first (find outliers)
+SELECT * FROM support_tickets
+ORDER BY description NOT RELEVANCE TO 'common issues'
+LIMIT 10
 ```
 
 ## Combining Operators

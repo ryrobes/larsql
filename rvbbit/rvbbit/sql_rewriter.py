@@ -172,12 +172,35 @@ def _rewrite_llm_aggregates(query: str) -> str:
         return query
 
 
-def _is_rvbbit_statement(query: str) -> bool:
-    """Check if query contains RVBBIT syntax."""
+def _is_map_run_statement(query: str) -> bool:
+    """Check if query contains RVBBIT MAP or RUN syntax (not just UDF calls)."""
     clean = query.strip().upper()
     lines = [line.split('--')[0].strip() for line in clean.split('\n')]
     clean = ' '.join(line for line in lines if line)
     return 'RVBBIT MAP' in clean or 'RVBBIT RUN' in clean
+
+
+def _is_rvbbit_statement(query: str) -> bool:
+    """Check if query contains RVBBIT syntax or UDF function calls."""
+    import re
+
+    # Check for RVBBIT MAP/RUN syntax first
+    if _is_map_run_statement(query):
+        return True
+
+    # Check for RVBBIT UDF function calls
+    sql_lower = query.lower()
+    udf_patterns = [
+        r'\brvbbit_udf\s*\(', r'\brvbbit\s*\(', r'\brvbbit_cascade_udf\s*\(',
+        r'\brvbbit_run\s*\(', r'\brvbbit_run_batch\s*\(', r'\brvbbit_run_parallel_batch\s*\(',
+        r'\brvbbit_map_parallel_exec\s*\(', r'\bllm_summarize\s*\(', r'\bllm_classify\s*\(',
+        r'\bllm_sentiment\s*\(', r'\bllm_themes\s*\(', r'\bllm_agg\s*\(',
+        r'\bllm_matches\s*\(', r'\bllm_score\s*\(', r'\bllm_match_pair\s*\(',
+        r'\bllm_match_template\s*\(', r'\bllm_semantic_case\s*\(',
+        r'\bmatches\s*\(', r'\bscore\s*\(', r'\bmatch_pair\s*\(', r'\bmatch_template\s*\(',
+        r'\bsemantic_case\s*\('
+    ]
+    return any(re.search(p, sql_lower) for p in udf_patterns)
 
 
 def _parse_rvbbit_statement(query: str) -> RVBBITStatement:

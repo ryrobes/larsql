@@ -138,6 +138,12 @@ def rvbbit_udf_impl(
         cache_key = _make_cache_key(instructions, input_value, model)
         cached_value = _cache_get(_udf_cache, cache_key)
         if cached_value is not None:
+            # Log cache hit for SQL Trail analytics
+            from ..sql_trail import increment_cache_hit
+            from ..caller_context import get_caller_id
+            caller_id = get_caller_id()
+            if caller_id:
+                increment_cache_hit(caller_id)
             return cached_value
 
     try:
@@ -206,6 +212,13 @@ def rvbbit_udf_impl(
         result_preview = result[:50] + "..." if len(result) > 50 else result
         model_used = response.get("model", "unknown")
         console.print(f"[green]✓[/green] [dim]{model_used}[/dim] → {result_preview}")
+
+        # Log cache miss for SQL Trail analytics (LLM was actually called)
+        from ..sql_trail import increment_cache_miss
+        from ..caller_context import get_caller_id
+        caller_id = get_caller_id()
+        if caller_id:
+            increment_cache_miss(caller_id)
 
         # Cache result with TTL
         if use_cache:
@@ -284,6 +297,13 @@ def rvbbit_cascade_udf_impl(
         if use_cache:
             cached_result = _cache_get(_cascade_udf_cache, cache_key)
             if cached_result is not None:
+                # Log cache hit for SQL Trail analytics
+                from ..sql_trail import increment_cache_hit
+                from ..caller_context import get_caller_id
+                caller_id = get_caller_id()
+                if caller_id:
+                    increment_cache_hit(caller_id)
+
                 # If return_field specified, extract it
                 if return_field:
                     result_obj = json.loads(cached_result)
@@ -355,6 +375,12 @@ def rvbbit_cascade_udf_impl(
         # Debug: Print completion
         state_output = result.get("state", {}).get("output_extract", "N/A")
         print(f"✅ [UDF] Completed: session={session_id}, output={str(state_output)[:30]}...")
+
+        # Log cache miss for SQL Trail analytics (cascade was actually run)
+        from ..sql_trail import increment_cache_miss
+        # caller_id already retrieved above at line 343
+        if caller_id:
+            increment_cache_miss(caller_id)
 
         # Cache result (with infinite TTL for backward compatibility)
         if use_cache:

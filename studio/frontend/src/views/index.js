@@ -58,6 +58,14 @@ export const views = {
     enabled: true,
   },
 
+  sqltrail: {
+    component: lazy(() => import('./sql-trail/SqlTrailView')),
+    icon: 'mdi:database-search',
+    label: 'SQL Trail',
+    position: 'top',
+    enabled: true,
+  },
+
   console: {
     component: lazy(() => import('./console/ConsoleView')),
     icon: 'mdi:console',

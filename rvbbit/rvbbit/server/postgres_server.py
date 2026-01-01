@@ -683,7 +683,10 @@ class ClientConnection:
                 return
 
             # Set caller context for RVBBIT queries (enables cost tracking and debugging)
-            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement, _is_map_run_statement
+            _current_query_id = None
+            _query_start_time = None
+
             if _is_rvbbit_statement(query):
                 from rvbbit.session_naming import generate_woodland_id
                 from rvbbit.caller_context import set_caller_context, build_sql_metadata
@@ -696,32 +699,44 @@ class ClientConnection:
                 )
                 set_caller_context(caller_id, metadata)
 
+                # Log query start for SQL Trail analytics
+                import time
+                from rvbbit.sql_trail import log_query_start
+                _query_start_time = time.time()
+                _current_query_id = log_query_start(
+                    caller_id=caller_id,
+                    query_raw=query,
+                    protocol='postgresql_wire'
+                )
+
                 # SPECIAL PATH: MAP PARALLEL with true concurrency
+                # Only attempt to parse if this is MAP/RUN syntax (not just UDF calls)
                 from rvbbit.sql_rewriter import _parse_rvbbit_statement
-                try:
-                    # Normalize query first (same as rewrite_rvbbit_syntax does)
-                    normalized = query.strip()
-                    lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
-                    normalized = ' '.join(line for line in lines if line)
+                if _is_map_run_statement(query):
+                    try:
+                        # Normalize query first (same as rewrite_rvbbit_syntax does)
+                        normalized = query.strip()
+                        lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
+                        normalized = ' '.join(line for line in lines if line)
 
-                    print(f"[{self.session_id}]      🔍 Parsing normalized query: {normalized[:100]}...")
-                    stmt = _parse_rvbbit_statement(normalized)
-                    print(f"[{self.session_id}]      ✓ Parsed: mode={stmt.mode}, parallel={stmt.parallel}, as_table={stmt.with_options.get('as_table')}")
+                        print(f"[{self.session_id}]      🔍 Parsing normalized query: {normalized[:100]}...")
+                        stmt = _parse_rvbbit_statement(normalized)
+                        print(f"[{self.session_id}]      ✓ Parsed: mode={stmt.mode}, parallel={stmt.parallel}, as_table={stmt.with_options.get('as_table')}")
 
-                    # SPECIAL PATH 1: MAP PARALLEL (true concurrency)
-                    # SPECIAL PATH 2: Table materialization (CREATE TABLE AS or WITH as_table)
-                    # Both need server-side handling to avoid DuckDB timing issues
+                        # SPECIAL PATH 1: MAP PARALLEL (true concurrency)
+                        # SPECIAL PATH 2: Table materialization (CREATE TABLE AS or WITH as_table)
+                        # Both need server-side handling to avoid DuckDB timing issues
 
-                    if stmt.mode == 'MAP' and (stmt.parallel or stmt.with_options.get('as_table')):
-                        is_parallel = stmt.parallel is not None
-                        is_materialized = stmt.with_options.get('as_table') is not None
+                        if stmt.mode == 'MAP' and (stmt.parallel or stmt.with_options.get('as_table')):
+                            is_parallel = stmt.parallel is not None
+                            is_materialized = stmt.with_options.get('as_table') is not None
 
-                        if is_parallel and is_materialized:
-                            print(f"[{self.session_id}]   🚀 MAP PARALLEL + Materialization: {stmt.parallel} workers → {stmt.with_options['as_table']}")
-                        elif is_parallel:
-                            print(f"[{self.session_id}]   🚀 MAP PARALLEL detected: {stmt.parallel} workers")
-                        else:
-                            print(f"[{self.session_id}]   💾 Table materialization: {stmt.with_options['as_table']}")
+                            if is_parallel and is_materialized:
+                                print(f"[{self.session_id}]   🚀 MAP PARALLEL + Materialization: {stmt.parallel} workers → {stmt.with_options['as_table']}")
+                            elif is_parallel:
+                                print(f"[{self.session_id}]   🚀 MAP PARALLEL detected: {stmt.parallel} workers")
+                            else:
+                                print(f"[{self.session_id}]   💾 Table materialization: {stmt.with_options['as_table']}")
 
                         # 1. Execute USING query to get input rows
                         import re

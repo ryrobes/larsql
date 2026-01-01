@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     caller_id String DEFAULT '',
     invocation_metadata_json String DEFAULT '{}' CODEC(ZSTD(3)),
 
+    -- SQL UDF Tracking (for SQL Trail analytics)
+    is_sql_udf Bool DEFAULT false,
+    udf_type LowCardinality(Nullable(String)),  -- 'rvbbit_udf', 'rvbbit_cascade_udf', 'llm_aggregate', 'semantic_op'
+    cache_hit Bool DEFAULT false,
+    input_hash Nullable(String),  -- Hash of UDF input for cache correlation
+
     -- Classification
     node_type LowCardinality(String),
     role LowCardinality(String),
@@ -139,7 +145,10 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     INDEX idx_is_winner is_winner TYPE set(2) GRANULARITY 1,
     INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1,
     INDEX idx_cost cost TYPE minmax GRANULARITY 4,
-    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1
+    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+    INDEX idx_is_sql_udf is_sql_udf TYPE set(2) GRANULARITY 1,
+    INDEX idx_udf_type udf_type TYPE set(10) GRANULARITY 1,
+    INDEX idx_cache_hit cache_hit TYPE set(2) GRANULARITY 1
 )
 ENGINE = MergeTree()
 ORDER BY (session_id, timestamp, trace_id)
@@ -1112,6 +1121,74 @@ SETTINGS index_granularity = 8192;
 
 
 # =============================================================================
+# SQL QUERY LOG TABLE - SQL Trail Analytics
+# =============================================================================
+# Tracks SQL queries that invoke RVBBIT UDFs for cost attribution and pattern analysis.
+# The unit of work is the SQL query (via caller_id), not individual LLM sessions.
+# Enables cache analytics, query fingerprinting, and batch economics.
+
+SQL_QUERY_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sql_query_log (
+    -- Identity
+    query_id UUID DEFAULT generateUUIDv4(),
+    caller_id String,
+
+    -- Query Content
+    query_raw String CODEC(ZSTD(3)),
+    query_fingerprint String,  -- AST-normalized hash via sqlglot
+    query_template String CODEC(ZSTD(3)),  -- Parameterized SQL (literals replaced with ?)
+    query_type LowCardinality(String),  -- 'rvbbit_udf', 'rvbbit_cascade_udf', 'rvbbit_map', 'llm_aggregate', 'semantic_op'
+
+    -- UDF Detection
+    udf_types Array(String) DEFAULT [],
+    udf_count UInt16 DEFAULT 0,
+    cascade_paths Array(String) DEFAULT [],
+
+    -- Execution
+    started_at DateTime64(6),
+    completed_at Nullable(DateTime64(6)),
+    duration_ms Nullable(Float64),
+    status LowCardinality(String),  -- 'running', 'completed', 'error'
+
+    -- Row Metrics
+    rows_input Nullable(Int32),
+    rows_output Nullable(Int32),
+
+    -- Cost (aggregated from spawned sessions via caller_id)
+    total_cost Nullable(Float64),
+    total_tokens_in Nullable(Int64),
+    total_tokens_out Nullable(Int64),
+    llm_calls_count UInt32 DEFAULT 0,
+
+    -- Cache Metrics
+    cache_hits UInt32 DEFAULT 0,
+    cache_misses UInt32 DEFAULT 0,
+
+    -- Error Info
+    error_message Nullable(String),
+
+    -- Protocol
+    protocol LowCardinality(String),  -- 'postgresql_wire', 'http', 'notebook'
+    timestamp DateTime64(6) DEFAULT now64(6),
+
+    -- Indexes
+    INDEX idx_caller caller_id TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_fingerprint query_fingerprint TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_query_type query_type TYPE set(20) GRANULARITY 1,
+    INDEX idx_status status TYPE set(10) GRANULARITY 1,
+    INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
+    INDEX idx_duration duration_ms TYPE minmax GRANULARITY 1,
+    INDEX idx_cost total_cost TYPE minmax GRANULARITY 1
+)
+ENGINE = MergeTree()
+ORDER BY (timestamp, caller_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 90 DAY
+SETTINGS index_granularity = 8192;
+"""
+
+
+# =============================================================================
 # SESSION SUMMARY MATERIALIZED VIEW (Optional - for performance)
 # =============================================================================
 # Auto-aggregates session metrics for fast dashboard queries
@@ -1189,6 +1266,7 @@ def get_all_schemas() -> dict:
         "hf_spaces": HF_SPACES_SCHEMA,
         "tag_definitions": TAG_DEFINITIONS_SCHEMA,
         "output_tags": OUTPUT_TAGS_SCHEMA,
+        "sql_query_log": SQL_QUERY_LOG_SCHEMA,
     }
 
 
