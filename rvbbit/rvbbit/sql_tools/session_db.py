@@ -16,6 +16,10 @@ from threading import Lock
 _session_dbs: Dict[str, duckdb.DuckDBPyConnection] = {}
 _session_db_lock = Lock()
 
+# Per-session locks to prevent concurrent access to the same DuckDB connection
+# DuckDB connections are NOT thread-safe, so we need to serialize access
+_session_locks: Dict[str, Lock] = {}
+
 # Directory for session database files - now in RVBBIT_ROOT
 def _get_session_db_dir():
     """Get session database directory (creates if needed)."""
@@ -74,7 +78,37 @@ def get_session_db(session_id: str) -> duckdb.DuckDBPyConnection:
         conn.execute("SET threads TO 4")
 
         _session_dbs[session_id] = conn
+
+        # Also create a lock for this session if it doesn't exist
+        if session_id not in _session_locks:
+            _session_locks[session_id] = Lock()
+
         return conn
+
+
+def get_session_lock(session_id: str) -> Lock:
+    """
+    Get the lock for a session's DuckDB connection.
+
+    IMPORTANT: Use this lock when executing queries on a shared session connection.
+    DuckDB connections are NOT thread-safe - concurrent access causes segfaults.
+
+    Usage:
+        conn = get_session_db(session_id)
+        lock = get_session_lock(session_id)
+        with lock:
+            result = conn.execute("SELECT ...").fetchdf()
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Lock for this session
+    """
+    with _session_db_lock:
+        if session_id not in _session_locks:
+            _session_locks[session_id] = Lock()
+        return _session_locks[session_id]
 
 
 def cleanup_session_db(session_id: str, delete_file: bool = True):

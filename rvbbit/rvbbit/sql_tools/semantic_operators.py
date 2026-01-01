@@ -938,15 +938,21 @@ def _rewrite_group_by_topics(query: str, annotation_prefix: str = "") -> str:
 
     SELECT title, COUNT(*) FROM articles GROUP BY TOPICS(content, 3)
     →
-    SELECT _topic as title, COUNT(*)
-    FROM (
-        SELECT t.*, topic._topic
-        FROM articles t,
-        LATERAL (SELECT unnest(themes(content, 3)::JSON::VARCHAR[]) as _topic) topic
-    ) _with_topics
+    WITH _topics AS (
+        SELECT unnest(from_json(llm_themes_2(to_json(LIST(content)), 3), '["VARCHAR"]')) as _topic
+        FROM articles
+    )
+    SELECT _topic, COUNT(*)
+    FROM articles, _topics
     GROUP BY _topic
 
-    This is useful when you want to categorize items by their themes.
+    The approach:
+    1. Extract topics from ALL text values using llm_themes aggregate
+    2. Cross-join original table with extracted topics
+    3. Group by topic
+
+    Also supports subqueries:
+    SELECT col, COUNT(*) FROM (SELECT * FROM t LIMIT 100) GROUP BY TOPICS(col, 3)
     """
     # Pattern: GROUP BY TOPICS(col, n) or TOPICS(col)
     pattern = r"GROUP\s+BY\s+TOPICS\s*\(\s*(\w+(?:\.\w+)?)\s*(?:,\s*(\d+))?\s*\)"
@@ -958,32 +964,33 @@ def _rewrite_group_by_topics(query: str, annotation_prefix: str = "") -> str:
     col = match.group(1)
     num_topics = match.group(2) or "5"
 
-    # Find the FROM clause
-    from_match = re.search(r"FROM\s+(\w+)", query, flags=re.IGNORECASE)
+    # Find the FROM clause - could be table name or subquery
+    # Match FROM followed by either (subquery) or table_name
+    from_match = re.search(r"FROM\s+(\([^)]+\)|(\w+))", query, flags=re.IGNORECASE)
     if not from_match:
         return query
 
-    table = from_match.group(1)
+    source = from_match.group(1)  # Could be (subquery) or table_name
 
-    # Replace GROUP BY TOPICS(...) with GROUP BY _topic
-    new_query = re.sub(pattern, "GROUP BY _topic", query, flags=re.IGNORECASE)
+    # Find SELECT columns and replace the grouped column with _topic
+    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", query, flags=re.IGNORECASE | re.DOTALL)
+    if not select_match:
+        return query
 
-    # Find the SELECT columns and replace the grouped column with _topic
-    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", new_query, flags=re.IGNORECASE | re.DOTALL)
-    if select_match:
-        select_cols = select_match.group(1)
-        new_select_cols = re.sub(rf'\b{col}\b', '_topic', select_cols)
-        new_query = new_query[:select_match.start(1)] + new_select_cols + new_query[select_match.end(1):]
+    select_cols = select_match.group(1)
+    new_select_cols = re.sub(rf'\b{col}\b', '_topic', select_cols)
 
-    # Replace FROM table with subquery that extracts topics
-    from_pattern = rf"FROM\s+{table}\b"
-    subquery = f"""FROM (
-    SELECT t.*, _topic_val._topic
-    FROM {table} t,
-    LATERAL (SELECT unnest(themes({col}, {num_topics})::JSON::VARCHAR[]) as _topic) _topic_val
-) _with_topics"""
-
-    new_query = re.sub(from_pattern, subquery, new_query, count=1, flags=re.IGNORECASE)
+    # Build CTE-based rewrite
+    # 1. Extract topics from all values using llm_themes_2 aggregate
+    # 2. Cross-join with original table
+    # 3. Group by topic
+    new_query = f"""WITH _extracted_topics AS (
+    SELECT unnest(from_json(llm_themes_2(to_json(LIST({col})), {num_topics}), '["VARCHAR"]')) as _topic
+    FROM {source}
+)
+SELECT {new_select_cols}
+FROM {source}, _extracted_topics
+GROUP BY _topic"""
 
     return new_query
 

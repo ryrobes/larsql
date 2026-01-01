@@ -67,6 +67,7 @@ class ClientConnection:
         self.session_id = None  # Will be set in handle_startup based on database name
         self.session_prefix = session_prefix
         self.duckdb_conn = None
+        self.db_lock = None  # Lock for thread-safe DuckDB access
         self.running = True
         self.query_count = 0
         self.transaction_status = 'I'  # 'I' = idle, 'T' = in transaction, 'E' = error
@@ -88,11 +89,15 @@ class ClientConnection:
         """
         try:
             # Import here to avoid circular dependencies
-            from ..sql_tools.session_db import get_session_db
+            from ..sql_tools.session_db import get_session_db, get_session_lock
             from ..sql_tools.udf import register_rvbbit_udf
 
             # Get or create session DuckDB (includes health check)
             self.duckdb_conn = get_session_db(self.session_id)
+
+            # CRITICAL: Get lock for thread-safe access to shared connection
+            # Multiple clients connecting to the same database share one DuckDB connection
+            self.db_lock = get_session_lock(self.session_id)
 
             # Reset our transaction status to idle
             # Note: We don't ROLLBACK here because another client may have
@@ -118,6 +123,16 @@ class ClientConnection:
         except Exception as e:
             print(f"[{self.session_id}] ✗ Error setting up session: {e}")
             raise
+
+    def _execute_locked(self, query: str):
+        """
+        Execute a query on DuckDB with thread-safe locking.
+
+        CRITICAL: DuckDB connections are NOT thread-safe. Multiple clients
+        sharing the same session connection can cause segfaults without locking.
+        """
+        with self.db_lock:
+            return self.duckdb_conn.execute(query)
 
     def _create_pg_catalog_views(self):
         """
@@ -616,9 +631,12 @@ class ClientConnection:
         user = startup_params.get('user', 'rvbbit')
         application_name = startup_params.get('application_name', 'unknown')
 
-        # Create consistent session_id based on database name
-        # This ensures reconnecting to the same database reuses the same DuckDB file
-        self.session_id = f"{self.session_prefix}_{database}"
+        # Create unique session_id per client connection
+        # CRITICAL: DuckDB connections are NOT thread-safe. Sharing connections
+        # between clients causes segfaults. Each client needs its own connection.
+        # We use uuid.uuid4().hex[:8] for uniqueness while keeping session IDs readable.
+        client_id = uuid.uuid4().hex[:8]
+        self.session_id = f"{self.session_prefix}_{database}_{client_id}"
 
         print(f"[{self.session_id}] 🔌 Client startup:")
         print(f"   User: {user}")
@@ -869,12 +887,12 @@ class ClientConnection:
 
                         return  # Skip normal execution path
 
-                except Exception as parallel_error:
-                    # If parallel execution fails, log and fall back to normal path
-                    print(f"[{self.session_id}]   ⚠️  Special path failed: {parallel_error}")
-                    traceback.print_exc()  # Use module-level import
-                    print(f"[{self.session_id}]      Falling back to sequential execution")
-                    # Fall through to normal execution
+                    except Exception as parallel_error:
+                        # If parallel execution fails, log and fall back to normal path
+                        print(f"[{self.session_id}]   ⚠️  Special path failed: {parallel_error}")
+                        traceback.print_exc()  # Use module-level import
+                        print(f"[{self.session_id}]      Falling back to sequential execution")
+                        # Fall through to normal execution
 
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)

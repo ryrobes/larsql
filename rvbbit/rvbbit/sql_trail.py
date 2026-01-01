@@ -269,7 +269,8 @@ def log_query_complete(
 def log_query_error(
     query_id: Optional[str],
     error_message: str,
-    error_type: Optional[str] = None
+    error_type: Optional[str] = None,
+    duration_ms: Optional[float] = None
 ):
     """
     Update query log with error data.
@@ -280,6 +281,7 @@ def log_query_error(
         query_id: The query_id returned from log_query_start
         error_message: Error message text
         error_type: Optional error type (e.g., exception class name)
+        duration_ms: Optional duration until error in milliseconds
     """
     if not query_id:
         return
@@ -296,6 +298,8 @@ def log_query_error(
             "completed_at = now64(6)",
             f"error_message = '{safe_msg}'"
         ]
+        if duration_ms is not None:
+            updates.append(f"duration_ms = {duration_ms}")
 
         set_clause = ', '.join(updates)
 
