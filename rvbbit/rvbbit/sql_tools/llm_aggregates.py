@@ -52,6 +52,16 @@ def _call_llm(
 
     console = Console()
 
+    # Track LLM call for SQL Trail (fire-and-forget)
+    try:
+        from ..caller_context import get_caller_id
+        from ..sql_trail import increment_llm_call
+        caller_id = get_caller_id()
+        if caller_id:
+            increment_llm_call(caller_id)
+    except Exception:
+        pass  # Non-blocking
+
     # Generate session info
     woodland_id = generate_woodland_id()
     session_id = f"sql-agg-{woodland_id}"
@@ -1427,6 +1437,216 @@ def llm_cluster_label_impl(
         return value
 
 
+def llm_consensus_impl(
+    values_json: str,
+    prompt: Optional[str] = None,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Find the consensus or common ground among a collection of texts.
+
+    Returns a summary of what most items agree on or have in common.
+
+    Args:
+        values_json: JSON array of text values
+        prompt: Custom prompt for what kind of consensus to find
+        model: Model override
+        use_cache: Whether to cache results
+
+    Returns:
+        String describing the consensus view or common ground
+
+    Example SQL:
+        SELECT state, CONSENSUS(observed) as common_patterns
+        FROM bigfoot
+        GROUP BY state
+    """
+    try:
+        values = json.loads(values_json)
+        if not isinstance(values, list):
+            values = [values]
+    except json.JSONDecodeError:
+        values = [values_json]
+
+    values = _sanitize_values(values)
+    values = [v for v in values if v]
+
+    if not values:
+        return "No data to analyze"
+
+    if len(values) == 1:
+        return values[0]
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        values_hash = _hash_values(values)
+        cache_key = _agg_cache_key("consensus", prompt or "common", values_hash)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached:
+            return cached
+
+    # Sample if too many
+    working_values = values
+    if len(values) > 50:
+        import random
+        working_values = random.sample(values, 50)
+
+    items_list = "\n".join(f"- {v[:500]}" for v in working_values)
+
+    if prompt:
+        user_prompt = f"""Analyze these items and find: {prompt}
+
+Items:
+{items_list}
+
+Identify what most items agree on or have in common. Focus on shared themes, patterns, or perspectives.
+Return a clear summary of the consensus view."""
+    else:
+        user_prompt = f"""Analyze these items and find what they have in common or agree on:
+
+Items:
+{items_list}
+
+Identify:
+1. Common themes or patterns that appear across multiple items
+2. Points of agreement or shared perspectives
+3. The overall consensus view
+
+Return a concise summary of what most items agree on."""
+
+    result = _call_llm(user_prompt, model=model)
+
+    # Clean up
+    result = result.strip()
+    if not result:
+        result = "No clear consensus found"
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
+def llm_outliers_impl(
+    values_json: str,
+    num_outliers: Optional[int] = None,
+    criteria: Optional[str] = None,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Find outliers or unusual items in a collection.
+
+    Returns JSON array of items that stand out from the norm.
+
+    Args:
+        values_json: JSON array of text values
+        num_outliers: Maximum number of outliers to return (default: 5)
+        criteria: Description of what makes something unusual
+        model: Model override
+        use_cache: Whether to cache results
+
+    Returns:
+        JSON array of outlier items with explanations
+
+    Example SQL:
+        SELECT OUTLIERS(observed, 3) as unusual_sightings
+        FROM bigfoot
+
+        SELECT state, OUTLIERS(observed, 5, 'scientifically implausible')
+        FROM bigfoot
+        GROUP BY state
+    """
+    try:
+        values = json.loads(values_json)
+        if not isinstance(values, list):
+            values = [values]
+    except json.JSONDecodeError:
+        values = [values_json]
+
+    values = _sanitize_values(values)
+    values = [v for v in values if v]
+
+    if not values:
+        return "[]"
+
+    if len(values) <= 3:
+        # Too few to have meaningful outliers
+        return "[]"
+
+    num_outliers = num_outliers or 5
+    num_outliers = min(num_outliers, len(values) // 2, 10)  # Cap at half the items or 10
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        values_hash = _hash_values(values)
+        cache_key = _agg_cache_key("outliers", f"{num_outliers}_{criteria or 'unusual'}", values_hash)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached:
+            return cached
+
+    # Sample if too many
+    working_values = values
+    if len(values) > 50:
+        import random
+        working_values = random.sample(values, 50)
+
+    items_list = "\n".join(f"{i+1}. {v[:500]}" for i, v in enumerate(working_values))
+
+    if criteria:
+        user_prompt = f"""Find the {num_outliers} most unusual items in this list based on: {criteria}
+
+Items:
+{items_list}
+
+For each outlier, explain WHY it stands out.
+Return a JSON array of objects with "item" and "reason" keys.
+Example: [{{"item": "...", "reason": "..."}}]
+Return ONLY the JSON array."""
+    else:
+        user_prompt = f"""Find the {num_outliers} most unusual or atypical items in this list.
+
+Items:
+{items_list}
+
+Look for items that:
+- Don't fit the common pattern
+- Are surprisingly different from the majority
+- Contain unexpected or rare characteristics
+
+For each outlier, explain WHY it stands out.
+Return a JSON array of objects with "item" and "reason" keys.
+Example: [{{"item": "...", "reason": "..."}}]
+Return ONLY the JSON array."""
+
+    result = _call_llm(user_prompt, model=model)
+
+    # Clean up and validate JSON
+    result = result.strip()
+    if not result.startswith('['):
+        match = re.search(r'\[.*\]', result, re.DOTALL)
+        if match:
+            result = match.group(0)
+        else:
+            # Fallback: return empty array
+            result = "[]"
+
+    try:
+        parsed = json.loads(result)
+        if not isinstance(parsed, list):
+            result = "[]"
+    except json.JSONDecodeError:
+        result = "[]"
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
 # ============================================================================
 # Map-Reduce for Large Collections
 # ============================================================================
@@ -1828,6 +2048,49 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
         ("meaning", cluster_label_2),
         ("meaning_3", cluster_label_3),
         ("meaning_4", cluster_label_4),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== LLM_CONSENSUS (Find Common Ground) ==========
+
+    def consensus_1(values_json: str) -> str:
+        return llm_consensus_impl(values_json)
+
+    def consensus_2(values_json: str, prompt: str) -> str:
+        return llm_consensus_impl(values_json, prompt)
+
+    for name, func in [
+        ("llm_consensus_1", consensus_1),
+        ("llm_consensus_2", consensus_2),
+        ("consensus", consensus_1),
+        ("consensus_2", consensus_2),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== LLM_OUTLIERS (Find Unusual Items) ==========
+
+    def outliers_1(values_json: str) -> str:
+        return llm_outliers_impl(values_json)
+
+    def outliers_2(values_json: str, num_outliers: int) -> str:
+        return llm_outliers_impl(values_json, num_outliers)
+
+    def outliers_3(values_json: str, num_outliers: int, criteria: str) -> str:
+        return llm_outliers_impl(values_json, num_outliers, criteria)
+
+    for name, func in [
+        ("llm_outliers_1", outliers_1),
+        ("llm_outliers_2", outliers_2),
+        ("llm_outliers_3", outliers_3),
+        ("outliers", outliers_1),
+        ("outliers_2", outliers_2),
+        ("outliers_3", outliers_3),
     ]:
         try:
             connection.create_function(name, func, return_type="VARCHAR")

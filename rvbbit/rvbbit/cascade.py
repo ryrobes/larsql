@@ -936,6 +936,112 @@ class ImageConfig(BaseModel):
     n: int = 1  # Number of images to generate
 
 
+# ===== SQL Function Configuration =====
+
+class SQLFunctionArg(BaseModel):
+    """
+    Argument definition for a SQL function exposed by a cascade.
+
+    Usage:
+        args:
+          - name: input
+            type: VARCHAR
+          - name: threshold
+            type: DOUBLE
+            optional: true
+            default: "0.5"
+    """
+    name: str
+    type: str = "VARCHAR"  # SQL type: VARCHAR, INTEGER, DOUBLE, BOOLEAN, JSON
+    optional: bool = False
+    default: Optional[str] = None  # Default value as string
+
+
+class SQLFunctionConfig(BaseModel):
+    """
+    Configuration for exposing a cascade as a SQL function.
+
+    When a cascade has a sql_function key, it becomes callable from SQL queries.
+    The cascade is executed for each row (SCALAR), or once for a collection (AGGREGATE).
+
+    Three shapes:
+    - SCALAR: Per-row function (single value → single output)
+    - ROW: Multi-column per-row (multiple values → single output)
+    - AGGREGATE: Collection function (table context → single output)
+
+    Usage (SCALAR - simple classifier):
+        cascade_id: product_classifier
+        sql_function:
+          args:
+            - name: input
+              type: VARCHAR
+          returns: VARCHAR
+          shape: SCALAR
+          operators:
+            - "{{ input }} CLASSIFIES_AS"
+          cache: true
+
+        cells:
+          - name: classify
+            instructions: |
+              Categories: Electronics, Clothing, Home, Other
+              Product: {{ input.input }}
+              Return only the category name.
+
+    Usage (AGGREGATE - summarizer):
+        cascade_id: summarize_texts
+        sql_function:
+          args:
+            - name: texts
+              type: JSON
+          returns: VARCHAR
+          shape: AGGREGATE
+          context_arg: texts
+
+        cells:
+          - name: summarize
+            instructions: |
+              Summarize these texts:
+              {{ input.texts }}
+              Return a concise 2-3 sentence summary.
+
+    Operator sugar:
+        operators:
+          - "{{ input }} MEANS"           # title MEANS 'daytime'
+          - "{{ input }} ~ {{ criterion }}"  # title ~ 'interesting'
+          - "MEANING({{ input }})"        # GROUP BY MEANING(col)
+
+    Template variables:
+        - {{ input }}: First argument
+        - {{ criterion }}: Second argument (for binary operators)
+        - {{ threshold }}: Third argument (for score operators)
+        - {{ context }}: For aggregates, the JSON array of values
+    """
+    enabled: bool = True
+    name: Optional[str] = None  # Function name (defaults to cascade_id)
+    description: Optional[str] = None  # Description for SQL function catalog
+
+    # Function signature
+    args: List[SQLFunctionArg] = Field(default_factory=list)
+    returns: str = "VARCHAR"  # Return type: VARCHAR, INTEGER, DOUBLE, BOOLEAN, JSON
+    shape: Literal["SCALAR", "ROW", "AGGREGATE"] = "SCALAR"
+
+    # For AGGREGATE shape: which arg receives the collection (JSON array)
+    context_arg: Optional[str] = None
+
+    # Operator syntax sugar - patterns that rewrite to this function
+    # Use {{ input }}, {{ criterion }}, {{ threshold }} as placeholders
+    operators: Optional[List[str]] = None
+
+    # Caching
+    cache: bool = True
+    cache_ttl: Optional[int] = None  # Seconds, None = forever
+
+    # Execution
+    timeout: Optional[int] = None  # Seconds
+    max_retries: int = 2
+
+
 class SqlMappingConfig(BaseModel):
     """
     SQL-native mapping: fan out over rows from a temp table.
@@ -1401,6 +1507,11 @@ class CascadeConfig(BaseModel):
     memory: Optional[str] = None  # Memory bank name for persistent conversational memory
     token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
     tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
+
+    # SQL Function - expose this cascade as a SQL-callable function
+    # When set, this cascade becomes available as a UDF in SQL queries
+    # Built-in semantic operators (MEANS, ABOUT, MEANING, etc.) are cascades too
+    sql_function: Optional[SQLFunctionConfig] = None
 
     # Research database - DuckDB instance for cascade-specific data persistence
     # When set, injects research_query and research_execute tools automatically

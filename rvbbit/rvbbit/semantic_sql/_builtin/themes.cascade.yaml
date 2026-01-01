@@ -1,0 +1,100 @@
+# TOPICS / THEMES - Topic extraction and classification
+# Extracts N topics from text collection, then classifies each row
+#
+# SQL Usage:
+#   SELECT content, COUNT(*) FROM docs GROUP BY TOPICS(observed, 5)
+#
+# Direct Function:
+#   SELECT semantic_themes(texts_json, 5) FROM docs
+
+cascade_id: semantic_themes
+
+description: |
+  Topic extraction and classification - extracts N topics from a text collection,
+  then classifies each text into one topic. Used for GROUP BY TOPICS operations.
+
+inputs_schema:
+  texts: JSON array of texts to analyze
+  num_topics: Number of topics to extract
+
+sql_function:
+  name: semantic_themes
+  description: Extracts N topics from texts, returns JSON with topics and assignments
+  args:
+    - name: texts
+      type: JSON
+    - name: num_topics
+      type: INTEGER
+      default: "5"
+  returns: JSON
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+    - "TOPICS({{ texts }})"
+    - "TOPICS({{ texts }}, {{ num_topics }})"
+  cache: true
+
+cells:
+  - name: extract_topics
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Analyze these texts and identify the {{ input.num_topics | default(5) }} main topics.
+
+      TEXTS:
+      {{ input.texts }}
+
+      Return a JSON array of topic names - short, descriptive labels:
+      ["Topic 1", "Topic 2", "Topic 3", ...]
+
+      Rules:
+      - Extract exactly {{ input.num_topics | default(5) }} topics
+      - Topics should be distinct and non-overlapping
+      - Topic names should be concise (2-5 words)
+      - Topics should cover the main themes in the texts
+      - Order topics by prevalence (most common first)
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: string
+
+  - name: classify_texts
+    model: google/gemini-2.5-flash-lite
+    context:
+      from: [extract_topics]
+    instructions: |
+      Classify each text into one of the identified topics.
+
+      TOPICS:
+      {{ outputs.extract_topics | tojson }}
+
+      TEXTS TO CLASSIFY:
+      {{ input.texts }}
+
+      Return a JSON object with:
+      {
+        "topics": {{ outputs.extract_topics | tojson }},
+        "assignments": [
+          "Topic Name for text 0",
+          "Topic Name for text 1",
+          ...
+        ]
+      }
+
+      Rules:
+      - Every text must be assigned to exactly one topic
+      - Use the exact topic names from the TOPICS list
+      - Assignments array must have same length as input texts
+      - Choose the best-fitting topic for each text
+    rules:
+      max_turns: 1
+    output_schema:
+      type: object
+      properties:
+        topics:
+          type: array
+          items: {type: string}
+        assignments:
+          type: array
+          items: {type: string}

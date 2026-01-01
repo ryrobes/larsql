@@ -105,8 +105,8 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
 
     result = query
 
-    # Process RVBBIT MAP/RUN statements
-    if _is_rvbbit_statement(normalized):
+    # Process RVBBIT MAP/RUN statements (only for actual MAP/RUN syntax)
+    if _is_map_run_statement(normalized):
         stmt = _parse_rvbbit_statement(normalized)
 
         if stmt.mode == 'MAP':
@@ -181,24 +181,59 @@ def _is_map_run_statement(query: str) -> bool:
 
 
 def _is_rvbbit_statement(query: str) -> bool:
-    """Check if query contains RVBBIT syntax or UDF function calls."""
+    """Check if query contains RVBBIT syntax, semantic operators, or UDF function calls."""
     import re
 
     # Check for RVBBIT MAP/RUN syntax first
     if _is_map_run_statement(query):
         return True
 
-    # Check for RVBBIT UDF function calls
+    # Check for semantic operators (MEANS, ABOUT, IMPLIES, etc.)
+    # These get rewritten to UDF calls but need to be detected BEFORE rewriting
+    query_upper = query.upper()
+    semantic_patterns = [
+        r'\bMEANS\s+\'',             # col MEANS 'x'
+        r'\bNOT\s+MEANS\s+\'',       # col NOT MEANS 'x'
+        r'\bABOUT\s+\'',             # col ABOUT 'x'
+        r'\bNOT\s+ABOUT\s+\'',       # col NOT ABOUT 'x'
+        r'\w+\s*~\s*[\'\w]',         # a ~ b or a ~ 'x' (tilde operator)
+        r'\w+\s*!~\s*[\'\w]',        # a !~ b (negated tilde)
+        r'\bSEMANTIC\s+JOIN\b',      # SEMANTIC JOIN
+        r'\bRELEVANCE\s+TO\s+\'',    # ORDER BY col RELEVANCE TO 'x'
+        r'\bSEMANTIC\s+DISTINCT\b',  # SEMANTIC DISTINCT
+        r'\bGROUP\s+BY\s+MEANING\s*\(', # GROUP BY MEANING(col)
+        r'\bGROUP\s+BY\s+TOPICS\s*\(',  # GROUP BY TOPICS(col)
+        r'\bIMPLIES\s+\'',           # col IMPLIES 'x'
+        r'\bIMPLIES\s+\w+',          # col IMPLIES other_col
+        r'\bCONTRADICTS\s+\'',       # col CONTRADICTS 'x'
+        r'\bCONTRADICTS\s+\w+',      # col CONTRADICTS other_col
+    ]
+    if any(re.search(p, query_upper, re.IGNORECASE) for p in semantic_patterns):
+        return True
+
+    # Check for RVBBIT UDF function calls (already rewritten or direct)
     sql_lower = query.lower()
     udf_patterns = [
+        # RVBBIT core
         r'\brvbbit_udf\s*\(', r'\brvbbit\s*\(', r'\brvbbit_cascade_udf\s*\(',
         r'\brvbbit_run\s*\(', r'\brvbbit_run_batch\s*\(', r'\brvbbit_run_parallel_batch\s*\(',
-        r'\brvbbit_map_parallel_exec\s*\(', r'\bllm_summarize\s*\(', r'\bllm_classify\s*\(',
-        r'\bllm_sentiment\s*\(', r'\bllm_themes\s*\(', r'\bllm_agg\s*\(',
+        r'\brvbbit_map_parallel_exec\s*\(',
+        # Scalar semantic operators
+        r'\bmatches\s*\(', r'\bscore\s*\(', r'\bmatch_pair\s*\(', r'\bmatch_template\s*\(',
+        r'\bsemantic_case\s*\(', r'\bclassify_single\s*\(',
+        r'\bimplies\s*\(', r'\bcontradicts\s*\(',
         r'\bllm_matches\s*\(', r'\bllm_score\s*\(', r'\bllm_match_pair\s*\(',
         r'\bllm_match_template\s*\(', r'\bllm_semantic_case\s*\(',
-        r'\bmatches\s*\(', r'\bscore\s*\(', r'\bmatch_pair\s*\(', r'\bmatch_template\s*\(',
-        r'\bsemantic_case\s*\('
+        # Aggregate functions (both LLM_ prefixed and short aliases)
+        r'\bsummarize\s*\(', r'\bllm_summarize\s*\(',
+        r'\bclassify\s*\(', r'\bllm_classify\s*\(',
+        r'\bsentiment\s*\(', r'\bllm_sentiment\s*\(',
+        r'\bthemes\s*\(', r'\btopics\s*\(', r'\bllm_themes\s*\(',
+        r'\bdedupe\s*\(', r'\bllm_dedupe\s*\(',
+        r'\bcluster\s*\(', r'\bllm_cluster\s*\(',
+        r'\bconsensus\s*\(', r'\bllm_consensus\s*\(',
+        r'\boutliers\s*\(', r'\bllm_outliers\s*\(',
+        r'\bllm_agg\s*\(',
     ]
     return any(re.search(p, sql_lower) for p in udf_patterns)
 

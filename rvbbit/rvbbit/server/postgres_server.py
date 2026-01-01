@@ -885,6 +885,31 @@ class ClientConnection:
                         else:
                             print(f"[{self.session_id}]   ✅ Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)")
 
+                        # Log query completion for SQL Trail (special path)
+                        if _current_query_id and _query_start_time:
+                            try:
+                                from rvbbit.sql_trail import log_query_complete, aggregate_query_costs
+                                from rvbbit.caller_context import get_caller_id, clear_caller_context
+
+                                duration_ms = (time.time() - _query_start_time) * 1000
+                                caller_id = get_caller_id()
+                                costs = aggregate_query_costs(caller_id) if caller_id else {}
+
+                                log_query_complete(
+                                    query_id=_current_query_id,
+                                    status='completed',
+                                    rows_output=len(result_df),
+                                    duration_ms=duration_ms,
+                                    total_cost=costs.get('total_cost'),
+                                    total_tokens_in=costs.get('total_tokens_in'),
+                                    total_tokens_out=costs.get('total_tokens_out'),
+                                    llm_calls_count=costs.get('llm_calls_count'),
+                                )
+                                # Clear caller context to avoid leaking to next query
+                                clear_caller_context()
+                            except Exception as trail_e:
+                                print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
+
                         return  # Skip normal execution path
 
                     except Exception as parallel_error:
@@ -905,10 +930,55 @@ class ClientConnection:
 
             print(f"[{self.session_id}]   ✓ Returned {len(result_df)} rows")
 
+            # Log query completion for SQL Trail (if we started tracking)
+            if _current_query_id and _query_start_time:
+                try:
+                    from rvbbit.sql_trail import log_query_complete, aggregate_query_costs
+                    from rvbbit.caller_context import get_caller_id, clear_caller_context
+
+                    duration_ms = (time.time() - _query_start_time) * 1000
+                    caller_id = get_caller_id()
+
+                    # Aggregate costs from all LLM calls made during this query
+                    costs = aggregate_query_costs(caller_id) if caller_id else {}
+
+                    log_query_complete(
+                        query_id=_current_query_id,
+                        status='completed',
+                        rows_output=len(result_df),
+                        duration_ms=duration_ms,
+                        total_cost=costs.get('total_cost'),
+                        total_tokens_in=costs.get('total_tokens_in'),
+                        total_tokens_out=costs.get('total_tokens_out'),
+                        llm_calls_count=costs.get('llm_calls_count'),
+                    )
+
+                    # Clear caller context to avoid leaking to next query
+                    clear_caller_context()
+                except Exception as trail_e:
+                    print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
+
         except Exception as e:
             # Send error to client
             error_message = str(e)
             error_detail = traceback.format_exc()
+
+            # Log query error for SQL Trail
+            if _current_query_id and _query_start_time:
+                try:
+                    from rvbbit.sql_trail import log_query_error
+                    from rvbbit.caller_context import clear_caller_context
+                    duration_ms = (time.time() - _query_start_time) * 1000
+                    log_query_error(
+                        query_id=_current_query_id,
+                        error_message=error_message,
+                        error_type=type(e).__name__,
+                        duration_ms=duration_ms,
+                    )
+                    # Clear caller context to avoid leaking to next query
+                    clear_caller_context()
+                except Exception as trail_e:
+                    print(f"[{self.session_id}]   ⚠️  SQL Trail error log failed: {trail_e}")
 
             # Mark transaction as errored if we were in one
             if self.transaction_status == 'T':

@@ -94,6 +94,38 @@ LLM_AGG_FUNCTIONS = {
         return_type="VARCHAR",
         arg_template="{prompt}, LIST({col})::VARCHAR"  # Note: prompt comes first
     ),
+    "LLM_DEDUPE": LLMAggFunction(
+        name="LLM_DEDUPE",
+        impl_name="llm_dedupe_impl",
+        min_args=1,
+        max_args=2,  # (column, criteria)
+        return_type="VARCHAR",
+        arg_template="LIST({col})::VARCHAR{extra_args}"
+    ),
+    "LLM_CLUSTER": LLMAggFunction(
+        name="LLM_CLUSTER",
+        impl_name="llm_cluster_impl",
+        min_args=1,
+        max_args=3,  # (column, num_clusters, criteria)
+        return_type="VARCHAR",
+        arg_template="LIST({col})::VARCHAR{extra_args}"
+    ),
+    "LLM_CONSENSUS": LLMAggFunction(
+        name="LLM_CONSENSUS",
+        impl_name="llm_consensus_impl",
+        min_args=1,
+        max_args=2,  # (column, prompt)
+        return_type="VARCHAR",
+        arg_template="LIST({col})::VARCHAR{extra_args}"
+    ),
+    "LLM_OUTLIERS": LLMAggFunction(
+        name="LLM_OUTLIERS",
+        impl_name="llm_outliers_impl",
+        min_args=1,
+        max_args=3,  # (column, num_outliers, criteria)
+        return_type="VARCHAR",
+        arg_template="LIST({col})::VARCHAR{extra_args}"
+    ),
 }
 
 
@@ -104,6 +136,11 @@ LLM_AGG_ALIASES = {
     "CLASSIFY": "LLM_CLASSIFY",
     "SENTIMENT": "LLM_SENTIMENT",
     "THEMES": "LLM_THEMES",
+    "TOPICS": "LLM_THEMES",       # Alias for THEMES
+    "DEDUPE": "LLM_DEDUPE",       # Semantic deduplication
+    "CLUSTER": "LLM_CLUSTER",     # Semantic clustering
+    "CONSENSUS": "LLM_CONSENSUS", # Find common ground
+    "OUTLIERS": "LLM_OUTLIERS",   # Find unusual items
     # Note: AGG is intentionally omitted - too generic
 }
 

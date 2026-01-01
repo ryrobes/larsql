@@ -1,22 +1,39 @@
 """
 Semantic SQL Operators.
 
-Transforms semantic SQL syntax into UDF calls:
+Transforms semantic SQL syntax into UDF calls backed by RVBBIT cascades.
+
+Architecture:
+    All semantic operators are "prompt sugar" - syntax that rewrites to cascade
+    invocations. A cascade with `sql_function` metadata becomes a SQL-callable
+    function. Built-in operators (MEANS, ABOUT, IMPLIES, etc.) are defined as
+    cascade YAML files in rvbbit/semantic_sql/_builtin/.
+
+    Three shapes:
+    - SCALAR: Per-row functions (e.g., MEANS, IMPLIES, ABOUT)
+    - ROW: Multi-column per-row (e.g., match_pair)
+    - AGGREGATE: Collection functions (e.g., SUMMARIZE, MEANING, TOPICS)
+
+    Resolution is inside-out like Lisp:
+    - Aggregates resolve first (become CTEs)
+    - Scalars resolve inline per row
+
+Operator Syntax:
 
     col MEANS 'x'           → matches('x', col)
     col NOT MEANS 'x'       → NOT matches('x', col)
     col ABOUT 'x'           → score('x', col) > 0.5
     col ABOUT 'x' > 0.7     → score('x', col) > 0.7
     col NOT ABOUT 'x'       → score('x', col) <= 0.5
-    col NOT ABOUT 'x' > 0.3 → score('x', col) <= 0.3
+    col IMPLIES 'x'         → implies(col, 'x')
+    col CONTRADICTS other   → contradicts(col, other)
     a ~ b                   → match_pair(a, b, 'same entity')
-    a !~ b                  → NOT match_pair(a, b, 'same entity')
-    a ~ b AS 'relationship' → match_pair(a, b, 'relationship')
     ORDER BY col RELEVANCE TO 'x'      → ORDER BY score('x', col) DESC
-    ORDER BY col NOT RELEVANCE TO 'x'  → ORDER BY score('x', col) ASC
-    SEMANTIC JOIN t ON a ~ b           → CROSS JOIN t WHERE match_pair(a, b, ...)
+    SEMANTIC DISTINCT col              → Dedupe by semantic similarity
+    GROUP BY MEANING(col, n, 'hint')   → Cluster values semantically
+    GROUP BY TOPICS(col, n)            → Extract and group by themes
 
-Supports annotation hints (-- @) for model selection and prompt customization:
+Annotation hints (-- @) for model selection and prompt customization:
 
     -- @ use a fast and cheap model
     WHERE description MEANS 'sustainable'
@@ -26,11 +43,70 @@ Supports annotation hints (-- @) for model selection and prompt customization:
 
 The annotation prompt is prepended to the criteria, allowing bodybuilder's
 request mode to pick up model hints naturally.
+
+Cascade Integration:
+    When USE_CASCADE_FUNCTIONS is True, operators resolve through the cascade
+    registry instead of direct UDF calls. This enables:
+    - Full RVBBIT observability (logging, tracing, cost tracking)
+    - User-defined overrides (put your own cascade in traits/)
+    - Wards, retries, multi-modal - all RVBBIT features available
 """
 
 import re
+import logging
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
+
+# ============================================================================
+# Cascade Integration Configuration
+# ============================================================================
+
+# When True, rewriter uses cascade-based function names (e.g., cascade_matches)
+# When False, uses direct UDF names (e.g., matches)
+USE_CASCADE_FUNCTIONS = False
+
+# Mapping from operator to function name (direct UDF vs cascade-backed)
+OPERATOR_FUNCTIONS = {
+    # Direct UDF names (current implementation)
+    "direct": {
+        "matches": "matches",
+        "score": "score",
+        "implies": "implies",
+        "contradicts": "contradicts",
+        "match_pair": "match_pair",
+        "summarize": "summarize",
+        "llm_themes_2": "llm_themes_2",
+        "llm_cluster_2": "llm_cluster_2",
+        "classify_single": "classify_single",
+    },
+    # Cascade-backed function names
+    "cascade": {
+        "matches": "cascade_matches",
+        "score": "cascade_score",
+        "implies": "cascade_implies",
+        "contradicts": "cascade_contradicts",
+        "match_pair": "cascade_match_pair",  # TODO: add cascade
+        "summarize": "cascade_summarize",
+        "llm_themes_2": "cascade_themes",
+        "llm_cluster_2": "cascade_cluster",
+        "classify_single": "cascade_classify",
+    },
+}
+
+
+def get_function_name(operator: str) -> str:
+    """Get the function name for an operator based on current configuration."""
+    mode = "cascade" if USE_CASCADE_FUNCTIONS else "direct"
+    return OPERATOR_FUNCTIONS[mode].get(operator, operator)
+
+
+def set_use_cascade_functions(enabled: bool) -> None:
+    """Enable or disable cascade-backed functions."""
+    global USE_CASCADE_FUNCTIONS
+    USE_CASCADE_FUNCTIONS = enabled
+    log.info(f"[semantic_operators] Cascade functions {'enabled' if enabled else 'disabled'}")
 
 
 # ============================================================================
@@ -413,6 +489,8 @@ def _rewrite_means(line: str, annotation_prefix: str) -> str:
     -- @ use a fast model
     col MEANS 'sustainable'  →  matches('use a fast model - sustainable', col)
     """
+    fn_name = get_function_name("matches")
+
     # Pattern: identifier MEANS 'string'
     # Captures: (column_expr) MEANS '(criteria)'
     pattern = r'(\w+(?:\.\w+)?)\s+MEANS\s+\'([^\']+)\''
@@ -422,7 +500,7 @@ def _rewrite_means(line: str, annotation_prefix: str) -> str:
         criteria = match.group(2)
         # Inject annotation prefix into criteria
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"matches('{full_criteria}', {col})"
+        return f"{fn_name}('{full_criteria}', {col})"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -437,6 +515,8 @@ def _rewrite_not_means(line: str, annotation_prefix: str) -> str:
     -- @ use a fast model
     col NOT MEANS 'sustainable'  →  NOT matches('use a fast model - sustainable', col)
     """
+    fn_name = get_function_name("matches")
+
     # Pattern: identifier NOT MEANS 'string'
     pattern = r'(\w+(?:\.\w+)?)\s+NOT\s+MEANS\s+\'([^\']+)\''
 
@@ -444,7 +524,7 @@ def _rewrite_not_means(line: str, annotation_prefix: str) -> str:
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"NOT matches('{full_criteria}', {col})"
+        return f"NOT {fn_name}('{full_criteria}', {col})"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -460,6 +540,8 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
     -- @ threshold: 0.8
     col ABOUT 'topic'  →  score('topic', col) > 0.8
     """
+    fn_name = get_function_name("score")
+
     # Pattern with explicit threshold: col ABOUT 'x' > 0.7
     pattern_with_threshold = r'(\w+(?:\.\w+)?)\s+ABOUT\s+\'([^\']+)\'\s*(>|>=|<|<=)\s*([\d.]+)'
 
@@ -469,7 +551,7 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
         operator = match.group(3)
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"score('{full_criteria}', {col}) {operator} {threshold}"
+        return f"{fn_name}('{full_criteria}', {col}) {operator} {threshold}"
 
     result = re.sub(pattern_with_threshold, replacer_with_threshold, line, flags=re.IGNORECASE)
 
@@ -480,7 +562,7 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"score('{full_criteria}', {col}) > {default_threshold}"
+        return f"{fn_name}('{full_criteria}', {col}) > {default_threshold}"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -496,6 +578,8 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
 
     The threshold from the query is used as the cutoff for exclusion.
     """
+    fn_name = get_function_name("score")
+
     # Pattern with explicit threshold: col NOT ABOUT 'x' > 0.7
     # Note: The > threshold in NOT ABOUT means "exclude anything scoring above this"
     pattern_with_threshold = r'(\w+(?:\.\w+)?)\s+NOT\s+ABOUT\s+\'([^\']+)\'\s*(>|>=)\s*([\d.]+)'
@@ -506,7 +590,7 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         # For NOT ABOUT with >, we invert: NOT ABOUT 'x' > 0.7 means score <= 0.7
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"score('{full_criteria}', {col}) <= {threshold}"
+        return f"{fn_name}('{full_criteria}', {col}) <= {threshold}"
 
     result = re.sub(pattern_with_threshold, replacer_with_threshold, line, flags=re.IGNORECASE)
 
@@ -519,7 +603,7 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         criteria = match.group(2)
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"score('{full_criteria}', {col}) >= {threshold}"
+        return f"{fn_name}('{full_criteria}', {col}) >= {threshold}"
 
     result = re.sub(pattern_with_lt, replacer_with_lt, result, flags=re.IGNORECASE)
 
@@ -530,7 +614,7 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"score('{full_criteria}', {col}) <= {default_threshold}"
+        return f"{fn_name}('{full_criteria}', {col}) <= {default_threshold}"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -548,6 +632,8 @@ def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
     -- @ use a fast model
     a ~ b  →  match_pair(a, b, 'use a fast model - same entity')
     """
+    fn_name = get_function_name("match_pair")
+
     # Pattern with AS: a ~ b AS 'relationship'
     pattern_with_as = r'(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)\s+AS\s+\'([^\']+)\''
 
@@ -556,7 +642,7 @@ def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
         right = match.group(2)
         relationship = match.group(3)
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"match_pair({left}, {right}, '{full_relationship}')"
+        return f"{fn_name}({left}, {right}, '{full_relationship}')"
 
     result = re.sub(pattern_with_as, replacer_with_as, line, flags=re.IGNORECASE)
 
@@ -569,7 +655,7 @@ def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
         right = match.group(2)
         relationship = "same entity"
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"match_pair({left}, {right}, '{full_relationship}')"
+        return f"{fn_name}({left}, {right}, '{full_relationship}')"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -587,6 +673,8 @@ def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
     -- @ use a fast model
     a !~ b  →  NOT match_pair(a, b, 'use a fast model - same entity')
     """
+    fn_name = get_function_name("match_pair")
+
     # Pattern with AS: a !~ b AS 'relationship'
     pattern_with_as = r'(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)\s+AS\s+\'([^\']+)\''
 
@@ -595,7 +683,7 @@ def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
         right = match.group(2)
         relationship = match.group(3)
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"NOT match_pair({left}, {right}, '{full_relationship}')"
+        return f"NOT {fn_name}({left}, {right}, '{full_relationship}')"
 
     result = re.sub(pattern_with_as, replacer_with_as, line, flags=re.IGNORECASE)
 
@@ -607,7 +695,7 @@ def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
         right = match.group(2)
         relationship = "same entity"
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"NOT match_pair({left}, {right}, '{full_relationship}')"
+        return f"NOT {fn_name}({left}, {right}, '{full_relationship}')"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -625,6 +713,8 @@ def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
     -- @ use a cheap model
     ORDER BY title RELEVANCE TO 'ML'  →  ORDER BY score('use a cheap model - ML', title) DESC
     """
+    fn_name = get_function_name("score")
+
     # Pattern: ORDER BY col RELEVANCE TO 'query' [ASC|DESC]
     pattern = r'ORDER\s+BY\s+(\w+(?:\.\w+)?)\s+RELEVANCE\s+TO\s+\'([^\']+)\'(?:\s+(ASC|DESC))?'
 
@@ -633,7 +723,7 @@ def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
         query = match.group(2)
         direction = match.group(3) or 'DESC'  # Default to DESC (highest relevance first)
         full_query = f"{annotation_prefix}{query}" if annotation_prefix else query
-        return f"ORDER BY score('{full_query}', {col}) {direction}"
+        return f"ORDER BY {fn_name}('{full_query}', {col}) {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -648,6 +738,8 @@ def _rewrite_not_relevance_to(line: str, annotation_prefix: str) -> str:
     NOT RELEVANCE TO defaults to ASC (least relevant first), which is useful
     for filtering out irrelevant results or finding outliers.
     """
+    fn_name = get_function_name("score")
+
     # Pattern: ORDER BY col NOT RELEVANCE TO 'query' [ASC|DESC]
     pattern = r'ORDER\s+BY\s+(\w+(?:\.\w+)?)\s+NOT\s+RELEVANCE\s+TO\s+\'([^\']+)\'(?:\s+(ASC|DESC))?'
 
@@ -656,7 +748,7 @@ def _rewrite_not_relevance_to(line: str, annotation_prefix: str) -> str:
         query = match.group(2)
         direction = match.group(3) or 'ASC'  # Default to ASC (least relevant first for NOT)
         full_query = f"{annotation_prefix}{query}" if annotation_prefix else query
-        return f"ORDER BY score('{full_query}', {col}) {direction}"
+        return f"ORDER BY {fn_name}('{full_query}', {col}) {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -672,6 +764,8 @@ def _rewrite_implies(line: str, annotation_prefix: str) -> str:
     -- @ check for visual contact
     title IMPLIES 'witness saw creature'  →  implies(title, 'check for visual contact - witness saw creature')
     """
+    fn_name = get_function_name("implies")
+
     # Pattern: col IMPLIES 'string'
     pattern_string = r'(\w+(?:\.\w+)?)\s+IMPLIES\s+\'([^\']+)\''
 
@@ -679,7 +773,7 @@ def _rewrite_implies(line: str, annotation_prefix: str) -> str:
         col = match.group(1)
         conclusion = match.group(2)
         full_conclusion = f"{annotation_prefix}{conclusion}" if annotation_prefix else conclusion
-        return f"implies({col}, '{full_conclusion}')"
+        return f"{fn_name}({col}, '{full_conclusion}')"
 
     result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
 
@@ -691,9 +785,9 @@ def _rewrite_implies(line: str, annotation_prefix: str) -> str:
         col1 = match.group(1)
         col2 = match.group(2)
         # Don't rewrite if col2 looks like it's part of implies() call
-        if col1.lower() == 'implies':
+        if col1.lower() == fn_name:
             return match.group(0)
-        return f"implies({col1}, {col2})"
+        return f"{fn_name}({col1}, {col2})"
 
     result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
 
@@ -711,6 +805,8 @@ def _rewrite_contradicts(line: str, annotation_prefix: str) -> str:
     -- @ check for logical inconsistency
     title CONTRADICTS observed  →  contradicts(title, observed)
     """
+    fn_name = get_function_name("contradicts")
+
     # Pattern: col CONTRADICTS 'string'
     pattern_string = r'(\w+(?:\.\w+)?)\s+CONTRADICTS\s+\'([^\']+)\''
 
@@ -718,7 +814,7 @@ def _rewrite_contradicts(line: str, annotation_prefix: str) -> str:
         col = match.group(1)
         statement = match.group(2)
         full_statement = f"{annotation_prefix}{statement}" if annotation_prefix else statement
-        return f"contradicts({col}, '{full_statement}')"
+        return f"{fn_name}({col}, '{full_statement}')"
 
     result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
 
@@ -728,9 +824,9 @@ def _rewrite_contradicts(line: str, annotation_prefix: str) -> str:
     def replacer_col(match):
         col1 = match.group(1)
         col2 = match.group(2)
-        if col1.lower() == 'contradicts':
+        if col1.lower() == fn_name:
             return match.group(0)
-        return f"contradicts({col1}, {col2})"
+        return f"{fn_name}({col1}, {col2})"
 
     result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
 
@@ -749,6 +845,8 @@ def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:
     Note: This is a line-level rewrite. Complex multi-line JOINs may need
     full SQL parsing for proper handling.
     """
+    fn_name = get_function_name("match_pair")
+
     # Check if there's a WHERE clause elsewhere in the line (after potential SEMANTIC JOIN)
     # We'll use a placeholder and fix up afterward
     has_existing_where = bool(re.search(r'\bWHERE\b', line, re.IGNORECASE))
@@ -764,7 +862,7 @@ def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:
         relationship = "same entity"
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
         # Use placeholder that we'll fix up later
-        return f"CROSS JOIN {table} {alias} {{{{SEMANTIC_WHERE}}}} match_pair({left}, {right}, '{full_relationship}')"
+        return f"CROSS JOIN {table} {alias} {{{{SEMANTIC_WHERE}}}} {fn_name}({left}, {right}, '{full_relationship}')"
 
     # Pattern simple: SEMANTIC JOIN table ON col1 ~ col2
     pattern = r'SEMANTIC\s+JOIN\s+(\w+)\s+ON\s+(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)'
@@ -775,7 +873,7 @@ def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:
         right = match.group(3)
         relationship = "same entity"
         full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"CROSS JOIN {table} {{{{SEMANTIC_WHERE}}}} match_pair({left}, {right}, '{full_relationship}')"
+        return f"CROSS JOIN {table} {{{{SEMANTIC_WHERE}}}} {fn_name}({left}, {right}, '{full_relationship}')"
 
     result = re.sub(pattern_with_alias, replacer_with_alias, line, flags=re.IGNORECASE)
     result = re.sub(pattern, replacer, result, flags=re.IGNORECASE)

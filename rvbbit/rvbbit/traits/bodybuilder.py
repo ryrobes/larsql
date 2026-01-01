@@ -60,6 +60,7 @@ def _execute_single_body(
     cell_name: str = None,
     cascade_id: str = None,
     trace_prefix: str = "",
+    caller_id: str = None,
 ) -> Dict[str, Any]:
     """
     Execute a single OpenRouter-format body.
@@ -203,6 +204,7 @@ def _execute_single_body(
             session_id=session_id,
             trace_id=trace_id,
             parent_id=None,
+            caller_id=caller_id,
             node_type="bodybuilder_call",
             role="assistant",
             depth=0,
@@ -250,6 +252,7 @@ def _execute_single_body(
             session_id=session_id,
             trace_id=trace_id,
             parent_id=None,
+            caller_id=caller_id,
             node_type="bodybuilder_error",
             role="system",
             depth=0,
@@ -450,6 +453,9 @@ def bodybuilder(
     model_override: str = None,
     system_prompt: str = None,
 
+    # Caller tracking (for SQL Trail cost rollup)
+    caller_id: str = None,
+
     # Injected by runner
     _session_id: str = None,
     _cell_name: str = None,
@@ -530,6 +536,15 @@ def bodybuilder(
             "error": "Must provide either 'body' (direct execution) or 'request' (planning mode)"
         }
 
+    # Get caller_id from caller_context if not explicitly provided
+    # This enables SQL Trail cost rollup for SQL-originated LLM calls
+    if caller_id is None:
+        try:
+            from ..caller_context import get_caller_id
+            caller_id = get_caller_id()
+        except ImportError:
+            pass
+
     # Planning mode - convert request to body
     if request is not None:
         planner = planner_model or DEFAULT_PLANNER_MODEL
@@ -588,7 +603,8 @@ def bodybuilder(
                 session_id=_session_id,
                 cell_name=_cell_name,
                 cascade_id=_cascade_id,
-                trace_prefix=f"req{i}_"
+                trace_prefix=f"req{i}_",
+                caller_id=caller_id,
             )
             results.append(result)
 
@@ -634,6 +650,7 @@ def bodybuilder(
         session_id=_session_id,
         cell_name=_cell_name,
         cascade_id=_cascade_id,
+        caller_id=caller_id,
     )
 
 

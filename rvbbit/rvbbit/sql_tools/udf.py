@@ -47,11 +47,26 @@ def _make_cascade_cache_key(cascade_path: str, inputs: dict) -> str:
     return hashlib.md5(cache_str.encode()).hexdigest()
 
 
-def _cache_get(cache: dict, key: str) -> Optional[str]:
-    """Get from cache, checking TTL expiry."""
+def _cache_get(cache: dict, key: str, track_sql_trail: bool = True) -> Optional[str]:
+    """
+    Get from cache, checking TTL expiry.
+
+    If track_sql_trail is True (default), increments cache hit/miss counters
+    in sql_query_log for SQL Trail analytics.
+    """
     import time
 
     if key not in cache:
+        # Track cache miss for SQL Trail (fire-and-forget)
+        if track_sql_trail:
+            try:
+                from ..caller_context import get_caller_id
+                from ..sql_trail import increment_cache_miss
+                caller_id = get_caller_id()
+                if caller_id:
+                    increment_cache_miss(caller_id)
+            except Exception:
+                pass  # Non-blocking
         return None
 
     value, timestamp, ttl = cache[key]
@@ -59,7 +74,28 @@ def _cache_get(cache: dict, key: str) -> Optional[str]:
     # Check if expired
     if ttl is not None and (time.time() - timestamp) > ttl:
         del cache[key]  # Expired, remove
+        # Track as cache miss
+        if track_sql_trail:
+            try:
+                from ..caller_context import get_caller_id
+                from ..sql_trail import increment_cache_miss
+                caller_id = get_caller_id()
+                if caller_id:
+                    increment_cache_miss(caller_id)
+            except Exception:
+                pass
         return None
+
+    # Track cache hit for SQL Trail
+    if track_sql_trail:
+        try:
+            from ..caller_context import get_caller_id
+            from ..sql_trail import increment_cache_hit
+            caller_id = get_caller_id()
+            if caller_id:
+                increment_cache_hit(caller_id)
+        except Exception:
+            pass  # Non-blocking
 
     return value
 
