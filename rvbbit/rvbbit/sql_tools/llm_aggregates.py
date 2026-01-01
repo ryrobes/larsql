@@ -839,6 +839,109 @@ Answer with ONLY "yes" or "no", nothing else."""
     return is_match
 
 
+def llm_semantic_case_impl(
+    text: str,
+    *args,
+    model: str = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Evaluate text against multiple semantic conditions, return first match.
+
+    Makes a SINGLE LLM call that checks all conditions at once - much more
+    efficient than chained CASE WHEN with multiple matches() calls.
+
+    Args format: condition1, result1, condition2, result2, ..., [default]
+    - Pairs of (condition, result)
+    - Last unpaired arg is the default value
+
+    Example:
+        semantic_case(description,
+            'mentions sustainability', 'eco',
+            'mentions performance', 'performance',
+            'mentions luxury', 'premium',
+            'standard'  -- default
+        )
+
+    Returns the result for the FIRST matching condition, or default.
+    """
+    if not text or not args:
+        return args[-1] if args else ""
+
+    text = _sanitize_text(str(text))
+    if not text:
+        return args[-1] if args else ""
+
+    # Parse condition/result pairs and default
+    pairs = []
+    default = ""
+
+    # Check if odd number of args (last is default)
+    if len(args) % 2 == 1:
+        default = str(args[-1])
+        pair_args = args[:-1]
+    else:
+        pair_args = args
+        default = ""
+
+    for i in range(0, len(pair_args), 2):
+        condition = str(pair_args[i])
+        result = str(pair_args[i + 1])
+        pairs.append((condition, result))
+
+    if not pairs:
+        return default
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        # Cache key from text + all conditions
+        conditions_key = "|".join(f"{c}:{r}" for c, r in pairs)
+        cache_key = _agg_cache_key("semantic_case", conditions_key, text[:200])
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached is not None:
+            return cached
+
+    # Build prompt - single LLM call for all conditions
+    conditions_text = "\n".join(
+        f'{i+1}. If text "{cond}" → return exactly: {result}'
+        for i, (cond, result) in enumerate(pairs)
+    )
+
+    prompt = f"""Evaluate this text against the conditions below IN ORDER. Return the result for the FIRST matching condition.
+
+Text: {text[:1000]}
+
+Conditions (check in order, return first match):
+{conditions_text}
+
+Default (if no conditions match): {default or 'none'}
+
+Return ONLY the exact result value, nothing else."""
+
+    result = _call_llm(prompt, model=model)
+    result = result.strip().strip('"\'')
+
+    # Validate result is one of the expected values
+    valid_results = [r for _, r in pairs] + ([default] if default else [])
+    if result not in valid_results:
+        # Try to find closest match
+        result_lower = result.lower()
+        for valid in valid_results:
+            if valid.lower() in result_lower or result_lower in valid.lower():
+                result = valid
+                break
+        else:
+            # Fall back to default
+            result = default or valid_results[0] if valid_results else ""
+
+    # Cache result
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
 # ============================================================================
 # Map-Reduce for Large Collections
 # ============================================================================
@@ -1072,6 +1175,65 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
     ]:
         try:
             connection.create_function(name, func, return_type="BOOLEAN")
+        except Exception as e:
+            log.warning(f"Could not register {name}: {e}")
+
+    # ========== SEMANTIC_CASE - multi-way semantic classification ==========
+    # semantic_case(text, cond1, result1, cond2, result2, ..., default)
+    # DuckDB needs fixed arity, so we register common variants
+
+    def semantic_case_3(text: str, cond1: str, result1: str) -> str:
+        """1 condition, no default"""
+        return llm_semantic_case_impl(text, cond1, result1)
+
+    def semantic_case_4(text: str, cond1: str, result1: str, default: str) -> str:
+        """1 condition + default"""
+        return llm_semantic_case_impl(text, cond1, result1, default)
+
+    def semantic_case_5(text: str, c1: str, r1: str, c2: str, r2: str) -> str:
+        """2 conditions, no default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2)
+
+    def semantic_case_6(text: str, c1: str, r1: str, c2: str, r2: str, default: str) -> str:
+        """2 conditions + default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2, default)
+
+    def semantic_case_7(text: str, c1: str, r1: str, c2: str, r2: str, c3: str, r3: str) -> str:
+        """3 conditions, no default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2, c3, r3)
+
+    def semantic_case_8(text: str, c1: str, r1: str, c2: str, r2: str, c3: str, r3: str, default: str) -> str:
+        """3 conditions + default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2, c3, r3, default)
+
+    def semantic_case_9(text: str, c1: str, r1: str, c2: str, r2: str, c3: str, r3: str, c4: str, r4: str) -> str:
+        """4 conditions, no default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2, c3, r3, c4, r4)
+
+    def semantic_case_10(text: str, c1: str, r1: str, c2: str, r2: str, c3: str, r3: str, c4: str, r4: str, default: str) -> str:
+        """4 conditions + default"""
+        return llm_semantic_case_impl(text, c1, r1, c2, r2, c3, r3, c4, r4, default)
+
+    for name, func in [
+        ("semantic_case_3", semantic_case_3),
+        ("semantic_case_4", semantic_case_4),
+        ("semantic_case_5", semantic_case_5),
+        ("semantic_case_6", semantic_case_6),
+        ("semantic_case_7", semantic_case_7),
+        ("semantic_case_8", semantic_case_8),
+        ("semantic_case_9", semantic_case_9),
+        ("semantic_case_10", semantic_case_10),
+        ("llm_case_3", semantic_case_3),
+        ("llm_case_4", semantic_case_4),
+        ("llm_case_5", semantic_case_5),
+        ("llm_case_6", semantic_case_6),
+        ("llm_case_7", semantic_case_7),
+        ("llm_case_8", semantic_case_8),
+        ("llm_case_9", semantic_case_9),
+        ("llm_case_10", semantic_case_10),
+    ]:
+        try:
+            connection.create_function(name, func, return_type="VARCHAR")
         except Exception as e:
             log.warning(f"Could not register {name}: {e}")
 

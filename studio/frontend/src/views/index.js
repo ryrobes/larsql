@@ -90,6 +90,14 @@ export const views = {
     enabled: true,
   },
 
+  warren: {
+    component: lazy(() => import('./warren/WarrenView')),
+    icon: 'mdi:rabbit',
+    label: 'The Warren',
+    position: 'top',
+    enabled: true,
+  },
+
   apps: {
     component: lazy(() => import('./apps/AppsView')),
     icon: 'mdi:apps',

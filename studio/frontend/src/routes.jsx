@@ -28,6 +28,7 @@ const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
 const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
 const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
+const WarrenView = lazy(() => import('./views/warren/WarrenView'));
 const AppsView = lazy(() => import('./views/apps/AppsView'));
 
 // Wrapper to add Suspense to lazy components
@@ -124,6 +125,16 @@ export const router = createBrowserRouter([
       {
         path: 'calliope/:sessionId',
         element: withSuspense(CalliopeView),
+      },
+
+      // Warren - Multi-Perspective Deliberation Chat
+      {
+        path: 'warren',
+        element: withSuspense(WarrenView),
+      },
+      {
+        path: 'warren/:sessionId',
+        element: withSuspense(WarrenView),
       },
 
       // Apps - RVBBIT Apps (cascade-powered interfaces)

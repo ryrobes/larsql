@@ -257,6 +257,78 @@ def has_llm_aggregates(query: str) -> bool:
     return False
 
 
+def has_llm_case(query: str) -> bool:
+    """Check if query contains LLM_CASE ... END syntax."""
+    return bool(re.search(r'\bLLM_CASE\b', query, re.IGNORECASE))
+
+
+def rewrite_llm_case(query: str) -> str:
+    """
+    Rewrite LLM_CASE ... END syntax to semantic_case() function calls.
+
+    Input:
+        LLM_CASE description
+          WHEN SEMANTIC 'mentions sustainability' THEN 'eco'
+          WHEN SEMANTIC 'mentions performance' THEN 'performance'
+          ELSE 'standard'
+        END
+
+    Output:
+        semantic_case_6(description,
+          'mentions sustainability', 'eco',
+          'mentions performance', 'performance',
+          'standard'
+        )
+    """
+    if not has_llm_case(query):
+        return query
+
+    # Pattern to match LLM_CASE ... END blocks
+    # Captures: expression, WHEN clauses, optional ELSE
+    llm_case_pattern = re.compile(
+        r'\bLLM_CASE\s+'                     # LLM_CASE keyword
+        r'(\w+(?:\.\w+)?)\s+'                # expression (column or table.column)
+        r'((?:WHEN\s+SEMANTIC\s+\'[^\']*\'\s+THEN\s+\'[^\']*\'\s*)+)'  # WHEN clauses
+        r'(?:ELSE\s+\'([^\']*)\'\s*)?'       # optional ELSE
+        r'END',                               # END keyword
+        re.IGNORECASE | re.DOTALL
+    )
+
+    def replace_llm_case(match):
+        expr = match.group(1)
+        when_clauses = match.group(2)
+        else_value = match.group(3)
+
+        # Parse WHEN clauses
+        when_pattern = re.compile(
+            r"WHEN\s+SEMANTIC\s+'([^']*)'\s+THEN\s+'([^']*)'",
+            re.IGNORECASE
+        )
+        pairs = when_pattern.findall(when_clauses)
+
+        if not pairs:
+            return match.group(0)  # No valid WHEN clauses, leave unchanged
+
+        # Build function arguments
+        args = [expr]
+        for condition, result in pairs:
+            args.append(f"'{condition}'")
+            args.append(f"'{result}'")
+
+        if else_value:
+            args.append(f"'{else_value}'")
+
+        # Calculate arity for function name
+        # arity = 1 (expr) + 2*conditions + (1 if else else 0)
+        arity = len(args)
+        func_name = f"semantic_case_{arity}"
+
+        return f"{func_name}({', '.join(args)})"
+
+    result = llm_case_pattern.sub(replace_llm_case, query)
+    return result
+
+
 def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
     """
     Find all LLM aggregate function calls in query.
@@ -597,22 +669,28 @@ def validate_llm_aggregate_context(query: str) -> Optional[str]:
 
 def process_llm_aggregates(query: str) -> str:
     """
-    Full processing pipeline for LLM aggregates.
+    Full processing pipeline for LLM features.
 
-    1. Detect if query has LLM aggregates
-    2. Validate context
-    3. Rewrite to implementation calls
+    1. Rewrite LLM_CASE ... END to semantic_case() calls
+    2. Detect if query has LLM aggregates
+    3. Validate context
+    4. Rewrite to implementation calls
     """
-    if not has_llm_aggregates(query):
-        return query
+    result = query
 
-    # Validate
-    error = validate_llm_aggregate_context(query)
-    if error:
-        raise ValueError(error)
+    # First: rewrite LLM_CASE syntax
+    if has_llm_case(result):
+        result = rewrite_llm_case(result)
 
-    # Rewrite
-    return rewrite_llm_aggregates(query)
+    # Then: rewrite LLM aggregates
+    if has_llm_aggregates(result):
+        # Validate
+        error = validate_llm_aggregate_context(result)
+        if error:
+            raise ValueError(error)
+        result = rewrite_llm_aggregates(result)
+
+    return result
 
 
 # ============================================================================
@@ -956,4 +1034,64 @@ LIMIT 100;
 ```
 
 **Caching helps** - same pairs return cached results.
+
+## LLM_CASE - Multi-way Semantic Classification
+
+SQL-like syntax for semantic case/when with a SINGLE LLM call:
+
+```sql
+SELECT
+  product_name,
+  LLM_CASE description
+    WHEN SEMANTIC 'mentions sustainability or eco-friendly' THEN 'eco'
+    WHEN SEMANTIC 'mentions performance or speed' THEN 'performance'
+    WHEN SEMANTIC 'mentions luxury or premium quality' THEN 'premium'
+    ELSE 'standard'
+  END as segment
+FROM products;
+```
+
+This is rewritten to `semantic_case_N()` which makes ONE LLM call per row
+that evaluates ALL conditions at once - much faster than chained `matches()`.
+
+### Benefits over chained CASE WHEN
+
+```sql
+-- SLOW: Multiple LLM calls per row (one per WHEN until match)
+SELECT
+  CASE
+    WHEN matches('sustainability', description) THEN 'eco'
+    WHEN matches('performance', description) THEN 'performance'
+    WHEN matches('luxury', description) THEN 'premium'
+    ELSE 'standard'
+  END as segment
+FROM products;
+
+-- FAST: Single LLM call evaluates all conditions
+SELECT
+  LLM_CASE description
+    WHEN SEMANTIC 'sustainability' THEN 'eco'
+    WHEN SEMANTIC 'performance' THEN 'performance'
+    WHEN SEMANTIC 'luxury' THEN 'premium'
+    ELSE 'standard'
+  END as segment
+FROM products;
+```
+
+### Function form (alternative)
+
+You can also use the function directly:
+
+```sql
+SELECT
+  semantic_case_8(description,
+    'mentions sustainability', 'eco',
+    'mentions performance', 'performance',
+    'mentions luxury', 'premium',
+    'standard'  -- default
+  ) as segment
+FROM products;
+```
+
+The number suffix indicates arity: 1 (text) + 2×conditions + optional default.
 """

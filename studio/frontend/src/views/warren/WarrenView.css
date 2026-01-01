@@ -1,0 +1,663 @@
+/* WarrenView - Multi-Perspective Deliberation Chat
+   Left: 5 fixed columns (one per advisor), messages stack within each
+   Right: Chat between User and Hazel (the synthesizer) */
+
+/* ============================================
+   WELCOME SCREEN
+   ============================================ */
+
+.warren-welcome {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #000;
+}
+
+.warren-welcome .welcome-content {
+  max-width: 450px;
+  text-align: center;
+}
+
+.warren-welcome .welcome-avatar {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 10px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(96, 165, 250, 0.2));
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a78bfa;
+}
+
+.warren-welcome h1 {
+  font-size: 1.4rem;
+  margin: 0 0 4px;
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.warren-welcome .welcome-tagline {
+  font-size: 11px;
+  color: #a78bfa;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.warren-welcome .welcome-description {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.warren-welcome .welcome-input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.warren-welcome .message-input {
+  width: 100%;
+  max-width: 380px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  background: #000;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-family: 'Quicksand', sans-serif;
+  resize: vertical;
+  min-height: 70px;
+}
+
+.warren-welcome .message-input:focus {
+  outline: none;
+  border-color: #a78bfa;
+}
+
+.warren-welcome .context-details {
+  width: 100%;
+  max-width: 380px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.warren-welcome .context-details summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.warren-welcome .context-content {
+  padding: 8px;
+  border-top: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.warren-welcome .context-input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 3px;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  background: #0a0a0a;
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.warren-welcome .welcome-personas {
+  margin-top: 16px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  border: 1px solid rgba(167, 139, 250, 0.1);
+}
+
+.warren-welcome .welcome-personas h3 {
+  font-size: 10px;
+  color: #a78bfa;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.warren-welcome .persona-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: center;
+}
+
+.warren-welcome .persona-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid;
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+/* ============================================
+   MAIN LAYOUT
+   ============================================ */
+
+.warren-view {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 55% 45%;
+  grid-template-rows: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+/* ============================================
+   BURROWS PANEL (LEFT) - 5 Fixed Columns
+   ============================================ */
+
+.warren-burrows-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;  /* Allow shrinking in grid */
+  background: #000;
+  border-right: 1px solid #1a1628;
+  overflow: hidden;
+}
+
+.burrows-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #1a1628;
+  background: #0f0d14;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.burrows-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+}
+
+.burrows-title h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.burrows-title svg {
+  color: #a78bfa;
+}
+
+/* Container for 5 columns */
+.burrows-columns {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ============================================
+   BURROW COLUMN - One per advisor
+   ============================================ */
+
+.burrow-column {
+  flex: 1;
+  min-width: 0; /* Allow shrinking */
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border: 1px solid rgba(100, 116, 139, 0.15);
+  border-top: 2px solid var(--persona-color, #64748b);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.burrow-column.empty {
+  opacity: 0.6;
+}
+
+.burrow-column-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.1);
+  flex-shrink: 0;
+}
+
+.burrow-persona-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Scrollable messages area within column */
+.burrow-column-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.burrow-column-messages::-webkit-scrollbar {
+  width: 2px;
+}
+
+.burrow-column-messages::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 1px;
+}
+
+/* Empty state */
+.burrow-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+}
+
+/* Video loader in burrow columns */
+.burrow-loader {
+  min-height: 80px !important;
+  background: #000 !important;
+}
+
+.burrow-loader .video-loader__container {
+  max-width: 100px !important;
+  width: 90% !important;
+}
+
+.burrow-loader .video-loader__video {
+  opacity: 0.7;
+}
+
+/* Individual message within a column */
+.burrow-message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.burrow-model {
+  font-size: 9px;
+  color: #475569;
+  font-family: 'Google Sans Code', monospace;
+  padding: 0 2px;
+}
+
+.burrow-message-content {
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.55;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  border-left: 2px solid var(--persona-color, #64748b);
+  overflow: hidden;
+  word-wrap: break-word;
+}
+
+.burrow-message-content p {
+  margin: 0 0 4px 0;
+}
+
+.burrow-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.burrow-message-content strong {
+  color: #e2e8f0;
+}
+
+.burrow-message-content code {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: 'Google Sans Code', monospace;
+  color: #a78bfa;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.burrow-message-content pre {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  border-radius: 3px;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 6px 0;
+  font-size: 11px;
+}
+
+.burrow-message-content pre code {
+  background: transparent;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.burrow-message-content ul,
+.burrow-message-content ol {
+  margin: 6px 0;
+  padding-left: 16px;
+}
+
+.burrow-message-content li {
+  margin-bottom: 3px;
+}
+
+.burrow-message-content h1,
+.burrow-message-content h2,
+.burrow-message-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0 0 6px 0;
+}
+
+/* ============================================
+   CHAT PANEL (RIGHT) - Hazel
+   ============================================ */
+
+.warren-chat-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;  /* Allow shrinking in grid */
+  background: #000;
+}
+
+.warren-chat-panel .chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #1a1628;
+  background: #0f0d14;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+
+.warren-chat-panel .chat-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(96, 165, 250, 0.2));
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.warren-chat-panel .chat-title h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.warren-chat-panel .chat-subtitle {
+  font-size: 9px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.warren-chat-panel .chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.warren-chat-panel .chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.warren-chat-panel .chat-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.warren-chat-panel .chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 2px;
+}
+
+/* ============================================
+   MESSAGES - User and Hazel
+   ============================================ */
+
+.warren-chat-panel .message {
+  display: flex;
+  gap: 8px;
+  max-width: 95%;
+}
+
+.warren-chat-panel .message.hazel {
+  align-self: flex-start;
+}
+
+.warren-chat-panel .message.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.warren-chat-panel .message-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: rgba(167, 139, 250, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.warren-chat-panel .message.user .message-avatar {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.warren-chat-panel .message-content {
+  padding: 12px 16px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(167, 139, 250, 0.12);
+  color: #cbd5e1;
+  font-size: 16px;
+  font-family: 'Quicksand', sans-serif;
+  line-height: 1.65;
+  overflow: hidden;
+  word-wrap: break-word;
+  max-width: 100%;
+}
+
+.warren-chat-panel .message.user .message-content {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+.warren-chat-panel .message-content h1,
+.warren-chat-panel .message-content h2,
+.warren-chat-panel .message-content h3 {
+  color: #a78bfa;
+  margin: 0 0 10px 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.warren-chat-panel .message-content p {
+  margin: 0 0 6px 0;
+}
+
+.warren-chat-panel .message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.warren-chat-panel .message-content strong {
+  color: #f1f5f9;
+}
+
+.warren-chat-panel .message-content code {
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Google Sans Code', monospace;
+  color: #a78bfa;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.warren-chat-panel .message-content pre {
+  background: #000;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.warren-chat-panel .message-content pre code {
+  background: transparent;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+}
+
+.warren-chat-panel .message-content ul,
+.warren-chat-panel .message-content ol {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.warren-chat-panel .message-content li {
+  margin-bottom: 3px;
+}
+
+/* Hazel thinking state with video loader */
+.hazel-thinking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 300px;
+  gap: 16px;
+}
+
+.hazel-loader {
+  min-height: 200px !important;
+  background: #000 !important;
+}
+
+.hazel-loader .video-loader__container {
+  max-width: 280px !important;
+  width: 70% !important;
+}
+
+.hazel-thinking-text {
+  font-size: 14px;
+  color: #a78bfa;
+  font-style: italic;
+  opacity: 0.8;
+  animation: pulse-text 2s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Checkpoint */
+.warren-chat-panel .chat-checkpoint {
+  margin-top: 6px;
+  padding: 8px;
+  background: #000;
+  border-radius: 5px;
+  border: 1px solid rgba(167, 139, 250, 0.25);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+
+@media (max-width: 900px) {
+  .warren-view {
+    grid-template-columns: 1fr;
+    grid-template-rows: 45vh 1fr;
+  }
+
+  .warren-burrows-panel {
+    border-right: none;
+    border-bottom: 1px solid #1a1628;
+  }
+
+  .burrow-persona-name {
+    font-size: 11px;
+  }
+
+  .burrow-message-content {
+    font-size: 12px;
+  }
+
+  .warren-chat-panel .message-content {
+    font-size: 14px;
+  }
+}

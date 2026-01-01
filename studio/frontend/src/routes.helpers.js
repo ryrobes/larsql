@@ -45,6 +45,10 @@ export const ROUTES = {
   CALLIOPE: '/calliope',
   calliopeWithSession: (sessionId) => `/calliope/${encodeURIComponent(sessionId)}`,
 
+  // Warren - Multi-Perspective Deliberation
+  WARREN: '/warren',
+  warrenWithSession: (sessionId) => `/warren/${encodeURIComponent(sessionId)}`,
+
   // Apps - RVBBIT Apps (cascade-powered interfaces)
   APPS: '/apps',
 
@@ -93,6 +97,7 @@ export function getViewFromPath(pathname) {
     'evolution': 'evolution',
     'interrupts': 'interrupts',
     'calliope': 'calliope',
+    'warren': 'warren',
     'apps': 'apps',
     // Legacy
     'playground': 'playground',
@@ -127,6 +132,7 @@ export function getRouteForView(viewId) {
     'evolution': ROUTES.EVOLUTION,
     'interrupts': ROUTES.INTERRUPTS,
     'calliope': ROUTES.CALLIOPE,
+    'warren': ROUTES.WARREN,
     'apps': ROUTES.APPS,
     // Legacy
     'playground': ROUTES.PLAYGROUND,

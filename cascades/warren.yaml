@@ -1,0 +1,153 @@
+cascade_id: warren
+description: >
+  The Warren - Multi-perspective deliberation chat. A council of AI advisors with
+  distinct cognitive stances deliberate together, then synthesize their perspectives
+  into unified responses. Inspired by Watership Down.
+
+inputs_schema:
+  message: The user's message to deliberate on
+  system_prompt: Optional context for the Warren (e.g., "We're discussing software architecture")
+
+model: anthropic/claude-sonnet-4.5
+
+cells:
+  - name: deliberate
+    instructions: |
+      You are an advisor in **The Warren**, a council that deliberates together.
+
+      {% if input.system_prompt %}
+      ## Context
+      {{ input.system_prompt }}
+      {% endif %}
+
+      ## Topic for Deliberation
+      {% if state.current_message %}
+      {{ state.current_message }}
+      {% else %}
+      {{ input.message }}
+      {% endif %}
+
+      {% if state.history %}
+      ## Previous Exchanges
+      {% for exchange in state.history[-3:] %}
+      ---
+      **User**: {{ exchange.user }}
+      **Warren**: {{ exchange.synthesis | truncate(500) }}
+      {% endfor %}
+      {% endif %}
+
+      ## Your Task
+      Respond thoughtfully from your perspective. Be concise but substantive.
+      Focus on substance - the Owsla will synthesize all perspectives.
+
+      You have access to research tools if needed:
+      - `brave_web_search`: Search the web for current information
+      - `sql_data`: Query databases for facts and data
+      - `read_file`: Read documents for reference
+
+      Only use tools if the topic genuinely requires external information.
+      For opinion/strategy questions, rely on your reasoning.
+
+    # All tools available - advisors use research, aggregator uses request_decision
+    traits:
+      - brave_web_search
+      - sql_data
+      - read_file
+      - request_decision
+      - set_state
+
+    candidates:
+      factor: 5
+      mode: aggregate
+
+      # Multi-model for diversity
+      models:
+        - anthropic/claude-sonnet-4.5
+        - x-ai/grok-4
+        - google/gemini-3-pro-preview
+        - anthropic/claude-opus-4.5
+        - openai/gpt-5.2
+      model_strategy: random
+
+      aggregator_model: anthropic/claude-sonnet-4.5
+      aggregator_instructions: |
+        You are **Hazel**, the Owsla - the council that synthesizes the Warren's wisdom.
+
+        ## Perspectives Received
+        {% for candidate in candidates %}
+        ---
+        **Advisor {{ loop.index }}**:
+        {{ candidate.content | default(candidate) }}
+        {% endfor %}
+
+        ## Your Task
+        Synthesize these perspectives into a unified, actionable response.
+
+        Structure your synthesis:
+        1. **Core insight**: The essential answer
+        2. **Considerations**: Key points from different angles
+        3. **Tensions**: Where perspectives diverged (if any)
+        4. **Recommendation**: Clear next step
+
+        Write as "The Warren" in first person plural ("we").
+        Be concise but comprehensive.
+
+        End with an italicized signature line like:
+        *—The Warren speaks with [adjective] [noun] and [adjective] [noun].*
+
+        ## CRITICAL: You MUST Call request_decision After Your Synthesis
+
+        After writing your synthesis above, you MUST call `request_decision` to pause and wait
+        for the user's next message. Without this call, the cascade will end!
+
+        Call it exactly like this:
+        ```python
+        request_decision(
+          question="The Warren awaits your response",
+          options=[],
+          html='''
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <textarea
+                name="response[message]"
+                placeholder="Continue the deliberation..."
+                rows="3"
+                style="width: 100%; padding: 10px; background: #000; border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 4px; color: #e2e8f0; font-size: 14px; resize: vertical; font-family: Quicksand, sans-serif;"
+              ></textarea>
+              <button
+                type="submit"
+                name="response[action]"
+                value="continue"
+                style="padding: 10px 20px; background: linear-gradient(135deg, rgba(167, 139, 250, 0.3), rgba(96, 165, 250, 0.3)); border: 1px solid rgba(167, 139, 250, 0.5); border-radius: 6px; color: #f1f5f9; cursor: pointer; font-size: 13px; font-weight: 500;"
+              >
+                Continue Deliberation
+              </button>
+            </div>
+          '''
+        )
+        ```
+
+    # Loop back to self for continuous conversation
+    handoffs:
+      - deliberate
+
+    rules:
+      max_turns: 50
+      turn_prompt: |
+        {% if turn_input is defined and turn_input %}
+        The user responded with: {{ turn_input.response.message | default(turn_input | string) }}
+
+        You must now update state for the next round of deliberation:
+
+        1. Call set_state to save the new message:
+           set_state(key="current_message", value="THE USER'S MESSAGE HERE", mode="replace")
+
+        2. Call set_state to append to history:
+           set_state(key="history", value=[{"user": "THE USER'S MESSAGE", "synthesis": "PREVIOUS SYNTHESIS SUMMARY"}], mode="append")
+
+        After updating state, the cascade will automatically loop back to deliberate
+        with the Warren's advisors considering the new topic.
+
+        The user's message to save is: {{ turn_input.response.message | default(turn_input | string) }}
+        {% else %}
+        No user input received. Call request_decision to wait for the user's response.
+        {% endif %}
