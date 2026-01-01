@@ -3,10 +3,15 @@ SQL Rewriter for RVBBIT Extended SQL Syntax.
 
 Handles:
 - RVBBIT MAP/RUN syntax for cascade execution
+- Semantic SQL operators (MEANS, ABOUT, ~, SEMANTIC JOIN, RELEVANCE TO)
 - LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
-Cell 1-2: MAP with optional PARALLEL
-Cell 3: LLM Aggregates
+Processing order:
+1. RVBBIT MAP/RUN statements
+2. Semantic operators (MEANS, ABOUT, ~, etc.)
+3. LLM aggregates (SUMMARIZE, CLASSIFY, etc.)
+
+All stages support -- @ annotation hints for model selection and prompt customization.
 """
 
 import re
@@ -111,10 +116,39 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         else:
             raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
 
+    # Process semantic SQL operators (MEANS, ABOUT, ~, SEMANTIC JOIN, RELEVANCE TO)
+    # This must run BEFORE LLM aggregates since both use -- @ annotations
+    result = _rewrite_semantic_operators(result)
+
     # Process LLM aggregate functions (can be in original query or in rewritten query)
     result = _rewrite_llm_aggregates(result)
 
     return result
+
+
+def _rewrite_semantic_operators(query: str) -> str:
+    """
+    Rewrite semantic SQL operators to UDF calls.
+
+    Transforms:
+        col MEANS 'x'           → matches('x', col)
+        col ABOUT 'x'           → score('x', col) > 0.5
+        a ~ b                   → match_pair(a, b, 'same entity')
+        ORDER BY col RELEVANCE TO 'x'  → ORDER BY score('x', col) DESC
+        SEMANTIC JOIN t ON a ~ b       → CROSS JOIN t WHERE match_pair(...)
+
+    Supports -- @ annotation hints for model selection and prompt customization.
+    """
+    try:
+        from rvbbit.sql_tools.semantic_operators import rewrite_semantic_operators
+        return rewrite_semantic_operators(query)
+    except ImportError:
+        # Fallback if module not available
+        return query
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Semantic operator rewrite failed: {e}")
+        return query
 
 
 def _rewrite_llm_aggregates(query: str) -> str:
