@@ -352,6 +352,87 @@ Respond with ONLY the category name, nothing else."""
     return result
 
 
+def classify_single_impl(
+    text: str,
+    topics_json: str,
+    model: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """
+    Classify a single text into one of the given topics.
+
+    This is a SCALAR function for classifying individual rows.
+
+    Args:
+        text: Single text to classify
+        topics_json: JSON array of topic labels
+        model: Model override
+        use_cache: Whether to cache results
+
+    Returns:
+        The topic label that best matches the text
+
+    Example SQL:
+        SELECT classify_single_impl(observed, '["topic1", "topic2", "topic3"]') as topic
+        FROM bigfoot
+    """
+    import hashlib
+
+    if not text or not text.strip():
+        return "unknown"
+
+    # Parse topics
+    try:
+        topics = json.loads(topics_json)
+        if not isinstance(topics, list):
+            topics = [topics]
+    except json.JSONDecodeError:
+        topics = [t.strip() for t in topics_json.split(',')]
+
+    if not topics:
+        return "unknown"
+
+    # Check cache
+    if use_cache:
+        from .udf import _cache_get, _cache_set
+        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+        cache_key = _agg_cache_key("classify_single", topics_json, text_hash)
+        cached = _cache_get(_agg_cache, cache_key)
+        if cached:
+            return cached
+
+    topics_str = ", ".join(f'"{t}"' for t in topics)
+
+    # Truncate text if too long
+    text_sample = text[:1000] if len(text) > 1000 else text
+
+    full_prompt = f"""Classify this text into exactly ONE of these topics: [{topics_str}]
+
+Text: {text_sample}
+
+Respond with ONLY the topic name that best matches, nothing else."""
+
+    result = _call_llm_direct(full_prompt, model=model, max_tokens=50)
+
+    # Clean up result
+    result = result.strip().strip('"').strip("'")
+
+    # Validate - find best match
+    result_lower = result.lower()
+    for topic in topics:
+        if topic.lower() == result_lower or topic.lower() in result_lower:
+            result = topic
+            break
+    else:
+        # If no exact match, return first topic as fallback
+        result = topics[0] if topics else "unknown"
+
+    if use_cache:
+        _cache_set(_agg_cache, cache_key, result, ttl=None)
+
+    return result
+
+
 def llm_sentiment_impl(
     values_json: str,
     model: Optional[str] = None,
@@ -1617,6 +1698,15 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
             connection.create_function(name, func, return_type="BOOLEAN")
         except Exception as e:
             log.warning(f"Could not register {name}: {e}")
+
+    # ========== CLASSIFY_SINGLE - classify single text into one of N topics ==========
+    def classify_single_2(text: str, topics_json: str) -> str:
+        return classify_single_impl(text, topics_json)
+
+    try:
+        connection.create_function("classify_single", classify_single_2, return_type="VARCHAR")
+    except Exception as e:
+        log.warning(f"Could not register classify_single: {e}")
 
     # ========== SEMANTIC_CASE - multi-way semantic classification ==========
     # semantic_case(text, cond1, result1, cond2, result2, ..., default)

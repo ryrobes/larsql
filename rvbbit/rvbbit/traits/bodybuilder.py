@@ -382,7 +382,46 @@ Output: {"model": "anthropic/claude-sonnet-4", "messages": [{"role": "user", "co
             content = "\n".join(lines)
 
         try:
+            print(f"[bodybuilder] 📥 Raw planner response: {content[:500]}")
             body = json.loads(content)
+
+            # Handle list response - Gemini sometimes returns array instead of object
+            if isinstance(body, list):
+                print(f"[bodybuilder] ⚠️ Planner returned list with {len(body)} items: {str(body)[:200]}")
+                if len(body) > 0 and isinstance(body[0], dict) and "model" in body[0]:
+                    # List of request bodies - take first
+                    body = body[0]
+                elif len(body) > 0 and isinstance(body[0], str):
+                    # Gemini answered the question directly! Return as direct answer
+                    print(f"[bodybuilder] 🎯 Planner answered directly - using response as-is")
+                    return {
+                        "success": True,
+                        "direct_answer": content,  # The JSON array string
+                        "planning_duration_ms": duration_ms
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Planner returned list instead of request body: {str(body)[:100]}",
+                        "raw_content": content
+                    }
+
+            # Validate body structure
+            if not isinstance(body, dict):
+                print(f"[bodybuilder] ❌ Planner returned {type(body).__name__}: {content[:200]}")
+                return {
+                    "success": False,
+                    "error": f"Planner returned {type(body).__name__} instead of dict",
+                    "raw_content": content
+                }
+            if "model" not in body:
+                print(f"[bodybuilder] ❌ Missing 'model' field: {content[:200]}")
+                return {
+                    "success": False,
+                    "error": "Planner response missing 'model' field",
+                    "raw_content": content
+                }
+
             return {"success": True, "body": body, "planning_duration_ms": duration_ms}
         except json.JSONDecodeError as e:
             return {
@@ -501,6 +540,17 @@ def bodybuilder(
                 "_route": "error",
                 "error": plan_result.get("error", "Planning failed"),
                 "raw_content": plan_result.get("raw_content"),
+            }
+
+        # Handle direct answer - planner answered instead of building body
+        if "direct_answer" in plan_result:
+            return {
+                "_route": "success",
+                "result": plan_result["direct_answer"],
+                "content": plan_result["direct_answer"],
+                "model": planner,
+                "direct_answer": True,
+                "planning_duration_ms": plan_result.get("planning_duration_ms", 0),
             }
 
         body = plan_result["body"]

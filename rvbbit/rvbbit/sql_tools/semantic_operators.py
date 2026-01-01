@@ -890,66 +890,78 @@ def _rewrite_group_by_meaning(query: str, annotation_prefix: str = "") -> str:
     elif annotation_prefix:
         criteria = annotation_prefix.rstrip(" -")
 
-    # Find the FROM clause to determine the table
-    from_match = re.search(r"FROM\s+(\w+)", query, flags=re.IGNORECASE)
+    # Find the FROM clause - could be table name or subquery
+    # Match FROM followed by either (subquery) or table_name
+    from_match = re.search(r"FROM\s+(\([^)]+\)|(\w+))", query, flags=re.IGNORECASE)
     if not from_match:
         return query
 
-    table = from_match.group(1)
+    source = from_match.group(1)  # Could be (subquery) or table_name
+    is_subquery = source.startswith('(')
 
     # Build the meaning function call
     # Use to_json(LIST()) to get proper JSON format instead of DuckDB list format
     if num_clusters and criteria:
-        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {table}), {num_clusters}, '{criteria}')"
+        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {source}), {num_clusters}, '{criteria}')"
     elif num_clusters:
-        meaning_call = f"meaning_3({col}, (SELECT to_json(LIST({col})) FROM {table}), {num_clusters})"
+        meaning_call = f"meaning_3({col}, (SELECT to_json(LIST({col})) FROM {source}), {num_clusters})"
     elif criteria:
-        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {table}), NULL, '{criteria}')"
+        meaning_call = f"meaning_4({col}, (SELECT to_json(LIST({col})) FROM {source}), NULL, '{criteria}')"
     else:
-        meaning_call = f"meaning({col}, (SELECT to_json(LIST({col})) FROM {table}))"
+        meaning_call = f"meaning({col}, (SELECT to_json(LIST({col})) FROM {source}))"
 
-    # Split query into parts: SELECT ... FROM table ... GROUP BY ... [rest]
-    # Replace GROUP BY MEANING(...) with GROUP BY _semantic_cluster
-    new_query = re.sub(pattern, "GROUP BY _semantic_cluster", query, flags=re.IGNORECASE)
+    # Find SELECT columns and replace the grouped column with _semantic_cluster AS original_name
+    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", query, flags=re.IGNORECASE | re.DOTALL)
+    if not select_match:
+        return query
 
-    # Find the SELECT columns and replace the grouped column with _semantic_cluster
-    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", new_query, flags=re.IGNORECASE | re.DOTALL)
-    if select_match:
-        select_cols = select_match.group(1)
-        new_select_cols = re.sub(rf'\b{col}\b', '_semantic_cluster', select_cols)
-        new_query = new_query[:select_match.start(1)] + new_select_cols + new_query[select_match.end(1):]
+    select_cols = select_match.group(1)
+    # Replace column reference with cluster, aliased back to original column name
+    new_select_cols = re.sub(rf'\b{col}\b', f'_semantic_cluster AS {col}', select_cols)
 
-    # Find FROM table and wrap with subquery
-    from_pattern = rf"FROM\s+{table}\b"
-    new_query = re.sub(
-        from_pattern,
-        f"FROM (SELECT *, {meaning_call} as _semantic_cluster FROM {table}) _clustered",
-        new_query,
-        count=1,
-        flags=re.IGNORECASE
-    )
+    # Build CTE-based rewrite (cleaner than nested subqueries)
+    # 1. Create clustered source with semantic cluster column
+    # 2. Select from clustered, group by cluster
+    new_query = f"""WITH _clustered AS (
+    SELECT *, {meaning_call} as _semantic_cluster
+    FROM {source}
+)
+SELECT {new_select_cols}
+FROM _clustered
+GROUP BY _semantic_cluster"""
+
+    # Preserve ORDER BY if present (only at the end of query, not in subquery)
+    # Look for ORDER BY after the GROUP BY clause
+    after_groupby = re.search(r"GROUP\s+BY\s+MEANING\s*\([^)]+\)\s*(ORDER\s+BY\s+.+?)(?:;|$)", query, flags=re.IGNORECASE | re.DOTALL)
+    if after_groupby:
+        order_clause = after_groupby.group(1).strip()
+        new_query = f"{new_query}\n{order_clause}"
 
     return new_query
 
 
 def _rewrite_group_by_topics(query: str, annotation_prefix: str = "") -> str:
     """
-    Rewrite GROUP BY TOPICS(col, n) to extract topics and group by them.
+    Rewrite GROUP BY TOPICS(col, n) to extract topics and classify rows.
 
     SELECT title, COUNT(*) FROM articles GROUP BY TOPICS(content, 3)
     →
-    WITH _topics AS (
-        SELECT unnest(from_json(llm_themes_2(to_json(LIST(content)), 3), '["VARCHAR"]')) as _topic
+    WITH _topics_json AS (
+        SELECT llm_themes_2(to_json(LIST(content)), 3) as _topics
+        FROM articles
+    ),
+    _classified AS (
+        SELECT *, classify_single(content, (SELECT _topics FROM _topics_json)) as _topic
         FROM articles
     )
     SELECT _topic, COUNT(*)
-    FROM articles, _topics
+    FROM _classified
     GROUP BY _topic
 
     The approach:
-    1. Extract topics from ALL text values using llm_themes aggregate
-    2. Cross-join original table with extracted topics
-    3. Group by topic
+    1. Extract N topics from ALL text values using llm_themes aggregate
+    2. For each row, classify it into ONE of those topics
+    3. Group by the assigned topic
 
     Also supports subqueries:
     SELECT col, COUNT(*) FROM (SELECT * FROM t LIMIT 100) GROUP BY TOPICS(col, 3)
@@ -972,24 +984,29 @@ def _rewrite_group_by_topics(query: str, annotation_prefix: str = "") -> str:
 
     source = from_match.group(1)  # Could be (subquery) or table_name
 
-    # Find SELECT columns and replace the grouped column with _topic
+    # Find SELECT columns and replace the grouped column with _topic AS original_name
     select_match = re.search(r"SELECT\s+(.*?)\s+FROM", query, flags=re.IGNORECASE | re.DOTALL)
     if not select_match:
         return query
 
     select_cols = select_match.group(1)
-    new_select_cols = re.sub(rf'\b{col}\b', '_topic', select_cols)
+    # Replace column reference with topic, aliased back to original column name
+    new_select_cols = re.sub(rf'\b{col}\b', f'_topic AS {col}', select_cols)
 
     # Build CTE-based rewrite
     # 1. Extract topics from all values using llm_themes_2 aggregate
-    # 2. Cross-join with original table
-    # 3. Group by topic
-    new_query = f"""WITH _extracted_topics AS (
-    SELECT unnest(from_json(llm_themes_2(to_json(LIST({col})), {num_topics}), '["VARCHAR"]')) as _topic
+    # 2. Classify each row into one of those topics
+    # 3. Group by the assigned topic
+    new_query = f"""WITH _topics_json AS (
+    SELECT llm_themes_2(to_json(LIST({col})), {num_topics}) as _topics
+    FROM {source}
+),
+_classified AS (
+    SELECT *, classify_single({col}, (SELECT _topics FROM _topics_json)) as _topic
     FROM {source}
 )
 SELECT {new_select_cols}
-FROM {source}, _extracted_topics
+FROM _classified
 GROUP BY _topic"""
 
     return new_query
