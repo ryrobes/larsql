@@ -82,11 +82,34 @@ class SQLFunctionEntry:
 
 
 def _load_yaml(path: Path) -> Optional[Dict[str, Any]]:
-    """Load a YAML file, returning None on error."""
+    """Load a YAML file, returning None on error.
+
+    Handles multi-document YAML files by taking the first document.
+    Silently skips files with 'FUTURE' in the name (incomplete features).
+    """
+    # Skip FUTURE files - they're incomplete/experimental
+    if 'FUTURE' in path.name:
+        return None
+
+    # Skip backup directories
+    if 'backup' in str(path):
+        return None
+
     try:
         import yaml
         with open(path, "r") as f:
-            return yaml.safe_load(f)
+            content = f.read()
+
+        # Try single document first (most common)
+        try:
+            return yaml.safe_load(content)
+        except yaml.scanner.ScannerError as e:
+            # Multi-document file - take first document only
+            if "found another document" in str(e):
+                docs = list(yaml.safe_load_all(content))
+                if docs:
+                    return docs[0]
+            raise
     except Exception as e:
         log.warning(f"Failed to load {path}: {e}")
         return None
@@ -114,9 +137,20 @@ def _scan_directory(directory: Path) -> List[Tuple[Path, Dict[str, Any]]]:
     return results
 
 
-def _get_builtin_dir() -> Path:
-    """Get the _builtin directory path."""
-    return Path(__file__).parent / "_builtin"
+def _get_builtin_dir() -> Optional[Path]:
+    """
+    Get the _builtin directory path for shipped semantic SQL functions.
+
+    These are the default functions shipped with the package.
+    Users can override them by placing cascades with the same name
+    in RVBBIT_ROOT/traits/semantic_sql/.
+
+    Returns None if the directory doesn't exist or is empty.
+    """
+    builtin = Path(__file__).parent / "_builtin"
+    if builtin.exists() and any(builtin.glob("*.yaml")):
+        return builtin
+    return None
 
 
 def _get_traits_dir() -> Path:
@@ -155,23 +189,25 @@ def initialize_registry(force: bool = False) -> None:
         _registry.clear()
 
         # Scan built-in directory first (lowest priority)
+        # These are shipped defaults - user overrides go in traits/semantic_sql/
         builtin_dir = _get_builtin_dir()
-        log.info(f"[sql_registry] Scanning built-ins: {builtin_dir}")
-        for path, config in _scan_directory(builtin_dir):
-            sql_fn = config["sql_function"]
-            name = sql_fn.get("name") or config["cascade_id"]
+        if builtin_dir:
+            log.debug(f"[sql_registry] Loading built-in semantic SQL functions from: {builtin_dir}")
+            for path, config in _scan_directory(builtin_dir):
+                sql_fn = config["sql_function"]
+                name = sql_fn.get("name") or config["cascade_id"]
 
-            if not sql_fn.get("enabled", True):
-                continue
+                if not sql_fn.get("enabled", True):
+                    continue
 
-            _registry[name] = SQLFunctionEntry(
-                name=name,
-                cascade_path=str(path),
-                cascade_id=config["cascade_id"],
-                config=config,
-                sql_function=sql_fn,
-            )
-            log.info(f"[sql_registry] Registered built-in: {name}")
+                _registry[name] = SQLFunctionEntry(
+                    name=name,
+                    cascade_path=str(path),
+                    cascade_id=config["cascade_id"],
+                    config=config,
+                    sql_function=sql_fn,
+                )
+                log.debug(f"[sql_registry] Registered built-in (deprecated): {name}")
 
         # Scan traits directory (medium priority - overwrites built-ins)
         traits_dir = _get_traits_dir()
@@ -325,32 +361,63 @@ async def execute_sql_function(
     if not fn:
         raise ValueError(f"SQL function not found: {name}")
 
+    # Get caller_id from context (set by postgres_server for SQL queries)
+    try:
+        from ..caller_context import get_caller_id
+        from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
+        caller_id = get_caller_id()
+    except Exception:
+        caller_id = None
+
     # Check cache first
     found, cached = get_cached_result(name, args)
     if found:
         log.debug(f"[sql_fn] Cache hit for {name}")
+        # Track cache hit for SQL Trail
+        if caller_id:
+            try:
+                increment_cache_hit(caller_id)
+            except Exception:
+                pass
         return cached
 
-    # Import here to avoid circular imports
-    from ..runner import RVBBITRunner
-
-    # Create runner and execute cascade
-    runner = RVBBITRunner(fn.cascade_path)
+    # Track cache miss for SQL Trail
+    if caller_id:
+        try:
+            increment_cache_miss(caller_id)
+        except Exception:
+            pass
 
     # Generate session ID if not provided
     if not session_id:
         import uuid
         session_id = f"sql_fn_{name}_{uuid.uuid4().hex[:8]}"
 
-    # Execute cascade with args as input
-    result = await runner.run(
-        inputs=args,
-        session_id=session_id,
-    )
+    # Register cascade execution for SQL Trail
+    if caller_id:
+        try:
+            register_cascade_execution(
+                caller_id=caller_id,
+                cascade_id=name,
+                cascade_path=fn.cascade_path,
+                session_id=session_id,
+                inputs=args
+            )
+        except Exception as e:
+            log.debug(f"[sql_fn] Failed to register cascade execution: {e}")
 
-    # Extract result from cascade output
-    # The last cell's output is typically the function result
-    output = result.get("result") or result.get("output") or result
+    # Import here to avoid circular imports
+    from ..runner import RVBBITRunner
+
+    # Create runner with session_id in constructor
+    runner = RVBBITRunner(fn.cascade_path, session_id=session_id)
+
+    # Execute cascade with args as input_data
+    result = runner.run(input_data=args)
+
+    # Extract result from cascade output using proper parsing
+    from .executor import _extract_cascade_output
+    output = _extract_cascade_output(result)
 
     # Handle structured output based on return type
     if fn.returns == "BOOLEAN":

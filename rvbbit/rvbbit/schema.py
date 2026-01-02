@@ -1143,6 +1143,7 @@ CREATE TABLE IF NOT EXISTS sql_query_log (
     udf_types Array(String) DEFAULT [],
     udf_count UInt16 DEFAULT 0,
     cascade_paths Array(String) DEFAULT [],
+    cascade_count UInt16 DEFAULT 0,
 
     -- Execution
     started_at DateTime64(6),

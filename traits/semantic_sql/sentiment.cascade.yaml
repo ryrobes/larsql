@@ -1,0 +1,55 @@
+# SENTIMENT - Aggregate sentiment analysis
+# Calculates overall sentiment of a text collection
+#
+# SQL Usage:
+#   SELECT state, SENTIMENT(observed) FROM bigfoot GROUP BY state
+#
+# Direct Function:
+#   SELECT semantic_sentiment(to_json(list(observed))) FROM bigfoot
+
+cascade_id: semantic_sentiment
+
+description: |
+  Aggregate sentiment analysis - calculates the overall sentiment
+  of a collection of texts. Returns a score from -1.0 to 1.0.
+
+inputs_schema:
+  texts: JSON array of texts to analyze
+
+sql_function:
+  name: semantic_sentiment
+  description: Calculates overall sentiment (-1.0 to 1.0) for a collection
+  args:
+    - name: texts
+      type: JSON
+  returns: VARCHAR
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+    - "SENTIMENT({{ texts }})"
+  cache: true
+
+cells:
+  - name: analyze_sentiment
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Analyze the overall sentiment of these texts.
+
+      TEXTS:
+      {{ input.texts }}
+
+      Consider the emotional tone across all texts:
+      - Positive: happiness, excitement, satisfaction, hope
+      - Negative: fear, anger, sadness, frustration
+      - Neutral: factual, objective, balanced
+
+      Return a single number from -1.0 to 1.0:
+      - -1.0 = Extremely negative
+      - -0.5 = Moderately negative
+      -  0.0 = Neutral/mixed
+      - +0.5 = Moderately positive
+      - +1.0 = Extremely positive
+
+      Return ONLY the number (e.g., 0.3 or -0.7), nothing else.
+    rules:
+      max_turns: 1

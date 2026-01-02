@@ -476,6 +476,20 @@ class NoticeResponse:
         return PostgresMessage.build_message(ord('N'), payload)
 
 
+class EmptyQueryResponse:
+    """EmptyQueryResponse message - sent for empty query strings."""
+
+    @staticmethod
+    def encode() -> bytes:
+        """
+        Build EmptyQueryResponse message (code 'I').
+
+        PostgreSQL protocol requires this response when a client sends
+        an empty query string (whitespace only or zero-length).
+        """
+        return PostgresMessage.build_message(ord('I'), b'')
+
+
 class BackendKeyData:
     """BackendKeyData message - used for query cancellation."""
 

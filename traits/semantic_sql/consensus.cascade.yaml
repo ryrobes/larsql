@@ -1,0 +1,59 @@
+# CONSENSUS - Find common ground in a collection
+# Identifies what texts agree on or have in common
+#
+# SQL Usage:
+#   SELECT state, CONSENSUS(observed) FROM bigfoot GROUP BY state
+#
+# Direct Function:
+#   SELECT semantic_consensus(to_json(list(observed))) FROM bigfoot
+
+cascade_id: semantic_consensus
+
+description: |
+  Find consensus or common ground among a collection of texts.
+  Returns a summary of what most items agree on or have in common.
+
+inputs_schema:
+  texts: JSON array of texts to analyze
+  prompt: Optional custom prompt for what to find consensus on
+
+sql_function:
+  name: semantic_consensus
+  description: Finds common ground or consensus among texts
+  args:
+    - name: texts
+      type: JSON
+    - name: prompt
+      type: VARCHAR
+      optional: true
+  returns: VARCHAR
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+    - "CONSENSUS({{ texts }})"
+    - "CONSENSUS({{ texts }}, '{{ prompt }}')"
+  cache: true
+
+cells:
+  - name: find_consensus
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Analyze these texts and identify what they have in common or agree on.
+
+      TEXTS:
+      {{ input.texts }}
+
+      {% if input.prompt %}
+      FOCUS ON: {{ input.prompt }}
+      {% endif %}
+
+      Identify:
+      1. Common themes or patterns that appear across multiple items
+      2. Points of agreement or shared perspectives
+      3. The overall consensus view
+
+      Return a concise summary (2-4 sentences) of what most items agree on.
+      Focus on the strongest shared themes, not outliers.
+      Return ONLY the consensus summary, no preamble.
+    rules:
+      max_turns: 1

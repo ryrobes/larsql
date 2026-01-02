@@ -1,0 +1,56 @@
+# IMPLIES - Logical implication check
+# Returns TRUE if text A logically implies text B
+#
+# SQL Usage:
+#   SELECT * FROM docs WHERE title IMPLIES 'witness had visual contact'
+#   SELECT * FROM docs WHERE title IMPLIES observed
+#
+# Direct Function:
+#   SELECT semantic_implies(title, observed) FROM docs
+
+cascade_id: semantic_implies
+
+description: |
+  Logical implication check - returns TRUE if text A logically implies text B.
+  Used for finding consistent or contradictory reports.
+
+inputs_schema:
+  premise: The text that might imply something
+  conclusion: The text or criterion that should follow
+
+sql_function:
+  name: semantic_implies
+  description: Returns TRUE if premise logically implies conclusion
+  args:
+    - name: premise
+      type: VARCHAR
+    - name: conclusion
+      type: VARCHAR
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "{{ premise }} IMPLIES {{ conclusion }}"
+  cache: true
+
+cells:
+  - name: check_implication
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Does the PREMISE logically imply the CONCLUSION?
+
+      PREMISE: {{ input.premise }}
+
+      CONCLUSION: {{ input.conclusion }}
+
+      Logical implication means: If the premise is true, the conclusion must also be true.
+
+      Consider:
+      - Does the premise contain information that leads to the conclusion?
+      - Is the conclusion a reasonable inference from the premise?
+      - Would the premise being true make the conclusion likely true?
+
+      Respond with ONLY "true" or "false" - no explanation.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean

@@ -27,15 +27,111 @@ def _make_cache_key(cascade_id: str, inputs: Dict[str, Any]) -> str:
     return hashlib.md5(key_data.encode()).hexdigest()
 
 
-def _run_cascade_sync(cascade_path: str, inputs: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
     """Run a cascade synchronously (blocking)."""
     from ..runner import RVBBITRunner
 
-    async def _run():
-        runner = RVBBITRunner(cascade_path)
-        return await runner.run(inputs=inputs, session_id=session_id)
+    # RVBBITRunner takes session_id in constructor, input_data in run()
+    runner = RVBBITRunner(cascade_path, session_id=session_id)
+    return runner.run(input_data=inputs)
 
-    return asyncio.run(_run())
+
+def _strip_markdown_fences(text: str) -> str:
+    """
+    Strip markdown code fences from LLM output.
+
+    Handles patterns like:
+    - ```json\n{...}\n```
+    - ```\n{...}\n```
+    - Just the content if no fences present
+    """
+    import re
+
+    if not isinstance(text, str):
+        return text
+
+    text = text.strip()
+
+    # Pattern: ```json or ```sql or just ``` at start, ``` at end
+    fence_pattern = r'^```(?:\w+)?\s*\n?(.*?)\n?```$'
+    match = re.match(fence_pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+
+    return text
+
+
+def _extract_cascade_output(result: Dict[str, Any]) -> Any:
+    """
+    Extract the actual output value from a cascade result dict.
+
+    The runner returns a complex structure with lineage, history, etc.
+    This extracts the final cell output in priority order:
+    1. lineage[-1]["output"] - most reliable for all cell types
+    2. history (last assistant message content) - fallback for LLM cells
+    3. result["result"] or result["output"] - direct keys
+    4. result itself - last resort
+
+    Also strips markdown code fences from string outputs.
+    """
+    if not result or not isinstance(result, dict):
+        return result
+
+    output = None
+
+    # Strategy 1: Get from lineage (most reliable)
+    lineage = result.get("lineage")
+    if lineage and len(lineage) > 0:
+        last_entry = lineage[-1]
+        if isinstance(last_entry, dict) and "output" in last_entry:
+            output = last_entry["output"]
+            # If output is itself a dict with a 'result' key, unwrap it
+            if isinstance(output, dict) and "result" in output:
+                output = output["result"]
+
+    # Strategy 2: Fallback to history for LLM cells
+    if output is None:
+        history = result.get("history")
+        if history:
+            for message in reversed(history):
+                msg_role = message.get("role", "")
+                if msg_role in ["system", "cell_complete", "structure"]:
+                    continue
+
+                # Prefer content_json (already parsed)
+                content_json = message.get("content_json")
+                if content_json:
+                    output = content_json
+                    break
+
+                # Fallback to content
+                content = message.get("content")
+                if content and not content.startswith("Cell:") and not content.startswith("Cascade:"):
+                    output = content
+                    break
+
+    # Strategy 3: Try direct keys
+    if output is None:
+        if "result" in result:
+            output = result["result"]
+        elif "output" in result:
+            output = result["output"]
+        else:
+            output = result
+
+    # Strip markdown code fences from string outputs
+    if isinstance(output, str):
+        output = _strip_markdown_fences(output)
+
+        # Try to parse as JSON if it looks like JSON
+        stripped = output.strip()
+        if stripped.startswith('{') or stripped.startswith('['):
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                pass
+
+    return output
 
 
 def execute_cascade_udf(
@@ -59,6 +155,11 @@ def execute_cascade_udf(
     """
     from .registry import get_sql_function, get_cached_result, set_cached_result
     from ..session_naming import generate_woodland_id
+    from ..caller_context import get_caller_id
+    from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
+
+    # Get caller_id from context (set by postgres_server for SQL queries)
+    caller_id = get_caller_id()
 
     try:
         # Parse inputs
@@ -74,17 +175,34 @@ def execute_cascade_udf(
             found, cached = get_cached_result(cascade_id, inputs)
             if found:
                 log.debug(f"[cascade_udf] Cache hit for {cascade_id}")
+                # Track cache hit for SQL Trail
+                if caller_id:
+                    increment_cache_hit(caller_id)
                 return json.dumps(cached) if not isinstance(cached, str) else cached
+
+        # Track cache miss for SQL Trail
+        if caller_id:
+            increment_cache_miss(caller_id)
 
         # Generate session ID
         woodland_id = generate_woodland_id()
         session_id = f"sql_fn_{cascade_id}_{woodland_id}"
 
-        # Execute the cascade
-        result = _run_cascade_sync(fn.cascade_path, inputs, session_id)
+        # Register cascade execution for SQL Trail
+        if caller_id and fn:
+            register_cascade_execution(
+                caller_id=caller_id,
+                cascade_id=cascade_id,
+                cascade_path=fn.cascade_path,
+                session_id=session_id,
+                inputs=inputs
+            )
 
-        # Extract the output
-        output = result.get("result") or result.get("output") or result
+        # Execute the cascade
+        result = _run_cascade_sync(fn.cascade_path, session_id, inputs)
+
+        # Extract the output using proper cascade result parsing
+        output = _extract_cascade_output(result)
 
         # Post-process based on return type
         if fn.returns == "BOOLEAN":

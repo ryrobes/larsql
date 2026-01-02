@@ -20,10 +20,12 @@ Then connect from any PostgreSQL client:
     DBeaver: Add PostgreSQL connection → localhost:5432
 """
 
+import os
 import socket
 import threading
 import uuid
 import traceback
+from threading import Lock
 from typing import Optional
 
 from .postgres_protocol import (
@@ -32,6 +34,7 @@ from .postgres_protocol import (
     CommandComplete,
     ReadyForQuery,
     ErrorResponse,
+    EmptyQueryResponse,
     send_startup_response,
     send_query_results,
     send_execute_results,
@@ -66,6 +69,8 @@ class ClientConnection:
         self.addr = addr
         self.session_id = None  # Will be set in handle_startup based on database name
         self.session_prefix = session_prefix
+        self.database_name = 'default'  # Logical database name from client connection
+        self.is_persistent_db = False   # True if using persistent DuckDB file
         self.duckdb_conn = None
         self.db_lock = None  # Lock for thread-safe DuckDB access
         self.running = True
@@ -83,33 +88,57 @@ class ClientConnection:
         This is called once per client connection.
         The session persists for the lifetime of the connection.
 
-        Note: get_session_db() includes health check and auto-recovery,
-        so if a previous connection left things in a bad state, we get
-        a fresh connection automatically.
+        Database routing:
+        - 'memory' or 'default' → in-memory DuckDB (per-client, ephemeral)
+        - Any other name → persistent file at session_dbs/{database}.duckdb
+
+        Persistent databases survive restarts and are shared across connections.
         """
         try:
-            # Import here to avoid circular dependencies
-            from ..sql_tools.session_db import get_session_db, get_session_lock
+            import duckdb
             from ..sql_tools.udf import register_rvbbit_udf
+            from ..config import get_config
 
-            # Get or create session DuckDB (includes health check)
-            self.duckdb_conn = get_session_db(self.session_id)
+            # Determine if this is a persistent or in-memory database
+            if self.database_name.lower() in ('memory', 'default', ':memory:'):
+                # In-memory database - ephemeral, per-client
+                self.is_persistent_db = False
+                self.duckdb_conn = duckdb.connect(':memory:')
+                self.db_lock = Lock()  # Per-connection lock (not shared)
+                print(f"[{self.session_id}]   📦 In-memory database (ephemeral)")
+            else:
+                # Persistent database - file-based, shared across connections
+                self.is_persistent_db = True
+                config = get_config()
+                db_dir = os.path.join(config.root_dir, 'session_dbs')
+                os.makedirs(db_dir, exist_ok=True)
 
-            # CRITICAL: Get lock for thread-safe access to shared connection
-            # Multiple clients connecting to the same database share one DuckDB connection
-            self.db_lock = get_session_lock(self.session_id)
+                # Sanitize database name for filename
+                safe_db_name = self.database_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+                db_path = os.path.join(db_dir, f"{safe_db_name}.duckdb")
+
+                # Each client gets its own connection to the same file
+                # DuckDB handles internal locking for concurrent access
+                self.duckdb_conn = duckdb.connect(db_path)
+                self.db_lock = Lock()  # Per-connection lock for thread safety
+
+                # Check if this is a new or existing database
+                is_new = not os.path.exists(db_path) or os.path.getsize(db_path) == 0
+                if is_new:
+                    print(f"[{self.session_id}]   📁 Created persistent database: {safe_db_name}")
+                else:
+                    print(f"[{self.session_id}]   📂 Opened persistent database: {safe_db_name}")
+
+            # Configure DuckDB
+            self.duckdb_conn.execute("SET threads TO 4")
 
             # Reset our transaction status to idle
-            # Note: We don't ROLLBACK here because another client may have
-            # a legitimate transaction in progress on the shared connection.
-            # Each client tracks its own transaction_status independently.
             self.transaction_status = 'I'
 
             # Register RVBBIT UDFs (rvbbit_udf + rvbbit_cascade_udf)
             register_rvbbit_udf(self.duckdb_conn)
 
-            # DuckDB v1.4.2+ has built-in pg_catalog support - no need to create views!
-            # Just ensure DuckDB's built-in catalog is enabled
+            # DuckDB v1.4.2+ has built-in pg_catalog support
             print(f"[{self.session_id}]   ℹ️  Using DuckDB's built-in pg_catalog (v1.4.2+)")
 
             # Create views for ATTACH'd databases so they appear in DBeaver
@@ -118,7 +147,7 @@ class ClientConnection:
             # Register UDF to refresh views after manual ATTACH
             self._register_refresh_views_udf()
 
-            print(f"[{self.session_id}] ✓ Session created with RVBBIT UDFs registered")
+            print(f"[{self.session_id}] ✓ Session ready (database: {self.database_name})")
 
         except Exception as e:
             print(f"[{self.session_id}] ✗ Error setting up session: {e}")
@@ -620,27 +649,163 @@ class ClientConnection:
             else:
                 print(f"[{self.session_id}]   ⚠️  Could not register refresh UDF: {e}")
 
+    def _create_pg_compat_stubs(self):
+        """
+        Create PostgreSQL compatibility stubs for advanced clients like DataGrip.
+
+        DataGrip queries PostgreSQL-specific system tables and functions that
+        DuckDB doesn't have. We create stub versions that return sensible defaults.
+
+        Stubs created:
+        - pg_locks: Empty view (no active locks)
+        - pg_is_in_recovery(): Returns false (not a replica)
+        - txid_current(): Returns monotonic transaction ID
+        - pg_stat_activity: Empty view (no other sessions visible)
+        """
+        import time
+
+        stubs_created = []
+
+        try:
+            # pg_locks - Lock information (empty, we don't track locks)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_locks AS
+                    SELECT
+                        NULL::BIGINT as locktype,
+                        NULL::BIGINT as database,
+                        NULL::BIGINT as relation,
+                        NULL::INTEGER as page,
+                        NULL::SMALLINT as tuple,
+                        NULL::VARCHAR as virtualxid,
+                        NULL::BIGINT as transactionid,
+                        NULL::BIGINT as classid,
+                        NULL::BIGINT as objid,
+                        NULL::SMALLINT as objsubid,
+                        NULL::VARCHAR as virtualtransaction,
+                        NULL::INTEGER as pid,
+                        NULL::VARCHAR as mode,
+                        NULL::BOOLEAN as granted,
+                        NULL::BOOLEAN as fastpath,
+                        NULL::TIMESTAMP as waitstart
+                    WHERE false
+                """)
+                stubs_created.append("pg_locks")
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    pass  # View might already exist
+
+            # pg_stat_activity - Session information (show just this session)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_stat_activity AS
+                    SELECT
+                        NULL::INTEGER as datid,
+                        'default'::VARCHAR as datname,
+                        NULL::INTEGER as pid,
+                        NULL::INTEGER as leader_pid,
+                        'default'::VARCHAR as usesysid,
+                        'rvbbit'::VARCHAR as usename,
+                        ''::VARCHAR as application_name,
+                        '127.0.0.1'::VARCHAR as client_addr,
+                        NULL::VARCHAR as client_hostname,
+                        NULL::INTEGER as client_port,
+                        NOW()::TIMESTAMP as backend_start,
+                        NULL::TIMESTAMP as xact_start,
+                        NULL::TIMESTAMP as query_start,
+                        NULL::TIMESTAMP as state_change,
+                        'idle'::VARCHAR as wait_event_type,
+                        NULL::VARCHAR as wait_event,
+                        'active'::VARCHAR as state,
+                        NULL::BIGINT as backend_xid,
+                        NULL::BIGINT as backend_xmin,
+                        ''::VARCHAR as query,
+                        'client backend'::VARCHAR as backend_type
+                    LIMIT 1
+                """)
+                stubs_created.append("pg_stat_activity")
+            except Exception as e:
+                pass
+
+            # pg_is_in_recovery() - Are we a replica? No.
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_is_in_recovery() AS false
+                """)
+                stubs_created.append("pg_is_in_recovery()")
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    pass
+
+            # txid_current() - Current transaction ID (use timestamp-based fake)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.txid_current() AS
+                        (epoch_ms(now())::BIGINT % 4294967296)
+                """)
+                stubs_created.append("txid_current()")
+            except Exception as e:
+                if "already exists" not in str(e).lower():
+                    pass
+
+            # pg_backend_pid() - Return a fake PID
+            try:
+                import os
+                pid = os.getpid()
+                self.duckdb_conn.execute(f"""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_backend_pid() AS {pid}
+                """)
+                stubs_created.append("pg_backend_pid()")
+            except Exception as e:
+                pass
+
+            # pg_current_xact_id() - Alias for txid_current (newer PG versions)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_current_xact_id() AS
+                        (epoch_ms(now())::BIGINT % 4294967296)
+                """)
+                stubs_created.append("pg_current_xact_id()")
+            except Exception as e:
+                pass
+
+            if stubs_created:
+                print(f"[{self.session_id}]   ✅ Created PG compat stubs: {', '.join(stubs_created)}")
+
+        except Exception as e:
+            print(f"[{self.session_id}]   ⚠️  Error creating PG compat stubs: {e}")
+
     def handle_startup(self, startup_params: dict):
         """
         Handle client startup message.
 
         Extracts database name and username from startup params.
         Sets up consistent session_id for persistent database.
+
+        Database routing:
+        - 'memory' or 'default' → in-memory DuckDB (ephemeral)
+        - Any other name → persistent file at session_dbs/{database}.duckdb
         """
         database = startup_params.get('database', 'default')
         user = startup_params.get('user', 'rvbbit')
         application_name = startup_params.get('application_name', 'unknown')
 
+        # Store database name for session setup
+        self.database_name = database
+
         # Create unique session_id per client connection
-        # CRITICAL: DuckDB connections are NOT thread-safe. Sharing connections
-        # between clients causes segfaults. Each client needs its own connection.
-        # We use uuid.uuid4().hex[:8] for uniqueness while keeping session IDs readable.
+        # Each client needs its own connection for thread safety
         client_id = uuid.uuid4().hex[:8]
         self.session_id = f"{self.session_prefix}_{database}_{client_id}"
 
+        # Determine persistence mode
+        is_persistent = database.lower() not in ('memory', 'default', ':memory:')
+        mode_icon = "📂" if is_persistent else "📦"
+        mode_text = "persistent" if is_persistent else "in-memory"
+
         print(f"[{self.session_id}] 🔌 Client startup:")
         print(f"   User: {user}")
-        print(f"   Database: {database}")
+        print(f"   Database: {database} ({mode_text}) {mode_icon}")
         print(f"   Application: {application_name}")
 
         # Note: send_startup_response is called AFTER setup_session in handle()
@@ -657,8 +822,16 @@ class ClientConnection:
         # Clean query (remove null terminators, whitespace)
         query = query.strip()
 
+        # Handle empty queries (PostgreSQL protocol requirement)
+        # Some clients (like DataGrip) send empty queries for protocol probing
+        if not query:
+            print(f"[{self.session_id}] Query #{self.query_count}: (empty)")
+            self.sock.sendall(EmptyQueryResponse.encode())
+            self.sock.sendall(ReadyForQuery.encode(self.transaction_status))
+            return
+
         # Log query (show more for catalog queries)
-        is_catalog = self._is_catalog_query(query.upper()) if len(query) > 0 else False
+        is_catalog = self._is_catalog_query(query.upper())
         if is_catalog:
             print(f"[{self.session_id}] Query #{self.query_count} [CATALOG]: {query[:200]}{'...' if len(query) > 200 else ''}")
         else:
@@ -888,12 +1061,19 @@ class ClientConnection:
                         # Log query completion for SQL Trail (special path)
                         if _current_query_id and _query_start_time:
                             try:
-                                from rvbbit.sql_trail import log_query_complete, aggregate_query_costs
+                                from rvbbit.sql_trail import (
+                                    log_query_complete, aggregate_query_costs,
+                                    get_cascade_paths, get_cascade_summary, clear_cascade_executions
+                                )
                                 from rvbbit.caller_context import get_caller_id, clear_caller_context
 
                                 duration_ms = (time.time() - _query_start_time) * 1000
                                 caller_id = get_caller_id()
                                 costs = aggregate_query_costs(caller_id) if caller_id else {}
+
+                                # Get cascade execution info
+                                cascade_paths = get_cascade_paths(caller_id) if caller_id else []
+                                cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
 
                                 log_query_complete(
                                     query_id=_current_query_id,
@@ -904,8 +1084,13 @@ class ClientConnection:
                                     total_tokens_in=costs.get('total_tokens_in'),
                                     total_tokens_out=costs.get('total_tokens_out'),
                                     llm_calls_count=costs.get('llm_calls_count'),
+                                    cascade_paths=cascade_paths,
+                                    cascade_count=cascade_summary.get('cascade_count', 0),
                                 )
-                                # Clear caller context to avoid leaking to next query
+
+                                # Clear cascade tracking and caller context
+                                if caller_id:
+                                    clear_cascade_executions(caller_id)
                                 clear_caller_context()
                             except Exception as trail_e:
                                 print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
@@ -922,8 +1107,14 @@ class ClientConnection:
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
-            # Execute on DuckDB
-            result_df = self.duckdb_conn.execute(query).fetchdf()
+            # Execute on DuckDB (with defensive None check)
+            result = self.duckdb_conn.execute(query)
+            if result is None:
+                # Query returned no result object (e.g., empty after rewrite)
+                import pandas as pd
+                result_df = pd.DataFrame()
+            else:
+                result_df = result.fetchdf()
 
             # Send results back to client (with current transaction status)
             send_query_results(self.sock, result_df, self.transaction_status)
@@ -933,7 +1124,10 @@ class ClientConnection:
             # Log query completion for SQL Trail (if we started tracking)
             if _current_query_id and _query_start_time:
                 try:
-                    from rvbbit.sql_trail import log_query_complete, aggregate_query_costs
+                    from rvbbit.sql_trail import (
+                        log_query_complete, aggregate_query_costs,
+                        get_cascade_paths, get_cascade_summary, clear_cascade_executions
+                    )
                     from rvbbit.caller_context import get_caller_id, clear_caller_context
 
                     duration_ms = (time.time() - _query_start_time) * 1000
@@ -941,6 +1135,10 @@ class ClientConnection:
 
                     # Aggregate costs from all LLM calls made during this query
                     costs = aggregate_query_costs(caller_id) if caller_id else {}
+
+                    # Get cascade execution info
+                    cascade_paths = get_cascade_paths(caller_id) if caller_id else []
+                    cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
 
                     log_query_complete(
                         query_id=_current_query_id,
@@ -951,9 +1149,13 @@ class ClientConnection:
                         total_tokens_in=costs.get('total_tokens_in'),
                         total_tokens_out=costs.get('total_tokens_out'),
                         llm_calls_count=costs.get('llm_calls_count'),
+                        cascade_paths=cascade_paths,
+                        cascade_count=cascade_summary.get('cascade_count', 0),
                     )
 
-                    # Clear caller context to avoid leaking to next query
+                    # Clear cascade tracking and caller context
+                    if caller_id:
+                        clear_cascade_executions(caller_id)
                     clear_caller_context()
                 except Exception as trail_e:
                     print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
@@ -1010,9 +1212,19 @@ class ClientConnection:
             'PG_INDEX',
             'PG_DATABASE',
             'PG_TABLES',
+            'PG_TABLESPACE',      # DataGrip: tablespaces
             'PG_PROC',
             'PG_DESCRIPTION',
             'PG_SETTINGS',
+            'PG_LOCKS',           # DataGrip: transaction locks
+            'PG_STAT_ACTIVITY',   # DataGrip: session info
+            'PG_IS_IN_RECOVERY',  # DataGrip: replica check
+            'TXID_CURRENT',       # DataGrip: transaction ID
+            'PG_TIMEZONE_NAMES',  # DataGrip: timezone list
+            'PG_TIMEZONE_ABBREVS',
+            'PG_ROLES',           # DataGrip: user management
+            'PG_USER',            # DataGrip: user permissions
+            'PG_AUTH_MEMBERS',    # DataGrip: role membership
             'INFORMATION_SCHEMA',
             '::REGCLASS',  # PostgreSQL type casting
             '::REGPROC',
@@ -1044,17 +1256,88 @@ class ClientConnection:
         print(f"[{self.session_id}]   📋 Catalog query detected: {query[:80]}...")
 
         try:
-            # Special case 1: Functions that need custom implementation
-            if 'CURRENT_DATABASE()' in query_upper:
-                # DuckDB doesn't have this function, return constant
-                result_df = pd.DataFrame({'current_database': ['default']})
+            # Special case 0: pg_database queries (DataGrip schema browser)
+            # Must come BEFORE current_database() handler since queries often contain both
+            if 'PG_DATABASE' in query_upper and 'FROM' in query_upper:
+                # DataGrip queries pg_database to list databases
+                # Return database entry for the current connection
+                db_description = 'RVBBIT Persistent Database' if self.is_persistent_db else 'RVBBIT In-Memory Database'
+                result_df = pd.DataFrame({
+                    'id': [1],
+                    'name': [self.database_name],
+                    'description': [db_description],
+                    'is_template': [False],
+                    'allow_connections': [True],
+                    'owner': ['rvbbit'],
+                    'encoding': ['UTF8'],
+                    'collate': ['en_US.UTF-8'],
+                    'ctype': ['en_US.UTF-8'],
+                    'connection_limit': [-1],
+                    'tablespace': ['pg_default'],
+                    'size': ['N/A'],
+                })
                 send_query_results(self.sock, result_df, self.transaction_status)
-                print(f"[{self.session_id}]   ✓ CURRENT_DATABASE() handled")
+                print(f"[{self.session_id}]   ✓ pg_database → {self.database_name}")
                 return
 
-            if 'CURRENT_SCHEMA()' in query_upper or 'CURRENT_SCHEMAS(' in query_upper:
-                # DBeaver often sends: SELECT current_schema(),session_user
-                # We need to return both columns if both are requested
+            # PRIORITY: pg_namespace queries FIRST (before CURRENT_SCHEMA which they may contain)
+            # DataGrip schema listing queries contain current_schema() but need full schema list
+            if 'PG_NAMESPACE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_namespace query for schema browser...")
+                try:
+                    # Build schema list from ALL DuckDB schemas across attached databases
+                    # Use hash of schema name as OID for consistent linking with pg_class
+                    enhanced_query = """
+                        SELECT
+                            hash(database_name || '.' || schema_name) % 2147483647 as oid,
+                            hash(database_name || '.' || schema_name) % 2147483647 as id,
+                            database_name || '.' || schema_name as nspname,
+                            database_name || '.' || schema_name as name,
+                            'rvbbit' as owner,
+                            NULL as description,
+                            false as is_system,
+                            0 as state_number,
+                            0 as xmin
+                        FROM duckdb_schemas()
+                        WHERE database_name NOT IN ('system', 'temp')
+                          AND schema_name NOT IN ('pg_catalog', 'information_schema')
+
+                        UNION ALL
+
+                        SELECT 11 as oid, 11 as id, 'pg_catalog' as nspname, 'pg_catalog' as name,
+                               'rvbbit' as owner, 'System catalog' as description, true as is_system,
+                               0 as state_number, 0 as xmin
+                        UNION ALL
+                        SELECT 12 as oid, 12 as id, 'information_schema' as nspname, 'information_schema' as name,
+                               'rvbbit' as owner, 'Information schema' as description, true as is_system,
+                               0 as state_number, 0 as xmin
+
+                        ORDER BY nspname
+                    """
+                    result_df = self.duckdb_conn.execute(enhanced_query).fetchdf()
+
+                    # Debug: show what schemas we found
+                    print(f"[{self.session_id}]   📋 Schemas found:")
+                    for _, row in result_df.head(10).iterrows():
+                        print(f"[{self.session_id}]      - {row['nspname']} (oid={row['oid']})")
+
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    print(f"[{self.session_id}]   ✅ pg_namespace handled ({len(result_df)} schemas)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠️  Could not handle pg_namespace: {e}")
+                    # Fall through to default handler
+
+            # Simple function handlers (AFTER pg_namespace to not intercept schema queries)
+            # Skip if this is a pg_database or pg_namespace query
+            if 'CURRENT_DATABASE()' in query_upper and 'PG_DATABASE' not in query_upper and 'PG_NAMESPACE' not in query_upper:
+                result_df = pd.DataFrame({'current_database': [self.database_name]})
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ CURRENT_DATABASE() → {self.database_name}")
+                return
+
+            # Skip if this is a pg_namespace query (which may use current_schema() in WHERE)
+            if ('CURRENT_SCHEMA()' in query_upper or 'CURRENT_SCHEMAS(' in query_upper) and 'PG_NAMESPACE' not in query_upper:
                 if 'SESSION_USER' in query_upper:
                     result_df = pd.DataFrame({'current_schema': ['main'], 'session_user': ['rvbbit']})
                 else:
@@ -1064,53 +1347,254 @@ class ClientConnection:
                 return
 
             if 'VERSION()' in query_upper:
-                # Return PostgreSQL-compatible version string
-                result_df = pd.DataFrame({'version': ['PostgreSQL 14.0 (RVBBIT/DuckDB)']})
+                # Get DuckDB version
+                try:
+                    import duckdb
+                    duckdb_version = duckdb.__version__
+                except Exception:
+                    duckdb_version = "unknown"
+
+                version_str = f"RVBBIT 0.1 PGwire (DuckDB {duckdb_version} engine, PG 14.0 compat)"
+                result_df = pd.DataFrame({'version': [version_str]})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                print(f"[{self.session_id}]   ✓ VERSION() handled")
+                print(f"[{self.session_id}]   ✓ VERSION() → {version_str}")
                 return
 
-            # Special case 2: HAS_*_PRIVILEGE functions (always return true for simplicity)
             if 'HAS_TABLE_PRIVILEGE' in query_upper or 'HAS_SCHEMA_PRIVILEGE' in query_upper:
                 result_df = pd.DataFrame({'has_privilege': [True]})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ HAS_PRIVILEGE function handled")
                 return
 
-            # Special case 3: SIMPLE pg_namespace queries (not JOINs!) - include ATTACH'd databases
-            # Only bypass if it's the main table, not part of a JOIN
-            if ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper) and 'JOIN' not in query_upper:
-                print(f"[{self.session_id}]   🔧 Enhancing pg_namespace to include ATTACH'd databases...")
-                try:
-                    # Get all attached databases from duckdb_databases()
-                    # Map them as PostgreSQL schemas
-                    enhanced_query = """
-                        SELECT
-                            database_name as nspname,
-                            database_oid as oid
-                        FROM duckdb_databases()
-                        WHERE database_name NOT IN ('system', 'temp')
-                        UNION ALL
-                        SELECT 'pg_catalog' as nspname, 11 as oid
-                        UNION ALL
-                        SELECT 'information_schema' as nspname, 12 as oid
-                        ORDER BY nspname
-                    """
-                    result_df = self.duckdb_conn.execute(enhanced_query).fetchdf()
-                    send_query_results(self.sock, result_df, self.transaction_status)
-                    print(f"[{self.session_id}]   ✅ Enhanced pg_namespace with ATTACH'd databases ({len(result_df)} schemas)")
-                    return
-                except Exception as e:
-                    print(f"[{self.session_id}]   ⚠️  Could not enhance pg_namespace: {e}")
-                    # Fall through to default handler
-
             # Special case 4: PostgreSQL functions that don't exist in DuckDB
             if 'PG_GET_KEYWORDS' in query_upper:
-                # Return empty - DuckDB doesn't have this function
-                result_df = pd.DataFrame(columns=['word', 'catcode', 'catdesc'])
+                # Dynamically build keyword list from SQL function registry
+                # catcode: U=unreserved, R=reserved, T=type, C=column
+                keywords = set()
+
+                # Core RVBBIT keywords (always present)
+                keywords.add('rvbbit')
+                keywords.add('map')
+
+                # Get keywords from registered SQL functions
+                try:
+                    from rvbbit.semantic_sql.registry import get_sql_function_registry
+                    import re
+
+                    registry = get_sql_function_registry()
+                    for name, entry in registry.items():
+                        # Add function name
+                        keywords.add(name.lower())
+
+                        # Extract operator keywords from patterns like "{{ text }} MEANS {{ criterion }}"
+                        for operator in entry.operators:
+                            # Find words between }} and {{ (the operator keywords)
+                            matches = re.findall(r'\}\}\s*(\w+)', operator)
+                            for match in matches:
+                                keywords.add(match.lower())
+
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠️  Could not load SQL registry: {e}")
+
+                # Build result DataFrame
+                rvbbit_keywords = [(word, 'U', 'unreserved (RVBBIT)') for word in sorted(keywords)]
+                result_df = pd.DataFrame(rvbbit_keywords, columns=['word', 'catcode', 'catdesc'])
                 send_query_results(self.sock, result_df, self.transaction_status)
-                print(f"[{self.session_id}]   ✓ PG_GET_KEYWORDS() handled (empty)")
+                print(f"[{self.session_id}]   ✓ PG_GET_KEYWORDS() → {len(rvbbit_keywords)} RVBBIT keywords")
                 return
+
+            # Special case 5: pg_locks (DataGrip queries this for transaction info)
+            if 'PG_LOCKS' in query_upper:
+                # Return empty result - we don't track locks
+                result_df = pd.DataFrame({'transaction_id': pd.Series([], dtype='int64')})
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_locks handled (empty)")
+                return
+
+            # Special case 6: pg_is_in_recovery() (DataGrip checks if replica)
+            if 'PG_IS_IN_RECOVERY' in query_upper:
+                # Not a replica - return false, or if checking txid_current, return that
+                if 'TXID_CURRENT' in query_upper:
+                    # Query like: CASE WHEN pg_is_in_recovery() THEN null ELSE txid_current() END
+                    import time
+                    txid = int(time.time() * 1000) % 4294967296
+                    result_df = pd.DataFrame({'current_txid': [txid]})
+                else:
+                    result_df = pd.DataFrame({'pg_is_in_recovery': [False]})
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_is_in_recovery() handled (false)")
+                return
+
+            # Special case 7: pg_stat_activity (DataGrip session info)
+            if 'PG_STAT_ACTIVITY' in query_upper:
+                result_df = pd.DataFrame({
+                    'datid': [0],
+                    'datname': ['default'],
+                    'pid': [1],
+                    'usename': ['rvbbit'],
+                    'application_name': [''],
+                    'state': ['active']
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_stat_activity handled")
+                return
+
+            # Handle pg_timezone_names/pg_timezone_abbrevs (DataGrip queries these)
+            if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling timezone catalog query...")
+                # Return common timezones
+                result_df = pd.DataFrame({
+                    'name': ['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London'],
+                    'abbrev': ['UTC', 'EST', 'PST', 'GMT'],
+                    'is_dst': [False, False, False, False],
+                    'utc_offset': ['00:00:00', '-05:00:00', '-08:00:00', '00:00:00'],
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ timezone catalog handled")
+                return
+
+            # Handle pg_roles (DataGrip queries this for user management)
+            if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_roles query...")
+                result_df = pd.DataFrame({
+                    'role_id': [1],
+                    'oid': [1],
+                    'rolname': ['rvbbit'],
+                    'role_name': ['rvbbit'],
+                    'is_super': [True],
+                    'rolsuper': [True],
+                    'is_inherit': [True],
+                    'rolinherit': [True],
+                    'can_createrole': [True],
+                    'rolcreaterole': [True],
+                    'can_createdb': [True],
+                    'rolcreatedb': [True],
+                    'can_login': [True],
+                    'rolcanlogin': [True],
+                    'rolreplication': [False],
+                    'rolbypassrls': [False],
+                    'rolconnlimit': [-1],
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_roles handled")
+                return
+
+            # Handle pg_user (DataGrip queries this for user permissions)
+            if 'PG_USER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_user query...")
+                result_df = pd.DataFrame({
+                    'usename': ['rvbbit'],
+                    'usesysid': [1],
+                    'usecreatedb': [True],
+                    'usesuper': [True],
+                    'userepl': [False],
+                    'usebypassrls': [False],
+                    'passwd': ['********'],
+                    'valuntil': [None],
+                    'useconfig': [None],
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_user handled")
+                return
+
+            # Handle pg_auth_members (DataGrip queries for role membership)
+            if 'PG_AUTH_MEMBERS' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_auth_members query...")
+                # Return empty - no role membership
+                result_df = pd.DataFrame({
+                    'id': pd.Series([], dtype='int64'),
+                    'role_id': pd.Series([], dtype='int64'),
+                    'member': pd.Series([], dtype='int64'),
+                    'roleid': pd.Series([], dtype='int64'),
+                    'admin_option': pd.Series([], dtype='bool'),
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_auth_members handled (empty)")
+                return
+
+            # Handle pg_tablespace queries (DataGrip queries this)
+            if 'PG_TABLESPACE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_tablespace query...")
+                result_df = pd.DataFrame({
+                    'id': [1],
+                    'name': ['pg_default'],
+                    'spcname': ['pg_default'],
+                    'oid': [1],
+                    'owner': ['rvbbit'],
+                    'location': [''],
+                    'description': ['Default tablespace'],
+                    'state_number': [0],
+                })
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_tablespace handled")
+                return
+
+            # Special case: pg_class/pg_tables queries for table listing (DataGrip)
+            # Return actual DuckDB tables from information_schema
+            # NOTE: pg_tablespace handled above (contains 'PG_TABLES' substring)
+            is_table_query = ('PG_CLASS' in query_upper or 'PG_TABLES' in query_upper) and 'FROM' in query_upper
+            is_tablespace_query = 'PG_TABLESPACE' in query_upper
+            if is_table_query and not is_tablespace_query:
+                # Check if this is NOT the DBeaver-specific pattern (which has its own handler below)
+                if not ('C.*' in query_upper or 'C.OID' in query_upper):
+                    print(f"[{self.session_id}]   🔧 Handling pg_class/pg_tables for table browser...")
+                    try:
+                        # Return ALL tables from DuckDB including ATTACH'd databases
+                        # Use duckdb_tables() which sees across all attached databases
+                        # relnamespace must match pg_namespace.oid (use same hash function)
+                        tables_query = """
+                            SELECT
+                                ROW_NUMBER() OVER () as oid,
+                                ROW_NUMBER() OVER ()::bigint as id,
+                                table_name as relname,
+                                table_name as name,
+                                database_name || '.' || schema_name as schemaname,
+                                database_name || '.' || schema_name as nspname,
+                                hash(database_name || '.' || schema_name) % 2147483647 as relnamespace,
+                                'r' as relkind,
+                                'rvbbit' as owner,
+                                NULL as description,
+                                false as is_insertable_into,
+                                true as has_indexes
+                            FROM duckdb_tables()
+                            WHERE database_name NOT IN ('system', 'temp')
+                              AND schema_name NOT IN ('pg_catalog', 'information_schema')
+
+                            UNION ALL
+
+                            -- Also include views from duckdb_views()
+                            SELECT
+                                ROW_NUMBER() OVER () + 10000 as oid,
+                                ROW_NUMBER() OVER ()::bigint + 10000 as id,
+                                view_name as relname,
+                                view_name as name,
+                                database_name || '.' || schema_name as schemaname,
+                                database_name || '.' || schema_name as nspname,
+                                hash(database_name || '.' || schema_name) % 2147483647 as relnamespace,
+                                'v' as relkind,
+                                'rvbbit' as owner,
+                                NULL as description,
+                                false as is_insertable_into,
+                                false as has_indexes
+                            FROM duckdb_views()
+                            WHERE database_name NOT IN ('system', 'temp')
+                              AND schema_name NOT IN ('pg_catalog', 'information_schema')
+
+                            ORDER BY schemaname, relname
+                        """
+                        result_df = self.duckdb_conn.execute(tables_query).fetchdf()
+
+                        # Debug: show what tables we found
+                        print(f"[{self.session_id}]   📋 Tables/views found:")
+                        for _, row in result_df.head(10).iterrows():
+                            print(f"[{self.session_id}]      - {row['schemaname']}.{row['relname']} ({row['relkind']}, ns={row['relnamespace']})")
+
+                        send_query_results(self.sock, result_df, self.transaction_status)
+                        print(f"[{self.session_id}]   ✅ pg_class handled ({len(result_df)} tables/views)")
+                        return
+                    except Exception as e:
+                        print(f"[{self.session_id}]   ⚠️  Could not handle pg_class: {e}")
+                        # Fall through to other handlers
 
             # Special case 4: pg_class queries with regclass type columns
             # DBeaver queries pg_class with c.*, which has regclass-typed columns

@@ -315,8 +315,8 @@ output a JSON object with the following structure:
 Rules:
 - Choose an appropriate model based on the request (cheap, powerful, fast, etc.)
 - For cheap/fast requests: use "google/gemini-2.5-flash-lite" or "google/gemini-2.5-flash"
-- For powerful/smart requests: use "anthropic/claude-sonnet-4" or "openai/gpt-4o"
-- For coding: use "anthropic/claude-sonnet-4" or "deepseek/deepseek-chat"
+- For powerful/smart requests: use "anthropic/claude-haiku-4.5" or "openai/gpt-4o"
+- For coding: use "anthropic/claude-haiku-4.5" or "deepseek/deepseek-chat"
 - Extract the actual question/task from the request
 - Output ONLY valid JSON, no explanation
 
@@ -325,7 +325,7 @@ Input: "Ask a cheap Gemini model - What is 2+2?"
 Output: {"model": "google/gemini-2.5-flash-lite", "messages": [{"role": "user", "content": "What is 2+2?"}]}
 
 Input: "Use Claude to write a Python function that sorts a list"
-Output: {"model": "anthropic/claude-sonnet-4", "messages": [{"role": "user", "content": "Write a Python function that sorts a list"}]}"""
+Output: {"model": "anthropic/claude-haiku-4.5", "messages": [{"role": "user", "content": "Write a Python function that sorts a list"}]}"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -427,6 +427,15 @@ Output: {"model": "anthropic/claude-sonnet-4", "messages": [{"role": "user", "co
 
             return {"success": True, "body": body, "planning_duration_ms": duration_ms}
         except json.JSONDecodeError as e:
+            # Check if this looks like a direct text answer (model ignored JSON format)
+            # This often happens with simple yes/no questions or summarization tasks
+            if content and not content.startswith('{') and not content.startswith('['):
+                print(f"[bodybuilder] 🎯 Planner answered directly (non-JSON) - using response as-is")
+                return {
+                    "success": True,
+                    "direct_answer": content,
+                    "planning_duration_ms": duration_ms
+                }
             return {
                 "success": False,
                 "error": f"Failed to parse planner response as JSON: {e}",
@@ -526,7 +535,7 @@ def bodybuilder(
           inputs:
             body: |
               {"model": "google/gemini-2.5-flash", "messages": [...]}
-            model_override: "anthropic/claude-sonnet-4"
+            model_override: "anthropic/claude-haiku-4.5"
             system_prompt: "You are a helpful assistant."
     """
     # Validate inputs - need either body or request

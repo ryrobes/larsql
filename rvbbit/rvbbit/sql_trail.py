@@ -17,9 +17,53 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, List, Tuple
+from threading import Lock
+from typing import Optional, List, Tuple, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Cascade Tracking (Thread-Safe)
+# ============================================================================
+# Tracks which cascades were executed for each caller_id
+# This allows sql_query_log to record cascade_paths
+
+_cascade_registry: Dict[str, List[Dict[str, Any]]] = {}
+_cascade_lock = Lock()
+
+# Cache for schema checks
+_cascade_columns_exist: Optional[bool] = None
+
+
+def _has_cascade_columns(db) -> bool:
+    """
+    Check if sql_query_log has cascade tracking columns.
+
+    Caches result to avoid repeated DESCRIBE queries.
+    Returns True if cascade_paths and cascade_count columns exist.
+    """
+    global _cascade_columns_exist
+
+    if _cascade_columns_exist is not None:
+        return _cascade_columns_exist
+
+    try:
+        result = db.execute("DESCRIBE TABLE sql_query_log")
+        columns = {row[0] for row in result}
+        _cascade_columns_exist = 'cascade_count' in columns and 'cascade_paths' in columns
+
+        if not _cascade_columns_exist:
+            logger.info(
+                "SQL Trail: cascade_paths/cascade_count columns not found. "
+                "Run migration: ALTER TABLE sql_query_log ADD COLUMN cascade_paths Array(String) DEFAULT [], "
+                "ADD COLUMN cascade_count UInt16 DEFAULT 0"
+            )
+    except Exception as e:
+        logger.debug(f"SQL Trail: Could not check for cascade columns: {e}")
+        _cascade_columns_exist = False
+
+    return _cascade_columns_exist
+
 
 # Try to import sqlglot for AST-based fingerprinting
 try:
@@ -211,7 +255,9 @@ def log_query_complete(
     total_cost: Optional[float] = None,
     total_tokens_in: Optional[int] = None,
     total_tokens_out: Optional[int] = None,
-    llm_calls_count: Optional[int] = None
+    llm_calls_count: Optional[int] = None,
+    cascade_paths: Optional[List[str]] = None,
+    cascade_count: Optional[int] = None
 ):
     """
     Update query log with completion data.
@@ -228,6 +274,8 @@ def log_query_complete(
         total_tokens_in: Total input tokens across all LLM calls
         total_tokens_out: Total output tokens across all LLM calls
         llm_calls_count: Total number of LLM calls made
+        cascade_paths: List of cascade file paths executed by this query
+        cascade_count: Number of cascade executions
     """
     if not query_id:
         return
@@ -251,6 +299,15 @@ def log_query_complete(
             updates.append(f"total_tokens_out = {total_tokens_out}")
         if llm_calls_count is not None:
             updates.append(f"llm_calls_count = {llm_calls_count}")
+        # Cascade tracking columns (added in later migration)
+        # Check if columns exist before adding to update
+        if cascade_paths or cascade_count is not None:
+            if _has_cascade_columns(db):
+                if cascade_paths:
+                    paths_str = "['" + "','".join(p.replace("'", "\\'") for p in cascade_paths) + "']"
+                    updates.append(f"cascade_paths = {paths_str}")
+                if cascade_count is not None:
+                    updates.append(f"cascade_count = {cascade_count}")
 
         set_clause = ', '.join(updates)
 
@@ -439,3 +496,121 @@ def aggregate_query_costs(caller_id: str) -> dict:
         logger.debug(f"SQL Trail: Failed to aggregate costs: {e}")
 
     return {}
+
+
+# ============================================================================
+# Cascade Execution Tracking
+# ============================================================================
+
+def register_cascade_execution(
+    caller_id: str,
+    cascade_id: str,
+    cascade_path: str,
+    session_id: str,
+    inputs: Optional[Dict] = None
+):
+    """
+    Register a cascade execution for a SQL query.
+
+    Called when execute_cascade_udf runs a cascade. This tracks which
+    cascades were invoked by a SQL query for later logging.
+
+    Args:
+        caller_id: The caller_id for the parent SQL query
+        cascade_id: The cascade's ID (e.g., 'semantic_matches')
+        cascade_path: Path to the cascade file
+        session_id: The session_id created for this cascade run
+        inputs: Optional dict of inputs passed to the cascade
+    """
+    if not caller_id:
+        return
+
+    entry = {
+        'cascade_id': cascade_id,
+        'cascade_path': cascade_path,
+        'session_id': session_id,
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'inputs_summary': str(inputs)[:200] if inputs else None
+    }
+
+    with _cascade_lock:
+        if caller_id not in _cascade_registry:
+            _cascade_registry[caller_id] = []
+        _cascade_registry[caller_id].append(entry)
+
+    logger.debug(f"SQL Trail: Registered cascade {cascade_id} for {caller_id[:16]}")
+
+
+def get_cascade_executions(caller_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all cascade executions for a caller_id.
+
+    Args:
+        caller_id: The caller_id to look up
+
+    Returns:
+        List of cascade execution dicts
+    """
+    with _cascade_lock:
+        return _cascade_registry.get(caller_id, []).copy()
+
+
+def get_cascade_paths(caller_id: str) -> List[str]:
+    """
+    Get unique cascade paths executed for a caller_id.
+
+    Args:
+        caller_id: The caller_id to look up
+
+    Returns:
+        List of unique cascade file paths
+    """
+    with _cascade_lock:
+        executions = _cascade_registry.get(caller_id, [])
+        paths = list(set(e['cascade_path'] for e in executions if e.get('cascade_path')))
+        return sorted(paths)
+
+
+def clear_cascade_executions(caller_id: str):
+    """
+    Clear cascade execution records for a caller_id.
+
+    Called after logging is complete to prevent memory leaks.
+
+    Args:
+        caller_id: The caller_id to clear
+    """
+    with _cascade_lock:
+        if caller_id in _cascade_registry:
+            del _cascade_registry[caller_id]
+
+
+def get_cascade_summary(caller_id: str) -> Dict[str, Any]:
+    """
+    Get a summary of cascade executions for a caller_id.
+
+    Returns aggregated info about all cascades run by this query.
+
+    Args:
+        caller_id: The caller_id to summarize
+
+    Returns:
+        Dict with cascade_count, cascade_paths, session_ids
+    """
+    with _cascade_lock:
+        executions = _cascade_registry.get(caller_id, [])
+
+    if not executions:
+        return {
+            'cascade_count': 0,
+            'cascade_paths': [],
+            'cascade_ids': [],
+            'session_ids': []
+        }
+
+    return {
+        'cascade_count': len(executions),
+        'cascade_paths': list(set(e['cascade_path'] for e in executions if e.get('cascade_path'))),
+        'cascade_ids': list(set(e['cascade_id'] for e in executions if e.get('cascade_id'))),
+        'session_ids': [e['session_id'] for e in executions if e.get('session_id')]
+    }

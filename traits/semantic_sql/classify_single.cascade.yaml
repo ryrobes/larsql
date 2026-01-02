@@ -1,0 +1,48 @@
+# CLASSIFY_SINGLE - Classify a single text into one of N topics
+# Used internally by GROUP BY TOPICS to classify individual rows
+#
+# SQL Usage (internal):
+#   SELECT classify_single(text, '["Topic A", "Topic B", "Topic C"]') FROM docs
+#
+# Direct Function:
+#   SELECT semantic_classify(title, topics_json) FROM docs
+
+cascade_id: semantic_classify
+
+description: |
+  Classify a single text into one of the provided topics.
+  This is a helper function used by GROUP BY TOPICS to classify individual rows
+  after topics have been extracted from the collection.
+
+inputs_schema:
+  text: The text to classify
+  topics: JSON array of topic names to choose from
+
+sql_function:
+  name: semantic_classify
+  description: Classifies a single text into one of the provided topics
+  args:
+    - name: text
+      type: VARCHAR
+    - name: topics
+      type: JSON
+  returns: VARCHAR
+  shape: SCALAR
+  cache: true
+
+cells:
+  - name: classify
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Classify this text into ONE of the provided topics.
+
+      TEXT: {{ input.text }}
+
+      AVAILABLE TOPICS:
+      {{ input.topics }}
+
+      Return ONLY the exact topic name that best fits this text.
+      You must choose from the provided topics - do not create new ones.
+      Return the topic name exactly as it appears in the list.
+    rules:
+      max_turns: 1

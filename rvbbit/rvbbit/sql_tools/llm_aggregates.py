@@ -14,9 +14,10 @@ These enable GROUP BY analytics with LLM-powered aggregation:
 Implementation Strategy:
 - Query rewriter detects LLM_* aggregate functions
 - Rewrites to collect values with LIST() or STRING_AGG()
-- Calls scalar helper functions that process the collected values
+- Calls cascade-based SQL functions via the registry
 
-This gives us aggregate semantics without needing true DuckDB aggregate UDFs.
+The actual implementations are RVBBIT cascades in traits/semantic_sql/.
+This module provides thin wrappers that execute those cascades.
 """
 
 import json
@@ -24,6 +25,60 @@ import hashlib
 import re
 from typing import Optional, List, Dict, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+# ============================================================================
+# Cascade Executor - Primary execution path
+# ============================================================================
+
+def _execute_cascade(
+    function_name: str,
+    args: Dict[str, Any],
+    fallback: callable = None
+) -> Any:
+    """
+    Execute a semantic SQL function via its cascade definition.
+
+    This is the primary execution path. Cascades are discovered from
+    RVBBIT_ROOT/traits/semantic_sql/*.cascade.yaml.
+
+    Args:
+        function_name: The SQL function name (e.g., "semantic_consensus")
+        args: Arguments to pass to the cascade
+        fallback: Optional fallback function if cascade not found
+
+    Returns:
+        Cascade result, or fallback result if cascade not found
+    """
+    try:
+        from ..semantic_sql.registry import (
+            get_sql_function,
+            execute_sql_function_sync,
+        )
+
+        fn = get_sql_function(function_name)
+        if fn:
+            return execute_sql_function_sync(function_name, args)
+
+        # Function not in registry - try fallback
+        if fallback:
+            return fallback(**args)
+
+        raise ValueError(f"SQL function not found: {function_name}")
+
+    except ImportError as e:
+        # Registry not available - use fallback
+        if fallback:
+            return fallback(**args)
+        raise ValueError(f"Cascade registry not available: {e}")
+    except Exception as e:
+        # Execution failed - try fallback
+        if fallback:
+            import logging
+            log = logging.getLogger(__name__)
+            log.warning(f"Cascade execution failed for {function_name}: {e}, using fallback")
+            return fallback(**args)
+        raise
 
 
 def _call_llm(
@@ -192,7 +247,7 @@ def llm_summarize_impl(
     """
     Summarize a collection of text values into a single summary.
 
-    This is the workhorse behind LLM_SUMMARIZE() aggregate.
+    Executes via cascade: traits/semantic_sql/summarize.cascade.yaml
 
     Args:
         values_json: JSON array of text values (from LIST() in SQL)
@@ -200,36 +255,53 @@ def llm_summarize_impl(
         max_items: Maximum items to include (samples if exceeded)
         strategy: "direct" (one call), "map_reduce" (hierarchical), "sample" (random sample)
         separator: Separator between items in prompt
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         Summary text
 
-    Example SQL (after rewriting):
-        SELECT llm_summarize_impl(
-            LIST(review_text)::VARCHAR,
-            'Summarize customer feedback, highlighting common themes:'
-        ) as summary
+    Example SQL:
+        SELECT SUMMARIZE(review_text) as summary
         FROM reviews
         GROUP BY category
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_summarize",
+            {"texts": values_json, "prompt": prompt},
+            fallback=lambda **kw: _llm_summarize_fallback(
+                kw.get("texts"), kw.get("prompt"), max_items, strategy, separator, use_cache
+            )
+        )
+        return result if result else "No data to summarize."
+    except Exception as e:
+        return _llm_summarize_fallback(values_json, prompt, max_items, strategy, separator, use_cache)
+
+
+def _llm_summarize_fallback(
+    values_json: str,
+    prompt: Optional[str] = None,
+    max_items: int = 200,
+    strategy: str = "direct",
+    separator: str = "\n---\n",
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
             values = [values]
     except json.JSONDecodeError:
-        # If not valid JSON, treat as single value
         values = [values_json]
 
-    # Sanitize and filter out nulls and empty strings
     values = _sanitize_values(values)
-    values = [v for v in values if v]  # Remove empty after sanitization
+    values = [v for v in values if v]
 
     if not values:
         return "No data to summarize."
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -238,32 +310,24 @@ def llm_summarize_impl(
         if cached:
             return cached
 
-    # Default prompt
     if not prompt:
         prompt = "Summarize the following items into a concise summary that captures the key themes and patterns:"
 
-    # Handle large collections
     if len(values) > max_items:
         if strategy == "sample":
             import random
             values = random.sample(values, max_items)
         elif strategy == "map_reduce":
-            return _map_reduce_summarize(values, prompt, model)
+            return _map_reduce_summarize(values, prompt)
         else:
-            # Default: take first max_items with note
             values = values[:max_items]
             prompt = f"{prompt}\n\n(Note: Showing {max_items} of {len(values)} total items)"
 
-    # Combine values
     combined_text = separator.join(f"- {v}" for v in values)
-
-    # Build full prompt
     full_prompt = f"{prompt}\n\n{combined_text}\n\nSummary:"
 
-    # Call LLM via bodybuilder with explicit body (bypasses planner)
-    result = _call_llm_direct(full_prompt, model=model, max_tokens=500)
+    result = _call_llm(full_prompt)
 
-    # Cache result
     if use_cache:
         _cache_set(_agg_cache, cache_key, result, ttl=None)
 
@@ -281,25 +345,44 @@ def llm_classify_impl(
     Classify a collection of values into one of the given categories.
 
     Useful for determining overall sentiment, category, or label for a group.
+    Executes via cascade: traits/semantic_sql/classify.cascade.yaml
 
     Args:
         values_json: JSON array of text values
         categories: Comma-separated list of valid categories
         prompt: Custom classification prompt
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         One of the category labels
 
     Example SQL:
-        SELECT llm_classify_impl(
-            LIST(review_text)::VARCHAR,
-            'positive,negative,mixed,neutral'
-        ) as overall_sentiment
+        SELECT CLASSIFY(review_text, 'positive,negative,mixed')
         FROM reviews
         GROUP BY product_id
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_classify_collection",
+            {"texts": values_json, "categories": categories, "prompt": prompt},
+            fallback=lambda **kw: _llm_classify_fallback(
+                kw.get("texts"), kw.get("categories"), kw.get("prompt"), use_cache
+            )
+        )
+        return result if result else "unknown"
+    except Exception as e:
+        return _llm_classify_fallback(values_json, categories, prompt, use_cache)
+
+
+def _llm_classify_fallback(
+    values_json: str,
+    categories: str,
+    prompt: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -313,7 +396,6 @@ def llm_classify_impl(
     if not values:
         return "unknown"
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -322,35 +404,30 @@ def llm_classify_impl(
         if cached:
             return cached
 
-    # Sample if too many
     if len(values) > 100:
         import random
         values = random.sample(values, 100)
 
-    # Build prompt
     if not prompt:
-        prompt = f"Based on the following items, classify the overall group into exactly one of these categories: {categories}"
+        user_prompt = f"Based on the following items, classify the overall group into exactly one of these categories: {categories}"
     else:
-        prompt = f"{prompt}\n\nValid categories: {categories}"
+        user_prompt = f"{prompt}\n\nValid categories: {categories}"
 
-    combined_text = "\n".join(f"- {v}" for v in values[:50])  # Limit for context
+    combined_text = "\n".join(f"- {v}" for v in values[:50])
 
-    full_prompt = f"""{prompt}
+    full_prompt = f"""{user_prompt}
 
 Items:
 {combined_text}
 
 Respond with ONLY the category name, nothing else."""
 
-    result = _call_llm_direct(full_prompt, model=model, max_tokens=50)
+    result = _call_llm(full_prompt)
 
-    # Clean up result - should be just the category
     result = result.strip().lower()
 
-    # Validate against categories
     valid_cats = [c.strip().lower() for c in categories.split(',')]
     if result not in valid_cats:
-        # Try to find best match
         for cat in valid_cats:
             if cat in result:
                 result = cat
@@ -452,21 +529,41 @@ def llm_sentiment_impl(
     Calculate average sentiment score for a collection of texts.
 
     Returns a float between -1.0 (very negative) and 1.0 (very positive).
+    Executes via cascade: traits/semantic_sql/sentiment.cascade.yaml
 
     Args:
         values_json: JSON array of text values
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         Sentiment score as float
 
     Example SQL:
-        SELECT llm_sentiment_impl(LIST(review_text)::VARCHAR) as sentiment_score
+        SELECT SENTIMENT(review_text) as sentiment_score
         FROM reviews
         GROUP BY product_id
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_sentiment",
+            {"texts": values_json},
+            fallback=lambda **kw: _llm_sentiment_fallback(kw.get("texts"), use_cache)
+        )
+        try:
+            return float(result) if result else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+    except Exception as e:
+        return _llm_sentiment_fallback(values_json, use_cache)
 
+
+def _llm_sentiment_fallback(
+    values_json: str,
+    use_cache: bool = True
+) -> float:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -480,7 +577,6 @@ def llm_sentiment_impl(
     if not values:
         return 0.0
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -492,7 +588,6 @@ def llm_sentiment_impl(
             except:
                 pass
 
-    # Sample if too many
     if len(values) > 50:
         import random
         values = random.sample(values, 50)
@@ -506,12 +601,11 @@ Items:
 
 Respond with ONLY a decimal number between -1.0 and 1.0, nothing else."""
 
-    result = _call_llm_direct(prompt, model=model, max_tokens=20)
+    result = _call_llm(prompt)
 
-    # Parse result
     try:
         score = float(result.strip())
-        score = max(-1.0, min(1.0, score))  # Clamp to valid range
+        score = max(-1.0, min(1.0, score))
     except ValueError:
         score = 0.0
 
@@ -532,23 +626,44 @@ def llm_themes_impl(
     Extract common themes/topics from a collection of texts.
 
     Returns JSON array of theme strings.
+    Executes via cascade: traits/semantic_sql/themes.cascade.yaml
 
     Args:
         values_json: JSON array of text values
         max_themes: Maximum number of themes to extract
         prompt: Custom prompt
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         JSON array of themes (as string)
 
     Example SQL:
-        SELECT llm_themes_impl(LIST(review_text)::VARCHAR, 5) as themes
+        SELECT THEMES(review_text, 5) as themes
         FROM reviews
         GROUP BY product_id
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_themes",
+            {"texts": values_json, "num_topics": max_themes, "prompt": prompt},
+            fallback=lambda **kw: _llm_themes_fallback(
+                kw.get("texts"), kw.get("num_topics", 5), kw.get("prompt"), use_cache
+            )
+        )
+        return result if result else "[]"
+    except Exception as e:
+        return _llm_themes_fallback(values_json, max_themes, prompt, use_cache)
 
+
+def _llm_themes_fallback(
+    values_json: str,
+    max_themes: int = 5,
+    prompt: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -562,7 +677,6 @@ def llm_themes_impl(
     if not values:
         return "[]"
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -571,7 +685,6 @@ def llm_themes_impl(
         if cached:
             return cached
 
-    # Sample if too many
     if len(values) > 100:
         import random
         values = random.sample(values, 100)
@@ -579,9 +692,11 @@ def llm_themes_impl(
     combined_text = "\n".join(f"- {v}" for v in values[:50])
 
     if not prompt:
-        prompt = f"Extract the {max_themes} most common themes or topics from these items."
+        user_prompt = f"Extract the {max_themes} most common themes or topics from these items."
+    else:
+        user_prompt = prompt
 
-    full_prompt = f"""{prompt}
+    full_prompt = f"""{user_prompt}
 
 Items:
 {combined_text}
@@ -589,20 +704,16 @@ Items:
 Respond with a JSON array of {max_themes} theme strings, like: ["theme1", "theme2", "theme3"]
 Return ONLY the JSON array, nothing else."""
 
-    result = _call_llm_direct(full_prompt, model=model, max_tokens=200)
+    result = _call_llm(full_prompt)
 
-    # Clean up - ensure it's valid JSON array
     result = result.strip()
     if not result.startswith('['):
-        # Try to extract JSON array from response
-        import re
         match = re.search(r'\[.*?\]', result, re.DOTALL)
         if match:
             result = match.group(0)
         else:
             result = '[]'
 
-    # Validate JSON
     try:
         json.loads(result)
     except json.JSONDecodeError:
@@ -1199,23 +1310,39 @@ def llm_dedupe_impl(
     Deduplicate values by semantic similarity.
 
     Returns JSON array of unique representatives (one per semantic cluster).
+    Executes via cascade: traits/semantic_sql/dedupe.cascade.yaml
 
     Args:
         values_json: JSON array of text values to deduplicate
         criteria: Description of what makes items "the same" (default: "same entity")
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         JSON array of deduplicated representative values
 
     Example SQL:
-        SELECT llm_dedupe_impl(LIST(company_name)::VARCHAR, 'same company')
-        FROM suppliers
-
+        SELECT DEDUPE(company_name) FROM suppliers
         -- Returns: ["IBM", "Microsoft", "Google"]
-        -- (instead of ["IBM", "IBM Corp", "International Business Machines", ...])
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_dedupe",
+            {"texts": values_json, "criteria": criteria or "same entity"},
+            fallback=lambda **kw: _llm_dedupe_fallback(kw.get("texts"), kw.get("criteria"), use_cache)
+        )
+        return result if result else "[]"
+    except Exception as e:
+        return _llm_dedupe_fallback(values_json, criteria, use_cache)
+
+
+def _llm_dedupe_fallback(
+    values_json: str,
+    criteria: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -1232,7 +1359,6 @@ def llm_dedupe_impl(
     if len(values) == 1:
         return json.dumps(values)
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -1243,27 +1369,21 @@ def llm_dedupe_impl(
 
     criteria = criteria or "the same entity or concept"
 
-    # For small sets, use direct LLM deduplication
     if len(values) <= 50:
         items_list = "\n".join(f"- {v}" for v in values)
-
         prompt = f"""Deduplicate these items by semantic similarity. Group items that represent {criteria}.
 Return ONLY the unique representatives (one per group).
 
 Items:
 {items_list}
 
-Return a JSON array of the unique representative values (pick the clearest/most canonical form from each group).
-Example: ["Representative1", "Representative2", ...]
+Return a JSON array of the unique representative values.
 Return ONLY the JSON array, nothing else."""
-
-        result = _call_llm(prompt, model=model)
+        result = _call_llm(prompt)
     else:
-        # For larger sets, sample and cluster
         import random
         sampled = random.sample(values, 50)
         items_list = "\n".join(f"- {v}" for v in sampled)
-
         prompt = f"""Deduplicate these items by semantic similarity. Group items that represent {criteria}.
 Return ONLY the unique representatives (one per group).
 
@@ -1272,17 +1392,15 @@ Items (sample of {len(values)} total):
 
 Return a JSON array of the unique representative values.
 Return ONLY the JSON array, nothing else."""
+        result = _call_llm(prompt)
 
-        result = _call_llm(prompt, model=model)
-
-    # Clean up result
     result = result.strip()
     if not result.startswith('['):
         match = re.search(r'\[.*?\]', result, re.DOTALL)
         if match:
             result = match.group(0)
         else:
-            result = json.dumps(values[:10])  # Fallback
+            result = json.dumps(values[:10])
 
     try:
         json.loads(result)
@@ -1306,23 +1424,42 @@ def llm_cluster_impl(
     Cluster values by semantic similarity.
 
     Returns JSON object mapping each value to its cluster label.
+    Executes via cascade: traits/semantic_sql/cluster.cascade.yaml
 
     Args:
         values_json: JSON array of text values to cluster
         num_clusters: Suggested number of clusters (auto-determined if not specified)
         criteria: Description of how to cluster (e.g., "by topic", "by sentiment")
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
         JSON object: {"value1": "cluster_label1", "value2": "cluster_label2", ...}
 
     Example SQL:
-        SELECT llm_cluster_impl(LIST(category)::VARCHAR, 5, 'by product type')
-        FROM products
-
-        -- Returns: {"laptop": "electronics", "phone": "electronics", "shirt": "apparel", ...}
+        SELECT CLUSTER(category, 5, 'by product type') FROM products
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_cluster",
+            {"values": values_json, "num_clusters": num_clusters, "criterion": criteria},
+            fallback=lambda **kw: _llm_cluster_fallback(
+                kw.get("values"), kw.get("num_clusters"), kw.get("criterion"), use_cache
+            )
+        )
+        return result if result else "{}"
+    except Exception as e:
+        return _llm_cluster_fallback(values_json, num_clusters, criteria, use_cache)
+
+
+def _llm_cluster_fallback(
+    values_json: str,
+    num_clusters: Optional[int] = None,
+    criteria: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -1339,7 +1476,6 @@ def llm_cluster_impl(
     if len(values) == 1:
         return json.dumps({values[0]: values[0]})
 
-    # Check cache
     if use_cache:
         from .udf import _cache_get, _cache_set
         values_hash = _hash_values(values)
@@ -1351,7 +1487,6 @@ def llm_cluster_impl(
     criteria = criteria or "semantic similarity"
     cluster_hint = f"into approximately {num_clusters} groups" if num_clusters else "into natural groupings"
 
-    # Sample if too large
     working_values = values
     if len(values) > 100:
         import random
@@ -1369,21 +1504,18 @@ Use short, descriptive cluster labels.
 Example: {{"item1": "cluster_a", "item2": "cluster_a", "item3": "cluster_b"}}
 Return ONLY the JSON object, nothing else."""
 
-    result = _call_llm(prompt, model=model)
+    result = _call_llm(prompt)
 
-    # Clean up result
     result = result.strip()
     if not result.startswith('{'):
         match = re.search(r'\{.*?\}', result, re.DOTALL)
         if match:
             result = match.group(0)
         else:
-            # Fallback: each value is its own cluster
             result = json.dumps({v: v for v in working_values})
 
     try:
         parsed = json.loads(result)
-        # Validate structure
         if not isinstance(parsed, dict):
             result = json.dumps({v: v for v in working_values})
     except json.JSONDecodeError:
@@ -1447,11 +1579,12 @@ def llm_consensus_impl(
     Find the consensus or common ground among a collection of texts.
 
     Returns a summary of what most items agree on or have in common.
+    Executes via cascade: traits/semantic_sql/consensus.cascade.yaml
 
     Args:
         values_json: JSON array of text values
         prompt: Custom prompt for what kind of consensus to find
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
@@ -1462,6 +1595,25 @@ def llm_consensus_impl(
         FROM bigfoot
         GROUP BY state
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_consensus",
+            {"texts": values_json, "prompt": prompt},
+            fallback=lambda **kw: _llm_consensus_fallback(kw.get("texts"), kw.get("prompt"), use_cache)
+        )
+        return result if result else "No clear consensus found"
+    except Exception as e:
+        # Fall through to fallback
+        return _llm_consensus_fallback(values_json, prompt, use_cache)
+
+
+def _llm_consensus_fallback(
+    values_json: str,
+    prompt: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -1516,7 +1668,7 @@ Identify:
 
 Return a concise summary of what most items agree on."""
 
-    result = _call_llm(user_prompt, model=model)
+    result = _call_llm(user_prompt)
 
     # Clean up
     result = result.strip()
@@ -1540,12 +1692,13 @@ def llm_outliers_impl(
     Find outliers or unusual items in a collection.
 
     Returns JSON array of items that stand out from the norm.
+    Executes via cascade: traits/semantic_sql/outliers.cascade.yaml
 
     Args:
         values_json: JSON array of text values
         num_outliers: Maximum number of outliers to return (default: 5)
         criteria: Description of what makes something unusual
-        model: Model override
+        model: Model override (ignored - cascade controls model)
         use_cache: Whether to cache results
 
     Returns:
@@ -1559,6 +1712,27 @@ def llm_outliers_impl(
         FROM bigfoot
         GROUP BY state
     """
+    # Try cascade execution first
+    try:
+        result = _execute_cascade(
+            "semantic_outliers",
+            {"texts": values_json, "num_outliers": num_outliers or 5, "criteria": criteria},
+            fallback=lambda **kw: _llm_outliers_fallback(
+                kw.get("texts"), kw.get("num_outliers"), kw.get("criteria"), use_cache
+            )
+        )
+        return result if result else "[]"
+    except Exception as e:
+        return _llm_outliers_fallback(values_json, num_outliers, criteria, use_cache)
+
+
+def _llm_outliers_fallback(
+    values_json: str,
+    num_outliers: Optional[int] = None,
+    criteria: Optional[str] = None,
+    use_cache: bool = True
+) -> str:
+    """Fallback implementation when cascade not available."""
     try:
         values = json.loads(values_json)
         if not isinstance(values, list):
@@ -1573,11 +1747,10 @@ def llm_outliers_impl(
         return "[]"
 
     if len(values) <= 3:
-        # Too few to have meaningful outliers
         return "[]"
 
     num_outliers = num_outliers or 5
-    num_outliers = min(num_outliers, len(values) // 2, 10)  # Cap at half the items or 10
+    num_outliers = min(num_outliers, len(values) // 2, 10)
 
     # Check cache
     if use_cache:
@@ -1588,7 +1761,6 @@ def llm_outliers_impl(
         if cached:
             return cached
 
-    # Sample if too many
     working_values = values
     if len(values) > 50:
         import random
@@ -1622,16 +1794,14 @@ Return a JSON array of objects with "item" and "reason" keys.
 Example: [{{"item": "...", "reason": "..."}}]
 Return ONLY the JSON array."""
 
-    result = _call_llm(user_prompt, model=model)
+    result = _call_llm(user_prompt)
 
-    # Clean up and validate JSON
     result = result.strip()
     if not result.startswith('['):
         match = re.search(r'\[.*\]', result, re.DOTALL)
         if match:
             result = match.group(0)
         else:
-            # Fallback: return empty array
             result = "[]"
 
     try:
