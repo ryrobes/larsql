@@ -30,12 +30,12 @@ sql_function:
   operators:
     - "{{ text }} ALIGNS {{ narrative }}"
     - "{{ text }} ALIGNS WITH {{ narrative }}"
-  cache: true
+  cache: false
 
 cells:
   - name: evaluate_alignment
-    model: google/gemini-2.5-flash-lite
-    
+    model: google/gemini-3-flash-preview
+
     instructions: |
       Rate how well this text aligns with the given narrative.
 
@@ -63,17 +63,21 @@ cells:
         Text: "We're using SQL to query our LLM results" → 0.85
         Text: "SQL is outdated for modern applications" → 0.1
         Text: "Python is great for data science" → 0.3 (unrelated)
-        
+
       - Narrative: "AI tools should be accessible to non-developers"
         Text: "Natural language interfaces democratize AI" → 0.9
         Text: "You need a PhD to use these tools" → 0.05
 
-      Return ONLY a decimal number between 0.0 and 1.0.
-      No explanation, no other text.
+      CRITICAL: Return ONLY a decimal number between 0.0 and 1.0.
+      Do NOT include any explanation, reasoning, or other text.
+      Do NOT wrap in quotes or code blocks.
+      Just the number: 0.85
+
+      VERIFY THAT THE OUTPUT IS ONLY A NUMBER!
 
     rules:
-      max_turns: 1
-      
+      max_turns: 2
+
     output_schema:
       type: number
       minimum: 0.0

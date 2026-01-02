@@ -265,6 +265,7 @@ const RichTooltip = ({
 export const RunningCascadeTooltipContent = ({
   cascadeId,
   sessionId,
+  sessionCount,
   ageSeconds,
   cascadeFile,
   status,
@@ -292,8 +293,12 @@ export const RunningCascadeTooltipContent = ({
       <div className="rct-cascade-id">{cascadeId || 'Unknown Cascade'}</div>
       <div className="rct-meta">
         <div className="rct-meta-row">
-          <span className="rct-meta-label">Session</span>
-          <span className="rct-meta-value rct-session-id">{sessionId}</span>
+          <span className="rct-meta-label">
+            {sessionCount && sessionCount > 1 ? 'Sessions' : 'Session'}
+          </span>
+          <span className="rct-meta-value rct-session-id">
+            {sessionCount && sessionCount > 1 ? sessionCount : sessionId}
+          </span>
         </div>
         <div className="rct-meta-row">
           <span className="rct-meta-label">Started</span>

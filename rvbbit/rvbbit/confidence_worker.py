@@ -147,18 +147,22 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
                 if confidence is not None:
                     # Insert into training_annotations
                     # trainable=false by default, user can toggle in UI
-                    db.execute("""
-                        INSERT INTO training_annotations
-                        (trace_id, trainable, verified, confidence, notes, annotated_by)
-                        VALUES
-                    """, [(
-                        msg['trace_id'],
-                        False,  # Not trainable by default
-                        False,  # Not verified
-                        confidence,
-                        'Auto-assessed',
-                        'confidence_worker'
-                    )])
+                    from datetime import datetime, timezone
+
+                    db.insert_rows(
+                        'training_annotations',
+                        [{
+                            'trace_id': msg['trace_id'],
+                            'trainable': False,  # Not trainable by default
+                            'verified': False,   # Not verified
+                            'confidence': confidence,
+                            'notes': 'Auto-assessed',
+                            'tags': [],
+                            'annotated_at': datetime.now(timezone.utc),
+                            'annotated_by': 'confidence_worker'
+                        }],
+                        columns=['trace_id', 'trainable', 'verified', 'confidence', 'notes', 'tags', 'annotated_at', 'annotated_by']
+                    )
 
                     assessed_count += 1
                     total_confidence += confidence

@@ -308,3 +308,171 @@ def curl_text(url: str, max_length: int = 10000) -> str:
         return f"ERROR: Request failed: {e}"
     except Exception as e:
         return f"ERROR: Unexpected error: {type(e).__name__}: {e}"
+
+
+@simple_eddy
+def fetch_url_with_browser(url: str, max_length: int = 10000, wait_seconds: float = 3.0) -> str:
+    """
+    Fetch a URL using Playwright headless browser (handles JavaScript).
+    
+    CRITICAL: Creates a new browser instance for EACH call and properly closes it
+    to prevent orphaned chrome processes. Synchronous wrapper around async Playwright.
+    
+    Handles:
+    - JavaScript-heavy sites (SPAs, dynamic content)
+    - Redirects and authentication
+    - Wait for page load and dynamic content
+    - Text extraction from rendered DOM
+    - Proper cleanup (GUARANTEED browser shutdown)
+    
+    Args:
+        url: URL to fetch
+        max_length: Maximum characters to return (default 10000)
+        wait_seconds: How long to wait for JS rendering (default 3.0)
+    
+    Returns:
+        Readable text from rendered page, or error message
+        
+    Examples:
+        fetch_url_with_browser("https://example.com")
+        fetch_url_with_browser("https://twitter.com/user/status/123")
+    """
+    import asyncio
+    
+    # Clean URL
+    url = url.strip()
+    if not url:
+        return "ERROR: No URL provided"
+    
+    # Ensure http/https prefix
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    
+    async def _fetch_async():
+        """Async implementation with guaranteed cleanup."""
+        playwright = None
+        browser = None
+        page = None
+        
+        try:
+            from playwright.async_api import async_playwright
+            
+            # Start Playwright
+            playwright = await async_playwright().start()
+            
+            # Launch browser (new instance for this fetch)
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--single-process'  # Minimize process spawning
+                ]
+            )
+            
+            # Create context (ephemeral, will be destroyed)
+            context = await browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (compatible; RVBBIT/1.0; +https://github.com/rvbbit)'
+            )
+            
+            # Create page
+            page = await context.new_page()
+            
+            # Navigate with timeout (45 seconds for slow/JS-heavy sites)
+            await page.goto(url, wait_until='networkidle', timeout=45000)
+            
+            # Wait for dynamic content
+            if wait_seconds > 0:
+                await asyncio.sleep(wait_seconds)
+            
+            # Extract text from body
+            text = await page.evaluate('''() => {
+                // Remove script, style, nav, footer, header
+                const elementsToRemove = document.querySelectorAll('script, style, nav, footer, header, aside, .ad, .advertisement');
+                elementsToRemove.forEach(el => el.remove());
+                
+                // Get text from body
+                const body = document.body;
+                if (!body) return '';
+                
+                // Use innerText which respects display:none and gives cleaner output
+                return body.innerText || body.textContent || '';
+            }''')
+            
+            # Clean up whitespace
+            import re
+            text = re.sub(r'\s+', ' ', text)
+            text = text.strip()
+            
+            # Truncate
+            if len(text) > max_length:
+                text = text[:max_length] + f"\n\n[Truncated - original was {len(text)} chars]"
+            
+            if not text or len(text) < 10:
+                return "ERROR: No readable text extracted from page"
+            
+            return text
+            
+        except ImportError:
+            return "ERROR: Playwright not installed. Run: pip install playwright && playwright install chromium"
+        except asyncio.TimeoutError:
+            return "ERROR: Page load timeout after 45 seconds"
+        except Exception as e:
+            return f"ERROR: {type(e).__name__}: {str(e)[:200]}"
+            
+        finally:
+            # CRITICAL: Cleanup in reverse order (guaranteed execution)
+            # Close page first
+            if page:
+                try:
+                    await page.close()
+                except Exception as e:
+                    print(f"[fetch_url] Warning: Failed to close page: {e}")
+
+            # Close context to kill all pages
+            if browser:
+                try:
+                    # Get all contexts and close them
+                    contexts = browser.contexts
+                    for ctx in contexts:
+                        try:
+                            await ctx.close()
+                        except:
+                            pass
+                except:
+                    pass
+
+            # Close browser (kills chrome process)
+            if browser:
+                try:
+                    await browser.close()
+                    # Wait a moment for process to die
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    print(f"[fetch_url] Warning: Failed to close browser: {e}")
+
+            # Stop playwright
+            if playwright:
+                try:
+                    await playwright.stop()
+                except Exception as e:
+                    print(f"[fetch_url] Warning: Failed to stop playwright: {e}")
+    
+    # Run async function synchronously
+    try:
+        # Check if we're in an async context
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context, run in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, _fetch_async())
+                return future.result(timeout=60)  # 60s to allow for 45s page load + cleanup
+        except RuntimeError:
+            # No running loop, we can use asyncio.run directly
+            return asyncio.run(_fetch_async())
+    except Exception as e:
+        return f"ERROR: Async execution failed: {e}"

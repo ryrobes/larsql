@@ -230,6 +230,26 @@
   padding: 5px 3px 4px 3px;
 }
 
+.vsidebar-running-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #00e5ff, #22d3ee);
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #07121a;
+  padding: 0 4px;
+  box-shadow: 0 2px 6px rgba(0, 229, 255, 0.35);
+  z-index: 2;
+}
+
 .vsidebar-running-btn:hover {
   background: linear-gradient(
     135deg,

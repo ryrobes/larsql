@@ -173,6 +173,23 @@ const VerticalSidebar = ({
     }
   };
 
+  // Group running sessions by cascade_id so multiple runs share one tile
+  const runningSessionGroups = [];
+  const runningSessionGroupMap = new Map();
+  runningSessions.forEach((session) => {
+    const groupKey = session.cascade_id || session.session_id;
+    if (!runningSessionGroupMap.has(groupKey)) {
+      const group = {
+        key: groupKey,
+        cascadeId: session.cascade_id,
+        sessions: [],
+      };
+      runningSessionGroupMap.set(groupKey, group);
+      runningSessionGroups.push(group);
+    }
+    runningSessionGroupMap.get(groupKey).sessions.push(session);
+  });
+
   return (
     <div className="vertical-sidebar">
       {/* Logo/Brand */}
@@ -204,22 +221,40 @@ const VerticalSidebar = ({
               <span>{runningSessions.length}</span>
             </div>
             <div className="vsidebar-running-list">
-              {runningSessions.map((session) => {
-                const isCurrent = session.session_id === currentSessionId;
+              {runningSessionGroups.map((group) => {
+                const isCurrent = group.sessions.some(
+                  (session) => session.session_id === currentSessionId
+                );
+                const currentSession = isCurrent
+                  ? group.sessions.find((session) => session.session_id === currentSessionId)
+                  : null;
+                const getSessionAge = (session) => {
+                  const age = Number(session.age_seconds);
+                  if (!Number.isFinite(age) || age < 0) return Number.POSITIVE_INFINITY;
+                  return age;
+                };
+                const displaySession = currentSession || group.sessions.reduce((best, session) => {
+                  if (!best) return session;
+                  return getSessionAge(session) < getSessionAge(best) ? session : best;
+                }, group.sessions[0]);
+                const totalCost = group.sessions.reduce((sum, session) => {
+                  const cost = Number(session.cost);
+                  return Number.isFinite(cost) ? sum + cost : sum;
+                }, 0);
 
                 // DEBUG: Log session data to understand what we're getting
                 if (process.env.NODE_ENV === 'development-NO' && Math.random() < 0.1) {
                   console.log('[VerticalSidebar] Session data:', {
-                    session_id: session.session_id,
-                    cascade_id: session.cascade_id,
-                    age_seconds: session.age_seconds,
-                    cost: session.cost,
-                    start_time: session.start_time,
+                    session_id: displaySession.session_id,
+                    cascade_id: displaySession.cascade_id,
+                    age_seconds: displaySession.age_seconds,
+                    cost: displaySession.cost,
+                    start_time: displaySession.start_time,
                   });
                 }
 
                 // Generate a short display name from cascade_id
-                const displayName = (session.cascade_id || 'cascade')
+                const displayName = (displaySession.cascade_id || 'cascade')
                   .replace(/[_-]/g, ' ')
                   .split(' ')
                   .map(word => word[0]?.toUpperCase() || '')
@@ -228,28 +263,28 @@ const VerticalSidebar = ({
 
                 // Format cost for display (always 3 decimal places)
                 // Note: No $ prefix since we show currency icon separately
-                const costDisplay = session.cost != null && !isNaN(session.cost)
-                  ? (session.cost < 0.001 ? '<0.001' : session.cost.toFixed(3))
+                const costDisplay = totalCost > 0
+                  ? (totalCost < 0.001 ? '<0.001' : totalCost.toFixed(3))
                   : '0.000';
 
                 // Calculate live duration client-side for smooth ticking
                 // SAFETY: Ensure age_seconds is a reasonable number (not a timestamp)
                 let ageSeconds = 0;
 
-                if (session.age_seconds != null && !isNaN(session.age_seconds)) {
-                  const rawAge = session.age_seconds;
+                if (displaySession.age_seconds != null && !isNaN(displaySession.age_seconds)) {
+                  const rawAge = displaySession.age_seconds;
 
                   // If age_seconds looks like a Unix timestamp (> 1 billion), it's wrong
                   if (rawAge > 1000000000) {
-                    console.warn('[VerticalSidebar] age_seconds looks like timestamp:', rawAge, 'for session:', session.session_id);
+                    console.warn('[VerticalSidebar] age_seconds looks like timestamp:', rawAge, 'for session:', displaySession.session_id);
                     ageSeconds = 0; // Fallback: show 0 instead of garbage
                   } else if (rawAge > 86400) {
                     // More than 24 hours but less than timestamp range - clamp it
-                    console.warn('[VerticalSidebar] age_seconds > 24 hours:', rawAge, 'for session:', session.session_id);
+                    console.warn('[VerticalSidebar] age_seconds > 24 hours:', rawAge, 'for session:', displaySession.session_id);
                     ageSeconds = Math.floor(rawAge); // Use as-is but floor it
                   } else if (rawAge >= 0) {
                     // Normal case: calculate elapsed time from stored start
-                    const startTime = sessionStartTimesRef.current[session.session_id];
+                    const startTime = sessionStartTimesRef.current[displaySession.session_id];
                     if (startTime && (Date.now() - startTime) < 86400000) {
                       // Have valid start time, use it for smooth ticking
                       const elapsedMs = currentTime - startTime;
@@ -260,7 +295,7 @@ const VerticalSidebar = ({
                     }
                   } else {
                     // Negative age - use 0
-                    console.warn('[VerticalSidebar] Negative age_seconds:', rawAge, 'for session:', session.session_id);
+                    console.warn('[VerticalSidebar] Negative age_seconds:', rawAge, 'for session:', displaySession.session_id);
                     ageSeconds = 0;
                   }
                 } else {
@@ -287,28 +322,32 @@ const VerticalSidebar = ({
                 }
 
                 // Get the latest image for this session (for faint background)
-                const sessionImage = sessionImages[session.session_id];
+                const sessionImage = sessionImages[displaySession.session_id];
 
                 return (
                   <RichTooltip
-                    key={session.session_id}
+                    key={group.key}
                     placement="right"
                     content={
                       <RunningCascadeTooltipContent
-                        cascadeId={session.cascade_id}
-                        sessionId={session.session_id}
-                        ageSeconds={session.age_seconds}
-                        cascadeFile={session.cascade_file}
-                        status={session.status}
-                        cost={session.cost}
+                        cascadeId={displaySession.cascade_id}
+                        sessionId={displaySession.session_id}
+                        sessionCount={group.sessions.length}
+                        ageSeconds={displaySession.age_seconds}
+                        cascadeFile={displaySession.cascade_file}
+                        status={displaySession.status}
+                        cost={totalCost}
                       />
                     }
                   >
                     <button
                       className={`vsidebar-running-btn ${isCurrent ? 'current' : ''} ${sessionImage ? 'has-image' : ''}`}
-                      onClick={() => onJoinSession && onJoinSession(session)}
+                      onClick={() => onJoinSession && onJoinSession(displaySession)}
                       style={sessionImage ? { '--bg-image-url': `url(${sessionImage})` } : undefined}
                     >
+                      {group.sessions.length > 1 && (
+                        <span className="vsidebar-running-count">{group.sessions.length}</span>
+                      )}
                       <span className="vsidebar-running-avatar">
                         {displayName}
                       </span>

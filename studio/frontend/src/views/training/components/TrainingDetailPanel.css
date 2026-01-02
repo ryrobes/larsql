@@ -179,36 +179,30 @@
   overflow: hidden;
 }
 
-.training-detail-code {
-  margin: 0;
-  padding: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  line-height: 1.6;
-  color: #cbd5e1;
-  overflow-x: auto;
-  white-space: pre;
-  max-height: 300px;
-  overflow-y: auto;
+/* Syntax highlighter container styling */
+.training-detail-code-container pre {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
 }
 
-.training-detail-code::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+/* Scrollbar for syntax highlighter */
+.training-detail-code-container pre::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.training-detail-code::-webkit-scrollbar-track {
+.training-detail-code-container pre::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.training-detail-code::-webkit-scrollbar-thumb {
+.training-detail-code-container pre::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.2);
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
-.training-detail-code-output {
-  color: #34d399;
-  font-weight: 600;
+.training-detail-code-container pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
 }
 
 /* ========================================

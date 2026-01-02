@@ -1,6 +1,8 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
 import { useNavigate } from 'react-router-dom';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { studioDarkPrismTheme } from '../../../styles/studioPrismTheme';
 import { ROUTES } from '../../../routes.helpers';
 import './TrainingDetailPanel.css';
 
@@ -133,7 +135,25 @@ const TrainingDetailPanel = ({ example, onClose }) => {
             <span className="training-detail-section-size">{example.user_input.length} chars</span>
           </div>
           <div className="training-detail-code-container">
-            <pre className="training-detail-code">{formatUserInput()}</pre>
+            <SyntaxHighlighter
+              language="json"
+              style={studioDarkPrismTheme}
+              customStyle={{
+                margin: 0,
+                borderRadius: 0,
+                background: 'transparent',
+                fontSize: '11px',
+                maxHeight: '300px',
+                overflow: 'auto'
+              }}
+              codeTagProps={{
+                style: {
+                  fontFamily: "'JetBrains Mono', monospace"
+                }
+              }}
+            >
+              {formatUserInput()}
+            </SyntaxHighlighter>
           </div>
         </div>
 
@@ -149,7 +169,26 @@ const TrainingDetailPanel = ({ example, onClose }) => {
             )}
           </div>
           <div className="training-detail-code-container">
-            <pre className="training-detail-code training-detail-code-output">{formatAssistantOutput()}</pre>
+            <SyntaxHighlighter
+              language={example.assistant_output.startsWith('{') || example.assistant_output.startsWith('[') ? 'json' : 'text'}
+              style={studioDarkPrismTheme}
+              customStyle={{
+                margin: 0,
+                borderRadius: 0,
+                background: 'transparent',
+                fontSize: '12px',
+                maxHeight: '300px',
+                overflow: 'auto'
+              }}
+              codeTagProps={{
+                style: {
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: '#34d399'  // Green for output
+                }
+              }}
+            >
+              {formatAssistantOutput()}
+            </SyntaxHighlighter>
           </div>
         </div>
 

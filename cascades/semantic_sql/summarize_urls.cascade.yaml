@@ -1,18 +1,19 @@
 # SUMMARIZE_URLS - Extract and summarize URLs from text
-# Detects URLs in text, fetches content via curl_text, and returns summary
+# Fetches URLs using Playwright (handles JavaScript), returns summary
 
 cascade_id: semantic_summarize_urls
 
 description: |
-  Extracts URLs from text, fetches web content, and returns concise summary.
-  Uses curl_text tool for reliable fetching with HTML text extraction.
+  Extracts URLs from text, fetches web content using headless browser,
+  and returns concise summary. Uses Playwright for JavaScript-heavy sites.
+  Browser instance is created and destroyed for each fetch (no orphaned processes).
 
 inputs_schema:
   text: Text that may contain URLs
 
 sql_function:
   name: semantic_summarize_urls
-  description: Extracts URLs from text, fetches content, and returns summary
+  description: Extracts URLs from text, fetches with browser, returns summary
   args:
     - name: text
       type: VARCHAR
@@ -21,15 +22,15 @@ sql_function:
   operators:
     - "SUMMARIZE_URLS({{ text }})"
     - "URL_SUMMARY({{ text }})"
-  cache: true
+  cache: false
 
 cells:
   - name: process
-    #model: google/gemini-2.5-flash-lite
-    traits: [curl_text]
+    model: google/gemini-3-flash-preview
+    traits: [fetch_url_with_browser]
 
     instructions: |
-      Extract any URL from the text, fetch it, and summarize.
+      Extract URL from text, fetch it using Playwright browser, and summarize.
 
       TEXT:
       {{ input.text }}
@@ -39,12 +40,17 @@ cells:
       2. If NO URL: return empty string ""
       3. If URL found:
          - Extract the URL
-         - Call curl_text("<url>") to fetch content
-         - If curl_text returns ERROR: return empty string ""
-         - Otherwise: summarize the fetched content in 2-3 sentences
-         - Return ONLY the summary (no preamble)
+         - Call fetch_url_with_browser("<url>") to get rendered content
+         - If fetch returns ERROR: return empty string ""
+         - Otherwise: summarize the content in 2-3 sentences
+         - Return ONLY the summary (no preamble like "Summary:" or "The article discusses...")
 
-      Be concise. Return just the summary or empty string.
+      The browser tool handles JavaScript and waits for content to load.
+      Browser is automatically cleaned up after each call.
+
+      If there is NO URL - return "No Links"
+      If you are seeing the page return data please clean out the json fences and preface and JUST return the page summarization text.
+      If the return is a timeout - retrun "Timed Out ({THE_URL})".
 
     rules:
-      max_turns: 2
+      max_turns: 3
