@@ -1,0 +1,80 @@
+# ALIGNS - Narrative alignment score
+# Returns 0.0-1.0 score for how well text aligns with a narrative
+#
+# SQL Usage:
+#   SELECT * FROM tweets WHERE text ALIGNS 'our product narrative' > 0.7
+#   SELECT author, text ALIGNS 'SQL is the future of AI' as alignment_score FROM tweets
+#
+# Returns: 0.0 (contradicts) to 1.0 (perfectly aligned)
+
+cascade_id: semantic_aligns
+
+description: |
+  Narrative alignment scoring - returns 0.0-1.0 for how well text aligns with a narrative.
+  Goes beyond simple topic matching to evaluate consistency, support, and thematic fit.
+
+inputs_schema:
+  text: The text to evaluate
+  narrative: The narrative/thesis to check alignment against
+
+sql_function:
+  name: semantic_aligns
+  description: Returns 0.0-1.0 score for narrative alignment
+  args:
+    - name: text
+      type: VARCHAR
+    - name: narrative
+      type: VARCHAR
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+    - "{{ text }} ALIGNS {{ narrative }}"
+    - "{{ text }} ALIGNS WITH {{ narrative }}"
+  cache: true
+
+cells:
+  - name: evaluate_alignment
+    model: google/gemini-2.5-flash-lite
+    
+    instructions: |
+      Rate how well this text aligns with the given narrative.
+
+      TEXT:
+      {{ input.text }}
+
+      NARRATIVE:
+      {{ input.narrative }}
+
+      Consider multiple dimensions:
+      - **Thematic alignment**: Does the text support the narrative's core themes?
+      - **Evidence quality**: Does it provide evidence for or against?
+      - **Consistency**: Does it contradict the narrative or support it?
+      - **Relevance**: Is it about the same domain/topic?
+
+      Scoring guide:
+      - 0.0-0.2: Actively contradicts or undermines the narrative
+      - 0.2-0.4: Unrelated or weakly against
+      - 0.4-0.6: Neutral or mixed signals
+      - 0.6-0.8: Supports the narrative, aligned messaging
+      - 0.8-1.0: Strongly validates the narrative, perfect alignment
+
+      Examples:
+      - Narrative: "SQL is becoming important for AI workflows"
+        Text: "We're using SQL to query our LLM results" → 0.85
+        Text: "SQL is outdated for modern applications" → 0.1
+        Text: "Python is great for data science" → 0.3 (unrelated)
+        
+      - Narrative: "AI tools should be accessible to non-developers"
+        Text: "Natural language interfaces democratize AI" → 0.9
+        Text: "You need a PhD to use these tools" → 0.05
+
+      Return ONLY a decimal number between 0.0 and 1.0.
+      No explanation, no other text.
+
+    rules:
+      max_turns: 1
+      
+    output_schema:
+      type: number
+      minimum: 0.0
+      maximum: 1.0

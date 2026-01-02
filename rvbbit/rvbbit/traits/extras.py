@@ -189,3 +189,122 @@ def take_screenshot(url: str) -> str:
     #    browser.close()
     # return path
     return "Screenshot placeholder: Playwright not installed."
+
+
+@simple_eddy
+def curl_text(url: str, max_length: int = 10000) -> str:
+    """
+    Fetch a URL and extract readable text content.
+
+    Handles:
+    - HTTP/HTTPS requests with redirects
+    - HTML to text conversion (no BeautifulSoup required!)
+    - Error handling (404, timeouts, etc.)
+    - Content truncation to reasonable length
+
+    Args:
+        url: URL to fetch (http://, https://, or t.co shortlinks)
+        max_length: Maximum characters to return (default 10000)
+
+    Returns:
+        Readable text extracted from the page, or error message if fetch fails
+
+    Examples:
+        curl_text("https://example.com/article")
+        curl_text("https://t.co/abc123")
+    """
+    import requests
+    import re
+
+    # Clean URL
+    url = url.strip()
+    if not url:
+        return "ERROR: No URL provided"
+
+    # Ensure http/https prefix
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+
+    try:
+        # Fetch URL with redirects, timeout, and user agent
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; RVBBIT/1.0; +https://github.com/rvbbit)'
+        }
+
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=10,
+            allow_redirects=True,
+            verify=True
+        )
+
+        # Check status
+        if response.status_code != 200:
+            return f"ERROR: HTTP {response.status_code} - {response.reason}"
+
+        # Get content type
+        content_type = response.headers.get('Content-Type', '').lower()
+
+        # Handle different content types
+        if 'application/json' in content_type:
+            # JSON content - pretty print
+            try:
+                import json
+                data = response.json()
+                text = json.dumps(data, indent=2)
+            except:
+                text = response.text
+
+        elif 'text/plain' in content_type:
+            # Plain text - use as-is
+            text = response.text
+
+        elif 'text/html' in content_type or 'application/xhtml' in content_type:
+            # HTML - extract readable text using simple regex (no dependencies!)
+            html = response.text
+
+            # Remove script, style, and nav elements
+            html = re.sub(r'<script[^>]*?>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r'<style[^>]*?>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r'<nav[^>]*?>.*?</nav>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r'<footer[^>]*?>.*?</footer>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r'<header[^>]*?>.*?</header>', '', html, flags=re.DOTALL | re.IGNORECASE)
+
+            # Remove all HTML tags
+            text = re.sub(r'<[^>]+>', '', html)
+
+            # Decode HTML entities
+            import html as html_module
+            text = html_module.unescape(text)
+
+            # Clean up whitespace
+            text = re.sub(r'\s+', ' ', text)
+            text = text.strip()
+
+        else:
+            # Unknown content type
+            return f"ERROR: Unsupported content type: {content_type}"
+
+        # Truncate to max length
+        if len(text) > max_length:
+            text = text[:max_length] + f"\n\n[Truncated - original was {len(text)} chars]"
+
+        # Return empty string if no useful text extracted
+        if not text or len(text.strip()) < 10:
+            return "ERROR: No readable text extracted from URL"
+
+        return text
+
+    except requests.exceptions.Timeout:
+        return "ERROR: Request timed out after 10 seconds"
+    except requests.exceptions.TooManyRedirects:
+        return "ERROR: Too many redirects"
+    except requests.exceptions.SSLError as e:
+        return f"ERROR: SSL verification failed: {e}"
+    except requests.exceptions.ConnectionError as e:
+        return f"ERROR: Connection failed: {e}"
+    except requests.exceptions.RequestException as e:
+        return f"ERROR: Request failed: {e}"
+    except Exception as e:
+        return f"ERROR: Unexpected error: {type(e).__name__}: {e}"

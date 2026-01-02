@@ -5,10 +5,12 @@ Endpoints for viewing and curating training examples from unified_logs.
 Works with the universal training system - mark any cascade execution as trainable.
 """
 
+import logging
 from flask import Blueprint, request, jsonify
 from rvbbit.db_adapter import get_db
 from rvbbit.training_system import mark_as_trainable, get_training_stats
 
+logger = logging.getLogger(__name__)
 training_bp = Blueprint('training', __name__)
 
 
@@ -78,25 +80,49 @@ def get_training_examples():
         db = get_db()
         result = db.query(query)
 
-        # db.query() returns list of dicts
-        examples = [
-            {
-                'trace_id': row['trace_id'],
-                'session_id': row['session_id'],
-                'cascade_id': row['cascade_id'],
-                'cell_name': row['cell_name'],
-                'user_input': row['user_input'][:500] if row.get('user_input') else '',
-                'assistant_output': row['assistant_output'][:500] if row.get('assistant_output') else '',
-                'trainable': row.get('trainable', False),
-                'verified': row.get('verified', False),
-                'confidence': row.get('confidence', 0.0),
-                'timestamp': row['timestamp'].isoformat() if row.get('timestamp') else None,
-                'model': row.get('model', ''),
-                'cost': row.get('cost', 0.0),
-                'caller_id': row.get('caller_id', '')
-            }
-            for row in result
-        ]
+        # db.query() returns list of dicts - sanitize for JSON
+        examples = []
+        for row in result:
+            try:
+                # Convert bytes to str if needed
+                def safe_str(val):
+                    if val is None:
+                        return ''
+                    if isinstance(val, bytes):
+                        return val.decode('utf-8', errors='ignore')
+                    return str(val)
+
+                # Convert timestamp to ISO string
+                timestamp_str = None
+                if row.get('timestamp'):
+                    try:
+                        if hasattr(row['timestamp'], 'isoformat'):
+                            timestamp_str = row['timestamp'].isoformat()
+                        else:
+                            timestamp_str = str(row['timestamp'])
+                    except:
+                        timestamp_str = None
+
+                example = {
+                    'trace_id': safe_str(row['trace_id']),
+                    'session_id': safe_str(row['session_id']),
+                    'cascade_id': safe_str(row['cascade_id']),
+                    'cell_name': safe_str(row['cell_name']),
+                    'user_input': safe_str(row.get('user_input', ''))[:500],
+                    'assistant_output': safe_str(row.get('assistant_output', ''))[:500],
+                    'trainable': bool(row.get('trainable', False)),
+                    'verified': bool(row.get('verified', False)),
+                    'confidence': float(row['confidence']) if row.get('confidence') is not None else None,
+                    'timestamp': timestamp_str,
+                    'model': safe_str(row.get('model', '')),
+                    'cost': float(row.get('cost', 0.0)),
+                    'caller_id': safe_str(row.get('caller_id', ''))
+                }
+                examples.append(example)
+            except Exception as e:
+                # Skip rows that fail to serialize
+                logger.warning(f"Failed to serialize row: {e}")
+                continue
 
         return jsonify({'examples': examples, 'count': len(examples)})
 
@@ -215,23 +241,44 @@ def get_session_logs():
         db = get_db()
         result = db.query(query)
 
-        # db.query() returns list of dicts
-        logs = [
-            {
-                'trace_id': row['trace_id'],
-                'cascade_id': row['cascade_id'],
-                'cell_name': row['cell_name'],
-                'user_input': row.get('user_input', ''),
-                'assistant_output': row.get('assistant_output', ''),
-                'trainable': row.get('trainable', False),
-                'verified': row.get('verified', False),
-                'confidence': row.get('confidence', 0.0),
-                'timestamp': row['timestamp'].isoformat() if row.get('timestamp') else None,
-                'model': row.get('model', ''),
-                'cost': row.get('cost', 0.0)
-            }
-            for row in result
-        ]
+        # db.query() returns list of dicts - sanitize for JSON
+        def safe_str(val):
+            if val is None:
+                return ''
+            if isinstance(val, bytes):
+                return val.decode('utf-8', errors='ignore')
+            return str(val)
+
+        logs = []
+        for row in result:
+            try:
+                timestamp_str = None
+                if row.get('timestamp'):
+                    try:
+                        if hasattr(row['timestamp'], 'isoformat'):
+                            timestamp_str = row['timestamp'].isoformat()
+                        else:
+                            timestamp_str = str(row['timestamp'])
+                    except:
+                        timestamp_str = None
+
+                log = {
+                    'trace_id': safe_str(row['trace_id']),
+                    'cascade_id': safe_str(row['cascade_id']),
+                    'cell_name': safe_str(row['cell_name']),
+                    'user_input': safe_str(row.get('user_input', '')),
+                    'assistant_output': safe_str(row.get('assistant_output', '')),
+                    'trainable': bool(row.get('trainable', False)),
+                    'verified': bool(row.get('verified', False)),
+                    'confidence': float(row['confidence']) if row.get('confidence') is not None else None,
+                    'timestamp': timestamp_str,
+                    'model': safe_str(row.get('model', '')),
+                    'cost': float(row.get('cost', 0.0))
+                }
+                logs.append(log)
+            except Exception as e:
+                logger.warning(f"Failed to serialize log row: {e}")
+                continue
 
         return jsonify({'logs': logs, 'count': len(logs), 'session_id': session_id})
 

@@ -13,7 +13,7 @@ from .visualizer import (
 
 # Register batteries-included eddies
 from .traits.sql import run_sql
-from .traits.extras import run_code, take_screenshot, linux_shell, linux_shell_dangerous
+from .traits.extras import run_code, take_screenshot, linux_shell, linux_shell_dangerous, curl_text
 from .traits.human import ask_human, ask_human_custom, request_decision
 from .traits.display import show_ui
 from .traits.artifacts import create_artifact, list_artifacts, get_artifact
@@ -48,6 +48,7 @@ from .traits.embedding_storage import (
 register_trait("smart_sql_run", run_sql)
 register_trait("linux_shell", linux_shell)
 register_trait("linux_shell_dangerous", linux_shell_dangerous)
+register_trait("curl_text", curl_text)
 register_trait("run_code", run_code)
 register_trait("take_screenshot", take_screenshot)
 register_trait("ask_human", ask_human)

@@ -1304,3 +1304,86 @@ def get_udf_cache_stats() -> Dict[str, Any]:
         pass
 
     return stats
+
+
+def register_dynamic_sql_functions(connection):
+    """
+    Dynamically register all SQL functions from cascade registry.
+    
+    This discovers cascades in cascades/semantic_sql/*.yaml and registers
+    them as DuckDB UDFs. Enables user-defined operators without code changes!
+    
+    Called once per DuckDB connection during postgres_server startup.
+    """
+    try:
+        from ..semantic_sql.registry import initialize_registry, get_sql_function_registry
+        from ..semantic_sql.executor import execute_cascade_udf
+        
+        # Initialize registry to discover all cascades
+        initialize_registry(force=True)
+        registry = get_sql_function_registry()
+        
+        print(f"[DynamicUDF] Registering {len(registry)} SQL functions from cascade registry...")
+        
+        for name, entry in registry.items():
+            # Skip if already registered as hardcoded function
+            hardcoded = ['semantic_matches', 'semantic_score', 'semantic_implies', 
+                        'semantic_contradicts', 'matches', 'score', 'implies', 'contradicts']
+            if name in hardcoded:
+                continue
+            
+            # Create wrapper that calls execute_cascade_udf
+            def make_wrapper(fn_name, fn_entry):
+                def wrapper(*args):
+                    # Convert args to inputs dict
+                    arg_names = [a['name'] for a in fn_entry.args]
+                    inputs = {arg_names[i]: args[i] if i < len(args) else None 
+                             for i in range(len(arg_names))}
+                    
+                    # Remove None values
+                    inputs = {k: v for k, v in inputs.items() if v is not None}
+                    
+                    # Call cascade via executor
+                    import json
+                    result = execute_cascade_udf(fn_name, json.dumps(inputs))
+                    return result
+                return wrapper
+            
+            # Register function with DuckDB
+            try:
+                udf_func = make_wrapper(name, entry)
+
+                # Map DuckDB types
+                return_type = entry.returns
+                if return_type == 'JSON':
+                    return_type = 'VARCHAR'  # DuckDB doesn't have JSON type, use VARCHAR
+                elif return_type == 'TABLE':
+                    # Table functions not supported via create_function, skip
+                    print(f"[DynamicUDF]   ⚠️  Skipping table function: {name}")
+                    continue
+
+                connection.create_function(
+                    name,
+                    udf_func,
+                    return_type=return_type
+                )
+                print(f"[DynamicUDF]   ✓ Registered: {name}() → {entry.cascade_path}")
+
+                # ALSO register without "semantic_" prefix for SQL convenience
+                if name.startswith('semantic_'):
+                    short_name = name.replace('semantic_', '')
+                    try:
+                        connection.create_function(short_name, udf_func, return_type=return_type)
+                        print(f"[DynamicUDF]   ✓ Alias: {short_name}() → {name}()")
+                    except:
+                        pass  # Might conflict with hardcoded functions, that's OK
+
+            except Exception as e:
+                print(f"[DynamicUDF]   ✗ Failed to register {name}: {e}")
+        
+        print(f"[DynamicUDF] ✓ Dynamic registration complete")
+        
+    except Exception as e:
+        print(f"[DynamicUDF] ERROR: Dynamic registration failed: {e}")
+        import traceback
+        traceback.print_exc()

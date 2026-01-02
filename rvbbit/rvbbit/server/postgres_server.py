@@ -135,11 +135,21 @@ class ClientConnection:
             # Reset our transaction status to idle
             self.transaction_status = 'I'
 
-            # Register RVBBIT UDFs (rvbbit_udf + rvbbit_cascade_udf)
+            # Register RVBBIT UDFs (rvbbit_udf + rvbbit_cascade_udf + hardcoded aggregates)
             register_rvbbit_udf(self.duckdb_conn)
+
+            # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
+            from ..sql_tools.udf import register_dynamic_sql_functions
+            register_dynamic_sql_functions(self.duckdb_conn)
 
             # DuckDB v1.4.2+ has built-in pg_catalog support
             print(f"[{self.session_id}]   ℹ️  Using DuckDB's built-in pg_catalog (v1.4.2+)")
+
+            # Create metadata table for tracking ATTACH commands (persistent DBs only)
+            self._create_attachments_metadata_table()
+
+            # Replay any previously attached databases from metadata
+            self._replay_attachments()
 
             # Create views for ATTACH'd databases so they appear in DBeaver
             self._create_attached_db_views()
@@ -162,6 +172,110 @@ class ClientConnection:
         """
         with self.db_lock:
             return self.duckdb_conn.execute(query)
+
+    def _create_attachments_metadata_table(self):
+        """
+        Create metadata table for tracking ATTACH commands.
+
+        This table persists ATTACH statements so they can be replayed when
+        a new connection is established to the same database file.
+
+        Only created for persistent databases (not in-memory).
+        """
+        if not self.is_persistent_db:
+            return  # Only for persistent databases
+
+        try:
+            # Check if table already exists
+            existing = self.duckdb_conn.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = '_rvbbit_attachments'
+            """).fetchall()
+
+            if not existing:
+                # Create metadata table
+                self.duckdb_conn.execute("""
+                    CREATE TABLE _rvbbit_attachments (
+                        id INTEGER PRIMARY KEY,
+                        database_alias VARCHAR NOT NULL,
+                        database_path VARCHAR NOT NULL,
+                        attached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(database_alias)
+                    )
+                """)
+
+                # Create sequence for auto-incrementing IDs
+                self.duckdb_conn.execute("""
+                    CREATE SEQUENCE _rvbbit_attachments_seq START 1
+                """)
+
+                print(f"[{self.session_id}]   ✅ Created _rvbbit_attachments metadata table")
+        except Exception as e:
+            # Non-fatal - just log the error
+            print(f"[{self.session_id}]   ⚠️  Could not create attachments metadata table: {e}")
+
+    def _replay_attachments(self):
+        """
+        Re-execute ATTACH commands from metadata table.
+
+        Called on session startup to restore previously attached databases.
+        If an attached file no longer exists, it's removed from metadata.
+        """
+        if not self.is_persistent_db:
+            return  # Only for persistent databases
+
+        try:
+            # Check if metadata table exists
+            tables = self.duckdb_conn.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = '_rvbbit_attachments'
+            """).fetchall()
+
+            if not tables:
+                return  # No attachments to replay
+
+            # Get all stored attachments
+            attachments = self.duckdb_conn.execute("""
+                SELECT database_alias, database_path
+                FROM _rvbbit_attachments
+                ORDER BY id
+            """).fetchall()
+
+            if not attachments:
+                return
+
+            print(f"[{self.session_id}]   🔗 Replaying {len(attachments)} ATTACH command(s)...")
+
+            replayed_count = 0
+            failed_count = 0
+
+            for alias, path in attachments:
+                try:
+                    # Re-execute ATTACH
+                    self.duckdb_conn.execute(f"ATTACH '{path}' AS {alias}")
+                    print(f"[{self.session_id}]      ✓ ATTACH '{path}' AS {alias}")
+                    replayed_count += 1
+                except Exception as e:
+                    # File might not exist anymore - remove from metadata
+                    try:
+                        self.duckdb_conn.execute(
+                            "DELETE FROM _rvbbit_attachments WHERE database_alias = ?",
+                            [alias]
+                        )
+                        print(f"[{self.session_id}]      ⚠️  Could not replay ATTACH {alias}: {e}")
+                        print(f"[{self.session_id}]         Removed from metadata (file may have been deleted)")
+                        failed_count += 1
+                    except:
+                        pass
+
+            if replayed_count > 0:
+                print(f"[{self.session_id}]   ✅ Replayed {replayed_count} ATTACH command(s)")
+            if failed_count > 0:
+                print(f"[{self.session_id}]   ⚠️  {failed_count} ATTACH command(s) failed (files removed)")
+
+        except Exception as e:
+            # Non-fatal - just log the error
+            print(f"[{self.session_id}]   ⚠️  Could not replay attachments: {e}")
 
     def _create_pg_catalog_views(self):
         """
@@ -567,6 +681,71 @@ class ClientConnection:
             # Non-fatal - ATTACH views are nice-to-have
             print(f"[{self.session_id}]   ⚠️  Could not create ATTACH'd DB views: {e}")
 
+    def _handle_attach(self, query: str):
+        """
+        Handle ATTACH command - execute and persist to metadata.
+
+        Parses ATTACH statement, executes it on DuckDB, stores metadata for
+        persistence, and creates views for the attached database's tables.
+
+        Args:
+            query: ATTACH statement (e.g., "ATTACH '/path/db.duckdb' AS my_db")
+        """
+        import re
+
+        print(f"[{self.session_id}]   🔗 ATTACH command detected")
+
+        # Parse ATTACH statement
+        # Handles: ATTACH '/path' AS alias, ATTACH DATABASE '/path' AS alias, ATTACH '/path' (alias = filename)
+        match = re.search(r"ATTACH\s+(?:DATABASE\s+)?['\"]([^'\"]+)['\"](?:\s+AS\s+(\w+))?", query, re.IGNORECASE)
+
+        if not match:
+            send_error(self.sock, "Could not parse ATTACH statement", transaction_status=self.transaction_status)
+            print(f"[{self.session_id}]   ✗ Could not parse ATTACH statement")
+            return
+
+        db_path = match.group(1)
+        db_alias = match.group(2)
+
+        # If no alias provided, DuckDB uses filename without extension
+        if not db_alias:
+            import os
+            db_alias = os.path.splitext(os.path.basename(db_path))[0]
+
+        try:
+            # 1. Execute ATTACH
+            self.duckdb_conn.execute(query)
+            print(f"[{self.session_id}]      ✓ Attached: {db_path} AS {db_alias}")
+
+            # 2. Store in metadata (only for persistent databases)
+            if self.is_persistent_db:
+                try:
+                    # Delete if exists, then insert (simpler than INSERT OR REPLACE)
+                    self.duckdb_conn.execute(
+                        "DELETE FROM _rvbbit_attachments WHERE database_alias = ?",
+                        [db_alias]
+                    )
+                    self.duckdb_conn.execute("""
+                        INSERT INTO _rvbbit_attachments (id, database_alias, database_path)
+                        VALUES (nextval('_rvbbit_attachments_seq'), ?, ?)
+                    """, [db_alias, db_path])
+                    print(f"[{self.session_id}]      ✓ Stored in metadata")
+                except Exception as e:
+                    print(f"[{self.session_id}]      ⚠️  Could not store metadata: {e}")
+
+            # 3. Create views for attached database tables
+            self._create_attached_db_views()
+
+            # 4. Send success response
+            self.sock.sendall(CommandComplete.encode('ATTACH'))
+            self.sock.sendall(ReadyForQuery.encode('I'))
+            print(f"[{self.session_id}]   ✅ ATTACH complete")
+
+        except Exception as e:
+            error_message = str(e)
+            send_error(self.sock, error_message, transaction_status=self.transaction_status)
+            print(f"[{self.session_id}]   ✗ ATTACH error: {error_message}")
+
     def _handle_detach(self, query: str):
         """
         Handle DETACH command - cleanup views before detaching.
@@ -582,7 +761,18 @@ class ClientConnection:
 
         if match:
             db_name = match.group(1)
-            print(f"[{self.session_id}]   🗑️  DETACH {db_name} - cleaning up views...")
+            print(f"[{self.session_id}]   🗑️  DETACH {db_name} - cleaning up...")
+
+            # Remove from metadata table (persistent databases only)
+            if self.is_persistent_db:
+                try:
+                    deleted = self.duckdb_conn.execute(
+                        "DELETE FROM _rvbbit_attachments WHERE database_alias = ?",
+                        [db_name]
+                    )
+                    print(f"[{self.session_id}]      🗑️  Removed from metadata")
+                except Exception as e:
+                    print(f"[{self.session_id}]      ⚠️  Could not remove metadata: {e}")
 
             # Drop all views for this database
             try:
@@ -861,6 +1051,11 @@ class ClientConnection:
                 return
             elif query_upper in ['ROLLBACK', 'ROLLBACK TRANSACTION', 'ROLLBACK WORK', 'ABORT']:
                 self._handle_rollback()
+                return
+
+            # Handle ATTACH commands - track and persist for reconnection
+            if query_upper.startswith('ATTACH '):
+                self._handle_attach(query)
                 return
 
             # Handle DETACH commands - cleanup views for the detached database
