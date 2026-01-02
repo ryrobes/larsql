@@ -1,0 +1,66 @@
+# TOPICS / THEMES - Topic extraction
+# Extracts N main topics from a text collection
+#
+# SQL Usage:
+#   SELECT THEMES(review_text, 5) as topics FROM reviews
+#   SELECT category, THEMES(comment) FROM feedback GROUP BY category
+#
+# Returns: JSON array of topic strings
+
+cascade_id: semantic_themes
+
+description: |
+  Topic extraction - extracts N main topics from a text collection.
+  Returns a simple JSON array of topic names.
+
+inputs_schema:
+  texts: JSON array of texts to analyze
+  num_topics: Number of topics to extract (default 5)
+
+sql_function:
+  name: semantic_themes
+  description: Extracts N main topics from texts, returns JSON array of topic strings
+  args:
+    - name: texts
+      type: JSON
+    - name: num_topics
+      type: INTEGER
+      default: "5"
+  returns: JSON
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+    - "TOPICS({{ texts }})"
+    - "TOPICS({{ texts }}, {{ num_topics }})"
+    - "THEMES({{ texts }})"
+    - "THEMES({{ texts }}, {{ num_topics }})"
+  cache: true
+
+cells:
+  - name: extract_topics
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Analyze these texts and identify the {{ input.num_topics | default(5) }} main topics.
+
+      TEXTS:
+      {{ input.texts }}
+
+      Return ONLY a JSON array of topic names - short, descriptive labels.
+      Do not wrap in markdown code fences or add any other formatting.
+
+      Example output format:
+      ["Topic 1", "Topic 2", "Topic 3"]
+
+      Rules:
+      - Return ONLY the raw JSON array, no markdown formatting
+      - Extract exactly {{ input.num_topics | default(5) }} topics
+      - Topics should be distinct and non-overlapping
+      - Topic names should be concise (2-5 words max)
+      - Topics should cover the main themes in the texts
+      - Order topics by prevalence (most common first)
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: string

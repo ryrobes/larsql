@@ -792,6 +792,332 @@ def rvbbit_materialize_table(
         return json_module.dumps({"error": str(e), "status": "failed"})
 
 
+def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
+    """
+    Register embedding-based UDFs for Semantic SQL.
+
+    Registers:
+        - semantic_embed(text, model?) → DOUBLE[]
+        - vector_search_json(query, table, limit?, threshold?) → VARCHAR (JSON)
+        - similar_to(text1, text2) → DOUBLE
+
+    Args:
+        connection: DuckDB connection to register with
+
+    Note:
+        These UDFs are backed by cascades in cascades/semantic_sql/:
+        - embed.cascade.yaml
+        - vector_search.cascade.yaml
+        - similar_to.cascade.yaml
+    """
+    import logging
+    import json as json_module
+
+    logger = logging.getLogger(__name__)
+
+    # Import cascade execution
+    try:
+        from rvbbit.semantic_sql.registry import execute_sql_function_sync
+    except ImportError:
+        logger.warning("semantic_sql.registry not available - embedding UDFs not registered")
+        return
+
+    # Import embedding tools to ensure they're registered
+    # This MUST happen before UDF registration so tools are available to cascades
+    try:
+        import rvbbit  # Force full initialization
+        import rvbbit.traits.embedding_storage  # noqa: F401
+
+        # Verify tools are registered
+        from rvbbit.trait_registry import get_trait
+        tool = get_trait("agent_embed")
+        if tool:
+            logger.debug(f"✅ agent_embed tool found: {tool}")
+        else:
+            logger.warning("⚠️  agent_embed tool not found in registry!")
+            return
+
+        logger.debug("Loaded embedding_storage tools")
+    except ImportError as e:
+        logger.warning(f"Could not load embedding_storage tools: {e}")
+        return
+    except Exception as e:
+        logger.warning(f"Error verifying embedding tools: {e}")
+        return
+
+    # =========================================================================
+    # UDF 1: semantic_embed(text, model?) → DOUBLE[]
+    # =========================================================================
+
+    def semantic_embed_udf_1(text: str):
+        """Generate 4096-dim embedding via cascade (1-arg version)."""
+        if text is None or text.strip() == "":
+            logger.warning("semantic_embed called with empty text, returning NULL")
+            return None
+
+        try:
+            logger.debug(f"Calling semantic_embed cascade for text: {text[:50]}...")
+
+            result = execute_sql_function_sync(
+                "semantic_embed",
+                {"text": text, "model": None}
+            )
+
+            logger.debug(f"Cascade result type: {type(result)}, value: {str(result)[:100]}...")
+
+            # Handle both dict result (from tool output) and list result (from python_data)
+            if isinstance(result, dict):
+                # Check if error
+                if result.get('_route') == 'error':
+                    logger.error(f"Cascade error: {result.get('error')}")
+                    return None
+
+                # Extract embedding from tool result
+                if 'embedding' in result:
+                    embedding = result['embedding']
+                    if isinstance(embedding, list):
+                        result = embedding
+                    else:
+                        logger.error(f"embedding field is not a list: {type(embedding)}")
+                        return None
+                else:
+                    logger.error(f"No 'embedding' field in result: {result.keys()}")
+                    return None
+
+            # Result should be list of floats (4096 dims)
+            if not isinstance(result, list):
+                logger.error(f"semantic_embed returned non-list: {type(result)}, value: {result}")
+                return None
+
+            if len(result) != 4096:
+                logger.warning(f"Unexpected embedding dimension: {len(result)} (expected 4096)")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"semantic_embed failed with exception: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+
+    def semantic_embed_udf_2(text: str, model: str):
+        """Generate 4096-dim embedding via cascade (2-arg version with model)."""
+        if text is None or text.strip() == "":
+            return None
+
+        try:
+            result = execute_sql_function_sync(
+                "semantic_embed",
+                {"text": text, "model": model}
+            )
+
+            # Result is list of floats (4096 dims)
+            if not isinstance(result, list):
+                logger.error(f"semantic_embed returned non-list: {type(result)}")
+                return None
+
+            return result
+
+        except Exception as e:
+            logger.error(f"semantic_embed failed: {e}")
+            return None
+
+    def semantic_embed_with_storage_udf(text: str, model: str, source_table: str, source_id: str):
+        """Generate embedding with table/ID tracking (4-arg version for auto-storage)."""
+        if text is None or text.strip() == "":
+            logger.warning("semantic_embed_with_storage called with empty text")
+            return None
+
+        try:
+            logger.debug(f"Calling semantic_embed_with_storage for {source_table}:{source_id}")
+
+            result = execute_sql_function_sync(
+                "semantic_embed_with_storage",
+                {
+                    "text": text,
+                    "model": model,
+                    "source_table": source_table,
+                    "source_id": source_id
+                }
+            )
+
+            logger.debug(f"Result type: {type(result)}")
+
+            # Handle dict or list result
+            if isinstance(result, dict):
+                if result.get('_route') == 'error':
+                    logger.error(f"Cascade error: {result.get('error')}")
+                    return None
+                if 'embedding' in result:
+                    result = result['embedding']
+
+            if not isinstance(result, list):
+                logger.error(f"semantic_embed_with_storage returned non-list: {type(result)}")
+                return None
+
+            return result
+
+        except Exception as e:
+            logger.error(f"semantic_embed_with_storage failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+
+    try:
+        # Register 1-arg version (default model, no storage)
+        connection.create_function(
+            "semantic_embed",
+            semantic_embed_udf_1,
+            return_type="DOUBLE[]",
+            null_handling="special"
+        )
+        logger.debug("Registered semantic_embed UDF (1-arg version)")
+
+        # Register 4-arg version (with table/ID for auto-storage)
+        connection.create_function(
+            "semantic_embed_with_storage",
+            semantic_embed_with_storage_udf,
+            return_type="DOUBLE[]",
+            null_handling="special"
+        )
+        logger.debug("Registered semantic_embed_with_storage UDF (4-arg version)")
+
+    except Exception as e:
+        logger.warning(f"Could not register semantic_embed: {e}")
+
+    # =========================================================================
+    # UDF 2: vector_search_json(query, table, limit?, threshold?) → VARCHAR
+    # =========================================================================
+
+    def vector_search_json_udf_2(query: str, source_table: str):
+        """Vector search (2-arg: query, table)."""
+        import tempfile
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search",  # SQL function name (not cascade_id!)
+                {
+                    "query": query,
+                    "source_table": source_table,
+                    "limit": 10,
+                    "threshold": None
+                }
+            )
+
+            # Write JSON to temp file and return path
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump(result if result else [], f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"vector_search_json failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    def vector_search_json_udf_3(query: str, source_table: str, limit: int):
+        """Vector search (3-arg: query, table, limit)."""
+        import tempfile
+        import os as os_module
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search",  # SQL function name (not cascade_id!)
+                {
+                    "query": query,
+                    "source_table": source_table,
+                    "limit": limit,
+                    "threshold": None
+                }
+            )
+
+            # Write JSON to temp file and return path
+            # DuckDB's read_json_auto works reliably with files
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump(result if result else [], f)
+                temp_path = f.name
+
+            return temp_path
+
+        except Exception as e:
+            logger.error(f"vector_search_json failed: {e}")
+            # Return empty JSON file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    def vector_search_json_udf_4(query: str, source_table: str, limit: int, threshold: float):
+        """Vector search (4-arg: query, table, limit, threshold)."""
+        import tempfile
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search",  # SQL function name (not cascade_id!)
+                {
+                    "query": query,
+                    "source_table": source_table,
+                    "limit": limit,
+                    "threshold": threshold
+                }
+            )
+
+            # Write JSON to temp file and return path
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json_module.dump(result if result else [], f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"vector_search_json failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    try:
+        # Register all arity versions with suffixes (DuckDB doesn't support overloading)
+        # Like llm_aggregates, we use _N suffix for N arguments
+        connection.create_function("vector_search_json_2", vector_search_json_udf_2, return_type="VARCHAR", null_handling="special")
+        connection.create_function("vector_search_json_3", vector_search_json_udf_3, return_type="VARCHAR", null_handling="special")
+        connection.create_function("vector_search_json_4", vector_search_json_udf_4, return_type="VARCHAR", null_handling="special")
+        logger.debug("Registered vector_search_json UDF (2, 3, 4-arg versions)")
+    except Exception as e:
+        logger.warning(f"Could not register vector_search_json: {e}")
+
+    # =========================================================================
+    # UDF 3: similar_to(text1, text2) → DOUBLE
+    # =========================================================================
+
+    def similar_to_udf(text1: str, text2: str):
+        """Cosine similarity between two texts (0.0 to 1.0)."""
+        if not text1 or not text2:
+            return None
+
+        try:
+            result = execute_sql_function_sync(
+                "similar_to",  # SQL function name (not cascade_id!)
+                {"text1": text1, "text2": text2}
+            )
+
+            # Result is float (similarity score)
+            return float(result)
+
+        except Exception as e:
+            logger.error(f"similar_to failed: {e}")
+            return None
+
+    try:
+        connection.create_function(
+            "similar_to",
+            similar_to_udf,
+            return_type="DOUBLE",
+            null_handling="special"
+        )
+        logger.debug("Registered similar_to UDF")
+    except Exception as e:
+        logger.warning(f"Could not register similar_to: {e}")
+
+    logger.info("Registered 3 embedding UDFs for Semantic SQL")
+
+
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):
     """
     Register rvbbit_udf as a DuckDB user-defined function.
@@ -920,6 +1246,13 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not register rvbbit_materialize_table: {e}")
+
+    # Register embedding operators (EMBED, VECTOR_SEARCH, SIMILAR_TO)
+    try:
+        register_embedding_udfs(connection)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register embedding UDFs: {e}")
 
     # Register LLM aggregate implementation functions
     try:

@@ -1,0 +1,75 @@
+cascade_id: semantic_embed_with_storage
+
+description: |
+  Generate text embeddings AND store them in rvbbit_embeddings with table/ID tracking.
+
+  This cascade is used when EMBED() is called in a SELECT with detectable table/ID context.
+  The SQL rewriter injects table name and row ID automatically.
+
+  SQL Usage (rewritten from):
+    SELECT id, EMBED(description) FROM products;
+  To:
+    SELECT id, semantic_embed_with_storage(description, NULL, 'products', CAST(id AS VARCHAR)) FROM products;
+
+inputs_schema:
+  text: "Text to embed (required)"
+  model: "Optional model override"
+  source_table: "Table name where text came from"
+  source_id: "Row ID (as string)"
+
+sql_function:
+  name: semantic_embed_with_storage
+  description: "Generate embedding and store with table/ID tracking"
+  args:
+    - name: text
+      type: VARCHAR
+      description: "Text to embed"
+    - name: model
+      type: VARCHAR
+      optional: true
+      description: "Optional model"
+    - name: source_table
+      type: VARCHAR
+      description: "Source table name"
+    - name: source_id
+      type: VARCHAR
+      description: "Source row ID"
+  returns: DOUBLE[]
+  shape: SCALAR
+  cache: true
+
+cells:
+  - name: generate_and_store
+    tool: python_data
+    inputs:
+      code: |
+        # Complete embedding generation + storage in one cell
+        from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
+
+        text = input.get('text', '')
+        model = input.get('model')
+        source_table = input.get('source_table', 'unknown')
+        source_id = input.get('source_id', 'unknown')
+
+        # Step 1: Generate embedding
+        embed_result = agent_embed(text=text, model=model)
+        embedding = embed_result['embedding']
+
+        # Step 2: Store in ClickHouse with table/ID association
+        try:
+            clickhouse_store_embedding(
+                source_table=source_table,
+                source_id=source_id,
+                text=text,
+                embedding=embedding,
+                model=embed_result['model']
+            )
+        except Exception as e:
+            # Log warning but don't fail - embedding still returned
+            import logging
+            logging.getLogger(__name__).warning(f"Could not store embedding: {e}")
+
+        # Step 3: Return embedding for SQL result
+        result = embedding
+    context:
+      enabled: false

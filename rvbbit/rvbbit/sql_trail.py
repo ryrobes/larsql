@@ -81,7 +81,21 @@ RVBBIT_UDF_NAMES = {
     'rvbbit_run_batch', 'rvbbit_run_parallel_batch', 'rvbbit_map_parallel_exec',
     'llm_summarize', 'llm_classify', 'llm_sentiment', 'llm_themes', 'llm_agg',
     'llm_matches', 'llm_score', 'llm_match_pair', 'llm_match_template', 'llm_semantic_case',
-    'matches', 'score', 'match_pair', 'match_template', 'semantic_case'
+    'matches', 'score', 'match_pair', 'match_template', 'semantic_case',
+    'semantic_matches', 'semantic_score', 'semantic_implies', 'semantic_contradicts',
+    'semantic_summarize', 'semantic_themes', 'semantic_cluster', 'semantic_classify_single'
+}
+
+# Semantic SQL operators that get rewritten to UDFs
+SEMANTIC_OPERATORS = {
+    'MEANS', 'NOT MEANS',
+    'ABOUT', 'NOT ABOUT',
+    'IMPLIES', 'CONTRADICTS',
+    'SUMMARIZE', 'THEMES', 'TOPICS', 'SENTIMENT', 'CLASSIFY',
+    'CONSENSUS', 'OUTLIERS', 'DEDUPE', 'CLUSTER',
+    'SEMANTIC JOIN', 'SEMANTIC DISTINCT',
+    'GROUP BY MEANING', 'GROUP BY TOPICS',
+    'RELEVANCE TO', 'LLM_CASE'
 }
 
 
@@ -89,8 +103,8 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
     """
     Normalize SQL query to a fingerprint and extract UDF types.
 
-    Uses sqlglot to parse the SQL, extract RVBBIT UDF function calls,
-    and normalize literals to placeholders for consistent fingerprinting.
+    For semantic SQL queries, detects operators (MEANS, SUMMARIZE, etc.) before
+    parsing. Uses sqlglot to parse standard SQL and normalize literals.
 
     Args:
         sql: Raw SQL query string
@@ -101,17 +115,24 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
         - template: SQL with literals replaced by ? placeholders
         - udf_types: List of RVBBIT UDF types found (e.g., ['rvbbit_udf', 'llm_summarize'])
     """
+    # First, detect semantic operators (before sqlglot parsing)
+    semantic_ops_found = _extract_semantic_operators(sql)
+
     if not SQLGLOT_AVAILABLE:
         # Fallback: simple hash of raw query
         fingerprint = hashlib.md5(sql.encode()).hexdigest()[:16]
-        return fingerprint, sql, _extract_udf_types_regex(sql)
+        udf_types = list(set(_extract_udf_types_regex(sql) + semantic_ops_found))
+        return fingerprint, sql, udf_types
 
     try:
         # Parse SQL using DuckDB dialect
         parsed = sqlglot.parse_one(sql, dialect='duckdb')
 
         # Extract UDF types from function calls
-        udf_types = _extract_udf_types_ast(parsed)
+        udf_types_ast = _extract_udf_types_ast(parsed)
+
+        # Combine with semantic operators
+        udf_types = list(set(udf_types_ast + semantic_ops_found))
 
         # Normalize: replace literals with placeholders
         normalized = _normalize_literals(parsed)
@@ -123,10 +144,59 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
         return fingerprint, template, udf_types
 
     except Exception as e:
-        # Fallback on parse error
-        logger.debug(f"sqlglot parse failed, using raw hash fallback: {e}")
+        # Fallback on parse error (common for semantic SQL before rewriting)
+        logger.debug(f"sqlglot parse failed, using semantic-aware fallback: {e}")
         fingerprint = hashlib.md5(sql.encode()).hexdigest()[:16]
-        return fingerprint, sql, _extract_udf_types_regex(sql)
+        udf_types = list(set(_extract_udf_types_regex(sql) + semantic_ops_found))
+        return fingerprint, sql, udf_types
+
+
+def _extract_semantic_operators(sql: str) -> List[str]:
+    """
+    Extract semantic SQL operators from query before sqlglot parsing.
+
+    Detects operators like MEANS, SUMMARIZE, THEMES, etc. that get rewritten
+    to UDF calls. This allows proper query type classification even before rewriting.
+
+    Args:
+        sql: Raw SQL query string
+
+    Returns:
+        List of detected semantic operator types
+    """
+    sql_upper = sql.upper()
+    detected = []
+
+    # Check for each semantic operator
+    for op in SEMANTIC_OPERATORS:
+        if op in sql_upper:
+            # Map operator to UDF type for consistent tracking
+            if op in ('MEANS', 'NOT MEANS'):
+                detected.append('semantic_matches')
+            elif op in ('ABOUT', 'NOT ABOUT'):
+                detected.append('semantic_score')
+            elif op == 'IMPLIES':
+                detected.append('semantic_implies')
+            elif op == 'CONTRADICTS':
+                detected.append('semantic_contradicts')
+            elif op == 'SUMMARIZE':
+                detected.append('semantic_summarize')
+            elif op in ('THEMES', 'TOPICS'):
+                detected.append('semantic_themes')
+            elif op in ('CLUSTER', 'GROUP BY MEANING'):
+                detected.append('semantic_cluster')
+            elif op == 'CLASSIFY':
+                detected.append('semantic_classify_single')
+            elif op in ('SEMANTIC JOIN', 'SEMANTIC DISTINCT'):
+                detected.append('semantic_op')  # Generic semantic operation
+            elif op == 'LLM_CASE':
+                detected.append('llm_semantic_case')
+            # CONSENSUS, OUTLIERS, DEDUPE, etc. might not have dedicated cascades yet
+            # but we still want to track them
+            else:
+                detected.append(f'semantic_{op.lower().replace(" ", "_")}')
+
+    return list(set(detected))
 
 
 def _extract_udf_types_ast(ast: 'exp.Expression') -> List[str]:
@@ -167,10 +237,27 @@ def _normalize_literals(ast: 'exp.Expression') -> 'exp.Expression':
 
 
 def _determine_query_type(udf_types: List[str], sql: str) -> str:
-    """Determine the primary query type based on UDFs found."""
+    """
+    Determine the primary query type based on UDFs found.
+
+    Prioritizes semantic SQL operators for better categorization.
+    """
     sql_upper = sql.upper()
 
-    # Check for specific patterns
+    # Check for semantic SQL operators first (most specific)
+    if any(udf.startswith('semantic_') for udf in udf_types):
+        # Has semantic operators like MEANS, ABOUT, SUMMARIZE, etc.
+        if any(udf in udf_types for udf in ['semantic_summarize', 'semantic_themes', 'semantic_cluster']):
+            return 'semantic_aggregate'
+        return 'semantic_query'
+
+    # Check for RVBBIT MAP/RUN syntax
+    if 'RVBBIT MAP' in sql_upper:
+        return 'rvbbit_map'
+    if 'RVBBIT RUN' in sql_upper:
+        return 'rvbbit_run'
+
+    # Check for specific UDF patterns
     if 'rvbbit_cascade_udf' in udf_types or 'rvbbit_run' in udf_types:
         return 'rvbbit_cascade_udf'
     if 'rvbbit_run_parallel_batch' in udf_types or 'rvbbit_map_parallel_exec' in udf_types:
@@ -181,12 +268,6 @@ def _determine_query_type(udf_types: List[str], sql: str) -> str:
         return 'llm_aggregate'
     if any(udf in udf_types for udf in ['matches', 'score', 'match_pair', 'semantic_case']):
         return 'semantic_op'
-
-    # Check for RVBBIT MAP/RUN syntax
-    if 'RVBBIT MAP' in sql_upper:
-        return 'rvbbit_map'
-    if 'RVBBIT RUN' in sql_upper:
-        return 'rvbbit_run'
 
     if udf_types:
         return udf_types[0]  # First UDF type found
@@ -304,7 +385,10 @@ def log_query_complete(
         if cascade_paths or cascade_count is not None:
             if _has_cascade_columns(db):
                 if cascade_paths:
-                    paths_str = "['" + "','".join(p.replace("'", "\\'") for p in cascade_paths) + "']"
+                    # Properly escape paths using ClickHouse array syntax
+                    # Each path needs proper single quote escaping (' → '')
+                    escaped_paths = [p.replace("'", "''") for p in cascade_paths]
+                    paths_str = "['" + "','".join(escaped_paths) + "']"
                     updates.append(f"cascade_paths = {paths_str}")
                 if cascade_count is not None:
                     updates.append(f"cascade_count = {cascade_count}")
@@ -515,6 +599,8 @@ def register_cascade_execution(
     Called when execute_cascade_udf runs a cascade. This tracks which
     cascades were invoked by a SQL query for later logging.
 
+    Now stores in ClickHouse table for multi-worker safety and persistence.
+
     Args:
         caller_id: The caller_id for the parent SQL query
         cascade_id: The cascade's ID (e.g., 'semantic_matches')
@@ -525,6 +611,26 @@ def register_cascade_execution(
     if not caller_id:
         return
 
+    # Store in database (replaces in-memory registry)
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        db.insert_rows('sql_cascade_executions', [{
+            'caller_id': caller_id,
+            'cascade_id': cascade_id,
+            'cascade_path': cascade_path,
+            'session_id': session_id,
+            'inputs_summary': str(inputs)[:200] if inputs else '',
+            'timestamp': datetime.now(timezone.utc)
+        }])
+
+        logger.debug(f"SQL Trail: Registered cascade {cascade_id} for {caller_id[:16]}")
+    except Exception as e:
+        # Fire-and-forget - don't fail the main path
+        logger.debug(f"SQL Trail: Failed to register cascade execution: {e}")
+
+    # Also maintain in-memory registry for backward compatibility during transition
     entry = {
         'cascade_id': cascade_id,
         'cascade_path': cascade_path,
@@ -538,12 +644,12 @@ def register_cascade_execution(
             _cascade_registry[caller_id] = []
         _cascade_registry[caller_id].append(entry)
 
-    logger.debug(f"SQL Trail: Registered cascade {cascade_id} for {caller_id[:16]}")
-
 
 def get_cascade_executions(caller_id: str) -> List[Dict[str, Any]]:
     """
     Get all cascade executions for a caller_id.
+
+    Queries database first, falls back to in-memory registry.
 
     Args:
         caller_id: The caller_id to look up
@@ -551,13 +657,35 @@ def get_cascade_executions(caller_id: str) -> List[Dict[str, Any]]:
     Returns:
         List of cascade execution dicts
     """
-    with _cascade_lock:
-        return _cascade_registry.get(caller_id, []).copy()
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        result = db.query(f"""
+            SELECT
+                cascade_id,
+                cascade_path,
+                session_id,
+                inputs_summary,
+                toString(timestamp) as timestamp
+            FROM sql_cascade_executions
+            WHERE caller_id = '{caller_id}'
+            ORDER BY timestamp
+        """)
+
+        return [dict(row) for row in result]
+    except Exception as e:
+        logger.debug(f"SQL Trail: DB query failed, using in-memory fallback: {e}")
+        # Fallback to in-memory registry
+        with _cascade_lock:
+            return _cascade_registry.get(caller_id, []).copy()
 
 
 def get_cascade_paths(caller_id: str) -> List[str]:
     """
     Get unique cascade paths executed for a caller_id.
+
+    Queries database first, falls back to in-memory registry.
 
     Args:
         caller_id: The caller_id to look up
@@ -565,10 +693,25 @@ def get_cascade_paths(caller_id: str) -> List[str]:
     Returns:
         List of unique cascade file paths
     """
-    with _cascade_lock:
-        executions = _cascade_registry.get(caller_id, [])
-        paths = list(set(e['cascade_path'] for e in executions if e.get('cascade_path')))
-        return sorted(paths)
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        result = db.query(f"""
+            SELECT DISTINCT cascade_path
+            FROM sql_cascade_executions
+            WHERE caller_id = '{caller_id}'
+            ORDER BY cascade_path
+        """)
+
+        return [row['cascade_path'] for row in result]
+    except Exception as e:
+        logger.debug(f"SQL Trail: DB query failed, using in-memory fallback: {e}")
+        # Fallback to in-memory registry
+        with _cascade_lock:
+            executions = _cascade_registry.get(caller_id, [])
+            paths = list(set(e['cascade_path'] for e in executions if e.get('cascade_path')))
+            return sorted(paths)
 
 
 def clear_cascade_executions(caller_id: str):
@@ -576,10 +719,24 @@ def clear_cascade_executions(caller_id: str):
     Clear cascade execution records for a caller_id.
 
     Called after logging is complete to prevent memory leaks.
+    Note: With TTL enabled, database cleanup is automatic after 90 days.
 
     Args:
         caller_id: The caller_id to clear
     """
+    # Clear database records (optional - TTL handles this)
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        db.execute(f"""
+            DELETE FROM sql_cascade_executions
+            WHERE caller_id = '{caller_id}'
+        """)
+    except Exception as e:
+        logger.debug(f"SQL Trail: Failed to clear cascade executions from DB: {e}")
+
+    # Clear in-memory registry
     with _cascade_lock:
         if caller_id in _cascade_registry:
             del _cascade_registry[caller_id]
@@ -590,6 +747,7 @@ def get_cascade_summary(caller_id: str) -> Dict[str, Any]:
     Get a summary of cascade executions for a caller_id.
 
     Returns aggregated info about all cascades run by this query.
+    Queries database first, falls back to in-memory registry.
 
     Args:
         caller_id: The caller_id to summarize
@@ -597,6 +755,32 @@ def get_cascade_summary(caller_id: str) -> Dict[str, Any]:
     Returns:
         Dict with cascade_count, cascade_paths, session_ids
     """
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        # Aggregate from database
+        result = db.query(f"""
+            SELECT
+                COUNT(*) as cascade_count,
+                groupArray(DISTINCT cascade_path) as cascade_paths,
+                groupArray(DISTINCT cascade_id) as cascade_ids,
+                groupArray(session_id) as session_ids
+            FROM sql_cascade_executions
+            WHERE caller_id = '{caller_id}'
+        """)
+
+        if result and result[0].get('cascade_count', 0) > 0:
+            return {
+                'cascade_count': int(result[0]['cascade_count']),
+                'cascade_paths': result[0].get('cascade_paths', []),
+                'cascade_ids': result[0].get('cascade_ids', []),
+                'session_ids': result[0].get('session_ids', [])
+            }
+    except Exception as e:
+        logger.debug(f"SQL Trail: DB query failed, using in-memory fallback: {e}")
+
+    # Fallback to in-memory registry
     with _cascade_lock:
         executions = _cascade_registry.get(caller_id, [])
 

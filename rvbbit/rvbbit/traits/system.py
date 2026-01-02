@@ -123,18 +123,23 @@ def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optio
     else:
         session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}"
 
+    # Capture caller context from parent thread
+    import contextvars
+    ctx = contextvars.copy_context()
+
     def worker():
         # Import locally to avoid circular dependency
         from ..runner import run_cascade
 
-        # Run in separate thread
+        # Run in separate thread (context is preserved via ctx.run)
         try:
             # We use a new runner instance, passing the parent trace AND parent_session_id AND candidate_index
             run_cascade(resolved_cascade_ref, input_data or {}, session_id=session_id, parent_trace=parent_trace, parent_session_id=parent_session_id, candidate_index=candidate_index)
         except Exception as e:
             print(f"[Spawn Error] {e}")
 
-    t = threading.Thread(target=worker, daemon=True)
+    # Run worker in copied context so caller_id propagates
+    t = threading.Thread(target=lambda: ctx.run(worker), daemon=True)
     t.start()
 
     return f"Spawned cascade '{cascade_ref}' with Session ID: {session_id}"
@@ -264,50 +269,58 @@ def map_cascade(
     except:
         pass
 
+    # Capture caller context for thread propagation
+    import contextvars
+    ctx = contextvars.copy_context()
+
     results = []
     errors = []
     successful_count = 0
 
     def run_single_item(index: int, item: Any) -> Dict[str, Any]:
-        """Execute cascade for single item."""
-        # Generate unique session ID for this map item
-        item_session_id = f"{parent_session_id}_map_{index}" if parent_session_id else f"map_{int(time.time())}_{uuid.uuid4().hex[:6]}_item_{index}"
+        """Execute cascade for single item. Runs in copied context to preserve caller_id."""
+        def _execute():
+            # Generate unique session ID for this map item
+            item_session_id = f"{parent_session_id}_map_{index}" if parent_session_id else f"map_{int(time.time())}_{uuid.uuid4().hex[:6]}_item_{index}"
 
-        # Build input data
-        input_data = {input_key: item}
+            # Build input data
+            input_data = {input_key: item}
 
-        try:
-            # Run cascade synchronously (blocking)
-            result = run_cascade(
-                resolved_cascade_ref,
-                input_data,
-                session_id=item_session_id,
-                parent_trace=parent_trace,
-                parent_session_id=parent_session_id
-            )
+            try:
+                # Run cascade synchronously (blocking)
+                result = run_cascade(
+                    resolved_cascade_ref,
+                    input_data,
+                    session_id=item_session_id,
+                    parent_trace=parent_trace,
+                    parent_session_id=parent_session_id
+                )
 
-            return {
-                "index": index,
-                "item": item,
-                "result": result,
-                "error": None,
-                "session_id": item_session_id
-            }
+                return {
+                    "index": index,
+                    "item": item,
+                    "result": result,
+                    "error": None,
+                    "session_id": item_session_id
+                }
 
-        except Exception as e:
-            error_info = {
-                "index": index,
-                "item": item,
-                "result": None,
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "session_id": item_session_id
-            }
+            except Exception as e:
+                error_info = {
+                    "index": index,
+                    "item": item,
+                    "result": None,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "session_id": item_session_id
+                }
 
-            if on_error == "fail_fast":
-                raise
+                if on_error == "fail_fast":
+                    raise
 
-            return error_info
+                return error_info
+
+        # Run in copied context to preserve caller_id
+        return ctx.run(_execute)
 
     # Execute cascades in parallel using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=min(max_parallel, total_items)) as executor:

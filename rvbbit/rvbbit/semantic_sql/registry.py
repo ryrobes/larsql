@@ -1,8 +1,12 @@
 """
 SQL Function Registry - discovers and manages cascade-based SQL functions.
 
-Scans _builtin/ and traits/ directories for cascades with sql_function config,
+Scans cascades/ and traits/ directories for cascades with sql_function config,
 and provides execution interface for SQL queries.
+
+Built-in semantic SQL operators (MEANS, ABOUT, etc.) are now stored in
+cascades/semantic_sql/ as standard user-space cascades. Users can override
+any operator by creating a cascade with the same function name.
 """
 
 import os
@@ -137,22 +141,6 @@ def _scan_directory(directory: Path) -> List[Tuple[Path, Dict[str, Any]]]:
     return results
 
 
-def _get_builtin_dir() -> Optional[Path]:
-    """
-    Get the _builtin directory path for shipped semantic SQL functions.
-
-    These are the default functions shipped with the package.
-    Users can override them by placing cascades with the same name
-    in RVBBIT_ROOT/traits/semantic_sql/.
-
-    Returns None if the directory doesn't exist or is empty.
-    """
-    builtin = Path(__file__).parent / "_builtin"
-    if builtin.exists() and any(builtin.glob("*.yaml")):
-        return builtin
-    return None
-
-
 def _get_traits_dir() -> Path:
     """Get the traits directory path (from config or default)."""
     try:
@@ -177,6 +165,13 @@ def initialize_registry(force: bool = False) -> None:
     """
     Initialize the SQL function registry by scanning for cascade files.
 
+    Scans in priority order (later overwrites earlier):
+    1. traits/ directory - For backwards compatibility and custom tools
+    2. cascades/ directory - Highest priority, includes built-in semantic_sql/
+
+    Built-in operators (MEANS, ABOUT, SUMMARIZE, etc.) are now in
+    cascades/semantic_sql/ and can be overridden by user cascades.
+
     Args:
         force: If True, re-scan even if already initialized
     """
@@ -188,28 +183,8 @@ def initialize_registry(force: bool = False) -> None:
 
         _registry.clear()
 
-        # Scan built-in directory first (lowest priority)
-        # These are shipped defaults - user overrides go in traits/semantic_sql/
-        builtin_dir = _get_builtin_dir()
-        if builtin_dir:
-            log.debug(f"[sql_registry] Loading built-in semantic SQL functions from: {builtin_dir}")
-            for path, config in _scan_directory(builtin_dir):
-                sql_fn = config["sql_function"]
-                name = sql_fn.get("name") or config["cascade_id"]
-
-                if not sql_fn.get("enabled", True):
-                    continue
-
-                _registry[name] = SQLFunctionEntry(
-                    name=name,
-                    cascade_path=str(path),
-                    cascade_id=config["cascade_id"],
-                    config=config,
-                    sql_function=sql_fn,
-                )
-                log.debug(f"[sql_registry] Registered built-in (deprecated): {name}")
-
-        # Scan traits directory (medium priority - overwrites built-ins)
+        # Scan traits directory first (lower priority)
+        # For backwards compatibility and custom tools
         traits_dir = _get_traits_dir()
         if traits_dir.exists():
             log.info(f"[sql_registry] Scanning traits: {traits_dir}")
@@ -230,6 +205,7 @@ def initialize_registry(force: bool = False) -> None:
                 log.info(f"[sql_registry] Registered from traits: {name}")
 
         # Scan cascades directory (highest priority)
+        # Includes cascades/semantic_sql/ with built-in operators
         cascades_dir = _get_cascades_dir()
         if cascades_dir.exists():
             log.info(f"[sql_registry] Scanning cascades: {cascades_dir}")
@@ -362,11 +338,25 @@ async def execute_sql_function(
         raise ValueError(f"SQL function not found: {name}")
 
     # Get caller_id from context (set by postgres_server for SQL queries)
+    # Try ALL storage layers: contextvar → thread-local → global registry
     try:
-        from ..caller_context import get_caller_id
+        from ..caller_context import get_caller_id, _global_caller_registry
         from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
+
+        # First try normal get_caller_id (checks contextvar + thread-local)
         caller_id = get_caller_id()
-    except Exception:
+
+        # If still None, try ALL keys in global registry (brute force search)
+        if not caller_id and _global_caller_registry:
+            print(f"[sql_registry:async] DEBUG: Trying global registry, {len(_global_caller_registry)} entries")
+            # Get any caller_id from registry (all postgres connections for this server)
+            caller_id = next(iter(_global_caller_registry.values()))[0] if _global_caller_registry else None
+
+        print(f"[sql_registry:async] DEBUG: Function={name}, FINAL caller_id={caller_id!r}")
+    except Exception as e:
+        print(f"[sql_registry:async] DEBUG: get_caller_id() failed: {e}")
+        import traceback
+        traceback.print_exc()
         caller_id = None
 
     # Check cache first
@@ -409,8 +399,14 @@ async def execute_sql_function(
     # Import here to avoid circular imports
     from ..runner import RVBBITRunner
 
-    # Create runner with session_id in constructor
-    runner = RVBBITRunner(fn.cascade_path, session_id=session_id)
+    # Create runner with session_id AND caller_id for proper tracking
+    print(f"[sql_registry] DEBUG: Creating RVBBITRunner with caller_id={caller_id!r}, session_id={session_id}")
+    runner = RVBBITRunner(
+        fn.cascade_path,
+        session_id=session_id,
+        caller_id=caller_id  # Pass caller_id so Echo gets it and propagates to all logs!
+    )
+    print(f"[sql_registry] DEBUG: Runner created, runner.echo.caller_id={runner.echo.caller_id!r}")
 
     # Execute cascade with args as input_data
     result = runner.run(input_data=args)
@@ -459,8 +455,21 @@ def execute_sql_function_sync(
     Synchronous wrapper for execute_sql_function.
 
     For use in DuckDB UDFs which are synchronous.
+    Preserves caller_context across thread boundaries.
     """
     import asyncio
+    import contextvars
+
+    # Capture current context (includes caller_id)
+    ctx = contextvars.copy_context()
+
+    # DEBUG: Check what caller_id we have before crossing boundaries
+    try:
+        from ..caller_context import get_caller_id
+        current_caller = get_caller_id()
+        print(f"[sql_registry:sync] DEBUG: Function={name}, caller_id BEFORE async={current_caller!r}")
+    except Exception as e:
+        print(f"[sql_registry:sync] DEBUG: Could not get caller_id: {e}")
 
     try:
         loop = asyncio.get_running_loop()
@@ -469,15 +478,18 @@ def execute_sql_function_sync(
 
     if loop and loop.is_running():
         # We're in an async context, need to run in a thread
+        # CRITICAL: Run in copied context to preserve caller_id!
+        print(f"[sql_registry:sync] DEBUG: Using ThreadPoolExecutor path (async loop running)")
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
-                asyncio.run,
-                execute_sql_function(name, args, session_id)
+                lambda: ctx.run(lambda: asyncio.run(execute_sql_function(name, args, session_id)))
             )
             return future.result()
     else:
-        return asyncio.run(execute_sql_function(name, args, session_id))
+        # Run directly in current context
+        print(f"[sql_registry:sync] DEBUG: Using direct asyncio.run path (no loop)")
+        return ctx.run(lambda: asyncio.run(execute_sql_function(name, args, session_id)))
 
 
 def get_operator_patterns() -> Dict[str, List[Tuple[str, str]]]:

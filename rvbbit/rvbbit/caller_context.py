@@ -6,15 +6,17 @@ Tracks the "caller" that initiated a cascade execution, enabling:
 - Debugging: "What spawned this session?"
 - Analytics: Usage by origin (SQL vs UI vs CLI)
 
-Uses ContextVars for thread-safe context propagation.
+Uses ContextVars for thread-safe context propagation PLUS a global registry
+for DuckDB UDFs (which execute in DuckDB's internal thread pool where contextvars don't work).
 """
 
 from contextvars import ContextVar
 from typing import Optional, Dict, Any
+import threading
 
 
 # ============================================================================
-# Context Variables (Thread-Safe)
+# Context Variables (Thread-Safe within single thread/coroutine)
 # ============================================================================
 
 _caller_id: ContextVar[Optional[str]] = ContextVar('caller_id', default=None)
@@ -22,36 +24,101 @@ _invocation_metadata: ContextVar[Optional[Dict]] = ContextVar('invocation_metada
 
 
 # ============================================================================
+# Global Registry (Cross-Thread Access for DuckDB UDFs)
+# ============================================================================
+# DuckDB executes UDFs in its own thread pool, so contextvars don't work.
+# We use:
+# 1. Thread-local storage (for postgres_server query execution thread)
+# 2. Global fallback registry (keyed by connection_id)
+
+_thread_local = threading.local()
+_global_caller_registry: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+_registry_lock = threading.Lock()
+
+
+# ============================================================================
 # Context Management
 # ============================================================================
 
-def set_caller_context(caller_id: str, metadata: Dict[str, Any]):
+def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: str = None):
     """
-    Set caller context for current thread/async context.
+    Set caller context for current thread/async context AND all storage layers.
+
+    Sets in 3 places for maximum compatibility:
+    1. Contextvar (works within same thread/coroutine)
+    2. Thread-local (works for postgres_server's query execution thread)
+    3. Global registry (works across ALL threads, keyed by connection_id)
 
     Args:
         caller_id: Unique identifier for the caller (e.g., 'sql-clever-fox-abc123')
         metadata: Invocation metadata dict
+        connection_id: Optional connection ID for DuckDB UDF access (postgres session_id)
 
     Example:
         set_caller_context('sql-quick-rabbit-xyz', {
             'origin': 'sql',
             'sql_query': 'RVBBIT MAP ...',
             'triggered_by': 'postgres_server'
-        })
+        }, connection_id='pg_client_abc123')
     """
+    # 1. Set in contextvar (works within same thread)
     _caller_id.set(caller_id)
     _invocation_metadata.set(metadata)
 
+    # 2. Set in thread-local (persists for query execution thread, accessible to DuckDB callbacks)
+    _thread_local.caller_id = caller_id
+    _thread_local.invocation_metadata = metadata
 
-def get_caller_id() -> Optional[str]:
+    # 3. Set in global registry (works across ALL threads if connection_id known)
+    if connection_id:
+        with _registry_lock:
+            _global_caller_registry[connection_id] = (caller_id, metadata)
+
+
+def get_caller_id(connection_id: str = None) -> Optional[str]:
     """
-    Get current caller_id from context.
+    Get current caller_id from any available storage layer.
+
+    Tries in priority order:
+    1. Contextvar (same thread/coroutine)
+    2. Thread-local (same thread, works for DuckDB UDF callbacks)
+    3. Global registry with specific connection_id
+    4. Global registry search (any connection - fallback for DuckDB UDFs)
+
+    Args:
+        connection_id: Optional connection ID to look up in global registry
 
     Returns:
         caller_id or None if not set
     """
-    return _caller_id.get()
+    # 1. Try contextvar first (works within same thread/coroutine)
+    ctx_caller = _caller_id.get()
+    if ctx_caller:
+        return ctx_caller
+
+    # 2. Try thread-local (works for DuckDB UDF callbacks on query thread)
+    try:
+        tl_caller = getattr(_thread_local, 'caller_id', None)
+        if tl_caller:
+            return tl_caller
+    except AttributeError:
+        pass
+
+    # 3. Try global registry with specific connection_id
+    if connection_id:
+        with _registry_lock:
+            entry = _global_caller_registry.get(connection_id)
+            if entry:
+                return entry[0]  # Return caller_id
+
+    # 4. Last resort: search global registry for ANY caller_id (for DuckDB UDFs)
+    # Since postgres_server queries are serialized (db_lock), this is safe
+    with _registry_lock:
+        if _global_caller_registry:
+            # Return the first (and likely only) caller_id
+            return next(iter(_global_caller_registry.values()))[0]
+
+    return None
 
 
 def get_invocation_metadata() -> Optional[Dict]:
@@ -74,14 +141,23 @@ def get_caller_context() -> tuple[Optional[str], Optional[Dict]]:
     return _caller_id.get(), _invocation_metadata.get()
 
 
-def clear_caller_context():
+def clear_caller_context(connection_id: str = None):
     """
-    Clear caller context.
+    Clear caller context from contextvar AND global registry.
+
+    Args:
+        connection_id: Optional connection ID to remove from global registry
 
     Useful for cleanup after execution or in test fixtures.
     """
+    # Clear contextvar
     _caller_id.set(None)
     _invocation_metadata.set(None)
+
+    # Clear from global registry
+    if connection_id:
+        with _registry_lock:
+            _global_caller_registry.pop(connection_id, None)
 
 
 def has_caller_context() -> bool:

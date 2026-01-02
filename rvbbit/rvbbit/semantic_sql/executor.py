@@ -27,12 +27,12 @@ def _make_cache_key(cascade_id: str, inputs: Dict[str, Any]) -> str:
     return hashlib.md5(key_data.encode()).hexdigest()
 
 
-def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
+def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any], caller_id: str = None) -> Dict[str, Any]:
     """Run a cascade synchronously (blocking)."""
     from ..runner import RVBBITRunner
 
-    # RVBBITRunner takes session_id in constructor, input_data in run()
-    runner = RVBBITRunner(cascade_path, session_id=session_id)
+    # RVBBITRunner takes session_id AND caller_id for proper tracking
+    runner = RVBBITRunner(cascade_path, session_id=session_id, caller_id=caller_id)
     return runner.run(input_data=inputs)
 
 
@@ -198,8 +198,8 @@ def execute_cascade_udf(
                 inputs=inputs
             )
 
-        # Execute the cascade
-        result = _run_cascade_sync(fn.cascade_path, session_id, inputs)
+        # Execute the cascade (pass caller_id so it propagates to unified_logs!)
+        result = _run_cascade_sync(fn.cascade_path, session_id, inputs, caller_id=caller_id)
 
         # Extract the output using proper cascade result parsing
         output = _extract_cascade_output(result)

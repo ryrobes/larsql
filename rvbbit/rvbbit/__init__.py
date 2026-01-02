@@ -36,6 +36,14 @@ from .traits.filesystem import read_file, write_file, append_file, list_files, f
 # Image generation uses normal Agent.run() with modalities=["text", "image"]
 # No separate tool needed - cells with image models are auto-detected
 from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
+from .traits.embedding_storage import (
+    agent_embed,
+    clickhouse_store_embedding,
+    clickhouse_vector_search,
+    cosine_similarity_texts,
+    elasticsearch_hybrid_search,
+    agent_embed_batch
+)
 
 register_trait("smart_sql_run", run_sql)
 register_trait("linux_shell", linux_shell)

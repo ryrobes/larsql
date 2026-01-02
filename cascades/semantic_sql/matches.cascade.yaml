@@ -31,6 +31,7 @@ sql_function:
   operators:
     - "{{ text }} MEANS {{ criterion }}"
     - "{{ text }} MATCHES {{ criterion }}"
+    - "{{ text }} ~ {{ criterion }}"
   cache: true
 
 cells:

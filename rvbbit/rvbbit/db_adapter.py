@@ -820,8 +820,9 @@ class ClickHouseAdapter:
             elif isinstance(val, (int, float)):
                 set_parts.append(f"{col} = {val}")
             elif isinstance(val, str):
-                # Escape single quotes
-                escaped = val.replace("'", "''")
+                # Escape backslashes first, then single quotes
+                # ClickHouse requires backslashes to be escaped in string literals
+                escaped = val.replace("\\", "\\\\").replace("'", "''")
                 set_parts.append(f"{col} = '{escaped}'")
             elif isinstance(val, list):
                 # Check if it's a numeric array (for embeddings)
@@ -831,13 +832,19 @@ class ClickHouseAdapter:
                     set_parts.append(f"{col} = {array_str}")
                 else:
                     # Non-numeric array - store as JSON string
-                    json_str = json.dumps(val, default=str, ensure_ascii=False).replace("'", "''")
+                    # json.dumps produces backslashes (e.g., \n) that need escaping for ClickHouse
+                    # Escape backslashes FIRST, then single quotes
+                    json_str = json.dumps(val, default=str, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
                     set_parts.append(f"{col} = '{json_str}'")
             elif isinstance(val, dict):
-                json_str = json.dumps(val, default=str, ensure_ascii=False).replace("'", "''")
+                # json.dumps produces backslashes (e.g., \n) that need escaping for ClickHouse
+                # Escape backslashes FIRST, then single quotes
+                json_str = json.dumps(val, default=str, ensure_ascii=False).replace("\\", "\\\\").replace("'", "''")
                 set_parts.append(f"{col} = '{json_str}'")
             else:
-                set_parts.append(f"{col} = '{str(val)}'")
+                # Fallback for other types
+                escaped = str(val).replace("\\", "\\\\").replace("'", "''")
+                set_parts.append(f"{col} = '{escaped}'")
 
         set_clause = ', '.join(set_parts)
         settings = "SETTINGS mutations_sync = 1" if sync else ""

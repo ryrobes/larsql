@@ -1,0 +1,50 @@
+cascade_id: semantic_sounds_like
+
+description: |
+  Phonetic similarity matching (proof-of-concept for dynamic operators).
+
+  This cascade demonstrates that users can create custom SQL operators
+  by simply adding YAML files - no Python code changes needed!
+
+  SQL Usage:
+    SELECT * FROM customers WHERE name SOUNDS_LIKE 'Smith';
+
+inputs_schema:
+  text: "Text to evaluate"
+  reference: "Reference text for comparison"
+
+sql_function:
+  name: sounds_like
+  description: "Check if two words sound similar (phonetically)"
+  args:
+    - name: text
+      type: VARCHAR
+      description: "First text"
+    - name: reference
+      type: VARCHAR
+      description: "Reference text"
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "{{ text }} SOUNDS_LIKE {{ reference }}"
+  cache: true
+
+cells:
+  - name: check_phonetic
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Do these two words sound similar when spoken aloud?
+
+      WORD 1: {{ input.text }}
+      WORD 2: {{ input.reference }}
+
+      Consider:
+      - Phonetic spelling (e.g., "Smith" vs "Smythe")
+      - Sound-alike names (e.g., "Jon" vs "John")
+      - Common variations
+
+      Return ONLY "true" or "false" (no other text).
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean

@@ -6,6 +6,8 @@ RVBBIT's Semantic SQL extends standard SQL with LLM-powered operators that enabl
 
 **Core Philosophy**: Semantic SQL operators are "prompt sugar" - readable SQL syntax that rewrites to cascade invocations. Every semantic function is backed by a RVBBIT cascade YAML file, giving you full observability, caching, customization, and the ability to override any built-in behavior.
 
+**Built-in operators live in user-space** (`cascades/semantic_sql/`) as standard cascades. You can edit them directly, version control them, and share customizations. There's no special module-level code - SQL is truly extensible.
+
 ```sql
 -- Traditional SQL: exact match
 SELECT * FROM products WHERE category = 'eco'
@@ -13,6 +15,21 @@ SELECT * FROM products WHERE category = 'eco'
 -- Semantic SQL: meaning-based match
 SELECT * FROM products WHERE description MEANS 'sustainable or eco-friendly'
 ```
+
+### Quick Reference: Available Operators
+
+| Operator | Type | Example | Cascade File |
+|----------|------|---------|--------------|
+| `MEANS` | Scalar | `WHERE title MEANS 'visual contact'` | `matches.cascade.yaml` |
+| `ABOUT` | Scalar | `WHERE content ABOUT 'AI' > 0.7` | `score.cascade.yaml` |
+| `IMPLIES` | Scalar | `WHERE premise IMPLIES conclusion` | `implies.cascade.yaml` |
+| `CONTRADICTS` | Scalar | `WHERE claim CONTRADICTS evidence` | `contradicts.cascade.yaml` |
+| `~` | Scalar | `WHERE company ~ vendor` | *(inline rewrite to match_pair)* |
+| `SUMMARIZE` | Aggregate | `SELECT SUMMARIZE(reviews) FROM products` | `summarize.cascade.yaml` |
+| `THEMES` | Aggregate | `SELECT THEMES(text, 5) FROM docs` | `themes.cascade.yaml` |
+| `CLUSTER` | Aggregate | `SELECT CLUSTER(category, 8) FROM items` | `cluster.cascade.yaml` |
+
+All cascade files are in `cascades/semantic_sql/` - edit them to customize behavior!
 
 ## Architecture
 
@@ -92,7 +109,7 @@ Semantic SQL functions come in three shapes:
 
 ```
 RVBBIT_ROOT/
-├── traits/semantic_sql/           # User-facing cascade definitions
+├── cascades/semantic_sql/         # Built-in semantic SQL operators (user-overrideable)
 │   ├── matches.cascade.yaml       # MEANS operator backend
 │   ├── score.cascade.yaml         # ABOUT/SCORE operator backend
 │   ├── implies.cascade.yaml       # IMPLIES operator backend
@@ -100,12 +117,10 @@ RVBBIT_ROOT/
 │   ├── classify_single.cascade.yaml  # Per-row classification
 │   ├── summarize.cascade.yaml     # SUMMARIZE aggregate
 │   ├── themes.cascade.yaml        # THEMES/TOPICS aggregate
-│   ├── sentiment.cascade.yaml     # SENTIMENT aggregate
-│   ├── consensus.cascade.yaml     # CONSENSUS aggregate
-│   ├── outliers.cascade.yaml      # OUTLIERS aggregate
-│   ├── dedupe.cascade.yaml        # DEDUPE aggregate
-│   ├── cluster.cascade.yaml       # CLUSTER/MEANING aggregate
-│   └── classify.cascade.yaml      # Collection CLASSIFY aggregate
+│   └── cluster.cascade.yaml       # CLUSTER/MEANING aggregate
+│
+├── traits/semantic_sql/           # User custom operators (overrides cascades/)
+│   └── (your custom operators here)
 │
 rvbbit/
 ├── sql_rewriter.py                # Main entry point for query rewriting
@@ -117,8 +132,7 @@ rvbbit/
 │   └── ...
 └── semantic_sql/
     ├── registry.py                # Cascade discovery and execution
-    ├── executor.py                # Cascade runner wrapper
-    └── _builtin/                  # DEPRECATED: Legacy built-in cascades
+    └── executor.py                # Cascade runner wrapper
 ```
 
 ## Operator Reference
@@ -278,7 +292,12 @@ SELECT category, TOPICS(comments, 3) as main_topics
 FROM feedback GROUP BY category;
 ```
 
-Returns JSON array of extracted topic strings.
+Returns clean JSON array of topic strings:
+```json
+["Customer Service", "Product Quality", "Shipping Speed"]
+```
+
+**Note**: Returns a proper JSON array, not wrapped in an object or markdown fences.
 
 #### SENTIMENT - Collective Sentiment Score
 
@@ -486,8 +505,16 @@ cells:
 
 ### Customizing Built-in Functions
 
-To override a built-in function, create your own cascade at `RVBBIT_ROOT/traits/semantic_sql/`:
+Built-in operators are now standard cascades in `cascades/semantic_sql/`.
+To override any operator, you have two options:
 
+**Option 1: Edit directly** (simple, recommended for tweaking prompts/models):
+```bash
+# Edit the cascade file directly
+vim cascades/semantic_sql/matches.cascade.yaml
+```
+
+**Option 2: Override in traits/** (preserves originals, good for major changes):
 ```yaml
 # traits/semantic_sql/matches.cascade.yaml
 cascade_id: semantic_matches
@@ -503,10 +530,13 @@ cells:
       Your custom prompt logic here...
 ```
 
-The registry prioritizes:
-1. `RVBBIT_ROOT/cascades/` (highest)
-2. `RVBBIT_ROOT/traits/` (medium)
-3. Built-in `_builtin/` (deprecated, lowest)
+**Registry Priority** (later overwrites earlier):
+1. `RVBBIT_ROOT/traits/` (lower priority)
+2. `RVBBIT_ROOT/cascades/` (highest priority, includes semantic_sql/)
+
+Since built-ins are now in `cascades/semantic_sql/`, they have highest priority.
+Override them by editing the cascade files directly, or create copies in `traits/semantic_sql/`
+with the same `sql_function.name` to override (though editing directly is simpler).
 
 ## Caching
 
@@ -671,39 +701,512 @@ GROUP BY TOPICS(content, 5)
 ORDER BY count DESC;
 ```
 
+## PostgreSQL Wire Protocol Server
+
+### Connection Details
+
+**Server Implementation**: `rvbbit/server/postgres_server.py` (2771 lines)
+- Entry point: `start_postgres_server(host, port, session_prefix)`
+- Each client connection spawns a `ClientConnection` handler
+- Thread-per-connection model with isolated DuckDB instances
+- Full PostgreSQL wire protocol via `postgres_protocol.py` (946 lines)
+
+**Connection String**:
+```bash
+# In-memory (ephemeral)
+postgresql://localhost:15432/default
+postgresql://localhost:15432/memory
+
+# Persistent (file-backed)
+postgresql://localhost:15432/my_database
+# → Creates session_dbs/my_database.duckdb
+```
+
+**Catalog Compatibility**:
+For SQL client introspection (DBeaver, DataGrip, Tableau), the server creates these views:
+- `pg_catalog.pg_namespace` - Schema metadata
+- `pg_catalog.pg_class` - Tables/views/indexes
+- `pg_catalog.pg_tables` - Simplified table listing
+- `pg_catalog.pg_attribute` - Column definitions
+- `pg_catalog.pg_type` - Data type catalog
+- `pg_catalog.pg_proc` - Functions/procedures
+- `pg_catalog.pg_database` - Database list
+- `pg_catalog.pg_settings` - Configuration
+
+**Protocol Support**:
+- **Simple Query Protocol**: `QUERY` → `ROW_DESCRIPTION` → `DATA_ROW` → `COMMAND_COMPLETE`
+- **Extended Query Protocol**: `PARSE` → `BIND` → `EXECUTE` → `CLOSE` (for prepared statements)
+- **Authentication**: Accepts any credentials (no-op auth handler)
+- **SSL/TLS**: Not implemented (plain TCP only)
+
+### Thread Safety
+
+**Per-Connection Isolation**:
+- Each client gets unique `session_id` (e.g., `pg_client_mydb_abc123`)
+- Isolated DuckDB connection (not shared between clients)
+- Per-connection `db_lock` (threading.Lock) for query serialization
+- Persistent databases use DuckDB's internal locking for multi-client safety
+
+**UDF Registration**: Happens once per connection on first RVBBIT query
+- `register_rvbbit_udfs(conn)` - Core scalar/cascade UDFs
+- `register_llm_aggregates(conn)` - Aggregate functions with arity suffixes
+
+### Caller Context Tracking
+
+When RVBBIT statements execute, context flows through cascade calls:
+
+```python
+from rvbbit.caller_context import set_caller_context, build_sql_metadata
+
+caller_id = f"sql-{generate_woodland_id()}"
+metadata = build_sql_metadata(
+    sql_query=query,
+    protocol="postgresql_wire",
+    triggered_by="postgres_server",
+    database=db_name,
+    connection_id=session_id
+)
+set_caller_context(caller_id, metadata)
+```
+
+**Enables**:
+- Cost tracking across nested cascade calls
+- SQL Trail analytics (query log with costs, cache stats, LLM calls)
+- Debugging: All logs tagged with `caller_id` in ClickHouse `all_data` table
+- Observability: Link SQL query → cascade sessions → LLM calls
+
+### SQL Trail (Query Analytics)
+
+**Not Yet Implemented in Code** (mentioned in docs but not found in implementation):
+- Would track: `sql_query_log` table with query text, costs, cache hit rates
+- Would enable: Cost dashboards, slow query analysis, semantic operator usage stats
+- Current alternative: Query ClickHouse `all_data` filtered by `caller_id`
+
+```sql
+-- Find all LLM calls from SQL queries
+SELECT phase_name, model, cost, tokens_in, tokens_out
+FROM all_data
+WHERE caller_id LIKE 'sql-%'
+ORDER BY created_at DESC;
+```
+
+## Built-in Semantic Functions (Cascades)
+
+All built-in semantic SQL operators are standard cascade files in `cascades/semantic_sql/`:
+
+| File | SQL Operator | Function | Returns | Description |
+|------|--------------|----------|---------|-------------|
+| `matches.cascade.yaml` | `MEANS` | `semantic_matches()` | BOOLEAN | Semantic boolean filter |
+| `score.cascade.yaml` | `ABOUT` | `semantic_score()` | DOUBLE | Semantic similarity score (0-1) |
+| `implies.cascade.yaml` | `IMPLIES` | `semantic_implies()` | BOOLEAN | Logical implication check |
+| `contradicts.cascade.yaml` | `CONTRADICTS` | `semantic_contradicts()` | BOOLEAN | Contradiction detection |
+| `classify_single.cascade.yaml` | - | `semantic_classify_single()` | VARCHAR | Single-item classification |
+| `summarize.cascade.yaml` | `SUMMARIZE` | `semantic_summarize()` | VARCHAR | Text summarization |
+| `themes.cascade.yaml` | `THEMES`, `TOPICS` | `semantic_themes()` | JSON | Topic extraction (array) |
+| `cluster.cascade.yaml` | `MEANING`, `CLUSTER` | `semantic_cluster()` | JSON | Semantic clustering |
+
+**All cascades use**: `google/gemini-2.5-flash-lite` by default (fast, cheap)
+
+**Customization**: Simply edit the cascade file directly:
+```bash
+vim cascades/semantic_sql/matches.cascade.yaml
+# Change model, prompts, output_schema, etc.
+```
+
+**Version Control**: Commit your customizations to git:
+```bash
+git add cascades/semantic_sql/
+git commit -m "Customize MEANS operator for our domain"
+```
+
+### Creating Custom Operators
+
+Add new semantic SQL operators by creating cascades in `cascades/semantic_sql/`:
+
+**Example: SOUNDS_LIKE operator for phonetic matching**
+
+```yaml
+# cascades/semantic_sql/phonetic.cascade.yaml
+cascade_id: semantic_phonetic
+
+description: Phonetic similarity matching
+
+inputs_schema:
+  text: Text to evaluate
+  reference: Reference text for comparison
+
+sql_function:
+  name: semantic_phonetic
+  description: Check if two words sound similar (phonetically)
+  args:
+    - {name: text, type: VARCHAR}
+    - {name: reference, type: VARCHAR}
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "{{ text }} SOUNDS_LIKE {{ reference }}"
+  cache: true
+
+cells:
+  - name: check_phonetic
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Do these two words sound similar when spoken?
+
+      TEXT: {{ input.text }}
+      REFERENCE: {{ input.reference }}
+
+      Return ONLY "true" or "false" (no other text).
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean
+```
+
+**Usage:**
+```sql
+-- Automatically available after creating the cascade!
+SELECT * FROM customers
+WHERE name SOUNDS_LIKE 'Smith';
+```
+
+The registry auto-discovers cascades with `sql_function` metadata on startup.
+
+---
+
+## Advanced RVBBIT MAP/RUN Features
+
+### Schema-Aware Outputs
+
+**From**: `SQL_FEATURES_REFERENCE.md` and `sql_rewriter.py`
+
+Beyond basic RVBBIT MAP, you can extract typed columns:
+
+```sql
+-- Explicit schema (recommended)
+RVBBIT MAP 'cascade.yaml' AS (
+    brand VARCHAR,
+    confidence DOUBLE,
+    is_luxury BOOLEAN
+)
+USING (SELECT product_name FROM products);
+
+-- Inferred from cascade output_schema
+RVBBIT MAP 'cascade.yaml'
+USING (SELECT product_name FROM products)
+WITH (infer_schema = true);
+```
+
+**How It Works** (from `sql_rewriter.py`):
+1. Detects `AS (col TYPE, ...)` clause
+2. Wraps query with JSON extraction:
+   ```sql
+   SELECT input.*,
+     json_extract_string(_raw_result, '$.state.validated_output.brand') AS brand,
+     CAST(json_extract_string(..., '$.confidence') AS DOUBLE) AS confidence
+   FROM rvbbit_raw
+   ```
+3. Cascade must have `output_schema` in YAML
+4. LLM output validated against schema before extraction
+
+### EXPLAIN Support
+
+```sql
+EXPLAIN RVBBIT MAP 'cascade.yaml'
+USING (SELECT * FROM table LIMIT 100);
+```
+
+**Returns** (from `sql_explain.py` - not found in codebase but mentioned in docs):
+- Input row count
+- Model pricing estimates (hardcoded, should query OpenRouter API)
+- Cache hit rate (samples first 10 rows)
+- Total cost estimate
+- Rewritten SQL query
+
+**Cost Formula**:
+```
+cost_per_row = (prompt_tokens × input_price + output_tokens × output_price) × phases × candidates
+total_cost = cost_per_row × input_rows × (1 - cache_hit_rate)
+```
+
+### MAP DISTINCT - Deduplication
+
+```sql
+-- Dedupe all columns
+RVBBIT MAP DISTINCT 'cascade.yaml'
+USING (SELECT product_name, category FROM products);
+
+-- Dedupe by specific column
+RVBBIT MAP 'cascade.yaml'
+USING (SELECT * FROM table)
+WITH (dedupe_by='customer_id');
+```
+
+**Rewrite Strategy** (from `sql_rewriter.py`):
+- `DISTINCT` → wraps USING query with `SELECT DISTINCT ...`
+- `dedupe_by` → `SELECT DISTINCT ON (column) ...`
+- Reduces LLM calls by processing unique values only
+
+### Cache TTL
+
+```sql
+RVBBIT MAP 'cascade.yaml'
+USING (SELECT * FROM table)
+WITH (cache='1d');  -- 1 day TTL
+```
+
+**Duration Formats**: `'60s'`, `'30m'`, `'2h'`, `'1d'` or raw seconds
+**Cache Storage**: In-memory Python dict (`_cascade_udf_cache` in `udf.py`)
+**Cache Key**: `md5(cascade_path|inputs_json|ttl)`
+**Expiry Check**: `current_time - timestamp > ttl` → cache miss, re-execute
+
+### MAP PARALLEL (Deferred)
+
+```sql
+RVBBIT MAP PARALLEL 10 'cascade.yaml'
+USING (SELECT * FROM table LIMIT 100);
+```
+
+**Status**: Syntax parsed but not implemented
+**Reason**: DuckDB connections are not thread-safe
+**Workaround Needed**: Connection pool with thread-local connections
+**When Available**: Would use ThreadPoolExecutor for concurrent cascade execution
+
+## Bodybuilder Integration
+
+**Model Selection via Annotations**:
+
+```sql
+-- @ model: google/gemini-2.5-flash-lite
+-- @ threshold: 0.8
+SELECT * FROM products
+WHERE description MEANS 'sustainable';
+```
+
+**Annotation Parser** (from `semantic_operators.py`):
+- Regex: `r'--\s*@\s*(.+)'`
+- Extracts key-value pairs from comments
+- Injects into prompt as structured metadata
+- Bodybuilder's "request mode" reads annotations and routes to appropriate model
+
+**Annotation Scope**: Applies to next semantic operator only (not query-wide)
+
+## Implementation File Structure
+
+### Core Query Processing
+
+| File | Lines | Responsibility |
+|------|-------|----------------|
+| `sql_rewriter.py` | ~800 | Main entry point: `rewrite_rvbbit_syntax()` |
+| `sql_tools/semantic_operators.py` | 1319 | Scalar operator rewriting (MEANS, ABOUT, ~, etc.) |
+| `sql_tools/llm_agg_rewriter.py` | 200+ | Aggregate function rewriting |
+| `sql_tools/llm_aggregates.py` | 2283 | Aggregate UDF implementations with caching |
+| `sql_tools/udf.py` | 973 | Core UDF infrastructure (`rvbbit_udf`, `rvbbit_cascade_udf`) |
+
+### Server Infrastructure
+
+| File | Lines | Responsibility |
+|------|-------|----------------|
+| `server/postgres_server.py` | 2771 | PostgreSQL wire protocol server |
+| `server/postgres_protocol.py` | 946 | Protocol message encoding/decoding |
+
+### Cascade Integration
+
+| File | Size | Responsibility |
+|------|------|----------------|
+| `semantic_sql/registry.py` | ~15KB | Cascade discovery and SQL function registration |
+| `semantic_sql/executor.py` | ~15KB | Cascade execution wrapper for SQL context |
+
+### Built-in & User Cascades
+
+**Built-in Operators** (`RVBBIT_ROOT/cascades/semantic_sql/`):
+- `matches.cascade.yaml` - MEANS operator
+- `score.cascade.yaml` - ABOUT operator
+- `implies.cascade.yaml` - IMPLIES operator
+- `contradicts.cascade.yaml` - CONTRADICTS operator
+- `classify_single.cascade.yaml` - Single-item classification
+- `summarize.cascade.yaml` - SUMMARIZE aggregate
+- `themes.cascade.yaml` - THEMES/TOPICS aggregate
+- `cluster.cascade.yaml` - CLUSTER/MEANING aggregate
+
+**User Overrides** (`RVBBIT_ROOT/traits/semantic_sql/`):
+- Optional directory for preserving original built-ins while testing changes
+- Same `sql_function.name` in traits/ will override cascades/ (but editing cascades/ directly is simpler)
+
+**Registry Priority Order** (from `registry.py`):
+1. `RVBBIT_ROOT/traits/` (scanned first, lower priority)
+2. `RVBBIT_ROOT/cascades/` (scanned second, overwrites traits/, highest priority)
+
+**Simplified Architecture**: No more special `_builtin/` directory in module internals. The registry now has clean 2-tier scanning:
+- `traits/` for backwards compatibility and custom user tools
+- `cascades/` for everything else (including built-in operators in `cascades/semantic_sql/`)
+
+This makes the system more maintainable and user-friendly - built-ins are just regular cascades.
+
+## Recent Improvements (2026-01-02)
+
+✅ **Built-in cascades moved to user-space**:
+- Migrated from `rvbbit/semantic_sql/_builtin/` to `cascades/semantic_sql/`
+- Removed deprecated `_builtin/` directory entirely
+- Updated registry to scan only `traits/` and `cascades/` (2-tier priority)
+- All operators now fully customizable without touching module code
+
+✅ **THEMES() return format fixed**:
+- Now returns clean JSON array: `["topic1", "topic2", "topic3"]`
+- Previously returned wrapped object with markdown fences
+- Fixed at cascade level (no system-level hardcoding)
+
+---
+
 ## What's Left to Complete
 
-### Current Limitations
+### Currently Broken or Incomplete
 
-1. **Cascade execution overhead**: Full RVBBITRunner is used even for single-cell cascades. A lightweight executor for simple LLM calls would improve performance.
+1. **RVBBIT RUN Implementation**:
+   - Syntax: `RVBBIT RUN 'cascade.yaml' USING (SELECT ...)`
+   - Status: Parser exists in `_rewrite_run()` but implementation incomplete
+   - Issue: Should create temp table and pass to cascade, but unclear if working
+   - Need to test and fix
 
-2. **No streaming support**: Aggregate results wait for full LLM response. Streaming would improve UX for large summaries.
+2. **MAP PARALLEL**:
+   - Syntax parsed but deferred due to DuckDB thread-safety
+   - Need: Connection pooling strategy for multi-threaded execution
+   - Workaround: Use `candidates` in cascade YAML for parallel model execution
 
-3. **Limited type inference**: ROW functions that return structs need manual schema specification.
+3. **EXPLAIN RVBBIT MAP**:
+   - Mentioned in docs (SQL_FEATURES_REFERENCE.md)
+   - No `sql_explain.py` file found in codebase
+   - Need: Implement cost estimation logic with model pricing lookup
 
-4. **No cost budgets**: No built-in way to limit total LLM spend per query.
+4. **SQL Trail / Query Analytics**:
+   - Mentioned in planning doc but no dedicated table/view found
+   - Caller context tracking exists, but no `sql_query_log` table
+   - Need: Create analytics views over `all_data` filtered by `caller_id LIKE 'sql-%'`
+
+5. **Table Materialization**:
+   - `WITH (as_table = 'name')` option parsed
+   - Unclear if `CREATE TABLE AS RVBBIT MAP` works
+   - Need to test and document
+
+6. **GROUP BY MEANING/TOPICS**:
+   - Syntax defined in `semantic_operators.py`
+   - Complex rewriting logic with subqueries
+   - Known issue: Edge cases with nested subqueries fail to parse
+   - Need: More robust SQL parsing (consider sqlglot or sqlparse)
+
+7. **LLM_CASE Multi-Branch Classification**:
+   - Rewriter: `_rewrite_llm_case()` in `llm_agg_rewriter.py`
+   - Creates `semantic_case_N()` UDF with all branches as args
+   - Need: Verify it actually makes single LLM call per row (should batch conditions)
+
+### Architecture Improvements Needed
+
+1. **Lightweight Executor for Single-Cell Cascades**:
+   - Current: All semantic functions go through full RVBBITRunner
+   - Overhead: TraceNode creation, state persistence, event emission
+   - Need: Fast path for simple LLM calls (bypass runner for SCALAR functions)
+
+2. **Streaming Support**:
+   - Current: Aggregates wait for full LLM response
+   - UX Impact: Long delays for large summaries
+   - Need: Streaming via SSE for SUMMARIZE, CONSENSUS, etc.
+
+3. **Embedding-Based Pre-Filtering**:
+   - Use case: Fuzzy JOINs on large tables
+   - Strategy: Embed all values, use ANN for candidate filtering, then LLM for top-k
+   - Need: Integration with embedding models (already have `RVBBIT_DEFAULT_EMBED_MODEL`)
+
+4. **Query Optimizer**:
+   - Auto-detect: Duplicate semantic predicates that can be cached
+   - Auto-reorder: Cheap filters before expensive LLM calls
+   - Auto-suggest: DISTINCT opportunities based on cardinality analysis
+
+5. **Cost Budgets**:
+   - SQL-level: `WITH (max_cost_dollars = 5.0)` to abort if estimate exceeds
+   - Session-level: Track cumulative SQL session costs
+   - Need: Real-time cost tracking and abort mechanism
+
+### Known Bugs
+
+1. **Double WHERE After SEMANTIC JOIN**:
+   - Issue: `WHERE a ~ b WHERE other_condition` (malformed SQL)
+   - Fix: `_fix_double_where()` in `semantic_operators.py`
+   - Status: Fixed but edge cases may remain with complex queries
+
+2. **Annotation Scope Too Narrow**:
+   - Issue: `-- @ model: X` only affects next operator
+   - Need: Query-wide defaults (e.g., `-- @@ global model: X`)
+
+3. **ROW Function Type Inference**:
+   - Issue: `match_pair()` returns struct, but type not auto-detected
+   - Need: Manual schema or reflection from cascade `output_schema`
+
+4. **Complex Subqueries in GROUP BY MEANING**:
+   - Parser struggles with deeply nested CTEs and subqueries
+   - Need: Better SQL AST manipulation (migrate to sqlglot?)
+
+5. **UDF Arity Explosion**:
+   - DuckDB doesn't support function overloading
+   - Workaround: `llm_summarize_1`, `llm_summarize_2`, `llm_summarize_3` for different arg counts
+   - Ugly but functional; no clean solution without UDF API changes
+
+### Documentation Gaps
+
+1. **No SQL client setup guide** - How to connect from DBeaver, DataGrip, psql, configure connection strings
+2. ~~**No cascade authoring guide for SQL functions**~~ - ✅ Added custom operator example above
+3. **No performance tuning guide** - LIMIT best practices, cache strategies, cost control, semantic JOIN warnings
+4. **No security/auth docs** - Currently accepts any connection (fine for local dev, bad for production)
+5. **No operator rewriting debug guide** - How to inspect rewritten SQL, debug annotation parsing
 
 ### Future Enhancements
 
-1. **True parallel execution**: `RVBBIT MAP PARALLEL N` syntax exists but doesn't use threading yet.
+1. **Multi-Modal Semantic Operators**:
+   - `WHERE image_col DEPICTS 'sunset'`
+   - `WHERE document_col MENTIONS 'quarterly earnings'`
+   - Need: Multi-modal LLM integration (GPT-4V, Gemini Vision)
 
-2. **Incremental aggregation**: For very large collections, process in batches and merge results.
+2. ~~**User-Defined Operators**~~ - ✅ **Already implemented!**
+   - Users can define new operators purely in YAML (see "Creating Custom Operators" section)
+   - Just create a cascade with `sql_function` metadata in `cascades/semantic_sql/`
+   - Registry auto-discovers on startup - no Python code needed
+   - Example: SOUNDS_LIKE, SIMILAR_TO, TRANSLATES_TO, etc.
 
-3. **Embedding-based pre-filtering**: Use embeddings for cheap candidate filtering before LLM evaluation.
+3. **Incremental Aggregation**:
+   - For collections > 1000 items, batch process and merge
+   - SUMMARIZE in chunks, then meta-summarize
+   - CLUSTER via hierarchical clustering
 
-4. **Query optimization**: Automatic reordering of predicates to minimize LLM calls.
+4. **Distributed Execution**:
+   - For massive tables, shard across workers
+   - Each worker processes subset, results merged
+   - Need: Celery/RQ integration or Ray
 
-5. **Multi-modal support**: Semantic operators on image/document columns.
+5. **Query Result Caching**:
+   - Cache full query results (not just UDF calls)
+   - Invalidation: Time-based or on table changes
+   - Need: DuckDB query fingerprinting
 
-6. **User-defined operators**: Allow users to define new operators via YAML without Python.
+### Testing Needs
 
-### Known Issues
+1. **Integration Tests**:
+   - End-to-end: Connect via psql, run semantic query, verify results
+   - Catalog queries: Test DBeaver/DataGrip introspection
+   - Multi-client: Concurrent connections with persistent DB
 
-1. **GROUP BY MEANING/TOPICS with subqueries**: Complex nested subqueries may not parse correctly.
+2. **Rewriter Tests**:
+   - Expand `tests/test_sql_rewriter.py` with edge cases
+   - Test all operator combinations
+   - Test annotation parsing and injection
 
-2. **Double WHERE after SEMANTIC JOIN**: Fixed with `_fix_double_where()` but edge cases may exist.
+3. **Cache Tests**:
+   - Verify cache hits/misses are logged correctly
+   - Test TTL expiry logic
+   - Test cache key collision resistance
 
-3. **Annotation scope**: Annotations apply to the next operator only; no way to set query-wide defaults.
+4. **Performance Benchmarks**:
+   - Measure: Rewriter overhead, UDF call latency, cache speedup
+   - Compare: With vs without DISTINCT, with vs without cache
+   - Baseline: Pure DuckDB vs semantic SQL
 
 ## Debugging
 

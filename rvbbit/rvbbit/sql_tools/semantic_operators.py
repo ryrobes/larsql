@@ -7,7 +7,7 @@ Architecture:
     All semantic operators are "prompt sugar" - syntax that rewrites to cascade
     invocations. A cascade with `sql_function` metadata becomes a SQL-callable
     function. Built-in operators (MEANS, ABOUT, IMPLIES, etc.) are defined as
-    cascade YAML files in rvbbit/semantic_sql/_builtin/.
+    cascade YAML files in cascades/semantic_sql/ (user-space, fully customizable).
 
     Three shapes:
     - SCALAR: Per-row functions (e.g., MEANS, IMPLIES, ABOUT)
@@ -225,34 +225,18 @@ def _find_annotation_for_line(
 # ============================================================================
 
 def has_semantic_operators(query: str) -> bool:
-    """Check if query contains any semantic SQL operators."""
-    query_upper = query.upper()
+    """
+    Check if query contains any semantic SQL operators.
 
-    # Check for semantic operators (including negated forms)
-    patterns = [
-        r'\bMEANS\s+\'',             # col MEANS 'x'
-        r'\bNOT\s+MEANS\s+\'',       # col NOT MEANS 'x'
-        r'\bABOUT\s+\'',             # col ABOUT 'x'
-        r'\bNOT\s+ABOUT\s+\'',       # col NOT ABOUT 'x'
-        r'\w+\s*~\s*\w+',            # a ~ b (tilde operator)
-        r'\w+\s*!~\s*\w+',           # a !~ b (negated tilde)
-        r'\bSEMANTIC\s+JOIN\b',      # SEMANTIC JOIN
-        r'\bRELEVANCE\s+TO\s+\'',    # ORDER BY col RELEVANCE TO 'x'
-        r'\bNOT\s+RELEVANCE\s+TO\s+\'',  # ORDER BY col NOT RELEVANCE TO 'x'
-        r'\bSEMANTIC\s+DISTINCT\b',  # SEMANTIC DISTINCT
-        r'\bGROUP\s+BY\s+MEANING\s*\(', # GROUP BY MEANING(col)
-        r'\bGROUP\s+BY\s+TOPICS\s*\(',  # GROUP BY TOPICS(col)
-        r'\bIMPLIES\s+\'',           # col IMPLIES 'x'
-        r'\bIMPLIES\s+\w+',          # col IMPLIES other_col
-        r'\bCONTRADICTS\s+\'',       # col CONTRADICTS 'x'
-        r'\bCONTRADICTS\s+\w+',      # col CONTRADICTS other_col
-    ]
+    Dynamically checks against operators loaded from cascade registry.
+    Operators are discovered from cascades/semantic_sql/*.cascade.yaml
+    and traits/semantic_sql/*.cascade.yaml on server startup.
 
-    for pattern in patterns:
-        if re.search(pattern, query, re.IGNORECASE):
-            return True
-
-    return False
+    This means user-created cascades automatically work without code changes!
+    """
+    # Use dynamic pattern detection
+    from .dynamic_operators import has_any_semantic_operator
+    return has_any_semantic_operator(query)
 
 
 # ============================================================================
@@ -333,6 +317,14 @@ def rewrite_semantic_operators(query: str) -> str:
 
     # Query-level rewrites (these transform the entire query structure)
 
+    # EMBED: Inject table/ID context for auto-storage in rvbbit_embeddings
+    from .embedding_operator_rewrites import _rewrite_embed_query_level
+    result = _rewrite_embed_query_level(result, annotation_prefix)
+
+    # VECTOR_SEARCH: Needs CTE approach to avoid subquery in table function
+    from .embedding_operator_rewrites import _rewrite_vector_search_query_level
+    result = _rewrite_vector_search_query_level(result, annotation_prefix)
+
     # SEMANTIC DISTINCT: SELECT SEMANTIC DISTINCT col FROM table
     result = _rewrite_semantic_distinct(result, annotation_prefix)
 
@@ -355,32 +347,17 @@ def _find_next_code_line(lines: list, start: int) -> Optional[int]:
 
 
 def _has_semantic_operator_in_line(line: str) -> bool:
-    """Check if a line contains any semantic operator."""
-    patterns = [
-        r'\bMEANS\s+\'',              # col MEANS 'x'
-        r'\bNOT\s+MEANS\s+\'',        # col NOT MEANS 'x'
-        r'\bABOUT\s+\'',              # col ABOUT 'x'
-        r'\bNOT\s+ABOUT\s+\'',        # col NOT ABOUT 'x'
-        r'\w+\s*~\s*\w+',             # a ~ b (but not in comments)
-        r'\w+\s*!~\s*\w+',            # a !~ b (negated tilde)
-        r'\bSEMANTIC\s+JOIN\b',       # SEMANTIC JOIN
-        r'\bSEMANTIC\s+DISTINCT\b',   # SEMANTIC DISTINCT
-        r'\bRELEVANCE\s+TO\s+\'',     # RELEVANCE TO 'x'
-        r'\bNOT\s+RELEVANCE\s+TO\s+\'',  # NOT RELEVANCE TO 'x'
-        r'\bGROUP\s+BY\s+MEANING\s*\(', # GROUP BY MEANING(col)
-        r'\bGROUP\s+BY\s+TOPICS\s*\(',  # GROUP BY TOPICS(col)
-        r'\bIMPLIES\s+[\'"\w]',        # col IMPLIES 'x' or col IMPLIES other
-        r'\bCONTRADICTS\s+[\'"\w]',    # col CONTRADICTS 'x' or col CONTRADICTS other
-    ]
+    """
+    Check if a line contains any semantic operator.
 
+    Dynamically checks against operators loaded from cascade registry.
+    """
     # Ignore if line is a comment
     if line.strip().startswith('--'):
         return False
 
-    for pattern in patterns:
-        if re.search(pattern, line, re.IGNORECASE):
-            return True
-    return False
+    from .dynamic_operators import has_semantic_operator_in_line as dynamic_check
+    return dynamic_check(line)
 
 
 def _fix_double_where(query: str) -> str:
@@ -475,6 +452,10 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
 
     # 11. Rewrite: col CONTRADICTS other_col → contradicts(col, other_col)
     result = _rewrite_contradicts(result, annotation_prefix)
+
+    # 12. Embedding operators (EMBED, VECTOR_SEARCH, SIMILAR_TO)
+    from rvbbit.sql_tools.embedding_operator_rewrites import rewrite_embedding_operators
+    result = rewrite_embedding_operators(result, annotation_prefix)
 
     return result
 

@@ -888,9 +888,12 @@ class ClientConnection:
                     protocol="postgresql_wire",
                     triggered_by="postgres_server"
                 )
-                set_caller_context(caller_id, metadata)
+                # Set caller context with connection_id for global registry lookup
+                set_caller_context(caller_id, metadata, connection_id=self.session_id)
+                print(f"[{self.session_id}] 🔗 Set caller_context: {caller_id} → registry[{self.session_id}]")
 
                 # Log query start for SQL Trail analytics
+                # fingerprint_query() will detect semantic operators before sqlglot parsing
                 import time
                 from rvbbit.sql_trail import log_query_start
                 _query_start_time = time.time()
@@ -1091,7 +1094,7 @@ class ClientConnection:
                                 # Clear cascade tracking and caller context
                                 if caller_id:
                                     clear_cascade_executions(caller_id)
-                                clear_caller_context()
+                                clear_caller_context(connection_id=self.session_id)
                             except Exception as trail_e:
                                 print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
 
@@ -1156,7 +1159,7 @@ class ClientConnection:
                     # Clear cascade tracking and caller context
                     if caller_id:
                         clear_cascade_executions(caller_id)
-                    clear_caller_context()
+                    clear_caller_context(connection_id=self.session_id)
                 except Exception as trail_e:
                     print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
 
@@ -1178,7 +1181,7 @@ class ClientConnection:
                         duration_ms=duration_ms,
                     )
                     # Clear caller context to avoid leaking to next query
-                    clear_caller_context()
+                    clear_caller_context(connection_id=self.session_id)
                 except Exception as trail_e:
                     print(f"[{self.session_id}]   ⚠️  SQL Trail error log failed: {trail_e}")
 
@@ -2707,6 +2710,26 @@ class RVBBITPostgresServer:
 
         sock.listen(5)  # Backlog of 5 pending connections
         self.running = True
+
+        # Initialize cascade registry and dynamic operator patterns (cached for server lifetime)
+        try:
+            from rvbbit.semantic_sql.registry import initialize_registry
+            from rvbbit.sql_tools.dynamic_operators import initialize_dynamic_patterns
+
+            print("🔄 Initializing cascade registry...")
+            initialize_registry(force=True)
+
+            print("🔄 Loading dynamic operator patterns...")
+            patterns = initialize_dynamic_patterns(force=True)
+
+            print(f"✅ Loaded {len(patterns['all_keywords'])} semantic SQL operators")
+            print(f"   - {len(patterns['infix'])} infix: {', '.join(sorted(list(patterns['infix']))[:5])}{'...' if len(patterns['infix']) > 5 else ''}")
+            print(f"   - {len(patterns['function'])} functions: {', '.join(sorted(list(patterns['function']))[:5])}{'...' if len(patterns['function']) > 5 else ''}")
+            print()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not initialize dynamic operators: {e}")
+            print(f"   Semantic SQL operators may not work correctly")
+            print()
 
         # Print startup banner
         print("=" * 70)

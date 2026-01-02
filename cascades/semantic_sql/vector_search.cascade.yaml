@@ -1,0 +1,93 @@
+cascade_id: semantic_vector_search
+
+description: |
+  Semantic search using ClickHouse cosineDistance.
+
+  Returns table of (id, text, similarity, distance) tuples.
+  Pre-filters via vector similarity, can be combined with LLM operators.
+
+  SQL Usage:
+    SELECT * FROM VECTOR_SEARCH('eco-friendly products', 'products', 10);
+    SELECT * FROM VECTOR_SEARCH('query', 'table', 10, 0.7);  -- with threshold
+
+  Performance:
+    - Vector search: ~50ms for 1M vectors (ClickHouse native)
+    - No LLM calls (pure vector similarity)
+    - Results cached by query hash
+
+  Hybrid Pattern (Vector + LLM):
+    WITH candidates AS (
+      SELECT * FROM VECTOR_SEARCH('eco products', 'products', 100)
+    )
+    SELECT *
+    FROM candidates c
+    JOIN products p ON p.id = c.id
+    WHERE p.description MEANS 'eco-friendly AND affordable'
+    ORDER BY c.similarity DESC;
+
+inputs_schema:
+  query: "Search query text (required)"
+  source_table: "Table to search - must have embeddings in rvbbit_embeddings (required)"
+  limit: "Max results (default 10)"
+  threshold: "Min similarity threshold 0-1 (optional, e.g. 0.7)"
+
+sql_function:
+  name: vector_search
+  description: Find similar documents via vector search
+  args:
+    - name: query
+      type: VARCHAR
+      description: "Search query text"
+    - name: source_table
+      type: VARCHAR
+      description: "Table name to search"
+    - name: limit
+      type: INTEGER
+      optional: true
+      description: "Max results (default 10)"
+    - name: threshold
+      type: DOUBLE
+      optional: true
+      description: "Min similarity threshold (0-1)"
+  returns: TABLE  # Table-valued function
+  shape: AGGREGATE
+  operators:
+    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}')"
+    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}', {{ limit }})"
+    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}', {{ limit }}, {{ threshold }})"
+  cache: true
+  context_arg: query
+
+cells:
+  - name: vector_search_complete
+    tool: python_data
+    inputs:
+      code: |
+        # Complete vector search in one cell to avoid DataFrame conversion issues
+        from rvbbit.traits.embedding_storage import agent_embed, clickhouse_vector_search
+
+        # Step 1: Embed the query
+        embed_result = agent_embed(text=input.get('query'))
+        query_embedding = embed_result['embedding']
+
+        # Step 2: Search ClickHouse
+        search_result = clickhouse_vector_search(
+            query_embedding=query_embedding,
+            source_table=input.get('source_table'),
+            limit=input.get('limit', 10),
+            threshold=input.get('threshold')
+        )
+
+        # Step 3: Format results for SQL
+        results = search_result.get('results', [])
+        result = [
+            {
+                'id': row['source_id'],
+                'text': row['text'][:500],
+                'similarity': round(row['similarity'], 4),
+                'distance': round(row['distance'], 4)
+            }
+            for row in results
+        ]
+    context:
+      enabled: false  # No LLM context needed

@@ -297,6 +297,14 @@ class SessionManager:
                                             caller_id=caller_id, invocation_metadata=invocation_metadata)
         else:
             print(f"[SessionManager] REUSING existing Echo for {session_id}")
+            # CRITICAL: Update caller_id and metadata even for existing sessions!
+            # This ensures SQL queries can set tracking info on reused sessions
+            if caller_id is not None:
+                print(f"[SessionManager]   Updating caller_id: {self.sessions[session_id].caller_id!r} → {caller_id!r}")
+                self.sessions[session_id].caller_id = caller_id
+            if invocation_metadata is not None:
+                print(f"[SessionManager]   Updating invocation_metadata")
+                self.sessions[session_id].invocation_metadata = invocation_metadata
             print(f"[SessionManager]   State keys: {list(self.sessions[session_id].state.keys())}")
             print(f"[SessionManager]   History entries: {len(self.sessions[session_id].history)}")
         return self.sessions[session_id]

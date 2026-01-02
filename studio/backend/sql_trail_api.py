@@ -74,19 +74,22 @@ def get_overview():
         previous_start = current_start - timedelta(days=days)
 
         # Current period KPIs
+        # Join with mv_sql_query_costs for real-time cost data
+        # SummingMergeTree returns 0 (not NULL), so check > 0 before using MV value
         kpis_query = f"""
             SELECT
                 COUNT(*) as total_queries,
-                SUM(total_cost) as sum_cost,
-                AVG(duration_ms) as avg_duration_ms,
-                SUM(cache_hits) as total_cache_hits,
-                SUM(cache_misses) as total_cache_misses,
-                SUM(llm_calls_count) as total_llm_calls,
-                SUM(rows_output) as total_rows_processed,
-                countIf(status = 'error') as error_count,
-                countIf(udf_count > 0) as udf_query_count
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                SUM(CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END) as sum_cost,
+                AVG(q.duration_ms) as avg_duration_ms,
+                SUM(q.cache_hits) as total_cache_hits,
+                SUM(q.cache_misses) as total_cache_misses,
+                SUM(CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END) as total_llm_calls,
+                SUM(q.rows_output) as total_rows_processed,
+                countIf(q.status = 'error') as error_count,
+                countIf(q.udf_count > 0) as udf_query_count
+            FROM sql_query_log q
+            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
         """
 
         kpis_result = db.query(kpis_query)
@@ -236,28 +239,34 @@ def get_queries():
         count_result = db.query(count_query)
         total = safe_int(count_result[0].get('total') if count_result else 0)
 
-        # Get queries
+        # Get queries (JOIN with cost MV for real-time cost data)
+        # Note: SummingMergeTree returns 0 (not NULL) for non-existent rows, so we check > 0
         query = f"""
             SELECT
-                toString(query_id) as query_id,
-                caller_id,
-                substring(query_raw, 1, 200) as query_preview,
-                query_fingerprint,
-                query_type,
-                udf_types,
-                status,
-                duration_ms,
-                total_cost,
-                cache_hits,
-                cache_misses,
-                rows_input,
-                rows_output,
-                llm_calls_count,
-                error_message,
-                timestamp
-            FROM sql_query_log
+                toString(q.query_id) as query_id,
+                q.caller_id,
+                q.query_raw,
+                substring(q.query_raw, 1, 200) as query_preview,
+                q.query_fingerprint,
+                q.query_type,
+                q.udf_types,
+                q.status,
+                q.started_at,
+                q.duration_ms,
+                CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END as total_cost,
+                q.cache_hits,
+                q.cache_misses,
+                q.rows_input,
+                q.rows_output,
+                CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END as llm_calls_count,
+                q.cascade_count,
+                q.cascade_paths,
+                q.error_message,
+                q.timestamp
+            FROM sql_query_log q
+            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
             WHERE {where_sql}
-            ORDER BY timestamp DESC
+            ORDER BY q.timestamp DESC
             LIMIT {limit}
             OFFSET {offset}
         """
@@ -282,11 +291,13 @@ def get_queries():
             formatted.append({
                 'query_id': row.get('query_id'),
                 'caller_id': row.get('caller_id'),
-                'query_preview': row.get('query_preview'),
+                'query_raw': row.get('query_raw'),  # Full SQL text
+                'query_preview': row.get('query_preview'),  # Truncated version
                 'query_fingerprint': row.get('query_fingerprint'),
                 'query_type': row.get('query_type'),
                 'udf_types': row.get('udf_types', []),
                 'status': row.get('status'),
+                'started_at': row.get('started_at').isoformat() if hasattr(row.get('started_at'), 'isoformat') else str(row.get('started_at')),
                 'duration_ms': round(safe_float(row.get('duration_ms')), 2),
                 'total_cost': round(safe_float(row.get('total_cost')), 4),
                 'cache_hits': cache_hits,
@@ -295,6 +306,8 @@ def get_queries():
                 'rows_input': safe_int(row.get('rows_input')),
                 'rows_output': safe_int(row.get('rows_output')),
                 'llm_calls_count': safe_int(row.get('llm_calls_count')),
+                'cascade_count': safe_int(row.get('cascade_count')),
+                'cascade_paths': row.get('cascade_paths', []),
                 'error_message': row.get('error_message'),
                 'timestamp': ts
             })
@@ -325,12 +338,19 @@ def get_query_detail(caller_id: str):
     try:
         db = get_db()
 
-        # Get query details
+        # Get query details (JOIN with cost MV for real-time cost data)
+        # SummingMergeTree returns 0 (not NULL), so check > 0 before using MV value
         query = f"""
-            SELECT *
-            FROM sql_query_log
-            WHERE caller_id = '{caller_id}'
-            ORDER BY timestamp DESC
+            SELECT
+                q.*,
+                CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END as mv_total_cost,
+                CASE WHEN c.total_tokens_in > 0 THEN c.total_tokens_in ELSE COALESCE(q.total_tokens_in, 0) END as mv_total_tokens_in,
+                CASE WHEN c.total_tokens_out > 0 THEN c.total_tokens_out ELSE COALESCE(q.total_tokens_out, 0) END as mv_total_tokens_out,
+                CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END as mv_llm_calls_count
+            FROM sql_query_log q
+            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
+            WHERE q.caller_id = '{caller_id}'
+            ORDER BY q.timestamp DESC
             LIMIT 1
         """
         query_data = db.query(query)
@@ -339,7 +359,21 @@ def get_query_detail(caller_id: str):
 
         query_row = query_data[0]
 
-        # Get spawned sessions via caller_id from unified_logs
+        # Get cascade executions from tracking table
+        cascade_execs_query = f"""
+            SELECT
+                cascade_id,
+                cascade_path,
+                session_id,
+                inputs_summary,
+                timestamp
+            FROM sql_cascade_executions
+            WHERE caller_id = '{caller_id}'
+            ORDER BY timestamp
+        """
+        cascade_executions = db.query(cascade_execs_query)
+
+        # Get spawned sessions via caller_id from unified_logs (for cost aggregation)
         sessions_query = f"""
             SELECT
                 session_id,
@@ -401,10 +435,14 @@ def get_query_detail(caller_id: str):
                 'duration_ms': round(safe_float(query_row.get('duration_ms')), 2),
                 'rows_input': safe_int(query_row.get('rows_input')),
                 'rows_output': safe_int(query_row.get('rows_output')),
-                'total_cost': round(safe_float(query_row.get('total_cost')), 4),
+                'total_cost': round(safe_float(query_row.get('mv_total_cost')), 4),
+                'total_tokens_in': safe_int(query_row.get('mv_total_tokens_in')),
+                'total_tokens_out': safe_int(query_row.get('mv_total_tokens_out')),
                 'cache_hits': safe_int(query_row.get('cache_hits')),
                 'cache_misses': safe_int(query_row.get('cache_misses')),
-                'llm_calls_count': safe_int(query_row.get('llm_calls_count')),
+                'llm_calls_count': safe_int(query_row.get('mv_llm_calls_count')),
+                'cascade_count': safe_int(query_row.get('cascade_count')),
+                'cascade_paths': query_row.get('cascade_paths', []),
                 'error_message': query_row.get('error_message'),
                 'protocol': query_row.get('protocol'),
                 'timestamp': ts
@@ -431,6 +469,16 @@ def get_query_detail(caller_id: str):
                     'tokens_out': safe_int(row.get('tokens_out'))
                 }
                 for row in models_used
+            ],
+            'cascade_executions': [
+                {
+                    'cascade_id': row.get('cascade_id'),
+                    'cascade_path': row.get('cascade_path'),
+                    'session_id': row.get('session_id'),
+                    'inputs_summary': row.get('inputs_summary'),
+                    'timestamp': row.get('timestamp').isoformat() if hasattr(row.get('timestamp'), 'isoformat') else str(row.get('timestamp'))
+                }
+                for row in cascade_executions
             ]
         })
 

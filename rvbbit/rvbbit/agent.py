@@ -177,6 +177,16 @@ class Agent:
 
                 response = litellm.completion(**args)
 
+                # Track LLM call for SQL Trail analytics (fire-and-forget)
+                try:
+                    from .caller_context import get_caller_id
+                    from .sql_trail import increment_llm_call
+                    caller_id = get_caller_id()
+                    if caller_id:
+                        increment_llm_call(caller_id)
+                except Exception:
+                    pass  # Don't fail the main path if tracking fails
+
                 # Calculate total duration (network + generation)
                 duration_ms = int((time.time() - start_time) * 1000)
 
