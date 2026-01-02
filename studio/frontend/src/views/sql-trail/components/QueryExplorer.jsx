@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 
 const formatCost = (cost) => {
@@ -39,12 +39,35 @@ const getCacheRate = (hits, misses) => {
   return ((hits || 0) / total) * 100;
 };
 
+const getCacheClass = (rate) => {
+  if (rate >= 80) return 'cache-high';
+  if (rate >= 50) return 'cache-mid';
+  return 'cache-low';
+};
+
+const getElapsedMs = (query, now) => {
+  const startValue = query.started_at || query.timestamp || query.created_at;
+  const startTime = startValue ? new Date(startValue).getTime() : NaN;
+  if (Number.isNaN(startTime)) return null;
+  return Math.max(0, now - startTime);
+};
+
 const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('timestamp');
   const [sortDesc, setSortDesc] = useState(true);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const hasRunning = queries.some((query) => query.status === 'running');
+    if (!hasRunning) return undefined;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [queries]);
 
   const filteredQueries = useMemo(() => {
     let result = [...queries];
@@ -129,7 +152,7 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
     <div className="query-explorer">
       <div className="explorer-toolbar">
         <div className="explorer-search">
-          <Icon icon="mdi:magnify" width={16} style={{ color: '#666' }} />
+          <Icon icon="mdi:magnify" width={16} className="explorer-search-icon" />
           <input
             type="text"
             placeholder="Search queries..."
@@ -161,7 +184,7 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
           <option value="semantic_op">semantic_op</option>
         </select>
 
-        <div style={{ marginLeft: 'auto', color: '#888', fontSize: '13px' }}>
+        <div className="explorer-summary">
           Showing {filteredQueries.length} of {total} queries
         </div>
       </div>
@@ -170,21 +193,36 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
         <table className="query-table">
           <thead>
             <tr>
-              <th onClick={() => handleSort('timestamp')} style={{ cursor: 'pointer' }}>
+              <th
+                className={`sortable ${sortBy === 'timestamp' ? 'sorted' : ''}`}
+                onClick={() => handleSort('timestamp')}
+              >
                 Time <SortIcon field="timestamp" />
               </th>
               <th>Query</th>
               <th>Type</th>
-              <th onClick={() => handleSort('cost')} style={{ cursor: 'pointer' }}>
+              <th
+                className={`sortable ${sortBy === 'cost' ? 'sorted' : ''}`}
+                onClick={() => handleSort('cost')}
+              >
                 Cost <SortIcon field="cost" />
               </th>
-              <th onClick={() => handleSort('calls')} style={{ cursor: 'pointer' }}>
+              <th
+                className={`sortable ${sortBy === 'calls' ? 'sorted' : ''}`}
+                onClick={() => handleSort('calls')}
+              >
                 Calls <SortIcon field="calls" />
               </th>
-              <th onClick={() => handleSort('cache')} style={{ cursor: 'pointer' }}>
+              <th
+                className={`sortable ${sortBy === 'cache' ? 'sorted' : ''}`}
+                onClick={() => handleSort('cache')}
+              >
                 Cache <SortIcon field="cache" />
               </th>
-              <th onClick={() => handleSort('duration')} style={{ cursor: 'pointer' }}>
+              <th
+                className={`sortable ${sortBy === 'duration' ? 'sorted' : ''}`}
+                onClick={() => handleSort('duration')}
+              >
                 Duration <SortIcon field="duration" />
               </th>
               <th>Status</th>
@@ -193,6 +231,10 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
           <tbody>
             {filteredQueries.map((query) => {
               const cacheRate = getCacheRate(query.cache_hits, query.cache_misses);
+              const cacheClass = getCacheClass(cacheRate);
+              const isRunning = query.status === 'running';
+              const elapsedMs = isRunning ? getElapsedMs(query, now) : null;
+              const durationMs = isRunning && elapsedMs !== null ? elapsedMs : query.duration_ms;
               const statusClass = query.status === 'completed' ? 'status-completed' :
                                  query.status === 'running' ? 'status-running' : 'status-error';
 
@@ -201,36 +243,32 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
                   key={query.caller_id || query.query_id}
                   onClick={() => onQuerySelect(query)}
                 >
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td className="cell-nowrap">
                     {formatTime(query.started_at || query.timestamp)}
                   </td>
                   <td className="query-sql" title={query.query_raw}>
                     {truncateSQL(query.query_raw)}
                   </td>
-                  <td>
+                  <td className="cell-type">
                     {(query.udf_types || []).join(', ') || query.query_type || '-'}
                   </td>
-                  <td style={{ color: '#34d399' }}>
+                  <td className="cell-cost">
                     {formatCost(query.total_cost)}
                   </td>
-                  <td>{query.llm_calls_count || 0}</td>
+                  <td className="cell-calls">{query.llm_calls_count || 0}</td>
                   <td>
                     <div className="cache-bar">
                       <div className="cache-bar-track">
                         <div
-                          className="cache-bar-fill"
-                          style={{
-                            width: `${cacheRate}%`,
-                            background: cacheRate >= 80 ? '#34d399' :
-                                       cacheRate >= 50 ? '#fbbf24' : '#f87171'
-                          }}
+                          className={`cache-bar-fill ${cacheClass}`}
+                          style={{ width: `${cacheRate}%` }}
                         />
                       </div>
-                      <span className="cache-bar-text">{cacheRate.toFixed(0)}%</span>
+                      <span className={`cache-bar-text ${cacheClass}`}>{cacheRate.toFixed(0)}%</span>
                     </div>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {formatDuration(query.duration_ms)}
+                  <td className="cell-nowrap">
+                    {formatDuration(durationMs)}
                   </td>
                   <td>
                     <span className={`status-badge ${statusClass}`}>

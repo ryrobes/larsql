@@ -251,6 +251,27 @@ def analyze_cascade_execution(session_id: str) -> Dict:
             columns=list(analytics_row.keys())
         )
 
+        # Step 10: Run confidence assessment for training system (async, non-blocking)
+        # Scores each assistant message's quality for automatic training example curation
+        try:
+            from .confidence_worker import assess_training_confidence, CONFIDENCE_ASSESSMENT_ENABLED
+            import threading
+
+            if CONFIDENCE_ASSESSMENT_ENABLED and cascade_id not in {'assess_training_confidence', 'analyze_context_relevance'}:
+                def run_confidence_assessment():
+                    try:
+                        assess_training_confidence(session_id)
+                    except Exception as e:
+                        logger.debug(f"Confidence assessment failed for {session_id}: {e}")
+
+                # Run in background thread (don't block analytics)
+                thread = threading.Thread(target=run_confidence_assessment, daemon=True)
+                thread.start()
+                logger.debug(f"[Analytics] Queued confidence assessment for {session_id}")
+        except Exception as e:
+            # Non-blocking: Don't fail analytics if confidence assessment fails
+            logger.debug(f"Could not queue confidence assessment: {e}")
+
         # Step 11: Check for anomalies (cascade + cell level)
         anomalies = []
         if analytics_row['is_cost_outlier']:

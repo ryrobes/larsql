@@ -2055,6 +2055,11 @@ class RVBBITRunner:
 
     def _update_graph(self):
         """Updates the mermaid graph in real-time."""
+        # DISABLED: Mermaid graph generation disabled to prevent chrome process leak
+        # mmdc (mermaid-cli) spawns puppeteer/chrome processes that accumulate
+        # Re-enable by removing this return statement
+        return
+
         try:
             generate_mermaid(self.echo, self.graph_path)
         except Exception:
@@ -9954,6 +9959,37 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             cell_instructions = inject_research_scaffolding(cell.instructions, cell, render_context)
 
         rendered_instructions = render_instruction(cell_instructions, render_context)
+
+        # ========== UNIVERSAL TRAINING SYSTEM: Inject examples if enabled ==========
+        if cell.use_training:
+            try:
+                from .training_system import get_training_examples, inject_training_examples_into_instructions
+
+                # Fetch training examples based on cell configuration
+                examples = get_training_examples(
+                    cascade_id=self.config.cascade_id,
+                    cell_name=cell.name,
+                    strategy=cell.training_strategy,
+                    limit=cell.training_limit,
+                    min_confidence=cell.training_min_confidence,
+                    verified_only=cell.training_verified_only
+                )
+
+                if examples:
+                    # Inject examples into instructions
+                    rendered_instructions = inject_training_examples_into_instructions(
+                        original_instructions=rendered_instructions,
+                        examples=examples,
+                        format=cell.training_format
+                    )
+                    console.print(f"{indent}[dim green]📚 Injected {len(examples)} training examples ({cell.training_strategy} strategy)[/dim green]")
+                else:
+                    console.print(f"{indent}[dim yellow]📚 No training examples available yet for {cell.name}[/dim yellow]")
+
+            except Exception as e:
+                # Non-blocking: Don't crash if training fails
+                console.print(f"{indent}[yellow]⚠️  Training example injection failed: {e}[/yellow]")
+                log.warning(f"[training] Failed to inject examples for {cell.name}: {e}")
 
         # Apply mutation if provided (for candidate variations)
         # Three modes:

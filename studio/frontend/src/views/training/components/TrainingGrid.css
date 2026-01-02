@@ -1,0 +1,164 @@
+/* ========================================
+   TrainingGrid Component Styles
+   AG-Grid dark theme matching Studio
+   ======================================== */
+
+.training-grid-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ========================================
+   Toolbar
+   ======================================== */
+
+.training-grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+}
+
+.training-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(100, 116, 139, 0.05);
+  border: 1px solid rgba(100, 116, 139, 0.15);
+  border-radius: 4px;
+  padding: 6px 10px;
+  min-width: 300px;
+  transition: all 0.15s ease;
+}
+
+.training-search-box:focus-within {
+  border-color: rgba(0, 229, 255, 0.4);
+  background: rgba(0, 229, 255, 0.03);
+}
+
+.training-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.training-search-input::placeholder {
+  color: #475569;
+}
+
+.training-grid-info {
+  font-size: 11px;
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.training-grid-hint {
+  color: #475569;
+  font-style: italic;
+}
+
+/* ========================================
+   Grid Wrapper
+   ======================================== */
+
+.training-grid-wrapper {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* AG-Grid Dark Theme Customizations */
+.training-grid-wrapper .ag-theme-quartz {
+  --ag-background-color: #000000;
+  --ag-foreground-color: #cbd5e1;
+  --ag-header-background-color: #0a0510;
+  --ag-odd-row-background-color: #050410;
+  --ag-border-color: #1a1628;
+  --ag-row-hover-color: rgba(0, 229, 255, 0.05);
+  --ag-selected-row-background-color: rgba(0, 229, 255, 0.10);
+  --ag-range-selection-border-color: #00e5ff;
+  --ag-checkbox-checked-color: #00e5ff;
+  --ag-input-focus-border-color: #00e5ff;
+}
+
+/* Custom Cell Styles */
+.training-text-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.training-toggle-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  cursor: pointer;
+}
+
+.training-toggle-cell:hover {
+  opacity: 0.8;
+}
+
+/* Scrollbar */
+.training-grid-wrapper::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.training-grid-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.training-grid-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 3px;
+}
+
+.training-grid-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
+}
+
+/* ========================================
+   Split Container (when detail panel open)
+   ======================================== */
+
+.training-split-container {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.training-split-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Split gutter (drag handle) */
+.training-split-container > .gutter {
+  background-color: rgba(100, 116, 139, 0.12);
+  cursor: row-resize;
+  transition: background-color 0.15s ease;
+}
+
+.training-split-container > .gutter:hover {
+  background-color: rgba(0, 229, 255, 0.2);
+}
+
+.training-split-container > .gutter.gutter-vertical {
+  cursor: row-resize;
+  height: 6px;
+}

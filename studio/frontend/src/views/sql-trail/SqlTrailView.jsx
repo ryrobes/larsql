@@ -23,6 +23,11 @@ const SqlTrailView = () => {
     const saved = localStorage.getItem('sqlTrail_timeRange');
     return saved ? parseInt(saved, 10) : 7;
   });
+  const [granularity, setGranularity] = useState(() => {
+    const saved = localStorage.getItem('sqlTrail_granularity');
+    const allowed = ['minute', 'hourly', 'daily', 'weekly', 'monthly'];
+    return saved && allowed.includes(saved) ? saved : 'daily';
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -94,14 +99,14 @@ const SqlTrailView = () => {
   // Fetch time series
   const fetchTimeSeries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/time-series?days=${timeRange}&granularity=daily`);
+      const res = await fetch(`${API_BASE}/api/sql-trail/time-series?days=${timeRange}&granularity=${granularity}`);
       const data = await res.json();
       if (data.error) return;
       setTimeSeriesData(prev => isEqual(prev, data) ? prev : data);
     } catch (err) {
       console.error('Failed to fetch time series:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, granularity]);
 
   // Fetch query detail
   const fetchQueryDetail = useCallback(async (id) => {
@@ -130,7 +135,7 @@ const SqlTrailView = () => {
       fetchCacheStats(),
       fetchTimeSeries()
     ]).finally(() => setLoading(false));
-  }, [timeRange, fetchOverview, fetchQueries, fetchPatterns, fetchCacheStats, fetchTimeSeries]);
+  }, [timeRange, granularity, fetchOverview, fetchQueries, fetchPatterns, fetchCacheStats, fetchTimeSeries]);
 
   // Handle URL param for query detail
   useEffect(() => {
@@ -156,6 +161,10 @@ const SqlTrailView = () => {
     localStorage.setItem('sqlTrail_timeRange', timeRange.toString());
   }, [timeRange]);
 
+  useEffect(() => {
+    localStorage.setItem('sqlTrail_granularity', granularity);
+  }, [granularity]);
+
   // Handle query selection
   const handleQuerySelect = (query) => {
     if (query && query.caller_id) {
@@ -173,20 +182,21 @@ const SqlTrailView = () => {
   return (
     <div className="sql-trail-view">
       <div className="sql-trail-header">
-        <div className="sql-trail-title">
-          <Icon icon="mdi:database-search" width={20} />
-          <span>SQL Trail</span>
+        <div className="sql-trail-header-left">
+          <Icon icon="mdi:database-search" width={20} className="sql-trail-header-icon" />
+          <h1>SQL Trail</h1>
+          <span className="sql-trail-subtitle">Query-level analytics</span>
         </div>
-        <div className="sql-trail-controls">
+        <div className="sql-trail-header-right">
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(parseInt(e.target.value, 10))}
-            className="time-range-select"
+            className="sql-trail-time-select"
           >
-            <option value={1}>Last 24 hours</option>
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
+            <option value={1}>Last 24 Hours</option>
+            <option value={7}>Last 7 Days</option>
+            <option value={30}>Last 30 Days</option>
+            <option value={90}>Last 90 Days</option>
           </select>
         </div>
       </div>
@@ -249,6 +259,8 @@ const SqlTrailView = () => {
                 data={overviewData}
                 cacheStats={cacheStatsData}
                 timeSeries={timeSeriesData}
+                granularity={granularity}
+                onGranularityChange={setGranularity}
                 onQueryClick={handleQuerySelect}
               />
             )}

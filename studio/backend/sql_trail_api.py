@@ -700,7 +700,7 @@ def get_time_series():
 
     Query params:
         days: Time range (default: 7)
-        granularity: 'hourly', 'daily', 'weekly' (default: 'daily')
+        granularity: 'minute', 'hourly', 'daily', 'weekly', 'monthly' (default: 'daily')
 
     Returns:
         {
@@ -709,14 +709,18 @@ def get_time_series():
     """
     try:
         days = int(request.args.get('days', 7))
-        granularity = request.args.get('granularity', 'daily')
+        granularity = request.args.get('granularity', 'daily').lower()
 
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
         # Select date function based on granularity
-        if granularity == 'hourly':
+        if granularity in ('minute', 'minutes'):
+            date_fn = "toStartOfMinute(timestamp)"
+        elif granularity == 'hourly':
             date_fn = "toStartOfHour(timestamp)"
+        elif granularity == 'monthly':
+            date_fn = "toStartOfMonth(timestamp)"
         elif granularity == 'weekly':
             date_fn = "toStartOfWeek(timestamp)"
         else:  # daily
@@ -727,6 +731,7 @@ def get_time_series():
                 {date_fn} as period,
                 COUNT(*) as query_count,
                 SUM(total_cost) as sum_cost,
+                SUM(COALESCE(llm_calls_count, 0)) as sum_llm_calls,
                 SUM(cache_hits) as hits,
                 SUM(cache_misses) as misses,
                 AVG(duration_ms) as avg_duration,
@@ -751,6 +756,7 @@ def get_time_series():
                 'period': p.isoformat() if hasattr(p, 'isoformat') else str(p),
                 'query_count': safe_int(row.get('query_count')),
                 'total_cost': round(safe_float(row.get('sum_cost')), 4),
+                'llm_calls': safe_int(row.get('sum_llm_calls')),
                 'cache_rate': round(cache_rate, 1),
                 'avg_duration': round(safe_float(row.get('avg_duration')), 2),
                 'errors': safe_int(row.get('errors'))

@@ -22,6 +22,12 @@ const truncateTemplate = (template, maxLength = 120) => {
   return cleaned.substring(0, maxLength) + '...';
 };
 
+const getCacheClass = (rate) => {
+  if (rate >= 80) return 'cache-high';
+  if (rate >= 50) return 'cache-mid';
+  return 'cache-low';
+};
+
 const PatternsPanel = ({ patterns = [], onPatternClick }) => {
   const [sortBy, setSortBy] = useState('count');
   const [sortDesc, setSortDesc] = useState(true);
@@ -86,9 +92,11 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
 
   return (
     <div className="patterns-panel">
-      <div style={{ marginBottom: '16px', color: '#888', fontSize: '13px' }}>
-        <Icon icon="mdi:information-outline" width={14} style={{ marginRight: '6px' }} />
-        Patterns group similar SQL queries by normalizing literals. Low cache rates may indicate optimization opportunities.
+      <div className="patterns-info">
+        <Icon icon="mdi:information-outline" width={14} className="patterns-info-icon" />
+        <span>
+          Patterns group similar SQL queries by normalizing literals. Low cache rates may indicate optimization opportunities.
+        </span>
       </div>
 
       <table className="patterns-table">
@@ -96,19 +104,39 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
           <tr>
             <th style={{ width: '40px' }}></th>
             <th>Pattern Template</th>
-            <th onClick={() => handleSort('count')} style={{ cursor: 'pointer', width: '80px' }}>
+            <th
+              className={`sortable ${sortBy === 'count' ? 'sorted' : ''}`}
+              onClick={() => handleSort('count')}
+              style={{ width: '80px' }}
+            >
               Count <SortIcon field="count" />
             </th>
-            <th onClick={() => handleSort('cost')} style={{ cursor: 'pointer', width: '100px' }}>
+            <th
+              className={`sortable ${sortBy === 'cost' ? 'sorted' : ''}`}
+              onClick={() => handleSort('cost')}
+              style={{ width: '100px' }}
+            >
               Total Cost <SortIcon field="cost" />
             </th>
-            <th onClick={() => handleSort('avg_cost')} style={{ cursor: 'pointer', width: '100px' }}>
+            <th
+              className={`sortable ${sortBy === 'avg_cost' ? 'sorted' : ''}`}
+              onClick={() => handleSort('avg_cost')}
+              style={{ width: '100px' }}
+            >
               Avg Cost <SortIcon field="avg_cost" />
             </th>
-            <th onClick={() => handleSort('cache_rate')} style={{ cursor: 'pointer', width: '120px' }}>
+            <th
+              className={`sortable ${sortBy === 'cache_rate' ? 'sorted' : ''}`}
+              onClick={() => handleSort('cache_rate')}
+              style={{ width: '120px' }}
+            >
               Cache Rate <SortIcon field="cache_rate" />
             </th>
-            <th onClick={() => handleSort('duration')} style={{ cursor: 'pointer', width: '100px' }}>
+            <th
+              className={`sortable ${sortBy === 'duration' ? 'sorted' : ''}`}
+              onClick={() => handleSort('duration')}
+              style={{ width: '100px' }}
+            >
               Avg Duration <SortIcon field="duration" />
             </th>
           </tr>
@@ -116,6 +144,7 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
         <tbody>
           {sortedPatterns.map((pattern) => {
             const cacheRate = pattern.cache_hit_rate || 0;
+            const cacheClass = getCacheClass(cacheRate);
             const isLowCache = cacheRate < 50 && pattern.query_count > 1;
             const isExpanded = expandedPattern === pattern.fingerprint;
 
@@ -123,13 +152,13 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
               <React.Fragment key={pattern.fingerprint}>
                 <tr
                   onClick={() => setExpandedPattern(isExpanded ? null : pattern.fingerprint)}
-                  style={{ cursor: 'pointer' }}
+                  className="pattern-row"
                 >
                   <td>
                     <Icon
                       icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
                       width={16}
-                      style={{ color: '#666' }}
+                      className="pattern-chevron"
                     />
                   </td>
                   <td>
@@ -137,15 +166,9 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
                       {truncateTemplate(pattern.query_template)}
                     </div>
                     {pattern.udf_types && pattern.udf_types.length > 0 && (
-                      <div style={{ marginTop: '4px', display: 'flex', gap: '4px' }}>
+                      <div className="pattern-tags">
                         {pattern.udf_types.map(t => (
-                          <span key={t} style={{
-                            fontSize: '10px',
-                            padding: '1px 6px',
-                            background: '#1e1e2e',
-                            borderRadius: '3px',
-                            color: '#a78bfa'
-                          }}>
+                          <span key={t} className="pattern-tag">
                             {t}
                           </span>
                         ))}
@@ -153,35 +176,21 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
                     )}
                   </td>
                   <td className="pattern-count">{pattern.query_count}</td>
-                  <td style={{ color: '#34d399' }}>{formatCost(pattern.total_cost)}</td>
-                  <td style={{ color: '#60a5fa' }}>{formatCost(pattern.avg_cost)}</td>
+                  <td className="cell-cost">{formatCost(pattern.total_cost)}</td>
+                  <td className="cell-avg">{formatCost(pattern.avg_cost)}</td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '60px',
-                        height: '6px',
-                        background: '#2a2a2a',
-                        borderRadius: '3px',
-                        overflow: 'hidden'
-                      }}>
+                    <div className="cache-rate">
+                      <div className="cache-bar-track">
                         <div style={{
                           width: `${cacheRate}%`,
-                          height: '100%',
-                          background: cacheRate >= 80 ? '#34d399' : cacheRate >= 50 ? '#fbbf24' : '#f87171',
-                          borderRadius: '3px'
-                        }} />
+                        }} className={`cache-bar-fill ${cacheClass}`} />
                       </div>
-                      <span style={{
-                        fontSize: '12px',
-                        color: cacheRate >= 80 ? '#34d399' : cacheRate >= 50 ? '#fbbf24' : '#f87171'
-                      }}>
-                        {cacheRate.toFixed(0)}%
-                      </span>
+                      <span className={`cache-rate-text ${cacheClass}`}>{cacheRate.toFixed(0)}%</span>
                       {isLowCache && (
                         <Icon
                           icon="mdi:alert"
                           width={14}
-                          style={{ color: '#fbbf24' }}
+                          className="cache-rate-warning"
                           title="Low cache hit rate"
                         />
                       )}
@@ -191,57 +200,38 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
                 </tr>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={7} style={{ padding: '0', background: '#0f0f0f' }}>
-                      <div style={{ padding: '16px 16px 16px 40px' }}>
-                        <div style={{ marginBottom: '12px' }}>
-                          <div style={{ fontSize: '11px', color: '#666', marginBottom: '4px' }}>
+                    <td colSpan={7} className="pattern-details-cell">
+                      <div className="pattern-details">
+                        <div className="pattern-details-block">
+                          <div className="pattern-details-label">
                             Full Template
                           </div>
-                          <pre style={{
-                            margin: 0,
-                            padding: '12px',
-                            background: '#1a1a1a',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            color: '#60a5fa',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace"
-                          }}>
+                          <pre className="pattern-details-pre">
                             {pattern.query_template}
                           </pre>
                         </div>
-                        <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: '#888' }}>
+                        <div className="pattern-details-meta">
                           <div>
-                            <span style={{ color: '#666' }}>Fingerprint: </span>
-                            <code style={{ color: '#a78bfa' }}>{pattern.fingerprint}</code>
+                            <span>Fingerprint:</span>
+                            <code>{pattern.fingerprint}</code>
                           </div>
                           <div>
-                            <span style={{ color: '#666' }}>Total LLM Calls: </span>
+                            <span>Total LLM Calls:</span>
                             {pattern.total_llm_calls || 0}
                           </div>
                           <div>
-                            <span style={{ color: '#666' }}>Cache Hits: </span>
+                            <span>Cache Hits:</span>
                             {pattern.total_cache_hits || 0}
                           </div>
                           <div>
-                            <span style={{ color: '#666' }}>Cache Misses: </span>
+                            <span>Cache Misses:</span>
                             {pattern.total_cache_misses || 0}
                           </div>
                         </div>
                         {isLowCache && (
-                          <div style={{
-                            marginTop: '12px',
-                            padding: '8px 12px',
-                            background: 'rgba(251, 191, 36, 0.1)',
-                            border: '1px solid rgba(251, 191, 36, 0.3)',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                          }}>
-                            <Icon icon="mdi:lightbulb-outline" width={16} style={{ color: '#fbbf24' }} />
-                            <span style={{ fontSize: '12px', color: '#fbbf24' }}>
+                          <div className="pattern-warning">
+                            <Icon icon="mdi:lightbulb-outline" width={16} />
+                            <span>
                               Low cache hit rate detected. Consider enabling caching or reviewing input variations.
                             </span>
                           </div>
@@ -251,18 +241,9 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
                             e.stopPropagation();
                             onPatternClick && onPatternClick(pattern);
                           }}
-                          style={{
-                            marginTop: '12px',
-                            padding: '6px 12px',
-                            background: '#1e1e2e',
-                            border: '1px solid #333',
-                            borderRadius: '4px',
-                            color: '#a78bfa',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
+                          className="btn btn-outline btn-sm pattern-action"
                         >
-                          <Icon icon="mdi:filter" width={14} style={{ marginRight: '4px' }} />
+                          <Icon icon="mdi:filter" width={14} />
                           View queries with this pattern
                         </button>
                       </div>

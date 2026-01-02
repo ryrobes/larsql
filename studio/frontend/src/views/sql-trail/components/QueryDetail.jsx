@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return '$0.00';
@@ -29,7 +29,38 @@ const formatTime = (timestamp) => {
   return date.toLocaleString();
 };
 
-const COLORS = ['#a78bfa', '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#f472b6'];
+const MODEL_COLORS = [
+  'var(--color-accent-cyan)',
+  'var(--color-accent-purple)',
+  'var(--color-accent-green)',
+  'var(--color-accent-yellow)',
+  'var(--color-accent-pink)',
+  'var(--color-accent-blue)'
+];
+
+const getCacheClass = (rate) => {
+  if (rate >= 80) return 'cache-high';
+  if (rate >= 50) return 'cache-mid';
+  return 'cache-low';
+};
+
+const ModelTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0].payload;
+  return (
+    <div className="sql-trail-tooltip">
+      <div className="sql-trail-tooltip-title">{data.model}</div>
+      <div className="sql-trail-tooltip-row">
+        <span>Cost</span>
+        <span>{formatCost(data.cost || 0)}</span>
+      </div>
+      <div className="sql-trail-tooltip-row">
+        <span>Calls</span>
+        <span>{formatNumber(data.calls || 0)}</span>
+      </div>
+    </div>
+  );
+};
 
 const QueryDetail = ({ data, onBack }) => {
   if (!data) {
@@ -66,8 +97,6 @@ const QueryDetail = ({ data, onBack }) => {
     tokens_out: m.tokens_out
   }));
 
-  const cascade_executions = data.cascade_executions || [];
-
   const {
     caller_id,
     query_raw,
@@ -92,6 +121,7 @@ const QueryDetail = ({ data, onBack }) => {
 
   const totalCacheOps = cache_hits + cache_misses;
   const cacheHitRate = totalCacheOps > 0 ? (cache_hits / totalCacheOps) * 100 : 0;
+  const cacheClass = getCacheClass(cacheHitRate);
 
   const statusClass = status === 'completed' ? 'status-completed' :
                      status === 'running' ? 'status-running' : 'status-error';
@@ -99,7 +129,7 @@ const QueryDetail = ({ data, onBack }) => {
   return (
     <div className="query-detail">
       <div className="detail-header">
-        <button className="detail-back-btn" onClick={onBack}>
+        <button className="btn btn-ghost btn-sm detail-back-btn" onClick={onBack}>
           <Icon icon="mdi:arrow-left" width={16} />
           <span>Back</span>
         </button>
@@ -111,29 +141,19 @@ const QueryDetail = ({ data, onBack }) => {
       <div className="detail-stats">
         <div className="detail-stat">
           <div className="detail-stat-label">Total Cost</div>
-          <div className="detail-stat-value" style={{ color: '#34d399' }}>
-            {formatCost(total_cost)}
-          </div>
+          <div className="detail-stat-value accent-green">{formatCost(total_cost)}</div>
         </div>
         <div className="detail-stat">
           <div className="detail-stat-label">LLM Calls</div>
-          <div className="detail-stat-value" style={{ color: '#a78bfa' }}>
-            {formatNumber(llm_calls_count)}
-          </div>
+          <div className="detail-stat-value accent-purple">{formatNumber(llm_calls_count)}</div>
         </div>
         <div className="detail-stat">
           <div className="detail-stat-label">Duration</div>
-          <div className="detail-stat-value" style={{ color: '#60a5fa' }}>
-            {formatDuration(duration_ms)}
-          </div>
+          <div className="detail-stat-value accent-blue">{formatDuration(duration_ms)}</div>
         </div>
         <div className="detail-stat">
           <div className="detail-stat-label">Cache Hit Rate</div>
-          <div className="detail-stat-value" style={{
-            color: cacheHitRate >= 80 ? '#34d399' : cacheHitRate >= 50 ? '#fbbf24' : '#f87171'
-          }}>
-            {cacheHitRate.toFixed(1)}%
-          </div>
+          <div className={`detail-stat-value ${cacheClass}`}>{cacheHitRate.toFixed(1)}%</div>
         </div>
         <div className="detail-stat">
           <div className="detail-stat-label">Rows In / Out</div>
@@ -149,18 +169,13 @@ const QueryDetail = ({ data, onBack }) => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+      <div className="detail-grid">
         <div className="detail-sql-card">
           <div className="detail-sql-header">
             <h4>SQL Query</h4>
-            <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#888' }}>
+            <div className="detail-tags">
               {udf_types.map(t => (
-                <span key={t} style={{
-                  background: '#1e1e2e',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  color: '#a78bfa'
-                }}>
+                <span key={t} className="detail-tag">
                   {t}
                 </span>
               ))}
@@ -171,33 +186,24 @@ const QueryDetail = ({ data, onBack }) => {
           </div>
         </div>
 
-        <div className="detail-sql-card">
+        <div className="detail-sql-card detail-cache-card">
           <div className="detail-sql-header">
             <h4>Cache Breakdown</h4>
           </div>
-          <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '24px', marginBottom: '16px' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#34d399' }}>
-                  {formatNumber(cache_hits)}
-                </div>
-                <div style={{ fontSize: '11px', color: '#888' }}>Hits</div>
+          <div className="detail-cache-body">
+            <div className="detail-cache-metrics">
+              <div className="detail-cache-metric cache-hit">
+                <div className="detail-cache-value">{formatNumber(cache_hits)}</div>
+                <div className="detail-cache-label">Hits</div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#f87171' }}>
-                  {formatNumber(cache_misses)}
-                </div>
-                <div style={{ fontSize: '11px', color: '#888' }}>Misses</div>
+              <div className="detail-cache-metric cache-miss">
+                <div className="detail-cache-value">{formatNumber(cache_misses)}</div>
+                <div className="detail-cache-label">Misses</div>
               </div>
             </div>
             {totalCacheOps > 0 && (
-              <div style={{ width: '100%', height: '8px', background: '#2a2a2a', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{
-                  width: `${cacheHitRate}%`,
-                  height: '100%',
-                  background: cacheHitRate >= 80 ? '#34d399' : cacheHitRate >= 50 ? '#fbbf24' : '#f87171',
-                  borderRadius: '4px'
-                }} />
+              <div className="cache-meter">
+                <div className={`cache-meter-fill ${cacheClass}`} style={{ width: `${cacheHitRate}%` }} />
               </div>
             )}
           </div>
@@ -208,9 +214,9 @@ const QueryDetail = ({ data, onBack }) => {
         <div className="detail-sql-card">
           <div className="detail-sql-header">
             <h4>Fingerprint Template</h4>
-            <code style={{ fontSize: '11px', color: '#666' }}>{query_fingerprint}</code>
+            <code className="detail-fingerprint">{query_fingerprint}</code>
           </div>
-          <div className="detail-sql-content" style={{ color: '#60a5fa' }}>
+          <div className="detail-sql-content detail-template">
             {query_template}
           </div>
         </div>
@@ -221,45 +227,47 @@ const QueryDetail = ({ data, onBack }) => {
           <div className="detail-sql-header">
             <h4>Cost by Model</h4>
           </div>
-          <div style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '24px' }}>
-            <ResponsiveContainer width={150} height={150}>
-              <PieChart>
-                <Pie
-                  data={cost_by_model}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={35}
-                  outerRadius={60}
-                  dataKey="cost"
-                  nameKey="model"
-                >
-                  {cost_by_model.map((entry, index) => (
-                    <Cell key={entry.model} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: '4px' }}
-                  formatter={(value) => formatCost(value)}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ flex: 1 }}>
+          <div className="detail-models">
+            <div className="detail-models-chart">
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={cost_by_model} layout="vertical" margin={{ top: 4, right: 16, left: 12, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="sqlTrailModelGradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="var(--color-accent-purple)" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="var(--color-accent-cyan)" stopOpacity={0.9} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(value) => formatCost(value)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="model"
+                    width={90}
+                    tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={<ModelTooltip />} />
+                  <Bar dataKey="cost" fill="url(#sqlTrailModelGradient)" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="detail-models-list">
               {cost_by_model.map((item, index) => (
-                <div key={item.model} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '8px'
-                }}>
-                  <div style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '2px',
-                    background: COLORS[index % COLORS.length]
-                  }} />
-                  <span style={{ flex: 1, fontSize: '12px', color: '#ccc' }}>{item.model}</span>
-                  <span style={{ fontSize: '12px', color: '#34d399' }}>{formatCost(item.cost)}</span>
-                  <span style={{ fontSize: '11px', color: '#666' }}>({item.calls} calls)</span>
+                <div key={item.model} className="detail-model-row">
+                  <span
+                    className="detail-model-color"
+                    style={{ background: MODEL_COLORS[index % MODEL_COLORS.length] }}
+                  />
+                  <span className="detail-model-name">{item.model}</span>
+                  <span className="detail-model-cost">{formatCost(item.cost)}</span>
+                  <span className="detail-model-calls">({formatNumber(item.calls || 0)} calls)</span>
                 </div>
               ))}
             </div>
@@ -268,16 +276,14 @@ const QueryDetail = ({ data, onBack }) => {
       )}
 
       {error_message && (
-        <div className="detail-sql-card" style={{ borderColor: '#f87171' }}>
-          <div className="detail-sql-header" style={{ background: 'rgba(248, 113, 113, 0.1)' }}>
-            <h4 style={{ color: '#f87171' }}>
-              <Icon icon="mdi:alert-circle" width={16} style={{ marginRight: '6px' }} />
+        <div className="detail-sql-card detail-error-card">
+          <div className="detail-sql-header detail-error-header">
+            <h4>
+              <Icon icon="mdi:alert-circle" width={16} />
               Error
             </h4>
           </div>
-          <div className="detail-sql-content" style={{ color: '#f87171' }}>
-            {error_message}
-          </div>
+          <div className="detail-sql-content detail-error-content">{error_message}</div>
         </div>
       )}
 
@@ -301,33 +307,29 @@ const QueryDetail = ({ data, onBack }) => {
               {sessions.slice(0, 50).map((session) => (
                 <tr key={session.session_id}>
                   <td>
-                    <code style={{ fontSize: '11px', color: '#a78bfa' }}>
-                      {session.session_id?.substring(0, 16)}...
-                    </code>
+                    <code className="detail-session-id">{session.session_id?.substring(0, 16)}...</code>
                   </td>
-                  <td style={{ fontSize: '12px' }}>{session.model || '-'}</td>
-                  <td style={{ color: '#34d399' }}>{formatCost(session.cost)}</td>
+                  <td className="detail-session-model">{session.model || '-'}</td>
+                  <td className="detail-session-cost">{formatCost(session.cost)}</td>
                   <td>{formatNumber(session.tokens_in)} / {formatNumber(session.tokens_out)}</td>
-                  <td style={{ fontSize: '12px', color: '#888' }}>
-                    {formatTime(session.timestamp)}
-                  </td>
+                  <td className="detail-session-time">{formatTime(session.timestamp)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#666' }}>
+          <div className="detail-sessions-empty">
             No session data available
           </div>
         )}
         {sessions.length > 50 && (
-          <div style={{ padding: '12px', textAlign: 'center', color: '#888', fontSize: '12px' }}>
+          <div className="detail-sessions-footer">
             Showing 50 of {sessions.length} sessions
           </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#666' }}>
+      <div className="detail-meta">
         <span>Started: {formatTime(started_at)}</span>
         {completed_at && <span>Completed: {formatTime(completed_at)}</span>}
         {query_type && <span>Type: {query_type}</span>}

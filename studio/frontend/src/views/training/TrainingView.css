@@ -1,0 +1,293 @@
+/* ========================================
+   TrainingView - Training Examples Explorer
+   Matches ReceiptsView styling
+   ======================================== */
+
+.training-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0a0a0a;
+  color: #94a3b8;
+  overflow: hidden;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.training-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+}
+
+.training-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.training-header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.training-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.training-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.training-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.training-refresh-btn:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+  background: rgba(0, 229, 255, 0.05);
+}
+
+/* ========================================
+   Filters Row
+   ======================================== */
+
+.training-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.training-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.training-filter-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.training-filter-select {
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 150px;
+}
+
+.training-filter-select:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+.training-filter-select:focus {
+  outline: none;
+  border-color: #00e5ff;
+}
+
+.training-filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.training-filter-checkbox input[type="checkbox"] {
+  accent-color: #00e5ff;
+  cursor: pointer;
+}
+
+.training-filter-spacer {
+  flex: 1;
+}
+
+.training-selection-info {
+  font-size: 12px;
+  color: #00e5ff;
+  font-weight: 600;
+}
+
+/* ========================================
+   KPI Cards Row
+   ======================================== */
+
+.training-kpi-row {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  background-color: #000000;
+  flex-shrink: 0;
+}
+
+/* ========================================
+   Action Buttons
+   ======================================== */
+
+.training-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+}
+
+.training-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(100, 116, 139, 0.08);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.training-action-btn:hover:not(:disabled) {
+  background: rgba(100, 116, 139, 0.15);
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+.training-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.training-action-btn--primary {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.2);
+  color: #00e5ff;
+}
+
+.training-action-btn--primary:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+.training-action-btn--success {
+  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.training-action-btn--success:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.15);
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.training-action-btn--danger {
+  background: rgba(255, 0, 110, 0.08);
+  border-color: rgba(255, 0, 110, 0.2);
+  color: #ff006e;
+}
+
+.training-action-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 0, 110, 0.15);
+  border-color: rgba(255, 0, 110, 0.4);
+}
+
+/* ========================================
+   Content Area
+   ======================================== */
+
+.training-content {
+  flex: 1;
+  background-color: #0a0a0a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Error State */
+.training-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  background: rgba(255, 0, 110, 0.05);
+  border-left: 2px solid #ff006e;
+  color: #f1f5f9;
+}
+
+.training-error strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.training-error p {
+  margin: 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ========================================
+   Responsive
+   ======================================== */
+
+@media (max-width: 768px) {
+  .training-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .training-kpi-row {
+    flex-wrap: wrap;
+  }
+
+  .training-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .training-filter-spacer {
+    display: none;
+  }
+}

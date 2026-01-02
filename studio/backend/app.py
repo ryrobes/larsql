@@ -81,6 +81,7 @@ from credits_api import credits_bp
 from context_assessment_api import context_assessment_bp
 from apps_api import apps_bp
 from sql_trail_api import sql_trail_bp
+from training_api import training_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -104,6 +105,8 @@ app.register_blueprint(credits_bp)
 app.register_blueprint(apps_bp)
 # SQL Trail API - query-level analytics for SQL semantic workflows
 app.register_blueprint(sql_trail_bp)
+# Training API - Universal few-shot learning system
+app.register_blueprint(training_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)

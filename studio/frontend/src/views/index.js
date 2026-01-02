@@ -58,6 +58,14 @@ export const views = {
     enabled: true,
   },
 
+  training: {
+    component: lazy(() => import('./training/TrainingView')),
+    icon: 'mdi:school',
+    label: 'Training',
+    position: 'top',
+    enabled: true,
+  },
+
   sqltrail: {
     component: lazy(() => import('./sql-trail/SqlTrailView')),
     icon: 'mdi:database-search',

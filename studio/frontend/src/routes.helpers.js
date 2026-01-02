@@ -28,6 +28,9 @@ export const ROUTES = {
   // Receipts
   RECEIPTS: '/receipts',
 
+  // Training - Universal few-shot learning system
+  TRAINING: '/training',
+
   // SQL Trail
   SQL_TRAIL: '/sql-trail',
   sqlTrailWithQuery: (callerId) => `/sql-trail/${encodeURIComponent(callerId)}`,
@@ -97,6 +100,7 @@ export function getViewFromPath(pathname) {
     'console': 'console',
     'outputs': 'outputs',
     'receipts': 'receipts',
+    'training': 'training',
     'sql-trail': 'sqltrail',
     'explore': 'explore',
     'evolution': 'evolution',
@@ -133,6 +137,7 @@ export function getRouteForView(viewId) {
     'console': ROUTES.CONSOLE,
     'outputs': ROUTES.OUTPUTS,
     'receipts': ROUTES.RECEIPTS,
+    'training': ROUTES.TRAINING,
     'sqltrail': ROUTES.SQL_TRAIL,
     'explore': ROUTES.EXPLORE,
     'evolution': ROUTES.EVOLUTION,

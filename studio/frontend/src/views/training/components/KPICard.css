@@ -1,0 +1,64 @@
+/* ========================================
+   KPICard Component Styles
+   Matches ReceiptsView KPICard
+   ======================================== */
+
+.training-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border-left: 2px solid rgba(100, 116, 139, 0.15);
+  flex: 1;
+  min-width: 140px;
+}
+
+.training-kpi-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.training-kpi-content {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.training-kpi-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.training-kpi-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.training-kpi-unit {
+  font-size: 10px;
+  color: #475569;
+}
+
+.training-kpi-trend {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.training-kpi-trend svg {
+  width: 12px;
+  height: 12px;
+}

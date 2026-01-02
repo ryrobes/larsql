@@ -24,6 +24,7 @@ const StudioPage = lazy(() => import('./studio/StudioPage'));
 const ConsoleView = lazy(() => import('./views/console/ConsoleView'));
 const OutputsView = lazy(() => import('./views/outputs/OutputsView'));
 const ReceiptsView = lazy(() => import('./views/receipts/ReceiptsView'));
+const TrainingView = lazy(() => import('./views/training/TrainingView'));
 const SqlTrailView = lazy(() => import('./views/sql-trail/SqlTrailView'));
 const ExploreView = lazy(() => import('./views/explore/ExploreView'));
 const EvolutionView = lazy(() => import('./views/evolution/EvolutionView'));
@@ -86,6 +87,12 @@ export const router = createBrowserRouter([
       {
         path: 'receipts',
         element: withSuspense(ReceiptsView),
+      },
+
+      // Training - Universal few-shot learning system
+      {
+        path: 'training',
+        element: withSuspense(TrainingView),
       },
 
       // SQL Trail - query-level analytics for SQL semantic workflows

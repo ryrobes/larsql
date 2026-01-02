@@ -1,0 +1,85 @@
+# SUMMARIZE_URLS - Extract and summarize URLs from text
+# Detects URLs in text, fetches content, and returns summary
+#
+# SQL Usage:
+#   SELECT id, text, SUMMARIZE_URLS(text) as url_summary FROM tweets
+#   SELECT author, SUMMARIZE_URLS(text) FROM tweets WHERE text LIKE '%http%'
+#
+# Returns: Summary of URL content, or empty string if no URL found
+
+cascade_id: semantic_summarize_urls
+
+description: |
+  Extracts URLs from text, fetches the web content, and returns a concise summary.
+  Returns empty string if no URL is found in the text.
+  Perfect for enriching social media posts, articles, or any text with embedded links.
+
+inputs_schema:
+  text: Text that may contain URLs
+
+sql_function:
+  name: semantic_summarize_urls
+  description: Extracts URLs from text, fetches content, and returns summary
+  args:
+    - name: text
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "SUMMARIZE_URLS({{ text }})"
+    - "summarize_urls({{ text }})"
+    - "URL_SUMMARY({{ text }})"
+    - "FETCH_URL({{ text }})"
+  cache: true
+
+cells:
+  - name: extract_and_fetch
+    model: google/gemini-2.5-flash-lite
+    traits: [linux_shell]  # Has access to curl
+    
+    instructions: |
+      You have a piece of text that may contain a URL. Your job:
+      
+      1. Extract the URL from the text (if any)
+      2. Fetch the URL content using curl
+      3. Summarize the web page content
+      
+      TEXT:
+      {{ input.text }}
+      
+      PROCESS:
+      - First, check if text contains a URL (http://, https://, or t.co shortlink)
+      - If NO URL found: Return exactly "NO_URL_FOUND" (nothing else)
+      - If URL found:
+        a) Extract the URL
+        b) Call linux_shell to fetch: curl -L -s "<url>" | head -c 5000
+        c) Summarize the fetched content in 2-3 sentences
+        d) Return ONLY the summary (no preamble)
+      
+      IMPORTANT: 
+      - If the URL fetch fails or returns no content, return "URL_FETCH_FAILED"
+      - If URL exists but content is not useful, return a brief note like "Link is [type of content]"
+      - Keep summaries concise (2-3 sentences max)
+      
+    rules:
+      max_turns: 3  # Allow tool usage + follow-up
+    
+  - name: clean_output
+    model: google/gemini-2.5-flash-lite
+    context:
+      from: [extract_and_fetch]
+    
+    instructions: |
+      Clean up the output from the previous step.
+      
+      OUTPUT FROM FETCH:
+      {{ outputs.extract_and_fetch }}
+      
+      RULES:
+      - If output is "NO_URL_FOUND" or "URL_FETCH_FAILED", return empty string ""
+      - Otherwise, return the summary as-is (clean, no extra formatting)
+      - Do NOT add preambles like "Summary: " or "The article discusses..."
+      - Just return the clean summary text
+      
+    rules:
+      max_turns: 1

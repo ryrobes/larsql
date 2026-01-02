@@ -1202,6 +1202,24 @@ class CellConfig(BaseModel):
     # Overrides cascade-level auto_context.intra_cell settings
     intra_context: Optional[IntraCellContextConfig] = None
 
+    # ===== Universal Training System (Few-Shot Learning) =====
+    # Automatically retrieves and injects training examples from past executions
+    # Works for ANY cell (not just semantic SQL) by querying unified_logs
+    # Examples are prepended to instructions before LLM invocation
+    #
+    # Example:
+    #   - name: classifier
+    #     use_training: true              # Enable training example injection
+    #     training_limit: 5               # Max examples to inject
+    #     training_strategy: recent       # Retrieval strategy
+    #     instructions: "Classify: {{ input.text }}"
+    use_training: bool = False                    # Enable training example injection
+    training_limit: int = 5                       # Max number of examples to inject
+    training_strategy: str = 'recent'             # 'recent', 'high_confidence', 'random', 'semantic'
+    training_min_confidence: float = 0.8          # Minimum confidence threshold (0.0-1.0)
+    training_verified_only: bool = False          # Only use human-verified examples
+    training_format: str = 'xml'                  # Format: 'xml', 'markdown', 'few_shot'
+
     @property
     def effective_htmx(self) -> Optional[str]:
         """Get the htmx template (prefers htmx over hitl for backwards compat)."""

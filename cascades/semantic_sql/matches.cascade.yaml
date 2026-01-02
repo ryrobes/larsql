@@ -37,6 +37,16 @@ sql_function:
 cells:
   - name: evaluate
     model: google/gemini-2.5-flash-lite
+
+    # ===== UNIVERSAL TRAINING SYSTEM =====
+    # Automatically learns from past successful executions!
+    # Mark good results as trainable in Studio UI → future queries use them as examples
+    use_training: true
+    training_limit: 5
+    training_strategy: recent
+    training_min_confidence: 0.8
+    training_format: xml
+
     instructions: |
       Does this text match the semantic criterion?
 
@@ -48,6 +58,7 @@ cells:
 
       Think about whether the text's meaning, topic, or sentiment aligns with the criterion.
       Be generous in interpretation - if there's a reasonable semantic connection, answer "true".
+
     rules:
       max_turns: 1
     output_schema:

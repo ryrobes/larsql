@@ -1,0 +1,314 @@
+/* ========================================
+   TrainingDetailPanel - Detail view for selected example
+   Matches SessionMessagesLog detail panel styling
+   ======================================== */
+
+.training-detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #000000;
+  border-top: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.training-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+}
+
+.training-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.training-detail-cascade {
+  color: #60a5fa;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.training-detail-cell {
+  color: #fbbf24;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.training-detail-model {
+  color: #94a3b8;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.training-detail-sep {
+  color: #475569;
+}
+
+.training-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+
+.training-detail-duration {
+  color: #94a3b8;
+}
+
+.training-detail-tokens {
+  color: #64748b;
+}
+
+.training-detail-cost {
+  color: #34d399;
+  font-weight: 600;
+}
+
+.training-detail-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.training-detail-close:hover {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+}
+
+/* ========================================
+   Body
+   ======================================== */
+
+.training-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.training-detail-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.training-detail-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.training-detail-body::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 3px;
+}
+
+.training-detail-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
+}
+
+/* ========================================
+   Sections
+   ======================================== */
+
+.training-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.training-detail-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.training-detail-section-header svg {
+  color: #475569;
+}
+
+.training-detail-section-size {
+  margin-left: auto;
+  font-size: 10px;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.training-detail-badge {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ========================================
+   Code Containers
+   ======================================== */
+
+.training-detail-code-container {
+  background: rgba(100, 116, 139, 0.04);
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.training-detail-code {
+  margin: 0;
+  padding: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #cbd5e1;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.training-detail-code::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.training-detail-code::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.training-detail-code::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 2px;
+}
+
+.training-detail-code-output {
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* ========================================
+   Semantic SQL Parameters
+   ======================================== */
+
+.training-detail-section-semantic {
+  background: rgba(0, 229, 255, 0.03);
+  border: 1px solid rgba(0, 229, 255, 0.12);
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.training-semantic-params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.training-semantic-param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.training-semantic-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #00e5ff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.training-semantic-value {
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  border-radius: 3px;
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  display: block;
+}
+
+/* ========================================
+   Metadata
+   ======================================== */
+
+.training-detail-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.training-metadata-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.training-metadata-label {
+  color: #64748b;
+  font-weight: 500;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.training-metadata-value {
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', monospace;
+  word-break: break-all;
+}
+
+.training-metadata-link {
+  color: #00e5ff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.15s ease;
+}
+
+.training-metadata-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.training-metadata-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.training-tag {
+  padding: 2px 6px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 3px;
+  color: #00e5ff;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
