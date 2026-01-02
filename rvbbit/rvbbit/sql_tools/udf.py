@@ -922,14 +922,14 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
             logger.error(f"semantic_embed failed: {e}")
             return None
 
-    def semantic_embed_with_storage_udf(text: str, model: str, source_table: str, source_id: str):
-        """Generate embedding with table/ID tracking (4-arg version for auto-storage)."""
+    def semantic_embed_with_storage_udf(text: str, model: str, source_table: str, column_name: str, source_id: str):
+        """Generate embedding with table/column/ID tracking (5-arg version for auto-storage)."""
         if text is None or text.strip() == "":
             logger.warning("semantic_embed_with_storage called with empty text")
             return None
 
         try:
-            logger.debug(f"Calling semantic_embed_with_storage for {source_table}:{source_id}")
+            logger.debug(f"Calling semantic_embed_with_storage for {source_table}.{column_name}:{source_id}")
 
             result = execute_sql_function_sync(
                 "semantic_embed_with_storage",
@@ -937,6 +937,7 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                     "text": text,
                     "model": model,
                     "source_table": source_table,
+                    "column_name": column_name,
                     "source_id": source_id
                 }
             )

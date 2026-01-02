@@ -66,19 +66,34 @@ cells:
         # Complete vector search in one cell to avoid DataFrame conversion issues
         from rvbbit.traits.embedding_storage import agent_embed, clickhouse_vector_search
 
+        # Parse source_table - can be 'table' or 'table.column'
+        source_table_input = input.get('source_table', '')
+        if '.' in source_table_input:
+            table_name, column_name = source_table_input.split('.', 1)
+        else:
+            table_name = source_table_input
+            column_name = None
+
         # Step 1: Embed the query
         embed_result = agent_embed(text=input.get('query'))
         query_embedding = embed_result['embedding']
 
-        # Step 2: Search ClickHouse
+        # Step 2: Build metadata filter for column if specified
+        metadata_filter = None
+        if column_name:
+            # Filter by column name stored in metadata JSON
+            metadata_filter = f"JSONExtractString(metadata, 'column_name') = '{column_name}'"
+
+        # Step 3: Search ClickHouse
         search_result = clickhouse_vector_search(
             query_embedding=query_embedding,
-            source_table=input.get('source_table'),
+            source_table=table_name,
             limit=input.get('limit', 10),
-            threshold=input.get('threshold')
+            threshold=input.get('threshold'),
+            metadata_filter=metadata_filter
         )
 
-        # Step 3: Format results for SQL
+        # Step 4: Format results for SQL
         results = search_result.get('results', [])
         result = [
             {

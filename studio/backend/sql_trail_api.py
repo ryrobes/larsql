@@ -378,6 +378,7 @@ def get_query_detail(caller_id: str):
             SELECT
                 session_id,
                 cascade_id,
+                any(model) as model,
                 SUM(cost) as total_cost,
                 SUM(tokens_in) as total_tokens_in,
                 SUM(tokens_out) as total_tokens_out,
@@ -552,12 +553,15 @@ def get_patterns():
             formatted.append({
                 'fingerprint': row.get('query_fingerprint'),
                 'template': row.get('template'),
+                'query_template': row.get('template'),  # Frontend expects query_template
                 'query_type': row.get('query_type'),
-                'run_count': run_count,
+                'query_count': run_count,  # Frontend expects query_count
+                'run_count': run_count,     # Also include for compatibility
                 'avg_duration_ms': round(safe_float(row.get('avg_duration_ms')), 2),
                 'total_cost': round(safe_float(row.get('sum_cost')), 4),
                 'avg_cost': round(safe_float(row.get('avg_cost')), 4),
-                'cache_rate': round(cache_rate, 1),
+                'cache_hit_rate': round(cache_rate, 1),  # Frontend expects cache_hit_rate
+                'cache_rate': round(cache_rate, 1),       # Also include for compatibility
                 'total_rows': safe_int(row.get('total_rows')),
                 'error_rate': round(error_rate, 1),
                 'first_seen': first.isoformat() if hasattr(first, 'isoformat') else str(first),

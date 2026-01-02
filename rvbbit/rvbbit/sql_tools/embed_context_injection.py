@@ -143,14 +143,17 @@ def inject_embed_context(query: str) -> str:
         arg_parts = [a.strip() for a in args.split(',')]
 
         if len(arg_parts) == 1:
-            # EMBED(text) → semantic_embed_with_storage(text, NULL, 'table', id)
-            text_arg = arg_parts[0]
-            return f"semantic_embed_with_storage({text_arg}, NULL, '{table_name}', CAST({id_col} AS VARCHAR))"
+            # EMBED(column_name) → semantic_embed_with_storage(column, NULL, 'table', 'column', id)
+            column_arg = arg_parts[0]
+            # Extract bare column name (strip table prefix if present: p.description → description)
+            column_name = column_arg.split('.')[-1] if '.' in column_arg else column_arg
+            return f"semantic_embed_with_storage({column_arg}, NULL, '{table_name}', '{column_name}', CAST({id_col} AS VARCHAR))"
         elif len(arg_parts) == 2:
-            # EMBED(text, 'model') → semantic_embed_with_storage(text, 'model', 'table', id)
-            text_arg = arg_parts[0]
+            # EMBED(column, 'model') → semantic_embed_with_storage(column, 'model', 'table', 'column', id)
+            column_arg = arg_parts[0]
             model_arg = arg_parts[1]
-            return f"semantic_embed_with_storage({text_arg}, {model_arg}, '{table_name}', CAST({id_col} AS VARCHAR))"
+            column_name = column_arg.split('.')[-1] if '.' in column_arg else column_arg
+            return f"semantic_embed_with_storage({column_arg}, {model_arg}, '{table_name}', '{column_name}', CAST({id_col} AS VARCHAR))"
         else:
             # Unexpected - just keep original
             return match.group(0)

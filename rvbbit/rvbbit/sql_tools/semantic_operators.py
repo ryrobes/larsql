@@ -362,20 +362,36 @@ def _has_semantic_operator_in_line(line: str) -> bool:
 
 def _fix_double_where(query: str) -> str:
     """
-    Fix double WHERE clauses in a query.
+    Fix double WHERE clauses in a query (CTE-aware).
 
     When SEMANTIC JOIN is on one line and WHERE is on a subsequent line,
-    we end up with two WHERE keywords. This function merges them with AND.
+    we end up with two WHERE keywords in the SAME query scope.
+    This function merges them with AND.
 
-    Example:
+    IMPORTANT: This should only fix WHERE clauses in the same scope,
+    not across different CTEs or subqueries!
+
+    Example (needs fix):
         CROSS JOIN t WHERE match_pair(...)
         WHERE price > 100
-
     Becomes:
         CROSS JOIN t WHERE match_pair(...)
         AND price > 100
+
+    Example (DON'T fix):
+        WITH cte AS (SELECT * FROM t WHERE x = 1)
+        SELECT * FROM cte WHERE y = 2
+    Should stay unchanged (different scopes)!
     """
-    # Count WHERE occurrences
+    # Skip fix if query has WITH clause (CTEs have their own scopes)
+    if re.search(r'^\s*WITH\s+', query, re.IGNORECASE):
+        return query
+
+    # Skip fix if query has subqueries (different scopes)
+    if query.count('SELECT') > 1:
+        return query
+
+    # Count WHERE occurrences in simple queries only
     where_count = len(re.findall(r'\bWHERE\b', query, re.IGNORECASE))
 
     if where_count <= 1:

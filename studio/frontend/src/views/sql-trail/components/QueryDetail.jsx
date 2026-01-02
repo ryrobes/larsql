@@ -44,6 +44,30 @@ const QueryDetail = ({ data, onBack }) => {
     );
   }
 
+  // API returns nested structure: { query: {...}, spawned_sessions: [...], models_used: [...] }
+  const query = data.query || data; // Support both flat and nested
+
+  // Map spawned_sessions to format frontend expects
+  const sessions = (data.spawned_sessions || []).map(s => ({
+    session_id: s.session_id,
+    model: s.model || '-',
+    cost: s.total_cost || 0,
+    tokens_in: s.total_tokens_in || 0,
+    tokens_out: s.total_tokens_out || 0,
+    timestamp: s.started_at || s.timestamp
+  }));
+
+  // Map models_used to cost_by_model format
+  const cost_by_model = (data.models_used || []).map(m => ({
+    model: m.model,
+    cost: m.total_cost,
+    calls: m.call_count,
+    tokens_in: m.tokens_in,
+    tokens_out: m.tokens_out
+  }));
+
+  const cascade_executions = data.cascade_executions || [];
+
   const {
     caller_id,
     query_raw,
@@ -63,10 +87,8 @@ const QueryDetail = ({ data, onBack }) => {
     llm_calls_count,
     cache_hits = 0,
     cache_misses = 0,
-    error_message,
-    sessions = [],
-    cost_by_model = []
-  } = data;
+    error_message
+  } = query;
 
   const totalCacheOps = cache_hits + cache_misses;
   const cacheHitRate = totalCacheOps > 0 ? (cache_hits / totalCacheOps) * 100 : 0;

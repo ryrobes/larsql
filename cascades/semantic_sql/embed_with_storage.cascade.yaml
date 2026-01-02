@@ -9,17 +9,20 @@ description: |
   SQL Usage (rewritten from):
     SELECT id, EMBED(description) FROM products;
   To:
-    SELECT id, semantic_embed_with_storage(description, NULL, 'products', CAST(id AS VARCHAR)) FROM products;
+    SELECT id, semantic_embed_with_storage(description, NULL, 'products', 'description', CAST(id AS VARCHAR)) FROM products;
+
+  This stores: source_table='products', metadata={'column_name': 'description'}, source_id='1'
 
 inputs_schema:
   text: "Text to embed (required)"
   model: "Optional model override"
   source_table: "Table name where text came from"
+  column_name: "Column name that was embedded"
   source_id: "Row ID (as string)"
 
 sql_function:
   name: semantic_embed_with_storage
-  description: "Generate embedding and store with table/ID tracking"
+  description: "Generate embedding and store with table/column/ID tracking"
   args:
     - name: text
       type: VARCHAR
@@ -31,6 +34,9 @@ sql_function:
     - name: source_table
       type: VARCHAR
       description: "Source table name"
+    - name: column_name
+      type: VARCHAR
+      description: "Source column name"
     - name: source_id
       type: VARCHAR
       description: "Source row ID"
@@ -45,24 +51,27 @@ cells:
       code: |
         # Complete embedding generation + storage in one cell
         from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
+        import json
 
         text = input.get('text', '')
         model = input.get('model')
         source_table = input.get('source_table', 'unknown')
+        column_name = input.get('column_name', 'unknown')
         source_id = input.get('source_id', 'unknown')
 
         # Step 1: Generate embedding
         embed_result = agent_embed(text=text, model=model)
         embedding = embed_result['embedding']
 
-        # Step 2: Store in ClickHouse with table/ID association
+        # Step 2: Store in ClickHouse with table/column/ID association
         try:
             clickhouse_store_embedding(
                 source_table=source_table,
                 source_id=source_id,
                 text=text,
                 embedding=embedding,
-                model=embed_result['model']
+                model=embed_result['model'],
+                metadata={'column_name': column_name}  # Store column name in metadata!
             )
         except Exception as e:
             # Log warning but don't fail - embedding still returned

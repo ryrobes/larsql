@@ -163,25 +163,39 @@ def _rewrite_vector_search_query_level(query: str, annotation_prefix: str = "") 
         # Store replacement - just reference the CTE table
         replacements[match.group(0)] = cte_name
 
-    # Replace all VECTOR_SEARCH calls with table references
-    result = query
-    for original, replacement in replacements.items():
-        result = result.replace(original, replacement)
+    # Check if query already has WITH clause BEFORE replacing
+    has_existing_with = re.match(r'^\s*WITH\s+', query, re.IGNORECASE)
 
-    # Prepend CTEs to query
-    cte_clause = "WITH " + ", ".join(ctes) + "\n"
+    if has_existing_with:
+        # Query already has WITH - insert our CTEs at the beginning
+        # Pattern: WITH existing_cte AS (...) SELECT ...
+        # Result: WITH __vsr_0 AS (...), existing_cte AS (...) SELECT ...
 
-    # Check if query already has WITH clause
-    if re.match(r'^\s*WITH\s+', result, re.IGNORECASE):
-        # Insert our CTEs into existing WITH
-        # Find the first SELECT after WITH
-        with_match = re.search(r'(WITH\s+.*?)(\s+SELECT\s+)', result, re.IGNORECASE | re.DOTALL)
-        if with_match:
-            existing_ctes = with_match.group(1)
-            select_part = result[with_match.end(1):]
-            result = f"{existing_ctes}, {', '.join(ctes)}{select_part}"
+        # Find where existing CTEs end (before main SELECT)
+        # We need to insert AFTER "WITH " but BEFORE the first user-defined CTE
+        with_start = re.search(r'^\s*WITH\s+', query, re.IGNORECASE)
+        if with_start:
+            # Insert our CTEs right after "WITH "
+            before_with = query[:with_start.end()]
+            after_with = query[with_start.end():]
+
+            # Build our CTEs
+            our_ctes = ", ".join(ctes) + ", "
+
+            # Replace VECTOR_SEARCH in the rest of the query
+            for original, replacement in replacements.items():
+                after_with = after_with.replace(original, replacement)
+
+            result = before_with + our_ctes + after_with
     else:
+        # No existing WITH - simple case
+        # Replace VECTOR_SEARCH calls first
+        result = query
+        for original, replacement in replacements.items():
+            result = result.replace(original, replacement)
+
         # Prepend new WITH clause
+        cte_clause = "WITH " + ", ".join(ctes) + "\n"
         result = cte_clause + result
 
     log.debug(f"Rewrote VECTOR_SEARCH (query-level): Added {len(ctes)} CTE(s)")
