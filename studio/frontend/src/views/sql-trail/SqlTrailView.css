@@ -1294,10 +1294,12 @@
 .semantic-summary-item:hover,
 .semantic-summary-item--highlighted {
   background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.3);
 }
 
-.semantic-summary-item--highlighted {
-  box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.3);
+.semantic-summary-item:active {
+  transform: scale(0.98);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .semantic-summary-bar {

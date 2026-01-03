@@ -391,9 +391,10 @@ const SpanMetricsPanel = ({ hoveredCall, spawnedSessions, cascadeExecutions }) =
 /**
  * Semantic Summary Panel - Shows breakdown of semantic functions when not hovering
  * onFunctionHover: callback when hovering a function row (for cross-highlighting SQL)
+ * onFunctionClick: callback when clicking a function row (for navigation)
  * highlightedFunction: currently highlighted function name
  */
-const SemanticSummaryPanel = ({ semanticCalls, spawnedSessions, cascadeExecutions, onFunctionHover, highlightedFunction }) => {
+const SemanticSummaryPanel = ({ semanticCalls, spawnedSessions, cascadeExecutions, onFunctionHover, onFunctionClick, highlightedFunction }) => {
   const summary = useMemo(() => {
     if (!semanticCalls || semanticCalls.length === 0) {
       return { functions: [], totalCost: 0, totalCalls: 0, hasData: false };
@@ -485,6 +486,7 @@ const SemanticSummaryPanel = ({ semanticCalls, spawnedSessions, cascadeExecution
               className={`semantic-summary-item ${isHighlighted ? 'semantic-summary-item--highlighted' : ''}`}
               onMouseEnter={() => onFunctionHover && onFunctionHover(func.name)}
               onMouseLeave={() => onFunctionHover && onFunctionHover(null)}
+              onClick={() => onFunctionClick && onFunctionClick(func.name, func.cascadeId)}
             >
               <div className="semantic-summary-bar" style={{
                 width: `${costPercent}%`,
@@ -515,8 +517,8 @@ const SemanticSummaryPanel = ({ semanticCalls, spawnedSessions, cascadeExecution
       </div>
 
       <div className="semantic-summary-hint">
-        <Icon icon="mdi:cursor-default-click" width={12} />
-        <span>Hover spans in SQL for details</span>
+        <Icon icon="mdi:open-in-new" width={12} />
+        <span>Click to open in Studio</span>
       </div>
     </div>
   );
@@ -563,6 +565,39 @@ const QueryDetail = ({ data, onBack }) => {
   const handleFunctionHover = useCallback((funcName) => {
     setHighlightedFunction(funcName);
   }, []);
+
+  // Navigate to Studio page when clicking a function in the summary panel
+  const handleFunctionClick = useCallback((funcName, cascadeId) => {
+    const sessions = data?.spawned_sessions || [];
+    const cascadeExecutions = data?.cascade_executions || [];
+
+    // Find a matching session by cascade_id or function name
+    const matchingSession = sessions.find(s => {
+      if (cascadeId && s.cascade_id === cascadeId) return true;
+      if (funcName && s.cascade_id === funcName) return true;
+      if (funcName && s.cascade_id && s.cascade_id.includes(funcName)) return true;
+      return false;
+    });
+
+    // Find a matching cascade execution if no session found
+    const matchingExecution = !matchingSession && cascadeExecutions.find(e => {
+      if (cascadeId && e.cascade_id === cascadeId) return true;
+      if (funcName && e.cascade_id === funcName) return true;
+      if (funcName && e.cascade_id && e.cascade_id.includes(funcName)) return true;
+      return false;
+    });
+
+    const sessionId = matchingSession?.session_id || matchingExecution?.session_id;
+    const targetCascadeId = cascadeId || funcName;
+
+    if (targetCascadeId && sessionId) {
+      const studioUrl = `/studio/${encodeURIComponent(targetCascadeId)}/${encodeURIComponent(sessionId)}`;
+      window.location.href = studioUrl;
+    } else if (targetCascadeId) {
+      const studioUrl = `/studio/${encodeURIComponent(targetCascadeId)}`;
+      window.location.href = studioUrl;
+    }
+  }, [data]);
 
   // Navigate to Studio page when clicking a semantic span
   const handleSpanClick = useCallback((call, sessions, cascadeExecutions) => {
@@ -822,6 +857,7 @@ const QueryDetail = ({ data, onBack }) => {
               spawnedSessions={sessions}
               cascadeExecutions={cascadeExecutions}
               onFunctionHover={handleFunctionHover}
+              onFunctionClick={handleFunctionClick}
               highlightedFunction={highlightedFunction}
             />
           )}
