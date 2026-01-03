@@ -344,14 +344,14 @@ def rewrite_semantic_operators(query: str) -> str:
             annotation_prefix = first_annotation.prompt + " - "
 
     # Query-level rewrites (these transform the entire query structure)
-
-    # EMBED: Inject table/ID context for auto-storage in rvbbit_embeddings
-    from .embedding_operator_rewrites import _rewrite_embed_query_level
-    result = _rewrite_embed_query_level(result, annotation_prefix)
-
-    # VECTOR_SEARCH: Needs CTE approach to avoid subquery in table function
-    from .embedding_operator_rewrites import _rewrite_vector_search_query_level
-    result = _rewrite_vector_search_query_level(result, annotation_prefix)
+    #
+    # NOTE: EMBED(...) and VECTOR_SEARCH(...) sugar has been removed in favor of
+    # explicit function calls:
+    #   - semantic_embed(text)
+    #   - semantic_embed_with_storage(text, model, source_table, column_name, source_id)
+    #   - read_json_auto(vector_search_json_N(...))
+    #
+    # Structural helpers can be reintroduced later once we have robust SQL parsing.
 
     # SEMANTIC DISTINCT: SELECT SEMANTIC DISTINCT col FROM table
     result = _rewrite_semantic_distinct(result, annotation_prefix)
@@ -453,8 +453,8 @@ def _rewrite_dynamic_infix_operators(
 
     Automatically works with user-created cascades!
 
-    This replaces all the hardcoded _rewrite_means(), _rewrite_about(), etc.
-    functions with a single dynamic implementation.
+    This replaces per-operator hardcoded expression rewrites with a single
+    registry-driven implementation.
 
     Args:
         line: SQL line to rewrite
@@ -557,14 +557,14 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
     if annotation and annotation.threshold is not None:
         default_threshold = annotation.threshold
 
-    # ===== LEGACY: Hardcoded rewrites for complex operators =====
-    # These handle special cases that need custom logic:
-    # - ABOUT with threshold comparisons (> 0.7, etc.)
-    # - NOT operators with negation
-    # - RELEVANCE TO in ORDER BY context
+    # ===== Context-sensitive rewrites (kept in legacy for now) =====
+    # These handle patterns that need query/statement context or custom semantics:
+    # - ABOUT with threshold comparisons (> 0.7, etc.) and NOT ABOUT inversion
+    # - RELEVANCE TO in ORDER BY context (+ NOT variant)
     # - SEMANTIC JOIN (multi-keyword transformation)
     #
-    # TODO (Phase 4): Migrate these to generic rewriter with enhanced pattern matching
+    # Expression-level operators (MEANS, NOT MEANS, ~, !~, IMPLIES, CONTRADICTS, ASK, ALIGNS, ...)
+    # are handled by v2 (token-aware) and/or the dynamic infix rewriter below.
 
     # 1. Rewrite: SEMANTIC JOIN (complex multi-keyword transformation)
     result = _rewrite_semantic_join(result, annotation_prefix)
@@ -577,38 +577,13 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
     # Special: ORDER BY context
     result = _rewrite_relevance_to(result, annotation_prefix)
 
-    # 4. Rewrite: col NOT MEANS 'criteria' → NOT matches('criteria', col)
-    # Special: Negation
-    result = _rewrite_not_means(result, annotation_prefix)
-
-    # 5. Rewrite: col NOT ABOUT 'criteria' → score('criteria', col) <= threshold
+    # 4. Rewrite: col NOT ABOUT 'criteria' → score('criteria', col) <= threshold
     # Special: Negation + threshold inversion
     result = _rewrite_not_about(result, annotation_prefix, default_threshold)
 
-    # 6. Rewrite: col ABOUT 'criteria' [> threshold]
+    # 5. Rewrite: col ABOUT 'criteria' [> threshold]
     # Special: Threshold comparison operators
     result = _rewrite_about(result, annotation_prefix, default_threshold)
-
-    # 7. Rewrite: a !~ b → NOT match_pair(a, b, 'same entity')
-    # Special: Symbol operator + negation
-    result = _rewrite_not_tilde(result, annotation_prefix)
-
-    # NOTE: The following operators are now handled by _rewrite_dynamic_infix_operators()
-    # but we keep the hardcoded versions as fallback for backwards compatibility:
-    # - MEANS (now dynamic)
-    # - ~ tilde (now dynamic)
-    # - IMPLIES (now dynamic)
-    # - CONTRADICTS (now dynamic)
-    # - ASK (NEW - only works via dynamic)
-    # - ALIGNS (NEW - only works via dynamic)
-    # - EXTRACTS (NEW - only works via dynamic)
-    # - SOUNDS_LIKE (NEW - only works via dynamic)
-
-    # Keep these for backwards compatibility (will be removed in Phase 4)
-    result = _rewrite_means(result, annotation_prefix)
-    result = _rewrite_tilde(result, annotation_prefix)
-    result = _rewrite_implies(result, annotation_prefix)
-    result = _rewrite_contradicts(result, annotation_prefix)
 
     # ===== PHASE 2: GENERIC DYNAMIC REWRITING (NEW!) =====
     # Run this AFTER the special-case rewrites above so we don’t break:
@@ -620,64 +595,7 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
     # infix operators to work without additional hardcoding.
     result = _rewrite_dynamic_infix_operators(result, annotation_prefix)
 
-    # 12. Embedding operators (EMBED, VECTOR_SEARCH, SIMILAR_TO)
-    # Special: Need query-level rewriting (not just line-level)
-    from rvbbit.sql_tools.embedding_operator_rewrites import rewrite_embedding_operators
-    result = rewrite_embedding_operators(result, annotation_prefix)
-
     return result
-
-
-def _rewrite_means(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite MEANS operator.
-
-    col MEANS 'sustainable'  →  matches('sustainable', col)
-
-    With annotation:
-    -- @ use a fast model
-    col MEANS 'sustainable'  →  matches('use a fast model - sustainable', col)
-    """
-    fn_name = get_function_name("matches")
-
-    # Pattern: identifier MEANS 'string'
-    # Captures: (column_expr) MEANS '(criteria)'
-    pattern = r'(\w+(?:\.\w+)?)\s+MEANS\s+\'([^\']+)\''
-
-    def replacer(match):
-        col = match.group(1)
-        criteria = match.group(2)
-        # Inject annotation prefix into criteria
-        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        # NEW: Use (text, criterion) order to match cascade YAMLs
-        return f"{fn_name}({col}, '{full_criteria}')"
-
-    return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
-
-
-def _rewrite_not_means(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite NOT MEANS operator.
-
-    col NOT MEANS 'sustainable'  →  NOT matches('sustainable', col)
-
-    With annotation:
-    -- @ use a fast model
-    col NOT MEANS 'sustainable'  →  NOT matches('use a fast model - sustainable', col)
-    """
-    fn_name = get_function_name("matches")
-
-    # Pattern: identifier NOT MEANS 'string'
-    pattern = r'(\w+(?:\.\w+)?)\s+NOT\s+MEANS\s+\'([^\']+)\''
-
-    def replacer(match):
-        col = match.group(1)
-        criteria = match.group(2)
-        full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        # NEW: Use (text, criterion) order to match cascade YAMLs
-        return f"NOT {fn_name}({col}, '{full_criteria}')"
-
-    return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
 
 def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) -> str:
@@ -777,100 +695,6 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
     return result
 
 
-def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite tilde (~) operator for semantic matching.
-
-    Two modes:
-    1. String literal on right: text ~ 'criterion'  →  matches(text, 'criterion')
-    2. Column vs column: a ~ b  →  matches(a, b) [treats b as text to match]
-
-    Examples:
-        title ~ 'visual contact'  →  matches(title, 'visual contact')
-        c.company ~ s.vendor      →  matches(c.company, s.vendor)
-
-    With annotation:
-        -- @ use a fast model
-        title ~ 'x'  →  matches(title, 'use a fast model - x')
-    """
-    fn_name = get_function_name("matches")
-
-    # Pattern 1: text ~ 'string literal' (most common use case)
-    # Match: col ~ 'value' or table.col ~ 'value'
-    pattern_literal = r'(\w+(?:\.\w+)?)\s*~\s*\'([^\']+)\''
-
-    def replacer_literal(match):
-        column = match.group(1)
-        criterion = match.group(2)
-        full_criterion = f"{annotation_prefix}{criterion}" if annotation_prefix else criterion
-        # Use (text, criterion) order to match cascade YAMLs and direct UDF signatures
-        return f"{fn_name}({column}, '{full_criterion}')"
-
-    result = re.sub(pattern_literal, replacer_literal, line, flags=re.IGNORECASE)
-
-    # Pattern 2: col ~ col (column vs column comparison)
-    # Match: a ~ b or table.col ~ other.col (but NOT if already rewritten)
-    # Be careful not to match if we already replaced with a function call
-    pattern_columns = r'(?<![a-zA-Z0-9_])(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)(?![=\(])'
-
-    def replacer_columns(match):
-        left = match.group(1)
-        right = match.group(2)
-        # For column-column comparison, treat right column as criterion
-        return f"{fn_name}({left}, {right})"
-
-    # Only apply column-column pattern if no literal pattern matched
-    if '~' in result and "'" not in result:
-        result = re.sub(pattern_columns, replacer_columns, result, flags=re.IGNORECASE)
-
-    return result
-
-
-def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite negated tilde (!~) operator for semantic non-matching.
-
-    Two modes:
-    1. String literal on right: text !~ 'criterion'  →  NOT matches(text, 'criterion')
-    2. Column vs column: a !~ b  →  NOT matches(a, b)
-
-    Examples:
-        title !~ 'hoax'        →  NOT matches(title, 'hoax')
-        p1.name !~ p2.name     →  NOT matches(p1.name, p2.name)
-
-    With annotation:
-        -- @ use a fast model
-        title !~ 'x'  →  NOT matches(title, 'use a fast model - x')
-    """
-    fn_name = get_function_name("matches")
-
-    # Pattern 1: text !~ 'string literal'
-    pattern_literal = r'(\w+(?:\.\w+)?)\s*!~\s*\'([^\']+)\''
-
-    def replacer_literal(match):
-        column = match.group(1)
-        criterion = match.group(2)
-        full_criterion = f"{annotation_prefix}{criterion}" if annotation_prefix else criterion
-        # Use (text, criterion) order to match cascade YAMLs and direct UDF signatures
-        return f"NOT {fn_name}({column}, '{full_criterion}')"
-
-    result = re.sub(pattern_literal, replacer_literal, line, flags=re.IGNORECASE)
-
-    # Pattern 2: col !~ col (column vs column comparison)
-    pattern_columns = r'(?<![a-zA-Z0-9_])(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)(?![=\(])'
-
-    def replacer_columns(match):
-        left = match.group(1)
-        right = match.group(2)
-        return f"NOT {fn_name}({left}, {right})"
-
-    # Only apply column-column pattern if no literal pattern matched
-    if '!~' in result and "'" not in result:
-        result = re.sub(pattern_columns, replacer_columns, result, flags=re.IGNORECASE)
-
-    return result
-
-
 def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
     """
     Rewrite RELEVANCE TO in ORDER BY.
@@ -922,86 +746,6 @@ def _rewrite_not_relevance_to(line: str, annotation_prefix: str) -> str:
         return f"ORDER BY {fn_name}({col}, '{full_query}') {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
-
-
-def _rewrite_implies(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite IMPLIES operator.
-
-    col IMPLIES 'conclusion'  →  implies(col, 'conclusion')
-    col IMPLIES other_col     →  implies(col, other_col)
-
-    With annotation:
-    -- @ check for visual contact
-    title IMPLIES 'witness saw creature'  →  implies(title, 'check for visual contact - witness saw creature')
-    """
-    fn_name = get_function_name("implies")
-
-    # Pattern: col IMPLIES 'string'
-    pattern_string = r'(\w+(?:\.\w+)?)\s+IMPLIES\s+\'([^\']+)\''
-
-    def replacer_string(match):
-        col = match.group(1)
-        conclusion = match.group(2)
-        full_conclusion = f"{annotation_prefix}{conclusion}" if annotation_prefix else conclusion
-        return f"{fn_name}({col}, '{full_conclusion}')"
-
-    result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
-
-    # Pattern: col IMPLIES other_col (column reference, not string literal)
-    # Be careful not to match already-rewritten implies()
-    pattern_col = r'(\w+(?:\.\w+)?)\s+IMPLIES\s+(\w+(?:\.\w+)?)(?!\s*[,\)])'
-
-    def replacer_col(match):
-        col1 = match.group(1)
-        col2 = match.group(2)
-        # Don't rewrite if col2 looks like it's part of implies() call
-        if col1.lower() == fn_name:
-            return match.group(0)
-        return f"{fn_name}({col1}, {col2})"
-
-    result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
-
-    return result
-
-
-def _rewrite_contradicts(line: str, annotation_prefix: str) -> str:
-    """
-    Rewrite CONTRADICTS operator.
-
-    col CONTRADICTS 'statement'  →  contradicts(col, 'statement')
-    col CONTRADICTS other_col    →  contradicts(col, other_col)
-
-    With annotation:
-    -- @ check for logical inconsistency
-    title CONTRADICTS observed  →  contradicts(title, observed)
-    """
-    fn_name = get_function_name("contradicts")
-
-    # Pattern: col CONTRADICTS 'string'
-    pattern_string = r'(\w+(?:\.\w+)?)\s+CONTRADICTS\s+\'([^\']+)\''
-
-    def replacer_string(match):
-        col = match.group(1)
-        statement = match.group(2)
-        full_statement = f"{annotation_prefix}{statement}" if annotation_prefix else statement
-        return f"{fn_name}({col}, '{full_statement}')"
-
-    result = re.sub(pattern_string, replacer_string, line, flags=re.IGNORECASE)
-
-    # Pattern: col CONTRADICTS other_col (column reference)
-    pattern_col = r'(\w+(?:\.\w+)?)\s+CONTRADICTS\s+(\w+(?:\.\w+)?)(?!\s*[,\)])'
-
-    def replacer_col(match):
-        col1 = match.group(1)
-        col2 = match.group(2)
-        if col1.lower() == fn_name:
-            return match.group(0)
-        return f"{fn_name}({col1}, {col2})"
-
-    result = re.sub(pattern_col, replacer_col, result, flags=re.IGNORECASE)
-
-    return result
 
 
 def _rewrite_semantic_join(line: str, annotation_prefix: str) -> str:

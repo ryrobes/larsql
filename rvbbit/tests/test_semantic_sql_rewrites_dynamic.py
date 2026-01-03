@@ -70,7 +70,7 @@ def discover_sql_cascades() -> List[Dict[str, Any]]:
 
                 sql_func = cascade_data['sql_function']
 
-                # Skip if no operators defined
+                # Skip if no operators defined (explicit-only functions don't need rewrite tests)
                 if 'operators' not in sql_func or not sql_func['operators']:
                     continue
 
@@ -351,34 +351,8 @@ def _generate_table_tests(func_name: str, pattern: str, args: List[dict], patter
     """Generate test cases for TABLE-valued functions."""
     tests = []
 
-    if 'VECTOR_SEARCH' in pattern:
-        tests.append((
-            f"{func_name}_basic",
-            "SELECT * FROM VECTOR_SEARCH('eco-friendly products', 'products', 10)",
-            "vector_search_json"
-        ))
-        tests.append((
-            f"{func_name}_with_threshold",
-            "SELECT * FROM VECTOR_SEARCH('query', 'table', 10, 0.7)",
-            "vector_search_json"
-        ))
-        tests.append((
-            f"{func_name}_column_filter",
-            "SELECT * FROM VECTOR_SEARCH('eco-friendly', 'products.description', 10)",
-            "vector_search_json"
-        ))
-
-    elif 'EMBED' in pattern:
-        tests.append((
-            f"{func_name}_simple",
-            "SELECT id, EMBED(description) FROM products",
-            "semantic_embed_with_storage"  # Context injection rewrites to storage version
-        ))
-        tests.append((
-            f"{func_name}_with_model",
-            "SELECT id, EMBED(text, 'openai/text-embedding-3-large') FROM docs",
-            "semantic_embed_with_storage"
-        ))
+    # Explicit-only policy: we no longer support VECTOR_SEARCH(...) or EMBED(...) rewrite sugar.
+    # Table-valued functions should be invoked explicitly (e.g. read_json_auto(vector_search_json_3(...))).
 
     return tests
 
@@ -442,6 +416,8 @@ def test_all_cascades_discovered():
     # Verify we found the core built-ins
     found_ids = {c['cascade_id'] for c in ALL_SQL_CASCADES}
 
+    # This suite discovers cascades with `sql_function.operators` and validates rewrite behavior.
+    # Explicit-only functions/cascades without operator patterns are intentionally excluded.
     expected_builtins = [
         'semantic_matches',
         'semantic_score',
@@ -451,9 +427,6 @@ def test_all_cascades_discovered():
         'semantic_summarize',
         'semantic_themes',
         'semantic_cluster',
-        'semantic_embed',
-        'semantic_embed_with_storage',
-        'semantic_vector_search',  # Note: 'vector_search' is the function name, but cascade_id is semantic_vector_search
         'semantic_similar_to',
     ]
 
@@ -463,9 +436,9 @@ def test_all_cascades_discovered():
     print(f"Found {len(found_builtins)}/{len(expected_builtins)} expected built-ins")
     print(f"Cascade IDs: {sorted(found_ids)}")
 
-    # Should find at least 10 built-in operators
-    assert len(found_builtins) >= 10, (
-        f"Expected at least 10 built-in operators, found {len(found_builtins)}: {found_builtins}"
+    # Should find at least 8 built-in operators
+    assert len(found_builtins) >= 8, (
+        f"Expected at least 8 built-in operators, found {len(found_builtins)}: {found_builtins}"
     )
 
 
@@ -528,22 +501,17 @@ def test_spot_check_aligns_with_is_not_broken():
 
 
 def test_spot_check_embed_operator():
-    """Spot check: EMBED operator with context injection."""
-    sql = "SELECT id, EMBED(description) FROM products"
+    """Spot check: explicit embedding call stays explicit."""
+    sql = "SELECT id, semantic_embed(description) FROM products"
     rewritten = rewrite_rvbbit_syntax(sql)
-    # Should inject table/column/ID for auto-storage
-    assert 'semantic_embed_with_storage' in rewritten
-    assert "'products'" in rewritten  # table name
-    assert "'description'" in rewritten  # column name
+    assert "semantic_embed(" in rewritten
 
 
 def test_spot_check_vector_search():
-    """Spot check: VECTOR_SEARCH table function."""
-    sql = "SELECT * FROM VECTOR_SEARCH('eco-friendly', 'products', 10)"
+    """Spot check: explicit vector search JSON call stays explicit."""
+    sql = "SELECT * FROM read_json_auto(vector_search_json_3('eco-friendly', 'products', 10))"
     rewritten = rewrite_rvbbit_syntax(sql)
-    assert 'vector_search_json' in rewritten
-    assert "'eco-friendly'" in rewritten
-    assert "'products'" in rewritten
+    assert "vector_search_json_3" in rewritten
 
 
 def test_spot_check_summarize_aggregate():

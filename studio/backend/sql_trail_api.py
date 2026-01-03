@@ -141,7 +141,7 @@ def get_overview():
         cost_change = ((total_cost - prev_cost) / prev_cost * 100) if prev_cost > 0 else 0
         cache_improvement = cache_hit_rate - prev_cache_rate
 
-        # UDF type distribution
+        # Query type distribution (high-level: rvbbit_udf, rvbbit_cascade_udf, etc.)
         udf_dist_query = f"""
             SELECT
                 query_type,
@@ -155,6 +155,22 @@ def get_overview():
             ORDER BY cnt DESC
         """
         udf_distribution = db.query(udf_dist_query)
+
+        # UDF types distribution (granular: unnest udf_types array for actual cascade names)
+        udf_types_query = f"""
+            SELECT
+                udf_type,
+                COUNT(*) as cnt,
+                SUM(total_cost) as sum_cost,
+                AVG(duration_ms) as avg_duration
+            FROM sql_query_log
+            ARRAY JOIN udf_types as udf_type
+            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            GROUP BY udf_type
+            ORDER BY cnt DESC
+            LIMIT 20
+        """
+        udf_types_distribution = db.query(udf_types_query)
 
         return jsonify({
             'kpis': {
@@ -184,6 +200,15 @@ def get_overview():
                     'avg_duration': round(safe_float(row.get('avg_duration')), 2)
                 }
                 for row in udf_distribution
+            ],
+            'udf_types_distribution': [
+                {
+                    'udf_type': row.get('udf_type', 'unknown'),
+                    'count': safe_int(row.get('cnt')),
+                    'cost': round(safe_float(row.get('sum_cost')), 4),
+                    'avg_duration': round(safe_float(row.get('avg_duration')), 2)
+                }
+                for row in udf_types_distribution
             ]
         })
 

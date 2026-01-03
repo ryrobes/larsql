@@ -23,7 +23,7 @@ For each operator pattern, generates test cases:
 - **Infix operators**: `col MEANS 'x'`, `col ABOUT 'x' > 0.7`, `a SIMILAR_TO b`
 - **Function calls**: `semantic_matches('x', col)`, `score('x', col)`
 - **Aggregate functions**: `SUMMARIZE(texts)`, `THEMES(comments, 3)`
-- **Table functions**: `VECTOR_SEARCH('query', 'table', 10)`
+- **Table functions (explicit DuckDB form)**: `read_json_auto(vector_search_json_3('query', 'table', 10))`
 - **Negation**: `NOT MEANS`, `NOT ABOUT`
 - **Ordering**: `ORDER BY ... RELEVANCE TO`
 

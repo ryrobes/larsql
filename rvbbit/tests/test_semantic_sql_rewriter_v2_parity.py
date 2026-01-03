@@ -42,9 +42,9 @@ from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
             "score(",
         ),
         (
-            # Ensure EMBED context injection still happens (legacy pass after v2)
-            "SELECT id, EMBED(description) FROM products",
-            "semantic_embed_with_storage(",
+            # Explicit embed call (no magic/context injection)
+            "SELECT id, semantic_embed(description) FROM products",
+            "semantic_embed(",
         ),
     ],
 )

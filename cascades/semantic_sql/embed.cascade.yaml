@@ -7,8 +7,7 @@ description: |
   Results are cached by input hash for performance.
 
   SQL Usage:
-    SELECT id, text, EMBED(text) as embedding FROM documents;
-    SELECT id, EMBED(text, 'custom-model') as embedding FROM documents;
+    SELECT id, text, semantic_embed(text) as embedding FROM documents;
 
   Performance:
     - First call: ~100ms per text (API latency)
@@ -32,9 +31,6 @@ sql_function:
       description: "Optional embedding model name"
   returns: DOUBLE[]  # Array of floats (DuckDB type)
   shape: SCALAR
-  operators:
-    - "EMBED({{ text }})"
-    - "EMBED({{ text }}, '{{ model }}')"
   cache: true  # Cache embeddings by input hash
   context_arg: text  # Which arg provides context for token counting
 
@@ -43,9 +39,8 @@ cells:
     tool: python_data
     inputs:
       code: |
-        # Generate embedding and store in ClickHouse for VECTOR_SEARCH
-        from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
-        import hashlib
+        # Generate embedding (no implicit storage; storage is explicit via semantic_embed_with_storage)
+        from rvbbit.traits.embedding_storage import agent_embed
 
         text = input.get('text', '')
         model = input.get('model')
@@ -53,24 +48,6 @@ cells:
         # Generate embedding
         embed_result = agent_embed(text=text, model=model)
         embedding = embed_result['embedding']
-
-        # Store in rvbbit_embeddings for future VECTOR_SEARCH queries
-        # We don't know the actual source_table/source_id here (just called from SELECT EMBED(col))
-        # So we use the text hash as a unique ID
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:16]
-
-        try:
-            clickhouse_store_embedding(
-                source_table='_embed_cache',  # Special table for ad-hoc EMBED() calls
-                source_id=text_hash,
-                text=text,
-                embedding=embedding,
-                model=embed_result['model']
-            )
-        except Exception as e:
-            # Log but don't fail if storage fails
-            import logging
-            logging.getLogger(__name__).warning(f"Could not store embedding: {e}")
 
         # Return embedding for SQL
         result = embedding

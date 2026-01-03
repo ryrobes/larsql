@@ -1,10 +1,14 @@
 """
 Embedding Operator Rewrites for Semantic SQL.
 
-This module provides rewrite functions for embedding-based operators:
-- EMBED(text, model?) → semantic_embed(text, model?)
-- VECTOR_SEARCH(query, table, limit?, threshold?) → Table function
-- text1 SIMILAR_TO text2 → similar_to(text1, text2)
+DEPRECATED: This module implemented "magic" query-level rewrites for EMBED(...) and
+VECTOR_SEARCH(...). The project now uses an explicit-only policy for these:
+  - `semantic_embed(text)` (pure)
+  - `semantic_embed_with_storage(text, model, source_table, column_name, source_id)` (explicit storage)
+  - `read_json_auto(vector_search_json_N(...))` (explicit vector search)
+
+Keep this file only as historical reference; it is no longer called from the main
+SQL rewrite pipeline.
 
 These functions should be integrated into semantic_operators.py by:
 1. Adding patterns to _has_semantic_operator_in_line()

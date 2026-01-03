@@ -3,12 +3,7 @@ cascade_id: semantic_embed_with_storage
 description: |
   Generate text embeddings AND store them in rvbbit_embeddings with table/ID tracking.
 
-  This cascade is used when EMBED() is called in a SELECT with detectable table/ID context.
-  The SQL rewriter injects table name and row ID automatically.
-
-  SQL Usage (rewritten from):
-    SELECT id, EMBED(description) FROM products;
-  To:
+  SQL Usage:
     SELECT id, semantic_embed_with_storage(description, NULL, 'products', 'description', CAST(id AS VARCHAR)) FROM products;
 
   This stores: source_table='products', metadata={'column_name': 'description'}, source_id='1'

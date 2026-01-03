@@ -7,8 +7,9 @@ description: |
   Pre-filters via vector similarity, can be combined with LLM operators.
 
   SQL Usage:
-    SELECT * FROM VECTOR_SEARCH('eco-friendly products', 'products', 10);
-    SELECT * FROM VECTOR_SEARCH('query', 'table', 10, 0.7);  -- with threshold
+    -- Explicit form (DuckDB):
+    SELECT * FROM read_json_auto(vector_search_json_3('eco-friendly products', 'products', 10));
+    SELECT * FROM read_json_auto(vector_search_json_4('query', 'table', 10, 0.7));  -- with threshold
 
   Performance:
     - Vector search: ~50ms for 1M vectors (ClickHouse native)
@@ -51,10 +52,6 @@ sql_function:
       description: "Min similarity threshold (0-1)"
   returns: TABLE  # Table-valued function
   shape: AGGREGATE
-  operators:
-    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}')"
-    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}', {{ limit }})"
-    - "VECTOR_SEARCH('{{ query }}', '{{ source_table }}', {{ limit }}, {{ threshold }})"
   cache: true
   context_arg: query
 

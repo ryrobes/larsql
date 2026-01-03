@@ -84,7 +84,9 @@ RVBBIT_UDF_NAMES = {
     'llm_matches', 'llm_score', 'llm_match_pair', 'llm_match_template', 'llm_semantic_case',
     'matches', 'score', 'match_pair', 'match_template', 'semantic_case',
     'semantic_matches', 'semantic_score', 'semantic_implies', 'semantic_contradicts',
-    'semantic_summarize', 'semantic_themes', 'semantic_cluster', 'semantic_classify_single'
+    'semantic_summarize', 'semantic_themes', 'semantic_cluster', 'semantic_classify_single',
+    # Explicit vector search JSON UDFs (DuckDB-only helpers)
+    'vector_search_json_2', 'vector_search_json_3', 'vector_search_json_4'
 }
 
 # Semantic SQL operators that get rewritten to UDFs

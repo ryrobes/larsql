@@ -51,8 +51,8 @@ def test_detect_semantic_sql_newer_operators_for_logging():
     assert _is_rvbbit_statement("SELECT * FROM policies WHERE description ALIGNS WITH 'customer-first values'")
     # ASK infix operator
     assert _is_rvbbit_statement("SELECT body ASK 'summarize in 5 words' FROM emails")
-    # Vector search function-style operator
-    assert _is_rvbbit_statement("SELECT * FROM VECTOR_SEARCH('eco', 'products', 5)")
+    # Vector search (explicit DuckDB form)
+    assert _is_rvbbit_statement("SELECT * FROM read_json_auto(vector_search_json_3('eco', 'products', 5))")
 
 
 # ============================================================================

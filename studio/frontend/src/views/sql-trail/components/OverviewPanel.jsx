@@ -106,6 +106,26 @@ const TypeTooltip = ({ active, payload }) => {
   );
 };
 
+const UdfTypeTooltip = ({ active, payload }) => {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="sql-trail-tooltip">
+      <div className="sql-trail-tooltip-title">{item.udf_type || 'Unknown'}</div>
+      <div className="sql-trail-tooltip-row">
+        <span>Invocations</span>
+        <span>{formatNumber(item.count)}</span>
+      </div>
+      {item.cost > 0 && (
+        <div className="sql-trail-tooltip-row">
+          <span>Cost</span>
+          <span>{formatCost(item.cost)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const OverviewPanel = ({
   data,
   cacheStats,
@@ -135,6 +155,7 @@ const OverviewPanel = ({
   } = data.kpis;
 
   const queries_by_type = data.udf_distribution || [];
+  const udf_types_data = data.udf_types_distribution || [];
 
   const timeSeriesData = (timeSeries?.series || []).map((point) => ({
     period: point.period || point.date || point.timestamp,
@@ -143,6 +164,7 @@ const OverviewPanel = ({
     cost: point.total_cost ?? point.cost ?? 0
   }));
   const typeData = [...queries_by_type].sort((a, b) => (b.count || 0) - (a.count || 0));
+  const udfTypesData = [...udf_types_data].sort((a, b) => (b.count || 0) - (a.count || 0));
   const granularityOptions = [
     { value: 'minute', label: 'Minutes' },
     { value: 'hourly', label: 'Hourly' },
@@ -248,52 +270,93 @@ const OverviewPanel = ({
       </div>
 
       <div className="overview-row">
-        <div className="overview-chart-card">
-          <div className="overview-card-header">
-            <div className="overview-card-title">
-              <Icon icon="mdi:cached" width={14} />
-              <span>Cache Performance</span>
+        {/* Left column: Cache Performance + Query Type (side by side) */}
+        <div className="overview-chart-card overview-chart-card--split-horizontal">
+          <div className="overview-split-left">
+            <div className="overview-card-header">
+              <div className="overview-card-title">
+                <Icon icon="mdi:cached" width={14} />
+                <span>Cache Performance</span>
+              </div>
             </div>
-          </div>
-          <CacheGauge hitRate={cache_hit_rate} />
-          {cacheStats && (
-            <div className="cache-stats">
-              <div className="cache-stat cache-stat--hits">
-                <div className="cache-stat-value">{formatNumber(cacheStats.total_hits)}</div>
-                <div className="cache-stat-label">Cache Hits</div>
-              </div>
-              <div className="cache-stat cache-stat--misses">
-                <div className="cache-stat-value">{formatNumber(cacheStats.total_misses)}</div>
-                <div className="cache-stat-label">Cache Misses</div>
-              </div>
-              {cacheStats.estimated_savings > 0 && (
-                <div className="cache-stat cache-stat--savings">
-                  <div className="cache-stat-value">{formatCost(cacheStats.estimated_savings)}</div>
-                  <div className="cache-stat-label">Est. Savings</div>
+            <CacheGauge hitRate={cache_hit_rate} />
+            {cacheStats && (
+              <div className="cache-stats cache-stats--compact">
+                <div className="cache-stat cache-stat--hits">
+                  <div className="cache-stat-value">{formatNumber(cacheStats.total_hits)}</div>
+                  <div className="cache-stat-label">Hits</div>
                 </div>
-              )}
+                <div className="cache-stat cache-stat--misses">
+                  <div className="cache-stat-value">{formatNumber(cacheStats.total_misses)}</div>
+                  <div className="cache-stat-label">Misses</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="overview-split-right">
+            <div className="overview-card-header">
+              <div className="overview-card-title">
+                <Icon icon="mdi:shape-outline" width={14} />
+                <span>Queries by Type</span>
+              </div>
             </div>
-          )}
+            {typeData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={typeData}
+                  margin={{ top: 8, right: 8, left: 8, bottom: 24 }}
+                >
+                  <defs>
+                    <linearGradient id="sqlTrailTypeGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={0.85} />
+                      <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" vertical={false} />
+                  <XAxis
+                    dataKey="query_type"
+                    tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
+                    axisLine={{ stroke: 'var(--color-border-dim)' }}
+                    tickLine={false}
+                    interval={0}
+                  />
+                  <YAxis
+                    tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => formatNumber(v)}
+                    width={35}
+                  />
+                  <Tooltip content={<TypeTooltip />} cursor={{ fill: 'rgba(0, 229, 255, 0.08)' }} />
+                  <Bar dataKey="count" fill="url(#sqlTrailTypeGradient)" radius={[6, 6, 0, 0]} maxBarSize={50} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="overview-empty overview-empty--small">No type data</div>
+            )}
+          </div>
         </div>
 
+        {/* Right column: UDF Types (granular breakdown) */}
         <div className="overview-chart-card">
           <div className="overview-card-header">
             <div className="overview-card-title">
-              <Icon icon="mdi:shape-outline" width={14} />
-              <span>Queries by Type</span>
+              <Icon icon="mdi:function-variant" width={14} />
+              <span>UDF Invocations</span>
             </div>
+            <span className="overview-card-subtitle">{udfTypesData.length} types</span>
           </div>
-          {typeData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+          {udfTypesData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={340}>
               <BarChart
-                data={typeData}
+                data={udfTypesData.slice(0, 12)}
                 layout="vertical"
-                margin={{ top: 8, right: 16, left: 24, bottom: 0 }}
+                margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="sqlTrailTypeGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={0.85} />
-                    <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
+                  <linearGradient id="sqlTrailUdfGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
+                    <stop offset="100%" stopColor="var(--color-accent-pink)" stopOpacity={0.85} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" horizontal={false} />
@@ -302,21 +365,22 @@ const OverviewPanel = ({
                   tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
                   axisLine={{ stroke: 'var(--color-border-dim)' }}
                   tickLine={false}
+                  tickFormatter={(v) => formatNumber(v)}
                 />
                 <YAxis
                   type="category"
-                  dataKey="query_type"
-                  width={120}
+                  dataKey="udf_type"
+                  width={140}
                   tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                 />
-                <Tooltip content={<TypeTooltip />} cursor={{ fill: 'rgba(0, 229, 255, 0.08)' }} />
-                <Bar dataKey="count" fill="url(#sqlTrailTypeGradient)" radius={[0, 6, 6, 0]} />
+                <Tooltip content={<UdfTypeTooltip />} cursor={{ fill: 'rgba(167, 139, 250, 0.08)' }} />
+                <Bar dataKey="count" fill="url(#sqlTrailUdfGradient)" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="overview-empty">No type data available</div>
+            <div className="overview-empty">No UDF invocations recorded</div>
           )}
         </div>
       </div>

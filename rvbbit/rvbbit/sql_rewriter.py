@@ -254,6 +254,15 @@ def _is_rvbbit_statement(query: str) -> bool:
     except Exception:
         pass
 
+    # Explicit vector search form: read_json_auto(vector_search_json_N(...))
+    # These UDFs are registered in DuckDB (not part of the cascade registry), but they
+    # should still flow through SQL Trail logging.
+    try:
+        if re.search(r'\bvector_search_json_\d+\s*\(', normalized_no_strings, re.IGNORECASE):
+            return True
+    except Exception:
+        pass
+
     # Check for semantic operators (MEANS, ABOUT, IMPLIES, etc.)
     # These get rewritten to UDF calls but need to be detected BEFORE rewriting
     query_upper = normalized_no_strings.upper()

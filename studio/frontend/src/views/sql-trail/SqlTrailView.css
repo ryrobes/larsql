@@ -224,6 +224,57 @@
   min-height: 260px;
 }
 
+.overview-chart-card--split {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  min-height: 400px;
+}
+
+.overview-chart-card--split-horizontal {
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+  min-height: 280px;
+}
+
+.overview-split-top {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.overview-split-bottom {
+  padding: var(--space-lg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-split-left {
+  padding: var(--space-lg);
+  border-right: 1px solid var(--color-border-dim);
+  flex: 0 0 45%;
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-split-right {
+  padding: var(--space-lg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.cache-stats--compact {
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.overview-empty--small {
+  height: 80px;
+  font-size: 12px;
+}
+
 .overview-card-header {
   display: flex;
   align-items: center;
@@ -238,6 +289,12 @@
   font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--color-text-primary);
+}
+
+.overview-card-subtitle {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  font-weight: 400;
 }
 
 .sql-trail-granularity {
@@ -1141,6 +1198,25 @@
 @media (max-width: 900px) {
   .overview-row {
     grid-template-columns: 1fr;
+  }
+
+  .overview-chart-card--split {
+    min-height: auto;
+  }
+
+  .overview-chart-card--split-horizontal {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .overview-split-left {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border-dim);
+  }
+
+  .overview-split-right {
+    flex: none;
   }
 
   .detail-grid {
