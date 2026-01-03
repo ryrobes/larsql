@@ -1324,12 +1324,19 @@ def register_dynamic_sql_functions(connection):
         registry = get_sql_function_registry()
         
         print(f"[DynamicUDF] Registering {len(registry)} SQL functions from cascade registry...")
+
+        # Avoid any name-based hardcoding: detect what's already registered in DuckDB.
+        # DuckDB doesn't support create_function overloading and errors if a name exists,
+        # so we pre-skip existing names to keep startup clean and deterministic.
+        try:
+            existing_names = {row[0].lower() for row in connection.execute("PRAGMA functions").fetchall()}
+        except Exception:
+            existing_names = set()
         
         for name, entry in registry.items():
-            # Skip if already registered as hardcoded function
-            hardcoded = ['semantic_matches', 'semantic_score', 'semantic_implies', 
-                        'semantic_contradicts', 'matches', 'score', 'implies', 'contradicts']
-            if name in hardcoded:
+            # Skip any function name that already exists in DuckDB (built-in or previously registered).
+            # This replaces prior hardcoded skip lists and keeps us aligned with "cascades all the way down".
+            if str(name).lower() in existing_names:
                 continue
             
             # Create wrapper that calls execute_cascade_udf
@@ -1346,6 +1353,34 @@ def register_dynamic_sql_functions(connection):
                     # Call cascade via executor
                     import json
                     result = execute_cascade_udf(fn_name, json.dumps(inputs))
+
+                    # DuckDB expects native Python types for scalar return types.
+                    # `execute_cascade_udf()` returns a string (or JSON string) so we coerce
+                    # to match the declared return type where needed.
+                    try:
+                        if fn_entry.returns == "BOOLEAN":
+                            if isinstance(result, bool):
+                                return result
+                            if isinstance(result, str):
+                                lowered = result.strip().lower()
+                                if lowered in ("true", "yes", "1"):
+                                    return True
+                                if lowered in ("false", "no", "0"):
+                                    return False
+                            return bool(result)
+                        if fn_entry.returns == "DOUBLE":
+                            if isinstance(result, (int, float)):
+                                return float(result)
+                            return float(str(result).strip())
+                        if fn_entry.returns == "INTEGER":
+                            if isinstance(result, int):
+                                return result
+                            return int(float(str(result).strip()))
+                    except Exception:
+                        # If coercion fails, fall back to returning the raw result and let
+                        # DuckDB attempt to coerce (or error).
+                        return result
+
                     return result
                 return wrapper
             
@@ -1368,14 +1403,17 @@ def register_dynamic_sql_functions(connection):
                     return_type=return_type
                 )
                 print(f"[DynamicUDF]   ✓ Registered: {name}() → {entry.cascade_path}")
+                existing_names.add(str(name).lower())
 
                 # ALSO register without "semantic_" prefix for SQL convenience
                 if name.startswith('semantic_'):
                     short_name = name.replace('semantic_', '')
                     try:
-                        connection.create_function(short_name, udf_func, return_type=return_type)
-                        print(f"[DynamicUDF]   ✓ Alias: {short_name}() → {name}()")
-                    except:
+                        if short_name.lower() not in existing_names:
+                            connection.create_function(short_name, udf_func, return_type=return_type)
+                            existing_names.add(short_name.lower())
+                            print(f"[DynamicUDF]   ✓ Alias: {short_name}() → {name}()")
+                    except Exception:
                         pass  # Might conflict with hardcoded functions, that's OK
 
                 # ALSO register additional aliases from operator patterns
@@ -1389,9 +1427,11 @@ def register_dynamic_sql_functions(connection):
                         # Only register if different from main function name and short_name
                         if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
                             try:
-                                connection.create_function(alias_name, udf_func, return_type=return_type)
-                                print(f"[DynamicUDF]   ✓ Alias: {alias_name}() → {name}()")
-                            except:
+                                if alias_name not in existing_names:
+                                    connection.create_function(alias_name, udf_func, return_type=return_type)
+                                    existing_names.add(alias_name)
+                                    print(f"[DynamicUDF]   ✓ Alias: {alias_name}() → {name}()")
+                            except Exception:
                                 pass  # Might conflict, that's OK
 
             except Exception as e:

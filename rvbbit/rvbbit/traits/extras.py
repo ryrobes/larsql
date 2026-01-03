@@ -382,7 +382,7 @@ def fetch_url_with_browser(url: str, max_length: int = 10000, wait_seconds: floa
             page = await context.new_page()
             
             # Navigate with timeout (45 seconds for slow/JS-heavy sites)
-            await page.goto(url, wait_until='networkidle', timeout=45000)
+            await page.goto(url, wait_until='networkidle', timeout=15000)
             
             # Wait for dynamic content
             if wait_seconds > 0:

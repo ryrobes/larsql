@@ -140,6 +140,33 @@ def _rewrite_semantic_operators(query: str) -> str:
     Supports -- @ annotation hints for model selection and prompt customization.
     """
     try:
+        import os
+
+        # v2 (token-aware) rewriter: partial infix desugaring only.
+        # It is intentionally conservative and falls back to legacy on error.
+        # Default: enabled. Set RVBBIT_SEMANTIC_REWRITE_V2=0 to disable.
+        v2_setting = os.environ.get("RVBBIT_SEMANTIC_REWRITE_V2", "").strip().lower()
+        v2_enabled = v2_setting not in ("0", "false", "no", "off")
+
+        if v2_enabled:
+            try:
+                from rvbbit.sql_tools.semantic_rewriter_v2 import rewrite_semantic_sql_v2
+                from rvbbit.sql_tools.semantic_operators import rewrite_semantic_operators as legacy_rewrite
+
+                v2_result = rewrite_semantic_sql_v2(query)
+                if v2_result.errors:
+                    return legacy_rewrite(query)
+
+                # Always run legacy after v2 so existing query-level and special-case rewrites
+                # (VECTOR_SEARCH, EMBED context injection, RELEVANCE TO, ABOUT thresholds, etc.)
+                # continue to function during v2 rollout.
+                return legacy_rewrite(v2_result.sql_out)
+
+            except Exception:
+                # Any failure: fall back to legacy
+                from rvbbit.sql_tools.semantic_operators import rewrite_semantic_operators
+                return rewrite_semantic_operators(query)
+
         from rvbbit.sql_tools.semantic_operators import rewrite_semantic_operators
         return rewrite_semantic_operators(query)
     except ImportError:

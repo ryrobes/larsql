@@ -123,6 +123,15 @@ def initialize_dynamic_patterns(force: bool = False) -> Dict[str, Set[str]]:
         return segment
 
     for func_name, entry in registry.items():
+        # Treat registered SQL function names as semantic operators too.
+        # This is important for v2 rollout and for users calling functions directly:
+        # after infix desugaring (MEANS -> semantic_matches(...)), we still need
+        # semantic operator detection for query-level rewrites and parallel splitting.
+        func_upper = str(func_name).upper()
+        function_names.add(func_upper)
+        if func_upper.startswith("SEMANTIC_"):
+            function_names.add(func_upper.replace("SEMANTIC_", "", 1))
+
         for operator_pattern in entry.operators:
             # Extract operator keywords from pattern
 
@@ -206,21 +215,22 @@ def has_any_semantic_operator(query: str) -> bool:
     """
     patterns = get_operator_patterns_cached()
 
-    # Quick check: scan for any known keywords
     query_upper = query.upper()
 
-    for keyword in patterns["all_keywords"]:
-        # Check if this is a word-based operator or symbol operator
+    # Infix operators
+    for keyword in patterns["infix"]:
         is_word_operator = keyword.isalnum()
-
         if is_word_operator:
-            # Use word boundary regex to avoid false positives
             if re.search(rf'\b{keyword}\b', query_upper):
                 return True
         else:
-            # Symbol operators like ~, !~, etc. - check for presence
             if keyword in query:
                 return True
+
+    # Function-style operators (including registered SQL function names)
+    for keyword in patterns["function"]:
+        if re.search(rf'\b{keyword}\s*\(', query_upper):
+            return True
 
     return False
 
