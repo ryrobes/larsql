@@ -9,6 +9,7 @@
 #   SELECT semantic_matches(title, 'nighttime event') FROM docs
 
 cascade_id: semantic_matches
+internal: true 
 
 description: |
   Semantic boolean filter - returns TRUE if text semantically matches the criterion.

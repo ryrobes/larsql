@@ -1,4 +1,5 @@
 cascade_id: semantic_sounds_like
+internal: true 
 
 description: |
   Phonetic similarity matching (proof-of-concept for dynamic operators).

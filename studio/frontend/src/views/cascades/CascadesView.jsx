@@ -8,6 +8,7 @@ import useStudioCascadeStore from '../../studio/stores/studioCascadeStore';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import CascadeSpecGraph from '../../components/CascadeSpecGraph';
 import KPICard from '../receipts/components/KPICard';
+import { useCredits } from '../../hooks/useCredits';
 import { ROUTES } from '../../routes.helpers';
 import './CascadesView.css';
 
@@ -219,8 +220,10 @@ const CascadesView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridHeight, setGridHeight] = useState(600);
+  const [globalKpis, setGlobalKpis] = useState(null);
   const gridRef = useRef(null);
   const containerRef = useRef(null);
+  const credits = useCredits({ pollInterval: 60000 });
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -334,6 +337,23 @@ const CascadesView = () => {
     }
   };
 
+  // Fetch global KPIs (for base cascades page)
+  const fetchGlobalKpis = async () => {
+    try {
+      const res = await fetch('http://localhost:5050/api/console/kpis');
+      const data = await res.json();
+
+      if (data.error) {
+        console.error('[CascadesView] KPI fetch error:', data.error);
+        return;
+      }
+
+      setGlobalKpis(data);
+    } catch (err) {
+      console.error('[CascadesView] KPI fetch failed:', err.message);
+    }
+  };
+
   // Sync state with URL params when URL changes
   useEffect(() => {
     const newCascadeId = urlCascadeId ? decodeURIComponent(urlCascadeId) : null;
@@ -348,6 +368,7 @@ const CascadesView = () => {
   // Initial load
   useEffect(() => {
     fetchCascades();
+    fetchGlobalKpis();
   }, []);
 
   // Load instances when cascade selected
@@ -947,6 +968,46 @@ const CascadesView = () => {
           }
         </div>
       </div>
+
+      {/* Global KPI Cards Section - Only show on base cascades page (no cascade selected) */}
+      {!selectedCascade && (globalKpis || credits.balance !== null) && (
+        <div className="cascades-kpi-section">
+          <div className="cascades-kpi-grid">
+            {globalKpis && (
+              <>
+                <KPICard
+                  icon="mdi:cash"
+                  title="24h Cost"
+                  value={`$${globalKpis.total_cost_24h.toFixed(2)}`}
+                  subtitle={globalKpis.cost_trend}
+                  color="#34d399"
+                />
+                <KPICard
+                  icon="mdi:alert-circle"
+                  title="Active Outliers"
+                  value={globalKpis.outlier_count}
+                  subtitle="in last 24h"
+                  color={globalKpis.outlier_count > 0 ? '#f87171' : '#94a3b8'}
+                />
+                <KPICard
+                  icon="mdi:percent"
+                  title="Avg Context%"
+                  value={`${globalKpis.avg_context_pct.toFixed(0)}%`}
+                  subtitle={globalKpis.context_trend}
+                  color="#60a5fa"
+                />
+              </>
+            )}
+            <KPICard
+              icon="mdi:wallet"
+              title="OR Balance"
+              value={credits.balance !== null ? `$${credits.balance.toFixed(2)}` : '—'}
+              subtitle={credits.runwayDays !== null ? `~${credits.runwayDays}d runway` : credits.burnRate24h !== null ? `$${credits.burnRate24h.toFixed(2)}/hr` : null}
+              color={credits.balance === null ? '#64748b' : credits.balance > 20 ? '#34d399' : credits.balance > 5 ? '#fbbf24' : '#f87171'}
+            />
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards Section - Only show when viewing a specific cascade */}
       {selectedCascade && cascadeKpis && (

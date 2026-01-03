@@ -1,0 +1,105 @@
+# CATEGORY - Semantic Categorization Dimension
+# A dimension function that categorizes text into custom categories.
+#
+# SQL Usage:
+#   -- With explicit categories
+#   SELECT category(title, 'Visual, Audio, Physical, Encounter') as type, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY category(title, 'Visual, Audio, Physical, Encounter')
+#
+#   -- Auto-detect categories
+#   SELECT category(title) as type, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY category(title)
+
+cascade_id: category_dimension
+internal: true 
+
+description: |
+  Semantic categorization dimension function. Categorizes text into
+  user-specified categories or auto-detected categories.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  categories: Comma-separated list of category names (optional - auto-detect if not provided)
+  allow_other: Whether to allow "Other" category for non-matching items
+
+sql_function:
+  name: category
+  description: |
+    Categorize text into specified or auto-detected categories.
+    First arg is the column, second is optional comma-separated categories.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: categories
+      type: VARCHAR
+      default: null
+    - name: allow_other
+      type: BOOLEAN
+      default: true
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: categorize
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Categorize these {{ input.texts | length }} texts.
+
+      {% if input.categories %}
+      USE THESE SPECIFIC CATEGORIES:
+      {% for cat in input.categories.split(',') %}
+      - {{ cat | trim }}
+      {% endfor %}
+      {% if input.allow_other | default(true) %}
+      - Other (for items that don't fit above categories)
+      {% endif %}
+      {% else %}
+      AUTO-DETECT 5-8 appropriate categories based on the content.
+      Choose categories that are:
+      - Mutually exclusive
+      - Collectively exhaustive
+      - Meaningful for analysis
+      {% endif %}
+
+      Texts to categorize (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its category:
+
+      {
+        "mapping": {
+          "0": "Category Name",
+          "1": "Category Name",
+          ...
+        }
+      }
+
+      IMPORTANT:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
+      - Every text must be assigned to exactly one category
+      - Category names should be concise (2-4 words)
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

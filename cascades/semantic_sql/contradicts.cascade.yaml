@@ -9,6 +9,7 @@
 #   SELECT semantic_contradicts(title, observed) FROM docs
 
 cascade_id: semantic_contradicts
+internal: true 
 
 description: |
   Logical contradiction check - returns TRUE if text A contradicts text B.

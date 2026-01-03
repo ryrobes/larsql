@@ -1,0 +1,118 @@
+# SENTIMENT - Semantic Sentiment Dimension
+# A dimension function that analyzes sentiment with optional focus.
+#
+# SQL Usage:
+#   SELECT sentiment(observed) as mood, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY sentiment(observed)
+#
+#   -- With focus modifier:
+#   SELECT sentiment(observed, 'fear') as fear_level, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY sentiment(observed, 'fear')
+#
+#   -- With num_levels:
+#   SELECT sentiment(observed, 'credibility', 3) as cred_level, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY sentiment(observed, 'credibility', 3)
+
+cascade_id: sentiment_dimension
+internal: true 
+
+description: |
+  Semantic sentiment dimension function. Analyzes sentiment/mood of texts
+  with optional focus area and configurable number of levels.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  focus: Optional focus area (e.g., 'fear', 'excitement', 'credibility')
+  num_levels: Number of sentiment levels (default 5)
+
+sql_function:
+  name: sentiment
+  description: |
+    Analyze sentiment of text with optional focus. Returns a sentiment level.
+    First arg is the column, remaining args are modifiers.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: focus
+      type: VARCHAR
+      default: null
+    - name: num_levels
+      type: INTEGER
+      default: 5
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: analyze_sentiment
+    #model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Analyze the sentiment of these {{ input.texts | length }} texts.
+
+      {% if input.focus %}
+      FOCUS SPECIFICALLY ON: {{ input.focus }}
+      (Analyze how much {{ input.focus }} is expressed in each text)
+      {% else %}
+      Analyze general emotional sentiment/mood.
+      {% endif %}
+
+      Use {{ input.num_levels | default(5) }} distinct levels, ordered from lowest to highest intensity.
+
+      {% if input.focus %}
+      Example levels for "{{ input.focus }}":
+      - "No {{ input.focus }}"
+      - "Low {{ input.focus }}"
+      - "Moderate {{ input.focus }}"
+      - "High {{ input.focus }}"
+      - "Extreme {{ input.focus }}"
+      {% else %}
+      Example levels:
+      - "Very Negative"
+      - "Negative"
+      - "Neutral"
+      - "Positive"
+      - "Very Positive"
+      {% endif %}
+
+      Texts to analyze (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its sentiment level:
+
+      {
+        "mapping": {
+          "0": "Level Name",
+          "1": "Level Name",
+          ...
+        }
+      }
+
+      IMPORTANT:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
+      - Sentiment level names should be consistent across all assignments
+      - Return ONLY the JSON object, nothing else
+
+    rules:
+      max_turns: 1
+      max_attempts: 3
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

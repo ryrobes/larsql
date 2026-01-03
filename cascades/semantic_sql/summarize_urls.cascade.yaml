@@ -2,6 +2,7 @@
 # Fetches URLs using Playwright (handles JavaScript), returns summary
 
 cascade_id: semantic_summarize_urls
+internal: true 
 
 description: |
   Extracts URLs from text, fetches web content using headless browser,

@@ -9,6 +9,7 @@
 #   SELECT semantic_sentiment_scalar(observed) FROM bigfoot_vw
 
 cascade_id: semantic_sentiment_scalar
+internal: true
 
 description: |
   Scalar sentiment analysis - calculates sentiment for a single text.

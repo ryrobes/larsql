@@ -954,7 +954,8 @@ class SQLFunctionArg(BaseModel):
     name: str
     type: str = "VARCHAR"  # SQL type: VARCHAR, INTEGER, DOUBLE, BOOLEAN, JSON
     optional: bool = False
-    default: Optional[str] = None  # Default value as string
+    default: Optional[Any] = None  # Default value (int, str, bool, or null)
+    role: Optional[str] = None  # Optional role (e.g., "dimension_source" for DIMENSION shape)
 
 
 class SQLFunctionConfig(BaseModel):
@@ -964,10 +965,11 @@ class SQLFunctionConfig(BaseModel):
     When a cascade has a sql_function key, it becomes callable from SQL queries.
     The cascade is executed for each row (SCALAR), or once for a collection (AGGREGATE).
 
-    Three shapes:
+    Four shapes:
     - SCALAR: Per-row function (single value → single output)
     - ROW: Multi-column per-row (multiple values → single output)
     - AGGREGATE: Collection function (table context → single output)
+    - DIMENSION: Semantic bucketing for GROUP BY (collection → per-row bucket assignment)
 
     Usage (SCALAR - simple classifier):
         cascade_id: product_classifier
@@ -1024,10 +1026,19 @@ class SQLFunctionConfig(BaseModel):
     # Function signature
     args: List[SQLFunctionArg] = Field(default_factory=list)
     returns: str = "VARCHAR"  # Return type: VARCHAR, INTEGER, DOUBLE, BOOLEAN, JSON
-    shape: Literal["SCALAR", "ROW", "AGGREGATE"] = "SCALAR"
+    shape: Literal["SCALAR", "ROW", "AGGREGATE", "DIMENSION"] = "SCALAR"
 
     # For AGGREGATE shape: which arg receives the collection (JSON array)
     context_arg: Optional[str] = None
+
+    # For DIMENSION shape: execution mode
+    # - "mapping": Cascade returns {mapping: {value: bucket, ...}}
+    # - "extractor_classifier": Two-stage with separate extractor and classifier
+    mode: Optional[str] = None
+
+    # For DIMENSION shape with mode="extractor_classifier"
+    extractor: Optional[Dict[str, Any]] = None  # {function: "...", args_mapping: [...]}
+    classifier: Optional[Dict[str, Any]] = None  # {function: "...", args_mapping: [...]}
 
     # Operator syntax sugar - patterns that rewrite to this function
     # Use {{ input }}, {{ criterion }}, {{ threshold }} as placeholders
@@ -1525,6 +1536,14 @@ class CascadeConfig(BaseModel):
     memory: Optional[str] = None  # Memory bank name for persistent conversational memory
     token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
     tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
+
+    # Internal/system cascade flag
+    # When true, this cascade is excluded from meta-analysis pipelines:
+    # - No confidence assessment (training system)
+    # - No context relevance analysis
+    # - No analytics worker processing
+    # Use this for meta-cascades that analyze other cascades to prevent self-referential loops
+    internal: bool = False
 
     # SQL Function - expose this cascade as a SQL-callable function
     # When set, this cascade becomes available as a UDF in SQL queries

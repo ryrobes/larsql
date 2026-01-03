@@ -10113,6 +10113,13 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # Inject validation requirement into instructions
             rendered_instructions += f"\n\n---\n**VALIDATION REQUIREMENT:**\n{validation_prompt}\nYou have {max_attempts} attempt(s) to satisfy this validator.\n---"
 
+        # AUTO-INJECT OUTPUT SCHEMA REQUIREMENT
+        # If output_schema is defined, tell the LLM what JSON structure is expected
+        if cell.output_schema:
+            schema_json = json.dumps(cell.output_schema, indent=2)
+            schema_attempts = cell.rules.max_attempts if cell.rules.max_attempts else 1
+            rendered_instructions += f"\n\n---\n**OUTPUT FORMAT REQUIREMENT:**\nYour response must contain valid JSON matching this schema:\n```json\n{schema_json}\n```\nYou have {schema_attempts} attempt(s) to produce valid output.\n---"
+
         # Determine model to use (cell override or default)
         cell_model = cell.model if cell.model else self.model
 

@@ -31,6 +31,10 @@ def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any]
     """Run a cascade synchronously (blocking)."""
     from ..runner import RVBBITRunner
 
+    # DEBUG: Log caller_id propagation
+    if session_id.startswith('dim_') or session_id.startswith('sql_fn_'):
+        print(f"[_run_cascade_sync] Creating runner for {session_id}, caller_id={caller_id}")
+
     # RVBBITRunner takes session_id AND caller_id for proper tracking
     runner = RVBBITRunner(cascade_path, session_id=session_id, caller_id=caller_id)
     return runner.run(input_data=inputs)

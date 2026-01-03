@@ -74,21 +74,31 @@ def get_overview():
         previous_start = current_start - timedelta(days=days)
 
         # Current period KPIs
-        # Join with mv_sql_query_costs for real-time cost data
-        # SummingMergeTree returns 0 (not NULL), so check > 0 before using MV value
+        # Join with live aggregation from unified_logs for accurate cost data.
+        # We use a subquery instead of the MV to avoid eventual consistency issues.
+        # The cost data in unified_logs is the source of truth (updated by cost worker).
         kpis_query = f"""
             SELECT
                 COUNT(*) as total_queries,
-                SUM(CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END) as sum_cost,
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
                 AVG(q.duration_ms) as avg_duration_ms,
                 SUM(q.cache_hits) as total_cache_hits,
                 SUM(q.cache_misses) as total_cache_misses,
-                SUM(CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END) as total_llm_calls,
+                SUM(COALESCE(c.llm_calls_count, 0)) as total_llm_calls,
                 SUM(q.rows_output) as total_rows_processed,
                 countIf(q.status = 'error') as error_count,
                 countIf(q.udf_count > 0) as udf_query_count
             FROM sql_query_log q
-            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as llm_calls_count
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
         """
 
@@ -264,8 +274,8 @@ def get_queries():
         count_result = db.query(count_query)
         total = safe_int(count_result[0].get('total') if count_result else 0)
 
-        # Get queries (JOIN with cost MV for real-time cost data)
-        # Note: SummingMergeTree returns 0 (not NULL) for non-existent rows, so we check > 0
+        # Get queries with live cost aggregation from unified_logs
+        # Cost data is derived at query time - sql_query_log.total_cost is not used.
         query = f"""
             SELECT
                 toString(q.query_id) as query_id,
@@ -278,18 +288,26 @@ def get_queries():
                 q.status,
                 q.started_at,
                 q.duration_ms,
-                CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END as total_cost,
+                COALESCE(c.total_cost, 0) as total_cost,
                 q.cache_hits,
                 q.cache_misses,
                 q.rows_input,
                 q.rows_output,
-                CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END as llm_calls_count,
+                COALESCE(c.llm_calls_count, 0) as llm_calls_count,
                 q.cascade_count,
                 q.cascade_paths,
                 q.error_message,
                 q.timestamp
             FROM sql_query_log q
-            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as llm_calls_count
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
             WHERE {where_sql}
             ORDER BY q.timestamp DESC
             LIMIT {limit}
@@ -363,17 +381,28 @@ def get_query_detail(caller_id: str):
     try:
         db = get_db()
 
-        # Get query details (JOIN with cost MV for real-time cost data)
-        # SummingMergeTree returns 0 (not NULL), so check > 0 before using MV value
+        # Get query details with LIVE cost aggregation from unified_logs.
+        # For detail view, we always want fresh data, so we aggregate directly
+        # rather than relying on eventual consistency of the MV.
         query = f"""
             SELECT
                 q.*,
-                CASE WHEN c.total_cost > 0 THEN c.total_cost ELSE COALESCE(q.total_cost, 0) END as mv_total_cost,
-                CASE WHEN c.total_tokens_in > 0 THEN c.total_tokens_in ELSE COALESCE(q.total_tokens_in, 0) END as mv_total_tokens_in,
-                CASE WHEN c.total_tokens_out > 0 THEN c.total_tokens_out ELSE COALESCE(q.total_tokens_out, 0) END as mv_total_tokens_out,
-                CASE WHEN c.llm_calls_count > 0 THEN c.llm_calls_count ELSE COALESCE(q.llm_calls_count, 0) END as mv_llm_calls_count
+                COALESCE(c.total_cost, 0) as mv_total_cost,
+                COALESCE(c.total_tokens_in, 0) as mv_total_tokens_in,
+                COALESCE(c.total_tokens_out, 0) as mv_total_tokens_out,
+                COALESCE(c.llm_calls_count, 0) as mv_llm_calls_count
             FROM sql_query_log q
-            LEFT JOIN mv_sql_query_costs c ON q.caller_id = c.caller_id
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost,
+                    SUM(tokens_in) as total_tokens_in,
+                    SUM(tokens_out) as total_tokens_out,
+                    COUNT(*) as llm_calls_count
+                FROM unified_logs
+                WHERE caller_id = '{caller_id}'
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
             WHERE q.caller_id = '{caller_id}'
             ORDER BY q.timestamp DESC
             LIMIT 1
@@ -537,24 +566,35 @@ def get_patterns():
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
+        # Join with live cost aggregation from unified_logs
+        # sql_query_log.total_cost is not used (always NULL)
         query = f"""
             SELECT
-                query_fingerprint,
-                any(query_template) as template,
-                any(query_type) as query_type,
+                q.query_fingerprint,
+                any(q.query_template) as template,
+                any(q.query_type) as query_type,
                 COUNT(*) as run_count,
-                AVG(duration_ms) as avg_duration_ms,
-                SUM(total_cost) as sum_cost,
-                AVG(total_cost) as avg_cost,
-                SUM(cache_hits) as total_cache_hits,
-                SUM(cache_misses) as total_cache_misses,
-                SUM(rows_output) as total_rows,
-                countIf(status = 'error') as error_count,
-                MIN(timestamp) as first_seen,
-                MAX(timestamp) as last_seen
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
-            GROUP BY query_fingerprint
+                AVG(q.duration_ms) as avg_duration_ms,
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
+                AVG(COALESCE(c.total_cost, 0)) as avg_cost,
+                SUM(q.cache_hits) as total_cache_hits,
+                SUM(q.cache_misses) as total_cache_misses,
+                SUM(q.rows_output) as total_rows,
+                countIf(q.status = 'error') as error_count,
+                MIN(q.timestamp) as first_seen,
+                MAX(q.timestamp) as last_seen
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+            GROUP BY q.query_fingerprint
             HAVING COUNT(*) >= {min_runs}
             ORDER BY run_count DESC
             LIMIT {limit}
@@ -621,14 +661,21 @@ def get_cache_stats():
         db = get_db()
         current_start = datetime.now() - timedelta(days=days)
 
-        # Overall stats
+        # Overall stats - join with unified_logs for live cost data
         overall_query = f"""
             SELECT
-                SUM(cache_hits) as total_hits,
-                SUM(cache_misses) as total_misses,
-                SUM(total_cost) as sum_cost
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                SUM(q.cache_hits) as total_hits,
+                SUM(q.cache_misses) as total_misses,
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT caller_id, SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
         """
         overall_result = db.query(overall_query)
         overall_row = overall_result[0] if overall_result else {}
@@ -643,18 +690,25 @@ def get_cache_stats():
         avg_cost_per_miss = total_cost / total_misses if total_misses > 0 else 0
         savings = avg_cost_per_miss * total_hits
 
-        # By query type
+        # By query type - join with unified_logs for live cost data
         by_type_query = f"""
             SELECT
-                query_type,
-                SUM(cache_hits) as hits,
-                SUM(cache_misses) as misses,
+                q.query_type,
+                SUM(q.cache_hits) as hits,
+                SUM(q.cache_misses) as misses,
                 COUNT(*) as query_count,
-                SUM(total_cost) as sum_cost
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND query_type != 'plain_sql'
-            GROUP BY query_type
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT caller_id, SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND q.query_type != 'plain_sql'
+            GROUP BY q.query_type
             ORDER BY query_count DESC
         """
         by_type = db.query(by_type_query)
@@ -751,18 +805,30 @@ def get_time_series():
         else:  # daily
             date_fn = "toDate(timestamp)"
 
+        # Join with unified_logs for live cost/LLM call data
+        # We aggregate costs by caller_id, then join to sql_query_log
         query = f"""
             SELECT
-                {date_fn} as period,
+                {date_fn.replace('timestamp', 'q.timestamp')} as period,
                 COUNT(*) as query_count,
-                SUM(total_cost) as sum_cost,
-                SUM(COALESCE(llm_calls_count, 0)) as sum_llm_calls,
-                SUM(cache_hits) as hits,
-                SUM(cache_misses) as misses,
-                AVG(duration_ms) as avg_duration,
-                countIf(status = 'error') as errors
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
+                SUM(COALESCE(c.llm_calls_count, 0)) as sum_llm_calls,
+                SUM(q.cache_hits) as hits,
+                SUM(q.cache_misses) as misses,
+                AVG(q.duration_ms) as avg_duration,
+                countIf(q.status = 'error') as errors
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as llm_calls_count
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
             GROUP BY period
             ORDER BY period
         """

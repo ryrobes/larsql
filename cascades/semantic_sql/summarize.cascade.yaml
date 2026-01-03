@@ -8,6 +8,7 @@
 #   SELECT semantic_summarize(to_json(list(title))) FROM sightings
 
 cascade_id: semantic_summarize
+internal: true 
 
 description: |
   Text summarization aggregate - summarizes a collection of texts into a concise overview.

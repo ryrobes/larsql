@@ -8,6 +8,7 @@
 #   SELECT semantic_classify_collection(to_json(list(observed)), 'positive,negative,mixed') FROM reviews
 
 cascade_id: semantic_classify_collection
+internal: true
 
 description: |
   Collection classification - classifies an entire collection of texts

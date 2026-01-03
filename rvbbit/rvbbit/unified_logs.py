@@ -680,9 +680,15 @@ def log_unified(
                      automatic classification. Useful for render entries
                      (e.g., 'render:request_decision') where the type is known.
     """
-    # If caller tracking or genus_hash not provided, look it up from Echo automatically
+    # Extract cascade context from metadata if not passed directly
+    # This ensures backward compatibility with callers who put cascade_id in metadata
+    if metadata and isinstance(metadata, dict):
+        cascade_id = cascade_id or metadata.get("cascade_id")
+        cell_name = cell_name or metadata.get("cell_name") or metadata.get("cell")
+
+    # If caller tracking, genus_hash, or cascade_id not provided, look it up from Echo automatically
     # This ensures ALL log calls (including direct log_unified() calls) get tracking!
-    if caller_id is None or invocation_metadata is None or genus_hash is None:
+    if caller_id is None or invocation_metadata is None or genus_hash is None or cascade_id is None:
         try:
             from .echo import _session_manager
             if session_id in _session_manager.sessions:
@@ -693,11 +699,14 @@ def log_unified(
                     invocation_metadata = invocation_metadata or echo.invocation_metadata
                 if echo.genus_hash:
                     genus_hash = genus_hash or echo.genus_hash
+                # Also get cascade_id from Echo's current context
+                if hasattr(echo, '_current_cascade_id') and echo._current_cascade_id:
+                    cascade_id = cascade_id or echo._current_cascade_id
         except Exception:
             pass  # No Echo available, that's OK
 
     # DEBUG: Log what caller_id we're about to write
-    if session_id.startswith('sql_fn_'):
+    if session_id.startswith('sql_fn_') or session_id.startswith('dim_'):
         print(f"[unified_logs] DEBUG: Logging {role} for {session_id[:40]}, caller_id={caller_id!r}")
 
     _get_logger().log(

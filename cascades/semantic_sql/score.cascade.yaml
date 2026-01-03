@@ -9,6 +9,7 @@
 #   SELECT semantic_score(title, 'interesting discovery') FROM docs
 
 cascade_id: semantic_score
+internal: true 
 
 description: |
   Semantic relevance scoring - returns 0.0-1.0 for how well text matches a criterion.
@@ -54,7 +55,8 @@ cells:
       No explanation, no other text.
     rules:
       max_turns: 1
-    output_schema:
-      type: number
-      minimum: 0.0
-      maximum: 1.0
+
+    # output_schema:
+    #   type: number
+    #   minimum: 0.0
+    #   maximum: 1.0

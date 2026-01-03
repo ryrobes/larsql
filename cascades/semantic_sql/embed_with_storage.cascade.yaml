@@ -1,4 +1,5 @@
 cascade_id: semantic_embed_with_storage
+internal: true 
 
 description: |
   Generate text embeddings AND store them in rvbbit_embeddings with table/ID tracking.

@@ -8,6 +8,7 @@
 #   SELECT semantic_classify(title, topics_json) FROM docs
 
 cascade_id: semantic_classify
+internal: true 
 
 description: |
   Classify a single text into one of the provided topics.

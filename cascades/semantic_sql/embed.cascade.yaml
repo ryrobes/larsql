@@ -1,4 +1,5 @@
 cascade_id: semantic_embed
+internal: true 
 
 description: |
   Generate text embeddings using Agent.embed().

@@ -8,6 +8,7 @@
 #   SELECT semantic_sentiment(to_json(list(observed))) FROM bigfoot
 
 cascade_id: semantic_sentiment
+internal: true
 
 description: |
   Aggregate sentiment analysis - calculates the overall sentiment

@@ -22,15 +22,18 @@ from typing import Optional, Dict, Any
 import duckdb
 
 
-# Enhanced UDF cache with TTL support
-# Format: Dict[key, Tuple[value, timestamp, ttl_seconds]]
-_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
-
-# Enhanced cascade UDF cache with TTL support
-_cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
-
 # Track which connections have UDF registered (to avoid duplicate registration)
 _registered_connections: set = set()
+
+# Cache type identifiers for the persistent SemanticCache
+_CACHE_TYPE_UDF = "_udf_"
+_CACHE_TYPE_CASCADE = "_cascade_udf_"
+_CACHE_TYPE_AGGREGATE = "_aggregate_"
+
+# Legacy in-memory cache dicts (kept for fallback if ClickHouse unavailable)
+# These are populated alongside SemanticCache writes
+_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
+_cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 
 
 def _make_cache_key(instructions: str, input_value: str, model: str = None) -> str:
@@ -47,15 +50,62 @@ def _make_cascade_cache_key(cascade_path: str, inputs: dict) -> str:
     return hashlib.md5(cache_str.encode()).hexdigest()
 
 
+def _get_cache_function_name(cache: dict) -> str:
+    """
+    Get the function name prefix for a cache dict.
+
+    Maps legacy cache dicts to function names for SemanticCache.
+    """
+    # Import here to check object identity
+    from .llm_aggregates import _agg_cache
+    if cache is _udf_cache:
+        return _CACHE_TYPE_UDF
+    elif cache is _cascade_udf_cache:
+        return _CACHE_TYPE_CASCADE
+    elif cache is _agg_cache:
+        return _CACHE_TYPE_AGGREGATE
+    else:
+        return "_unknown_"
+
+
 def _cache_get(cache: dict, key: str, track_sql_trail: bool = True) -> Optional[str]:
     """
     Get from cache, checking TTL expiry.
+
+    Uses persistent SemanticCache (L1 in-memory + L2 ClickHouse).
+    Falls back to in-memory cache dict if ClickHouse unavailable.
 
     If track_sql_trail is True (default), increments cache hit/miss counters
     in sql_query_log for SQL Trail analytics.
     """
     import time
 
+    # Try persistent cache first
+    try:
+        from .cache_adapter import get_cache
+        semantic_cache = get_cache()
+
+        # Get function name for this cache type
+        func_name = _get_cache_function_name(cache)
+
+        # SemanticCache uses function_name + args, we use function_name + key_hash
+        found, result, _ = semantic_cache.get(func_name, {"key": key}, track_hit=track_sql_trail)
+        if found:
+            # Track cache hit for SQL Trail
+            if track_sql_trail:
+                try:
+                    from ..caller_context import get_caller_id
+                    from ..sql_trail import increment_cache_hit
+                    caller_id = get_caller_id()
+                    if caller_id:
+                        increment_cache_hit(caller_id)
+                except Exception:
+                    pass
+            return result
+    except Exception:
+        pass  # Fall through to in-memory cache
+
+    # Fallback to in-memory cache
     if key not in cache:
         # Track cache miss for SQL Trail (fire-and-forget)
         if track_sql_trail:
@@ -101,8 +151,33 @@ def _cache_get(cache: dict, key: str, track_sql_trail: bool = True) -> Optional[
 
 
 def _cache_set(cache: dict, key: str, value: str, ttl: Optional[float] = None):
-    """Set in cache with optional TTL."""
+    """
+    Set in cache with optional TTL.
+
+    Writes to both persistent SemanticCache (L1+L2) and in-memory cache dict.
+    """
     import time
+
+    # Write to persistent cache (async, non-blocking)
+    try:
+        from .cache_adapter import get_cache
+        semantic_cache = get_cache()
+        func_name = _get_cache_function_name(cache)
+
+        # Convert TTL to int seconds
+        ttl_seconds = int(ttl) if ttl else None
+
+        semantic_cache.set(
+            func_name,
+            {"key": key},
+            value,
+            result_type="VARCHAR",
+            ttl_seconds=ttl_seconds
+        )
+    except Exception:
+        pass  # Non-blocking, continue with in-memory
+
+    # Also write to in-memory cache (for immediate availability)
     cache[key] = (value, time.time(), ttl)
 
 
@@ -1265,15 +1340,37 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
         import logging
         logging.getLogger(__name__).warning(f"Could not register LLM aggregates: {e}")
 
+    # Register dimension compute UDFs for GROUP BY dimension functions
+    try:
+        from .llm_aggregates import register_dimension_compute_udfs
+        register_dimension_compute_udfs(connection)
+    except ImportError:
+        pass  # Module not available yet
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register dimension compute UDFs: {e}")
+
 
 
 def clear_udf_cache():
     """Clear all UDF result caches (simple, cascade, and aggregate)."""
     global _udf_cache, _cascade_udf_cache
+
+    # Clear in-memory caches
     _udf_cache.clear()
     _cascade_udf_cache.clear()
 
-    # Also clear aggregate cache
+    # Clear persistent cache (by function type)
+    try:
+        from .cache_adapter import get_cache
+        cache = get_cache()
+        cache.clear(function_name=_CACHE_TYPE_UDF)
+        cache.clear(function_name=_CACHE_TYPE_CASCADE)
+        cache.clear(function_name=_CACHE_TYPE_AGGREGATE)
+    except Exception:
+        pass
+
+    # Also clear aggregate cache (in-memory)
     try:
         from .llm_aggregates import clear_agg_cache
         clear_agg_cache()
@@ -1282,7 +1379,21 @@ def clear_udf_cache():
 
 
 def get_udf_cache_stats() -> Dict[str, Any]:
-    """Get UDF cache statistics."""
+    """
+    Get UDF cache statistics.
+
+    Combines stats from:
+    - Persistent SemanticCache (L1 + L2)
+    - Legacy in-memory caches (fallback)
+    """
+    # Get persistent cache stats
+    try:
+        from .cache_adapter import get_cache
+        persistent_stats = get_cache().get_stats()
+    except Exception:
+        persistent_stats = None
+
+    # Build stats from in-memory caches (legacy view)
     stats = {
         "simple_udf": {
             "cached_entries": len(_udf_cache),
@@ -1295,13 +1406,17 @@ def get_udf_cache_stats() -> Dict[str, Any]:
         "total_entries": len(_udf_cache) + len(_cascade_udf_cache)
     }
 
-    # Include aggregate cache stats
+    # Include aggregate cache stats (in-memory)
     try:
         from .llm_aggregates import get_agg_cache_stats
         stats["aggregate_udf"] = get_agg_cache_stats()
         stats["total_entries"] += stats["aggregate_udf"]["cached_entries"]
     except ImportError:
         pass
+
+    # Add persistent cache stats if available
+    if persistent_stats:
+        stats["persistent"] = persistent_stats
 
     return stats
 

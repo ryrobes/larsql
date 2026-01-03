@@ -9,6 +9,7 @@
 #   SELECT semantic_cluster(county, 8, 'geographic region') FROM sightings
 
 cascade_id: semantic_cluster
+internal: true 
 
 description: |
   Semantic clustering - assigns each value to one of N semantic clusters.

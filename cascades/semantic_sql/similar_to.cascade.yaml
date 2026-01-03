@@ -1,4 +1,5 @@
 cascade_id: semantic_similar_to
+internal: true 
 
 description: |
   Compute cosine similarity between two texts.

@@ -24,9 +24,8 @@ _registry: Dict[str, "SQLFunctionEntry"] = {}
 _registry_lock = Lock()
 _initialized = False
 
-# Cache for function results
-_result_cache: Dict[str, Any] = {}
-_cache_lock = Lock()
+# Cache is now managed by the persistent cache adapter
+# See: rvbbit.sql_tools.cache_adapter.SemanticCache
 
 
 class SQLFunctionEntry:
@@ -256,14 +255,15 @@ def list_sql_functions() -> List[str]:
 
 def _make_cache_key(name: str, args: Dict[str, Any]) -> str:
     """Create a cache key from function name and arguments."""
-    args_json = json.dumps(args, sort_keys=True, default=str)
-    key_data = f"{name}:{args_json}"
-    return hashlib.md5(key_data.encode()).hexdigest()
+    from ..sql_tools.cache_adapter import SemanticCache
+    return SemanticCache.make_cache_key(name, args)
 
 
 def get_cached_result(name: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
     """
     Get a cached result for a function call.
+
+    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
 
     Returns (found, result) tuple.
     """
@@ -271,27 +271,38 @@ def get_cached_result(name: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
     if not fn or not fn.cache_enabled:
         return False, None
 
-    key = _make_cache_key(name, args)
-    with _cache_lock:
-        if key in _result_cache:
-            return True, _result_cache[key]
-    return False, None
+    from ..sql_tools.cache_adapter import get_cache
+    cache = get_cache()
+    found, result, _ = cache.get(name, args)
+    return found, result
 
 
 def set_cached_result(name: str, args: Dict[str, Any], result: Any) -> None:
-    """Cache a function result."""
+    """
+    Cache a function result.
+
+    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
+    """
     fn = get_sql_function(name)
     if not fn or not fn.cache_enabled:
         return
 
-    key = _make_cache_key(name, args)
-    with _cache_lock:
-        _result_cache[key] = result
+    # Determine result type from function definition
+    result_type = fn.returns if fn else "VARCHAR"
+
+    # Get TTL from function config
+    ttl_seconds = fn.cache_ttl if fn else None
+
+    from ..sql_tools.cache_adapter import get_cache
+    cache = get_cache()
+    cache.set(name, args, result, result_type=result_type, ttl_seconds=ttl_seconds)
 
 
 def clear_cache(name: Optional[str] = None) -> int:
     """
     Clear the function result cache.
+
+    Uses the persistent SemanticCache (L1 in-memory + L2 ClickHouse).
 
     Args:
         name: If provided, only clear cache for this function.
@@ -300,17 +311,9 @@ def clear_cache(name: Optional[str] = None) -> int:
     Returns:
         Number of entries cleared.
     """
-    with _cache_lock:
-        if name is None:
-            count = len(_result_cache)
-            _result_cache.clear()
-            return count
-        else:
-            # Would need to track which keys belong to which function
-            # For now, just clear all
-            count = len(_result_cache)
-            _result_cache.clear()
-            return count
+    from ..sql_tools.cache_adapter import get_cache
+    cache = get_cache()
+    return cache.clear(function_name=name)
 
 
 async def execute_sql_function(
@@ -415,6 +418,29 @@ async def execute_sql_function(
     from .executor import _extract_cascade_output
     output = _extract_cascade_output(result)
 
+    # Unwrap JSON-wrapped scalar outputs
+    # LLMs in JSON mode often return {"value": X} or {"result": X} instead of raw values
+    if isinstance(output, str) and fn.returns in ("BOOLEAN", "DOUBLE", "INTEGER"):
+        try:
+            parsed = json.loads(output)
+            if isinstance(parsed, dict):
+                # Extract from common wrapper keys
+                # Note: "type" included because LLMs misinterpret `output_schema: type: X`
+                # as "return an object with a field called type"
+                for key in ("value", "result", "type", "year", "score", "output", "answer"):
+                    if key in parsed:
+                        output = parsed[key]
+                        break
+                else:
+                    # Single-key dict: extract the value
+                    if len(parsed) == 1:
+                        output = next(iter(parsed.values()))
+            elif isinstance(parsed, (int, float, bool)):
+                # Direct JSON scalar (rare but valid)
+                output = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass  # Not JSON, continue with string conversion
+
     # Handle structured output based on return type
     if fn.returns == "BOOLEAN":
         if isinstance(output, str):
@@ -427,12 +453,16 @@ async def execute_sql_function(
                 output = float(output)
             except ValueError:
                 output = 0.0
+        elif isinstance(output, (int, float)):
+            output = float(output)
     elif fn.returns == "INTEGER":
         if isinstance(output, str):
             try:
                 output = int(float(output))
             except ValueError:
                 output = 0
+        elif isinstance(output, (int, float)):
+            output = int(output)
     elif fn.returns == "JSON":
         if isinstance(output, str):
             try:

@@ -77,7 +77,11 @@ class Agent:
             "model": self.model,
             "messages": messages,
             "base_url": self.base_url,
-            "api_key": self.api_key
+            "api_key": self.api_key,
+            # Default max_tokens to avoid truncation on large outputs
+            # Most models support at least 16k output tokens; this prevents
+            # unexpected truncation while staying within common limits
+            "max_tokens": 16384,
         }
 
         # Explicitly set provider for OpenRouter to avoid ambiguity

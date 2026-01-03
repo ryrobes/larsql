@@ -8,6 +8,7 @@
 # Returns: JSON array of topic strings
 
 cascade_id: semantic_themes
+internal: true 
 
 description: |
   Topic extraction - extracts N main topics from a text collection.

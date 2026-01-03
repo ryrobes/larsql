@@ -1257,17 +1257,19 @@ class ClientConnection:
                             print(f"[{self.session_id}]   ✅ Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)")
 
                         # Log query completion for SQL Trail (special path)
+                        # NOTE: Cost/token data is NOT aggregated here - it arrives async via
+                        # the cost worker (~3-5s later). The API joins with unified_logs/MV
+                        # to get live cost data at query time.
                         if _current_query_id and _query_start_time:
                             try:
                                 from rvbbit.sql_trail import (
-                                    log_query_complete, aggregate_query_costs,
+                                    log_query_complete,
                                     get_cascade_paths, get_cascade_summary, clear_cascade_executions
                                 )
                                 from rvbbit.caller_context import get_caller_id, clear_caller_context
 
                                 duration_ms = (time.time() - _query_start_time) * 1000
                                 caller_id = get_caller_id()
-                                costs = aggregate_query_costs(caller_id) if caller_id else {}
 
                                 # Get cascade execution info
                                 cascade_paths = get_cascade_paths(caller_id) if caller_id else []
@@ -1278,10 +1280,6 @@ class ClientConnection:
                                     status='completed',
                                     rows_output=len(result_df),
                                     duration_ms=duration_ms,
-                                    total_cost=costs.get('total_cost'),
-                                    total_tokens_in=costs.get('total_tokens_in'),
-                                    total_tokens_out=costs.get('total_tokens_out'),
-                                    llm_calls_count=costs.get('llm_calls_count'),
                                     cascade_paths=cascade_paths,
                                     cascade_count=cascade_summary.get('cascade_count', 0),
                                 )
@@ -1305,6 +1303,24 @@ class ClientConnection:
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
+            # Check for prewarm sidecar opportunity (-- @ parallel: N annotation)
+            # This launches a background thread to warm the cache for scalar semantic functions
+            prewarm_sidecar = None
+            try:
+                from rvbbit.sql_tools.prewarm_sidecar import maybe_launch_prewarm_sidecar
+                from rvbbit.caller_context import get_caller_id
+
+                prewarm_caller_id = get_caller_id()
+                if prewarm_caller_id:
+                    prewarm_sidecar = maybe_launch_prewarm_sidecar(
+                        query=query,
+                        caller_id=prewarm_caller_id,
+                        duckdb_conn=self.duckdb_conn,
+                    )
+            except Exception as prewarm_e:
+                # Prewarm failures are non-fatal
+                print(f"[{self.session_id}]   ⚠️  Prewarm check failed: {prewarm_e}")
+
             # Execute on DuckDB (with defensive None check)
             result = self.duckdb_conn.execute(query)
             if result is None:
@@ -1320,19 +1336,19 @@ class ClientConnection:
             print(f"[{self.session_id}]   ✓ Returned {len(result_df)} rows")
 
             # Log query completion for SQL Trail (if we started tracking)
+            # NOTE: Cost/token data is NOT aggregated here - it arrives async via
+            # the cost worker (~3-5s later). The API joins with unified_logs/MV
+            # to get live cost data at query time.
             if _current_query_id and _query_start_time:
                 try:
                     from rvbbit.sql_trail import (
-                        log_query_complete, aggregate_query_costs,
+                        log_query_complete,
                         get_cascade_paths, get_cascade_summary, clear_cascade_executions
                     )
                     from rvbbit.caller_context import get_caller_id, clear_caller_context
 
                     duration_ms = (time.time() - _query_start_time) * 1000
                     caller_id = get_caller_id()
-
-                    # Aggregate costs from all LLM calls made during this query
-                    costs = aggregate_query_costs(caller_id) if caller_id else {}
 
                     # Get cascade execution info
                     cascade_paths = get_cascade_paths(caller_id) if caller_id else []
@@ -1343,10 +1359,6 @@ class ClientConnection:
                         status='completed',
                         rows_output=len(result_df),
                         duration_ms=duration_ms,
-                        total_cost=costs.get('total_cost'),
-                        total_tokens_in=costs.get('total_tokens_in'),
-                        total_tokens_out=costs.get('total_tokens_out'),
-                        llm_calls_count=costs.get('llm_calls_count'),
                         cascade_paths=cascade_paths,
                         cascade_count=cascade_summary.get('cascade_count', 0),
                     )

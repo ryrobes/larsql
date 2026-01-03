@@ -923,14 +923,34 @@ def _rewrite_group_by_meaning(query: str, annotation_prefix: str = "") -> str:
     else:
         meaning_call = f"meaning({col}, (SELECT to_json(LIST({col})) FROM {source}))"
 
-    # Find SELECT columns and replace the grouped column with _semantic_cluster AS original_name
+    # Find SELECT columns and replace MEANING(...) expressions with _semantic_cluster
     select_match = re.search(r"SELECT\s+(.*?)\s+FROM", query, flags=re.IGNORECASE | re.DOTALL)
     if not select_match:
         return query
 
     select_cols = select_match.group(1)
-    # Replace column reference with cluster, aliased back to original column name
-    new_select_cols = re.sub(rf'\b{col}\b', f'_semantic_cluster AS {col}', select_cols)
+
+    # Replace MEANING(col, ...) expressions with _semantic_cluster
+    # Must handle: MEANING(col), MEANING(col, n), MEANING(col, n, 'criteria')
+    # And preserve any AS alias: MEANING(col, n, 'criteria') as encounter_type
+    meaning_in_select = rf"MEANING\s*\(\s*{re.escape(col)}\s*(?:,\s*\d+)?\s*(?:,\s*'[^']*')?\s*\)"
+    new_select_cols = re.sub(meaning_in_select, '_semantic_cluster', select_cols, flags=re.IGNORECASE)
+
+    # Also replace bare column references (not inside function calls)
+    # Use negative lookbehind for '(' and negative lookahead for '(' to avoid function args
+    # This handles: SELECT col, COUNT(*) → SELECT _semantic_cluster AS col, COUNT(*)
+    bare_col_pattern = rf'(?<!\()\b{re.escape(col)}\b(?!\s*\()'
+    # Only replace if it's a standalone column (not already replaced by MEANING rewrite)
+    if f'_semantic_cluster' not in new_select_cols or re.search(bare_col_pattern, new_select_cols):
+        # Check if there are any bare column references left (not inside function calls)
+        # Simple heuristic: if the column appears before a comma or 'as' (case insensitive)
+        # but NOT after an open paren, it's a bare reference
+        new_select_cols = re.sub(
+            rf'(?<![(\w]){re.escape(col)}(?=\s*(?:,|$|\bas\b))',
+            f'_semantic_cluster AS {col}',
+            new_select_cols,
+            flags=re.IGNORECASE
+        )
 
     # Build CTE-based rewrite (cleaner than nested subqueries)
     # 1. Create clustered source with semantic cluster column

@@ -224,376 +224,6 @@
         gap: 16px;
       }
 
-      /* Proof Section - The "aha" moment */
-      .proof-section {
-        padding: 40px 0 60px;
-      }
-
-      .proof-label {
-        text-align: center;
-        margin-bottom: 24px;
-      }
-
-      .proof-label span {
-        display: inline-block;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: var(--muted);
-        opacity: 0.7;
-      }
-
-      .proof-query {
-        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
-        border-radius: var(--radius-lg);
-        border: 1px solid rgba(28, 246, 255, 0.25);
-        box-shadow: var(--shadow), 0 0 60px rgba(28, 246, 255, 0.1);
-        margin-bottom: 28px;
-        overflow: hidden;
-      }
-
-      .proof-query .code-header {
-        border-bottom: 1px solid rgba(28, 246, 255, 0.15);
-      }
-
-      .proof-query .code-content {
-        padding: 24px;
-        overflow-x: auto;
-      }
-
-      .proof-query pre {
-        margin: 0;
-        font-family: "JetBrains Mono", "Fira Code", monospace;
-        font-size: 0.9rem;
-        line-height: 1.7;
-        color: #cde7ff;
-      }
-
-      /* Semantic operator hints for proof section */
-      .semantic-hint {
-        display: inline;
-        border: 1px solid rgba(28, 246, 255, 0.45);
-        border-radius: 4px;
-        padding: 2px 6px;
-        margin: 0 -2px;
-        cursor: pointer;
-        background: rgba(28, 246, 255, 0.08);
-        transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-      }
-
-      .semantic-hint:hover {
-        border-color: rgba(28, 246, 255, 0.8);
-        background: rgba(28, 246, 255, 0.15);
-        box-shadow: 0 0 12px rgba(28, 246, 255, 0.2);
-      }
-
-      /* Function-style hints */
-      .semantic-hint.fn-hint {
-        border-color: rgba(255, 47, 168, 0.45);
-        background: rgba(255, 47, 168, 0.08);
-      }
-
-      .semantic-hint.fn-hint:hover {
-        border-color: rgba(255, 47, 168, 0.8);
-        background: rgba(255, 47, 168, 0.15);
-        box-shadow: 0 0 12px rgba(255, 47, 168, 0.2);
-      }
-
-      /* Proof query with side panel */
-      .proof-query-grid {
-        display: grid;
-        grid-template-columns: 1fr 420px;
-      }
-
-      .proof-query .code-content {
-        padding: 24px;
-        overflow-x: auto;
-        border-right: 1px solid rgba(28, 246, 255, 0.1);
-      }
-
-      /* Hint panel in proof query */
-      .proof-hint-panel {
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.2);
-        transition: background 0.3s ease;
-      }
-
-      .proof-hint-panel.active {
-        background: rgba(0, 0, 0, 0.3);
-      }
-
-      .proof-hint-default {
-        text-align: center;
-        opacity: 0.5;
-      }
-
-      .proof-hint-default p {
-        margin: 0;
-        font-size: 0.9rem;
-        color: var(--muted);
-        line-height: 1.5;
-      }
-
-      .proof-hint-content {
-        display: none;
-      }
-
-      .proof-hint-content.visible {
-        display: block;
-      }
-
-      .proof-hint-content h4 {
-        margin: 0 0 10px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 1rem;
-        color: var(--cyan);
-      }
-
-      .proof-hint-content.fn-type h4 {
-        color: var(--magenta);
-      }
-
-      .proof-hint-content p {
-        margin: 0;
-        font-size: 0.9rem;
-        line-height: 1.5;
-        color: var(--muted);
-      }
-
-      .proof-hint-content p.prompt-style {
-        font-style: italic;
-        color: var(--ink);
-        opacity: 0.9;
-      }
-
-      /* Data transformation visualization */
-      .transform-viz {
-        margin-top: 16px;
-        padding-top: 14px;
-        border-top: 1px solid rgba(28, 246, 255, 0.15);
-      }
-
-      .transform-flow {
-        display: flex;
-        align-items: stretch;
-        gap: 10px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.75rem;
-        line-height: 1.5;
-      }
-
-      .transform-in, .transform-out {
-        flex: 1;
-        padding: 10px;
-        border-radius: 6px;
-        background: rgba(0, 0, 0, 0.3);
-      }
-
-      .transform-in {
-        border-left: 2px solid rgba(255, 255, 255, 0.2);
-      }
-
-      .transform-out {
-        border-left: 2px solid var(--cyan);
-      }
-
-      .fn-type .transform-out {
-        border-left-color: var(--magenta);
-      }
-
-      .transform-label {
-        font-size: 0.65rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        opacity: 0.7;
-        margin-bottom: 6px;
-      }
-
-      .transform-data {
-        color: var(--muted);
-      }
-
-      .transform-data .val {
-        display: block;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: rgba(255, 255, 255, 0.7);
-      }
-
-      .transform-data .val.out-val {
-        color: var(--cyan);
-      }
-
-      .fn-type .transform-data .val.out-val {
-        color: var(--magenta);
-      }
-
-      .transform-data .bool-true {
-        color: var(--green);
-        font-weight: 500;
-      }
-
-      .transform-data .confidence {
-        opacity: 0.6;
-        font-size: 0.7rem;
-      }
-
-      .transform-data .category {
-        color: var(--cyan);
-        font-size: 0.7rem;
-      }
-
-      .transform-arrow {
-        display: flex;
-        align-items: center;
-        color: var(--cyan);
-        opacity: 0.6;
-        font-size: 1.1rem;
-      }
-
-      .fn-type .transform-arrow {
-        color: var(--magenta);
-      }
-
-      @media (max-width: 900px) {
-        .proof-query-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .proof-hint-panel {
-          display: none;
-        }
-
-        .proof-query .code-content {
-          border-right: none;
-        }
-      }
-
-      .proof-transform {
-        display: grid;
-        grid-template-columns: 1fr auto 1.4fr;
-        gap: 20px;
-        align-items: stretch;
-      }
-
-      .proof-arrow {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.8rem;
-        color: var(--cyan);
-        opacity: 0.5;
-      }
-
-      .proof-box {
-        background: rgba(8, 12, 20, 0.6);
-        border-radius: var(--radius-md);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        overflow: hidden;
-      }
-
-      .proof-box-header {
-        padding: 10px 16px;
-        background: rgba(0, 0, 0, 0.3);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: var(--muted);
-      }
-
-      .proof-box-content {
-        padding: 16px;
-      }
-
-      /* Raw data - messy text snippets */
-      .raw-entries {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .raw-entry {
-        font-size: 0.75rem;
-        line-height: 1.4;
-        color: var(--muted);
-        padding: 8px 10px;
-        background: rgba(0, 0, 0, 0.25);
-        border-radius: 6px;
-        border-left: 2px solid rgba(255, 255, 255, 0.1);
-      }
-
-      .raw-entry .raw-title {
-        color: var(--ink);
-        font-weight: 500;
-        display: block;
-        margin-bottom: 4px;
-        font-size: 0.7rem;
-      }
-
-      /* Results table */
-      .result-table {
-        width: 100%;
-        font-size: 0.75rem;
-        border-collapse: collapse;
-      }
-
-      .result-table th {
-        text-align: left;
-        padding: 8px 10px;
-        color: var(--muted);
-        font-weight: 500;
-        border-bottom: 1px solid rgba(28, 246, 255, 0.15);
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-
-      .result-table td {
-        padding: 10px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-        vertical-align: top;
-      }
-
-      .result-table tr:last-child td {
-        border-bottom: none;
-      }
-
-      .result-table .col-type {
-        color: var(--cyan);
-        font-weight: 500;
-        white-space: nowrap;
-      }
-
-      .result-table .col-count {
-        color: var(--ink);
-        text-align: center;
-        font-family: "JetBrains Mono", monospace;
-      }
-
-      .result-table .col-summary {
-        color: var(--muted);
-        font-size: 0.7rem;
-        line-height: 1.4;
-      }
-
-      @media (max-width: 800px) {
-        .proof-transform {
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-
-        .proof-arrow {
-          transform: rotate(90deg);
-          padding: 8px 0;
-        }
-      }
-
       /* SQL Demo - The Surface */
       .sql-demo {
         padding: 60px 0;
@@ -617,11 +247,9 @@
 
       .sql-demo-grid {
         display: grid;
-        grid-template-columns: 1fr 260px;
-      }
-
-      .sql-demo-grid .code-content {
-        border-right: 1px solid rgba(28, 246, 255, 0.1);
+        grid-template-columns: 1fr 320px;
+        gap: 24px;
+        align-items: start;
       }
 
       .code-block {
@@ -632,75 +260,94 @@
         overflow: hidden;
       }
 
-      /* Cascade peek panel - matches proof hint panel style */
+      /* Cascade peek panel - subtle, not distracting */
       .cascade-peek {
-        padding: 20px;
+        background: linear-gradient(150deg, rgba(8, 12, 20, 0.6), rgba(12, 16, 28, 0.5));
+        border-radius: var(--radius-lg);
+        border: 1px dashed rgba(28, 246, 255, 0.15);
+        padding: 24px;
+        min-height: 280px;
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.2);
-        border-left: 1px solid rgba(28, 246, 255, 0.1);
-        transition: background 0.3s ease;
+        transition: border-color 0.3s ease, background 0.3s ease;
       }
 
       .cascade-peek.active {
-        background: rgba(0, 0, 0, 0.3);
+        border-style: solid;
+        border-color: rgba(28, 246, 255, 0.25);
+        background: linear-gradient(150deg, rgba(8, 12, 20, 0.85), rgba(12, 16, 28, 0.75));
       }
 
       .cascade-peek-default {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
         text-align: center;
-        opacity: 0.5;
+        height: 100%;
+        flex: 1;
+        opacity: 0.7;
       }
 
       .cascade-peek-default .peek-icon {
-        display: none;
+        font-size: 1.5rem;
+        margin-bottom: 16px;
+        opacity: 0.5;
       }
 
       .cascade-peek-default p {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: 0.9rem;
         color: var(--muted);
         line-height: 1.5;
       }
 
       .cascade-peek-default .peek-hint {
-        display: none;
+        margin-top: 12px;
+        font-size: 0.8rem;
+        color: rgba(28, 246, 255, 0.5);
       }
 
       /* Cascade detail content */
       .cascade-detail {
         display: none;
+        flex-direction: column;
+        height: 100%;
       }
 
       .cascade-detail.visible {
-        display: block;
+        display: flex;
       }
 
       .cascade-detail-header {
-        margin-bottom: 12px;
+        margin-bottom: 16px;
       }
 
       .cascade-detail-name {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.85rem;
+        font-size: 1.1rem;
         color: var(--cyan);
         margin: 0 0 4px;
       }
 
       .cascade-detail-desc {
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         color: var(--muted);
         margin: 0;
       }
 
       .cascade-detail-flow {
-        padding: 12px 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 16px 0;
       }
 
       .cascade-flow-visual {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.7rem;
-        line-height: 1.5;
+        font-size: 0.75rem;
+        line-height: 1.6;
         color: var(--muted);
         white-space: pre;
       }
@@ -720,9 +367,9 @@
       .cascade-detail-stats {
         display: flex;
         gap: 16px;
-        padding-top: 10px;
+        padding-top: 12px;
         border-top: 1px solid rgba(28, 246, 255, 0.1);
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         color: var(--muted);
       }
 
@@ -800,31 +447,29 @@
       /* Semantic operator borders - hoverable "portals" */
       .semantic-op {
         display: inline;
-        border: 1px solid rgba(28, 246, 255, 0.45);
+        border: 1px dashed rgba(28, 246, 255, 0.25);
         border-radius: 4px;
         padding: 2px 6px;
         margin: 0 -2px;
-        background: rgba(28, 246, 255, 0.08);
         transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
         cursor: pointer;
       }
 
       .semantic-op:hover {
-        border-color: rgba(28, 246, 255, 0.8);
-        background: rgba(28, 246, 255, 0.15);
-        box-shadow: 0 0 12px rgba(28, 246, 255, 0.2);
+        border-color: rgba(28, 246, 255, 0.6);
+        background: rgba(28, 246, 255, 0.08);
+        box-shadow: 0 0 12px rgba(28, 246, 255, 0.15);
       }
 
       /* Slightly different style for function-style operators */
       .semantic-fn {
-        border-color: rgba(255, 47, 168, 0.45);
-        background: rgba(255, 47, 168, 0.08);
+        border-color: rgba(255, 47, 168, 0.25);
       }
 
       .semantic-fn:hover {
-        border-color: rgba(255, 47, 168, 0.8);
-        background: rgba(255, 47, 168, 0.15);
-        box-shadow: 0 0 12px rgba(255, 47, 168, 0.2);
+        border-color: rgba(255, 47, 168, 0.6);
+        background: rgba(255, 47, 168, 0.08);
+        box-shadow: 0 0 12px rgba(255, 47, 168, 0.15);
       }
 
       .sql-annotations {
@@ -1450,172 +1095,6 @@
         </div>
       </section>
 
-      <!-- THE PROOF: Show the magic -->
-      <section class="proof-section">
-        <div class="container">
-          <div class="proof-label reveal">
-            <span>Semantic SQL</span>
-          </div>
-
-          <div class="proof-query reveal delay-1">
-            <div class="code-header">
-              <div class="code-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-              <span class="code-title">semantic_query.sql</span>
-            </div>
-            <div class="proof-query-grid">
-              <div class="code-content">
-<pre><span class="sql-keyword">SELECT</span>
-    encounter_type,
-    <span class="sql-function">COUNT</span>(*) <span class="sql-keyword">AS</span> <span class="sql-column">incidents</span>,
-    <span class="semantic-hint fn-hint" data-hint="summarize"><span class="sql-function">summarize</span>(observed)</span> <span class="sql-keyword">AS</span> <span class="sql-column">typical_description</span>
-<span class="sql-keyword">FROM</span> bigfoot_sightings
-<span class="sql-keyword">WHERE</span> <span class="semantic-hint" data-hint="means">title <span class="sql-function">MEANS</span> <span class="sql-string">'visual sighting'</span></span>
-<span class="sql-keyword">GROUP BY</span> <span class="semantic-hint fn-hint" data-hint="meaning"><span class="sql-function">MEANING</span>(title, <span class="sql-string">'encounter category'</span>)</span>
-<span class="sql-keyword">ORDER BY</span> incidents <span class="sql-keyword">DESC</span></pre>
-              </div>
-
-              <div class="proof-hint-panel" id="proofHintPanel">
-                <div class="proof-hint-default" id="proofHintDefault">
-                  <p>Hover to see the transformation</p>
-                </div>
-
-                <div class="proof-hint-content fn-type" data-for="summarize">
-                  <h4>summarize()</h4>
-                  <p class="prompt-style">"Combine these into a coherent summary"</p>
-                  <div class="transform-viz">
-                    <div class="transform-flow">
-                      <div class="transform-in">
-                        <div class="transform-label">in (n rows)</div>
-                        <div class="transform-data">
-                          <span class="val">"Saw tall figure..."</span>
-                          <span class="val">"Dark shape near..."</span>
-                          <span class="val">"Bipedal, 8 feet..."</span>
-                        </div>
-                      </div>
-                      <div class="transform-arrow">→</div>
-                      <div class="transform-out">
-                        <div class="transform-label">out (1 row)</div>
-                        <div class="transform-data">
-                          <span class="val out-val">"Tall, dark bipedal figures observed..."</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="proof-hint-content" data-for="means">
-                  <h4>MEANS</h4>
-                  <p class="prompt-style">"Does this describe a visual sighting?"</p>
-                  <div class="transform-viz">
-                    <div class="transform-flow">
-                      <div class="transform-in">
-                        <div class="transform-label">in</div>
-                        <div class="transform-data">
-                          <span class="val">"Large figure near treeline"</span>
-                        </div>
-                      </div>
-                      <div class="transform-arrow">→</div>
-                      <div class="transform-out">
-                        <div class="transform-label">out</div>
-                        <div class="transform-data">
-                          <span class="bool-true">true</span> <span class="confidence">(0.94)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="proof-hint-content fn-type" data-for="meaning">
-                  <h4>MEANING()</h4>
-                  <p class="prompt-style">"What type of encounter? Categorize it."</p>
-                  <div class="transform-viz">
-                    <div class="transform-flow">
-                      <div class="transform-in">
-                        <div class="transform-label">in</div>
-                        <div class="transform-data">
-                          <span class="val">"Saw tall figure..."</span>
-                          <span class="val">"Heard knocking..."</span>
-                          <span class="val">"Found prints..."</span>
-                        </div>
-                      </div>
-                      <div class="transform-arrow">→</div>
-                      <div class="transform-out">
-                        <div class="transform-label">out</div>
-                        <div class="transform-data">
-                          <span class="val out-val">Visual Sighting</span>
-                          <span class="val out-val">Auditory</span>
-                          <span class="val out-val">Physical Evidence</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="proof-transform reveal delay-2">
-            <div class="proof-box">
-              <div class="proof-box-header">Raw Data</div>
-              <div class="proof-box-content">
-                <div class="raw-entries">
-                  <div class="raw-entry">
-                    <span class="raw-title">"Large figure near treeline"</span>
-                    Saw something tall and dark moving between the trees at dusk. Bipedal gait, estimated 7-8 feet...
-                  </div>
-                  <div class="raw-entry">
-                    <span class="raw-title">"Weird sounds at night"</span>
-                    Heard wood knocking and a howl unlike any animal I know. Started around 2am and continued...
-                  </div>
-                  <div class="raw-entry">
-                    <span class="raw-title">"Found strange footprints"</span>
-                    Discovered 18-inch prints in the mud near camp. Five toes visible, very deep impressions...
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="proof-arrow">&rarr;</div>
-
-            <div class="proof-box">
-              <div class="proof-box-header">Results</div>
-              <div class="proof-box-content">
-                <table class="result-table">
-                  <thead>
-                    <tr>
-                      <th>encounter_type</th>
-                      <th>incidents</th>
-                      <th>typical_description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td class="col-type">Visual Sighting</td>
-                      <td class="col-count">127</td>
-                      <td class="col-summary">Tall, dark bipedal figures observed at dusk or dawn near treelines...</td>
-                    </tr>
-                    <tr>
-                      <td class="col-type">Auditory</td>
-                      <td class="col-count">45</td>
-                      <td class="col-summary">Wood knocking, howls, and vocalizations, typically reported at night...</td>
-                    </tr>
-                    <tr>
-                      <td class="col-type">Physical Evidence</td>
-                      <td class="col-count">23</td>
-                      <td class="col-summary">Large footprints (15-20"), broken branches, and unusual structures...</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- THE SURFACE: Show the SQL -->
       <section id="surface" class="sql-demo">
         <div class="container">
@@ -1624,16 +1103,16 @@
             <p>A SQL query. That's it.</p>
           </div>
 
-          <div class="code-block reveal delay-1">
-            <div class="code-header">
-              <div class="code-dots">
-                <span></span>
-                <span></span>
-                <span></span>
+          <div class="sql-demo-grid">
+            <div class="code-block reveal delay-1">
+              <div class="code-header">
+                <div class="code-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+                <span class="code-title">query.sql</span>
               </div>
-              <span class="code-title">query.sql</span>
-            </div>
-            <div class="sql-demo-grid">
               <div class="code-content">
 <pre><span class="sql-keyword">SELECT</span>
     author,
@@ -1645,12 +1124,15 @@
 <span class="sql-keyword">WHERE</span> <span class="semantic-op" data-cascade="implies">text <span class="sql-function">IMPLIES</span> <span class="sql-string">'bullish on AI development'</span></span>
   <span class="sql-keyword">AND</span> <span class="semantic-op" data-cascade="contradicts">text <span class="sql-function">CONTRADICTS</span> <span class="sql-string">'AI will replace all developers'</span></span></pre>
               </div>
+            </div>
 
-              <!-- Cascade peek panel -->
-              <div class="cascade-peek" id="cascadePeek">
-                <div class="cascade-peek-default" id="peekDefault">
-                  <p>Hover to see the cascade</p>
-                </div>
+            <!-- Cascade peek panel - quiet invitation to explore -->
+            <div class="cascade-peek reveal delay-2" id="cascadePeek">
+              <div class="cascade-peek-default" id="peekDefault">
+                <div class="peek-icon">&#10697;</div>
+                <p>Each highlighted term is a cascade&mdash;a multi-step AI workflow.</p>
+                <div class="peek-hint">Hover to peek inside &rarr;</div>
+              </div>
 
               <!-- TLDR -->
               <div class="cascade-detail" data-for="tldr">
@@ -1762,7 +1244,6 @@ question <span class="arrow">──┘</span></div>
               </div>
             </div>
           </div>
-        </div>
 
           <div class="sql-annotations reveal delay-2">
             <div class="annotation">
@@ -2018,45 +1499,6 @@ question <span class="arrow">──┘</span></div>
     </div>
 
     <script>
-      // Proof section hint panel hover interactions
-      (function() {
-        const proofPanel = document.getElementById('proofHintPanel');
-        const proofDefault = document.getElementById('proofHintDefault');
-        const proofHints = document.querySelectorAll('.proof-hint-content');
-        const semanticHints = document.querySelectorAll('.semantic-hint');
-
-        function showProofHint(hintId) {
-          proofDefault.style.display = 'none';
-          proofPanel.classList.add('active');
-
-          proofHints.forEach(hint => {
-            if (hint.dataset.for === hintId) {
-              hint.classList.add('visible');
-            } else {
-              hint.classList.remove('visible');
-            }
-          });
-        }
-
-        function resetProofPanel() {
-          proofPanel.classList.remove('active');
-          proofDefault.style.display = 'block';
-          proofHints.forEach(hint => {
-            hint.classList.remove('visible');
-          });
-        }
-
-        semanticHints.forEach(hint => {
-          hint.addEventListener('mouseenter', () => {
-            showProofHint(hint.dataset.hint);
-          });
-
-          hint.addEventListener('mouseleave', () => {
-            resetProofPanel();
-          });
-        });
-      })();
-
       // Cascade peek panel hover interactions
       (function() {
         const peekPanel = document.getElementById('cascadePeek');

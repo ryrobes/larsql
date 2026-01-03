@@ -9,6 +9,7 @@
 #   SELECT semantic_dedupe(to_json(list(company_name)), 'same company') FROM suppliers
 
 cascade_id: semantic_dedupe
+internal: true
 
 description: |
   Semantic deduplication - groups items by similarity and returns

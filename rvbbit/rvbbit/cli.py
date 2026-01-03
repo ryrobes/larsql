@@ -545,6 +545,50 @@ def main():
     tools_find_parser.add_argument('query', help='Natural language query (e.g., "parse PDF documents")')
     tools_find_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
 
+    # Cache command group - Semantic SQL cache management
+    cache_parser = subparsers.add_parser('cache', help='Semantic SQL cache management (persistent LLM result cache)')
+    cache_subparsers = cache_parser.add_subparsers(dest='cache_command', help='Cache subcommands')
+
+    # cache stats - Show cache statistics
+    cache_stats_parser = cache_subparsers.add_parser(
+        'stats',
+        help='Show cache statistics (L1 in-memory + L2 ClickHouse)'
+    )
+
+    # cache list - List cache entries
+    cache_list_parser = cache_subparsers.add_parser(
+        'list',
+        help='List cache entries (browseable view)'
+    )
+    cache_list_parser.add_argument('--function', '-f', help='Filter by function name (e.g., semantic_matches)')
+    cache_list_parser.add_argument('--limit', '-n', type=int, default=20, help='Max entries to show (default: 20)')
+    cache_list_parser.add_argument('--offset', type=int, default=0, help='Offset for pagination (default: 0)')
+    cache_list_parser.add_argument('--order', choices=['hits', 'recent', 'created', 'size'], default='recent',
+                                   help='Sort order: hits (most used), recent (last accessed), created, size')
+
+    # cache show - Show full cache entry details
+    cache_show_parser = cache_subparsers.add_parser(
+        'show',
+        help='Show full details of a cache entry'
+    )
+    cache_show_parser.add_argument('cache_key', help='Cache key (MD5 hash) to show')
+
+    # cache clear - Clear cache entries
+    cache_clear_parser = cache_subparsers.add_parser(
+        'clear',
+        help='Clear cache entries (by function, age, or all)'
+    )
+    cache_clear_parser.add_argument('--function', '-f', help='Clear only this function (e.g., semantic_summarize)')
+    cache_clear_parser.add_argument('--older-than', type=int, metavar='DAYS', help='Clear entries older than N days')
+    cache_clear_parser.add_argument('--all', action='store_true', help='Clear ALL cache entries (requires confirmation)')
+    cache_clear_parser.add_argument('--yes', '-y', action='store_true', help='Skip confirmation prompt')
+
+    # cache prune - Prune expired entries
+    cache_prune_parser = cache_subparsers.add_parser(
+        'prune',
+        help='Prune expired entries and optimize storage'
+    )
+
     # Serve command group - Run servers
     serve_parser = subparsers.add_parser('serve', help='Run RVBBIT servers (studio, sql)')
     serve_subparsers = serve_parser.add_subparsers(dest='serve_command', help='Server subcommands')
@@ -842,6 +886,20 @@ def main():
             cmd_tools_find(args)
         else:
             tools_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'cache':
+        if args.cache_command == 'stats':
+            cmd_cache_stats(args)
+        elif args.cache_command == 'list':
+            cmd_cache_list(args)
+        elif args.cache_command == 'show':
+            cmd_cache_show(args)
+        elif args.cache_command == 'clear':
+            cmd_cache_clear(args)
+        elif args.cache_command == 'prune':
+            cmd_cache_prune(args)
+        else:
+            cache_parser.print_help()
             sys.exit(1)
     elif args.command == 'serve':
         if args.serve_command == 'studio':
@@ -3263,6 +3321,246 @@ def cmd_tools_find(args):
     from rvbbit.tools_mgmt import semantic_find_tools
 
     semantic_find_tools(args.query, limit=args.limit)
+
+
+# =============================================================================
+# Cache Commands - Semantic SQL cache management
+# =============================================================================
+
+def cmd_cache_stats(args):
+    """Show cache statistics."""
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+
+    console = Console()
+
+    try:
+        from rvbbit.sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+        stats = cache.get_stats()
+    except Exception as e:
+        console.print(f"[red]Error getting cache stats: {e}[/red]")
+        return
+
+    # L1 Stats
+    l1 = stats.get("l1", {})
+    console.print(Panel.fit(
+        f"[bold]Entries:[/bold] {l1.get('entries', 0):,} / {l1.get('max_size', 0):,}",
+        title="[cyan]L1 Cache (In-Memory)[/cyan]"
+    ))
+
+    # L2 Stats
+    l2 = stats.get("l2", {})
+    if l2.get("available"):
+        console.print(Panel.fit(
+            f"[bold]Entries:[/bold] {l2.get('entries', 0):,}\n"
+            f"[bold]Total Hits:[/bold] {l2.get('total_hits', 0):,}\n"
+            f"[bold]Total Size:[/bold] {l2.get('total_bytes', 0) / 1024:.1f} KB",
+            title="[green]L2 Cache (ClickHouse)[/green]"
+        ))
+
+        # By-function breakdown
+        by_function = l2.get("by_function", {})
+        if by_function:
+            table = Table(title="Cache by Function")
+            table.add_column("Function", style="cyan")
+            table.add_column("Entries", justify="right")
+            table.add_column("Hits", justify="right")
+            table.add_column("Size", justify="right")
+
+            for func_name, func_stats in sorted(by_function.items(), key=lambda x: -x[1]["entries"]):
+                table.add_row(
+                    func_name,
+                    f"{func_stats['entries']:,}",
+                    f"{func_stats['hits']:,}",
+                    f"{func_stats['bytes'] / 1024:.1f} KB"
+                )
+
+            console.print(table)
+    else:
+        console.print(Panel.fit(
+            "[yellow]ClickHouse not available - using in-memory cache only[/yellow]",
+            title="[yellow]L2 Cache (ClickHouse)[/yellow]"
+        ))
+
+
+def cmd_cache_list(args):
+    """List cache entries."""
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    # Map order arg to SQL ORDER BY
+    order_map = {
+        "hits": "hit_count DESC",
+        "recent": "last_hit_at DESC",
+        "created": "created_at DESC",
+        "size": "result_bytes DESC",
+    }
+    order_by = order_map.get(args.order, "last_hit_at DESC")
+
+    try:
+        from rvbbit.sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+        entries = cache.list_entries(
+            function_name=args.function,
+            limit=args.limit,
+            offset=args.offset,
+            order_by=order_by
+        )
+    except Exception as e:
+        console.print(f"[red]Error listing cache: {e}[/red]")
+        return
+
+    if not entries:
+        console.print("[yellow]No cache entries found.[/yellow]")
+        if args.function:
+            console.print(f"   Filter: function={args.function}")
+        return
+
+    table = Table(title=f"Cache Entries (sorted by {args.order})")
+    table.add_column("Key", style="dim", max_width=12)
+    table.add_column("Function", style="cyan")
+    table.add_column("Args Preview", max_width=30)
+    table.add_column("Result Preview", max_width=30)
+    table.add_column("Type")
+    table.add_column("Hits", justify="right")
+    table.add_column("Last Hit")
+    table.add_column("Size", justify="right")
+
+    for entry in entries:
+        table.add_row(
+            entry["cache_key"][:12] + "...",
+            entry["function_name"],
+            (entry["args_preview"] or "")[:30],
+            (entry["result_preview"] or "")[:30],
+            entry["result_type"],
+            str(entry["hit_count"]),
+            entry["last_hit_at"][:19] if entry["last_hit_at"] else "-",
+            f"{entry['result_bytes']} B"
+        )
+
+    console.print(table)
+    console.print(f"\nShowing {len(entries)} entries (offset: {args.offset})")
+    if args.function:
+        console.print(f"Filter: function={args.function}")
+
+
+def cmd_cache_show(args):
+    """Show full details of a cache entry."""
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.syntax import Syntax
+    import json
+
+    console = Console()
+
+    try:
+        from rvbbit.sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+        entry = cache.get_entry(args.cache_key)
+    except Exception as e:
+        console.print(f"[red]Error getting cache entry: {e}[/red]")
+        return
+
+    if not entry:
+        console.print(f"[yellow]Cache entry not found: {args.cache_key}[/yellow]")
+        return
+
+    console.print(Panel.fit(
+        f"[bold]Cache Key:[/bold] {entry['cache_key']}\n"
+        f"[bold]Function:[/bold] {entry['function_name']}\n"
+        f"[bold]Type:[/bold] {entry['result_type']}\n"
+        f"[bold]Created:[/bold] {entry['created_at']}\n"
+        f"[bold]Expires:[/bold] {entry['expires_at'] or 'Never'}\n"
+        f"[bold]TTL:[/bold] {entry['ttl_seconds']}s\n"
+        f"[bold]Hit Count:[/bold] {entry['hit_count']}\n"
+        f"[bold]Last Hit:[/bold] {entry['last_hit_at']}\n"
+        f"[bold]Size:[/bold] {entry['result_bytes']} bytes\n"
+        f"[bold]First Session:[/bold] {entry['first_session_id'] or '-'}\n"
+        f"[bold]First Caller:[/bold] {entry['first_caller_id'] or '-'}",
+        title="[cyan]Cache Entry Details[/cyan]"
+    ))
+
+    # Show args
+    try:
+        args_obj = json.loads(entry['args_json'])
+        args_formatted = json.dumps(args_obj, indent=2)
+        console.print(Panel(
+            Syntax(args_formatted, "json", theme="monokai"),
+            title="[green]Input Arguments[/green]"
+        ))
+    except:
+        console.print(Panel(entry['args_json'], title="[green]Input Arguments[/green]"))
+
+    # Show result
+    try:
+        result_obj = json.loads(entry['result'])
+        result_formatted = json.dumps(result_obj, indent=2)
+        console.print(Panel(
+            Syntax(result_formatted, "json", theme="monokai"),
+            title="[green]Cached Result[/green]"
+        ))
+    except:
+        console.print(Panel(entry['result'], title="[green]Cached Result[/green]"))
+
+
+def cmd_cache_clear(args):
+    """Clear cache entries."""
+    from rich.console import Console
+
+    console = Console()
+
+    # Validation
+    if not args.function and not args.older_than and not args.all:
+        console.print("[red]Error: Specify --function, --older-than, or --all[/red]")
+        console.print("   rvbbit cache clear --function semantic_summarize")
+        console.print("   rvbbit cache clear --older-than 7")
+        console.print("   rvbbit cache clear --all")
+        return
+
+    # Confirmation for --all
+    if args.all and not args.yes:
+        console.print("[yellow]WARNING: This will delete ALL cache entries![/yellow]")
+        response = input("Type 'yes' to confirm: ")
+        if response.lower() != 'yes':
+            console.print("Cancelled.")
+            return
+
+    try:
+        from rvbbit.sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+
+        if args.all:
+            count = cache.clear()
+            console.print(f"[green]Cleared all cache entries ({count} from L1)[/green]")
+        elif args.function:
+            count = cache.clear(function_name=args.function)
+            console.print(f"[green]Cleared cache for function '{args.function}'[/green]")
+        elif args.older_than:
+            count = cache.clear(older_than_days=args.older_than)
+            console.print(f"[green]Cleared cache entries older than {args.older_than} days[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Error clearing cache: {e}[/red]")
+
+
+def cmd_cache_prune(args):
+    """Prune expired entries and optimize storage."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from rvbbit.sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+        pruned = cache.prune_expired()
+        console.print(f"[green]Pruned {pruned} expired L1 entries[/green]")
+        console.print("[green]L2 (ClickHouse) auto-prunes via TTL, triggered OPTIMIZE TABLE[/green]")
+    except Exception as e:
+        console.print(f"[red]Error pruning cache: {e}[/red]")
 
 
 def _run_server_subprocess(cmd, cwd=None, env=None):

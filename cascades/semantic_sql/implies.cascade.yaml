@@ -9,6 +9,7 @@
 #   SELECT semantic_implies(title, observed) FROM docs
 
 cascade_id: semantic_implies
+internal: true 
 
 description: |
   Logical implication check - returns TRUE if text A logically implies text B.
@@ -49,8 +50,11 @@ cells:
       - Is the conclusion a reasonable inference from the premise?
       - Would the premise being true make the conclusion likely true?
 
-      Respond with ONLY "true" or "false" - no explanation.
+      IMPORTANT!
+      Respond with ONLY "true" or "false" - no explanation, no code fences, no wrappers.
     rules:
       max_turns: 1
-    output_schema:
-      type: boolean
+
+    #   max_attempts: 3
+    # output_schema:
+    #   type: boolean

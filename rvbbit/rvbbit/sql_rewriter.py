@@ -63,9 +63,11 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
 
     Handles:
     1. RVBBIT MAP/RUN statements
-    2. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
+    2. Dimension functions in GROUP BY (TOPICS, SENTIMENT, etc.)
+    3. Semantic SQL operators (MEANS, ABOUT, ~, etc.)
+    4. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
-    These can be combined - a query can have both RVBBIT MAP and LLM aggregates.
+    These can be combined - a query can have multiple features.
     """
     # Normalize query first (remove comments, normalize whitespace)
     normalized = query.strip()
@@ -116,6 +118,10 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         else:
             raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
 
+    # Process dimension functions (GROUP BY TOPICS(...), GROUP BY sentiment(...), etc.)
+    # This must run BEFORE semantic operators to properly handle dimension expressions
+    result = _rewrite_dimension_functions(result)
+
     # Process semantic SQL operators (MEANS, ABOUT, ~, SEMANTIC JOIN, RELEVANCE TO)
     # This must run BEFORE LLM aggregates since both use -- @ annotations
     result = _rewrite_semantic_operators(result)
@@ -124,6 +130,72 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     result = _rewrite_llm_aggregates(result)
 
     return result
+
+
+def _rewrite_dimension_functions(query: str) -> str:
+    """
+    Rewrite dimension functions (TOPICS, SENTIMENT, etc.) to CTE-based execution.
+
+    Transforms GROUP BY expressions that use dimension-shaped cascades into
+    proper CTEs that:
+    1. Extract bucket definitions from all values
+    2. Classify each row into a bucket
+    3. Replace the dimension function with the bucket column
+
+    Example:
+        SELECT state, topics(title, 8) as topic, COUNT(*)
+        FROM bigfoot_vw
+        GROUP BY state, topics(title, 8)
+
+    Becomes:
+        WITH
+        _dim_topics_title_abc123_mapping AS (
+            SELECT topics_compute(to_json(LIST(title)), 8) as _result
+            FROM bigfoot_vw
+        ),
+        _dim_classified AS (
+            SELECT *,
+                json_extract_string(_result->'mapping', title) as __dim_topics_title_abc123
+            FROM bigfoot_vw, _dim_topics_title_abc123_mapping
+        )
+        SELECT state, __dim_topics_title_abc123 as topic, COUNT(*)
+        FROM _dim_classified
+        GROUP BY state, __dim_topics_title_abc123
+    """
+    try:
+        from rvbbit.sql_tools.dimension_rewriter import (
+            rewrite_dimension_functions,
+            has_dimension_functions
+        )
+
+        # Quick check to avoid unnecessary processing
+        if not has_dimension_functions(query):
+            return query
+
+        result = rewrite_dimension_functions(query)
+
+        if result.changed:
+            import logging
+            logging.getLogger(__name__).debug(
+                f"[sql_rewriter] Dimension rewrite applied: {len(result.dimension_exprs)} expressions"
+            )
+            return result.sql_out
+
+        if result.errors:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[sql_rewriter] Dimension rewrite errors: {result.errors}"
+            )
+
+        return query
+
+    except ImportError:
+        # Dimension rewriter not available
+        return query
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"[sql_rewriter] Dimension rewrite failed: {e}")
+        return query
 
 
 def _rewrite_semantic_operators(query: str) -> str:

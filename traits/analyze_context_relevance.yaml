@@ -1,4 +1,8 @@
 cascade_id: analyze_context_relevance
+
+# Exclude from meta-analysis to prevent self-referential loops
+internal: true
+
 description: |
   Meta-analysis cascade that evaluates context message relevance using ensemble scoring.
 

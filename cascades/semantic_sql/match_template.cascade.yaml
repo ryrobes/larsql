@@ -9,6 +9,7 @@
 #   SELECT semantic_match_template('Acme Corp (customer) and ACME, Inc (supplier) are the same company')
 
 cascade_id: semantic_match_template
+internal: true
 
 description: |
   Templated semantic truth check. Evaluates whether a provided statement is true.

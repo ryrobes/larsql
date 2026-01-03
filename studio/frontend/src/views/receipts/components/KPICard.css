@@ -1,30 +1,57 @@
 /* ========================================
    KPICard Component Styles
-   Flat, inline, transparent design
+   Value-first vertical design
    ======================================== */
 
 .kpi-card {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 12px;
   background: transparent;
   border-left: 2px solid rgba(100, 116, 139, 0.15);
   flex: 1;
-  min-width: 140px;
+  min-width: 100px;
 }
 
-.kpi-icon {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.kpi-content {
+/* Value row - value prominently displayed with trend */
+.kpi-value-row {
   display: flex;
   align-items: baseline;
   gap: 6px;
+}
+
+.kpi-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.kpi-trend {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.kpi-trend svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Label row - icon, label, and subtitle below value */
+.kpi-label-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+}
+
+.kpi-label-row svg {
+  flex-shrink: 0;
 }
 
 .kpi-label {
@@ -36,29 +63,10 @@
   flex-shrink: 0;
 }
 
-.kpi-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1;
-}
-
 .kpi-unit {
   font-size: 10px;
   color: #475569;
-}
-
-.kpi-trend {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 10px;
-  font-weight: 600;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.kpi-trend svg {
-  width: 12px;
-  height: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -10,6 +10,7 @@
 #   SELECT semantic_extract(description, 'order number') FROM tickets
 
 cascade_id: semantic_extract
+internal: true 
 
 description: |
   Semantic information extraction - pulls specific facts, entities, or details

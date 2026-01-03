@@ -11,6 +11,7 @@
 #   SELECT semantic_ask(text, 'your arbitrary prompt') FROM table
 
 cascade_id: semantic_ask
+internal: true 
 
 description: |
   Generic prompt application - apply any arbitrary instruction/question to text.

@@ -9,6 +9,7 @@
 #   SELECT semantic_outliers(to_json(list(observed)), 3) FROM bigfoot
 
 cascade_id: semantic_outliers
+internal: true
 
 description: |
   Find outliers or unusual items in a collection of texts.

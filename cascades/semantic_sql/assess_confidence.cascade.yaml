@@ -6,6 +6,9 @@
 
 cascade_id: assess_training_confidence
 
+# Exclude from meta-analysis to prevent self-referential loops
+internal: true
+
 description: |
   Assess the confidence/quality of a cascade execution result.
   Returns a score from 0.0 (low confidence) to 1.0 (high confidence).

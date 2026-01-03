@@ -436,10 +436,6 @@ def log_query_complete(
     status: str = 'completed',
     rows_output: Optional[int] = None,
     duration_ms: Optional[float] = None,
-    total_cost: Optional[float] = None,
-    total_tokens_in: Optional[int] = None,
-    total_tokens_out: Optional[int] = None,
-    llm_calls_count: Optional[int] = None,
     cascade_paths: Optional[List[str]] = None,
     cascade_count: Optional[int] = None
 ):
@@ -449,15 +445,15 @@ def log_query_complete(
     Called after query execution finishes (successfully or with error).
     Uses ClickHouse ALTER TABLE UPDATE for in-place modification.
 
+    NOTE: Cost/token data is NOT set here. Cost data arrives asynchronously
+    via the cost worker (~3-5s after LLM calls complete). The API queries
+    join with unified_logs or mv_sql_query_costs for live cost aggregation.
+
     Args:
         query_id: The query_id returned from log_query_start
         status: Completion status ('completed', 'error', 'cancelled')
         rows_output: Number of rows returned by the query
         duration_ms: Total execution time in milliseconds
-        total_cost: Aggregated LLM cost for all calls spawned by this query
-        total_tokens_in: Total input tokens across all LLM calls
-        total_tokens_out: Total output tokens across all LLM calls
-        llm_calls_count: Total number of LLM calls made
         cascade_paths: List of cascade file paths executed by this query
         cascade_count: Number of cascade executions
     """
@@ -469,20 +465,15 @@ def log_query_complete(
         db = get_db()
 
         # Build SET clause dynamically
+        # NOTE: We intentionally do NOT set cost/token fields here.
+        # They remain NULL in sql_query_log - the API derives them from
+        # unified_logs via live aggregation or the mv_sql_query_costs MV.
         updates = [f"status = '{status}'", "completed_at = now64(6)"]
 
         if duration_ms is not None:
             updates.append(f"duration_ms = {duration_ms}")
         if rows_output is not None:
             updates.append(f"rows_output = {rows_output}")
-        if total_cost is not None:
-            updates.append(f"total_cost = {total_cost}")
-        if total_tokens_in is not None:
-            updates.append(f"total_tokens_in = {total_tokens_in}")
-        if total_tokens_out is not None:
-            updates.append(f"total_tokens_out = {total_tokens_out}")
-        if llm_calls_count is not None:
-            updates.append(f"llm_calls_count = {llm_calls_count}")
         # Cascade tracking columns (added in later migration)
         # Check if columns exist before adding to update
         if cascade_paths or cascade_count is not None:
@@ -719,18 +710,22 @@ def register_cascade_execution(
         from .db_adapter import get_db
         db = get_db()
 
-        db.insert_rows('sql_cascade_executions', [{
+        row_data = {
             'caller_id': caller_id,
             'cascade_id': cascade_id,
             'cascade_path': cascade_path,
             'session_id': session_id,
             'inputs_summary': str(inputs)[:200] if inputs else '',
             'timestamp': datetime.now(timezone.utc)
-        }])
+        }
+        print(f"[sql_trail] Inserting cascade execution: caller_id={caller_id}, cascade_id={cascade_id}, session={session_id}", flush=True)
+        db.insert_rows('sql_cascade_executions', [row_data])
+        print(f"[sql_trail] Insert successful", flush=True)
 
         logger.debug(f"SQL Trail: Registered cascade {cascade_id} for {caller_id[:16]}")
     except Exception as e:
         # Fire-and-forget - don't fail the main path
+        print(f"[sql_trail] ERROR inserting cascade execution: {e}", flush=True)
         logger.debug(f"SQL Trail: Failed to register cascade execution: {e}")
 
     # Also maintain in-memory registry for backward compatibility during transition

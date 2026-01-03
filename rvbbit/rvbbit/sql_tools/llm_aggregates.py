@@ -2446,14 +2446,300 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
             log.warning(f"Could not register {name}: {e}")
 
 
+def register_dimension_compute_udfs(connection):
+    """
+    Register dimension compute UDFs for semantic GROUP BY.
+
+    These functions are called by the dimension rewriter's CTEs.
+    They execute the dimension cascade with the values array and return
+    a JSON mapping of value -> bucket.
+
+    Each dimension cascade (e.g., topics_dimension, sentiment_dimension)
+    gets a {name}_compute function registered.
+
+    IMPORTANT: Uses the same execution path as execute_cascade_udf() for proper
+    logging, caller_id propagation, SQL Trail tracking, and caching.
+    """
+    import json
+    import logging
+    from rvbbit.semantic_sql.registry import get_sql_function_registry
+
+    log = logging.getLogger(__name__)
+    print(f"[dimension_compute] v2026.01.03.A Registering dimension compute UDFs...", flush=True)
+
+    registry = get_sql_function_registry()
+
+    for func_name, entry in registry.items():
+        # Only register compute functions for DIMENSION-shaped cascades
+        sql_fn = getattr(entry, 'sql_function', {})
+        if sql_fn.get('shape', '').upper() != 'DIMENSION':
+            continue
+
+        cascade_path = entry.cascade_path
+        cascade_id = entry.cascade_id
+        compute_name = f"{func_name}_compute"
+
+        # Create compute function for this dimension
+        # The function receives: (values_json, ...scalar_args)
+        def make_compute_func(cascade_path_inner, func_name_inner, cascade_id_inner):
+            def compute_func(values_json: str, *args) -> str:
+                """Execute dimension cascade and return mapping JSON."""
+                import sys
+                import json
+                import hashlib
+
+                # Version marker - verify latest code is running
+                print(f"[dimension_compute] v2026.01.03.A {func_name_inner} called", flush=True)
+
+                # Import execution infrastructure (same as execute_cascade_udf)
+                from rvbbit.session_naming import generate_woodland_id
+                from rvbbit.caller_context import get_caller_id
+                from rvbbit.sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
+                from rvbbit.semantic_sql.executor import _run_cascade_sync, _extract_cascade_output
+                from rvbbit.semantic_sql.registry import get_cached_result, set_cached_result
+
+                # Get caller_id from context (set by postgres_server for SQL queries)
+                caller_id = get_caller_id()
+
+                # DEBUG: Log caller_id for dimension functions (with flush for immediate output)
+                if caller_id:
+                    print(f"[dimension_compute] {func_name_inner}: caller_id={caller_id}", flush=True)
+                else:
+                    print(f"[dimension_compute] {func_name_inner}: WARNING - caller_id is None/empty!", flush=True)
+                    # Also log global registry state for debugging
+                    from rvbbit.caller_context import _global_caller_registry, _registry_lock
+                    with _registry_lock:
+                        print(f"[dimension_compute] Global registry contents: {list(_global_caller_registry.keys())}", flush=True)
+
+                # Parse values JSON array
+                try:
+                    values = json.loads(values_json) if values_json else []
+                except json.JSONDecodeError:
+                    log.warning(f"[dimension_compute] {func_name_inner}: Failed to parse values JSON")
+                    values = []
+
+                if not values:
+                    return json.dumps({"mapping": {}})
+
+                # Deduplicate values - no need to send duplicates to the LLM
+                # The mapping is keyed by value, so duplicates are redundant
+                original_count = len(values)
+                unique_values = list(dict.fromkeys(values))  # Preserves order, removes duplicates
+                if len(unique_values) < original_count:
+                    log.debug(f"[dimension_compute] {func_name_inner}: Deduplicated {original_count} -> {len(unique_values)} unique values")
+                values = unique_values
+
+                # Get the cascade's arg definitions to map positional args
+                entry_inner = registry.get(func_name_inner)
+                if not entry_inner:
+                    return json.dumps({"mapping": {}, "error": f"No registry entry for {func_name_inner}"})
+
+                sql_fn_inner = getattr(entry_inner, 'sql_function', {})
+                arg_defs = sql_fn_inner.get('args', [])
+
+                # Build input dict for cascade
+                # First arg (dimension_source) becomes 'texts' array
+                # (Using 'texts' instead of 'values' to avoid conflict with dict.values() in Jinja)
+                #
+                # INDEX-BASED MAPPING OPTIMIZATION:
+                # We pass use_indices=True to tell the cascade to return index-based keys
+                # instead of full text keys. This dramatically reduces output token count
+                # (from ~50k tokens to ~500 tokens for large text arrays).
+                # After cascade returns, we reconstruct text-based keys for SQL lookup.
+                cascade_input = {"texts": values, "use_indices": True}
+
+                # Map positional args to named args (skip first which is dimension_source)
+                scalar_arg_defs = [a for a in arg_defs if a.get('role') != 'dimension_source']
+
+                for i, arg_val in enumerate(args):
+                    if i < len(scalar_arg_defs):
+                        arg_name = scalar_arg_defs[i]['name']
+                        cascade_input[arg_name] = arg_val
+
+                # Check cache (using same caching as other semantic functions)
+                use_cache = sql_fn_inner.get('cache', True)
+                if use_cache:
+                    found, cached = get_cached_result(func_name_inner, cascade_input)
+                    if found:
+                        log.debug(f"[dimension_compute] Cache hit for {func_name_inner}")
+                        if caller_id:
+                            increment_cache_hit(caller_id)
+                        return json.dumps(cached) if isinstance(cached, dict) else cached
+
+                # Track cache miss
+                if caller_id:
+                    increment_cache_miss(caller_id)
+
+                # Generate session ID (consistent with other semantic functions)
+                woodland_id = generate_woodland_id()
+                session_id = f"dim_{func_name_inner}_{woodland_id}"
+
+                # Register cascade execution for SQL Trail
+                if caller_id:
+                    print(f"[dimension_compute] Registering cascade: {cascade_id_inner}, session={session_id}, caller_id={caller_id}", flush=True)
+                    try:
+                        register_cascade_execution(
+                            caller_id=caller_id,
+                            cascade_id=cascade_id_inner,
+                            cascade_path=cascade_path_inner,
+                            session_id=session_id,
+                            inputs=cascade_input
+                        )
+                        print(f"[dimension_compute] Successfully registered cascade execution", flush=True)
+                    except Exception as reg_e:
+                        print(f"[dimension_compute] ERROR registering cascade: {reg_e}", flush=True)
+                else:
+                    print(f"[dimension_compute] WARNING: No caller_id for cascade {cascade_id_inner}, session={session_id}", flush=True)
+
+                # Execute the cascade with proper caller_id propagation
+                print(f"[dimension_compute] Running cascade {cascade_id_inner} with caller_id={caller_id}")
+                try:
+                    result = _run_cascade_sync(
+                        cascade_path_inner,
+                        session_id,
+                        cascade_input,
+                        caller_id=caller_id
+                    )
+
+                    # Check if result is None or empty
+                    if result is None:
+                        log.warning(f"[dimension_compute] {func_name_inner} returned None result")
+                        return json.dumps({"mapping": {}, "error": "Cascade returned None"})
+
+                    # Extract the mapping from cascade output
+                    output = _extract_cascade_output(result)
+
+                    # Handle None output
+                    if output is None:
+                        log.warning(f"[dimension_compute] {func_name_inner} extracted output is None. Result keys: {list(result.keys()) if isinstance(result, dict) else type(result)}")
+                        return json.dumps({"mapping": {}, "error": "Cascade output extraction returned None"})
+
+                    if isinstance(output, str):
+                        # Try to parse as JSON
+                        try:
+                            output = json.loads(output)
+                        except json.JSONDecodeError:
+                            log.warning(f"[dimension_compute] {func_name_inner} output not valid JSON: {output[:500]}")
+                            return json.dumps({"mapping": {}, "error": "Output not valid JSON"})
+
+                    if isinstance(output, dict):
+                        # Ensure mapping key exists
+                        if "mapping" not in output:
+                            log.warning(f"[dimension_compute] {func_name_inner} output missing 'mapping' key: {list(output.keys())}")
+                            return json.dumps({"mapping": {}, "error": f"Output missing 'mapping' key, got: {list(output.keys())}"})
+
+                        # RECONSTRUCT TEXT-BASED KEYS FROM INDEX-BASED MAPPING
+                        # The cascade returns {"mapping": {"0": "Low", "1": "High", ...}}
+                        # We need to convert to {"mapping": {"original text 1": "Low", ...}}
+                        # so SQL can look up by the actual text value.
+                        index_mapping = output.get("mapping", {})
+                        text_mapping = {}
+                        reconstruction_errors = []
+
+                        for key, value in index_mapping.items():
+                            try:
+                                idx = int(key)
+                                if 0 <= idx < len(values):
+                                    text_mapping[values[idx]] = value
+                                else:
+                                    reconstruction_errors.append(f"Index {idx} out of range (0-{len(values)-1})")
+                            except (ValueError, TypeError):
+                                # Key is not an integer - might be a text key already (backward compat)
+                                # Just pass it through
+                                text_mapping[key] = value
+
+                        if reconstruction_errors:
+                            log.warning(f"[dimension_compute] {func_name_inner} reconstruction errors: {reconstruction_errors[:5]}")
+
+                        output["mapping"] = text_mapping
+                        log.debug(f"[dimension_compute] {func_name_inner}: Reconstructed {len(text_mapping)} text keys from index mapping")
+
+                        # Cache the result (with text-based keys for consistent cache hits)
+                        if use_cache:
+                            set_cached_result(func_name_inner, cascade_input, output)
+
+                        return json.dumps(output)
+                    else:
+                        log.warning(f"[dimension_compute] {func_name_inner} output not a dict: {type(output)}")
+                        return json.dumps({"mapping": {}, "error": f"Cascade did not return dict, got {type(output).__name__}"})
+
+                except Exception as e:
+                    import traceback
+                    log.error(f"[dimension_compute] Error executing {func_name_inner}: {e}\n{traceback.format_exc()}")
+                    return json.dumps({"mapping": {}, "error": str(e)})
+
+            return compute_func
+
+        compute_fn = make_compute_func(cascade_path, func_name, cascade_id)
+
+        # Register variants for different arities
+        # DuckDB does NOT support function overloading for Python UDFs, so we use
+        # different function names for different arities:
+        # - {name}_compute   = 1 arg (just values_json)
+        # - {name}_compute_2 = 2 args (values_json + one scalar)
+        # - {name}_compute_3 = 3 args (values_json + two scalars)
+        # - {name}_compute_4 = 4 args (values_json + three scalars)
+        #
+        # The dimension rewriter must generate the correct function name based on arity.
+
+        def make_wrapper_1(fn):
+            def wrapper(v: str) -> str:
+                return fn(v)
+            return wrapper
+
+        def make_wrapper_2(fn):
+            def wrapper(v: str, a1) -> str:
+                return fn(v, a1)
+            return wrapper
+
+        def make_wrapper_3(fn):
+            def wrapper(v: str, a1, a2) -> str:
+                return fn(v, a1, a2)
+            return wrapper
+
+        def make_wrapper_4(fn):
+            def wrapper(v: str, a1, a2, a3) -> str:
+                return fn(v, a1, a2, a3)
+            return wrapper
+
+        # Register each arity with a different function name
+        wrappers = [
+            (1, compute_name, make_wrapper_1(compute_fn)),           # topics_compute
+            (2, f"{compute_name}_2", make_wrapper_2(compute_fn)),    # topics_compute_2
+            (3, f"{compute_name}_3", make_wrapper_3(compute_fn)),    # topics_compute_3
+            (4, f"{compute_name}_4", make_wrapper_4(compute_fn)),    # topics_compute_4
+        ]
+
+        registered_count = 0
+        for arity, fn_name, wrapper in wrappers:
+            try:
+                connection.create_function(fn_name, wrapper, return_type="VARCHAR")
+                log.debug(f"[dimension_compute] Registered {fn_name} (arity={arity})")
+                registered_count += 1
+            except Exception as e:
+                log.warning(f"[dimension_compute] Could not register {fn_name}: {e}")
+
+        if registered_count > 0:
+            log.info(f"[dimension_compute] Registered {compute_name}[_2,_3,_4] for {func_name}")
+
+
 def clear_agg_cache():
-    """Clear the aggregate result cache."""
+    """Clear the aggregate result cache (both in-memory and persistent)."""
     global _agg_cache
     _agg_cache.clear()
 
+    # Also clear from persistent cache
+    try:
+        from .cache_adapter import get_cache
+        from .udf import _CACHE_TYPE_AGGREGATE
+        cache = get_cache()
+        cache.clear(function_name=_CACHE_TYPE_AGGREGATE)
+    except Exception:
+        pass
+
 
 def get_agg_cache_stats() -> Dict[str, Any]:
-    """Get aggregate cache statistics."""
+    """Get aggregate cache statistics (in-memory only, persistent stats in parent)."""
     return {
         "cached_entries": len(_agg_cache),
         "functions": ["llm_summarize", "llm_classify", "llm_sentiment", "llm_themes", "llm_agg"]

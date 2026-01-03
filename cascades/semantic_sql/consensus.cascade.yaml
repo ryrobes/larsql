@@ -8,6 +8,7 @@
 #   SELECT semantic_consensus(to_json(list(observed))) FROM bigfoot
 
 cascade_id: semantic_consensus
+internal: true
 
 description: |
   Find consensus or common ground among a collection of texts.

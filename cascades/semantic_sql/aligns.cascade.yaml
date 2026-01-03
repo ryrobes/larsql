@@ -8,6 +8,7 @@
 # Returns: 0.0 (contradicts) to 1.0 (perfectly aligned)
 
 cascade_id: semantic_aligns
+internal: true 
 
 description: |
   Narrative alignment scoring - returns 0.0-1.0 for how well text aligns with a narrative.

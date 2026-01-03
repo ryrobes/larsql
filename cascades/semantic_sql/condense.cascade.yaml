@@ -11,6 +11,7 @@
 #   SELECT semantic_condense(review, 'extract main complaint') FROM reviews
 
 cascade_id: semantic_condense
+internal: true 
 
 description: |
   Scalar text summarization - condenses individual texts into brief summaries.

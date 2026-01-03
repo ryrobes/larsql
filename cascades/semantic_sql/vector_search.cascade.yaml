@@ -1,4 +1,5 @@
 cascade_id: semantic_vector_search
+internal: true 
 
 description: |
   Semantic search using ClickHouse cosineDistance.

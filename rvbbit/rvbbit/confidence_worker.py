@@ -17,14 +17,11 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Control via environment variable
-CONFIDENCE_ASSESSMENT_ENABLED = os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "true").lower() == "true"
+CONFIDENCE_ASSESSMENT_ENABLED = False #os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "true").lower() == "true"
 
-# Cascade types to skip (too expensive or not useful for training)
-CONFIDENCE_ASSESSMENT_BLOCKLIST = {
-    "analyze_context_relevance",  # Meta-analysis
-    "assess_training_confidence",  # Self-assessment (avoid recursion!)
-    "checkpoint_summary",  # Internal summaries
-}
+# Note: Internal cascades are now marked with `internal: true` in their YAML config
+# instead of using a hardcoded blocklist. The is_internal_cascade_by_id() function
+# from analytics_worker checks this flag.
 
 
 def assess_training_confidence(session_id: str) -> Optional[dict]:
@@ -108,9 +105,10 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
         cascade_id = session_result[0]['cascade_id']
         message_count = session_result[0]['message_count']
 
-        # Skip blocklisted cascades
-        if cascade_id in CONFIDENCE_ASSESSMENT_BLOCKLIST:
-            logger.debug(f"[confidence_worker] Skipping blocklisted cascade: {cascade_id}")
+        # Skip internal cascades (marked with internal: true in YAML)
+        from .analytics_worker import is_internal_cascade_by_id
+        if is_internal_cascade_by_id(cascade_id):
+            logger.debug(f"[confidence_worker] Skipping internal cascade: {cascade_id}")
             return None
 
         # Get all assistant messages from this session

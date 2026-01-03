@@ -30,14 +30,13 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# Default enabled - set RVBBIT_SHADOW_ASSESSMENT_ENABLED=false to disable
-SHADOW_ASSESSMENT_ENABLED = os.getenv("RVBBIT_SHADOW_ASSESSMENT_ENABLED", "true").lower() == "true"
+# Default DISABLED - set RVBBIT_SHADOW_ASSESSMENT_ENABLED=true to enable
+# Disabled for now to reduce noise during debugging - can be re-enabled later
+SHADOW_ASSESSMENT_ENABLED = os.getenv("RVBBIT_SHADOW_ASSESSMENT_ENABLED", "false").lower() == "true"
 
-# System cascades that should NEVER run shadow assessment (regardless of env var)
-# These are internal/meta cascades that would cause recursive assessment or waste resources
-SHADOW_ASSESSMENT_BLOCKLIST = {
-    "analyze_context_relevance",  # Meta-analysis cascade used by shadow assessment itself
-}
+# Note: Internal cascades are now marked with `internal: true` in their YAML config
+# instead of using a hardcoded blocklist. The is_internal_cascade_by_id() function
+# from analytics_worker checks this flag to prevent self-referential loops.
 
 
 @dataclass
@@ -251,12 +250,21 @@ class ShadowAssessor:
         try:
             from .rag.indexer import embed_texts
             from .config import get_config
+            from .unified_logs import log_unified
 
             cfg = get_config()
 
+            # Track embedding usage for observability
+            embed_call_count = 0
+            total_chars_embedded = 0
+            embed_model = cfg.default_embed_model
+
             # Embed task instructions
-            task_embed_result = embed_texts([task_instructions[:1000]], model=cfg.default_embed_model)
+            task_text = task_instructions[:1000]
+            task_embed_result = embed_texts([task_text], model=embed_model)
             task_embedding = task_embed_result.get("embeddings", [[]])[0]
+            embed_call_count += 1
+            total_chars_embedded += len(task_text)
 
             if not task_embedding:
                 logger.debug("Could not embed task instructions for semantic scoring")
@@ -273,10 +281,14 @@ class ShadowAssessor:
                     # Try to get embedding from content
                     if candidate.content:
                         try:
+                            content_text = candidate.content[:500]
                             content_embed_result = embed_texts(
-                                [candidate.content[:500]],
-                                model=cfg.default_embed_model
+                                [content_text],
+                                model=embed_model
                             )
+                            embed_call_count += 1
+                            total_chars_embedded += len(content_text)
+
                             content_embedding = content_embed_result.get("embeddings", [[]])[0]
                             if content_embedding:
                                 result.semantic_embedding_available = True
@@ -286,6 +298,47 @@ class ShadowAssessor:
                                 )
                         except Exception as e:
                             logger.debug(f"Failed to embed candidate: {e}")
+
+            # Log embedding usage to unified_logs for observability
+            # This provides visibility into embedding costs without requiring schema changes
+            if self.session_id and embed_call_count > 0:
+                try:
+                    # Estimate tokens (~4 chars per token for English)
+                    estimated_tokens = total_chars_embedded // 4
+
+                    log_unified(
+                        session_id=self.session_id,
+                        trace_id=f"shadow_embed_{uuid.uuid4().hex[:12]}",
+                        caller_id="shadow_assessment",
+                        invocation_metadata={
+                            "purpose": "semantic_scoring",
+                            "embed_call_count": embed_call_count,
+                            "total_chars": total_chars_embedded,
+                        },
+                        node_type="embedding_usage",
+                        role="system",
+                        depth=0,
+                        semantic_actor="shadow_assessor",
+                        semantic_purpose="context_semantic_scoring",
+                        cascade_id=self.cascade_id,
+                        cell_name="_shadow_embedding",
+                        model=embed_model,
+                        model_requested=embed_model,
+                        provider="embedding",
+                        tokens_in=estimated_tokens,
+                        tokens_out=0,
+                        cost=0.0,  # Embedding costs are typically very low
+                        content=f"Embedded {embed_call_count} texts ({total_chars_embedded} chars) for shadow semantic scoring",
+                        metadata={
+                            "shadow_assessment": True,
+                            "embed_call_count": embed_call_count,
+                            "total_chars_embedded": total_chars_embedded,
+                            "candidates_scored": len([r for r in results if r.semantic_score is not None]),
+                        }
+                    )
+                    logger.debug(f"Logged shadow embedding usage: {embed_call_count} calls, {total_chars_embedded} chars")
+                except Exception as log_err:
+                    logger.debug(f"Failed to log shadow embedding usage: {log_err}")
 
         except ImportError as e:
             logger.debug(f"Embedding not available for semantic scoring: {e}")
@@ -302,12 +355,12 @@ class ShadowAssessor:
         """
         Use LLM to select relevant candidates from summary menu.
 
-        Logs the LLM call to unified_logs with caller_id="shadow_assessment" for cost tracking.
+        Uses the internal shadow_context_selector cascade for full observability
+        and proper cost tracking through the standard cascade infrastructure.
         """
         try:
-            from .agent import Agent
-            from .unified_logs import log_unified
-            from .blocking_cost import extract_provider_from_model
+            from .runner import RVBBITRunner
+            from .config import RVBBIT_ROOT
 
             # Build menu of candidates
             menu_lines = []
@@ -333,146 +386,98 @@ class ShadowAssessor:
             if not menu_lines:
                 return {"selected": [], "reasoning": "No candidates"}
 
-            print("[shadow-context]")
             menu = "\n".join(menu_lines)
-            system_prompt = "You are a context selection assistant. Be concise and precise. Return valid JSON only."
 
-            selector_prompt = f"""You are selecting relevant context for an AI agent about to work on a task.
-
-CURRENT TASK:
-{task_instructions[:1000]}
-
-AVAILABLE CONTEXT (by ID):
-{menu}
-
-TOKEN BUDGET: ~{budget} tokens
-
-Select the message IDs most relevant to the current task. Consider:
-- Direct relevance to the task topic
-- Important decisions or findings
-- Error messages that might be relevant
-- User instructions or requirements
-
-**FOUNDATIONAL CONTEXT LENIENCY:**
-Messages marked [tool_definition], [task_definition], or [constraints] are often critical even if not directly quoted:
-- Tool definitions: Relevant if the task involves calling functions OR if the agent made decisions about which tools to use/avoid
-- Task definitions: Usually high relevance - they define WHAT to do and HOW
-- Constraints: Relevant if they shaped what the agent DIDN'T do (negative influence)
-When in doubt about system messages and foundational context, err on the side of inclusion.
-
-Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "brief explanation"}}"""
-            
-
-            time.sleep(5) ## wait for target cells costs to come in
-
-            config = get_config()
+            # Wait for target cell costs to come in before running shadow assessment
+            time.sleep(5)
 
             start_time = time.time()
-            selector = Agent(
-                model=self.llm_model,
-                system_prompt=system_prompt,
-                base_url=config.provider_base_url,
-                api_key=config.provider_api_key
+
+            # Generate unique session ID for this shadow assessment run
+            # Link to parent session for cost aggregation and tracing
+            shadow_session_id = f"shadow_{self.session_id}_{uuid.uuid4().hex[:8]}" if self.session_id else f"shadow_{uuid.uuid4().hex[:12]}"
+
+            # Path to the internal cascade
+            cascade_path = os.path.join(RVBBIT_ROOT, "cascades", "internal", "shadow_context_selector.cascade.yaml")
+
+            # Fallback if not found in RVBBIT_ROOT (development mode)
+            if not os.path.exists(cascade_path):
+                # Try relative to this file
+                import pathlib
+                module_dir = pathlib.Path(__file__).parent.parent.parent
+                cascade_path = str(module_dir / "cascades" / "internal" / "shadow_context_selector.cascade.yaml")
+
+            if not os.path.exists(cascade_path):
+                logger.warning(f"Shadow context selector cascade not found at {cascade_path}, falling back to no LLM selection")
+                return {"selected": [], "reasoning": "Cascade not found"}
+
+            # Run the cascade - this provides full observability through standard infrastructure
+            runner = RVBBITRunner(
+                config_path=cascade_path,
+                session_id=shadow_session_id,
+                parent_session_id=self.session_id,  # Link to parent for cost aggregation
             )
 
-            # Build full request for logging
-            full_request = {
-                "model": self.llm_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": selector_prompt}
-                ]
-            }
+            # Execute the cascade
+            cascade_result = runner.run(input_data={
+                "task_instructions": task_instructions[:1000],
+                "menu": menu,
+                "budget": budget,
+            })
 
-            response = selector.run(selector_prompt)
-            content = response.get("content", "")
             duration_ms = int((time.time() - start_time) * 1000)
 
-            # Extract usage from response
-            tokens_in = response.get("tokens_in", 0) or response.get("usage", {}).get("prompt_tokens", 0)
-            tokens_out = response.get("tokens_out", 0) or response.get("usage", {}).get("completion_tokens", 0)
-            request_id = response.get("id", "")
+            # Extract results from cascade output
+            # The cascade returns output in outputs.select_context
+            output = cascade_result.get("outputs", {}).get("select_context", {})
+            if isinstance(output, dict):
+                result_data = output.get("result", output)
+            else:
+                result_data = output
 
-            # Calculate cost from usage if not provided
-            # Note: Cost will be updated by the background worker via OpenRouter API
-            cost = response.get("cost", 0.0)
-
-            # Generate trace ID for this LLM call
-            trace_id = f"shadow_{uuid.uuid4().hex[:12]}"
-
-            # Log to unified_logs for cost tracking and observability
-            if self.session_id:
+            # Handle both direct dict and string JSON responses
+            if isinstance(result_data, str):
                 try:
-                    provider = extract_provider_from_model(self.llm_model)
-                    log_unified(
-                        session_id=self.session_id,
-                        trace_id=trace_id,
-                        caller_id="shadow_assessment",
-                        invocation_metadata={
-                            "purpose": "context_selection",
-                            "target_cell": target_cell_name,
-                            "candidate_count": len(results)
-                        },
-                        node_type="shadow_assessment_llm",
-                        role="assistant",
-                        depth=0,
-                        semantic_actor="shadow_assessor",
-                        semantic_purpose="context_relevance_selection",
-                        cascade_id=self.cascade_id,
-                        cell_name=f"_shadow_{target_cell_name}" if target_cell_name else "_shadow_assessment",
-                        model=self.llm_model,
-                        model_requested=self.llm_model,
-                        request_id=request_id,
-                        provider=provider,
-                        duration_ms=duration_ms,
-                        tokens_in=tokens_in,
-                        tokens_out=tokens_out,
-                        cost=cost,
-                        content=content,
-                        full_request=full_request,
-                        full_response={"content": content, "usage": {"prompt_tokens": tokens_in, "completion_tokens": tokens_out}},
-                        metadata={
-                            "shadow_assessment": True,
-                            "budget": budget,
-                            "candidate_count": len(results),
-                            "menu_size": len(menu_lines)
-                        }
-                    )
-                    logger.debug(f"Logged shadow assessment LLM call to unified_logs (trace: {trace_id})")
-                except Exception as log_err:
-                    logger.warning(f"Failed to log shadow assessment: {log_err}")
+                    json_match = re.search(r'\{[^{}]*"selected"\s*:\s*\[[^\]]*\][^{}]*\}', result_data, re.DOTALL)
+                    if json_match:
+                        result_data = json.loads(json_match.group())
+                    else:
+                        result_data = {"selected": [], "reasoning": "Parse error"}
+                except json.JSONDecodeError:
+                    result_data = {"selected": [], "reasoning": "JSON parse error"}
 
-            # Parse JSON from response
-            json_match = re.search(r'\{[^{}]*"selected"\s*:\s*\[[^\]]*\][^{}]*\}', content, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                selected_hashes = parsed.get("selected", [])
-                reasoning = parsed.get("reasoning", "")
+            selected_hashes = result_data.get("selected", [])
+            reasoning = result_data.get("reasoning", "")
 
-                # Mark selected candidates
-                for short_hash in selected_hashes:
-                    if short_hash in hash_to_result:
-                        result = hash_to_result[short_hash]
-                        result.llm_selected = True
-                        result.llm_reasoning = reasoning
-                        result.llm_model = self.llm_model
-                        result.llm_cost = cost / max(1, len(selected_hashes))  # Distribute cost
+            # Get cost from cascade execution (properly tracked via unified_logs)
+            cost = cascade_result.get("cost", 0.0)
 
-                # Mark non-selected with reasoning
-                for short_hash, result in hash_to_result.items():
-                    if short_hash not in selected_hashes:
-                        result.llm_selected = False
-                        result.llm_reasoning = f"Not selected. LLM reasoning: {reasoning}"
-                        result.llm_model = self.llm_model
+            # Mark selected candidates
+            for short_hash in selected_hashes:
+                if short_hash in hash_to_result:
+                    result = hash_to_result[short_hash]
+                    result.llm_selected = True
+                    result.llm_reasoning = reasoning
+                    result.llm_model = self.llm_model
+                    result.llm_cost = cost / max(1, len(selected_hashes))  # Distribute cost
 
-                logger.debug(f"LLM selected {len(selected_hashes)} candidates in {duration_ms}ms (cost: ${cost:.6f})")
-                return {"selected": selected_hashes, "reasoning": reasoning, "cost": cost, "trace_id": trace_id}
+            # Mark non-selected with reasoning
+            for short_hash, result in hash_to_result.items():
+                if short_hash not in selected_hashes:
+                    result.llm_selected = False
+                    result.llm_reasoning = f"Not selected. LLM reasoning: {reasoning}"
+                    result.llm_model = self.llm_model
 
-            logger.warning("Failed to parse LLM selection response")
-            return {"selected": [], "reasoning": "Parse error", "trace_id": trace_id}
+            logger.debug(f"LLM selected {len(selected_hashes)} candidates in {duration_ms}ms via cascade (session: {shadow_session_id}, cost: ${cost:.6f})")
+            return {
+                "selected": selected_hashes,
+                "reasoning": reasoning,
+                "cost": cost,
+                "session_id": shadow_session_id,
+            }
 
         except Exception as e:
-            logger.warning(f"LLM selection failed: {e}")
+            #logger.warning(f"LLM selection via cascade failed: {e}", exc_info=True)
             return {"selected": [], "reasoning": f"Error: {e}"}
 
     def _compute_composite(self, result: AssessmentResult):
@@ -804,8 +809,9 @@ def queue_shadow_assessment(
         budget_total: Token budget for context
         llm_model: Model to use for LLM selection strategy
     """
-    # Check blocklist and env var (defense-in-depth - caller should also check)
-    if cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
+    # Check if internal cascade (defense-in-depth - caller should also check)
+    from .analytics_worker import is_internal_cascade_by_id
+    if is_internal_cascade_by_id(cascade_id):
         return
 
     if not SHADOW_ASSESSMENT_ENABLED:
@@ -861,15 +867,17 @@ def is_shadow_assessment_enabled(cascade_id: Optional[str] = None) -> bool:
     Check if shadow assessment is enabled for a given cascade.
 
     Args:
-        cascade_id: Optional cascade ID to check. If provided and in the blocklist,
+        cascade_id: Optional cascade ID to check. If provided and is an internal cascade,
                    returns False regardless of the env var setting.
 
     Returns:
         True if shadow assessment should run, False otherwise.
     """
-    # Check blocklist first - these cascades NEVER run shadow assessment
-    if cascade_id and cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
-        return False
+    # Check if internal cascade - these cascades NEVER run shadow assessment
+    if cascade_id:
+        from .analytics_worker import is_internal_cascade_by_id
+        if is_internal_cascade_by_id(cascade_id):
+            return False
 
     return SHADOW_ASSESSMENT_ENABLED
 
@@ -1337,8 +1345,9 @@ def queue_intra_cell_shadow_assessment(
         actual_config_enabled: Whether intra-context was actually enabled
         actual_tokens_after: Actual tokens after context building (if enabled)
     """
-    # Check blocklist and env var (defense-in-depth - caller should also check)
-    if cascade_id in SHADOW_ASSESSMENT_BLOCKLIST:
+    # Check if internal cascade (defense-in-depth - caller should also check)
+    from .analytics_worker import is_internal_cascade_by_id
+    if is_internal_cascade_by_id(cascade_id):
         return
 
     if not SHADOW_ASSESSMENT_ENABLED:

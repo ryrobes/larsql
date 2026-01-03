@@ -1121,6 +1121,60 @@ SETTINGS index_granularity = 8192;
 
 
 # =============================================================================
+# SEMANTIC SQL CACHE TABLE - Persistent LLM result cache
+# =============================================================================
+# Caches results from semantic SQL operations (MEANS, SUMMARIZE, CLASSIFY, etc.)
+# to avoid redundant LLM calls. Supports:
+# - Cross-query cache hits (same semantic call in different queries)
+# - Browseable cache contents (inspect inputs/outputs)
+# - Selective pruning (by function, age, pattern)
+# - TTL-based expiration
+
+SEMANTIC_SQL_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS semantic_sql_cache (
+    -- Identity (cache_key is MD5 hash of function + args)
+    cache_key String,
+    function_name LowCardinality(String),          -- e.g., 'semantic_matches', 'semantic_summarize'
+
+    -- Input (for debugging/inspection)
+    args_json String CODEC(ZSTD(3)),               -- Full args as JSON (for inspection)
+    args_preview String DEFAULT '',                 -- First 200 chars for quick view
+
+    -- Result
+    result String CODEC(ZSTD(3)),                  -- Cached output value
+    result_type LowCardinality(String),            -- 'BOOLEAN', 'DOUBLE', 'VARCHAR', 'JSON'
+
+    -- Timing
+    created_at DateTime64(3) DEFAULT now64(),
+    expires_at DateTime64(3) DEFAULT toDateTime64('2100-01-01 00:00:00', 3),  -- Far future = never expires
+    ttl_seconds UInt32 DEFAULT 0,                  -- 0 = infinite
+
+    -- Analytics
+    hit_count UInt64 DEFAULT 1,                    -- Starts at 1 (the initial set)
+    last_hit_at DateTime64(3) DEFAULT now64(),
+
+    -- Size tracking
+    result_bytes UInt32 DEFAULT 0,
+
+    -- Source tracking
+    first_session_id String DEFAULT '',
+    first_caller_id String DEFAULT '',
+
+    -- Indexes for efficient queries
+    INDEX idx_function function_name TYPE set(100) GRANULARITY 1,
+    INDEX idx_created created_at TYPE minmax GRANULARITY 1,
+    INDEX idx_expires expires_at TYPE minmax GRANULARITY 1,
+    INDEX idx_last_hit last_hit_at TYPE minmax GRANULARITY 1,
+    INDEX idx_hit_count hit_count TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree(last_hit_at)           -- Dedupe by cache_key, keep row with latest hit
+ORDER BY (cache_key)
+TTL expires_at
+SETTINGS index_granularity = 8192;
+"""
+
+
+# =============================================================================
 # SQL QUERY LOG TABLE - SQL Trail Analytics
 # =============================================================================
 # Tracks SQL queries that invoke RVBBIT UDFs for cost attribution and pattern analysis.
@@ -1268,6 +1322,7 @@ def get_all_schemas() -> dict:
         "tag_definitions": TAG_DEFINITIONS_SCHEMA,
         "output_tags": OUTPUT_TAGS_SCHEMA,
         "sql_query_log": SQL_QUERY_LOG_SCHEMA,
+        "semantic_sql_cache": SEMANTIC_SQL_CACHE_SCHEMA,
     }
 
 

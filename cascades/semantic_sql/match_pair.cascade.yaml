@@ -9,6 +9,7 @@
 #   SELECT semantic_match_pair(left_col, right_col, 'same entity') FROM t
 
 cascade_id: semantic_match_pair
+internal: true
 
 description: |
   Pairwise semantic relationship check for fuzzy JOINs and deduplication.

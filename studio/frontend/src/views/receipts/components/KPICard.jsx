@@ -3,8 +3,8 @@ import { Icon } from '@iconify/react';
 import './KPICard.css';
 
 /**
- * KPICard - Flat, inline metric display
- * Data-dense design without card wrapper
+ * KPICard - Value-first vertical metric display
+ * Value prominently at top, label/icon below
  */
 const KPICard = ({ title, value, subtitle, trend, icon, color = '#00e5ff' }) => {
   const trendColor = trend > 0 ? '#ff006e' : trend < 0 ? '#34d399' : '#64748b';
@@ -12,20 +12,20 @@ const KPICard = ({ title, value, subtitle, trend, icon, color = '#00e5ff' }) => 
 
   return (
     <div className="kpi-card">
-      <div className="kpi-icon">
-        <Icon icon={icon} width={14} style={{ color: '#475569' }} />
-      </div>
-      <div className="kpi-content">
-        <span className="kpi-label">{title}</span>
+      <div className="kpi-value-row">
         <span className="kpi-value" style={{ color }}>{value}</span>
+        {trend !== undefined && trend !== 0 && (
+          <div className="kpi-trend" style={{ color: trendColor }}>
+            <Icon icon={trendIcon} width={12} />
+            <span>{Math.abs(trend).toFixed(0)}%</span>
+          </div>
+        )}
+      </div>
+      <div className="kpi-label-row">
+        <Icon icon={icon} width={12} style={{ color: '#475569' }} />
+        <span className="kpi-label">{title}</span>
         {subtitle && <span className="kpi-unit">{subtitle}</span>}
       </div>
-      {trend !== undefined && trend !== 0 && (
-        <div className="kpi-trend" style={{ color: trendColor }}>
-          <Icon icon={trendIcon} width={12} />
-          <span>{Math.abs(trend).toFixed(0)}%</span>
-        </div>
-      )}
     </div>
   );
 };

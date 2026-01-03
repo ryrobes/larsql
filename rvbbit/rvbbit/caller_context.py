@@ -11,7 +11,7 @@ for DuckDB UDFs (which execute in DuckDB's internal thread pool where contextvar
 """
 
 from contextvars import ContextVar
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import threading
 
 
@@ -116,8 +116,13 @@ def get_caller_id(connection_id: str = None) -> Optional[str]:
     with _registry_lock:
         if _global_caller_registry:
             # Return the first (and likely only) caller_id
-            return next(iter(_global_caller_registry.values()))[0]
+            result = next(iter(_global_caller_registry.values()))[0]
+            # DEBUG: Log when we fall back to global registry
+            print(f"[caller_context] get_caller_id() using global registry fallback: {result}")
+            return result
 
+    # DEBUG: Log when no caller_id is found
+    print(f"[caller_context] get_caller_id() returning None - no caller context set")
     return None
 
 

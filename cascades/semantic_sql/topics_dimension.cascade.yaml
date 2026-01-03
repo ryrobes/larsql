@@ -1,0 +1,95 @@
+# TOPICS - Semantic Topic Dimension
+# A dimension function that extracts topics from a collection and assigns each value to a topic.
+#
+# SQL Usage:
+#   SELECT state, TOPICS(title, 8) as topic, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY state, TOPICS(title, 8)
+#
+#   -- With custom focus:
+#   SELECT TOPICS(observed, 5, 'creature behavior') as behavior_type, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY TOPICS(observed, 5, 'creature behavior')
+
+cascade_id: topics_dimension
+internal: true 
+
+description: |
+  Semantic topic dimension function. Extracts N topics from a collection of texts,
+  then assigns each text to the most relevant topic.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  num_topics: Number of topics to extract (default 8)
+  focus: Optional focus/hint for topic extraction
+
+sql_function:
+  name: topics
+  description: |
+    Extract topics from text collection and assign each text to a topic.
+    First arg is the column, remaining args are modifiers.
+
+  shape: DIMENSION
+  mode: mapping  # Returns {mapping: {value: topic}}
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source  # This is the column to bucket
+    - name: num_topics
+      type: INTEGER
+      default: 8
+    - name: focus
+      type: VARCHAR
+      default: null
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: extract_and_assign
+    #model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Analyze these {{ input.texts | length }} texts and:
+      1. Extract {{ input.num_topics | default(8) }} meaningful topic categories
+      2. Assign each text to its best-matching topic
+
+      {% if input.focus %}
+      Focus on: {{ input.focus }}
+      {% endif %}
+
+      Texts to analyze (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its assigned topic:
+
+      {
+        "mapping": {
+          "0": "Topic Name A",
+          "1": "Topic Name B",
+          ...
+        }
+      }
+
+      IMPORTANT:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
+      - Topic names should be concise but descriptive (2-5 words)
+      - Every input text must be assigned to exactly one topic
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+      max_attempts: 3 # since we are using output_schema, loop_until validation is implied if max_attempts > 1
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

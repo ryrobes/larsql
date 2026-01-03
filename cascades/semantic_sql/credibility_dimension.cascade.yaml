@@ -1,0 +1,117 @@
+# CREDIBILITY - Semantic Credibility Dimension
+# A dimension function that rates credibility/reliability of text descriptions.
+#
+# SQL Usage:
+#   SELECT credibility(observed) as cred_level, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY credibility(observed)
+#
+#   -- With strictness modifier:
+#   SELECT credibility(observed, 'strict') as cred_level, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY credibility(observed, 'strict')
+#
+#   -- With custom number of levels:
+#   SELECT credibility(observed, 'balanced', 3) as cred_level, COUNT(*)
+#   FROM bigfoot_vw
+#   GROUP BY credibility(observed, 'balanced', 3)
+
+cascade_id: credibility_dimension
+internal: true 
+
+description: |
+  Semantic credibility dimension function. Analyzes reliability/trustworthiness
+  of witness descriptions or claims with configurable strictness.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  strictness: Evaluation strictness ('lenient', 'balanced', 'strict')
+  num_levels: Number of credibility levels (default 5)
+
+sql_function:
+  name: credibility
+  description: |
+    Analyze credibility/reliability of text descriptions.
+    First arg is the column, remaining args are modifiers.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: strictness
+      type: VARCHAR
+      default: balanced
+    - name: num_levels
+      type: INTEGER
+      default: 5
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: analyze_credibility
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Analyze the credibility of these {{ input.texts | length }} descriptions.
+
+      EVALUATION STRICTNESS: {{ input.strictness | default('balanced') }}
+      {% if input.strictness == 'strict' %}
+      Apply STRICT criteria:
+      - Require specific details (dates, times, measurements)
+      - Penalize vague language heavily
+      - Require corroborating factors
+      {% elif input.strictness == 'lenient' %}
+      Apply LENIENT criteria:
+      - Accept general descriptions
+      - Give benefit of doubt
+      - Focus on internal consistency
+      {% else %}
+      Apply BALANCED criteria:
+      - Look for reasonable detail
+      - Consider internal consistency
+      - Weigh specificity appropriately
+      {% endif %}
+
+      Use {{ input.num_levels | default(5) }} credibility levels, for example:
+      - "Very Low Credibility"
+      - "Low Credibility"
+      - "Moderate Credibility"
+      - "High Credibility"
+      - "Very High Credibility"
+
+      Descriptions to analyze (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its credibility level:
+
+      {
+        "mapping": {
+          "0": "Credibility Level",
+          "1": "Credibility Level",
+          ...
+        }
+      }
+
+      IMPORTANT:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
+      - Credibility level names should be consistent
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping
