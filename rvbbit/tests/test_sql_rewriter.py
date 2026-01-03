@@ -43,6 +43,18 @@ def test_not_rvbbit_statement():
     assert not _is_rvbbit_statement("-- RVBBIT MAP 'x' USING (SELECT 1)")  # comment
 
 
+def test_detect_semantic_sql_newer_operators_for_logging():
+    """Should detect newer semantic operators so SQL Trail logging runs."""
+    # Function-style (short alias): aligns(...)
+    assert _is_rvbbit_statement("SELECT ALIGNS(text, 'SQL is good for AI') as score FROM docs")
+    # Infix style: ALIGNS WITH
+    assert _is_rvbbit_statement("SELECT * FROM policies WHERE description ALIGNS WITH 'customer-first values'")
+    # ASK infix operator
+    assert _is_rvbbit_statement("SELECT body ASK 'summarize in 5 words' FROM emails")
+    # Vector search function-style operator
+    assert _is_rvbbit_statement("SELECT * FROM VECTOR_SEARCH('eco', 'products', 5)")
+
+
 # ============================================================================
 # Parsing Tests
 # ============================================================================

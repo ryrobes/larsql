@@ -636,6 +636,94 @@ def _fix_double_where(query: str) -> str:
     return result
 
 
+def _rewrite_dynamic_infix_operators(
+    line: str,
+    annotation_prefix: str
+) -> str:
+    """
+    Generic rewriter for ALL infix operators using cascade registry.
+
+    Handles operators like:
+        col OPERATOR 'value' → sql_function_name(col, 'value')
+        col OPERATOR other_col → sql_function_name(col, other_col)
+
+    Automatically works with user-created cascades!
+
+    This replaces all the hardcoded _rewrite_means(), _rewrite_about(), etc.
+    functions with a single dynamic implementation.
+
+    Args:
+        line: SQL line to rewrite
+        annotation_prefix: Annotation prefix to inject into criteria
+
+    Returns:
+        Rewritten line with UDF calls
+    """
+    from .dynamic_operators import get_operator_patterns_cached
+
+    try:
+        from rvbbit.semantic_sql.registry import get_sql_function_registry
+    except ImportError:
+        # Registry not available - return line unchanged
+        return line
+
+    result = line
+    patterns_cache = get_operator_patterns_cached()
+    registry = get_sql_function_registry()
+
+    # Process each infix operator found by dynamic detection
+    # Sort by length (descending) to handle multi-word operators first
+    # e.g., "ALIGNS WITH" before "ALIGNS"
+    infix_operators = sorted(patterns_cache.get('infix', set()), key=len, reverse=True)
+
+    for operator_keyword in infix_operators:
+        # Find SQL function for this operator
+        matching_funcs = [
+            (name, entry) for name, entry in registry.items()
+            if any(operator_keyword.upper() in op.upper() for op in entry.operators)
+        ]
+
+        if not matching_funcs:
+            continue
+
+        func_name, entry = matching_funcs[0]
+
+        # Check if this is a word-based operator or symbol operator
+        is_word_operator = operator_keyword.replace('_', '').replace(' ', '').isalnum()
+
+        if is_word_operator:
+            # Word-based operator (MEANS, ABOUT, ALIGNS, ASK, etc.)
+            # Pattern: col OPERATOR 'value' or col OPERATOR other_col
+            # Use word boundaries to avoid false matches
+            pattern = rf'(\w+(?:\.\w+)?)\s+{re.escape(operator_keyword)}\s+(\'[^\']*\'|"[^"]*"|\w+(?:\.\w+)?)'
+        else:
+            # Symbol operator (~, !~, etc.)
+            # Pattern: col OPERATOR 'value' or col OPERATOR other_col
+            pattern = rf'(\w+(?:\.\w+)?)\s*{re.escape(operator_keyword)}\s*(\'[^\']*\'|"[^"]*"|\w+(?:\.\w+)?)'
+
+        def replace_operator(match):
+            col = match.group(1)
+            value = match.group(2)
+
+            # Inject annotation prefix if the value is a quoted string
+            if annotation_prefix and value.startswith(("'", '"')):
+                quote = value[0]
+                inner = value[1:-1]
+                value = f"{quote}{annotation_prefix}{inner}{quote}"
+
+            # Generate function call with correct argument order
+            # First arg is always the text column, second is the criterion/value
+            return f"{func_name}({col}, {value})"
+
+        old_result = result
+        result = re.sub(pattern, replace_operator, result, flags=re.IGNORECASE)
+
+        if result != old_result:
+            log.debug(f"[dynamic_rewrite] {operator_keyword}: {old_result.strip()[:60]}... → {result.strip()[:60]}...")
+
+    return result
+
+
 def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
     """Rewrite semantic operators in a single line."""
     result = line
@@ -652,48 +740,71 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
     if annotation and annotation.threshold is not None:
         default_threshold = annotation.threshold
 
-    # ORDER MATTERS: Process compound operators before simple ones
-    # Also process negated forms BEFORE non-negated to avoid partial matches
+    # ===== LEGACY: Hardcoded rewrites for complex operators =====
+    # These handle special cases that need custom logic:
+    # - ABOUT with threshold comparisons (> 0.7, etc.)
+    # - NOT operators with negation
+    # - RELEVANCE TO in ORDER BY context
+    # - SEMANTIC JOIN (multi-keyword transformation)
+    #
+    # TODO (Phase 4): Migrate these to generic rewriter with enhanced pattern matching
 
-    # 1. Rewrite: SEMANTIC JOIN (must be before ~ so we can match the full pattern)
+    # 1. Rewrite: SEMANTIC JOIN (complex multi-keyword transformation)
     result = _rewrite_semantic_join(result, annotation_prefix)
 
-    # 2. Rewrite: ORDER BY col NOT RELEVANCE TO 'query' → ORDER BY score('query', col) ASC
-    # Must be before RELEVANCE TO
+    # 2. Rewrite: ORDER BY col NOT RELEVANCE TO 'query'
+    # Special: ORDER BY context + negation
     result = _rewrite_not_relevance_to(result, annotation_prefix)
 
-    # 3. Rewrite: ORDER BY col RELEVANCE TO 'query' → ORDER BY score('query', col) DESC
+    # 3. Rewrite: ORDER BY col RELEVANCE TO 'query'
+    # Special: ORDER BY context
     result = _rewrite_relevance_to(result, annotation_prefix)
 
     # 4. Rewrite: col NOT MEANS 'criteria' → NOT matches('criteria', col)
-    # Must be before MEANS
+    # Special: Negation
     result = _rewrite_not_means(result, annotation_prefix)
 
-    # 5. Rewrite: col MEANS 'criteria' → matches('criteria', col)
-    result = _rewrite_means(result, annotation_prefix)
-
-    # 6. Rewrite: col NOT ABOUT 'criteria' → score('criteria', col) <= threshold
-    # Must be before ABOUT
+    # 5. Rewrite: col NOT ABOUT 'criteria' → score('criteria', col) <= threshold
+    # Special: Negation + threshold inversion
     result = _rewrite_not_about(result, annotation_prefix, default_threshold)
 
-    # 7. Rewrite: col ABOUT 'criteria' [> threshold] → score('criteria', col) > threshold
+    # 6. Rewrite: col ABOUT 'criteria' [> threshold]
+    # Special: Threshold comparison operators
     result = _rewrite_about(result, annotation_prefix, default_threshold)
 
-    # 8. Rewrite: a !~ b → NOT match_pair(a, b, 'same entity')
-    # Must be before ~ to avoid partial match
+    # 7. Rewrite: a !~ b → NOT match_pair(a, b, 'same entity')
+    # Special: Symbol operator + negation
     result = _rewrite_not_tilde(result, annotation_prefix)
 
-    # 9. Rewrite: a ~ b [AS 'relationship'] → match_pair(a, b, 'relationship')
-    # Must be LAST since other patterns may contain ~
+    # NOTE: The following operators are now handled by _rewrite_dynamic_infix_operators()
+    # but we keep the hardcoded versions as fallback for backwards compatibility:
+    # - MEANS (now dynamic)
+    # - ~ tilde (now dynamic)
+    # - IMPLIES (now dynamic)
+    # - CONTRADICTS (now dynamic)
+    # - ASK (NEW - only works via dynamic)
+    # - ALIGNS (NEW - only works via dynamic)
+    # - EXTRACTS (NEW - only works via dynamic)
+    # - SOUNDS_LIKE (NEW - only works via dynamic)
+
+    # Keep these for backwards compatibility (will be removed in Phase 4)
+    result = _rewrite_means(result, annotation_prefix)
     result = _rewrite_tilde(result, annotation_prefix)
-
-    # 10. Rewrite: col IMPLIES 'conclusion' → implies(col, 'conclusion')
     result = _rewrite_implies(result, annotation_prefix)
-
-    # 11. Rewrite: col CONTRADICTS other_col → contradicts(col, other_col)
     result = _rewrite_contradicts(result, annotation_prefix)
 
+    # ===== PHASE 2: GENERIC DYNAMIC REWRITING (NEW!) =====
+    # Run this AFTER the special-case rewrites above so we don’t break:
+    # - ABOUT default thresholds
+    # - ORDER BY ... RELEVANCE TO ...
+    # - Other context-sensitive patterns
+    #
+    # This enables ASK, ALIGNS WITH, EXTRACTS, SOUNDS_LIKE and any user-created
+    # infix operators to work without additional hardcoding.
+    result = _rewrite_dynamic_infix_operators(result, annotation_prefix)
+
     # 12. Embedding operators (EMBED, VECTOR_SEARCH, SIMILAR_TO)
+    # Special: Need query-level rewriting (not just line-level)
     from rvbbit.sql_tools.embedding_operator_rewrites import rewrite_embedding_operators
     result = rewrite_embedding_operators(result, annotation_prefix)
 
@@ -721,7 +832,8 @@ def _rewrite_means(line: str, annotation_prefix: str) -> str:
         criteria = match.group(2)
         # Inject annotation prefix into criteria
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col})"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}')"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -745,7 +857,8 @@ def _rewrite_not_means(line: str, annotation_prefix: str) -> str:
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"NOT {fn_name}('{full_criteria}', {col})"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"NOT {fn_name}({col}, '{full_criteria}')"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -772,7 +885,8 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
         operator = match.group(3)
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col}) {operator} {threshold}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}') {operator} {threshold}"
 
     result = re.sub(pattern_with_threshold, replacer_with_threshold, line, flags=re.IGNORECASE)
 
@@ -783,7 +897,8 @@ def _rewrite_about(line: str, annotation_prefix: str, default_threshold: float) 
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col}) > {default_threshold}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}') > {default_threshold}"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -811,7 +926,8 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         # For NOT ABOUT with >, we invert: NOT ABOUT 'x' > 0.7 means score <= 0.7
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col}) <= {threshold}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}') <= {threshold}"
 
     result = re.sub(pattern_with_threshold, replacer_with_threshold, line, flags=re.IGNORECASE)
 
@@ -824,7 +940,8 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         criteria = match.group(2)
         threshold = match.group(4)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col}) >= {threshold}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}') >= {threshold}"
 
     result = re.sub(pattern_with_lt, replacer_with_lt, result, flags=re.IGNORECASE)
 
@@ -835,7 +952,8 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
         col = match.group(1)
         criteria = match.group(2)
         full_criteria = f"{annotation_prefix}{criteria}" if annotation_prefix else criteria
-        return f"{fn_name}('{full_criteria}', {col}) <= {default_threshold}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"{fn_name}({col}, '{full_criteria}') <= {default_threshold}"
 
     result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
 
@@ -955,7 +1073,8 @@ def _rewrite_relevance_to(line: str, annotation_prefix: str) -> str:
         query = match.group(2)
         direction = match.group(3) or 'DESC'  # Default to DESC (highest relevance first)
         full_query = f"{annotation_prefix}{query}" if annotation_prefix else query
-        return f"ORDER BY {fn_name}('{full_query}', {col}) {direction}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"ORDER BY {fn_name}({col}, '{full_query}') {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 
@@ -980,7 +1099,8 @@ def _rewrite_not_relevance_to(line: str, annotation_prefix: str) -> str:
         query = match.group(2)
         direction = match.group(3) or 'ASC'  # Default to ASC (least relevant first for NOT)
         full_query = f"{annotation_prefix}{query}" if annotation_prefix else query
-        return f"ORDER BY {fn_name}('{full_query}', {col}) {direction}"
+        # NEW: Use (text, criterion) order to match cascade YAMLs
+        return f"ORDER BY {fn_name}({col}, '{full_query}') {direction}"
 
     return re.sub(pattern, replacer, line, flags=re.IGNORECASE)
 

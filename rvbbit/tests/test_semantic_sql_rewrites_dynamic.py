@@ -509,6 +509,24 @@ def test_spot_check_about_operator():
     assert '0.7' in rewritten
 
 
+def test_spot_check_relevance_to_order_by_is_not_broken():
+    """Spot check: ORDER BY ... RELEVANCE TO ... should not leave a stray TO token."""
+    sql = "SELECT * FROM docs ORDER BY content RELEVANCE TO 'quarterly earnings'"
+    rewritten = rewrite_rvbbit_syntax(sql)
+    assert ('semantic_score' in rewritten or 'score' in rewritten)
+    assert "'quarterly earnings'" in rewritten
+    assert "TO) 'quarterly earnings'" not in rewritten
+
+
+def test_spot_check_aligns_with_is_not_broken():
+    """Spot check: ALIGNS WITH should rewrite as a single operator phrase."""
+    sql = "SELECT * FROM policies WHERE description ALIGNS WITH 'customer-first values'"
+    rewritten = rewrite_rvbbit_syntax(sql)
+    assert ('semantic_aligns' in rewritten or 'aligns' in rewritten)
+    assert "'customer-first values'" in rewritten
+    assert ", WITH)" not in rewritten
+
+
 def test_spot_check_embed_operator():
     """Spot check: EMBED operator with context injection."""
     sql = "SELECT id, EMBED(description) FROM products"

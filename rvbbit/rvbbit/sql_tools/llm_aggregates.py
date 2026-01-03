@@ -801,8 +801,8 @@ Data ({len(values)} items):
 # ============================================================================
 
 def llm_matches_impl(
-    criteria: str,
     text: str,
+    criteria: str,
     model: str = None,
     use_cache: bool = True
 ) -> bool:
@@ -812,16 +812,18 @@ def llm_matches_impl(
     Use in WHERE clauses for semantic filtering:
 
         SELECT * FROM products
-        WHERE llm_matches('is eco-friendly or sustainable', description);
+        WHERE llm_matches(description, 'is eco-friendly or sustainable');
 
     Args:
-        criteria: What to check for (e.g., "mentions quality issues")
-        text: The text to evaluate
+        text: The text to evaluate (FIRST parameter - matches cascade YAML)
+        criteria: What to check for (e.g., "mentions quality issues") (SECOND parameter)
         model: Optional model override
         use_cache: Whether to cache results (default True)
 
     Returns:
         True if text matches criteria, False otherwise
+
+    PHASE 3: Now routes through semantic_matches cascade for full RVBBIT features!
     """
     if not text or not text.strip():
         return False
@@ -840,6 +842,44 @@ def llm_matches_impl(
         if cached is not None:
             return cached.lower() == "true"
 
+    # PHASE 3: Route through cascade instead of direct LLM call
+    try:
+        result = _execute_cascade(
+            "semantic_matches",
+            {"text": text, "criterion": criteria},
+            fallback=lambda **kw: _llm_matches_fallback(
+                kw.get("text"), kw.get("criterion"), model, use_cache
+            )
+        )
+
+        # Parse result (cascade returns "true"/"false" string or boolean)
+        if isinstance(result, bool):
+            is_match = result
+        else:
+            result_str = str(result).strip().lower()
+            is_match = result_str in ("yes", "true", "1", "y")
+
+        # Cache result
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
+
+        return is_match
+
+    except Exception as e:
+        # Fallback to direct implementation if cascade fails
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"Cascade execution failed for semantic_matches: {e}, using fallback")
+        return _llm_matches_fallback(text, criteria, model, use_cache)
+
+
+def _llm_matches_fallback(
+    text: str,
+    criteria: str,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """Fallback implementation when cascade not available."""
     prompt = f"""Does the following text match this criteria: "{criteria}"?
 
 Text: {text[:2000]}
@@ -850,18 +890,12 @@ Answer with ONLY "yes" or "no", nothing else."""
     result_lower = result.strip().lower()
 
     # Parse yes/no
-    is_match = result_lower in ("yes", "true", "1", "y")
-
-    # Cache result
-    if use_cache:
-        _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
-
-    return is_match
+    return result_lower in ("yes", "true", "1", "y")
 
 
 def llm_score_impl(
-    criteria: str,
     text: str,
+    criteria: str,
     model: str = None,
     use_cache: bool = True
 ) -> float:
@@ -870,19 +904,21 @@ def llm_score_impl(
 
     Use for ranking or threshold filtering:
 
-        SELECT *, llm_score('relevance to sustainability', description) as score
+        SELECT *, llm_score(description, 'relevance to sustainability') as score
         FROM products
-        WHERE llm_score('relevance to sustainability', description) > 0.7
+        WHERE llm_score(description, 'relevance to sustainability') > 0.7
         ORDER BY score DESC;
 
     Args:
-        criteria: What to score against (e.g., "relevance to machine learning")
-        text: The text to evaluate
+        text: The text to evaluate (FIRST parameter - matches cascade YAML)
+        criteria: What to score against (e.g., "relevance to machine learning") (SECOND parameter)
         model: Optional model override
         use_cache: Whether to cache results (default True)
 
     Returns:
         Float between 0.0 (no match) and 1.0 (perfect match)
+
+    PHASE 3: Now routes through semantic_score cascade for full RVBBIT features!
     """
     if not text or not text.strip():
         return 0.0
@@ -904,6 +940,44 @@ def llm_score_impl(
             except ValueError:
                 pass
 
+    # PHASE 3: Route through cascade instead of direct LLM call
+    try:
+        result = _execute_cascade(
+            "semantic_score",
+            {"text": text, "criterion": criteria},
+            fallback=lambda **kw: _llm_score_fallback(
+                kw.get("text"), kw.get("criterion"), model, use_cache
+            )
+        )
+
+        # Parse score
+        try:
+            score = float(result)
+            score = max(0.0, min(1.0, score))  # Clamp to valid range
+        except (ValueError, TypeError):
+            score = 0.0
+
+        # Cache result
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, str(score), ttl=None)
+
+        return score
+
+    except Exception as e:
+        # Fallback to direct implementation if cascade fails
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"Cascade execution failed for semantic_score: {e}, using fallback")
+        return _llm_score_fallback(text, criteria, model, use_cache)
+
+
+def _llm_score_fallback(
+    text: str,
+    criteria: str,
+    model: str = None,
+    use_cache: bool = True
+) -> float:
+    """Fallback implementation when cascade not available."""
     prompt = f"""Score how well the following text matches this criteria: "{criteria}"
 
 Text: {text[:2000]}
@@ -918,10 +992,6 @@ Return ONLY a decimal number between 0.0 (no match) and 1.0 (perfect match), not
         score = max(0.0, min(1.0, score))  # Clamp to valid range
     except ValueError:
         score = 0.0
-
-    # Cache result
-    if use_cache:
-        _cache_set(_agg_cache, cache_key, str(score), ttl=None)
 
     return score
 
@@ -1020,6 +1090,8 @@ def llm_implies_impl(
 
     Returns:
         True if the premise implies the conclusion
+
+    PHASE 3: Now routes through semantic_implies cascade for full RVBBIT features!
     """
     if not premise or not conclusion:
         return False
@@ -1038,6 +1110,44 @@ def llm_implies_impl(
         if cached is not None:
             return cached.lower() == "true"
 
+    # PHASE 3: Route through cascade instead of direct LLM call
+    try:
+        result = _execute_cascade(
+            "semantic_implies",
+            {"premise": premise, "conclusion": conclusion},
+            fallback=lambda **kw: _llm_implies_fallback(
+                kw.get("premise"), kw.get("conclusion"), context, model, use_cache
+            )
+        )
+
+        # Parse result
+        if isinstance(result, bool):
+            is_implied = result
+        else:
+            result_lower = str(result).strip().lower()
+            is_implied = result_lower in ("yes", "true", "1", "y")
+
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, "true" if is_implied else "false", ttl=None)
+
+        return is_implied
+
+    except Exception as e:
+        # Fallback to direct implementation if cascade fails
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"Cascade execution failed for semantic_implies: {e}, using fallback")
+        return _llm_implies_fallback(premise, conclusion, context, model, use_cache)
+
+
+def _llm_implies_fallback(
+    premise: str,
+    conclusion: str,
+    context: str = None,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """Fallback implementation when cascade not available."""
     context_str = f"\nContext: {context}" if context else ""
 
     prompt = f"""Does the first statement logically imply or entail the second statement?
@@ -1051,12 +1161,7 @@ Answer with ONLY "yes" or "no", nothing else."""
     result = _call_llm(prompt, model=model)
     result_lower = result.strip().lower()
 
-    is_implied = result_lower in ("yes", "true", "1", "y")
-
-    if use_cache:
-        _cache_set(_agg_cache, cache_key, "true" if is_implied else "false", ttl=None)
-
-    return is_implied
+    return result_lower in ("yes", "true", "1", "y")
 
 
 def llm_contradicts_impl(
@@ -1087,6 +1192,8 @@ def llm_contradicts_impl(
 
     Returns:
         True if the statements contradict each other
+
+    PHASE 3: Now routes through semantic_contradicts cascade for full RVBBIT features!
     """
     if not statement1 or not statement2:
         return False
@@ -1106,6 +1213,44 @@ def llm_contradicts_impl(
         if cached is not None:
             return cached.lower() == "true"
 
+    # PHASE 3: Route through cascade instead of direct LLM call
+    try:
+        result = _execute_cascade(
+            "semantic_contradicts",
+            {"text_a": statement1, "text_b": statement2},
+            fallback=lambda **kw: _llm_contradicts_fallback(
+                kw.get("text_a"), kw.get("text_b"), context, model, use_cache
+            )
+        )
+
+        # Parse result
+        if isinstance(result, bool):
+            is_contradiction = result
+        else:
+            result_lower = str(result).strip().lower()
+            is_contradiction = result_lower in ("yes", "true", "1", "y")
+
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, "true" if is_contradiction else "false", ttl=None)
+
+        return is_contradiction
+
+    except Exception as e:
+        # Fallback to direct implementation if cascade fails
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"Cascade execution failed for semantic_contradicts: {e}, using fallback")
+        return _llm_contradicts_fallback(statement1, statement2, context, model, use_cache)
+
+
+def _llm_contradicts_fallback(
+    statement1: str,
+    statement2: str,
+    context: str = None,
+    model: str = None,
+    use_cache: bool = True
+) -> bool:
+    """Fallback implementation when cascade not available."""
     context_str = f"\nContext: {context}" if context else ""
 
     prompt = f"""Do these two statements contradict each other? That is, can they both be true at the same time?
@@ -1120,12 +1265,7 @@ Answer with ONLY "yes" or "no", nothing else."""
     result = _call_llm(prompt, model=model)
     result_lower = result.strip().lower()
 
-    is_contradiction = result_lower in ("yes", "true", "1", "y")
-
-    if use_cache:
-        _cache_set(_agg_cache, cache_key, "true" if is_contradiction else "false", ttl=None)
-
-    return is_contradiction
+    return result_lower in ("yes", "true", "1", "y")
 
 
 def llm_match_template_impl(
@@ -1986,8 +2126,9 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
     # canonical (llm_*) and short (matches, score) names
 
     # LLM_MATCHES / MATCHES - semantic boolean filter
-    def matches_2(criteria: str, text: str) -> bool:
-        return llm_matches_impl(criteria, text)
+    # NEW: Updated to (text, criteria) order to match cascade YAMLs
+    def matches_2(text: str, criteria: str) -> bool:
+        return llm_matches_impl(text, criteria)
 
     for name in ["llm_matches", "matches"]:
         try:
@@ -1996,8 +2137,9 @@ def register_llm_aggregates(connection, config: Dict[str, Any] = None):
             log.warning(f"Could not register {name}: {e}")
 
     # LLM_SCORE / SCORE - semantic scoring (0.0-1.0)
-    def score_2(criteria: str, text: str) -> float:
-        return llm_score_impl(criteria, text)
+    # NEW: Updated to (text, criteria) order to match cascade YAMLs
+    def score_2(text: str, criteria: str) -> float:
+        return llm_score_impl(text, criteria)
 
     for name in ["llm_score", "score"]:
         try:

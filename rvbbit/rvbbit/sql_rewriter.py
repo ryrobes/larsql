@@ -184,13 +184,52 @@ def _is_rvbbit_statement(query: str) -> bool:
     """Check if query contains RVBBIT syntax, semantic operators, or UDF function calls."""
     import re
 
+    # Normalize query for detection (strip inline -- comments, normalize whitespace)
+    raw = query.strip()
+    lines = [line.split('--')[0].strip() for line in raw.split('\n')]
+    normalized = ' '.join(line for line in lines if line)
+    if not normalized:
+        return False
+
+    # Also create a version with string literals stripped to reduce false positives
+    # (e.g., SELECT 'ALIGNS' should not be treated as a semantic operator query).
+    normalized_no_strings = re.sub(r"\'(?:\'\'|[^'])*\'", "''", normalized)
+    normalized_no_strings = re.sub(r"\"(?:\"\"|[^\"])*\"", "\"\"", normalized_no_strings)
+
     # Check for RVBBIT MAP/RUN syntax first
-    if _is_map_run_statement(query):
+    if _is_map_run_statement(normalized):
         return True
+
+    # Dynamic detection: if the query contains ANY configured semantic SQL operator
+    # (infix or function-style keywords from the cascade registry), treat it as RVBBIT.
+    # This keeps SQL Trail logging working as new operators are added.
+    try:
+        from rvbbit.sql_tools.dynamic_operators import has_any_semantic_operator
+        if has_any_semantic_operator(normalized_no_strings):
+            return True
+    except Exception:
+        # Best-effort: fall back to static patterns below
+        pass
+
+    # Dynamic detection: if the query calls any registered SQL function from the cascade
+    # registry (including semantic_* short aliases), treat it as RVBBIT.
+    try:
+        from rvbbit.semantic_sql.registry import get_sql_function_registry
+        sql_lower_norm = normalized.lower()
+        for fn_name in get_sql_function_registry().keys():
+            fn_lower = fn_name.lower()
+            if re.search(rf'\b{re.escape(fn_lower)}\s*\(', sql_lower_norm):
+                return True
+            if fn_lower.startswith('semantic_'):
+                alias = fn_lower.replace('semantic_', '', 1)
+                if re.search(rf'\b{re.escape(alias)}\s*\(', sql_lower_norm):
+                    return True
+    except Exception:
+        pass
 
     # Check for semantic operators (MEANS, ABOUT, IMPLIES, etc.)
     # These get rewritten to UDF calls but need to be detected BEFORE rewriting
-    query_upper = query.upper()
+    query_upper = normalized_no_strings.upper()
     semantic_patterns = [
         r'\bMEANS\s+\'',             # col MEANS 'x'
         r'\bNOT\s+MEANS\s+\'',       # col NOT MEANS 'x'
@@ -212,7 +251,7 @@ def _is_rvbbit_statement(query: str) -> bool:
         return True
 
     # Check for RVBBIT UDF function calls (already rewritten or direct)
-    sql_lower = query.lower()
+    sql_lower = normalized.lower()
     udf_patterns = [
         # RVBBIT core
         r'\brvbbit_udf\s*\(', r'\brvbbit\s*\(', r'\brvbbit_cascade_udf\s*\(',

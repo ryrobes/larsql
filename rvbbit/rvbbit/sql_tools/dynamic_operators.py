@@ -81,26 +81,57 @@ def initialize_dynamic_patterns(force: bool = False) -> Dict[str, Set[str]]:
     infix_operators = set()
     function_names = set()
 
+    def _extract_infix_operator_phrase(operator_pattern: str) -> Optional[str]:
+        """
+        Extract an infix operator phrase from a cascade operator pattern.
+
+        Examples:
+            "{{ text }} MEANS {{ criterion }}"          -> "MEANS"
+            "{{ text }} RELEVANCE TO {{ criterion }}"   -> "RELEVANCE TO"
+            "{{ text }} ALIGNS WITH {{ narrative }}"    -> "ALIGNS WITH"
+            "{{ text }} ~ {{ criterion }}"              -> "~"
+            "{{ text }} ASK '{{ prompt }}'"             -> "ASK"
+
+        Notes:
+        - We stop before quotes/parentheses so patterns like ASK '{{ prompt }}' yield "ASK".
+        - We only accept tokens made of letters/underscores and common operator symbols.
+        """
+        if "}}" not in operator_pattern:
+            return None
+
+        after = operator_pattern.split("}}", 1)[1].lstrip()
+        if not after:
+            return None
+
+        stop_candidates = []
+        for stop in ("{{", "'", '"', "(", ")", ","):
+            idx = after.find(stop)
+            if idx != -1:
+                stop_candidates.append(idx)
+        end = min(stop_candidates) if stop_candidates else len(after)
+
+        segment = after[:end].strip()
+        if not segment:
+            return None
+
+        segment = re.sub(r"\s+", " ", segment)
+
+        # Only accept sane operator phrases (reject commas, stray punctuation, etc.)
+        if not re.match(r"^[A-Za-z_~!<>=]+(?:\s+[A-Za-z_~!<>=]+)*$", segment):
+            return None
+
+        return segment
+
     for func_name, entry in registry.items():
         for operator_pattern in entry.operators:
             # Extract operator keywords from pattern
 
-            # Pattern 1: Infix operators (e.g., "{{ text }} MEANS {{ criterion }}")
-            # Look for WORD between }} and {{
-            infix_match = re.search(r'\}\}\s+(\w+)\s+', operator_pattern)
-            if infix_match:
-                keyword = infix_match.group(1).upper()
+            # Pattern 1: Infix operators (single or multi-word)
+            infix_phrase = _extract_infix_operator_phrase(operator_pattern)
+            if infix_phrase:
+                keyword = infix_phrase.upper()
                 infix_operators.add(keyword)
                 logger.debug(f"Found infix operator: {keyword} from {func_name}")
-                continue
-
-            # Pattern 1b: Symbol operators (e.g., "{{ text }} ~ {{ criterion }}")
-            # Look for single-char symbol between }} and {{
-            symbol_match = re.search(r'\}\}\s+([~!<>=]+)\s+', operator_pattern)
-            if symbol_match:
-                keyword = symbol_match.group(1)
-                infix_operators.add(keyword)
-                logger.debug(f"Found symbol operator: {keyword} from {func_name}")
                 continue
 
             # Pattern 2: Function calls (e.g., "EMBED({{ text }})")

@@ -15,10 +15,11 @@ Core Functions:
 
 import hashlib
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, Set
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,66 @@ SEMANTIC_OPERATORS = {
     'RELEVANCE TO', 'LLM_CASE'
 }
 
+_dynamic_udf_names_cache: Optional[Set[str]] = None
+
+
+def _get_dynamic_udf_names(force: bool = False) -> Set[str]:
+    """
+    UDF-name allowlist used for query fingerprinting.
+
+    Extends the static list with function names discovered from the SQL function
+    cascade registry, including short aliases for semantic_* functions.
+    """
+    global _dynamic_udf_names_cache
+    if _dynamic_udf_names_cache is not None and not force:
+        return _dynamic_udf_names_cache
+
+    names = set(RVBBIT_UDF_NAMES)
+
+    try:
+        from .semantic_sql.registry import get_sql_function_registry
+        registry = get_sql_function_registry()
+        for fn_name, entry in registry.items():
+            fn_lower = str(fn_name).lower()
+            names.add(fn_lower)
+
+            # semantic_aligns -> aligns (pgwire users often call short forms)
+            if fn_lower.startswith('semantic_'):
+                names.add(fn_lower.replace('semantic_', '', 1))
+
+            # Add any function-style aliases present in operator patterns (e.g., TLDR(...))
+            for op in getattr(entry, "operators", []) or []:
+                m = re.match(r'^([A-Z_]+)\s*\(', str(op))
+                if m:
+                    names.add(m.group(1).lower())
+    except Exception:
+        # Best-effort: fall back to the static set
+        pass
+
+    _dynamic_udf_names_cache = names
+    return names
+
+
+def _expand_semantic_aliases(udf_types: List[str]) -> List[str]:
+    """
+    If a query uses a short semantic_* alias (e.g., aligns(...)), also include
+    the canonical semantic_* name (semantic_aligns) so query_type classification
+    and reporting stay consistent.
+    """
+    expanded = set(udf_types)
+    try:
+        from .semantic_sql.registry import get_sql_function_registry
+        for fn_name in get_sql_function_registry().keys():
+            fn_lower = str(fn_name).lower()
+            if fn_lower.startswith('semantic_'):
+                short = fn_lower.replace('semantic_', '', 1)
+                if short in expanded:
+                    expanded.add(fn_lower)
+    except Exception:
+        pass
+
+    return sorted(expanded)
+
 
 def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
     """
@@ -122,6 +183,7 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
         # Fallback: simple hash of raw query
         fingerprint = hashlib.md5(sql.encode()).hexdigest()[:16]
         udf_types = list(set(_extract_udf_types_regex(sql) + semantic_ops_found))
+        udf_types = _expand_semantic_aliases(udf_types)
         return fingerprint, sql, udf_types
 
     try:
@@ -133,6 +195,7 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
 
         # Combine with semantic operators
         udf_types = list(set(udf_types_ast + semantic_ops_found))
+        udf_types = _expand_semantic_aliases(udf_types)
 
         # Normalize: replace literals with placeholders
         normalized = _normalize_literals(parsed)
@@ -148,6 +211,7 @@ def fingerprint_query(sql: str) -> Tuple[str, str, List[str]]:
         logger.debug(f"sqlglot parse failed, using semantic-aware fallback: {e}")
         fingerprint = hashlib.md5(sql.encode()).hexdigest()[:16]
         udf_types = list(set(_extract_udf_types_regex(sql) + semantic_ops_found))
+        udf_types = _expand_semantic_aliases(udf_types)
         return fingerprint, sql, udf_types
 
 
@@ -164,7 +228,10 @@ def _extract_semantic_operators(sql: str) -> List[str]:
     Returns:
         List of detected semantic operator types
     """
-    sql_upper = sql.upper()
+    # Strip string literals to reduce false positives (operator words inside prompts)
+    sql_no_strings = re.sub(r"\'(?:\'\'|[^'])*\'", "''", sql)
+    sql_no_strings = re.sub(r"\"(?:\"\"|[^\"])*\"", "\"\"", sql_no_strings)
+    sql_upper = sql_no_strings.upper()
     detected = []
 
     # Check for each semantic operator
@@ -196,6 +263,40 @@ def _extract_semantic_operators(sql: str) -> List[str]:
             else:
                 detected.append(f'semantic_{op.lower().replace(" ", "_")}')
 
+    # Dynamic semantic operator detection from registry (covers new operators like ALIGNS/ASK/EXTRACTS)
+    try:
+        from rvbbit.sql_tools.dynamic_operators import get_operator_patterns_cached
+        from .semantic_sql.registry import get_sql_function_registry
+
+        patterns = get_operator_patterns_cached()
+        registry = get_sql_function_registry()
+
+        # Detect infix operators (including multi-word phrases like "ALIGNS WITH")
+        for operator_kw in patterns.get("infix", set()):
+            if not operator_kw:
+                continue
+
+            operator_upper = operator_kw.upper()
+
+            # Word-ish operator phrases: use regex with word boundaries (multi-word allowed)
+            is_wordish = operator_kw.replace("_", "").replace(" ", "").isalnum()
+            if is_wordish:
+                op_pattern = re.escape(operator_upper).replace(r"\ ", r"\s+")
+                if not re.search(rf'\b{op_pattern}\b', sql_upper):
+                    continue
+            else:
+                # Symbol operators like ~, !~, etc.
+                if operator_kw not in sql:
+                    continue
+
+            # Map operator keyword to the function name from registry if possible
+            for fn_name, entry in registry.items():
+                if any(operator_upper in str(op).upper() for op in getattr(entry, "operators", []) or []):
+                    detected.append(str(fn_name).lower())
+                    break
+    except Exception:
+        pass
+
     return list(set(detected))
 
 
@@ -203,9 +304,10 @@ def _extract_udf_types_ast(ast: 'exp.Expression') -> List[str]:
     """Extract RVBBIT UDF function calls from parsed AST."""
     udf_types = set()
 
+    dynamic_names = _get_dynamic_udf_names()
     for func in ast.find_all(exp.Func):
         func_name = (func.name or '').lower()
-        if func_name in RVBBIT_UDF_NAMES:
+        if func_name in dynamic_names:
             udf_types.add(func_name)
 
     return sorted(udf_types)
@@ -213,11 +315,10 @@ def _extract_udf_types_ast(ast: 'exp.Expression') -> List[str]:
 
 def _extract_udf_types_regex(sql: str) -> List[str]:
     """Fallback: extract UDF types using regex (when sqlglot fails)."""
-    import re
     sql_lower = sql.lower()
     udf_types = set()
 
-    for udf_name in RVBBIT_UDF_NAMES:
+    for udf_name in _get_dynamic_udf_names():
         # Look for function call pattern: udf_name(
         if re.search(rf'\b{udf_name}\s*\(', sql_lower):
             udf_types.add(udf_name)
