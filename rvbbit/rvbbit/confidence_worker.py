@@ -88,8 +88,8 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
             if poll_count < max_polls - 1:
                 time.sleep(poll_interval)
 
-        if not cost_ready:
-            logger.warning(f"[confidence_worker] Cost data not ready after 10s, proceeding anyway")
+        # if not cost_ready:
+        #     logger.warning(f"[confidence_worker] Cost data not ready after 10s, proceeding anyway")
 
         # Get session info to check if we should assess
         session_query = f"""

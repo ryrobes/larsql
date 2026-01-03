@@ -98,7 +98,7 @@ def _wait_for_cost_data(session_id: str, db, max_wait_seconds: int = 10) -> Opti
 
     # Max wait reached - return data anyway (better than nothing)
     # The cost might still be 0, but we don't want to block indefinitely
-    logger.warning(f"Cost data not ready for {session_id} after {max_wait_seconds}s, proceeding anyway")
+    #logger.warning(f"Cost data not ready for {session_id} after {max_wait_seconds}s, proceeding anyway")
     return session_data
 
 

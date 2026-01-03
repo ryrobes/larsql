@@ -119,6 +119,9 @@ class SemanticAnnotation:
     prompt: Optional[str] = None          # Custom prompt/instructions/model hints
     model: Optional[str] = None           # Explicit model override
     threshold: Optional[float] = None     # Score threshold for ABOUT
+    parallel: Optional[int] = None        # Number of parallel workers (UNION ALL branches)
+    batch_size: Optional[int] = None      # Max rows per batch (for memory control)
+    parallel_scope: str = "operator"      # "operator" (default) or "query" (all operators)
     start_pos: int = 0                    # Start position in query
     end_pos: int = 0                      # End position in query
     line_start: int = 0                   # Line number where annotation starts
@@ -159,8 +162,14 @@ def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
                 )
                 prompt_lines = []
 
+            # Check for standalone keywords first (no colon)
+            content_lower = content.lower()
+            if content_lower in ('parallel', 'parallel execution'):
+                # -- @ parallel (without value)
+                import os
+                current_annotation.parallel = os.cpu_count() or 8
             # Check for key: value pattern
-            if ':' in content and not content.startswith('http'):
+            elif ':' in content and not content.startswith('http'):
                 key, _, value = content.partition(':')
                 key = key.strip().lower()
                 value = value.strip()
@@ -172,6 +181,25 @@ def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
                         current_annotation.threshold = float(value)
                     except ValueError:
                         pass
+                elif key == 'parallel':
+                    try:
+                        # If value is empty or "true", use CPU count as default
+                        if not value or value.lower() in ('true', 'yes'):
+                            import os
+                            current_annotation.parallel = os.cpu_count() or 8
+                        else:
+                            current_annotation.parallel = int(value)
+                    except ValueError:
+                        import os
+                        current_annotation.parallel = os.cpu_count() or 8
+                elif key == 'batch_size':
+                    try:
+                        current_annotation.batch_size = int(value)
+                    except ValueError:
+                        pass
+                elif key == 'parallel_scope':
+                    if value.lower() in ('query', 'operator'):
+                        current_annotation.parallel_scope = value.lower()
                 elif key == 'prompt':
                     prompt_lines.append(value)
                 else:
@@ -239,6 +267,158 @@ def has_semantic_operators(query: str) -> bool:
     return has_any_semantic_operator(query)
 
 
+def _has_aggregate_operators(query: str) -> bool:
+    """
+    Check if query contains aggregate semantic operators.
+
+    Aggregate operators (SUMMARIZE, THEMES, CLUSTER, etc.) are NOT safe for
+    UNION ALL query splitting because they operate on collections of rows.
+    Splitting would create partial aggregates per branch.
+
+    Returns:
+        True if query uses aggregate operators that would break with UNION splitting
+    """
+    import re
+
+    # Aggregate operator keywords (these need GROUP BY or operate on collections)
+    # Use word boundary regex to avoid false positives from string literals
+    aggregate_patterns = [
+        r'\bSUMMARIZE\s*\(',    # SUMMARIZE(texts)
+        r'\bTHEMES\s*\(',       # THEMES(texts, 3)
+        r'\bTOPICS\s*\(',       # TOPICS(texts)
+        r'\bCLUSTER\s*\(',      # CLUSTER(values, 5)
+        r'\bCONSENSUS\s*\(',    # CONSENSUS(texts)
+        r'\bDEDUPE\s*\(',       # DEDUPE(names)
+        r'\bSENTIMENT\s*\(',    # SENTIMENT(texts)
+        r'\bOUTLIERS\s*\(',     # OUTLIERS(texts, 3)
+        r'\bGROUP\s+BY\s+MEANING\s*\(',   # GROUP BY MEANING(col)
+        r'\bGROUP\s+BY\s+TOPICS\s*\(',    # GROUP BY TOPICS(col)
+        # Rewritten aggregate function names
+        r'\bllm_summarize(_\d+)?\s*\(',
+        r'\bllm_themes(_\d+)?\s*\(',
+        r'\bllm_cluster(_\d+)?\s*\(',
+        r'\bllm_consensus(_\d+)?\s*\(',
+        r'\bllm_dedupe(_\d+)?\s*\(',
+        r'\bllm_sentiment(_\d+)?\s*\(',
+        r'\bllm_outliers(_\d+)?\s*\(',
+    ]
+
+    # Check if query matches any aggregate pattern
+    # Using regex with word boundaries to avoid false positives in string literals
+    for pattern in aggregate_patterns:
+        if re.search(pattern, query, re.IGNORECASE):
+            return True
+
+    return False
+
+
+# ============================================================================
+# Parallel Execution via UNION ALL Splitting
+# ============================================================================
+
+def _split_query_for_parallel(query: str, parallel_count: int, batch_size: Optional[int] = None) -> str:
+    """
+    Split query into N UNION ALL branches for parallel execution.
+
+    DuckDB parallelizes UNION ALL branches across multiple threads, so splitting
+    a query enables parallel execution of semantic operators without complex batching.
+
+    Strategy:
+    - Use modulo partitioning: id % N = i for each branch
+    - Distribute LIMIT across branches
+    - Preserve ORDER BY at outer level
+    - Each branch executes semantic operators independently
+
+    Args:
+        query: Original SQL query
+        parallel_count: Number of UNION ALL branches (typically 3-10)
+        batch_size: Max rows per branch (optional, for memory control)
+
+    Returns:
+        Transformed query with UNION ALL branches
+
+    Example:
+        Input:  SELECT * FROM t WHERE col MEANS 'x' LIMIT 100
+        Output: (SELECT * FROM t WHERE id % 5 = 0 AND col MEANS 'x' LIMIT 20)
+                UNION ALL
+                (SELECT * FROM t WHERE id % 5 = 1 AND col MEANS 'x' LIMIT 20)
+                ... (3 more branches)
+    """
+    import re
+
+    # Extract LIMIT clause
+    limit_match = re.search(r'\bLIMIT\s+(\d+)', query, re.IGNORECASE)
+    total_limit = int(limit_match.group(1)) if limit_match else 1000
+
+    # Respect batch_size if specified
+    if batch_size and total_limit > batch_size:
+        log.warning(f"Query LIMIT ({total_limit}) exceeds batch_size ({batch_size}), capping at {batch_size}")
+        total_limit = batch_size
+
+    # Calculate per-branch limit (round up to ensure we get all rows)
+    per_branch_limit = (total_limit + parallel_count - 1) // parallel_count
+
+    # Extract ORDER BY clause (will apply at outer level)
+    order_by_match = re.search(r'\bORDER\s+BY\s+(.+?)(?=\s+LIMIT|\s*$)', query, re.IGNORECASE | re.DOTALL)
+    order_by_clause = order_by_match.group(0) if order_by_match else None
+
+    # Remove LIMIT and ORDER BY from base query (will add per-branch and outer)
+    base_query = query
+    if limit_match:
+        base_query = base_query[:limit_match.start()] + base_query[limit_match.end():]
+    if order_by_match:
+        base_query = base_query[:order_by_match.start()] + base_query[order_by_match.end():]
+    base_query = base_query.strip()
+
+    # Generate UNION ALL branches
+    branches = []
+    for i in range(parallel_count):
+        branch = base_query
+
+        # Add partition filter to WHERE clause
+        # Try to find WHERE keyword
+        where_match = re.search(r'\bWHERE\b', branch, re.IGNORECASE)
+
+        if where_match:
+            # Has WHERE clause - add AND hash(id) % N = i
+            # Use hash() to handle non-integer ID columns (VARCHAR, UUID, etc.)
+            insert_pos = where_match.end()
+            partition_filter = f" hash(id) % {parallel_count} = {i} AND"
+            branch = branch[:insert_pos] + partition_filter + branch[insert_pos:]
+        else:
+            # No WHERE clause - add one
+            # Find position before ORDER BY, GROUP BY, or end
+            # Look for FROM clause end
+            from_match = re.search(r'\bFROM\s+\w+(?:\s+\w+)?', branch, re.IGNORECASE)
+            if from_match:
+                insert_pos = from_match.end()
+                # Check if there's a JOIN, GROUP BY, or end
+                for keyword in [r'\bJOIN\b', r'\bGROUP\s+BY\b', r'\bHAVING\b', r'$']:
+                    next_match = re.search(keyword, branch[insert_pos:], re.IGNORECASE)
+                    if next_match:
+                        insert_pos = insert_pos + next_match.start()
+                        break
+                partition_filter = f" WHERE hash(id) % {parallel_count} = {i}"
+                branch = branch[:insert_pos] + partition_filter + branch[insert_pos:]
+            else:
+                # Fallback: add at end before any GROUP/ORDER keywords
+                partition_filter = f" WHERE hash(id) % {parallel_count} = {i}"
+                branch = branch.rstrip() + partition_filter
+
+        # Add per-branch LIMIT
+        branch = f"({branch.strip()} LIMIT {per_branch_limit})"
+        branches.append(branch)
+
+    # Join branches with UNION ALL
+    union_query = '\nUNION ALL\n'.join(branches)
+
+    # Wrap in outer SELECT if we need ORDER BY
+    if order_by_clause:
+        union_query = f"SELECT * FROM (\n{union_query}\n) {order_by_clause}"
+
+    return union_query
+
+
 # ============================================================================
 # Rewriting Functions
 # ============================================================================
@@ -254,17 +434,54 @@ def rewrite_semantic_operators(query: str) -> str:
     Annotations before LLM aggregate functions (SUMMARIZE, THEMES, etc.) are preserved
     for the LLM aggregate rewriter to consume.
 
+    NEW: Supports parallel execution via UNION ALL query splitting when
+    -- @ parallel: N annotation is present (scalars only, aggregates disabled).
+
     Args:
         query: SQL query with semantic operators
 
     Returns:
-        Rewritten SQL with UDF calls
+        Rewritten SQL with UDF calls (potentially split into UNION ALL branches)
     """
     if not has_semantic_operators(query):
         return query
 
     # Parse annotations first (we need line numbers)
     annotations = _parse_annotations(query)
+
+    # Check for parallel execution request
+    parallel_annotation = None
+    for _, _, annotation in annotations:
+        if annotation.parallel is not None:
+            parallel_annotation = annotation
+            break  # Use first parallel annotation found
+
+    # If parallel execution requested, check safety and save parameters
+    should_parallelize = False
+    parallel_count = None
+    parallel_batch_size = None
+
+    if parallel_annotation and parallel_annotation.parallel > 1:
+        # Safety check: Aggregates break with UNION ALL splitting
+        if _has_aggregate_operators(query):
+            log.warning(
+                f"Parallel execution (-- @ parallel: {parallel_annotation.parallel}) not supported "
+                f"for aggregate operators (SUMMARIZE, THEMES, CLUSTER, etc.). "
+                f"Executing sequentially for correct results."
+            )
+            # Fall through to sequential rewriting (safe)
+        else:
+            # Safe for scalar operators!
+            log.info(
+                f"Parallel execution enabled: {parallel_annotation.parallel} UNION ALL branches "
+                f"for scalar semantic operators"
+            )
+            should_parallelize = True
+            parallel_count = parallel_annotation.parallel
+            parallel_batch_size = parallel_annotation.batch_size
+
+    # NOTE: We'll do semantic operator rewriting FIRST, then split for parallelism at the end
+    # This ensures each branch has properly rewritten UDF calls (matches, score, etc.)
 
     # Track which annotations were used (by line range)
     used_annotation_lines = set()
@@ -333,6 +550,13 @@ def rewrite_semantic_operators(query: str) -> str:
 
     # GROUP BY TOPICS(col, n): Group by extracted themes
     result = _rewrite_group_by_topics(result, annotation_prefix)
+
+    # FINAL STEP: Apply parallel execution if requested and safe
+    # This happens AFTER all semantic operators have been rewritten to UDF calls
+    if should_parallelize:
+        log.debug(f"Applying UNION ALL splitting for parallel execution ({parallel_count} branches)")
+        result = _split_query_for_parallel(result, parallel_count, parallel_batch_size)
+        log.debug(f"Split query into {parallel_count} branches (first 200 chars): {result[:200]}...")
 
     return result
 
