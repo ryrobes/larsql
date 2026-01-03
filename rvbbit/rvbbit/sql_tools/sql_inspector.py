@@ -58,6 +58,7 @@ def inspect_sql_query(sql: str) -> Dict[str, Any]:
     registry, alias_to_canonical, canonical_meta = _load_registry_metadata()
 
     annotations = _parse_semantic_annotations_safe(sql_text)
+    semantic_annotations_by_target_line = _index_annotations_by_target_line(sql_text, annotations)
 
     calls: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -84,7 +85,8 @@ def inspect_sql_query(sql: str) -> Dict[str, Any]:
                     "returns": None,
                     "cascade_id": None,
                     "cascade_path": None,
-                    "annotation": None,
+                    "annotation": _annotation_for_line(semantic_annotations_by_target_line, line),
+                    "expands_to": _expand_structural(structural_kind, canonical_meta),
                 }
             )
     except Exception as e:
@@ -118,13 +120,14 @@ def inspect_sql_query(sql: str) -> Dict[str, Any]:
     try:
         from rvbbit.sql_tools import semantic_rewriter_v2 as v2
         from rvbbit.sql_tools.llm_agg_rewriter import has_llm_aggregates, _find_llm_agg_calls
-        from rvbbit.sql_tools.llm_agg_rewriter import LLM_AGG_ALIASES, LLM_AGG_FUNCTIONS
+        from rvbbit.sql_tools.llm_agg_rewriter import _parse_annotations as _parse_llm_annotations
+        from rvbbit.sql_tools.llm_agg_rewriter import _find_annotation_for_position as _find_llm_ann_for_pos
 
         tokens = v2._tokenize(sql_text)
         token_starts = _token_start_offsets(tokens)
 
         # Precompute: attach annotations by line number (same rule as semantic_operators)
-        annotations_by_target_line = _index_annotations_by_target_line(annotations)
+        annotations_by_target_line = semantic_annotations_by_target_line
 
         # 1) Infix operators (dynamic registry-driven via v2 specs)
         pending_annotation_prefix = ""
@@ -230,38 +233,14 @@ def inspect_sql_query(sql: str) -> Dict[str, Any]:
 
             i += 1
 
-        # 2) Function calls (semantic_* and aliases) + LLM aggregate sugar calls
+        # 2) Function calls (semantic_* and aliases)
         func_calls = _scan_function_calls(tokens, token_starts)
-        llm_aliases_upper = {k.upper() for k in LLM_AGG_ALIASES.keys()}
-        llm_canon_upper = {k.upper() for k in LLM_AGG_FUNCTIONS.keys()}
 
         for fn_name, start, end in func_calls:
             fn_upper = fn_name.upper()
 
             # Skip if this is within a span already captured (avoid noisy duplicates)
             if any(start >= c["start"] and end <= c["end"] for c in calls):
-                continue
-
-            # LLM aggregates (SUMMARIZE, THEMES, etc.) are best highlighted as "llm_aggregate"
-            if fn_upper in llm_aliases_upper or fn_upper in llm_canon_upper:
-                line, col = _line_col_from_offset(newline_positions, start)
-                calls.append(
-                    {
-                        "start": start,
-                        "end": end,
-                        "line": line,
-                        "col": col,
-                        "kind": "llm_aggregate",
-                        "display": fn_name,
-                        "operator": fn_name,
-                        "function": None,
-                        "shape": "AGGREGATE",
-                        "returns": None,
-                        "cascade_id": None,
-                        "cascade_path": None,
-                        "annotation": None,
-                    }
-                )
                 continue
 
             # Registry-based semantic function calls / aliases
@@ -287,24 +266,36 @@ def inspect_sql_query(sql: str) -> Dict[str, Any]:
         # 3) LLM aggregate call spans (more accurate than a simple function scan)
         # This keeps parity with the actual aggregate rewrite pipeline.
         if has_llm_aggregates(sql_text):
+            llm_annotations = _parse_llm_annotations(sql_text)
+            llm_to_semantic = {
+                "LLM_SUMMARIZE": "semantic_summarize",
+                "LLM_CLASSIFY": "semantic_classify_collection",
+                "LLM_SENTIMENT": "semantic_sentiment",
+                "LLM_THEMES": "semantic_themes",
+                "LLM_DEDUPE": "semantic_dedupe",
+                "LLM_CLUSTER": "semantic_cluster",
+                "LLM_CONSENSUS": "semantic_consensus",
+                "LLM_OUTLIERS": "semantic_outliers",
+            }
             for start_pos, end_pos, canonical_name, _args in _find_llm_agg_calls(sql_text):
                 line, col = _line_col_from_offset(newline_positions, start_pos)
+                llm_ann = _find_llm_ann_for_pos(llm_annotations, start_pos)
+                ann_dict = asdict(llm_ann) if llm_ann is not None else None
+                mapped = llm_to_semantic.get(str(canonical_name).upper())
+                meta = canonical_meta.get(str(mapped).lower()) if mapped else None
                 calls.append(
-                    {
-                        "start": start_pos,
-                        "end": end_pos,
-                        "line": line,
-                        "col": col,
-                        "kind": "llm_aggregate",
-                        "display": canonical_name,
-                        "operator": canonical_name,
-                        "function": None,
-                        "shape": "AGGREGATE",
-                        "returns": None,
-                        "cascade_id": None,
-                        "cascade_path": None,
-                        "annotation": None,
-                    }
+                    _make_call_dict(
+                        start=start_pos,
+                        end=end_pos,
+                        line=line,
+                        col=col,
+                        kind="llm_aggregate",
+                        display=canonical_name,
+                        operator=canonical_name,
+                        function=mapped,
+                        meta=meta,
+                        annotation=ann_dict,
+                    )
                 )
 
     except Exception as e:
@@ -356,13 +347,39 @@ def _parse_semantic_annotations_safe(sql: str) -> List[Dict[str, Any]]:
         return []
 
 
-def _index_annotations_by_target_line(ann_dicts: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    # semantic_operators rule: annotation applies to the next line (end_line == target_line)
+def _index_annotations_by_target_line(sql: str, ann_dicts: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    """
+    Mirror the semantic_operators behavior: apply an annotation block to the next
+    non-empty, non-annotation code line (skipping blank lines and comments).
+    """
     by_line: Dict[int, Dict[str, Any]] = {}
+    lines = sql.split("\n")
+
+    def _next_code_line(start_idx_0: int) -> Optional[int]:
+        idx = start_idx_0
+        while idx < len(lines):
+            stripped = lines[idx].strip()
+            if not stripped:
+                idx += 1
+                continue
+            if stripped.startswith("-- @"):
+                idx += 1
+                continue
+            if stripped.startswith("--"):
+                idx += 1
+                continue
+            return idx
+        return None
+
     for a in ann_dicts:
         line_end = a.get("line_end")
-        if isinstance(line_end, int):
-            by_line[line_end + 1] = a
+        if not isinstance(line_end, int):
+            continue
+        target = _next_code_line(line_end + 1)
+        if target is None:
+            continue
+        # store 1-based line index
+        by_line[target + 1] = a
     return by_line
 
 
@@ -532,6 +549,54 @@ def _scan_structural_constructs(tokens: List[Any], token_starts: List[int]) -> L
     return out
 
 
+def _expand_structural(structural_kind: str, canonical_meta: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Provide "planned" underlying calls for structural constructs.
+
+    These constructs rewrite into a combination of UDFs/cascades, so we return
+    a best-effort list of the likely semantic functions involved.
+    """
+    kind_upper = (structural_kind or "").upper()
+
+    def meta_for(fn: str) -> Dict[str, Any]:
+        m = canonical_meta.get(fn.lower()) or {}
+        return {
+            "function": fn,
+            "cascade_id": m.get("cascade_id"),
+            "cascade_path": m.get("cascade_path"),
+            "shape": m.get("shape"),
+            "returns": m.get("returns"),
+        }
+
+    if kind_upper == "SEMANTIC JOIN":
+        # SEMANTIC JOIN ... ON a ~ b ultimately routes through match_pair(...)
+        # which now prefers semantic_match_pair cascade at runtime.
+        return [meta_for("semantic_match_pair")]
+
+    if kind_upper == "SEMANTIC DISTINCT":
+        # SEMANTIC DISTINCT rewrites into a dedupe(...) call over collected distinct values.
+        return [meta_for("semantic_dedupe")]
+
+    if kind_upper == "GROUP BY TOPICS":
+        # GROUP BY TOPICS extracts topics (themes) then classifies rows into one topic.
+        return [meta_for("semantic_themes"), meta_for("semantic_classify")]
+
+    if kind_upper == "GROUP BY MEANING":
+        # GROUP BY MEANING currently uses meaning()/llm_cluster_label_impl which is still Python-only.
+        return [
+            {
+                "function": "meaning",
+                "cascade_id": None,
+                "cascade_path": None,
+                "shape": "AGGREGATE",
+                "returns": "VARCHAR",
+                "note": "python_only_today",
+            }
+        ]
+
+    return []
+
+
 def _find_llm_case_blocks(sql: str) -> List[Tuple[int, int]]:
     """
     Best-effort: find spans from LLM_CASE to matching END.
@@ -592,12 +657,38 @@ def _make_call_dict(
 
 
 def _dedupe_calls(calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # First pass: remove exact duplicates
     seen = set()
-    out = []
+    unique: List[Dict[str, Any]] = []
     for c in calls:
         key = (c.get("start"), c.get("end"), c.get("kind"), c.get("function"), c.get("operator"), c.get("display"))
         if key in seen:
             continue
         seen.add(key)
-        out.append(c)
-    return out
+        unique.append(c)
+
+    # Second pass: coalesce same-span entries where a better kind exists.
+    # Example: SUMMARIZE(x) appears as both a registry function and an LLM aggregate;
+    # for UI purposes we prefer the LLM aggregate classification.
+    by_span: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
+    for c in unique:
+        span = (int(c.get("start") or 0), int(c.get("end") or 0))
+        by_span.setdefault(span, []).append(c)
+
+    kind_priority = {
+        "structural": 100,
+        "semantic_infix": 90,
+        "llm_aggregate": 80,
+        "semantic_function": 70,
+        "llm_case": 60,
+    }
+
+    out: List[Dict[str, Any]] = []
+    for _span, items in by_span.items():
+        kinds = {it.get("kind") for it in items}
+        if "llm_aggregate" in kinds and "semantic_function" in kinds:
+            items = [it for it in items if it.get("kind") != "semantic_function"]
+        items = sorted(items, key=lambda it: kind_priority.get(it.get("kind") or "", 0), reverse=True)
+        out.extend(items)
+
+    return sorted(out, key=lambda x: (x["start"], x["end"], x.get("kind") or ""))
