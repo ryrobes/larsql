@@ -34,6 +34,7 @@ const SqlTrailView = () => {
   // Data states
   const [overviewData, setOverviewData] = useState(null);
   const [queriesData, setQueriesData] = useState({ queries: [], total: 0 });
+  const [runningQueries, setRunningQueries] = useState([]);
   const [patternsData, setPatternsData] = useState({ patterns: [] });
   const [cacheStatsData, setCacheStatsData] = useState(null);
   const [timeSeriesData, setTimeSeriesData] = useState({ series: [] });
@@ -66,6 +67,18 @@ const SqlTrailView = () => {
       setQueriesData(prev => isEqual(prev, data) ? prev : data);
     } catch (err) {
       console.error('Failed to fetch queries:', err);
+    }
+  }, [timeRange]);
+
+  // Fetch running queries (more frequent polling)
+  const fetchRunningQueries = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/sql-trail/queries?days=${timeRange}&status=running&limit=50`);
+      const data = await res.json();
+      if (data.error) return;
+      setRunningQueries(prev => isEqual(prev, data.queries) ? prev : (data.queries || []));
+    } catch (err) {
+      console.error('Failed to fetch running queries:', err);
     }
   }, [timeRange]);
 
@@ -131,11 +144,12 @@ const SqlTrailView = () => {
     Promise.all([
       fetchOverview(),
       fetchQueries(),
+      fetchRunningQueries(),
       fetchPatterns(),
       fetchCacheStats(),
       fetchTimeSeries()
     ]).finally(() => setLoading(false));
-  }, [timeRange, granularity, fetchOverview, fetchQueries, fetchPatterns, fetchCacheStats, fetchTimeSeries]);
+  }, [timeRange, granularity, fetchOverview, fetchQueries, fetchRunningQueries, fetchPatterns, fetchCacheStats, fetchTimeSeries]);
 
   // Handle URL param for query detail
   useEffect(() => {
@@ -150,11 +164,20 @@ const SqlTrailView = () => {
     const interval = setInterval(() => {
       fetchOverview();
       fetchQueries();
+      fetchRunningQueries();
       fetchCacheStats();
       fetchTimeSeries();
     }, 30000);
     return () => clearInterval(interval);
-  }, [fetchOverview, fetchQueries, fetchCacheStats, fetchTimeSeries]);
+  }, [fetchOverview, fetchQueries, fetchRunningQueries, fetchCacheStats, fetchTimeSeries]);
+
+  // More frequent polling for running queries
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchRunningQueries();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchRunningQueries]);
 
   // Save time range preference
   useEffect(() => {
@@ -259,6 +282,7 @@ const SqlTrailView = () => {
                 data={overviewData}
                 cacheStats={cacheStatsData}
                 timeSeries={timeSeriesData}
+                runningQueries={runningQueries}
                 granularity={granularity}
                 onGranularityChange={setGranularity}
                 onQueryClick={handleQuerySelect}

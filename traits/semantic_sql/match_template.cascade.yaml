@@ -1,0 +1,42 @@
+# MATCH_TEMPLATE - Scalar templated truth check
+# Evaluates whether a filled statement is true.
+#
+# This is intended as a cascade-backed execution target for the existing
+# Python UDF `match_template(template, arg1, arg2, ...)` after it fills the
+# template into a concrete statement.
+#
+# Direct Function:
+#   SELECT semantic_match_template('Acme Corp (customer) and ACME, Inc (supplier) are the same company')
+
+cascade_id: semantic_match_template
+
+description: |
+  Templated semantic truth check. Evaluates whether a provided statement is true.
+  Returns TRUE for "yes"/"true" and FALSE for "no"/"false".
+
+inputs_schema:
+  statement: The filled statement to evaluate
+
+sql_function:
+  name: semantic_match_template
+  description: Evaluates whether a statement is true
+  args:
+    - name: statement
+      type: VARCHAR
+  returns: BOOLEAN
+  shape: SCALAR
+  cache: true
+
+cells:
+  - name: evaluate_statement
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Is the following statement true?
+
+      "{{ input.statement }}"
+
+      Respond with ONLY "true" or "false", nothing else.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean

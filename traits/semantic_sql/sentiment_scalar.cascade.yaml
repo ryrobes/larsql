@@ -1,0 +1,51 @@
+# SENTIMENT_SCALAR - Scalar sentiment analysis
+# Calculates sentiment for a single text
+#
+# SQL Usage:
+#   SELECT SENTIMENT_SCALAR(observed) as sentiment FROM bigfoot_vw
+#   SELECT * FROM docs WHERE SENTIMENT_SCALAR(body) < -0.3
+#
+# Direct Function:
+#   SELECT semantic_sentiment_scalar(observed) FROM bigfoot_vw
+
+cascade_id: semantic_sentiment_scalar
+
+description: |
+  Scalar sentiment analysis - calculates sentiment for a single text.
+  Returns a score from -1.0 to 1.0.
+
+inputs_schema:
+  text: The text to analyze
+
+sql_function:
+  name: semantic_sentiment_scalar
+  description: Calculates sentiment (-1.0 to 1.0) for a single text
+  args:
+    - name: text
+      type: VARCHAR
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+    - "SENTIMENT({{ text }})"
+    - "SENTIMENT_SCALAR({{ text }})"
+  cache: true
+
+cells:
+  - name: analyze_sentiment
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Analyze the sentiment of this text.
+
+      TEXT:
+      {{ input.text }}
+
+      Return a single number from -1.0 to 1.0:
+      - -1.0 = Extremely negative
+      - -0.5 = Moderately negative
+      -  0.0 = Neutral/mixed
+      - +0.5 = Moderately positive
+      - +1.0 = Extremely positive
+
+      Return ONLY the number (e.g., 0.3 or -0.7), nothing else.
+    rules:
+      max_turns: 1

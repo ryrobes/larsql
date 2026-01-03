@@ -1,0 +1,53 @@
+# MATCH_PAIR - Scalar pairwise semantic relationship check
+# Checks whether two values refer to the same thing (or a specified relationship).
+#
+# SQL Usage:
+#   SELECT * FROM customers c, suppliers s
+#   WHERE match_pair(c.company_name, s.vendor_name, 'same company');
+#
+# Direct Function:
+#   SELECT semantic_match_pair(left_col, right_col, 'same entity') FROM t
+
+cascade_id: semantic_match_pair
+
+description: |
+  Pairwise semantic relationship check for fuzzy JOINs and deduplication.
+  Returns TRUE if the two values satisfy the relationship.
+
+inputs_schema:
+  left: First value
+  right: Second value
+  relationship: "Relationship to check (default: same entity)"
+
+sql_function:
+  name: semantic_match_pair
+  description: Checks whether two values match under a relationship
+  args:
+    - name: left
+      type: VARCHAR
+    - name: right
+      type: VARCHAR
+    - name: relationship
+      type: VARCHAR
+      default: "same entity"
+  returns: BOOLEAN
+  shape: SCALAR
+  cache: true
+
+cells:
+  - name: evaluate_pair
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Do these two values refer to the {{ input.relationship | default("same entity") }}?
+
+      Value 1:
+      {{ input.left }}
+
+      Value 2:
+      {{ input.right }}
+
+      Respond with ONLY "true" or "false", nothing else.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: boolean

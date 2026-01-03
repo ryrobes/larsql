@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import {
   ResponsiveContainer,
@@ -13,7 +13,9 @@ import {
   Tooltip,
   ComposedChart,
   Area,
-  Line
+  Line,
+  Cell,
+  LabelList
 } from 'recharts';
 
 const formatCost = (cost) => {
@@ -95,6 +97,7 @@ const CacheGauge = ({ hitRate }) => {
 const TypeTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const item = payload[0].payload;
+  const avgCost = item.count > 0 ? (item.cost || 0) / item.count : 0;
   return (
     <div className="sql-trail-tooltip">
       <div className="sql-trail-tooltip-title">{item.query_type || 'Unknown'}</div>
@@ -102,6 +105,18 @@ const TypeTooltip = ({ active, payload }) => {
         <span>Queries</span>
         <span>{formatNumber(item.count)}</span>
       </div>
+      {item.cost > 0 && (
+        <>
+          <div className="sql-trail-tooltip-row">
+            <span>Total Cost</span>
+            <span>{formatCost(item.cost)}</span>
+          </div>
+          <div className="sql-trail-tooltip-row">
+            <span>Avg/Query</span>
+            <span>{formatCost(avgCost)}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -109,6 +124,7 @@ const TypeTooltip = ({ active, payload }) => {
 const UdfTypeTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const item = payload[0].payload;
+  const avgCost = item.count > 0 ? (item.cost || 0) / item.count : 0;
   return (
     <div className="sql-trail-tooltip">
       <div className="sql-trail-tooltip-title">{item.udf_type || 'Unknown'}</div>
@@ -117,10 +133,16 @@ const UdfTypeTooltip = ({ active, payload }) => {
         <span>{formatNumber(item.count)}</span>
       </div>
       {item.cost > 0 && (
-        <div className="sql-trail-tooltip-row">
-          <span>Cost</span>
-          <span>{formatCost(item.cost)}</span>
-        </div>
+        <>
+          <div className="sql-trail-tooltip-row">
+            <span>Total Cost</span>
+            <span>{formatCost(item.cost)}</span>
+          </div>
+          <div className="sql-trail-tooltip-row">
+            <span>Avg/Call</span>
+            <span>{formatCost(avgCost)}</span>
+          </div>
+        </>
       )}
     </div>
   );
@@ -130,6 +152,7 @@ const OverviewPanel = ({
   data,
   cacheStats,
   timeSeries,
+  runningQueries = [],
   onQueryClick,
   granularity = 'daily',
   onGranularityChange
@@ -279,19 +302,21 @@ const OverviewPanel = ({
                 <span>Cache Performance</span>
               </div>
             </div>
-            <CacheGauge hitRate={cache_hit_rate} />
-            {cacheStats && (
-              <div className="cache-stats cache-stats--compact">
-                <div className="cache-stat cache-stat--hits">
-                  <div className="cache-stat-value">{formatNumber(cacheStats.total_hits)}</div>
-                  <div className="cache-stat-label">Hits</div>
+            <div className="overview-split-left-content">
+              <CacheGauge hitRate={cache_hit_rate} />
+              {cacheStats?.overall && (
+                <div className="cache-stats cache-stats--compact">
+                  <div className="cache-stat cache-stat--hits">
+                    <div className="cache-stat-value">{formatNumber(cacheStats.overall.total_hits)}</div>
+                    <div className="cache-stat-label">Hits</div>
+                  </div>
+                  <div className="cache-stat cache-stat--misses">
+                    <div className="cache-stat-value">{formatNumber(cacheStats.overall.total_misses)}</div>
+                    <div className="cache-stat-label">Misses</div>
+                  </div>
                 </div>
-                <div className="cache-stat cache-stat--misses">
-                  <div className="cache-stat-value">{formatNumber(cacheStats.total_misses)}</div>
-                  <div className="cache-stat-label">Misses</div>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           <div className="overview-split-right">
             <div className="overview-card-header">
@@ -301,10 +326,10 @@ const OverviewPanel = ({
               </div>
             </div>
             {typeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
                   data={typeData}
-                  margin={{ top: 8, right: 8, left: 8, bottom: 24 }}
+                  margin={{ top: 8, right: 40, left: 8, bottom: 24 }}
                 >
                   <defs>
                     <linearGradient id="sqlTrailTypeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -321,19 +346,47 @@ const OverviewPanel = ({
                     interval={0}
                   />
                   <YAxis
+                    yAxisId="left"
                     tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(v) => formatNumber(v)}
                     width={35}
                   />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fill: 'var(--color-accent-green)', fontSize: 9 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => formatCost(v)}
+                    width={35}
+                  />
                   <Tooltip content={<TypeTooltip />} cursor={{ fill: 'rgba(0, 229, 255, 0.08)' }} />
-                  <Bar dataKey="count" fill="url(#sqlTrailTypeGradient)" radius={[6, 6, 0, 0]} maxBarSize={50} />
-                </BarChart>
+                  <Bar yAxisId="left" dataKey="count" fill="url(#sqlTrailTypeGradient)" radius={[6, 6, 0, 0]} maxBarSize={50} />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="cost"
+                    stroke="var(--color-accent-green)"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: 'var(--color-accent-green)', strokeWidth: 0 }}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             ) : (
               <div className="overview-empty overview-empty--small">No type data</div>
             )}
+            <div className="chart-legend chart-legend--compact">
+              <span className="legend-item">
+                <span className="legend-bar" style={{ background: 'linear-gradient(to bottom, var(--color-accent-cyan), var(--color-accent-purple))' }} />
+                Queries
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot" style={{ background: 'var(--color-accent-green)' }} />
+                Cost
+              </span>
+            </div>
           </div>
         </div>
 
@@ -351,7 +404,7 @@ const OverviewPanel = ({
               <BarChart
                 data={udfTypesData.slice(0, 12)}
                 layout="vertical"
-                margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+                margin={{ top: 8, right: 60, left: 8, bottom: 0 }}
               >
                 <defs>
                   <linearGradient id="sqlTrailUdfGradient" x1="0" y1="0" x2="1" y2="0">
@@ -376,12 +429,29 @@ const OverviewPanel = ({
                   tickLine={false}
                 />
                 <Tooltip content={<UdfTypeTooltip />} cursor={{ fill: 'rgba(167, 139, 250, 0.08)' }} />
-                <Bar dataKey="count" fill="url(#sqlTrailUdfGradient)" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="count" fill="url(#sqlTrailUdfGradient)" radius={[0, 6, 6, 0]}>
+                  <LabelList
+                    dataKey="cost"
+                    position="right"
+                    formatter={(v) => formatCost(v)}
+                    style={{ fill: 'var(--color-accent-green)', fontSize: 10, fontWeight: 500 }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="overview-empty">No UDF invocations recorded</div>
           )}
+          <div className="chart-legend chart-legend--compact">
+            <span className="legend-item">
+              <span className="legend-bar" style={{ background: 'linear-gradient(to right, var(--color-accent-purple), var(--color-accent-pink))' }} />
+              Invocations
+            </span>
+            <span className="legend-item">
+              <span className="legend-text" style={{ color: 'var(--color-accent-green)' }}>$</span>
+              Cost
+            </span>
+          </div>
         </div>
       </div>
 
@@ -473,6 +543,106 @@ const OverviewPanel = ({
         ) : (
           <div className="overview-empty">No time series data available</div>
         )}
+      </div>
+
+      {/* Running Queries Section */}
+      {runningQueries.length > 0 && (
+        <RunningQueriesGrid queries={runningQueries} onQueryClick={onQueryClick} />
+      )}
+    </div>
+  );
+};
+
+// Running Queries Component (matches QueryExplorer styling)
+const RunningQueriesGrid = ({ queries, onQueryClick }) => {
+  const [now, setNow] = useState(Date.now());
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (queries.length === 0) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [queries.length]);
+
+  const truncateSQL = (sql, maxLength = 80) => {
+    if (!sql) return '-';
+    const cleaned = sql.replace(/\s+/g, ' ').trim();
+    if (cleaned.length <= maxLength) return cleaned;
+    return cleaned.substring(0, maxLength) + '...';
+  };
+
+  const formatElapsed = (startedAt) => {
+    if (!startedAt) return '-';
+    const started = new Date(startedAt).getTime();
+    if (Number.isNaN(started)) return '-';
+    const elapsed = Math.max(0, now - started);
+    const seconds = Math.floor(elapsed / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  };
+
+  return (
+    <div className="overview-chart-card running-queries-card">
+      <div className="overview-card-header">
+        <div className="overview-card-title">
+          <Icon icon="mdi:run-fast" width={14} />
+          <span>Running Queries</span>
+          <span className="running-count-badge">{queries.length}</span>
+        </div>
+      </div>
+      <div className="running-queries-table-wrapper">
+        <table className="query-table">
+          <thead>
+            <tr>
+              <th>Started</th>
+              <th>Query</th>
+              <th>Type</th>
+              <th>Cost</th>
+              <th>Calls</th>
+              <th>Elapsed</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {queries.map((query) => (
+              <tr
+                key={query.caller_id || query.query_id}
+                onClick={() => onQueryClick && onQueryClick(query)}
+              >
+                <td className="cell-nowrap">
+                  {new Date(query.started_at || query.timestamp).toLocaleTimeString(undefined, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                  })}
+                </td>
+                <td className="query-sql" title={query.query_raw}>
+                  {truncateSQL(query.query_raw || query.query_preview)}
+                </td>
+                <td className="cell-type">
+                  {query.query_type || '-'}
+                </td>
+                <td className="cell-cost">
+                  {formatCost(query.total_cost)}
+                </td>
+                <td className="cell-calls">{query.llm_calls_count || 0}</td>
+                <td className="cell-elapsed">
+                  {formatElapsed(query.started_at || query.timestamp)}
+                </td>
+                <td>
+                  <span className="status-badge status-running">
+                    <span className="running-pulse" />
+                    running
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

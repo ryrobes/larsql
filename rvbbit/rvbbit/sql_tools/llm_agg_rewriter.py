@@ -134,7 +134,8 @@ LLM_AGG_FUNCTIONS = {
 LLM_AGG_ALIASES = {
     "SUMMARIZE": "LLM_SUMMARIZE",
     "CLASSIFY": "LLM_CLASSIFY",
-    "SENTIMENT": "LLM_SENTIMENT",
+    # Split: SENTIMENT(text) is scalar; SENTIMENT_AGG(col) is aggregate sugar.
+    "SENTIMENT_AGG": "LLM_SENTIMENT",
     "THEMES": "LLM_THEMES",
     "TOPICS": "LLM_THEMES",       # Alias for THEMES
     "DEDUPE": "LLM_DEDUPE",       # Semantic deduplication
@@ -639,13 +640,12 @@ def _build_replacement(
 
     elif func_def.name == "LLM_SENTIMENT":
         col = args[0]
-        # Sentiment: if model annotation, create a prompt with hint
-        if annotation and annotation.model:
-            prompt_arg = sql_quote(build_prompt_with_model_hint("analyze sentiment"))
-            # Need to add sentiment variant that accepts prompt...
-            # For now, sentiment doesn't support custom prompts
-            pass
-        return f"llm_sentiment_1(LIST({col})::VARCHAR)"
+        # SENTIMENT is now cascade-backed directly via semantic_sentiment().
+        # It expects a JSON array of texts, so we wrap the grouped values with LIST() and to_json().
+        #
+        # Note: model/prompt annotations are intentionally ignored here for now; the cascade controls
+        # the model and prompt and this keeps the behavior explicit and consistent with YAML.
+        return f"semantic_sentiment(to_json(LIST({col})))"
 
     elif func_def.name == "LLM_THEMES":
         col = args[0]

@@ -1042,6 +1042,24 @@ def llm_match_pair_impl(
         if cached is not None:
             return cached.lower() == "true"
 
+    # Prefer cascade execution for full RVBBIT logging/tracing/caching.
+    try:
+        result = _execute_cascade(
+            "semantic_match_pair",
+            {"left": left, "right": right, "relationship": relationship},
+            fallback=None,
+        )
+        if isinstance(result, bool):
+            is_match = result
+        else:
+            is_match = str(result).strip().lower() in ("true", "yes", "1", "y")
+
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, "true" if is_match else "false", ttl=None)
+        return is_match
+    except Exception:
+        pass
+
     prompt = f"""Do these two values refer to the {relationship}?
 
 Value 1: {left[:500]}
@@ -1313,6 +1331,24 @@ def llm_match_template_impl(
         cached = _cache_get(_agg_cache, cache_key)
         if cached is not None:
             return cached.lower() == "true"
+
+    # Prefer cascade execution for full RVBBIT logging/tracing/caching.
+    try:
+        result = _execute_cascade(
+            "semantic_match_template",
+            {"statement": filled},
+            fallback=None,
+        )
+        if isinstance(result, bool):
+            is_true = result
+        else:
+            is_true = str(result).strip().lower() in ("true", "yes", "1", "y")
+
+        if use_cache:
+            _cache_set(_agg_cache, cache_key, "true" if is_true else "false", ttl=None)
+        return is_true
+    except Exception:
+        pass
 
     prompt = f"""Is the following statement true?
 

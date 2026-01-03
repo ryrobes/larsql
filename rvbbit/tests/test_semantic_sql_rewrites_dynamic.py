@@ -344,6 +344,14 @@ def _generate_aggregate_tests(func_name: str, pattern: str, args: List[dict], pa
             "llm_cluster_3"
         ))
 
+    elif 'SENTIMENT_AGG' in pattern.upper() or 'SENTIMENT' in pattern.upper():
+        # SENTIMENT_AGG() is an aggregate sugar that rewrites to semantic_sentiment(to_json(LIST(...))).
+        tests.append((
+            f"{func_name}_sentiment_group_by",
+            "SELECT state, SENTIMENT_AGG(observed) as fear_level FROM bigfoot_vw GROUP BY state",
+            "semantic_sentiment"
+        ))
+
     return tests
 
 

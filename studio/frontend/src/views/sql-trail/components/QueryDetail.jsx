@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
+
+const API_BASE = 'http://localhost:5050';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return '$0.00';
@@ -44,6 +46,482 @@ const getCacheClass = (rate) => {
   return 'cache-low';
 };
 
+// Color mapping for semantic call kinds
+const SEMANTIC_KIND_COLORS = {
+  semantic_infix: { border: 'var(--color-accent-purple)', bg: 'rgba(167, 139, 250, 0.15)' },
+  semantic_function: { border: 'var(--color-accent-cyan)', bg: 'rgba(0, 229, 255, 0.12)' },
+  llm_aggregate: { border: 'var(--color-accent-green)', bg: 'rgba(52, 211, 153, 0.15)' },
+  llm_case: { border: 'var(--color-accent-yellow)', bg: 'rgba(251, 191, 36, 0.15)' },
+  structural: { border: 'var(--color-accent-pink)', bg: 'rgba(244, 114, 182, 0.12)' },
+};
+
+// SQL keyword highlighting patterns
+const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|LIKE|BETWEEN|IS|NULL|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|INTO|VALUES|SET|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|EXISTS|ANY|SOME|TRUE|FALSE|ASC|DESC|WITH|RECURSIVE|OVER|PARTITION|ROW_NUMBER|RANK|DENSE_RANK|LEAD|LAG|FIRST_VALUE|LAST_VALUE|COUNT|SUM|AVG|MIN|MAX|ARRAY|STRUCT|UNNEST)\b/gi;
+const SQL_FUNCTIONS = /\b(semantic_\w+|rvbbit_\w+|SUMMARIZE|THEMES|EXTRACT_ENTITIES|CLASSIFY|SENTIMENT|LLM_CASE)\b/gi;
+const SQL_STRINGS = /('(?:''|[^'])*')/g;
+const SQL_NUMBERS = /\b(\d+\.?\d*)\b/g;
+const SQL_COMMENTS = /(--[^\n]*|\/\*[\s\S]*?\*\/)/g;
+
+/**
+ * Build segments from SQL text and semantic calls
+ */
+const buildSegments = (sql, calls) => {
+  if (!calls || calls.length === 0) {
+    return [{ type: 'plain', text: sql }];
+  }
+
+  const sortedCalls = [...calls].sort((a, b) => a.start - b.start);
+  const nonOverlappingCalls = [];
+  let lastEnd = 0;
+  for (const call of sortedCalls) {
+    if (call.start >= lastEnd) {
+      nonOverlappingCalls.push(call);
+      lastEnd = call.end;
+    }
+  }
+
+  const segments = [];
+  let pos = 0;
+
+  for (const call of nonOverlappingCalls) {
+    if (call.start > pos) {
+      segments.push({ type: 'plain', text: sql.slice(pos, call.start) });
+    }
+    if (call.end > call.start) {
+      segments.push({ type: 'semantic', text: sql.slice(call.start, call.end), call });
+    }
+    pos = call.end;
+  }
+
+  if (pos < sql.length) {
+    segments.push({ type: 'plain', text: sql.slice(pos) });
+  }
+
+  return segments;
+};
+
+/**
+ * Apply basic SQL syntax highlighting to text
+ */
+const highlightSQL = (text) => {
+  if (!text) return null;
+
+  const matches = [];
+  let match;
+
+  const commentRegex = new RegExp(SQL_COMMENTS.source, 'gi');
+  while ((match = commentRegex.exec(text)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, type: 'comment', text: match[0] });
+  }
+
+  const stringRegex = new RegExp(SQL_STRINGS.source, 'g');
+  while ((match = stringRegex.exec(text)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, type: 'string', text: match[0] });
+  }
+
+  const keywordRegex = new RegExp(SQL_KEYWORDS.source, 'gi');
+  while ((match = keywordRegex.exec(text)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, type: 'keyword', text: match[0] });
+  }
+
+  const funcRegex = new RegExp(SQL_FUNCTIONS.source, 'gi');
+  while ((match = funcRegex.exec(text)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, type: 'function', text: match[0] });
+  }
+
+  const numRegex = new RegExp(SQL_NUMBERS.source, 'g');
+  while ((match = numRegex.exec(text)) !== null) {
+    matches.push({ start: match.index, end: match.index + match[0].length, type: 'number', text: match[0] });
+  }
+
+  matches.sort((a, b) => a.start - b.start);
+
+  const filtered = [];
+  let lastEnd = 0;
+  for (const m of matches) {
+    if (m.start >= lastEnd) {
+      filtered.push(m);
+      lastEnd = m.end;
+    }
+  }
+
+  const result = [];
+  let pos = 0;
+
+  for (const m of filtered) {
+    if (m.start > pos) {
+      result.push(<span key={`t-${pos}`} className="sql-plain">{text.slice(pos, m.start)}</span>);
+    }
+    result.push(<span key={`m-${m.start}`} className={`sql-${m.type}`}>{m.text}</span>);
+    pos = m.end;
+  }
+
+  if (pos < text.length) {
+    result.push(<span key={`t-${pos}`} className="sql-plain">{text.slice(pos)}</span>);
+  }
+
+  return result;
+};
+
+/**
+ * Semantic SQL Viewer Component
+ * Accepts onSpanHover and onSpanClick callbacks for parent state management
+ * highlightedFunction: when set, highlights all spans with matching function name
+ */
+const SemanticSQLViewer = ({ sql, calls, showLineNumbers = true, onSpanHover, onSpanClick, hoveredSpanIndex, highlightedFunction }) => {
+  const segments = useMemo(() => buildSegments(sql || '', calls || []), [sql, calls]);
+
+  const lines = useMemo(() => {
+    if (!sql) return [];
+    return sql.split('\n');
+  }, [sql]);
+
+  if (!sql) {
+    return <div className="semantic-sql-empty">No SQL to display</div>;
+  }
+
+  const hasHoveredSpan = hoveredSpanIndex !== null || highlightedFunction !== null;
+
+  return (
+    <div className={`semantic-sql-viewer ${hasHoveredSpan ? 'semantic-sql-viewer--has-focus' : ''}`}>
+      {showLineNumbers && (
+        <div className="semantic-sql-line-numbers">
+          {lines.map((_, i) => (
+            <div key={i} className="semantic-sql-line-number">{i + 1}</div>
+          ))}
+        </div>
+      )}
+      <pre className="semantic-sql-code">
+        <code>
+          {segments.map((seg, i) => {
+            if (seg.type === 'plain') {
+              return <span key={i} className="semantic-sql-plain">{highlightSQL(seg.text)}</span>;
+            }
+
+            const call = seg.call;
+            const colors = SEMANTIC_KIND_COLORS[call.kind] || SEMANTIC_KIND_COLORS.semantic_function;
+            // Highlight if directly hovered OR if function name matches highlighted function
+            const isHovered = hoveredSpanIndex === i;
+            const isHighlighted = highlightedFunction && (call.function === highlightedFunction || call.display === highlightedFunction);
+
+            return (
+              <span
+                key={i}
+                className={`semantic-span semantic-span--${call.kind} ${isHovered || isHighlighted ? 'semantic-span--hovered' : ''}`}
+                style={{
+                  '--span-border': colors.border,
+                  '--span-bg': colors.bg,
+                }}
+                onMouseEnter={() => onSpanHover && onSpanHover(i, call)}
+                onMouseLeave={() => onSpanHover && onSpanHover(null, null)}
+                onClick={() => onSpanClick && onSpanClick(call)}
+              >
+                <span className="semantic-span-content">
+                  {highlightSQL(seg.text)}
+                </span>
+              </span>
+            );
+          })}
+        </code>
+      </pre>
+
+      {calls && calls.length > 0 && (
+        <div className="semantic-sql-legend">
+          {Object.entries(SEMANTIC_KIND_COLORS).map(([kind, colors]) => {
+            const hasKind = calls.some(c => c.kind === kind);
+            if (!hasKind) return null;
+            return (
+              <div key={kind} className="semantic-sql-legend-item">
+                <span
+                  className="semantic-sql-legend-color"
+                  style={{ borderColor: colors.border, background: colors.bg }}
+                />
+                <span className="semantic-sql-legend-label">{kind.replace(/_/g, ' ')}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Span Metrics Panel - Shows metrics for hovered semantic span
+ */
+const SpanMetricsPanel = ({ hoveredCall, spawnedSessions, cascadeExecutions }) => {
+  // Compute metrics for the hovered call by filtering sessions by cascade_id
+  const metrics = useMemo(() => {
+    if (!hoveredCall) return null;
+
+    const cascadeId = hoveredCall.cascade_id;
+    const functionName = hoveredCall.function;
+
+    // Filter sessions by cascade_id or function name
+    const matchingSessions = (spawnedSessions || []).filter(s => {
+      if (cascadeId && s.cascade_id === cascadeId) return true;
+      if (functionName && s.cascade_id === functionName) return true;
+      // Also check if cascade_id contains the function name (e.g., "semantic_matches" in "traits/semantic_sql/semantic_matches.cascade.yaml")
+      if (functionName && s.cascade_id && s.cascade_id.includes(functionName)) return true;
+      return false;
+    });
+
+    // Filter cascade executions similarly
+    const matchingExecutions = (cascadeExecutions || []).filter(e => {
+      if (cascadeId && e.cascade_id === cascadeId) return true;
+      if (functionName && e.cascade_id === functionName) return true;
+      if (functionName && e.cascade_id && e.cascade_id.includes(functionName)) return true;
+      return false;
+    });
+
+    // Aggregate metrics
+    const totalCost = matchingSessions.reduce((sum, s) => sum + (s.total_cost || 0), 0);
+    const totalTokensIn = matchingSessions.reduce((sum, s) => sum + (s.total_tokens_in || 0), 0);
+    const totalTokensOut = matchingSessions.reduce((sum, s) => sum + (s.total_tokens_out || 0), 0);
+    const totalMessages = matchingSessions.reduce((sum, s) => sum + (s.message_count || 0), 0);
+    const sessionCount = matchingSessions.length;
+    const executionCount = matchingExecutions.length;
+
+    // Get unique models used
+    const models = [...new Set(matchingSessions.map(s => s.model).filter(Boolean))];
+
+    return {
+      cascadeId: cascadeId || functionName,
+      display: hoveredCall.display,
+      kind: hoveredCall.kind,
+      shape: hoveredCall.shape,
+      returns: hoveredCall.returns,
+      totalCost,
+      totalTokensIn,
+      totalTokensOut,
+      totalMessages,
+      sessionCount,
+      executionCount,
+      models,
+      hasData: sessionCount > 0 || executionCount > 0
+    };
+  }, [hoveredCall, spawnedSessions, cascadeExecutions]);
+
+  if (!hoveredCall) {
+    return (
+      <div className="span-metrics-empty">
+        <Icon icon="mdi:cursor-default-click" width={24} />
+        <span>Hover a semantic span to see metrics</span>
+      </div>
+    );
+  }
+
+  const colors = SEMANTIC_KIND_COLORS[hoveredCall.kind] || SEMANTIC_KIND_COLORS.semantic_function;
+
+  return (
+    <div className="span-metrics-panel">
+      <div className="span-metrics-header" style={{ borderColor: colors.border }}>
+        <div className="span-metrics-kind" style={{ color: colors.border }}>
+          {hoveredCall.kind?.replace(/_/g, ' ')}
+        </div>
+        <div className="span-metrics-display">{metrics?.display || hoveredCall.function || '-'}</div>
+        {metrics?.cascadeId && (
+          <div className="span-metrics-cascade">
+            <Icon icon="mdi:arrow-right" width={10} />
+            <code>{metrics.cascadeId}</code>
+          </div>
+        )}
+      </div>
+
+      {metrics?.hasData ? (
+        <>
+          <div className="span-metrics-grid">
+            <div className="span-metric">
+              <div className="span-metric-value accent-green">{formatCost(metrics.totalCost)}</div>
+              <div className="span-metric-label">Cost</div>
+            </div>
+            <div className="span-metric">
+              <div className="span-metric-value accent-purple">{formatNumber(metrics.executionCount)}</div>
+              <div className="span-metric-label">Executions</div>
+            </div>
+            <div className="span-metric">
+              <div className="span-metric-value accent-cyan">{formatNumber(metrics.sessionCount)}</div>
+              <div className="span-metric-label">Sessions</div>
+            </div>
+            <div className="span-metric">
+              <div className="span-metric-value accent-blue">{formatNumber(metrics.totalMessages)}</div>
+              <div className="span-metric-label">LLM Calls</div>
+            </div>
+            <div className="span-metric span-metric--wide">
+              <div className="span-metric-value">
+                {formatNumber(metrics.totalTokensIn)} / {formatNumber(metrics.totalTokensOut)}
+              </div>
+              <div className="span-metric-label">Tokens In / Out</div>
+            </div>
+            {metrics.models.length > 0 && (
+              <div className="span-metric span-metric--wide">
+                <div className="span-metric-models">
+                  {metrics.models.slice(0, 3).map((m, i) => (
+                    <span key={i} className="span-metric-model">{m}</span>
+                  ))}
+                  {metrics.models.length > 3 && (
+                    <span className="span-metric-model">+{metrics.models.length - 3}</span>
+                  )}
+                </div>
+                <div className="span-metric-label">Models</div>
+              </div>
+            )}
+          </div>
+          <div className="span-metrics-action">
+            <Icon icon="mdi:open-in-new" width={12} />
+            <span>Click span to open in Studio</span>
+          </div>
+        </>
+      ) : (
+        <div className="span-metrics-no-data">
+          <Icon icon="mdi:information-outline" width={16} />
+          <span>No execution data for this span</span>
+          {metrics?.shape && (
+            <div className="span-metrics-shape">
+              <span className="span-metrics-shape-badge">{metrics.shape}</span>
+              {metrics.returns && <span className="span-metrics-returns">→ {metrics.returns}</span>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Semantic Summary Panel - Shows breakdown of semantic functions when not hovering
+ * onFunctionHover: callback when hovering a function row (for cross-highlighting SQL)
+ * highlightedFunction: currently highlighted function name
+ */
+const SemanticSummaryPanel = ({ semanticCalls, spawnedSessions, cascadeExecutions, onFunctionHover, highlightedFunction }) => {
+  const summary = useMemo(() => {
+    if (!semanticCalls || semanticCalls.length === 0) {
+      return { functions: [], totalCost: 0, totalCalls: 0, hasData: false };
+    }
+
+    // Group by function and aggregate metrics from sessions
+    const functionMap = new Map();
+
+    for (const call of semanticCalls) {
+      const funcName = call.function || call.display || 'unknown';
+      const cascadeId = call.cascade_id;
+
+      if (!functionMap.has(funcName)) {
+        functionMap.set(funcName, {
+          name: funcName,
+          kind: call.kind,
+          cascadeId,
+          occurrences: 0,
+          cost: 0,
+          tokens: 0,
+          sessions: 0,
+          messages: 0,
+        });
+      }
+
+      const entry = functionMap.get(funcName);
+      entry.occurrences += 1;
+
+      // Find matching sessions by cascade_id or function name
+      const matchingSessions = (spawnedSessions || []).filter(s => {
+        if (cascadeId && s.cascade_id === cascadeId) return true;
+        if (funcName && s.cascade_id === funcName) return true;
+        if (funcName && s.cascade_id && s.cascade_id.includes(funcName)) return true;
+        return false;
+      });
+
+      // Only count sessions once per function (not per occurrence in SQL)
+      if (entry.sessions === 0) {
+        entry.cost = matchingSessions.reduce((sum, s) => sum + (s.total_cost || 0), 0);
+        entry.tokens = matchingSessions.reduce((sum, s) => sum + (s.total_tokens_in || 0) + (s.total_tokens_out || 0), 0);
+        entry.sessions = matchingSessions.length;
+        entry.messages = matchingSessions.reduce((sum, s) => sum + (s.message_count || 0), 0);
+      }
+    }
+
+    const functions = Array.from(functionMap.values())
+      .sort((a, b) => b.cost - a.cost); // Sort by cost desc
+
+    const totalCost = functions.reduce((sum, f) => sum + f.cost, 0);
+    const totalCalls = functions.reduce((sum, f) => sum + f.messages, 0);
+
+    return {
+      functions,
+      totalCost,
+      totalCalls,
+      hasData: functions.some(f => f.sessions > 0)
+    };
+  }, [semanticCalls, spawnedSessions, cascadeExecutions]);
+
+  if (!semanticCalls || semanticCalls.length === 0) {
+    return (
+      <div className="semantic-summary-empty">
+        <Icon icon="mdi:function-variant" width={24} />
+        <span>No semantic functions in this query</span>
+      </div>
+    );
+  }
+
+  const maxCost = Math.max(...summary.functions.map(f => f.cost), 0.0001);
+
+  return (
+    <div className="semantic-summary-panel">
+      <div className="semantic-summary-header">
+        <span className="semantic-summary-count">{summary.functions.length} functions</span>
+        {summary.hasData && (
+          <span className="semantic-summary-total">{formatCost(summary.totalCost)} total</span>
+        )}
+      </div>
+
+      <div className="semantic-summary-list">
+        {summary.functions.map((func, i) => {
+          const colors = SEMANTIC_KIND_COLORS[func.kind] || SEMANTIC_KIND_COLORS.semantic_function;
+          const costPercent = summary.totalCost > 0 ? (func.cost / maxCost) * 100 : 0;
+          const isHighlighted = highlightedFunction === func.name;
+
+          return (
+            <div
+              key={func.name}
+              className={`semantic-summary-item ${isHighlighted ? 'semantic-summary-item--highlighted' : ''}`}
+              onMouseEnter={() => onFunctionHover && onFunctionHover(func.name)}
+              onMouseLeave={() => onFunctionHover && onFunctionHover(null)}
+            >
+              <div className="semantic-summary-bar" style={{
+                width: `${costPercent}%`,
+                background: colors.bg,
+              }} />
+              <div className="semantic-summary-content">
+                <div className="semantic-summary-name" style={{ color: colors.border }}>
+                  {func.name}
+                  {func.occurrences > 1 && (
+                    <span className="semantic-summary-occurrences">×{func.occurrences}</span>
+                  )}
+                </div>
+                <div className="semantic-summary-stats">
+                  {func.sessions > 0 ? (
+                    <>
+                      <span className="semantic-summary-stat accent-green">{formatCost(func.cost)}</span>
+                      <span className="semantic-summary-stat">{formatNumber(func.messages)} calls</span>
+                      <span className="semantic-summary-stat">{formatNumber(func.tokens)} tok</span>
+                    </>
+                  ) : (
+                    <span className="semantic-summary-stat dim">no execution data</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="semantic-summary-hint">
+        <Icon icon="mdi:cursor-default-click" width={12} />
+        <span>Hover spans in SQL for details</span>
+      </div>
+    </div>
+  );
+};
+
 const ModelTooltip = ({ active, payload }) => {
   if (!active || !payload || !payload.length) return null;
   const data = payload[0].payload;
@@ -63,6 +541,114 @@ const ModelTooltip = ({ active, payload }) => {
 };
 
 const QueryDetail = ({ data, onBack }) => {
+  const [inspectionData, setInspectionData] = useState(null);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
+  const [inspectionError, setInspectionError] = useState(null);
+
+  // Lifted hover state for semantic spans
+  const [hoveredSpanIndex, setHoveredSpanIndex] = useState(null);
+  const [hoveredCall, setHoveredCall] = useState(null);
+  // Highlighted function from summary panel (doesn't swap panel)
+  const [highlightedFunction, setHighlightedFunction] = useState(null);
+
+  const handleSpanHover = useCallback((index, call) => {
+    setHoveredSpanIndex(index);
+    setHoveredCall(call);
+    // Clear function highlight when directly hovering SQL spans
+    if (index !== null) {
+      setHighlightedFunction(null);
+    }
+  }, []);
+
+  const handleFunctionHover = useCallback((funcName) => {
+    setHighlightedFunction(funcName);
+  }, []);
+
+  // Navigate to Studio page when clicking a semantic span
+  const handleSpanClick = useCallback((call, sessions, cascadeExecutions) => {
+    if (!call) return;
+
+    const cascadeId = call.cascade_id;
+    const functionName = call.function;
+
+    // Find a matching session by cascade_id or function name
+    const matchingSession = (sessions || []).find(s => {
+      if (cascadeId && s.cascade_id === cascadeId) return true;
+      if (functionName && s.cascade_id === functionName) return true;
+      if (functionName && s.cascade_id && s.cascade_id.includes(functionName)) return true;
+      return false;
+    });
+
+    // Find a matching cascade execution if no session found
+    const matchingExecution = !matchingSession && (cascadeExecutions || []).find(e => {
+      if (cascadeId && e.cascade_id === cascadeId) return true;
+      if (functionName && e.cascade_id === functionName) return true;
+      if (functionName && e.cascade_id && e.cascade_id.includes(functionName)) return true;
+      return false;
+    });
+
+    const sessionId = matchingSession?.session_id || matchingExecution?.session_id;
+    const targetCascadeId = cascadeId || functionName;
+
+    if (targetCascadeId && sessionId) {
+      // Navigate to Studio page with cascade and session
+      const studioUrl = `/studio/${encodeURIComponent(targetCascadeId)}/${encodeURIComponent(sessionId)}`;
+      console.log('Navigating to Studio:', studioUrl);
+      window.location.href = studioUrl;
+    } else if (targetCascadeId) {
+      // Navigate to Studio page with just cascade (no session)
+      const studioUrl = `/studio/${encodeURIComponent(targetCascadeId)}`;
+      console.log('Navigating to Studio (cascade only):', studioUrl);
+      window.location.href = studioUrl;
+    } else {
+      console.log('No cascade_id or session_id found for span:', call);
+    }
+  }, []);
+
+  const fetchInspection = useCallback(async (sql) => {
+    if (!sql || !sql.trim()) {
+      setInspectionData(null);
+      return;
+    }
+
+    setInspectionLoading(true);
+    setInspectionError(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/sql/inspect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const result = await res.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      setInspectionData(result);
+      console.log('SQL Inspection result:', result);
+    } catch (err) {
+      console.error('Failed to inspect SQL:', err);
+      setInspectionError(err.message);
+    } finally {
+      setInspectionLoading(false);
+    }
+  }, []);
+
+  const query = data?.query || data;
+  const query_raw = query?.query_raw;
+
+  useEffect(() => {
+    if (query_raw) {
+      fetchInspection(query_raw);
+    }
+  }, [query_raw, fetchInspection]);
+
   if (!data) {
     return (
       <div className="empty-state">
@@ -75,20 +661,19 @@ const QueryDetail = ({ data, onBack }) => {
     );
   }
 
-  // API returns nested structure: { query: {...}, spawned_sessions: [...], models_used: [...] }
-  const query = data.query || data; // Support both flat and nested
-
-  // Map spawned_sessions to format frontend expects
   const sessions = (data.spawned_sessions || []).map(s => ({
     session_id: s.session_id,
+    cascade_id: s.cascade_id,
     model: s.model || '-',
-    cost: s.total_cost || 0,
-    tokens_in: s.total_tokens_in || 0,
-    tokens_out: s.total_tokens_out || 0,
+    total_cost: s.total_cost || 0,
+    total_tokens_in: s.total_tokens_in || 0,
+    total_tokens_out: s.total_tokens_out || 0,
+    message_count: s.message_count || 0,
     timestamp: s.started_at || s.timestamp
   }));
 
-  // Map models_used to cost_by_model format
+  const cascadeExecutions = data.cascade_executions || [];
+
   const cost_by_model = (data.models_used || []).map(m => ({
     model: m.model,
     cost: m.total_cost,
@@ -99,7 +684,6 @@ const QueryDetail = ({ data, onBack }) => {
 
   const {
     caller_id,
-    query_raw,
     query_template,
     query_fingerprint,
     query_type,
@@ -125,6 +709,9 @@ const QueryDetail = ({ data, onBack }) => {
 
   const statusClass = status === 'completed' ? 'status-completed' :
                      status === 'running' ? 'status-running' : 'status-error';
+
+  const semanticCalls = inspectionData?.calls || [];
+  const hasSemanticCalls = semanticCalls.length > 0;
 
   return (
     <div className="query-detail">
@@ -172,8 +759,23 @@ const QueryDetail = ({ data, onBack }) => {
       <div className="detail-grid">
         <div className="detail-sql-card">
           <div className="detail-sql-header">
-            <h4>SQL Query</h4>
+            <h4>
+              <Icon icon="mdi:code-braces" width={16} />
+              SQL Query
+              {hasSemanticCalls && (
+                <span className="detail-semantic-badge">
+                  <Icon icon="mdi:brain" width={12} />
+                  {semanticCalls.length} semantic
+                </span>
+              )}
+            </h4>
             <div className="detail-tags">
+              {inspectionLoading && (
+                <span className="detail-tag detail-tag--loading">
+                  <Icon icon="mdi:loading" width={12} className="spin" />
+                  inspecting...
+                </span>
+              )}
               {udf_types.map(t => (
                 <span key={t} className="detail-tag">
                   {t}
@@ -181,43 +783,66 @@ const QueryDetail = ({ data, onBack }) => {
               ))}
             </div>
           </div>
-          <div className="detail-sql-content">
-            {query_raw}
+          <div className="detail-sql-content detail-sql-content--semantic">
+            <SemanticSQLViewer
+              sql={query_raw || ''}
+              calls={semanticCalls}
+              showLineNumbers={true}
+              onSpanHover={handleSpanHover}
+              onSpanClick={(call) => handleSpanClick(call, sessions, cascadeExecutions)}
+              hoveredSpanIndex={hoveredSpanIndex}
+              highlightedFunction={highlightedFunction}
+            />
           </div>
+          {inspectionError && (
+            <div className="detail-sql-footer detail-sql-footer--error">
+              <Icon icon="mdi:alert-circle" width={12} />
+              Inspection failed: {inspectionError}
+            </div>
+          )}
         </div>
 
-        <div className="detail-sql-card detail-cache-card">
+        <div className="detail-sql-card detail-metrics-card">
           <div className="detail-sql-header">
-            <h4>Cache Breakdown</h4>
+            <h4>
+              <Icon icon="mdi:chart-box" width={16} />
+              {hoveredCall ? 'Span Metrics' : 'Semantic Breakdown'}
+            </h4>
           </div>
-          <div className="detail-cache-body">
-            <div className="detail-cache-metrics">
-              <div className="detail-cache-metric cache-hit">
-                <div className="detail-cache-value">{formatNumber(cache_hits)}</div>
-                <div className="detail-cache-label">Hits</div>
-              </div>
-              <div className="detail-cache-metric cache-miss">
-                <div className="detail-cache-value">{formatNumber(cache_misses)}</div>
-                <div className="detail-cache-label">Misses</div>
-              </div>
-            </div>
-            {totalCacheOps > 0 && (
-              <div className="cache-meter">
-                <div className={`cache-meter-fill ${cacheClass}`} style={{ width: `${cacheHitRate}%` }} />
-              </div>
-            )}
-          </div>
+
+          {hoveredCall ? (
+            <SpanMetricsPanel
+              hoveredCall={hoveredCall}
+              spawnedSessions={sessions}
+              cascadeExecutions={cascadeExecutions}
+            />
+          ) : (
+            <SemanticSummaryPanel
+              semanticCalls={semanticCalls}
+              spawnedSessions={sessions}
+              cascadeExecutions={cascadeExecutions}
+              onFunctionHover={handleFunctionHover}
+              highlightedFunction={highlightedFunction}
+            />
+          )}
         </div>
       </div>
 
       {query_template && query_template !== query_raw && (
         <div className="detail-sql-card">
           <div className="detail-sql-header">
-            <h4>Fingerprint Template</h4>
+            <h4>
+              <Icon icon="mdi:fingerprint" width={16} />
+              Fingerprint Template
+            </h4>
             <code className="detail-fingerprint">{query_fingerprint}</code>
           </div>
-          <div className="detail-sql-content detail-template">
-            {query_template}
+          <div className="detail-sql-content detail-sql-content--semantic">
+            <SemanticSQLViewer
+              sql={query_template || ''}
+              calls={[]}
+              showLineNumbers={true}
+            />
           </div>
         </div>
       )}
@@ -297,7 +922,7 @@ const QueryDetail = ({ data, onBack }) => {
             <thead>
               <tr>
                 <th>Session ID</th>
-                <th>Model</th>
+                <th>Cascade</th>
                 <th>Cost</th>
                 <th>Tokens In/Out</th>
                 <th>Time</th>
@@ -309,9 +934,9 @@ const QueryDetail = ({ data, onBack }) => {
                   <td>
                     <code className="detail-session-id">{session.session_id?.substring(0, 16)}...</code>
                   </td>
-                  <td className="detail-session-model">{session.model || '-'}</td>
-                  <td className="detail-session-cost">{formatCost(session.cost)}</td>
-                  <td>{formatNumber(session.tokens_in)} / {formatNumber(session.tokens_out)}</td>
+                  <td className="detail-session-cascade">{session.cascade_id || '-'}</td>
+                  <td className="detail-session-cost">{formatCost(session.total_cost)}</td>
+                  <td>{formatNumber(session.total_tokens_in)} / {formatNumber(session.total_tokens_out)}</td>
                   <td className="detail-session-time">{formatTime(session.timestamp)}</td>
                 </tr>
               ))}

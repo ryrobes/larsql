@@ -2,7 +2,7 @@
 # Calculates overall sentiment of a text collection
 #
 # SQL Usage:
-#   SELECT state, SENTIMENT(observed) FROM bigfoot GROUP BY state
+#   SELECT state, SENTIMENT_AGG(observed) FROM bigfoot GROUP BY state
 #
 # Direct Function:
 #   SELECT semantic_sentiment(to_json(list(observed))) FROM bigfoot
@@ -22,11 +22,11 @@ sql_function:
   args:
     - name: texts
       type: JSON
-  returns: VARCHAR
+  returns: DOUBLE
   shape: AGGREGATE
   context_arg: texts
   operators:
-    - "SENTIMENT({{ texts }})"
+    - "SENTIMENT_AGG({{ texts }})"
   cache: true
 
 cells:

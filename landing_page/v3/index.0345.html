@@ -171,9 +171,20 @@
         position: relative;
       }
 
+      .hero-visual::before {
+        content: "";
+        position: absolute;
+        inset: -20%;
+        background: radial-gradient(ellipse at 60% 40%, rgba(28, 246, 255, 0.15), transparent 60%),
+                    radial-gradient(ellipse at 30% 70%, rgba(255, 47, 168, 0.12), transparent 50%);
+        pointer-events: none;
+        z-index: -1;
+      }
+
       .hero-visual .screenshot-container {
         border-radius: var(--radius-lg);
         overflow: hidden;
+        box-shadow: var(--shadow), 0 0 60px rgba(28, 246, 255, 0.1);
       }
 
       .hero-visual video,
@@ -245,153 +256,12 @@
         margin: 0;
       }
 
-      .sql-demo-grid {
-        display: grid;
-        grid-template-columns: 1fr 320px;
-        gap: 24px;
-        align-items: start;
-      }
-
       .code-block {
         background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
         border-radius: var(--radius-lg);
         border: 1px solid rgba(28, 246, 255, 0.25);
         box-shadow: var(--shadow), 0 0 60px rgba(28, 246, 255, 0.1);
         overflow: hidden;
-      }
-
-      /* Cascade peek panel - subtle, not distracting */
-      .cascade-peek {
-        background: linear-gradient(150deg, rgba(8, 12, 20, 0.6), rgba(12, 16, 28, 0.5));
-        border-radius: var(--radius-lg);
-        border: 1px dashed rgba(28, 246, 255, 0.15);
-        padding: 24px;
-        min-height: 280px;
-        display: flex;
-        flex-direction: column;
-        transition: border-color 0.3s ease, background 0.3s ease;
-      }
-
-      .cascade-peek.active {
-        border-style: solid;
-        border-color: rgba(28, 246, 255, 0.25);
-        background: linear-gradient(150deg, rgba(8, 12, 20, 0.85), rgba(12, 16, 28, 0.75));
-      }
-
-      .cascade-peek-default {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        height: 100%;
-        flex: 1;
-        opacity: 0.7;
-      }
-
-      .cascade-peek-default .peek-icon {
-        font-size: 1.5rem;
-        margin-bottom: 16px;
-        opacity: 0.5;
-      }
-
-      .cascade-peek-default p {
-        margin: 0;
-        font-size: 0.9rem;
-        color: var(--muted);
-        line-height: 1.5;
-      }
-
-      .cascade-peek-default .peek-hint {
-        margin-top: 12px;
-        font-size: 0.8rem;
-        color: rgba(28, 246, 255, 0.5);
-      }
-
-      /* Cascade detail content */
-      .cascade-detail {
-        display: none;
-        flex-direction: column;
-        height: 100%;
-      }
-
-      .cascade-detail.visible {
-        display: flex;
-      }
-
-      .cascade-detail-header {
-        margin-bottom: 16px;
-      }
-
-      .cascade-detail-name {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 1.1rem;
-        color: var(--cyan);
-        margin: 0 0 4px;
-      }
-
-      .cascade-detail-desc {
-        font-size: 0.85rem;
-        color: var(--muted);
-        margin: 0;
-      }
-
-      .cascade-detail-flow {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        padding: 16px 0;
-      }
-
-      .cascade-flow-visual {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.75rem;
-        line-height: 1.6;
-        color: var(--muted);
-        white-space: pre;
-      }
-
-      .cascade-flow-visual .node {
-        color: var(--cyan);
-      }
-
-      .cascade-flow-visual .node-llm {
-        color: var(--magenta);
-      }
-
-      .cascade-flow-visual .arrow {
-        opacity: 0.4;
-      }
-
-      .cascade-detail-stats {
-        display: flex;
-        gap: 16px;
-        padding-top: 12px;
-        border-top: 1px solid rgba(28, 246, 255, 0.1);
-        font-size: 0.75rem;
-        color: var(--muted);
-      }
-
-      .cascade-detail-stats span {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-      }
-
-      .cascade-detail-stats .stat-value {
-        color: var(--cyan);
-        font-family: "JetBrains Mono", monospace;
-      }
-
-      @media (max-width: 900px) {
-        .sql-demo-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .cascade-peek {
-          display: none; /* Hide on mobile - SQL is enough */
-        }
       }
 
       .code-header {
@@ -1103,145 +973,25 @@
             <p>A SQL query. That's it.</p>
           </div>
 
-          <div class="sql-demo-grid">
-            <div class="code-block reveal delay-1">
-              <div class="code-header">
-                <div class="code-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <span class="code-title">query.sql</span>
+          <div class="code-block reveal delay-1">
+            <div class="code-header">
+              <div class="code-dots">
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
-              <div class="code-content">
+              <span class="code-title">query.sql</span>
+            </div>
+            <div class="code-content">
 <pre><span class="sql-keyword">SELECT</span>
     author,
-    <span class="semantic-op" data-cascade="extracts">text <span class="sql-function">EXTRACTS</span> <span class="sql-string">'urls'</span></span> <span class="sql-keyword">AS</span> <span class="sql-column">urls</span>,
-    <span class="semantic-op" data-cascade="ask">author_name <span class="sql-function">ASK</span> <span class="sql-string">'is this a notable AI influencer? score 0-1'</span></span> <span class="sql-keyword">AS</span> <span class="sql-column">notability</span>,
+    <span class="semantic-op" data-cascade="semantic_extracts">text <span class="sql-function">EXTRACTS</span> <span class="sql-string">'urls'</span></span> <span class="sql-keyword">AS</span> <span class="sql-column">urls</span>,
+    <span class="semantic-op" data-cascade="semantic_ask">author_name <span class="sql-function">ASK</span> <span class="sql-string">'is this a notable AI influencer? score 0-1'</span></span> <span class="sql-keyword">AS</span> <span class="sql-column">notability</span>,
     <span class="semantic-op semantic-fn" data-cascade="summarize_urls"><span class="sql-function">summarize_urls</span>(text)</span> <span class="sql-keyword">AS</span> <span class="sql-column">url_summaries</span>,
-    <span class="semantic-op semantic-fn" data-cascade="tldr"><span class="sql-function">TLDR</span>(text)</span> <span class="sql-keyword">AS</span> <span class="sql-column">summary</span>
+    <span class="semantic-op semantic-fn" data-cascade="semantic_tldr"><span class="sql-function">TLDR</span>(text)</span> <span class="sql-keyword">AS</span> <span class="sql-column">summary</span>
 <span class="sql-keyword">FROM</span> tweets
-<span class="sql-keyword">WHERE</span> <span class="semantic-op" data-cascade="implies">text <span class="sql-function">IMPLIES</span> <span class="sql-string">'bullish on AI development'</span></span>
-  <span class="sql-keyword">AND</span> <span class="semantic-op" data-cascade="contradicts">text <span class="sql-function">CONTRADICTS</span> <span class="sql-string">'AI will replace all developers'</span></span></pre>
-              </div>
-            </div>
-
-            <!-- Cascade peek panel - quiet invitation to explore -->
-            <div class="cascade-peek reveal delay-2" id="cascadePeek">
-              <div class="cascade-peek-default" id="peekDefault">
-                <div class="peek-icon">&#10697;</div>
-                <p>Each highlighted term is a cascade&mdash;a multi-step AI workflow.</p>
-                <div class="peek-hint">Hover to peek inside &rarr;</div>
-              </div>
-
-              <!-- TLDR -->
-              <div class="cascade-detail" data-for="tldr">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">TLDR()</h4>
-                  <p class="cascade-detail-desc">Parallel summarization</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual"><span class="node-llm">Claude</span> <span class="arrow">──┐</span>
-<span class="node-llm">GPT-4</span>  <span class="arrow">──┼──►</span> <span class="node">Evaluate</span> <span class="arrow">──►</span> Best
-<span class="node-llm">Gemini</span> <span class="arrow">──┘</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.003</span> avg</span>
-                  <span><span class="stat-value">3</span> models</span>
-                </div>
-              </div>
-
-              <!-- summarize_urls -->
-              <div class="cascade-detail" data-for="summarize_urls">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">summarize_urls()</h4>
-                  <p class="cascade-detail-desc">4-step URL pipeline</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual"><span class="node">EXTRACT</span> <span class="arrow">──►</span> <span class="node">BROWSE</span> <span class="arrow">──►</span> <span class="node">FETCH</span>
-                <span class="arrow">│</span>
-                <span class="arrow">▼</span>
-          <span class="node-llm">SUMMARIZE</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.012</span> avg</span>
-                  <span><span class="stat-value">4</span> steps</span>
-                </div>
-              </div>
-
-              <!-- IMPLIES -->
-              <div class="cascade-detail" data-for="implies">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">IMPLIES</h4>
-                  <p class="cascade-detail-desc">Semantic boolean filter</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual">text <span class="arrow">────────┐</span>
-               <span class="arrow">▼</span>
-          <span class="node-llm">Gemini Flash</span> <span class="arrow">──►</span> true/false
-               <span class="arrow">▲</span>
-reference <span class="arrow">────┘</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.0001</span> avg</span>
-                  <span><span class="stat-value">99%</span> success</span>
-                </div>
-              </div>
-
-              <!-- CONTRADICTS -->
-              <div class="cascade-detail" data-for="contradicts">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">CONTRADICTS</h4>
-                  <p class="cascade-detail-desc">Semantic negation filter</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual">text <span class="arrow">────────┐</span>
-               <span class="arrow">▼</span>
-          <span class="node-llm">Gemini Flash</span> <span class="arrow">──►</span> true/false
-               <span class="arrow">▲</span>
-reference <span class="arrow">────┘</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.0001</span> avg</span>
-                  <span><span class="stat-value">99%</span> success</span>
-                </div>
-              </div>
-
-              <!-- EXTRACTS -->
-              <div class="cascade-detail" data-for="extracts">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">EXTRACTS</h4>
-                  <p class="cascade-detail-desc">Structured data extraction</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual">text <span class="arrow">──►</span> <span class="node-llm">LLM</span> <span class="arrow">──►</span> <span class="node">Parse</span> <span class="arrow">──►</span> JSON
-
-<span style="color: var(--green)">["https://...", "https://..."]</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.0008</span> avg</span>
-                  <span><span class="stat-value">97%</span> success</span>
-                </div>
-              </div>
-
-              <!-- ASK -->
-              <div class="cascade-detail" data-for="ask">
-                <div class="cascade-detail-header">
-                  <h4 class="cascade-detail-name">ASK</h4>
-                  <p class="cascade-detail-desc">Freeform query operator</p>
-                </div>
-                <div class="cascade-detail-flow">
-                  <div class="cascade-flow-visual">context <span class="arrow">──┐</span>
-            <span class="arrow">▼</span>
-         <span class="node-llm">LLM</span> <span class="arrow">──►</span> answer
-            <span class="arrow">▲</span>
-question <span class="arrow">──┘</span></div>
-                </div>
-                <div class="cascade-detail-stats">
-                  <span><span class="stat-value">$0.0012</span> avg</span>
-                  <span><span class="stat-value">98%</span> success</span>
-                </div>
-              </div>
+<span class="sql-keyword">WHERE</span> <span class="semantic-op" data-cascade="semantic_implies">text <span class="sql-function">IMPLIES</span> <span class="sql-string">'bullish on AI development'</span></span>
+  <span class="sql-keyword">AND</span> <span class="semantic-op" data-cascade="semantic_contradicts">text <span class="sql-function">CONTRADICTS</span> <span class="sql-string">'AI will replace all developers'</span></span></pre>
             </div>
           </div>
 
@@ -1497,46 +1247,5 @@ question <span class="arrow">──┘</span></div>
         </div>
       </footer>
     </div>
-
-    <script>
-      // Cascade peek panel hover interactions
-      (function() {
-        const peekPanel = document.getElementById('cascadePeek');
-        const peekDefault = document.getElementById('peekDefault');
-        const cascadeDetails = document.querySelectorAll('.cascade-detail');
-        const semanticOps = document.querySelectorAll('.semantic-op');
-
-        function showCascade(cascadeId) {
-          peekDefault.style.display = 'none';
-          peekPanel.classList.add('active');
-
-          cascadeDetails.forEach(detail => {
-            if (detail.dataset.for === cascadeId) {
-              detail.classList.add('visible');
-            } else {
-              detail.classList.remove('visible');
-            }
-          });
-        }
-
-        function resetPanel() {
-          peekPanel.classList.remove('active');
-          peekDefault.style.display = 'flex';
-          cascadeDetails.forEach(detail => {
-            detail.classList.remove('visible');
-          });
-        }
-
-        semanticOps.forEach(op => {
-          op.addEventListener('mouseenter', () => {
-            showCascade(op.dataset.cascade);
-          });
-
-          op.addEventListener('mouseleave', () => {
-            resetPanel();
-          });
-        });
-      })();
-    </script>
   </body>
 </html>

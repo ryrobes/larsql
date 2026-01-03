@@ -99,6 +99,29 @@ def get_history_db():
     return conn
 
 
+@sql_query_bp.route('/inspect', methods=['POST'])
+def inspect_sql_query():
+    """
+    Inspect a SQL query and return semantic/LLM spans for UI highlighting.
+
+    Request JSON:
+      { "sql": "SELECT ...", "query": "..." }
+
+    Response JSON:
+      { "sql": "...", "calls": [...], "annotations": [...], "errors": [...] }
+    """
+    payload = request.get_json(silent=True) or {}
+    sql = payload.get("sql") or payload.get("query") or ""
+    if not isinstance(sql, str) or not sql.strip():
+        return jsonify({"error": "Missing 'sql' (string)"}), 400
+
+    try:
+        from rvbbit.sql_tools.sql_inspector import inspect_sql_query as _inspect
+        return jsonify(_inspect(sql))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @sql_query_bp.route('/connections', methods=['GET'])
 def list_connections():
     """
