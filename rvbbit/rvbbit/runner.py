@@ -4584,22 +4584,31 @@ Refinement directive: {reforge_config.honing_prompt}
             # Trigger analytics worker (async, non-blocking)
             # Pre-computes context-aware insights, Z-scores, and anomaly detection
             try:
+                print(f"[RUNNER] Triggering analytics for session: {self.session_id}, depth: {self.depth}")
                 from .analytics_worker import analyze_cascade_execution
                 import threading
 
                 def run_analytics():
                     try:
-                        analyze_cascade_execution(self.session_id)
+                        print(f"[ANALYTICS_THREAD] Starting analysis for {self.session_id}")
+                        result = analyze_cascade_execution(self.session_id)
+                        print(f"[ANALYTICS_THREAD] Completed: {result.get('success') if result else 'None'}")
                     except Exception as e:
                         logger = logging.getLogger(__name__)
                         logger.debug(f"Analytics worker failed: {e}")
+                        print(f"[ANALYTICS_THREAD] FAILED: {e}")
+                        import traceback
+                        traceback.print_exc()
 
                 # Run in background thread (don't block cascade completion)
                 analytics_thread = threading.Thread(target=run_analytics, daemon=True)
                 analytics_thread.start()
+                print(f"[RUNNER] Analytics thread started for {self.session_id}")
 
-            except Exception:
-                pass  # Analytics is optional, never fail cascade
+            except Exception as e:
+                print(f"[RUNNER] Failed to start analytics: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Credit snapshot tracking (async, non-blocking)
             # Logs OpenRouter credit balance if stale or cascade had significant cost

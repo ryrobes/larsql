@@ -52,8 +52,44 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
         from .db_adapter import get_db
         from .runner import RVBBITRunner
         import uuid
+        import time
 
         db = get_db()
+
+        # CRITICAL: Wait for cost data to be populated in unified_logs
+        # OpenRouter API takes 3-5 seconds, and we want accurate cost data
+        # Poll until cost is available (same logic as analytics_worker)
+        logger.debug(f"[confidence_worker] Waiting for cost data for {session_id}...")
+
+        poll_interval = 0.5
+        max_polls = 20  # 10 seconds total
+        cost_ready = False
+
+        for poll_count in range(max_polls):
+            cost_check = db.query(f"""
+                SELECT SUM(cost) as total_cost, COUNT(*) as llm_count
+                FROM unified_logs
+                WHERE session_id = '{session_id}'
+                  AND role = 'assistant'
+                  AND model IS NOT NULL
+            """)
+
+            if cost_check and cost_check[0]['total_cost'] and cost_check[0]['total_cost'] > 0:
+                cost_ready = True
+                logger.info(f"[confidence_worker] Cost data ready after {poll_count * poll_interval:.1f}s: ${cost_check[0]['total_cost']:.6f}")
+                break
+
+            # Check if no LLM calls (deterministic cascade)
+            if cost_check and cost_check[0]['llm_count'] == 0:
+                logger.debug(f"[confidence_worker] No LLM calls, cost=0 is expected")
+                cost_ready = True
+                break
+
+            if poll_count < max_polls - 1:
+                time.sleep(poll_interval)
+
+        if not cost_ready:
+            logger.warning(f"[confidence_worker] Cost data not ready after 10s, proceeding anyway")
 
         # Get session info to check if we should assess
         session_query = f"""
@@ -105,6 +141,30 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
         assessed_count = 0
         total_confidence = 0.0
 
+        # Look up parent session's caller context for inheritance
+        parent_caller_id = None
+        parent_metadata = None
+        try:
+            parent_query = f"""
+                SELECT caller_id, invocation_metadata_json
+                FROM cascade_sessions
+                WHERE session_id = '{session_id}'
+                LIMIT 1
+            """
+            parent_result = db.query(parent_query)
+            if parent_result and parent_result[0]:
+                parent_caller_id = parent_result[0].get('caller_id', '') or None
+                parent_metadata_json = parent_result[0].get('invocation_metadata_json', '{}')
+                if parent_metadata_json and parent_metadata_json != '{}':
+                    import json
+                    try:
+                        parent_metadata = json.loads(parent_metadata_json)
+                    except:
+                        parent_metadata = None
+                logger.debug(f"[confidence_worker] Inherited caller_id={parent_caller_id} from parent session {session_id}")
+        except Exception as e:
+            logger.warning(f"[confidence_worker] Could not look up parent caller context: {e}")
+
         for msg in messages:
             try:
                 # Extract prompt from full_request_json
@@ -119,10 +179,13 @@ def assess_training_confidence(session_id: str) -> Optional[dict]:
                 if not user_prompt or not assistant_response:
                     continue
 
-                # Run confidence assessment cascade
+                # Run confidence assessment cascade with inherited caller context
                 runner = RVBBITRunner(
                     'cascades/semantic_sql/assess_confidence.cascade.yaml',
-                    session_id=f"confidence_assess_{uuid.uuid4().hex[:8]}"
+                    session_id=f"confidence_assess_{uuid.uuid4().hex[:8]}",
+                    parent_session_id=session_id,  # Link back to session being assessed
+                    caller_id=parent_caller_id,     # Inherit caller_id from parent
+                    invocation_metadata=parent_metadata  # Inherit metadata
                 )
 
                 result = runner.run(input_data={

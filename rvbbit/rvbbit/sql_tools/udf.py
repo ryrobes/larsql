@@ -1378,6 +1378,22 @@ def register_dynamic_sql_functions(connection):
                     except:
                         pass  # Might conflict with hardcoded functions, that's OK
 
+                # ALSO register additional aliases from operator patterns
+                # Extract function names from patterns like "TLDR({{ text }})" or "CONDENSE(...)"
+                import re
+                for operator_pattern in entry.operators:
+                    # Match function-style operators: FUNCNAME(...)
+                    func_match = re.match(r'^([A-Z_]+)\s*\(', operator_pattern)
+                    if func_match:
+                        alias_name = func_match.group(1).lower()
+                        # Only register if different from main function name and short_name
+                        if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
+                            try:
+                                connection.create_function(alias_name, udf_func, return_type=return_type)
+                                print(f"[DynamicUDF]   ✓ Alias: {alias_name}() → {name}()")
+                            except:
+                                pass  # Might conflict, that's OK
+
             except Exception as e:
                 print(f"[DynamicUDF]   ✗ Failed to register {name}: {e}")
         

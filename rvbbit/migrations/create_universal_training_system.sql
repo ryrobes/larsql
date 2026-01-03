@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS training_annotations (
     trace_id String,
     trainable Bool DEFAULT false,
     verified Bool DEFAULT false,
-    confidence Float32 DEFAULT 1.0,
+    confidence Nullable(Float32),  -- NULL = not assessed, 0.0-1.0 = quality score
     notes String DEFAULT '',
     tags Array(String) DEFAULT [],
     annotated_at DateTime64(3) DEFAULT now64(3),

@@ -257,20 +257,27 @@ def analyze_cascade_execution(session_id: str) -> Dict:
             from .confidence_worker import assess_training_confidence, CONFIDENCE_ASSESSMENT_ENABLED
             import threading
 
-            if CONFIDENCE_ASSESSMENT_ENABLED and cascade_id not in {'assess_training_confidence', 'analyze_context_relevance'}:
+            session_cascade_id = session_data.get('cascade_id', '')
+            logger.info(f"[Analytics] Checking confidence assessment: cascade={session_cascade_id}, enabled={CONFIDENCE_ASSESSMENT_ENABLED}")
+
+            if CONFIDENCE_ASSESSMENT_ENABLED and session_cascade_id not in {'assess_training_confidence', 'analyze_context_relevance'}:
                 def run_confidence_assessment():
                     try:
-                        assess_training_confidence(session_id)
+                        logger.info(f"[Confidence] Starting assessment for {session_id}")
+                        result = assess_training_confidence(session_id)
+                        logger.info(f"[Confidence] Completed: {result}")
                     except Exception as e:
-                        logger.debug(f"Confidence assessment failed for {session_id}: {e}")
+                        logger.warning(f"[Confidence] Assessment failed for {session_id}: {e}", exc_info=True)
 
                 # Run in background thread (don't block analytics)
                 thread = threading.Thread(target=run_confidence_assessment, daemon=True)
                 thread.start()
-                logger.debug(f"[Analytics] Queued confidence assessment for {session_id}")
+                logger.info(f"[Analytics] ✅ Queued confidence assessment for {session_id} ({session_cascade_id})")
+            else:
+                logger.info(f"[Analytics] Skipping confidence: enabled={CONFIDENCE_ASSESSMENT_ENABLED}, cascade={session_cascade_id}")
         except Exception as e:
             # Non-blocking: Don't fail analytics if confidence assessment fails
-            logger.debug(f"Could not queue confidence assessment: {e}")
+            logger.warning(f"[Analytics] Could not queue confidence assessment: {e}", exc_info=True)
 
         # Step 11: Check for anomalies (cascade + cell level)
         anomalies = []
@@ -348,13 +355,15 @@ def _fetch_session_data(session_id: str, db) -> Optional[Dict]:
 
         metrics = metrics_result[0]
 
-        # Get cascade context from cascade_sessions
+        # Get cascade context from cascade_sessions (including caller tracking!)
         session_query = f"""
             SELECT
                 cascade_id,
                 input_data,
                 genus_hash,
-                created_at
+                created_at,
+                caller_id,
+                invocation_metadata_json
             FROM cascade_sessions
             WHERE session_id = '{session_id}'
         """
@@ -373,6 +382,8 @@ def _fetch_session_data(session_id: str, db) -> Optional[Dict]:
             'genus_hash': session_info.get('genus_hash', ''),
             'created_at': session_info['created_at'],
             'input_data': session_info.get('input_data', ''),
+            'caller_id': session_info.get('caller_id', ''),  # ✅ Include caller tracking
+            'invocation_metadata': session_info.get('invocation_metadata_json', '{}'),  # ✅ Include metadata
 
             # Aggregated metrics
             'total_cost': float(metrics.get('total_cost', 0) or 0),
@@ -1379,10 +1390,37 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
 
         logger.info(f"Analyzing relevance for {len(context_messages)} context messages in {cell_name}")
 
+        # Look up parent session's caller context for inheritance
+        parent_caller_id = None
+        parent_metadata = None
+        try:
+            parent_query = f"""
+                SELECT caller_id, invocation_metadata_json
+                FROM cascade_sessions
+                WHERE session_id = '{session_id}'
+                LIMIT 1
+            """
+            parent_result = db.query(parent_query)
+            if parent_result and parent_result[0]:
+                parent_caller_id = parent_result[0].get('caller_id', '') or None
+                parent_metadata_json = parent_result[0].get('invocation_metadata_json', '{}')
+                if parent_metadata_json and parent_metadata_json != '{}':
+                    import json
+                    try:
+                        parent_metadata = json.loads(parent_metadata_json)
+                    except:
+                        parent_metadata = None
+                logger.debug(f"[analytics_worker] Inherited caller_id={parent_caller_id} from parent session {session_id}")
+        except Exception as e:
+            logger.warning(f"[analytics_worker] Could not look up parent caller context: {e}")
+
         runner = RVBBITRunner(
             config_path='traits/analyze_context_relevance.yaml',
             session_id=analysis_session_id,
-            depth=1  # Mark as sub-cascade
+            depth=1,  # Mark as sub-cascade
+            parent_session_id=session_id,  # Link back to session being analyzed
+            caller_id=parent_caller_id,     # Inherit caller_id from parent
+            invocation_metadata=parent_metadata  # Inherit metadata
         )
 
         result = runner.run(input_data={

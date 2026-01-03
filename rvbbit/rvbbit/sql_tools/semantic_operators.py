@@ -620,81 +620,92 @@ def _rewrite_not_about(line: str, annotation_prefix: str, default_threshold: flo
 
 def _rewrite_tilde(line: str, annotation_prefix: str) -> str:
     """
-    Rewrite tilde (~) operator for semantic equality.
+    Rewrite tilde (~) operator for semantic matching.
 
-    a.company ~ b.vendor                    →  match_pair(a.company, b.vendor, 'same entity')
-    a.company ~ b.vendor AS 'same business' →  match_pair(a.company, b.vendor, 'same business')
+    Two modes:
+    1. String literal on right: text ~ 'criterion'  →  matches('criterion', text)
+    2. Column vs column: a ~ b  →  matches(a, b) [treats b as text to match]
+
+    Examples:
+        title ~ 'visual contact'  →  matches('visual contact', title)
+        c.company ~ s.vendor      →  matches(c.company, s.vendor)
 
     With annotation:
-    -- @ use a fast model
-    a ~ b  →  match_pair(a, b, 'use a fast model - same entity')
+        -- @ use a fast model
+        title ~ 'x'  →  matches('use a fast model - x', title)
     """
-    fn_name = get_function_name("match_pair")
+    fn_name = get_function_name("matches")
 
-    # Pattern with AS: a ~ b AS 'relationship'
-    pattern_with_as = r'(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)\s+AS\s+\'([^\']+)\''
+    # Pattern 1: text ~ 'string literal' (most common use case)
+    # Match: col ~ 'value' or table.col ~ 'value'
+    pattern_literal = r'(\w+(?:\.\w+)?)\s*~\s*\'([^\']+)\''
 
-    def replacer_with_as(match):
+    def replacer_literal(match):
+        column = match.group(1)
+        criterion = match.group(2)
+        full_criterion = f"{annotation_prefix}{criterion}" if annotation_prefix else criterion
+        return f"{fn_name}('{full_criterion}', {column})"
+
+    result = re.sub(pattern_literal, replacer_literal, line, flags=re.IGNORECASE)
+
+    # Pattern 2: col ~ col (column vs column comparison)
+    # Match: a ~ b or table.col ~ other.col (but NOT if already rewritten)
+    # Be careful not to match if we already replaced with a function call
+    pattern_columns = r'(?<![a-zA-Z0-9_])(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)(?![=\(])'
+
+    def replacer_columns(match):
         left = match.group(1)
         right = match.group(2)
-        relationship = match.group(3)
-        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"{fn_name}({left}, {right}, '{full_relationship}')"
+        # For column-column comparison, treat right column as criterion
+        return f"{fn_name}({left}, {right})"
 
-    result = re.sub(pattern_with_as, replacer_with_as, line, flags=re.IGNORECASE)
-
-    # Pattern simple: a ~ b (no AS)
-    # Be careful not to match ~= or other operators
-    pattern_simple = r'(\w+(?:\.\w+)?)\s*~\s*(\w+(?:\.\w+)?)(?!\s+AS\b)(?![=])'
-
-    def replacer_simple(match):
-        left = match.group(1)
-        right = match.group(2)
-        relationship = "same entity"
-        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"{fn_name}({left}, {right}, '{full_relationship}')"
-
-    result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
+    # Only apply column-column pattern if no literal pattern matched
+    if '~' in result and "'" not in result:
+        result = re.sub(pattern_columns, replacer_columns, result, flags=re.IGNORECASE)
 
     return result
 
 
 def _rewrite_not_tilde(line: str, annotation_prefix: str) -> str:
     """
-    Rewrite negated tilde (!~) operator for semantic inequality.
+    Rewrite negated tilde (!~) operator for semantic non-matching.
 
-    a.company !~ b.vendor                    →  NOT match_pair(a.company, b.vendor, 'same entity')
-    a.company !~ b.vendor AS 'same business' →  NOT match_pair(a.company, b.vendor, 'same business')
+    Two modes:
+    1. String literal on right: text !~ 'criterion'  →  NOT matches('criterion', text)
+    2. Column vs column: a !~ b  →  NOT matches(a, b)
+
+    Examples:
+        title !~ 'hoax'        →  NOT matches('hoax', title)
+        p1.name !~ p2.name     →  NOT matches(p1.name, p2.name)
 
     With annotation:
-    -- @ use a fast model
-    a !~ b  →  NOT match_pair(a, b, 'use a fast model - same entity')
+        -- @ use a fast model
+        title !~ 'x'  →  NOT matches('use a fast model - x', title)
     """
-    fn_name = get_function_name("match_pair")
+    fn_name = get_function_name("matches")
 
-    # Pattern with AS: a !~ b AS 'relationship'
-    pattern_with_as = r'(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)\s+AS\s+\'([^\']+)\''
+    # Pattern 1: text !~ 'string literal'
+    pattern_literal = r'(\w+(?:\.\w+)?)\s*!~\s*\'([^\']+)\''
 
-    def replacer_with_as(match):
+    def replacer_literal(match):
+        column = match.group(1)
+        criterion = match.group(2)
+        full_criterion = f"{annotation_prefix}{criterion}" if annotation_prefix else criterion
+        return f"NOT {fn_name}('{full_criterion}', {column})"
+
+    result = re.sub(pattern_literal, replacer_literal, line, flags=re.IGNORECASE)
+
+    # Pattern 2: col !~ col (column vs column comparison)
+    pattern_columns = r'(?<![a-zA-Z0-9_])(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)(?![=\(])'
+
+    def replacer_columns(match):
         left = match.group(1)
         right = match.group(2)
-        relationship = match.group(3)
-        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"NOT {fn_name}({left}, {right}, '{full_relationship}')"
+        return f"NOT {fn_name}({left}, {right})"
 
-    result = re.sub(pattern_with_as, replacer_with_as, line, flags=re.IGNORECASE)
-
-    # Pattern simple: a !~ b (no AS)
-    pattern_simple = r'(\w+(?:\.\w+)?)\s*!~\s*(\w+(?:\.\w+)?)(?!\s+AS\b)'
-
-    def replacer_simple(match):
-        left = match.group(1)
-        right = match.group(2)
-        relationship = "same entity"
-        full_relationship = f"{annotation_prefix}{relationship}" if annotation_prefix else relationship
-        return f"NOT {fn_name}({left}, {right}, '{full_relationship}')"
-
-    result = re.sub(pattern_simple, replacer_simple, result, flags=re.IGNORECASE)
+    # Only apply column-column pattern if no literal pattern matched
+    if '!~' in result and "'" not in result:
+        result = re.sub(pattern_columns, replacer_columns, result, flags=re.IGNORECASE)
 
     return result
 

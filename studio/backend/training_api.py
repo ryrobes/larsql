@@ -70,15 +70,16 @@ def get_training_examples():
             caller_id
         FROM training_examples_with_annotations
         WHERE {where_sql}
-          AND user_input != ''
-          AND assistant_output != ''
+          AND LENGTH(assistant_output) > 0
         ORDER BY timestamp DESC
         LIMIT {limit} OFFSET {offset}
     """
 
     try:
         db = get_db()
+        logger.info(f"[Training API GET] where_sql='{where_sql}', limit={limit}")
         result = db.query(query)
+        logger.info(f"[Training API GET] Query returned {len(result)} rows")
 
         # db.query() returns list of dicts - sanitize for JSON
         examples = []
@@ -92,6 +93,15 @@ def get_training_examples():
                         return val.decode('utf-8', errors='ignore')
                     return str(val)
 
+                # Convert to float safely
+                def safe_float(val, default=None):
+                    if val is None:
+                        return default
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return default
+
                 # Convert timestamp to ISO string
                 timestamp_str = None
                 if row.get('timestamp'):
@@ -104,18 +114,18 @@ def get_training_examples():
                         timestamp_str = None
 
                 example = {
-                    'trace_id': safe_str(row['trace_id']),
-                    'session_id': safe_str(row['session_id']),
-                    'cascade_id': safe_str(row['cascade_id']),
-                    'cell_name': safe_str(row['cell_name']),
+                    'trace_id': safe_str(row.get('trace_id')),
+                    'session_id': safe_str(row.get('session_id')),
+                    'cascade_id': safe_str(row.get('cascade_id')),
+                    'cell_name': safe_str(row.get('cell_name')),
                     'user_input': safe_str(row.get('user_input', ''))[:500],
                     'assistant_output': safe_str(row.get('assistant_output', ''))[:500],
                     'trainable': bool(row.get('trainable', False)),
                     'verified': bool(row.get('verified', False)),
-                    'confidence': float(row['confidence']) if row.get('confidence') is not None else None,
+                    'confidence': safe_float(row.get('confidence'), None),
                     'timestamp': timestamp_str,
                     'model': safe_str(row.get('model', '')),
-                    'cost': float(row.get('cost', 0.0)),
+                    'cost': safe_float(row.get('cost'), None),  # NULL until OpenRouter updates (3-5s delay)
                     'caller_id': safe_str(row.get('caller_id', ''))
                 }
                 examples.append(example)
@@ -232,8 +242,7 @@ def get_session_logs():
             cost
         FROM training_examples_with_annotations
         WHERE session_id = '{session_id}'
-          AND user_input != ''
-          AND assistant_output != ''
+          AND LENGTH(assistant_output) > 0
         ORDER BY timestamp ASC
     """
 
@@ -249,6 +258,14 @@ def get_session_logs():
                 return val.decode('utf-8', errors='ignore')
             return str(val)
 
+        def safe_float(val, default=None):
+            if val is None:
+                return default
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
         logs = []
         for row in result:
             try:
@@ -263,17 +280,17 @@ def get_session_logs():
                         timestamp_str = None
 
                 log = {
-                    'trace_id': safe_str(row['trace_id']),
-                    'cascade_id': safe_str(row['cascade_id']),
-                    'cell_name': safe_str(row['cell_name']),
+                    'trace_id': safe_str(row.get('trace_id')),
+                    'cascade_id': safe_str(row.get('cascade_id')),
+                    'cell_name': safe_str(row.get('cell_name')),
                     'user_input': safe_str(row.get('user_input', '')),
                     'assistant_output': safe_str(row.get('assistant_output', '')),
                     'trainable': bool(row.get('trainable', False)),
                     'verified': bool(row.get('verified', False)),
-                    'confidence': float(row['confidence']) if row.get('confidence') is not None else None,
+                    'confidence': safe_float(row.get('confidence'), None),
                     'timestamp': timestamp_str,
                     'model': safe_str(row.get('model', '')),
-                    'cost': float(row.get('cost', 0.0))
+                    'cost': safe_float(row.get('cost'), None)  # NULL until OpenRouter updates
                 }
                 logs.append(log)
             except Exception as e:

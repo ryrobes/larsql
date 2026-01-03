@@ -24,7 +24,7 @@ inputs_schema:
 
 cells:
   - name: score_confidence
-    model: google/gemini-2.5-flash-lite
+    #model: google/gemini-2.5-flash-lite
     instructions: |
       Assess the quality and confidence of this AI assistant response.
 

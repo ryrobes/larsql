@@ -1,0 +1,114 @@
+# ASK - Generic prompt application to SQL columns
+# The ultimate meta-operator: apply any arbitrary prompt to any text
+#
+# SQL Usage:
+#   SELECT review ASK 'is this positive or negative?' FROM reviews
+#   SELECT description ASK 'rate urgency 1-10' as urgency FROM tickets
+#   SELECT title ASK 'translate to Spanish' as titulo FROM articles
+#   SELECT code ASK 'find security vulnerabilities' FROM source_files
+#
+# Direct Function:
+#   SELECT semantic_ask(text, 'your arbitrary prompt') FROM table
+
+cascade_id: semantic_ask
+
+description: |
+  Generic prompt application - apply any arbitrary instruction/question to text.
+
+  This is the ultimate flexible operator. Instead of specialized operators like
+  MEANS, EXTRACTS, ALIGNS, you can use ASK for anything:
+
+  - Sentiment analysis: "what's the sentiment?"
+  - Translation: "translate to French"
+  - Classification: "is this spam?"
+  - Transformation: "rewrite this professionally"
+  - Extraction: "find the phone number"
+  - Analysis: "rate quality 1-10"
+  - Comparison: "does this match X?"
+  - Generation: "write a subject line"
+
+  Perfect for:
+  - Ad-hoc queries where you don't have a specialized operator
+  - Prototyping before creating a dedicated cascade
+  - One-off analysis tasks
+  - Exploratory data analysis
+
+inputs_schema:
+  text: The text to apply the prompt to
+  prompt: Any arbitrary instruction or question
+
+sql_function:
+  name: semantic_ask
+  description: Apply any arbitrary prompt to text (ultimate flexibility)
+  args:
+    - name: text
+      type: VARCHAR
+    - name: prompt
+      type: VARCHAR
+      description: Any instruction or question (e.g., 'is this urgent?', 'translate to Spanish')
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "{{ text }} ASK '{{ prompt }}'"
+    - "ASK '{{ prompt }}' FROM {{ text }}"
+  cache: true
+
+cells:
+  - name: apply_prompt
+    #model: google/gemini-2.5-flash-lite
+
+    # Training: Learn from past successful prompts
+    use_training: true
+    training_limit: 3
+    training_strategy: recent
+    training_min_confidence: 0.8
+    training_format: xml
+
+    traits: [brave_web_search]
+
+    instructions: |
+      Apply this instruction/question to the given text.
+
+      TEXT:
+      {{ input.text }}
+
+      INSTRUCTION:
+      {{ input.prompt }}
+
+      Important:
+      1. Follow the instruction exactly as specified
+      2. Return ONLY the requested information/result
+      3. Be concise - don't add explanations unless asked
+      4. If the instruction asks for a specific format (JSON, number, etc.), use it
+      5. If the text doesn't contain relevant info, return "NULL"
+
+      Examples:
+
+      Text: "This product is amazing! Best purchase ever!"
+      Instruction: "is this positive or negative?" → "positive"
+      Instruction: "rate sentiment 1-10" → "9"
+      Instruction: "extract the emotion" → "excitement"
+
+      Text: "Meeting tomorrow at 3pm in room 405"
+      Instruction: "when is the meeting?" → "tomorrow at 3pm"
+      Instruction: "where is the meeting?" → "room 405"
+      Instruction: "translate to Spanish" → "Reunión mañana a las 3pm en la sala 405"
+
+      Text: "Contact John at john@example.com or 555-1234"
+      Instruction: "find the email" → "john@example.com"
+      Instruction: "find the phone" → "555-1234"
+      Instruction: "is this a business contact?" → "yes"
+
+      Text: "def foo(x): return x * 2"
+      Instruction: "what language is this?" → "Python"
+      Instruction: "what does this do?" → "multiplies input by 2"
+      Instruction: "find bugs" → "NULL"
+
+      Return ONLY the result - no preamble, no explanation (unless the instruction asks for it).
+
+    rules:
+      max_turns: 2
+
+    output_schema:
+      type: string
+      description: "The result of applying the prompt to the text"

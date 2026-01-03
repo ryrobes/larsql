@@ -94,6 +94,15 @@ def initialize_dynamic_patterns(force: bool = False) -> Dict[str, Set[str]]:
                 logger.debug(f"Found infix operator: {keyword} from {func_name}")
                 continue
 
+            # Pattern 1b: Symbol operators (e.g., "{{ text }} ~ {{ criterion }}")
+            # Look for single-char symbol between }} and {{
+            symbol_match = re.search(r'\}\}\s+([~!<>=]+)\s+', operator_pattern)
+            if symbol_match:
+                keyword = symbol_match.group(1)
+                infix_operators.add(keyword)
+                logger.debug(f"Found symbol operator: {keyword} from {func_name}")
+                continue
+
             # Pattern 2: Function calls (e.g., "EMBED({{ text }})")
             # Look for WORD followed by (
             func_match = re.match(r'^(\w+)\s*\(', operator_pattern)
@@ -170,9 +179,17 @@ def has_any_semantic_operator(query: str) -> bool:
     query_upper = query.upper()
 
     for keyword in patterns["all_keywords"]:
-        # Use word boundary regex to avoid false positives
-        if re.search(rf'\b{keyword}\b', query_upper):
-            return True
+        # Check if this is a word-based operator or symbol operator
+        is_word_operator = keyword.isalnum()
+
+        if is_word_operator:
+            # Use word boundary regex to avoid false positives
+            if re.search(rf'\b{keyword}\b', query_upper):
+                return True
+        else:
+            # Symbol operators like ~, !~, etc. - check for presence
+            if keyword in query:
+                return True
 
     return False
 
@@ -195,12 +212,21 @@ def has_semantic_operator_in_line(line: str) -> bool:
 
     # Check for infix operators (with context)
     for keyword in patterns["infix"]:
-        # Infix operators typically have format: col KEYWORD 'value'
-        if re.search(rf'\b{keyword}\s+[\'"]', line_upper):
-            return True
-        # Also check: col KEYWORD other_col
-        if re.search(rf'\b{keyword}\s+\w+', line_upper):
-            return True
+        # Check if this is a word-based operator (MEANS, ABOUT) or symbol (~, !~)
+        is_word_operator = keyword.isalnum()
+
+        if is_word_operator:
+            # Infix operators typically have format: col KEYWORD 'value'
+            if re.search(rf'\b{keyword}\s+[\'"]', line_upper):
+                return True
+            # Also check: col KEYWORD other_col
+            if re.search(rf'\b{keyword}\s+\w+', line_upper):
+                return True
+        else:
+            # Symbol operators like ~, !~, etc.
+            # Just check if the symbol exists in the line (more lenient)
+            if keyword in line:
+                return True
 
     # Check for function operators
     for keyword in patterns["function"]:
