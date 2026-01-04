@@ -48,6 +48,34 @@ sql_function:
   returns: VARCHAR
   cache: true
 
+  # Alternative operator syntaxes (all rewrite to topics() function)
+  operators:
+    - "TOPICS({{ text }})"
+    - "TOPICS({{ text }}, {{ num_topics }})"
+    - "TOPICS({{ text }}, {{ num_topics }}, '{{ focus }}')"
+    - "{{ text }} TOPICS {{ num_topics }}"
+    - "{{ text }} TOPICS INTO {{ num_topics }}"
+
+  # Block operator: DISCOVER_TOPICS...END_DISCOVER
+  # Example: DISCOVER_TOPICS IN description COUNT 5 FOCUS 'behavior' END_DISCOVER
+  block_operator:
+    start: DISCOVER_TOPICS
+    end: END_DISCOVER
+    structure:
+      - keyword: IN
+      - capture: text
+        as: expression
+      - optional:
+          pattern:
+            - keyword: COUNT
+            - capture: num_topics
+              as: expression
+      - optional:
+          pattern:
+            - keyword: FOCUS
+            - capture: focus
+              as: string
+
 cells:
   - name: extract_and_assign
     #model: google/gemini-2.5-flash-lite

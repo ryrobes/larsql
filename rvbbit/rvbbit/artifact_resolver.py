@@ -58,9 +58,9 @@ def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
             subdir,
             pattern
         )
-        print(f"[ArtifactResolver]   Searching: {search_pattern}")
+        #print(f"[ArtifactResolver]   Searching: {search_pattern}")
         found = glob.glob(search_pattern)
-        print(f"[ArtifactResolver]   Found {len(found)} files: {found[:3]}")
+        #print(f"[ArtifactResolver]   Found {len(found)} files: {found[:3]}")
         found.sort()  # Sort by filename (0.png, 1.png, etc.)
         return found
 
@@ -81,7 +81,7 @@ def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
                 data_url = encode_image_base64(img_path)
                 artifacts['images'].append(data_url)
             except Exception as e:
-                print(f"[ArtifactResolver] Failed to load image {img_path}: {e}")
+                #print(f"[ArtifactResolver] Failed to load image {img_path}: {e}")
                 artifacts['images'].append(f"[Error loading image: {e}]")
 
     # Load DOM snapshots as markdown text (rabbitize saves as .md files)
@@ -93,7 +93,7 @@ def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
                 with open(md_path, 'r', encoding='utf-8') as f:
                     artifacts['dom_snapshots'].append(f.read())
             except Exception as e:
-                print(f"[ArtifactResolver] Failed to load DOM snapshot {md_path}: {e}")
+                #print(f"[ArtifactResolver] Failed to load DOM snapshot {md_path}: {e}")
                 artifacts['dom_snapshots'].append(f"[Error loading DOM: {e}]")
 
     # Load DOM coords as JSON text (filter to numbered coords only)
@@ -109,18 +109,18 @@ def load_rabbitize_artifacts(cell_name: str, session_id: str) -> Dict[str, Any]:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     artifacts['dom_coords'].append(f.read())
             except Exception as e:
-                print(f"[ArtifactResolver] Failed to load DOM coords {json_path}: {e}")
+                #print(f"[ArtifactResolver] Failed to load DOM coords {json_path}: {e}")
                 artifacts['dom_coords'].append(f"[Error loading coords: {e}]")
 
     # Find video file
     video_pattern = os.path.join(rabbitize_runs, '*', f'{cell_name}.*', '*', 'video', '*.webm')
-    print(f"[ArtifactResolver]   Searching video: {video_pattern}")
+    #print(f"[ArtifactResolver]   Searching video: {video_pattern}")
     video_files = glob.glob(video_pattern)
-    print(f"[ArtifactResolver]   Found {len(video_files)} video files")
+    #print(f"[ArtifactResolver]   Found {len(video_files)} video files")
     if video_files:
         artifacts['video'] = video_files[0]  # Just the path
 
-    print(f"[ArtifactResolver] Loaded artifacts for {cell_name}: {', '.join(f'{k}={len(v) if isinstance(v, list) else 1}' for k, v in artifacts.items())}")
+    #print(f"[ArtifactResolver] Loaded artifacts for {cell_name}: {', '.join(f'{k}={len(v) if isinstance(v, list) else 1}' for k, v in artifacts.items())}")
 
     return artifacts
 
@@ -139,9 +139,9 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_cells: list, 
     """
     enriched = outputs.copy()
 
-    print(f"[ArtifactResolver] Enriching outputs with artifacts for session: {session_id}")
-    print(f"[ArtifactResolver] Input outputs keys: {list(outputs.keys())}")
-    print(f"[ArtifactResolver] Cascade has {len(cascade_cells)} cells")
+    #print(f"[ArtifactResolver] Enriching outputs with artifacts for session: {session_id}")
+    #print(f"[ArtifactResolver] Input outputs keys: {list(outputs.keys())}")
+    #print(f"[ArtifactResolver] Cascade has {len(cascade_cells)} cells")
 
     for cell in cascade_cells:
         # Check if this is a rabbitize cell
@@ -149,8 +149,8 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_cells: list, 
         cell_tool = getattr(cell, 'tool', None)
         cell_inputs = getattr(cell, 'inputs', None)
 
-        # print(f"[ArtifactResolver] Checking cell: {cell_name}, tool: {cell_tool}, inputs type: {type(cell_inputs)}")
-        # print(f"[ArtifactResolver]   Cell attributes: {dir(cell)[:20]}")  # Debug what's available
+        # #print(f"[ArtifactResolver] Checking cell: {cell_name}, tool: {cell_tool}, inputs type: {type(cell_inputs)}")
+        # #print(f"[ArtifactResolver]   Cell attributes: {dir(cell)[:20]}")  # Debug what's available
 
         is_shell_tool = cell_tool in ('linux_shell', 'linux_shell_dangerous')
 
@@ -163,7 +163,7 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_cells: list, 
             else:
                 command = getattr(cell_inputs, 'command', '')
             has_rabbitize = 'rabbitize' in command if command else False
-            print(f"[ArtifactResolver]   -> has_rabbitize: {has_rabbitize}, command preview: {command[:100] if command else None}")
+            #print(f"[ArtifactResolver]   -> has_rabbitize: {has_rabbitize}, command preview: {command[:100] if command else None}")
 
         # Fallback: Check cell dict directly (Pydantic model might have inputs in __dict__)
         if not has_rabbitize and is_shell_tool:
@@ -173,25 +173,26 @@ def enrich_outputs_with_artifacts(outputs: Dict[str, Any], cascade_cells: list, 
                 if isinstance(inputs_dict, dict) and 'command' in inputs_dict:
                     command = inputs_dict['command']
                     has_rabbitize = 'rabbitize' in command if command else False
-                    print(f"[ArtifactResolver]   -> Fallback dict check: has_rabbitize={has_rabbitize}")
+                    #print(f"[ArtifactResolver]   -> Fallback dict check: has_rabbitize={has_rabbitize}")
 
         # Simple fallback: linux_shell_dangerous is primarily for rabbitize
         # (until we have a better Docker image)
         if not has_rabbitize and cell_tool == 'linux_shell_dangerous':
             has_rabbitize = True
-            print(f"[ArtifactResolver]   -> Using fallback: linux_shell_dangerous = rabbitize")
+            #print(f"[ArtifactResolver]   -> Using fallback: linux_shell_dangerous = rabbitize")
 
         is_rabbitize = is_shell_tool and has_rabbitize
 
         if is_rabbitize:
             if cell_name:
-                print(f"[ArtifactResolver] ✓ Loading artifacts for rabbitize cell: {cell_name}")
+                #print(f"[ArtifactResolver] ✓ Loading artifacts for rabbitize cell: {cell_name}")
                 # Load artifacts into plain dict (no custom classes)
                 enriched[cell_name] = load_rabbitize_artifacts(cell_name, session_id)
             else:
-                print(f"[ArtifactResolver] ✗ Rabbitize cell has no name!")
+                #print(f"[ArtifactResolver] ✗ Rabbitize cell has no name!")
+                pass
 
-    print(f"[ArtifactResolver] Final enriched outputs keys: {list(enriched.keys())}")
+    #print(f"[ArtifactResolver] Final enriched outputs keys: {list(enriched.keys())}")
     return enriched
 
 

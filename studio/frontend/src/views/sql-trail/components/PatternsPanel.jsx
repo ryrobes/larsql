@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+
+const API_BASE = 'http://localhost:5050';
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return '$0.00';
@@ -15,6 +17,18 @@ const formatDuration = (ms) => {
   return `${(ms / 60000).toFixed(1)}m`;
 };
 
+const formatTimestamp = (ts) => {
+  if (!ts) return '-';
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return ts;
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 const truncateTemplate = (template, maxLength = 120) => {
   if (!template) return '-';
   const cleaned = template.replace(/\s+/g, ' ').trim();
@@ -28,10 +42,19 @@ const getCacheClass = (rate) => {
   return 'cache-low';
 };
 
-const PatternsPanel = ({ patterns = [], onPatternClick }) => {
+const getStatusClass = (status) => {
+  if (status === 'completed') return 'status-completed';
+  if (status === 'running') return 'status-running';
+  if (status === 'error') return 'status-error';
+  return '';
+};
+
+const PatternsPanel = ({ patterns = [], onPatternClick, onQuerySelect }) => {
   const [sortBy, setSortBy] = useState('count');
   const [sortDesc, setSortDesc] = useState(true);
   const [expandedPattern, setExpandedPattern] = useState(null);
+  const [patternExecutions, setPatternExecutions] = useState({});
+  const [loadingExecutions, setLoadingExecutions] = useState({});
 
   const sortedPatterns = useMemo(() => {
     const result = [...patterns];
@@ -71,6 +94,31 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
       setSortDesc(true);
     }
   };
+
+  // Fetch executions when a pattern is expanded
+  useEffect(() => {
+    if (!expandedPattern) return;
+    if (patternExecutions[expandedPattern]) return; // Already loaded
+    if (loadingExecutions[expandedPattern]) return; // Already loading
+
+    const fetchExecutions = async () => {
+      setLoadingExecutions(prev => ({ ...prev, [expandedPattern]: true }));
+      try {
+        const params = new URLSearchParams({ fingerprint: expandedPattern, limit: 20 });
+        const res = await fetch(`${API_BASE}/api/sql-trail/queries?${params}`);
+        const data = await res.json();
+        if (!data.error) {
+          setPatternExecutions(prev => ({ ...prev, [expandedPattern]: data.queries || [] }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch pattern executions:', err);
+      } finally {
+        setLoadingExecutions(prev => ({ ...prev, [expandedPattern]: false }));
+      }
+    };
+
+    fetchExecutions();
+  }, [expandedPattern, patternExecutions, loadingExecutions]);
 
   const SortIcon = ({ field }) => {
     if (sortBy !== field) return null;
@@ -228,24 +276,67 @@ const PatternsPanel = ({ patterns = [], onPatternClick }) => {
                             {pattern.total_cache_misses || 0}
                           </div>
                         </div>
-                        {isLowCache && (
-                          <div className="pattern-warning">
-                            <Icon icon="mdi:lightbulb-outline" width={16} />
-                            <span>
-                              Low cache hit rate detected. Consider enabling caching or reviewing input variations.
-                            </span>
+
+                        {/* Executions Grid */}
+                        <div className="pattern-executions">
+                          <div className="pattern-executions-header">
+                            <Icon icon="mdi:history" width={14} />
+                            <span>Recent Executions ({patternExecutions[pattern.fingerprint]?.length || 0})</span>
                           </div>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPatternClick && onPatternClick(pattern);
-                          }}
-                          className="btn btn-outline btn-sm pattern-action"
-                        >
-                          <Icon icon="mdi:filter" width={14} />
-                          View queries with this pattern
-                        </button>
+                          {loadingExecutions[pattern.fingerprint] ? (
+                            <div className="pattern-executions-loading">
+                              <Icon icon="mdi:loading" width={16} className="spin" />
+                              <span>Loading executions...</span>
+                            </div>
+                          ) : (patternExecutions[pattern.fingerprint]?.length || 0) === 0 ? (
+                            <div className="pattern-executions-empty">
+                              No executions found for this pattern
+                            </div>
+                          ) : (
+                            <div className="pattern-executions-grid">
+                              {patternExecutions[pattern.fingerprint].map((exec) => (
+                                <div
+                                  key={exec.caller_id}
+                                  className={`pattern-execution-card ${getStatusClass(exec.status)}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onQuerySelect && onQuerySelect(exec);
+                                  }}
+                                  title="Click to view query details"
+                                >
+                                  <div className="execution-card-header">
+                                    <span className={`execution-status ${getStatusClass(exec.status)}`}>
+                                      {exec.status}
+                                    </span>
+                                    <span className="execution-time">
+                                      {formatTimestamp(exec.started_at)}
+                                    </span>
+                                  </div>
+                                  <div className="execution-card-stats">
+                                    <div className="execution-stat">
+                                      <Icon icon="mdi:currency-usd" width={12} />
+                                      <span>{formatCost(exec.total_cost)}</span>
+                                    </div>
+                                    <div className="execution-stat">
+                                      <Icon icon="mdi:timer-outline" width={12} />
+                                      <span>{formatDuration(exec.duration_ms)}</span>
+                                    </div>
+                                    {exec.llm_calls_count > 0 && (
+                                      <div className="execution-stat">
+                                        <Icon icon="mdi:robot" width={12} />
+                                        <span>{exec.llm_calls_count} calls</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="execution-card-id">
+                                    <code>{exec.caller_id.substring(0, 16)}...</code>
+                                    <Icon icon="mdi:arrow-right" width={12} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>

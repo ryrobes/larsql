@@ -1,0 +1,52 @@
+# RLM Direct Test - Pure Deterministic
+#
+# Tests rlm_exec directly as a deterministic cell to verify
+# context/task injection works properly.
+#
+# Test:
+#   rvbbit run cascades/rlm_direct_test.cascade.yaml \
+#     --input cascades/rlm_test_input.json --session rlm_direct
+
+cascade_id: rlm_direct_test
+description: "Direct test of rlm_exec with injected context"
+
+inputs_schema:
+  context: "Text to analyze"
+  task: "What to do with it"
+
+cells:
+  - name: analyze
+    tool: rlm_exec
+    inputs:
+      context: "{{ input.context }}"
+      task: "{{ input.task }}"
+      code: |
+        # RLM-style context analysis
+        print(f"Context: {len(context)} chars")
+        print(f"Task: {task[:50]}...")
+
+        if len(context) < 2000:
+            # Direct analysis for small context
+            answer = llm_query(f"{task}\n\nContext: {context}")
+            set_state("final_answer", answer)
+            print("Direct analysis complete")
+        else:
+            # Chunk and analyze for large context
+            chunks = chunk(context, "markdown")
+            print(f"Split into {len(chunks)} chunks")
+
+            # Process up to 5 chunks
+            for i, c in enumerate(chunks[:5]):
+                print(f"Processing chunk {i+1}...")
+                summary = llm_query(f"Extract key points relevant to: {task}\n\nSection:\n{c[:2000]}")
+                results.append(summary)
+                print(f"  Got: {len(summary)} chars")
+
+            # Synthesize
+            print("Synthesizing findings...")
+            combined = "\n\n".join(results)
+            final = llm_query(f"{task}\n\nKey findings from analysis:\n{combined}")
+            set_state("final_answer", final)
+            print("Synthesis complete")
+
+        print(f"\nTotal LLM calls: tracked in output")

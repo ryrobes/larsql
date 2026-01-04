@@ -542,6 +542,224 @@ const ModelTooltip = ({ active, payload }) => {
   );
 };
 
+/**
+ * Results Viewer Component - Displays auto-materialized query results
+ */
+const ResultsViewer = ({ callerId, resultLocation }) => {
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
+
+  const fetchResults = useCallback(async (newOffset = 0) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/sql-trail/query/${encodeURIComponent(callerId)}/results?offset=${newOffset}&limit=${limit}`
+      );
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      setResults(data);
+      setOffset(newOffset);
+      setExpanded(true);
+    } catch (err) {
+      console.error('Failed to fetch results:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [callerId]);
+
+  const handleExport = useCallback((format) => {
+    const url = `${API_BASE}/api/sql-trail/query/${encodeURIComponent(callerId)}/results/export?format=${format}`;
+    window.open(url, '_blank');
+  }, [callerId]);
+
+  const handlePrev = useCallback(() => {
+    if (offset >= limit) {
+      fetchResults(offset - limit);
+    }
+  }, [offset, fetchResults]);
+
+  const handleNext = useCallback(() => {
+    if (results?.has_more) {
+      fetchResults(offset + limit);
+    }
+  }, [offset, results, fetchResults]);
+
+  // Format cell value for display
+  const formatCell = (value, type) => {
+    if (value === null || value === undefined) {
+      return <span className="results-null">NULL</span>;
+    }
+    if (typeof value === 'object') {
+      return <code className="results-json">{JSON.stringify(value)}</code>;
+    }
+    if (typeof value === 'string' && value.length > 100) {
+      return <span title={value}>{value.substring(0, 100)}...</span>;
+    }
+    return String(value);
+  };
+
+  if (!expanded) {
+    return (
+      <div className="results-viewer-collapsed">
+        <div className="results-viewer-info">
+          <Icon icon="mdi:table-large" width={20} />
+          <div className="results-viewer-location">
+            <span className="results-viewer-label">Materialized Results Available</span>
+            <code className="results-viewer-path">
+              {resultLocation?.schema}.{resultLocation?.table}
+            </code>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => fetchResults(0)}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Icon icon="mdi:loading" width={14} className="spin" />
+              Loading...
+            </>
+          ) : (
+            <>
+              <Icon icon="mdi:eye" width={14} />
+              View Results
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="results-viewer">
+      <div className="results-viewer-header">
+        <div className="results-viewer-title">
+          <Icon icon="mdi:table-large" width={16} />
+          <span>Query Results</span>
+          {results && (
+            <span className="results-viewer-count">
+              {formatNumber(results.total_rows)} rows
+            </span>
+          )}
+        </div>
+        <div className="results-viewer-actions">
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => handleExport('csv')}
+            title="Export as CSV"
+          >
+            <Icon icon="mdi:file-delimited" width={14} />
+            CSV
+          </button>
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => handleExport('json')}
+            title="Export as JSON"
+          >
+            <Icon icon="mdi:code-json" width={14} />
+            JSON
+          </button>
+          <button
+            className="btn btn-ghost btn-xs"
+            onClick={() => setExpanded(false)}
+            title="Collapse"
+          >
+            <Icon icon="mdi:chevron-up" width={14} />
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="results-viewer-error">
+          <Icon icon="mdi:alert-circle" width={16} />
+          <span>{error}</span>
+          <button className="btn btn-ghost btn-xs" onClick={() => fetchResults(offset)}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div className="results-viewer-loading">
+          <Icon icon="mdi:loading" width={24} className="spin" />
+          <span>Loading results...</span>
+        </div>
+      )}
+
+      {results && !loading && (
+        <>
+          <div className="results-viewer-table-wrapper">
+            <table className="results-viewer-table">
+              <thead>
+                <tr>
+                  {results.columns.map((col, i) => (
+                    <th key={i} title={col.type}>
+                      {col.name}
+                      <span className="results-col-type">{col.type}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results.rows.map((row, rowIdx) => (
+                  <tr key={rowIdx}>
+                    {row.map((cell, cellIdx) => (
+                      <td key={cellIdx}>
+                        {formatCell(cell, results.columns[cellIdx]?.type)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="results-viewer-pagination">
+            <button
+              className="btn btn-ghost btn-xs"
+              onClick={handlePrev}
+              disabled={offset === 0}
+            >
+              <Icon icon="mdi:chevron-left" width={14} />
+              Previous
+            </button>
+            <span className="results-viewer-page-info">
+              Showing {offset + 1} - {Math.min(offset + results.rows.length, results.total_rows)} of {formatNumber(results.total_rows)}
+            </span>
+            <button
+              className="btn btn-ghost btn-xs"
+              onClick={handleNext}
+              disabled={!results.has_more}
+            >
+              Next
+              <Icon icon="mdi:chevron-right" width={14} />
+            </button>
+          </div>
+
+          <div className="results-viewer-footer">
+            <code className="results-viewer-location-small">
+              {resultLocation?.db_name} → {resultLocation?.schema}.{resultLocation?.table}
+            </code>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const QueryDetail = ({ data, onBack }) => {
   const [inspectionData, setInspectionData] = useState(null);
   const [inspectionLoading, setInspectionLoading] = useState(false);
@@ -945,6 +1163,20 @@ const QueryDetail = ({ data, onBack }) => {
             </h4>
           </div>
           <div className="detail-sql-content detail-error-content">{error_message}</div>
+        </div>
+      )}
+
+      {query.has_materialized_result && (
+        <div className="detail-sql-card detail-results-card">
+          <ResultsViewer
+            callerId={caller_id}
+            resultLocation={{
+              db_name: query.result_db_name,
+              db_path: query.result_db_path,
+              schema: query.result_schema,
+              table: query.result_table
+            }}
+          />
         </div>
       )}
 

@@ -148,6 +148,9 @@ class ClientConnection:
             # Create metadata table for tracking ATTACH commands (persistent DBs only)
             self._create_attachments_metadata_table()
 
+            # Create registry table for auto-materialized RVBBIT query results
+            self._create_results_registry_table()
+
             # Replay any previously attached databases from metadata
             self._replay_attachments()
 
@@ -213,6 +216,151 @@ class ClientConnection:
         except Exception as e:
             # Non-fatal - just log the error
             print(f"[{self.session_id}]   ⚠️  Could not create attachments metadata table: {e}")
+
+    def _create_results_registry_table(self):
+        """
+        Create registry table for tracking auto-materialized RVBBIT query results.
+
+        RVBBIT queries (cascades, UDFs, semantic operators) are expensive and
+        non-deterministic. Auto-materializing their results provides "query insurance"
+        so users don't lose expensive work if their connection drops or client crashes.
+
+        Results are organized into date-based schemas for easy discovery and cleanup:
+        - _results_20250103.q_abc12345 (query result table)
+        - _rvbbit_results (registry of all materialized results)
+
+        Only created for persistent databases (not in-memory).
+        """
+        if not self.is_persistent_db:
+            return  # Only for persistent databases
+
+        try:
+            # Check if registry table already exists
+            existing = self.duckdb_conn.execute("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = '_rvbbit_results'
+            """).fetchall()
+
+            if not existing:
+                # Create registry table
+                self.duckdb_conn.execute("""
+                    CREATE TABLE _rvbbit_results (
+                        query_id VARCHAR PRIMARY KEY,
+                        schema_name VARCHAR NOT NULL,
+                        table_name VARCHAR NOT NULL,
+                        full_table_name VARCHAR NOT NULL,
+                        query_fingerprint VARCHAR,
+                        row_count INTEGER,
+                        column_count INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                print(f"[{self.session_id}]   ✅ Created _rvbbit_results registry table")
+        except Exception as e:
+            # Non-fatal - just log the error
+            print(f"[{self.session_id}]   ⚠️  Could not create results registry table: {e}")
+
+    def _maybe_materialize_result(self, query: str, result_df, query_id: str = None):
+        """
+        Auto-materialize RVBBIT query results for "query insurance".
+
+        This saves expensive LLM-powered query results to a date-based schema
+        so users can recover them if their connection drops or client crashes.
+
+        Args:
+            query: The original SQL query
+            result_df: The pandas DataFrame result
+            query_id: Optional query ID for naming (generated if not provided)
+
+        Returns:
+            Dict with result location info if materialized:
+            {
+                'db_name': database name,
+                'db_path': full path to DuckDB file,
+                'schema_name': schema within DuckDB,
+                'table_name': table within schema
+            }
+            Returns None if not materialized.
+        """
+        import pandas as pd
+        from datetime import datetime
+
+        # Skip if not a persistent database
+        if not self.is_persistent_db:
+            return None
+
+        # Skip if empty results
+        if result_df is None or len(result_df) == 0:
+            return None
+
+        # Skip if results are too large (configurable threshold)
+        max_rows = 100000  # Could make this configurable
+        if len(result_df) > max_rows:
+            print(f"[{self.session_id}]   ⚠️  Skipping auto-materialize: {len(result_df)} rows > {max_rows} limit")
+            return None
+
+        try:
+            # Generate query ID if not provided
+            if not query_id:
+                query_id = uuid.uuid4().hex[:12]
+            else:
+                # Use last 12 chars of existing query_id
+                query_id = query_id[-12:] if len(query_id) > 12 else query_id
+
+            # Create date-based schema name
+            date_str = datetime.now().strftime('%Y%m%d')
+            schema_name = f"_results_{date_str}"
+            table_name = f"q_{query_id}"
+            full_table_name = f"{schema_name}.{table_name}"
+
+            # Create schema if not exists
+            self.duckdb_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+
+            # Register DataFrame and create table
+            temp_name = f"_temp_materialize_{query_id}"
+            self.duckdb_conn.register(temp_name, result_df)
+            self.duckdb_conn.execute(f"CREATE TABLE {full_table_name} AS SELECT * FROM {temp_name}")
+            self.duckdb_conn.unregister(temp_name)
+
+            # Create query fingerprint (first 200 chars, normalized)
+            query_fingerprint = ' '.join(query.split())[:200]
+
+            # Log to registry
+            self.duckdb_conn.execute("""
+                INSERT INTO _rvbbit_results
+                (query_id, schema_name, table_name, full_table_name, query_fingerprint, row_count, column_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [query_id, schema_name, table_name, full_table_name, query_fingerprint, len(result_df), len(result_df.columns)])
+
+            # Get the full database path for SQL Trail logging
+            from ..config import get_config
+            config = get_config()
+            safe_db_name = self.database_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+            db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
+
+            # Also export to Parquet for cross-process access (DuckDB has file-level locks)
+            parquet_dir = os.path.join(config.root_dir, 'session_dbs', '.results_cache')
+            os.makedirs(parquet_dir, exist_ok=True)
+            parquet_path = os.path.join(parquet_dir, f"{safe_db_name}_{schema_name}_{table_name}.parquet")
+            try:
+                result_df.to_parquet(parquet_path, index=False)
+            except Exception as parquet_err:
+                # Non-fatal - DuckDB table is still available
+                print(f"[{self.session_id}]   ⚠️  Parquet export failed: {parquet_err}")
+
+            print(f"[{self.session_id}]   💾 Auto-materialized: {full_table_name} ({len(result_df)} rows, {len(result_df.columns)} cols)")
+
+            return {
+                'db_name': self.database_name,
+                'db_path': db_path,
+                'schema_name': schema_name,
+                'table_name': table_name
+            }
+
+        except Exception as e:
+            # Non-fatal - log and continue
+            print(f"[{self.session_id}]   ⚠️  Auto-materialize failed: {e}")
+            return None
 
     def _replay_attachments(self):
         """
@@ -1246,7 +1394,8 @@ class ClientConnection:
                             }])
                             send_query_results(self.sock, metadata_df, self.transaction_status)
                         else:
-                            # 6. Send results to client
+                            # 6. Auto-materialize for query insurance, then send results to client
+                            _result_location = self._maybe_materialize_result(query, result_df, _current_query_id)
                             send_query_results(self.sock, result_df, self.transaction_status)
 
                         if is_parallel and is_materialized:
@@ -1275,6 +1424,16 @@ class ClientConnection:
                                 cascade_paths = get_cascade_paths(caller_id) if caller_id else []
                                 cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
 
+                                # Build result location args if auto-materialized
+                                result_kwargs = {}
+                                if '_result_location' in dir() and _result_location:
+                                    result_kwargs = {
+                                        'result_db_name': _result_location.get('db_name'),
+                                        'result_db_path': _result_location.get('db_path'),
+                                        'result_schema': _result_location.get('schema_name'),
+                                        'result_table': _result_location.get('table_name'),
+                                    }
+
                                 log_query_complete(
                                     query_id=_current_query_id,
                                     status='completed',
@@ -1282,6 +1441,7 @@ class ClientConnection:
                                     duration_ms=duration_ms,
                                     cascade_paths=cascade_paths,
                                     cascade_count=cascade_summary.get('cascade_count', 0),
+                                    **result_kwargs
                                 )
 
                                 # Clear cascade tracking and caller context
@@ -1342,6 +1502,9 @@ class ClientConnection:
             else:
                 result_df = result.fetchdf()
 
+            # Auto-materialize for query insurance (uses original query for detection)
+            _result_location = self._maybe_materialize_result(original_query, result_df, _current_query_id)
+
             # Send results back to client (with current transaction status)
             send_query_results(self.sock, result_df, self.transaction_status)
 
@@ -1366,6 +1529,17 @@ class ClientConnection:
                     cascade_paths = get_cascade_paths(caller_id) if caller_id else []
                     cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
 
+                    # Build result location args if auto-materialized
+                    result_kwargs = {}
+                    if _result_location:
+                        result_kwargs = {
+                            'result_db_name': _result_location.get('db_name'),
+                            'result_db_path': _result_location.get('db_path'),
+                            'result_schema': _result_location.get('schema_name'),
+                            'result_table': _result_location.get('table_name'),
+                        }
+                        print(f"[{self.session_id}]   📝 Logging result location to SQL Trail: {result_kwargs}")
+
                     log_query_complete(
                         query_id=_current_query_id,
                         status='completed',
@@ -1373,6 +1547,7 @@ class ClientConnection:
                         duration_ms=duration_ms,
                         cascade_paths=cascade_paths,
                         cascade_count=cascade_summary.get('cascade_count', 0),
+                        **result_kwargs
                     )
 
                     # Clear cascade tracking and caller context
@@ -1380,7 +1555,9 @@ class ClientConnection:
                         clear_cascade_executions(caller_id)
                     clear_caller_context(connection_id=self.session_id)
                 except Exception as trail_e:
+                    import traceback
                     print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
+                    traceback.print_exc()
 
         except Exception as e:
             # Send error to client
@@ -2174,6 +2351,41 @@ class ClientConnection:
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ SHOW tables executed ({len(result_df)} rows)")
                 return
+
+            # SHOW RESULTS - list auto-materialized RVBBIT query results
+            if 'RESULTS' in query_upper:
+                try:
+                    # Check if registry table exists
+                    tables = self.duckdb_conn.execute("""
+                        SELECT table_name FROM information_schema.tables
+                        WHERE table_name = '_rvbbit_results'
+                    """).fetchall()
+
+                    if tables:
+                        result_df = self.duckdb_conn.execute("""
+                            SELECT
+                                query_id,
+                                full_table_name,
+                                row_count,
+                                column_count,
+                                created_at,
+                                LEFT(query_fingerprint, 60) || '...' as query_preview
+                            FROM _rvbbit_results
+                            ORDER BY created_at DESC
+                            LIMIT 50
+                        """).fetchdf()
+                    else:
+                        result_df = pd.DataFrame({
+                            'info': ['No auto-materialized results yet. Run RVBBIT queries to see results here.']
+                        })
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    print(f"[{self.session_id}]   ✓ SHOW RESULTS: {len(result_df)} entries")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]   ⚠️  SHOW RESULTS failed: {e}")
+                    result_df = pd.DataFrame({'error': [str(e)]})
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    return
 
             # Try to execute on DuckDB (might work for some SHOW commands)
             try:

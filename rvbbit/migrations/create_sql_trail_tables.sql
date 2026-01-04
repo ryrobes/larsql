@@ -93,3 +93,21 @@ ALTER TABLE unified_logs ADD COLUMN IF NOT EXISTS input_hash Nullable(String) AF
 
 -- For backward compatibility: existing rows will have is_sql_udf = false, cache_hit = false
 -- This correctly represents "not tracked" for historical sessions.
+
+-- ============================================
+-- Add Result Location columns to sql_query_log
+-- ============================================
+-- For auto-materialized RVBBIT query results, we track where the data is stored
+-- so it can be retrieved and displayed in the SQL Trail UI.
+
+-- Database name used in pgwire connection (e.g., 'myproject', 'analytics')
+ALTER TABLE sql_query_log ADD COLUMN IF NOT EXISTS result_db_name Nullable(String) AFTER error_message;
+
+-- Full path to the DuckDB file (e.g., '/home/user/rvbbit/session_dbs/myproject.duckdb')
+ALTER TABLE sql_query_log ADD COLUMN IF NOT EXISTS result_db_path Nullable(String) AFTER result_db_name;
+
+-- Schema name within DuckDB (e.g., '_results_20260103')
+ALTER TABLE sql_query_log ADD COLUMN IF NOT EXISTS result_schema Nullable(String) AFTER result_db_path;
+
+-- Table name within the schema (e.g., 'q_abc12345')
+ALTER TABLE sql_query_log ADD COLUMN IF NOT EXISTS result_table Nullable(String) AFTER result_schema;

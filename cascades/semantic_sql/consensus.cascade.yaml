@@ -37,7 +37,8 @@ sql_function:
 
 cells:
   - name: find_consensus
-    model: google/gemini-2.5-flash-lite
+    #model: google/gemini-2.5-flash-lite
+    model: x-ai/grok-4
     instructions: |
       Analyze these texts and identify what they have in common or agree on.
 

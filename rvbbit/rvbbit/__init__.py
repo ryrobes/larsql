@@ -177,6 +177,13 @@ register_trait("await_signal", await_signal)
 register_trait("fire_signal", fire_signal)
 register_trait("list_signals", signal_list_signals)
 
+# RLM-style context decomposition tools
+from .traits.rlm_tools import rlm_exec, llm_analyze, llm_batch_analyze, chunk_text
+register_trait("rlm_exec", rlm_exec)
+register_trait("llm_analyze", llm_analyze)
+register_trait("llm_batch_analyze", llm_batch_analyze)
+register_trait("chunk_text", chunk_text)
+
 # Backward compatibility aliases (for old cascade definitions)
 register_trait("run_sql", run_sql)  # Alias for smart_sql_run (from .traits.sql)
 

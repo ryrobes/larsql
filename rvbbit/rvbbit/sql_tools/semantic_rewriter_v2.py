@@ -320,9 +320,11 @@ def _load_infix_specs() -> List[_InfixSpec]:
             phrase_upper = phrase.upper()
             returns_upper = str(getattr(entry, "returns", "") or "").upper()
 
-            # Exclude clause-level patterns in v0; legacy rewriter (and v2 special handlers)
-            # handle these separately.
-            if phrase_upper in ("RELEVANCE TO", "NOT RELEVANCE TO", "SEMANTIC JOIN", "SEMANTIC DISTINCT", "ABOUT", "NOT ABOUT"):
+            # Exclude clause-level patterns that require structural/context-sensitive handling.
+            # These are handled by legacy rewriter's special-case code.
+            # Note: ABOUT/NOT ABOUT are now handled here (token-aware) to prevent
+            # legacy regex from matching inside string literals (e.g., in LLM_CASE conditions).
+            if phrase_upper in ("RELEVANCE TO", "NOT RELEVANCE TO", "SEMANTIC JOIN", "SEMANTIC DISTINCT"):
                 continue
 
             is_word_phrase = re.fullmatch(r"[A-Z_]+(?:\s+[A-Z_]+)*", phrase_upper) is not None

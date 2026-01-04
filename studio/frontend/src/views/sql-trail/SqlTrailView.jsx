@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { useParams } from 'react-router-dom';
 import OverviewPanel from './components/OverviewPanel';
@@ -40,10 +40,20 @@ const SqlTrailView = () => {
   const [timeSeriesData, setTimeSeriesData] = useState({ series: [] });
   const [selectedQuery, setSelectedQuery] = useState(null);
 
+  // Filter states for interactive filtering
+  const [queryTypeFilter, setQueryTypeFilter] = useState(null);
+  const [udfTypeFilter, setUdfTypeFilter] = useState(null);
+
+  // Track initial load to avoid showing loading spinner on filter changes
+  const isInitialLoad = useRef(true);
+
   // Fetch overview data
   const fetchOverview = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/overview?days=${timeRange}`);
+      const params = new URLSearchParams({ days: timeRange });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/overview?${params}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -53,12 +63,15 @@ const SqlTrailView = () => {
     } catch (err) {
       console.error('Failed to fetch overview:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, queryTypeFilter, udfTypeFilter]);
 
   // Fetch queries
   const fetchQueries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/queries?days=${timeRange}&limit=100`);
+      const params = new URLSearchParams({ days: timeRange, limit: 100 });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/queries?${params}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -68,24 +81,30 @@ const SqlTrailView = () => {
     } catch (err) {
       console.error('Failed to fetch queries:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, queryTypeFilter, udfTypeFilter]);
 
   // Fetch running queries (more frequent polling)
   const fetchRunningQueries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/queries?days=${timeRange}&status=running&limit=50`);
+      const params = new URLSearchParams({ days: timeRange, status: 'running', limit: 50 });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/queries?${params}`);
       const data = await res.json();
       if (data.error) return;
       setRunningQueries(prev => isEqual(prev, data.queries) ? prev : (data.queries || []));
     } catch (err) {
       console.error('Failed to fetch running queries:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, queryTypeFilter, udfTypeFilter]);
 
   // Fetch patterns
   const fetchPatterns = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/patterns?days=${timeRange}`);
+      const params = new URLSearchParams({ days: timeRange });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/patterns?${params}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -95,31 +114,37 @@ const SqlTrailView = () => {
     } catch (err) {
       console.error('Failed to fetch patterns:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, queryTypeFilter, udfTypeFilter]);
 
   // Fetch cache stats
   const fetchCacheStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/cache-stats?days=${timeRange}`);
+      const params = new URLSearchParams({ days: timeRange });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/cache-stats?${params}`);
       const data = await res.json();
       if (data.error) return;
       setCacheStatsData(prev => isEqual(prev, data) ? prev : data);
     } catch (err) {
       console.error('Failed to fetch cache stats:', err);
     }
-  }, [timeRange]);
+  }, [timeRange, queryTypeFilter, udfTypeFilter]);
 
   // Fetch time series
   const fetchTimeSeries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/sql-trail/time-series?days=${timeRange}&granularity=${granularity}`);
+      const params = new URLSearchParams({ days: timeRange, granularity });
+      if (queryTypeFilter) params.append('query_type', queryTypeFilter);
+      if (udfTypeFilter) params.append('udf_type', udfTypeFilter);
+      const res = await fetch(`${API_BASE}/api/sql-trail/time-series?${params}`);
       const data = await res.json();
       if (data.error) return;
       setTimeSeriesData(prev => isEqual(prev, data) ? prev : data);
     } catch (err) {
       console.error('Failed to fetch time series:', err);
     }
-  }, [timeRange, granularity]);
+  }, [timeRange, granularity, queryTypeFilter, udfTypeFilter]);
 
   // Fetch query detail
   const fetchQueryDetail = useCallback(async (id) => {
@@ -136,9 +161,12 @@ const SqlTrailView = () => {
     }
   }, []);
 
-  // Initial load and time range changes
+  // Initial load and data refresh (time range, granularity, or filter changes)
   useEffect(() => {
-    setLoading(true);
+    // Only show loading spinner on initial load, not on filter changes
+    if (isInitialLoad.current) {
+      setLoading(true);
+    }
     setError(null);
 
     Promise.all([
@@ -148,7 +176,10 @@ const SqlTrailView = () => {
       fetchPatterns(),
       fetchCacheStats(),
       fetchTimeSeries()
-    ]).finally(() => setLoading(false));
+    ]).finally(() => {
+      setLoading(false);
+      isInitialLoad.current = false;
+    });
   }, [timeRange, granularity, fetchOverview, fetchQueries, fetchRunningQueries, fetchPatterns, fetchCacheStats, fetchTimeSeries]);
 
   // Handle URL param for query detail
@@ -200,6 +231,20 @@ const SqlTrailView = () => {
   const handleBackFromDetail = () => {
     setSelectedQuery(null);
     setActiveView('explorer');
+  };
+
+  // Handle filter toggles (click to filter, click again to clear)
+  const handleQueryTypeFilter = (type) => {
+    setQueryTypeFilter(prev => prev === type ? null : type);
+  };
+
+  const handleUdfTypeFilter = (type) => {
+    setUdfTypeFilter(prev => prev === type ? null : type);
+  };
+
+  const clearFilters = () => {
+    setQueryTypeFilter(null);
+    setUdfTypeFilter(null);
   };
 
   return (
@@ -258,6 +303,35 @@ const SqlTrailView = () => {
           <Icon icon="mdi:fingerprint" width={14} />
           <span>Patterns</span>
         </button>
+
+        {/* Active Filters - right side of tab bar */}
+        <div className="sql-trail-filters-inline">
+          {queryTypeFilter && (
+            <button
+              className="sql-trail-filter-chip"
+              onClick={() => setQueryTypeFilter(null)}
+              title="Click to remove filter"
+            >
+              <span>Type: {queryTypeFilter}</span>
+              <Icon icon="mdi:close" width={12} />
+            </button>
+          )}
+          {udfTypeFilter && (
+            <button
+              className="sql-trail-filter-chip"
+              onClick={() => setUdfTypeFilter(null)}
+              title="Click to remove filter"
+            >
+              <span>UDF: {udfTypeFilter}</span>
+              <Icon icon="mdi:close" width={12} />
+            </button>
+          )}
+          {(queryTypeFilter || udfTypeFilter) && (
+            <button className="sql-trail-clear-filters" onClick={clearFilters}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="sql-trail-content">
@@ -281,6 +355,10 @@ const SqlTrailView = () => {
               <OverviewPanel
                 data={overviewData}
                 cacheStats={cacheStatsData}
+                queryTypeFilter={queryTypeFilter}
+                udfTypeFilter={udfTypeFilter}
+                onQueryTypeFilter={handleQueryTypeFilter}
+                onUdfTypeFilter={handleUdfTypeFilter}
                 timeSeries={timeSeriesData}
                 runningQueries={runningQueries}
                 granularity={granularity}
@@ -311,6 +389,7 @@ const SqlTrailView = () => {
                   // Could filter explorer by fingerprint
                   console.log('Pattern clicked:', pattern);
                 }}
+                onQuerySelect={handleQuerySelect}
               />
             )}
           </>

@@ -1,6 +1,30 @@
 import os
+import json
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 from typing import Any, Dict
+
+
+def _from_json(value):
+    """Jinja filter to parse JSON string to Python object."""
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value  # Already parsed
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value
+
+
+def _to_json(value):
+    """Jinja filter to convert Python object to JSON string."""
+    if value is None:
+        return 'null'
+    try:
+        return json.dumps(value)
+    except (TypeError, ValueError):
+        return str(value)
+
 
 class PromptEngine:
     def __init__(self, template_dirs: list[str] = None):
@@ -21,6 +45,11 @@ class PromptEngine:
                 dirs.append(root_prompts)
 
         self.env = Environment(loader=FileSystemLoader(dirs))
+
+        # Add custom filters for JSON handling
+        self.env.filters['from_json'] = _from_json
+        self.env.filters['to_json'] = _to_json
+        self.env.filters['tojson'] = _to_json  # Alias for convenience
         
     def render(self, template_str_or_path: str, context: Dict[str, Any]) -> str:
         """

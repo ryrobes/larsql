@@ -9,30 +9,16 @@ description: |
   vectors help with semantic understanding.
 
   SQL Usage:
-    -- Basic search (returns JSON array of matches)
-    SELECT vector_search_elastic('eco-friendly products', 'products');
+    -- Returns table directly (no JSON parsing needed)
+    SELECT * FROM vector_search_elastic('Venezuela', 'bird_line');
+    SELECT * FROM vector_search_elastic('sustainable materials', 'products', 20);
 
-    -- With limit and threshold
-    SELECT vector_search_elastic('sustainable materials', 'products', 20, 0.6);
+    -- Join with source table
+    SELECT p.*, v.similarity
+    FROM vector_search_elastic('eco-friendly', 'products') v
+    JOIN products p ON p.id = v.id;
 
-    -- Custom weights (80% semantic, 20% keyword)
-    SELECT vector_search_elastic('bamboo toothbrush', 'products', 10, 0.5, 0.8, 0.2);
-
-  Returns JSON:
-    {
-      "results": [
-        {
-          "source_id": "42",
-          "source_table": "products",
-          "text": "Eco-friendly bamboo toothbrush...",
-          "similarity": 0.89,
-          "metadata": {"column_name": "description"}
-        },
-        ...
-      ],
-      "count": 10,
-      "backend": "elasticsearch"
-    }
+  Returns columns: id, text, similarity, score
 
 inputs_schema:
   query: "Search query text"
@@ -78,16 +64,16 @@ sql_function:
       optional: true
       default: "rvbbit_embeddings"
       description: "Elasticsearch index name"
-  returns: VARCHAR
-  shape: SCALAR
+  returns: TABLE
+  shape: AGGREGATE
   cache: true
+  context_arg: query
 
 cells:
   - name: hybrid_search
     tool: python_data
     inputs:
       code: |
-        import json
         import logging
         from rvbbit.traits.embedding_storage import (
             agent_embed,
@@ -111,7 +97,7 @@ cells:
         index_name = input.get('index_name') or 'rvbbit_embeddings'
 
         if not query or not query.strip():
-            result = json.dumps({"error": "query is required", "results": [], "count": 0})
+            result = []
         else:
             try:
                 # Generate query embedding (cost-tracked via Agent)
@@ -136,16 +122,21 @@ cells:
                     index_name=index_name
                 )
 
-                result = json.dumps(search_result)
+                # Format as table rows (matching ClickHouse vector_search format)
+                results = search_result.get('results', [])
+                result = [
+                    {
+                        'id': row['source_id'],
+                        'text': row['text'][:500],
+                        'similarity': round(row['similarity'], 4),
+                        'score': round(row.get('score', 0), 4)
+                    }
+                    for row in results
+                ]
 
             except Exception as e:
                 logger.error(f"vector_search_elastic failed: {e}")
-                result = json.dumps({
-                    "error": str(e),
-                    "results": [],
-                    "count": 0,
-                    "backend": "elasticsearch"
-                })
+                result = []
 
         result = result
     context:

@@ -1191,7 +1191,88 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
     except Exception as e:
         logger.warning(f"Could not register similar_to: {e}")
 
-    logger.info("Registered 3 embedding UDFs for Semantic SQL")
+    # =========================================================================
+    # UDF 4: vector_search_elastic(query, table?, limit?) → VARCHAR (file path)
+    # Elasticsearch hybrid search (vector + BM25 keywords)
+    # Usage: SELECT * FROM read_json_auto(vector_search_elastic_2('query', 'table'))
+    # =========================================================================
+
+    def vector_search_elastic_udf_1(query: str):
+        """Elasticsearch hybrid search (1-arg: query only, all tables)."""
+        import tempfile
+        import json
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search_elastic",
+                {"query": query}
+            )
+            # Result is already a list of dicts from the cascade
+            rows = result if isinstance(result, list) else []
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(rows, f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"vector_search_elastic failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    def vector_search_elastic_udf_2(query: str, source_table: str):
+        """Elasticsearch hybrid search (2-arg: query, table)."""
+        import tempfile
+        import json
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search_elastic",
+                {"query": query, "source_table": source_table}
+            )
+            rows = result if isinstance(result, list) else []
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(rows, f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"vector_search_elastic failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    def vector_search_elastic_udf_3(query: str, source_table: str, limit: int):
+        """Elasticsearch hybrid search (3-arg: query, table, limit)."""
+        import tempfile
+        import json
+
+        try:
+            result = execute_sql_function_sync(
+                "vector_search_elastic",
+                {"query": query, "source_table": source_table, "limit_": limit}
+            )
+            rows = result if isinstance(result, list) else []
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(rows, f)
+                return f.name
+
+        except Exception as e:
+            logger.error(f"vector_search_elastic failed: {e}")
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                f.write('[]')
+                return f.name
+
+    try:
+        connection.create_function("vector_search_elastic_1", vector_search_elastic_udf_1, return_type="VARCHAR", null_handling="special")
+        connection.create_function("vector_search_elastic_2", vector_search_elastic_udf_2, return_type="VARCHAR", null_handling="special")
+        connection.create_function("vector_search_elastic_3", vector_search_elastic_udf_3, return_type="VARCHAR", null_handling="special")
+        logger.debug("Registered vector_search_elastic UDF (1, 2, 3-arg versions)")
+    except Exception as e:
+        logger.warning(f"Could not register vector_search_elastic: {e}")
+
+    logger.info("Registered 6 embedding UDFs for Semantic SQL")
 
 
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):

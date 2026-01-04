@@ -142,6 +142,10 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         else:
             raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
 
+    # Process block operators (SEMANTIC_CASE...END, etc.)
+    # This must run FIRST to handle complex multi-token patterns before simpler rewrites
+    result = _rewrite_block_operators(result)
+
     # Process dimension functions (GROUP BY TOPICS(...), GROUP BY sentiment(...), etc.)
     # This must run BEFORE semantic operators to properly handle dimension expressions
     result = _rewrite_dimension_functions(result)
@@ -154,6 +158,47 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     result = _rewrite_llm_aggregates(result)
 
     return result
+
+
+def _rewrite_block_operators(query: str) -> str:
+    """
+    Rewrite block operators (SEMANTIC_CASE...END, etc.) to function calls.
+
+    Block operators are complex SQL patterns defined in cascade YAML with
+    repetition and optional elements. They're parsed token-aware to avoid
+    matching inside string literals.
+
+    Example:
+        SEMANTIC_CASE description
+            WHEN SEMANTIC 'sustainability' THEN 'eco'
+            WHEN SEMANTIC 'performance' THEN 'perf'
+            ELSE 'standard'
+        END
+
+    Becomes:
+        semantic_case(description, '["sustainability","performance"]', '["eco","perf"]', 'standard')
+    """
+    try:
+        from .sql_tools.block_operators import has_block_operators, rewrite_block_operators, load_block_operator_specs
+        import logging
+
+        # Force reload specs on first call to pick up new cascades
+        specs = load_block_operator_specs(force=True)
+        logging.getLogger(__name__).debug(f"Block operator specs loaded: {[s.start_keyword for s in specs]}")
+
+        if not has_block_operators(query):
+            return query
+
+        result, changed = rewrite_block_operators(query)
+        if changed:
+            logging.getLogger(__name__).debug(f"Block operator rewritten: {result[:100]}...")
+        return result
+
+    except ImportError:
+        return query
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Block operator rewrite failed: {e}")
+        return query
 
 
 def _rewrite_dimension_functions(query: str) -> str:
@@ -378,9 +423,20 @@ def _is_rvbbit_statement(query: str) -> bool:
         r'\bIMPLIES\s+\w+',          # col IMPLIES other_col
         r'\bCONTRADICTS\s+\'',       # col CONTRADICTS 'x'
         r'\bCONTRADICTS\s+\w+',      # col CONTRADICTS other_col
+        r'\bLLM_CASE\b',             # LLM_CASE ... END multi-branch classification (legacy)
     ]
     if any(re.search(p, query_upper, re.IGNORECASE) for p in semantic_patterns):
         return True
+
+    # Check for block operators dynamically (SEMANTIC_CASE, SEMANTIC_SWITCH, etc.)
+    try:
+        from .sql_tools.block_operators import load_block_operator_specs
+        specs = load_block_operator_specs()
+        for spec in specs:
+            if re.search(rf'\b{spec.start_keyword}\b', query_upper, re.IGNORECASE):
+                return True
+    except ImportError:
+        pass
 
     # Check for RVBBIT UDF function calls (already rewritten or direct)
     sql_lower = normalized.lower()

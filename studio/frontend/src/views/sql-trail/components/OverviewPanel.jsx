@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import {
   ResponsiveContainer,
-  RadialBarChart,
-  RadialBar,
-  PolarAngleAxis,
   BarChart,
   Bar,
   XAxis,
@@ -14,8 +11,8 @@ import {
   ComposedChart,
   Area,
   Line,
-  Cell,
-  LabelList
+  LabelList,
+  Cell
 } from 'recharts';
 
 const formatCost = (cost) => {
@@ -39,59 +36,10 @@ const formatDuration = (ms) => {
   return `${(ms / 60000).toFixed(1)}m`;
 };
 
-const getRateColor = (rate) => {
-  if (rate >= 80) return 'var(--color-accent-green)';
-  if (rate >= 50) return 'var(--color-accent-yellow)';
-  return 'var(--color-accent-red)';
-};
-
-const getRateClass = (rate) => {
-  if (rate >= 80) return 'rate-high';
-  if (rate >= 50) return 'rate-mid';
-  return 'rate-low';
-};
-
 const formatDate = (value, options) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, options);
-};
-
-const CacheGauge = ({ hitRate }) => {
-  const rate = Number.isFinite(hitRate) ? hitRate : 0;
-  const rateClass = getRateClass(rate);
-  const data = [{ name: 'Hit Rate', value: rate }];
-
-  return (
-    <div className="cache-gauge">
-      <div className="cache-gauge-chart">
-        <ResponsiveContainer width="100%" height={160}>
-          <RadialBarChart
-            cx="50%"
-            cy="65%"
-            innerRadius="70%"
-            outerRadius="100%"
-            barSize={12}
-            data={data}
-            startAngle={180}
-            endAngle={0}
-          >
-            <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
-            <RadialBar
-              background={{ fill: 'var(--color-border-dim)' }}
-              dataKey="value"
-              cornerRadius={8}
-              fill={getRateColor(rate)}
-            />
-          </RadialBarChart>
-        </ResponsiveContainer>
-      </div>
-      <div className={`cache-gauge-center ${rateClass}`}>
-        <div className="cache-gauge-value">{rate.toFixed(1)}%</div>
-        <div className="cache-gauge-label">Cache Hit Rate</div>
-      </div>
-    </div>
-  );
 };
 
 const TypeTooltip = ({ active, payload }) => {
@@ -155,7 +103,11 @@ const OverviewPanel = ({
   runningQueries = [],
   onQueryClick,
   granularity = 'daily',
-  onGranularityChange
+  onGranularityChange,
+  queryTypeFilter,
+  udfTypeFilter,
+  onQueryTypeFilter,
+  onUdfTypeFilter
 }) => {
   if (!data || !data.kpis) {
     return (
@@ -278,7 +230,7 @@ const OverviewPanel = ({
           </div>
           <div className="kpi-value blue">{cache_hit_rate.toFixed(1)}%</div>
           <div className="kpi-subtext">
-            {cacheStats ? `${formatNumber(cacheStats.total_hits)} hits / ${formatNumber(cacheStats.total_misses)} misses` : 'From query logs'}
+            {formatNumber(cacheStats?.overall?.total_hits || 0)} hits / {formatNumber(cacheStats?.overall?.total_misses || 0)} misses
           </div>
         </div>
 
@@ -293,100 +245,91 @@ const OverviewPanel = ({
       </div>
 
       <div className="overview-row">
-        {/* Left column: Cache Performance + Query Type (side by side) */}
-        <div className="overview-chart-card overview-chart-card--split-horizontal">
-          <div className="overview-split-left">
-            <div className="overview-card-header">
-              <div className="overview-card-title">
-                <Icon icon="mdi:cached" width={14} />
-                <span>Cache Performance</span>
-              </div>
+        {/* Left column: Queries by Type (horizontal bar chart) */}
+        <div className="overview-chart-card">
+          <div className="overview-card-header">
+            <div className="overview-card-title">
+              <Icon icon="mdi:shape-outline" width={14} />
+              <span>Queries by Type</span>
             </div>
-            <div className="overview-split-left-content">
-              <CacheGauge hitRate={cache_hit_rate} />
-              {cacheStats?.overall && (
-                <div className="cache-stats cache-stats--compact">
-                  <div className="cache-stat cache-stat--hits">
-                    <div className="cache-stat-value">{formatNumber(cacheStats.overall.total_hits)}</div>
-                    <div className="cache-stat-label">Hits</div>
-                  </div>
-                  <div className="cache-stat cache-stat--misses">
-                    <div className="cache-stat-value">{formatNumber(cacheStats.overall.total_misses)}</div>
-                    <div className="cache-stat-label">Misses</div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <span className="overview-card-subtitle">{typeData.length} types</span>
           </div>
-          <div className="overview-split-right">
-            <div className="overview-card-header">
-              <div className="overview-card-title">
-                <Icon icon="mdi:shape-outline" width={14} />
-                <span>Queries by Type</span>
-              </div>
-            </div>
-            {typeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={typeData}
-                  margin={{ top: 8, right: 40, left: 8, bottom: 24 }}
+          {typeData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart
+                data={typeData}
+                layout="vertical"
+                margin={{ top: 8, right: 60, left: 8, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="sqlTrailTypeGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={0.85} />
+                    <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
+                  </linearGradient>
+                  <linearGradient id="sqlTrailTypeGradientSelected" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={1} />
+                    <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="sqlTrailTypeGradientDim" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={0.25} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
+                  axisLine={{ stroke: 'var(--color-border-dim)' }}
+                  tickLine={false}
+                  tickFormatter={(v) => formatNumber(v)}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="query_type"
+                  width={140}
+                  tick={{ fill: 'var(--color-text-muted)', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip content={<TypeTooltip />} cursor={{ fill: 'rgba(0, 229, 255, 0.08)' }} />
+                <Bar
+                  dataKey="count"
+                  radius={[0, 6, 6, 0]}
+                  onClick={(data) => onQueryTypeFilter && onQueryTypeFilter(data.query_type)}
+                  style={{ cursor: 'pointer' }}
                 >
-                  <defs>
-                    <linearGradient id="sqlTrailTypeGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--color-accent-cyan)" stopOpacity={0.85} />
-                      <stop offset="100%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" vertical={false} />
-                  <XAxis
-                    dataKey="query_type"
-                    tick={{ fill: 'var(--color-text-muted)', fontSize: 10 }}
-                    axisLine={{ stroke: 'var(--color-border-dim)' }}
-                    tickLine={false}
-                    interval={0}
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    tick={{ fill: 'var(--color-text-dim)', fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => formatNumber(v)}
-                    width={35}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    tick={{ fill: 'var(--color-accent-green)', fontSize: 9 }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v) => formatCost(v)}
-                    width={35}
-                  />
-                  <Tooltip content={<TypeTooltip />} cursor={{ fill: 'rgba(0, 229, 255, 0.08)' }} />
-                  <Bar yAxisId="left" dataKey="count" fill="url(#sqlTrailTypeGradient)" radius={[6, 6, 0, 0]} maxBarSize={50} />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
+                  {typeData.map((entry, index) => {
+                    const isSelected = queryTypeFilter === entry.query_type;
+                    const hasFilter = queryTypeFilter !== null;
+                    let fill = 'url(#sqlTrailTypeGradient)';
+                    if (isSelected) {
+                      fill = 'url(#sqlTrailTypeGradientSelected)';
+                    } else if (hasFilter) {
+                      fill = 'url(#sqlTrailTypeGradientDim)';
+                    }
+                    return <Cell key={`cell-${index}`} fill={fill} />;
+                  })}
+                  <LabelList
                     dataKey="cost"
-                    stroke="var(--color-accent-green)"
-                    strokeWidth={2}
-                    dot={{ r: 4, fill: 'var(--color-accent-green)', strokeWidth: 0 }}
+                    position="right"
+                    formatter={(v) => formatCost(v)}
+                    style={{ fill: 'var(--color-accent-green)', fontSize: 10, fontWeight: 500 }}
                   />
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="overview-empty overview-empty--small">No type data</div>
-            )}
-            <div className="chart-legend chart-legend--compact">
-              <span className="legend-item">
-                <span className="legend-bar" style={{ background: 'linear-gradient(to bottom, var(--color-accent-cyan), var(--color-accent-purple))' }} />
-                Queries
-              </span>
-              <span className="legend-item">
-                <span className="legend-dot" style={{ background: 'var(--color-accent-green)' }} />
-                Cost
-              </span>
-            </div>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="overview-empty">No query type data available</div>
+          )}
+          <div className="chart-legend chart-legend--compact">
+            <span className="legend-item">
+              <span className="legend-bar" style={{ background: 'linear-gradient(to right, var(--color-accent-cyan), var(--color-accent-purple))' }} />
+              Queries
+            </span>
+            <span className="legend-item">
+              <span className="legend-text" style={{ color: 'var(--color-accent-green)' }}>$</span>
+              Cost
+            </span>
           </div>
         </div>
 
@@ -411,6 +354,14 @@ const OverviewPanel = ({
                     <stop offset="0%" stopColor="var(--color-accent-purple)" stopOpacity={0.85} />
                     <stop offset="100%" stopColor="var(--color-accent-pink)" stopOpacity={0.85} />
                   </linearGradient>
+                  <linearGradient id="sqlTrailUdfGradientSelected" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-purple)" stopOpacity={1} />
+                    <stop offset="100%" stopColor="var(--color-accent-pink)" stopOpacity={1} />
+                  </linearGradient>
+                  <linearGradient id="sqlTrailUdfGradientDim" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--color-accent-purple)" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="var(--color-accent-pink)" stopOpacity={0.25} />
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-dim)" horizontal={false} />
                 <XAxis
@@ -429,7 +380,23 @@ const OverviewPanel = ({
                   tickLine={false}
                 />
                 <Tooltip content={<UdfTypeTooltip />} cursor={{ fill: 'rgba(167, 139, 250, 0.08)' }} />
-                <Bar dataKey="count" fill="url(#sqlTrailUdfGradient)" radius={[0, 6, 6, 0]}>
+                <Bar
+                  dataKey="count"
+                  radius={[0, 6, 6, 0]}
+                  onClick={(data) => onUdfTypeFilter && onUdfTypeFilter(data.udf_type)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {udfTypesData.slice(0, 12).map((entry, index) => {
+                    const isSelected = udfTypeFilter === entry.udf_type;
+                    const hasFilter = udfTypeFilter !== null;
+                    let fill = 'url(#sqlTrailUdfGradient)';
+                    if (isSelected) {
+                      fill = 'url(#sqlTrailUdfGradientSelected)';
+                    } else if (hasFilter) {
+                      fill = 'url(#sqlTrailUdfGradientDim)';
+                    }
+                    return <Cell key={`cell-${index}`} fill={fill} />;
+                  })}
                   <LabelList
                     dataKey="cost"
                     position="right"

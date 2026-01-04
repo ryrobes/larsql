@@ -34,6 +34,37 @@ _cascade_lock = Lock()
 
 # Cache for schema checks
 _cascade_columns_exist: Optional[bool] = None
+_result_columns_exist: Optional[bool] = None
+
+
+def _has_result_columns(db, force_check: bool = False) -> bool:
+    """
+    Check if sql_query_log has result location columns.
+
+    Caches result to avoid repeated DESCRIBE queries.
+    Returns True if result_db_name, result_db_path, result_schema, result_table columns exist.
+    """
+    global _result_columns_exist
+
+    if _result_columns_exist is not None and not force_check:
+        return _result_columns_exist
+
+    try:
+        result = db.query("DESCRIBE TABLE sql_query_log")
+        columns = {row['name'] for row in result} if result else set()
+        _result_columns_exist = 'result_db_path' in columns and 'result_table' in columns
+
+        if not _result_columns_exist:
+            print(
+                "[sql_trail] Result location columns not found in sql_query_log. "
+                "Run: ALTER TABLE sql_query_log ADD COLUMN IF NOT EXISTS result_db_path Nullable(String)",
+                flush=True
+            )
+    except Exception as e:
+        print(f"[sql_trail] Could not check for result columns: {e}", flush=True)
+        _result_columns_exist = False
+
+    return _result_columns_exist
 
 
 def _has_cascade_columns(db) -> bool:
@@ -437,7 +468,11 @@ def log_query_complete(
     rows_output: Optional[int] = None,
     duration_ms: Optional[float] = None,
     cascade_paths: Optional[List[str]] = None,
-    cascade_count: Optional[int] = None
+    cascade_count: Optional[int] = None,
+    result_db_name: Optional[str] = None,
+    result_db_path: Optional[str] = None,
+    result_schema: Optional[str] = None,
+    result_table: Optional[str] = None
 ):
     """
     Update query log with completion data.
@@ -456,6 +491,10 @@ def log_query_complete(
         duration_ms: Total execution time in milliseconds
         cascade_paths: List of cascade file paths executed by this query
         cascade_count: Number of cascade executions
+        result_db_name: Database name for auto-materialized results (e.g., 'myproject')
+        result_db_path: Full path to DuckDB file (e.g., '/home/user/session_dbs/myproject.duckdb')
+        result_schema: Schema name within DuckDB (e.g., '_results_20260103')
+        result_table: Table name within schema (e.g., 'q_abc12345')
     """
     if not query_id:
         return
@@ -486,6 +525,24 @@ def log_query_complete(
                     updates.append(f"cascade_paths = {paths_str}")
                 if cascade_count is not None:
                     updates.append(f"cascade_count = {cascade_count}")
+
+        # Result location columns (for auto-materialized RVBBIT query results)
+        if result_db_path or result_table:
+            has_cols = _has_result_columns(db)
+            print(f"[sql_trail] Result location provided: db_path={result_db_path}, table={result_table}, has_columns={has_cols}", flush=True)
+            if has_cols:
+                if result_db_name:
+                    safe_db_name = result_db_name.replace("'", "''")
+                    updates.append(f"result_db_name = '{safe_db_name}'")
+                if result_db_path:
+                    safe_path = result_db_path.replace("'", "''")
+                    updates.append(f"result_db_path = '{safe_path}'")
+                if result_schema:
+                    safe_schema = result_schema.replace("'", "''")
+                    updates.append(f"result_schema = '{safe_schema}'")
+                if result_table:
+                    safe_table = result_table.replace("'", "''")
+                    updates.append(f"result_table = '{safe_table}'")
 
         set_clause = ', '.join(updates)
 

@@ -29,11 +29,18 @@ def get_registry() -> TraitRegistry:
 def register_cascade_as_tool(config_path: str):
     """
     Registers a Cascade JSON as a callable tool.
+
+    Only registers cascades that have inputs_schema defined - cascades without
+    inputs aren't usable as tools since there's no way to parameterize them.
     """
     from .cascade import load_cascade_config
     from .runner import run_cascade
-    
+
     config = load_cascade_config(config_path)
+
+    # Skip cascades without inputs - they're not usable as tools
+    if not config.inputs_schema:
+        return
     
     # Dynamic wrapper function
     def cascade_tool_wrapper(**kwargs):

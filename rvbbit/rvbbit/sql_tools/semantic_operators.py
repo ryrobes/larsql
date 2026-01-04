@@ -480,7 +480,13 @@ def _rewrite_dynamic_infix_operators(
     # e.g., "ALIGNS WITH" before "ALIGNS"
     infix_operators = sorted(patterns_cache.get('infix', set()), key=len, reverse=True)
 
+    # Skip operators now handled by v2 (token-aware rewriter).
+    # v2 runs first and handles these safely without matching inside string literals.
+    v2_handled = {"ABOUT", "NOT ABOUT"}
+
     for operator_keyword in infix_operators:
+        if operator_keyword.upper() in v2_handled:
+            continue
         # Find SQL function for this operator
         matching_funcs = [
             (name, entry) for name, entry in registry.items()
