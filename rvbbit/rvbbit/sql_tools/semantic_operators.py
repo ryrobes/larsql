@@ -126,6 +126,7 @@ class SemanticAnnotation:
     end_pos: int = 0                      # End position in query
     line_start: int = 0                   # Line number where annotation starts
     line_end: int = 0                     # Line number where annotation ends
+    candidates: Optional[Dict[str, Any]] = None  # Candidates config for cascade-level sampling
 
 
 def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
@@ -202,6 +203,39 @@ def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
                         current_annotation.parallel_scope = value.lower()
                 elif key == 'prompt':
                     prompt_lines.append(value)
+                elif key.startswith('candidates.'):
+                    # Candidates config for cascade-level sampling
+                    # e.g., candidates.factor: 3, candidates.evaluator: ..., candidates.mode: aggregate
+                    if current_annotation.candidates is None:
+                        current_annotation.candidates = {}
+                    subkey = key[11:]  # Remove 'candidates.' prefix
+                    # Parse value type
+                    if subkey in ('factor', 'max_parallel', 'reforge'):
+                        try:
+                            current_annotation.candidates[subkey] = int(value)
+                        except ValueError:
+                            current_annotation.candidates[subkey] = value
+                    elif subkey == 'mutate':
+                        current_annotation.candidates[subkey] = value.lower() in ('true', 'yes', '1')
+                    else:
+                        # evaluator, mode, evaluator_model, etc.
+                        current_annotation.candidates[subkey] = value
+                elif key == 'models':
+                    # Shorthand for multi-model candidates
+                    # models: [claude-sonnet, gpt-4o, gemini-pro]
+                    if current_annotation.candidates is None:
+                        current_annotation.candidates = {}
+                    # Parse as list (JSON or comma-separated)
+                    try:
+                        import json
+                        models = json.loads(value)
+                    except (json.JSONDecodeError, ValueError):
+                        # Try comma-separated
+                        models = [m.strip() for m in value.strip('[]').split(',')]
+                    current_annotation.candidates['multi_model'] = models
+                    # Set factor to match number of models if not explicitly set
+                    if 'factor' not in current_annotation.candidates:
+                        current_annotation.candidates['factor'] = len(models)
                 else:
                     # Unknown key or natural language with colon
                     prompt_lines.append(content)

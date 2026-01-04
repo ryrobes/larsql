@@ -1,0 +1,46 @@
+# sql_analyze.yaml - LLM analysis of SQL query results
+# Used by the ANALYZE SQL command for async data analysis
+#
+# Usage:
+#   ANALYZE 'why were sales low in December?' SELECT * FROM sales;
+#   SELECT * FROM analysis('analysis-xxx')
+
+cascade_id: sql_analyze
+description: Analyze SQL query results with an LLM
+
+inputs_schema:
+  prompt: The user's analysis question (e.g., "why were sales low in December?")
+  query: The original SQL query that was executed
+  data: Formatted query results (markdown table + statistics)
+  row_count: Number of rows in the result
+  columns: Column names as JSON array string
+
+cells:
+  - name: analyze
+    instructions: |
+      You are a data analyst. The user ran this SQL query:
+
+      ```sql
+      {{ input.query }}
+      ```
+
+      Results ({{ input.row_count }} rows, columns: {{ input.columns }}):
+      {{ input.data }}
+
+      User's question: {{ input.prompt }}
+
+      Provide a clear, concise analysis that directly answers the question.
+      Focus on actionable insights from the data, not just describing what you see.
+      If the data suggests causes or recommendations, include them.
+
+      Be specific and reference actual values from the data where relevant.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: object
+      properties:
+        analysis:
+          type: string
+          description: The analysis text
+      required:
+        - analysis

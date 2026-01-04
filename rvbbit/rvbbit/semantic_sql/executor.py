@@ -5,8 +5,10 @@ Executes RVBBIT cascades as SQL UDFs, bridging the SQL and cascade systems.
 """
 
 import json
+import re
 import asyncio
-from typing import Any, Dict, Optional, List
+import copy
+from typing import Any, Dict, Optional, List, Tuple, Union
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
@@ -15,13 +17,124 @@ log = logging.getLogger(__name__)
 # Shared thread pool for cascade execution
 _executor = ThreadPoolExecutor(max_workers=8)
 
+# Pattern for candidates config embedded in criterion strings
+# Format: __RVBBIT_CANDIDATES:{"factor":3,"evaluator":"..."}__
+_CANDIDATES_PATTERN = re.compile(r'^__RVBBIT_CANDIDATES:(\{.*?\})__\s*')
 
-def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any], caller_id: str = None) -> Dict[str, Any]:
-    """Run a cascade synchronously (blocking)."""
+
+def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """
+    Extract candidates config from input strings and return cleaned inputs.
+
+    The candidates config is embedded in criterion/query strings as a special prefix:
+        __RVBBIT_CANDIDATES:{"factor":3}__ actual criterion here
+
+    Returns:
+        (cleaned_inputs, candidates_config) - inputs with prefix stripped, and extracted config
+    """
+    candidates_config = None
+    cleaned_inputs = {}
+
+    for key, value in inputs.items():
+        if isinstance(value, str):
+            match = _CANDIDATES_PATTERN.match(value)
+            if match:
+                try:
+                    candidates_config = json.loads(match.group(1))
+                    # Strip the prefix from the value
+                    cleaned_inputs[key] = value[match.end():].lstrip()
+                    log.debug(f"[cascade_udf] Extracted candidates config: {candidates_config}")
+                except json.JSONDecodeError as e:
+                    log.warning(f"[cascade_udf] Failed to parse candidates config: {e}")
+                    cleaned_inputs[key] = value
+            else:
+                cleaned_inputs[key] = value
+        else:
+            cleaned_inputs[key] = value
+
+    return cleaned_inputs, candidates_config
+
+
+def _inject_candidates_into_cascade(cascade_path: str, candidates_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a cascade file and inject candidates config at the top level.
+
+    This enables cascade-level sampling (run entire cascade N times, pick best)
+    triggered by SQL comment hints like:
+        -- @ candidates.factor: 3
+        -- @ candidates.evaluator: Pick the most accurate response
+
+    Args:
+        cascade_path: Path to the cascade YAML/JSON file
+        candidates_config: Candidates configuration from SQL hints
+
+    Returns:
+        Modified cascade config dict with candidates block injected
+    """
+    from ..loaders import load_config_file
+
+    # Load cascade as dict
+    cascade_dict = load_config_file(cascade_path)
+    config = copy.deepcopy(cascade_dict)
+
+    # Build candidates block
+    candidates = {}
+
+    # Map hint keys to cascade candidates config
+    if 'factor' in candidates_config:
+        candidates['factor'] = candidates_config['factor']
+
+    if 'multi_model' in candidates_config:
+        candidates['multi_model'] = candidates_config['multi_model']
+        # Ensure factor matches number of models
+        if 'factor' not in candidates:
+            candidates['factor'] = len(candidates_config['multi_model'])
+
+    if 'evaluator' in candidates_config:
+        candidates['evaluator_instructions'] = candidates_config['evaluator']
+
+    if 'max_parallel' in candidates_config:
+        candidates['max_parallel'] = candidates_config['max_parallel']
+
+    if 'mode' in candidates_config:
+        candidates['mode'] = candidates_config['mode']
+
+    if 'mutate' in candidates_config:
+        candidates['mutate'] = candidates_config['mutate']
+
+    if 'reforge' in candidates_config:
+        # Reforge is a nested config
+        candidates['reforge'] = {'rounds': candidates_config['reforge']}
+
+    if 'evaluator_model' in candidates_config:
+        candidates['evaluator_model'] = candidates_config['evaluator_model']
+
+    # Inject at top level
+    if candidates:
+        config['candidates'] = candidates
+        log.info(f"[cascade_udf] Injected candidates config: {candidates}")
+
+    return config
+
+
+def _run_cascade_sync(
+    cascade_path_or_config: Union[str, Dict[str, Any]],
+    session_id: str,
+    inputs: Dict[str, Any],
+    caller_id: str = None
+) -> Dict[str, Any]:
+    """Run a cascade synchronously (blocking).
+
+    Args:
+        cascade_path_or_config: Path to cascade file, or cascade config dict
+        session_id: Session ID for execution
+        inputs: Input data for the cascade
+        caller_id: Caller ID for cost tracking
+    """
     from ..runner import RVBBITRunner
 
     # RVBBITRunner takes session_id AND caller_id for proper tracking
-    runner = RVBBITRunner(cascade_path, session_id=session_id, caller_id=caller_id)
+    runner = RVBBITRunner(cascade_path_or_config, session_id=session_id, caller_id=caller_id)
     return runner.run(input_data=inputs)
 
 
@@ -134,6 +247,15 @@ def execute_cascade_udf(
     This is the core function registered as a DuckDB UDF that enables
     calling any cascade with sql_function config from SQL.
 
+    Supports cascade-level candidates via SQL comment hints:
+        -- @ candidates.factor: 3
+        -- @ candidates.evaluator: Pick the most accurate response
+        -- @ models: [claude-sonnet, gpt-4o, gemini-pro]
+        SELECT description MEANS 'is eco-friendly' FROM products
+
+    When candidates config is detected, the cascade is run multiple times
+    and an evaluator picks the best result.
+
     Args:
         cascade_id: The cascade ID or function name to execute
         inputs_json: JSON string of inputs for the cascade
@@ -154,14 +276,17 @@ def execute_cascade_udf(
         # Parse inputs
         inputs = json.loads(inputs_json) if inputs_json else {}
 
+        # Extract candidates config from inputs (embedded as special prefix)
+        cleaned_inputs, candidates_config = _extract_candidates_from_inputs(inputs)
+
         # Look up the function
         fn = get_sql_function(cascade_id)
         if not fn:
             return json.dumps({"error": f"SQL function not found: {cascade_id}"})
 
-        # Check cache
-        if use_cache:
-            found, cached = get_cached_result(cascade_id, inputs)
+        # Check cache (only if no candidates - candidates bypass cache for fresh sampling)
+        if use_cache and not candidates_config:
+            found, cached = get_cached_result(cascade_id, cleaned_inputs)
             if found:
                 log.debug(f"[cascade_udf] Cache hit for {cascade_id}")
                 # Track cache hit for SQL Trail
@@ -184,11 +309,18 @@ def execute_cascade_udf(
                 cascade_id=cascade_id,
                 cascade_path=fn.cascade_path,
                 session_id=session_id,
-                inputs=inputs
+                inputs=cleaned_inputs
             )
 
-        # Execute the cascade (pass caller_id so it propagates to unified_logs!)
-        result = _run_cascade_sync(fn.cascade_path, session_id, inputs, caller_id=caller_id)
+        # Determine what to run: original cascade or modified with candidates
+        if candidates_config:
+            # Inject candidates into cascade config (in-memory, not modifying file)
+            cascade_config = _inject_candidates_into_cascade(fn.cascade_path, candidates_config)
+            log.info(f"[cascade_udf] Running {cascade_id} with candidates: factor={candidates_config.get('factor', 'N/A')}")
+            result = _run_cascade_sync(cascade_config, session_id, cleaned_inputs, caller_id=caller_id)
+        else:
+            # Execute the cascade normally (pass caller_id so it propagates to unified_logs!)
+            result = _run_cascade_sync(fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id)
 
         # Extract the output using proper cascade result parsing
         output = _extract_cascade_output(result)
@@ -211,9 +343,9 @@ def execute_cascade_udf(
                 except ValueError:
                     output = 0
 
-        # Cache result
-        if use_cache:
-            set_cached_result(cascade_id, inputs, output)
+        # Cache result (but not candidates runs - they're for fresh sampling)
+        if use_cache and not candidates_config:
+            set_cached_result(cascade_id, cleaned_inputs, output)
 
         # Return as JSON if complex, otherwise as string
         if isinstance(output, (dict, list)):

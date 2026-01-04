@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 
 
 @dataclass
@@ -37,6 +37,7 @@ class _Token:
 class _Annotation:
     prompt_prefix: str = ""
     threshold: Optional[float] = None
+    candidates: Optional[Dict[str, Any]] = None  # Cascade-level candidates config
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
     # Keep comments in-place (do not relocate) and rely on the legacy rewriter to remove them.
     pending_annotation_prefix = ""
     pending_threshold: Optional[float] = None
+    pending_candidates: Optional[Dict[str, Any]] = None  # Candidates config for cascade-level sampling
 
     while i < len(tokens):
         tok = tokens[i]
@@ -87,6 +89,11 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                         pending_annotation_prefix += ann.prompt_prefix
                     if ann.threshold is not None:
                         pending_threshold = ann.threshold
+                    if ann.candidates is not None:
+                        # Merge candidates config (multiple annotations can accumulate)
+                        if pending_candidates is None:
+                            pending_candidates = {}
+                        pending_candidates.update(ann.candidates)
             out_tokens.append(tok)
             i += 1
             continue
@@ -145,9 +152,24 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
 
         rhs_text_injected = rhs_text
         consumed_annotation = False
-        if pending_annotation_prefix and _is_string_literal_span(tokens[rhs_start:rhs_end]):
-            rhs_text_injected = _inject_prefix_into_string_literal(rhs_text, pending_annotation_prefix)
-            consumed_annotation = True
+        consumed_candidates = False
+
+        if _is_string_literal_span(tokens[rhs_start:rhs_end]):
+            # Inject candidates config as special prefix (if present)
+            # Format: __RVBBIT_CANDIDATES:{"factor":3}__
+            if pending_candidates:
+                import json
+                candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(pending_candidates)}__"
+                rhs_text_injected = _inject_prefix_into_string_literal(rhs_text, candidates_prefix)
+                consumed_candidates = True
+
+            # Inject annotation prefix (model hints, etc.)
+            if pending_annotation_prefix:
+                rhs_text_injected = _inject_prefix_into_string_literal(
+                    rhs_text_injected if consumed_candidates else rhs_text,
+                    pending_annotation_prefix
+                )
+                consumed_annotation = True
 
         call_expr = f"{spec.function_name}({lhs_text.strip()}, {rhs_text_injected.strip()})"
         rewritten = f"NOT {call_expr}" if not_present else call_expr
@@ -158,6 +180,8 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
 
         if consumed_annotation:
             pending_annotation_prefix = ""
+        if consumed_candidates:
+            pending_candidates = None
 
         # Skip original span
         i = rhs_end
@@ -260,6 +284,8 @@ def _parse_annotation(comment_text: str) -> Optional[_Annotation]:
 
     Non-prompt keys like parallel/batch_size are intentionally ignored here so they can
     be handled by the legacy rewriter (e.g. UNION ALL splitting).
+
+    Candidates config is parsed and stored separately for cascade-level sampling.
     """
     stripped = comment_text.strip()
     if not stripped.startswith("-- @"):
@@ -288,6 +314,35 @@ def _parse_annotation(comment_text: str) -> Optional[_Annotation]:
 
         if key == "prompt" and value:
             return _Annotation(prompt_prefix=f"{value} - ")
+
+        # Candidates config for cascade-level sampling
+        if key.startswith("candidates."):
+            subkey = key[11:]  # Remove 'candidates.' prefix
+            candidates = {}
+            if subkey in ("factor", "max_parallel", "reforge"):
+                try:
+                    candidates[subkey] = int(value)
+                except ValueError:
+                    candidates[subkey] = value
+            elif subkey == "mutate":
+                candidates[subkey] = value.lower() in ("true", "yes", "1")
+            else:
+                # evaluator, mode, evaluator_model, etc.
+                candidates[subkey] = value
+            return _Annotation(prompt_prefix="", candidates=candidates)
+
+        # Multi-model shorthand: models: [a, b, c]
+        if key == "models":
+            import json
+            try:
+                models = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                # Try comma-separated
+                models = [m.strip() for m in value.strip("[]").split(",")]
+            return _Annotation(
+                prompt_prefix="",
+                candidates={"multi_model": models, "factor": len(models)}
+            )
 
         # Unknown key or natural language with colon: treat as prompt text.
         if value:

@@ -738,6 +738,36 @@
         color: var(--cyan);
       }
 
+      .integrations-row.ai-row .integrations-row-label {
+        color: var(--magenta);
+      }
+
+      .integrations-row.ai-row .integration-item {
+        border-color: rgba(255, 47, 168, 0.2);
+      }
+
+      .integrations-row.ai-row .integration-item:hover {
+        border-color: rgba(255, 47, 168, 0.4);
+        background: rgba(255, 47, 168, 0.05);
+      }
+
+      .integration-item.subtle {
+        border: none;
+        background: transparent;
+        padding: 8px 4px;
+      }
+
+      .integration-item.subtle:hover {
+        background: transparent;
+      }
+
+      .ai-count {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.75rem;
+        color: var(--magenta);
+        opacity: 0.8;
+      }
+
       @media (max-width: 800px) {
         .integrations-row-label {
           display: none;
@@ -979,6 +1009,39 @@
         opacity: 0.7;
       }
 
+      .topics-bucket-class {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.65rem;
+        padding: 3px 8px;
+        border-radius: 4px;
+        text-transform: lowercase;
+        flex-shrink: 0;
+      }
+
+      .topics-bucket-class.political {
+        background: rgba(28, 246, 255, 0.15);
+        border: 1px solid rgba(28, 246, 255, 0.4);
+        color: var(--cyan);
+      }
+
+      .topics-bucket-class.not-political {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: var(--muted);
+      }
+
+      .topics-bucket.more {
+        justify-content: center;
+        opacity: 0.5;
+        padding: 8px 0;
+      }
+
+      .topics-bucket.more .topics-bucket-label {
+        flex: none;
+        font-size: 0.75rem;
+        font-style: italic;
+      }
+
       .topics-caption {
         text-align: center;
         padding: 24px;
@@ -996,7 +1059,50 @@
       }
 
       .topics-caption strong {
-        color: var(--magenta);
+        color: var(--ink);
+      }
+
+      .topics-operator-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 16px 0;
+      }
+
+      .topics-operator-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        border-left: 3px solid currentColor;
+      }
+
+      .topics-operator-item:first-child {
+        border-left-color: var(--magenta);
+      }
+
+      .topics-operator-item:last-child {
+        border-left-color: var(--cyan);
+      }
+
+      .operator-name {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        font-weight: 600;
+        min-width: 100px;
+      }
+
+      .operator-desc {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .topics-footnote {
+        margin-top: 16px !important;
+        font-size: 0.9rem !important;
+        opacity: 0.8;
       }
 
       @media (max-width: 800px) {
@@ -1066,79 +1172,198 @@
         background: linear-gradient(150deg, rgba(11, 15, 26, 0.95), rgba(15, 19, 34, 0.9));
         border-radius: var(--radius-lg);
         border: 1px solid rgba(28, 246, 255, 0.2);
-        padding: 32px;
+        padding: 32px 24px;
         position: relative;
       }
 
-      .diagram-databases {
+      .diagram-flow {
         display: flex;
+        align-items: center;
         justify-content: center;
         gap: 16px;
-        margin-bottom: 32px;
-        flex-wrap: wrap;
       }
 
-      .diagram-db {
-        padding: 12px 20px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(0, 0, 0, 0.3);
+      .diagram-you {
+        text-align: center;
+        min-width: 80px;
+      }
+
+      .diagram-you-icon {
+        font-size: 1.8rem;
+        margin-bottom: 8px;
+        opacity: 0.8;
+      }
+
+      .diagram-you-label {
         font-family: "JetBrains Mono", monospace;
         font-size: 0.8rem;
-        color: var(--muted);
+        color: var(--ink);
+        margin-bottom: 2px;
       }
 
-      .diagram-connector {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 24px;
+      .diagram-you-sub {
+        font-size: 0.65rem;
+        color: var(--muted);
+        opacity: 0.7;
       }
 
-      .diagram-connector .lines {
+      .diagram-arrow {
         display: flex;
-        flex-direction: column;
         align-items: center;
-        color: var(--muted);
+        gap: 0;
+      }
+
+      .arrow-line {
+        display: block;
+        width: 32px;
+        height: 2px;
+        background: linear-gradient(90deg, var(--cyan), var(--magenta));
+        opacity: 0.6;
+      }
+
+      .arrow-line.dashed {
+        background: repeating-linear-gradient(
+          90deg,
+          var(--magenta) 0px,
+          var(--magenta) 4px,
+          transparent 4px,
+          transparent 8px
+        );
         opacity: 0.4;
-        font-size: 1.2rem;
-        line-height: 1;
       }
 
-      .diagram-rvbbit {
+      .arrow-head {
+        color: var(--cyan);
+        font-size: 0.7rem;
+        margin-left: -2px;
+      }
+
+      .arrow-head.dim {
+        color: var(--magenta);
+        opacity: 0.5;
+      }
+
+      .diagram-hub {
         background: linear-gradient(135deg, rgba(28, 246, 255, 0.15), rgba(255, 47, 168, 0.15));
         border: 1px solid rgba(28, 246, 255, 0.4);
         border-radius: 12px;
-        padding: 20px 32px;
+        padding: 16px 24px;
         text-align: center;
-        margin: 0 auto;
-        max-width: 280px;
+        min-width: 120px;
       }
 
-      .diagram-rvbbit-label {
+      .diagram-hub-label {
         font-family: "JetBrains Mono", monospace;
         font-size: 0.9rem;
+        font-weight: 600;
         color: var(--cyan);
         margin-bottom: 4px;
       }
 
-      .diagram-rvbbit-sub {
-        font-size: 0.75rem;
+      .diagram-hub-sub {
+        font-size: 0.65rem;
         color: var(--muted);
       }
 
-      .diagram-note {
-        text-align: center;
-        margin-top: 24px;
-        font-size: 0.8rem;
+      .diagram-branches {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        padding: 8px 0;
+      }
+
+      .branch {
+        display: flex;
+        align-items: center;
+      }
+
+      .diagram-targets {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .diagram-target {
+        padding: 12px 16px;
+        border-radius: 8px;
+        min-width: 140px;
+      }
+
+      .diagram-target.databases {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(28, 246, 255, 0.3);
+        border-left: 3px solid var(--cyan);
+      }
+
+      .diagram-target.llms {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 47, 168, 0.2);
+        border-left: 3px solid var(--magenta);
+        opacity: 0.8;
+      }
+
+      .target-header {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.7rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      .diagram-target.databases .target-header {
+        color: var(--cyan);
+      }
+
+      .diagram-target.llms .target-header {
+        color: var(--magenta);
+      }
+
+      .target-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .target-items span {
+        font-size: 0.6rem;
         color: var(--muted);
-        opacity: 0.7;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+
+      .target-note {
+        font-size: 0.55rem;
+        color: var(--muted);
+        opacity: 0.6;
+        margin-top: 6px;
+        font-style: italic;
       }
 
       @media (max-width: 900px) {
         .federated-grid {
           grid-template-columns: 1fr;
           gap: 40px;
+        }
+      }
+
+      @media (max-width: 600px) {
+        .diagram-flow {
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .diagram-arrow {
+          transform: rotate(90deg);
+        }
+
+        .diagram-branches {
+          flex-direction: row;
+          gap: 16px;
+          transform: rotate(90deg);
+        }
+
+        .diagram-targets {
+          flex-direction: column;
         }
       }
 
@@ -3363,6 +3588,517 @@
           padding: 32px 24px;
         }
       }
+
+      /* ========== PGWIRE SECTION ========== */
+      .pgwire-section {
+        padding: 80px 0;
+        background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.02), transparent);
+      }
+
+      .pgwire-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 60px;
+        align-items: center;
+      }
+
+      .pgwire-content h2 {
+        font-size: clamp(1.6rem, 2.5vw, 2rem);
+        margin: 0 0 16px;
+      }
+
+      .pgwire-content > p {
+        color: var(--muted);
+        line-height: 1.6;
+        margin: 0 0 24px;
+        font-size: 1.05rem;
+      }
+
+      .pgwire-clients {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+
+      .pgwire-client {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        border-left: 3px solid var(--green);
+      }
+
+      .pgwire-client-name {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        color: var(--ink);
+        min-width: 120px;
+      }
+
+      .pgwire-client-status {
+        font-size: 0.8rem;
+        color: var(--green);
+        opacity: 0.9;
+      }
+
+      .pgwire-terminal {
+        background: #0a0d14;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-left: 3px solid var(--green);
+        overflow: hidden;
+      }
+
+      .pgwire-terminal .terminal-body {
+        padding: 20px 24px;
+      }
+
+      .pgwire-terminal pre {
+        margin: 0;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.8;
+        color: #cde7ff;
+      }
+
+      .pgwire-note {
+        margin-top: 20px;
+        font-size: 0.9rem;
+        color: var(--muted);
+        opacity: 0.8;
+      }
+
+      @media (max-width: 900px) {
+        .pgwire-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+
+      /* ========== VECTOR SEARCH SECTION ========== */
+      .vector-section {
+        padding: 80px 0;
+        background: linear-gradient(180deg, transparent, rgba(122, 92, 255, 0.03), transparent);
+      }
+
+      .vector-header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .vector-header h2 {
+        font-size: clamp(1.8rem, 3vw, 2.4rem);
+        margin: 0 0 12px;
+      }
+
+      .vector-header p {
+        color: var(--muted);
+        font-size: 1.1rem;
+        margin: 0;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .vector-steps {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 48px;
+      }
+
+      .vector-step {
+        background: #0a0d14;
+        border-radius: 8px;
+        border: 1px solid rgba(122, 92, 255, 0.3);
+        overflow: hidden;
+      }
+
+      .vector-step-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        background: rgba(122, 92, 255, 0.1);
+        border-bottom: 1px solid rgba(122, 92, 255, 0.2);
+      }
+
+      .vector-step-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--purple);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: white;
+      }
+
+      .vector-step-title {
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      .vector-step-content {
+        padding: 20px;
+      }
+
+      .vector-step pre {
+        margin: 0;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.7;
+        color: #cde7ff;
+      }
+
+      .vector-step-note {
+        margin-top: 12px;
+        font-size: 0.8rem;
+        color: var(--muted);
+        opacity: 0.8;
+      }
+
+      .vector-hybrid {
+        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(122, 92, 255, 0.3);
+        padding: 32px;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      .vector-hybrid h3 {
+        font-size: 1.2rem;
+        margin: 0 0 8px;
+        color: var(--purple);
+      }
+
+      .vector-hybrid > p {
+        color: var(--muted);
+        margin: 0 0 24px;
+        font-size: 0.95rem;
+      }
+
+      .vector-hybrid pre {
+        margin: 0 0 20px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.7;
+        color: #cde7ff;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 20px;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+
+      .vector-hybrid-stats {
+        display: flex;
+        gap: 24px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(122, 92, 255, 0.2);
+      }
+
+      .vector-stat {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .vector-stat-icon {
+        font-size: 1.2rem;
+      }
+
+      .vector-stat-text {
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+
+      .vector-stat-text strong {
+        color: var(--purple);
+      }
+
+      @media (max-width: 800px) {
+        .vector-steps {
+          grid-template-columns: 1fr;
+        }
+        .vector-hybrid-stats {
+          flex-direction: column;
+          gap: 12px;
+        }
+      }
+
+      /* ========== TRAINING SECTION ========== */
+      .training-section {
+        padding: 80px 0;
+        background: linear-gradient(180deg, transparent, rgba(255, 189, 46, 0.03), transparent);
+      }
+
+      .training-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 60px;
+        align-items: center;
+      }
+
+      .training-content h2 {
+        font-size: clamp(1.8rem, 3vw, 2.4rem);
+        margin: 0 0 16px;
+      }
+
+      .training-content > p {
+        color: var(--muted);
+        line-height: 1.6;
+        margin: 0 0 24px;
+        font-size: 1.05rem;
+      }
+
+      .training-benefits {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .training-benefit {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .training-benefit .icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        background: rgba(255, 189, 46, 0.15);
+        border: 1px solid rgba(255, 189, 46, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--orange);
+        font-size: 0.8rem;
+        flex-shrink: 0;
+      }
+
+      .training-workflow {
+        background: #0a0d14;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 189, 46, 0.3);
+        overflow: hidden;
+      }
+
+      .training-workflow-header {
+        padding: 14px 20px;
+        background: rgba(255, 189, 46, 0.1);
+        border-bottom: 1px solid rgba(255, 189, 46, 0.2);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.75rem;
+        color: var(--orange);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      .training-workflow-steps {
+        padding: 20px;
+      }
+
+      .training-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .training-step:last-child {
+        border-bottom: none;
+      }
+
+      .training-step-num {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(255, 189, 46, 0.2);
+        border: 1px solid rgba(255, 189, 46, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        color: var(--orange);
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+
+      .training-step-text {
+        font-size: 0.85rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .training-step-text strong {
+        color: var(--ink);
+      }
+
+      .training-tagline {
+        margin-top: 24px;
+        padding: 16px 20px;
+        background: rgba(255, 189, 46, 0.1);
+        border-radius: 8px;
+        border-left: 3px solid var(--orange);
+        font-size: 0.95rem;
+        color: var(--ink);
+        font-style: italic;
+      }
+
+      @media (max-width: 900px) {
+        .training-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+
+      /* ========== CASCADE REVEAL SECTION ========== */
+      .cascade-reveal-section {
+        padding: 80px 0;
+        background: linear-gradient(180deg, transparent, rgba(255, 47, 168, 0.03), transparent);
+      }
+
+      .cascade-reveal-header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .cascade-reveal-header h2 {
+        font-size: clamp(1.8rem, 3vw, 2.4rem);
+        margin: 0 0 12px;
+      }
+
+      .cascade-reveal-header p {
+        color: var(--muted);
+        font-size: 1.1rem;
+        margin: 0;
+        max-width: 650px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .cascade-reveal-demo {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 40px;
+      }
+
+      .cascade-reveal-yaml {
+        background: #0a0d14;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 47, 168, 0.3);
+        overflow: hidden;
+      }
+
+      .cascade-reveal-yaml pre {
+        margin: 0;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.8rem;
+        line-height: 1.7;
+        color: #cde7ff;
+        padding: 20px;
+      }
+
+      .cascade-reveal-points {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .cascade-reveal-point {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 16px 20px;
+        border-left: 3px solid var(--magenta);
+      }
+
+      .cascade-reveal-point h4 {
+        margin: 0 0 6px;
+        font-size: 0.95rem;
+        color: var(--magenta);
+      }
+
+      .cascade-reveal-point p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .cascade-reveal-summary {
+        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(255, 47, 168, 0.2);
+        padding: 32px;
+        text-align: center;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      .cascade-reveal-summary p {
+        margin: 0;
+        font-size: 1.05rem;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .cascade-reveal-summary strong {
+        color: var(--ink);
+      }
+
+      .cascade-depth-table {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 24px;
+        flex-wrap: wrap;
+      }
+
+      .depth-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        border: 1px solid rgba(255, 47, 168, 0.2);
+      }
+
+      .depth-item-op {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.8rem;
+        color: var(--magenta);
+        font-weight: 500;
+      }
+
+      .depth-item-arrow {
+        color: var(--muted);
+        opacity: 0.5;
+      }
+
+      .depth-item-cells {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      @media (max-width: 800px) {
+        .cascade-reveal-demo {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
@@ -3377,8 +4113,10 @@
         <div class="toc-group" data-group="sql">
           <div class="toc-group-label"><span class="group-icon">&#x2261;</span> Getting Started</div>
           <a href="#how-it-works" class="toc-link">One Line Change</a>
-          <a href="#topics" class="toc-link">TOPICS() Magic</a>
+          <a href="#topics" class="toc-link">Semantic Operators</a>
           <a href="#federated" class="toc-link">Data Stays Home</a>
+          <a href="#pgwire" class="toc-link">Your SQL Client</a>
+          <a href="#vector" class="toc-link">Vector Search</a>
         </div>
 
         <div class="toc-group" data-group="reliability">
@@ -3386,6 +4124,7 @@
           <a href="#candidates" class="toc-link">Candidates</a>
           <a href="#champion" class="toc-link">Champion Mode</a>
           <a href="#self-properties" class="toc-link">Self-* Properties</a>
+          <a href="#training" class="toc-link">Universal Training</a>
           <a href="#journey" class="toc-link">Your Journey</a>
         </div>
 
@@ -3394,6 +4133,7 @@
           <a href="#operators" class="toc-link">50+ Operators</a>
           <a href="#depth" class="toc-link">Surface or Deep</a>
           <a href="#observability" class="toc-link">Cost Tracking</a>
+          <a href="#cascade-reveal" class="toc-link">The Magic Trick</a>
           <a href="#extensibility" class="toc-link">Custom Operators</a>
         </div>
 
@@ -3492,7 +4232,7 @@
       <!-- ========== INTEGRATIONS BAR ========== -->
       <section class="integrations-bar">
         <div class="container">
-          <div class="integrations-label reveal">Works with your existing databases &amp; SQL clients</div>
+          <div class="integrations-label reveal">Works with your existing databases, SQL clients &amp; AI providers</div>
 
           <div class="integrations-grid reveal delay-1">
             <!-- Databases Row -->
@@ -3583,10 +4323,28 @@
                 </div>
               </div>
             </div>
+
+            <!-- AI Providers Row -->
+            <div class="integrations-row ai-row">
+              <div class="integrations-row-label">AI</div>
+              <div class="integrations-row-items">
+                <div class="integration-item">
+                  <svg viewBox="0 0 24 24" fill="#6366F1"><circle cx="12" cy="12" r="10" fill="none" stroke="#6366F1" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="#6366F1" stroke-width="2"/></svg>
+                  <span>OpenRouter</span>
+                </div>
+                <div class="integration-item">
+                  <svg viewBox="0 0 24 24" fill="#FFD21E"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+                  <span>HuggingFace</span>
+                </div>
+                <div class="integration-item subtle">
+                  <span class="ai-count">300+ models</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <p class="integrations-note reveal delay-2">
-            Powered by <code>DuckDB</code> federated engine. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, or any SQL IDE.
+            Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.
           </p>
         </div>
       </section>
@@ -3645,10 +4403,13 @@
               </div>
               <div class="code-content">
 <pre><span class="sql-keyword">SELECT</span>
+    <span style="background: rgba(255,47,168,0.2); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,47,168,0.5);"><span class="sql-function">TOPICS</span>(tweet, <span class="sql-string">4</span>)</span> <span class="sql-keyword">AS</span> topic,
+    <span style="background: rgba(28,246,255,0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(28,246,255,0.4);"><span class="sql-function">CLASSIFY</span>(tweet, <span class="sql-string">'political'</span>, <span class="sql-string">'not-political'</span>)</span>
+        <span class="sql-keyword">AS</span> political,
     <span class="sql-function">COUNT</span>(*) <span class="sql-keyword">AS</span> tweets,
     <span class="sql-function">AVG</span>(likes) <span class="sql-keyword">AS</span> avg_likes
 <span class="sql-keyword">FROM</span> twitter_archive
-<span class="sql-keyword">GROUP BY</span> <span style="background: rgba(255,47,168,0.2); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,47,168,0.5);"><span class="sql-function">TOPICS</span>(tweet, <span class="sql-string">6</span>)</span></pre>
+<span class="sql-keyword">GROUP BY</span> topic, political</pre>
               </div>
             </div>
 
@@ -3656,50 +4417,67 @@
 
             <div class="topics-result reveal delay-3">
               <div class="code-card-header">
-                <span class="code-card-label new">AI creates 6 buckets</span>
-                <span class="code-card-badge" style="background: rgba(255,47,168,0.15); border-color: rgba(255,47,168,0.4); color: var(--magenta);">Generated</span>
+                <span class="code-card-label new">AI creates two dimensions</span>
+                <span class="code-card-badge" style="background: rgba(255,47,168,0.15); border-color: rgba(255,47,168,0.4); color: var(--magenta);">4 topics</span>
+                <span class="code-card-badge" style="background: rgba(28,246,255,0.15); border-color: rgba(28,246,255,0.4); color: var(--cyan);">× 2 classes</span>
               </div>
               <div class="code-content">
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">1</div>
                   <span class="topics-bucket-label">Tech Industry Commentary</span>
-                  <span class="topics-bucket-count">2,341 rows</span>
+                  <span class="topics-bucket-class political">political</span>
+                  <span class="topics-bucket-count">1,847 rows</span>
                 </div>
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">2</div>
-                  <span class="topics-bucket-label">Personal Life Updates</span>
-                  <span class="topics-bucket-count">1,892 rows</span>
+                  <span class="topics-bucket-label">Tech Industry Commentary</span>
+                  <span class="topics-bucket-class not-political">not-political</span>
+                  <span class="topics-bucket-count">494 rows</span>
                 </div>
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">3</div>
                   <span class="topics-bucket-label">Hot Takes & Opinions</span>
-                  <span class="topics-bucket-count">1,654 rows</span>
+                  <span class="topics-bucket-class political">political</span>
+                  <span class="topics-bucket-count">1,231 rows</span>
                 </div>
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">4</div>
-                  <span class="topics-bucket-label">Link Sharing & Curation</span>
-                  <span class="topics-bucket-count">987 rows</span>
+                  <span class="topics-bucket-label">Hot Takes & Opinions</span>
+                  <span class="topics-bucket-class not-political">not-political</span>
+                  <span class="topics-bucket-count">423 rows</span>
                 </div>
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">5</div>
-                  <span class="topics-bucket-label">Replies & Conversations</span>
-                  <span class="topics-bucket-count">743 rows</span>
+                  <span class="topics-bucket-label">Personal Life Updates</span>
+                  <span class="topics-bucket-class not-political">not-political</span>
+                  <span class="topics-bucket-count">1,892 rows</span>
                 </div>
                 <div class="topics-bucket">
                   <div class="topics-bucket-num">6</div>
-                  <span class="topics-bucket-label">Random Thoughts</span>
-                  <span class="topics-bucket-count">521 rows</span>
+                  <span class="topics-bucket-label">Link Sharing</span>
+                  <span class="topics-bucket-class political">political</span>
+                  <span class="topics-bucket-count">312 rows</span>
+                </div>
+                <div class="topics-bucket more">
+                  <span class="topics-bucket-label">+ 2 more rows...</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div class="topics-caption reveal delay-4">
-            <p>
-              <strong>TOPICS() creates dimensions that don't exist in your schema.</strong>
-              The LLM reads your data, discovers natural groupings, and buckets every row.
-              Standard SQL. Zero Python. No ETL pipelines. Just... ask for 6 topics.
-            </p>
+            <p><strong>Semantic operators work just like regular SQL functions.</strong></p>
+            <div class="topics-operator-list">
+              <div class="topics-operator-item">
+                <span class="operator-name" style="color: var(--magenta);">TOPICS()</span>
+                <span class="operator-desc">Aggregate — discovers natural groupings across rows</span>
+              </div>
+              <div class="topics-operator-item">
+                <span class="operator-name" style="color: var(--cyan);">CLASSIFY()</span>
+                <span class="operator-desc">Dimensional — adds a column to each row</span>
+              </div>
+            </div>
+            <p class="topics-footnote">Mix them together. Nest them. Use them in WHERE, GROUP BY, ORDER BY. It's just SQL.</p>
           </div>
         </div>
       </section>
@@ -3735,24 +4513,188 @@
             </div>
 
             <div class="federated-diagram reveal delay-1">
-              <div class="diagram-databases">
-                <div class="diagram-db">Postgres</div>
-                <div class="diagram-db">BigQuery</div>
-                <div class="diagram-db">MySQL</div>
-                <div class="diagram-db">Files</div>
-              </div>
-              <div class="diagram-connector">
-                <div class="lines">
-                  <span>│ │ │ │</span>
-                  <span>└─┴─┴─┘</span>
-                  <span>▼</span>
+              <div class="diagram-flow">
+                <!-- Left: You -->
+                <div class="diagram-you">
+                  <div class="diagram-you-icon">⌨</div>
+                  <div class="diagram-you-label">You</div>
+                  <div class="diagram-you-sub">Write plain SQL</div>
+                </div>
+
+                <!-- Arrow 1 -->
+                <div class="diagram-arrow">
+                  <span class="arrow-line"></span>
+                  <span class="arrow-head">▶</span>
+                </div>
+
+                <!-- Center: RVBBIT -->
+                <div class="diagram-hub">
+                  <div class="diagram-hub-label">RVBBIT</div>
+                  <div class="diagram-hub-sub">Routes your query</div>
+                </div>
+
+                <!-- Arrow 2 (branches) -->
+                <div class="diagram-branches">
+                  <div class="branch branch-top">
+                    <span class="arrow-line"></span>
+                    <span class="arrow-head">▶</span>
+                  </div>
+                  <div class="branch branch-bottom">
+                    <span class="arrow-line dashed"></span>
+                    <span class="arrow-head dim">▶</span>
+                  </div>
+                </div>
+
+                <!-- Right: Targets -->
+                <div class="diagram-targets">
+                  <div class="diagram-target databases">
+                    <div class="target-header">Your Databases</div>
+                    <div class="target-items">
+                      <span>Postgres</span>
+                      <span>MySQL</span>
+                      <span>BigQuery</span>
+                      <span>Files</span>
+                    </div>
+                  </div>
+                  <div class="diagram-target llms">
+                    <div class="target-header">AI Models</div>
+                    <div class="target-items">
+                      <span>Claude</span>
+                      <span>GPT</span>
+                      <span>Gemini</span>
+                      <span>+300 more</span>
+                    </div>
+                    <div class="target-note">OpenRouter · HuggingFace Spaces as tools</div>
+                  </div>
                 </div>
               </div>
-              <div class="diagram-rvbbit">
-                <div class="diagram-rvbbit-label">RVBBIT</div>
-                <div class="diagram-rvbbit-sub">DuckDB + AI operators</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== PGWIRE SECTION ========== -->
+      <section id="pgwire" class="pgwire-section">
+        <div class="container">
+          <div class="pgwire-grid">
+            <div class="pgwire-content reveal">
+              <h2>Use your existing SQL client. <span style="color: var(--green)">Seriously.</span></h2>
+              <p>
+                RVBBIT speaks PostgreSQL wire protocol. That means your existing tools just work.
+                No plugins. No extensions. No new software to learn.
+              </p>
+              <div class="pgwire-clients">
+                <div class="pgwire-client">
+                  <span class="pgwire-client-name">DBeaver</span>
+                  <span class="pgwire-client-status">Just connect</span>
+                </div>
+                <div class="pgwire-client">
+                  <span class="pgwire-client-name">DataGrip</span>
+                  <span class="pgwire-client-status">Just connect</span>
+                </div>
+                <div class="pgwire-client">
+                  <span class="pgwire-client-name">Tableau</span>
+                  <span class="pgwire-client-status">Just connect</span>
+                </div>
+                <div class="pgwire-client">
+                  <span class="pgwire-client-name">psql</span>
+                  <span class="pgwire-client-status">Just connect</span>
+                </div>
+                <div class="pgwire-client">
+                  <span class="pgwire-client-name">psycopg2</span>
+                  <span class="pgwire-client-status">Just connect</span>
+                </div>
               </div>
-              <p class="diagram-note">One query. All your data. AI built in.</p>
+              <p class="pgwire-note">
+                Your favorite SQL IDE. Your existing workflows. Now with AI operators.
+              </p>
+            </div>
+
+            <div class="pgwire-terminal reveal delay-1">
+              <div class="terminal-header">
+                <span class="terminal-type-badge" style="background: rgba(0, 255, 136, 0.15); border-color: rgba(0, 255, 136, 0.3); color: var(--green);">Terminal</span>
+                <span class="terminal-title">Two commands</span>
+              </div>
+              <div class="terminal-body">
+<pre><span style="color: var(--muted);"># Start RVBBIT</span>
+<span style="color: var(--green);">$</span> rvbbit serve sql --port 15432
+
+<span style="color: var(--muted);"># Connect with any PostgreSQL client</span>
+<span style="color: var(--green);">$</span> psql postgresql://localhost:15432/default
+
+<span style="color: var(--muted);"># Now you have AI operators</span>
+<span style="color: var(--magenta);">SELECT</span> * <span style="color: var(--magenta);">FROM</span> tickets
+<span style="color: var(--magenta);">WHERE</span> description <span style="color: var(--cyan);">MEANS</span> <span style="color: var(--green);">'urgent'</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== VECTOR SEARCH SECTION ========== -->
+      <section id="vector" class="vector-section">
+        <div class="container">
+          <div class="vector-header reveal">
+            <h2>Vector search in SQL. <span class="gradient-text">No vector database.</span></h2>
+            <p>
+              Embeddings are powerful. Setting them up usually isn't. RVBBIT makes it trivial.
+            </p>
+          </div>
+
+          <div class="vector-steps reveal delay-1">
+            <div class="vector-step">
+              <div class="vector-step-header">
+                <div class="vector-step-num">1</div>
+                <span class="vector-step-title">Generate embeddings</span>
+              </div>
+              <div class="vector-step-content">
+<pre><span class="sql-keyword">SELECT</span> id, <span class="sql-function">EMBED</span>(description)
+<span class="sql-keyword">FROM</span> products;</pre>
+                <p class="vector-step-note">
+                  That's it. No schema changes. No external vector DB.<br>
+                  RVBBIT stores embeddings in its system database automatically.
+                </p>
+              </div>
+            </div>
+
+            <div class="vector-step">
+              <div class="vector-step-header">
+                <div class="vector-step-num">2</div>
+                <span class="vector-step-title">Search semantically</span>
+              </div>
+              <div class="vector-step-content">
+<pre><span class="sql-keyword">SELECT</span> *
+<span class="sql-keyword">FROM</span> <span class="sql-function">VECTOR_SEARCH</span>(
+  <span class="sql-string">'eco-friendly household items'</span>,
+  <span class="sql-string">'products'</span>, 20
+)</pre>
+                <p class="vector-step-note">
+                  Returns the 20 most similar products. Instant.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="vector-hybrid reveal delay-2">
+            <h3>The hybrid trick: 10,000x cost reduction</h3>
+            <p>
+              Vector search is fast but imprecise. LLM judgment is precise but expensive. Combine them.
+            </p>
+<pre><span class="sql-keyword">WITH</span> candidates <span class="sql-keyword">AS</span> (
+  <span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="sql-function">VECTOR_SEARCH</span>(<span class="sql-string">'affordable eco products'</span>, <span class="sql-string">'products'</span>, 100)
+)
+<span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> candidates
+<span class="sql-keyword">WHERE</span> description <span class="sql-function">MEANS</span> <span class="sql-string">'genuinely eco-friendly, not greenwashing'</span>
+<span class="sql-keyword">LIMIT</span> 10;</pre>
+            <div class="vector-hybrid-stats">
+              <div class="vector-stat">
+                <span class="vector-stat-icon">&#x1F50D;</span>
+                <span class="vector-stat-text"><strong>Vector search:</strong> 1M rows &rarr; 100 candidates (fast, cheap)</span>
+              </div>
+              <div class="vector-stat">
+                <span class="vector-stat-icon">&#x1F9E0;</span>
+                <span class="vector-stat-text"><strong>LLM evaluation:</strong> 100 &rarr; 10 winners (smart, still cheap)</span>
+              </div>
             </div>
           </div>
         </div>
@@ -3938,16 +4880,39 @@
             </div>
           </div>
 
-          <!-- Evolution Screenshot -->
-          <div class="section-screenshot reveal delay-2">
-            <!-- Replace with: <img src="screenshots/evolution-ui.png" alt="Evolution UI"> -->
-            <div class="screenshot-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8M12 17v4"/>
-              </svg>
-              <span>evolution-ui.png</span>
-              <span class="screenshot-size">800 × 450</span>
+          <!-- Evolution Screenshot Carousel -->
+          <div class="screenshot-carousel reveal delay-2" id="evolutionCarousel">
+            <div class="carousel-track">
+              <div class="carousel-slide">
+                <!-- Replace with: <img src="screenshots/evolution-candidates.png" alt="Candidates running"> -->
+                <div class="screenshot-placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <path d="M8 21h8M12 17v4"/>
+                  </svg>
+                  <span>evolution-candidates.png</span>
+                  <span class="screenshot-size">Candidates running with mutations</span>
+                </div>
+              </div>
+              <div class="carousel-slide">
+                <!-- Replace with: <img src="screenshots/evolution-winners.png" alt="Winner selection"> -->
+                <div class="screenshot-placeholder">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <path d="M8 21h8M12 17v4"/>
+                  </svg>
+                  <span>evolution-winners.png</span>
+                  <span class="screenshot-size">Winner selection & promotion</span>
+                </div>
+              </div>
+            </div>
+            <div class="carousel-arrows">
+              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', -1)">&#8249;</button>
+              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', 1)">&#8250;</button>
+            </div>
+            <div class="carousel-nav">
+              <button class="carousel-dot active" onclick="goToSlide('evolutionCarousel', 0)"></button>
+              <button class="carousel-dot" onclick="goToSlide('evolutionCarousel', 1)"></button>
             </div>
           </div>
         </div>
@@ -3986,6 +4951,72 @@
               <div class="self-icon">&#x1F3D7;</div>
               <h4>Self-Building</h4>
               <p>Cascades built through conversation. Chat to create workflows.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== UNIVERSAL TRAINING ========== -->
+      <section id="training" class="training-section">
+        <div class="container">
+          <div class="training-grid">
+            <div class="training-content reveal">
+              <h2>Your queries are <span style="color: var(--orange)">training data.</span></h2>
+              <p>
+                Every LLM call is logged. Every input. Every output. Every confidence score.
+                Browse this history. Mark the good outputs. They become few-shot examples automatically.
+              </p>
+              <div class="training-benefits">
+                <div class="training-benefit">
+                  <div class="icon">&#10003;</div>
+                  <span>Works on ANY model&mdash;GPT-4, Claude, Gemini, open source</span>
+                </div>
+                <div class="training-benefit">
+                  <div class="icon">&#10003;</div>
+                  <span>No training runs. No GPU costs. No waiting.</span>
+                </div>
+                <div class="training-benefit">
+                  <div class="icon">&#10003;</div>
+                  <span>Examples take effect immediately</span>
+                </div>
+                <div class="training-benefit">
+                  <div class="icon">&#10003;</div>
+                  <span>Easy to audit, edit, or remove</span>
+                </div>
+              </div>
+              <div class="training-tagline">
+                You're not fine-tuning a model. You're curating a knowledge base that makes every model smarter at YOUR tasks.
+              </div>
+            </div>
+
+            <div class="training-workflow reveal delay-1">
+              <div class="training-workflow-header">The Workflow</div>
+              <div class="training-workflow-steps">
+                <div class="training-step">
+                  <div class="training-step-num">1</div>
+                  <span class="training-step-text"><strong>Run queries normally</strong></span>
+                </div>
+                <div class="training-step">
+                  <div class="training-step-num">2</div>
+                  <span class="training-step-text">System <strong>auto-scores outputs</strong> for quality (background worker, ~$0.0001/msg)</span>
+                </div>
+                <div class="training-step">
+                  <div class="training-step-num">3</div>
+                  <span class="training-step-text">Browse high-confidence outputs in <strong>Training UI</strong></span>
+                </div>
+                <div class="training-step">
+                  <div class="training-step-num">4</div>
+                  <span class="training-step-text">Click <strong style="color: var(--green)">&#10003;</strong> to mark as trainable</span>
+                </div>
+                <div class="training-step">
+                  <div class="training-step-num">5</div>
+                  <span class="training-step-text">Enable <code style="background: rgba(255,189,46,0.15); padding: 2px 8px; border-radius: 4px; color: var(--orange);">use_training: true</code> on any cascade</span>
+                </div>
+                <div class="training-step">
+                  <div class="training-step-num">6</div>
+                  <span class="training-step-text"><strong>Done.</strong> System improves from usage.</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -4367,6 +5398,81 @@
               <button class="carousel-dot active" onclick="goToSlide('obsCarousel', 0)"></button>
               <button class="carousel-dot" onclick="goToSlide('obsCarousel', 1)"></button>
               <button class="carousel-dot" onclick="goToSlide('obsCarousel', 2)"></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== CASCADE REVEAL ========== -->
+      <section id="cascade-reveal" class="cascade-reveal-section">
+        <div class="container">
+          <div class="cascade-reveal-header reveal">
+            <h2>The magic trick behind the operators.</h2>
+            <p>
+              You've been using cascades this whole time. That <code style="color: var(--cyan)">MEANS</code> operator? It's a YAML file.
+            </p>
+          </div>
+
+          <div class="cascade-reveal-demo">
+            <div class="cascade-reveal-yaml reveal delay-1">
+              <div class="code-header">
+                <span class="code-type-badge yaml">YAML</span>
+                <span class="code-title">cascades/semantic_sql/matches.cascade.yaml</span>
+              </div>
+<pre><span class="yaml-key">cascade_id:</span> <span class="yaml-value">semantic_matches</span>
+
+<span class="yaml-key">sql_function:</span>
+  <span class="yaml-key">operators:</span>
+    - <span class="yaml-value">"{{ text }} MEANS {{ criterion }}"</span>
+
+<span class="yaml-key">cells:</span>
+  - <span class="yaml-key">name:</span> <span class="yaml-value">evaluate</span>
+    <span class="yaml-key">model:</span> <span class="yaml-value">gemini-2.5-flash-lite</span>
+    <span class="yaml-key">instructions:</span> <span class="yaml-value">|</span>
+      Does this text match the criterion?
+      Text: {{ input.text }}
+      Criterion: {{ input.criterion }}</pre>
+            </div>
+
+            <div class="cascade-reveal-points reveal delay-2">
+              <div class="cascade-reveal-point">
+                <h4>Every operator is a file.</h4>
+                <p>Want to change the model? Edit the file. Want stricter validation? Add a ward. Want three models to compete? Add candidates.</p>
+              </div>
+              <div class="cascade-reveal-point">
+                <h4>The same system powers everything.</h4>
+                <p>A simple MEANS check (1 cell) and a fraud detection workflow (7 cells, 3 models) are both cascades. Same primitives, different depths.</p>
+              </div>
+              <div class="cascade-reveal-point">
+                <h4>No abstraction gap.</h4>
+                <p>Analysts use operators. Engineers customize cascades. Same system, different entry points.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="cascade-reveal-summary reveal delay-3">
+            <p><strong>This is why RVBBIT scales:</strong> Start with one-liners. Evolve to workflows. Never switch tools.</p>
+            <div class="cascade-depth-table">
+              <div class="depth-item">
+                <span class="depth-item-op">MEANS</span>
+                <span class="depth-item-arrow">&rarr;</span>
+                <span class="depth-item-cells">1 cell</span>
+              </div>
+              <div class="depth-item">
+                <span class="depth-item-op">SUMMARIZE</span>
+                <span class="depth-item-arrow">&rarr;</span>
+                <span class="depth-item-cells">1 cell</span>
+              </div>
+              <div class="depth-item">
+                <span class="depth-item-op">IS_FRAUDULENT</span>
+                <span class="depth-item-arrow">&rarr;</span>
+                <span class="depth-item-cells">7 cells</span>
+              </div>
+              <div class="depth-item">
+                <span class="depth-item-op">Your operator</span>
+                <span class="depth-item-arrow">&rarr;</span>
+                <span class="depth-item-cells">?</span>
+              </div>
             </div>
           </div>
         </div>
@@ -5069,6 +6175,77 @@
         setTimeout(() => {
           showNextExample();
         }, 1500);
+      })();
+
+      // ========== SCREENSHOT CAROUSEL ==========
+      (function() {
+        window.scrollCarousel = function(carouselId, direction) {
+          const carousel = document.getElementById(carouselId);
+          if (!carousel) return;
+
+          const track = carousel.querySelector('.carousel-track');
+          const slides = track.querySelectorAll('.carousel-slide');
+          const slideWidth = slides[0].offsetWidth + 16; // width + gap
+
+          const currentScroll = track.scrollLeft;
+          const newScroll = currentScroll + (direction * slideWidth);
+
+          track.scrollTo({
+            left: newScroll,
+            behavior: 'smooth'
+          });
+
+          // Update dots after scroll
+          setTimeout(() => updateCarouselDots(carouselId), 350);
+        };
+
+        window.goToSlide = function(carouselId, index) {
+          const carousel = document.getElementById(carouselId);
+          if (!carousel) return;
+
+          const track = carousel.querySelector('.carousel-track');
+          const slides = track.querySelectorAll('.carousel-slide');
+          const slideWidth = slides[0].offsetWidth + 16;
+
+          track.scrollTo({
+            left: index * slideWidth,
+            behavior: 'smooth'
+          });
+
+          // Update dots
+          const dots = carousel.querySelectorAll('.carousel-dot');
+          dots.forEach((dot, i) => {
+            dot.classList.toggle('active', i === index);
+          });
+        };
+
+        function updateCarouselDots(carouselId) {
+          const carousel = document.getElementById(carouselId);
+          if (!carousel) return;
+
+          const track = carousel.querySelector('.carousel-track');
+          const slides = track.querySelectorAll('.carousel-slide');
+          const slideWidth = slides[0].offsetWidth + 16;
+          const currentIndex = Math.round(track.scrollLeft / slideWidth);
+
+          const dots = carousel.querySelectorAll('.carousel-dot');
+          dots.forEach((dot, i) => {
+            dot.classList.toggle('active', i === currentIndex);
+          });
+        }
+
+        // Listen for scroll events to update dots
+        document.querySelectorAll('.carousel-track').forEach(track => {
+          track.addEventListener('scroll', () => {
+            const carousel = track.closest('.screenshot-carousel');
+            if (carousel && carousel.id) {
+              clearTimeout(track.scrollTimeout);
+              track.scrollTimeout = setTimeout(() => {
+                updateCarouselDots(carousel.id);
+              }, 100);
+            }
+          });
+        });
       })();
     </script>
   </body>

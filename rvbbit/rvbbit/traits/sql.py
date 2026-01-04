@@ -25,7 +25,9 @@ def sql_analyze(
     query: str,
     data: str,
     row_count: int = 0,
-    columns: Optional[List[str]] = None
+    columns: Optional[List[str]] = None,
+    _session_id: str = None,
+    _caller_id: str = None,
 ) -> dict:
     """
     Analyze SQL query results with an LLM.
@@ -33,35 +35,72 @@ def sql_analyze(
     Takes formatted query results and a user's question, returns analysis.
     Used by the ANALYZE SQL command for async data analysis.
 
+    This trait runs the sql_analyze cascade, providing full observability
+    and proper cost tracking through unified_logs.
+
     Args:
         prompt: The user's analysis question (e.g., "why were sales low in December?")
         query: The original SQL query that was executed
         data: Formatted query results (markdown table + stats)
         row_count: Number of rows in the result
         columns: List of column names
+        _session_id: Session ID for cascade execution (internal)
+        _caller_id: Caller ID for cost tracking (internal)
 
     Returns:
         dict with 'analysis' key containing the LLM's analysis text
     """
-    from ..sql_tools.llm_aggregates import _call_llm
+    import json
+    import os
+    from ..runner import run_cascade
+    from ..config import get_config
+    from ..caller_context import get_caller_id
 
+    # Build column info string
     column_info = ", ".join(columns) if columns else "unknown"
 
-    llm_prompt = f"""You are a data analyst. The user ran this SQL query:
+    # Get caller_id from context if not provided
+    if not _caller_id:
+        _caller_id = get_caller_id()
 
-```sql
-{query}
-```
+    # Resolve cascade path
+    config = get_config()
+    cascade_path = os.path.join(config.root_dir, 'cascades', 'sql_analyze.yaml')
 
-Results ({row_count} rows, columns: {column_info}):
-{data}
+    # Fallback to package-relative path
+    if not os.path.exists(cascade_path):
+        cascade_path = os.path.join(os.path.dirname(__file__), '..', '..', 'cascades', 'sql_analyze.yaml')
 
-User's question: {prompt}
+    # Run the cascade
+    result = run_cascade(
+        cascade_path,
+        input_data={
+            "prompt": prompt,
+            "query": query,
+            "data": data,
+            "row_count": row_count,
+            "columns": column_info,
+        },
+        session_id=_session_id,
+        caller_id=_caller_id,
+    )
 
-Provide a clear, concise analysis that directly answers the question.
-Focus on actionable insights from the data, not just describing what you see.
-If the data suggests causes or recommendations, include them."""
+    # Extract analysis from cascade result
+    # The cascade output_schema specifies {"analysis": "..."} format
+    state = result.get("state", {})
+    lineage = result.get("lineage", [])
 
-    analysis = _call_llm(llm_prompt, max_tokens=2000)
+    # Try to get analysis from state first
+    if "analysis" in state:
+        return {"analysis": state["analysis"]}
 
-    return {"analysis": analysis}
+    # Try to get from last cell output
+    if lineage:
+        last_output = lineage[-1].get("output", {})
+        if isinstance(last_output, dict) and "analysis" in last_output:
+            return {"analysis": last_output["analysis"]}
+        if isinstance(last_output, str):
+            return {"analysis": last_output}
+
+    # Fallback to full result
+    return {"analysis": json.dumps(result.get("outputs", {}))}

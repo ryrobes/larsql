@@ -2866,44 +2866,64 @@ class ClientConnection:
                 # Format data for LLM
                 formatted_data = format_for_llm(result_df, max_rows=100)
 
-                # Call analysis via trait
-                print(f"[{session_id}] 🤖 Analysis job {job_id} calling LLM...")
+                # Call analysis via trait (uses sql_analyze cascade)
+                print(f"[{session_id}] 🤖 Analysis job {job_id} calling cascade...")
                 try:
                     from ..trait_registry import get_trait
                     analyze_trait = get_trait('sql_analyze')
 
                     if analyze_trait:
+                        # Pass session/caller context for proper observability
                         analysis_result = analyze_trait(
                             prompt=prompt,
                             query=query,
                             data=formatted_data,
                             row_count=len(result_df),
-                            columns=list(result_df.columns)
+                            columns=list(result_df.columns),
+                            _session_id=f"analyze-{job_id}",
+                            _caller_id=job_id,
                         )
                         if isinstance(analysis_result, dict):
                             analysis_text = analysis_result.get('analysis') or analysis_result.get('result') or str(analysis_result)
                         else:
                             analysis_text = str(analysis_result)
                     else:
-                        # Fallback: use simple LLM call
-                        from ..sql_tools.llm_aggregates import _call_llm
-                        llm_prompt = f"""You are a data analyst. The user ran this SQL query:
+                        # Fallback: run cascade directly if trait not registered
+                        from ..runner import run_cascade
+                        from ..config import get_config
+                        import os as os_module
+                        cfg = get_config()
+                        cascade_path = os_module.path.join(cfg.root_dir, 'cascades', 'sql_analyze.yaml')
 
-```sql
-{query}
-```
+                        print(f"[{session_id}] ⚠️  sql_analyze trait not found, running cascade directly")
 
-Results:
-{formatted_data}
+                        cascade_result = run_cascade(
+                            cascade_path,
+                            input_data={
+                                "prompt": prompt,
+                                "query": query,
+                                "data": formatted_data,
+                                "row_count": len(result_df),
+                                "columns": ", ".join(result_df.columns),
+                            },
+                            session_id=f"analyze-{job_id}",
+                            caller_id=job_id,
+                        )
 
-User's question: {prompt}
-
-Provide a clear, concise analysis that directly answers the question. Focus on insights from the data."""
-
-                        analysis_text = _call_llm(llm_prompt, max_tokens=2000)
+                        # Extract analysis from cascade result
+                        state = cascade_result.get("state", {})
+                        if "analysis" in state:
+                            analysis_text = state["analysis"]
+                        elif cascade_result.get("lineage"):
+                            last_output = cascade_result["lineage"][-1].get("output", {})
+                            analysis_text = last_output.get("analysis", str(last_output))
+                        else:
+                            analysis_text = str(cascade_result.get("outputs", {}))
 
                 except Exception as llm_err:
-                    print(f"[{session_id}] ⚠️  Analysis job {job_id} LLM call failed: {llm_err}")
+                    print(f"[{session_id}] ⚠️  Analysis job {job_id} cascade failed: {llm_err}")
+                    import traceback as tb_mod
+                    tb_mod.print_exc()
                     analysis_text = f"Analysis failed: {llm_err}"
 
                 # Store analysis in _analysis table
