@@ -1,0 +1,140 @@
+# AUTHENTICITY - Content Authenticity Dimension
+# A dimension function that assesses how authentic/organic vs artificial content appears.
+#
+# SQL Usage:
+#   SELECT authenticity(tweet_text) as auth_level, COUNT(*)
+#   FROM tweets
+#   GROUP BY authenticity(tweet_text)
+#
+#   -- With focus on specific inauthenticity type
+#   SELECT authenticity(tweet_text, 'astroturf') as astro_score, COUNT(*)
+#   FROM political_tweets
+#   GROUP BY authenticity(tweet_text, 'astroturf')
+
+cascade_id: authenticity_dimension
+internal: true
+
+description: |
+  Authenticity analyzer for social media content. Assesses how genuine/organic
+  vs artificial/manufactured the content appears based on linguistic patterns.
+
+  Useful for detecting: bot-like content, astroturfing, coordinated campaigns,
+  AI-generated content, spam, or inauthentic behavior.
+
+  NOTE: This is heuristic-based on content patterns only, not account metadata.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  focus: Optional focus (bot, astroturf, spam, ai_generated)
+
+sql_function:
+  name: authenticity
+  description: |
+    Assess authenticity of content. How genuine vs artificial does it appear?
+    Optional focus parameter targets specific inauthenticity types.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: focus
+      type: VARCHAR
+      default: null
+      description: Focus on specific type (bot, astroturf, spam, ai_generated)
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: assess_authenticity
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Assess the AUTHENTICITY of these {{ input.texts | length }} social media posts.
+      How genuine/organic vs artificial/manufactured does each one appear?
+
+      {% if input.focus == 'bot' %}
+      FOCUS ON BOT-LIKE PATTERNS:
+      - Repetitive/formulaic language
+      - Unusual posting patterns indicators
+      - Generic responses that could apply to anything
+      - Missing personal voice or genuine engagement
+      {% elif input.focus == 'astroturf' %}
+      FOCUS ON ASTROTURFING PATTERNS:
+      - Coordinated campaign language
+      - Talking points that seem scripted
+      - Artificial grassroots impression
+      - Suspiciously similar messaging
+      {% elif input.focus == 'spam' %}
+      FOCUS ON SPAM PATTERNS:
+      - Promotional without value
+      - Link farming, engagement farming
+      - Copy-paste content
+      - Irrelevant to conversation
+      {% elif input.focus == 'ai_generated' %}
+      FOCUS ON AI-GENERATED PATTERNS:
+      - Overly formal/polished language
+      - Hedging phrases, excessive qualifications
+      - Generic summaries, lack of specific knowledge
+      - Unnatural flow, context mismatches
+      {% else %}
+      Assess OVERALL authenticity. Look for:
+      - Personal voice, unique perspective
+      - Genuine emotion vs performed emotion
+      - Specific details vs vague generalities
+      - Natural conversation vs scripted talking points
+      - Contextual awareness vs generic responses
+      {% endif %}
+
+      USE THESE CATEGORIES:
+      {% if input.focus %}
+      - Clearly Authentic (no {{ input.focus }} indicators)
+      - Likely Authentic (few {{ input.focus }} indicators)
+      - Uncertain (mixed signals)
+      - Potentially {{ input.focus | title }} (some concerning patterns)
+      - Likely {{ input.focus | title }} (strong {{ input.focus }} patterns)
+      {% else %}
+      - Highly Authentic (genuine voice, personal, specific)
+      - Likely Authentic (mostly genuine, minor concerns)
+      - Uncertain (mixed signals, hard to tell)
+      - Potentially Inauthentic (some artificial patterns)
+      - Likely Inauthentic (strong artificial patterns)
+      {% endif %}
+
+      Posts to analyze (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v[:500] | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each post's INDEX NUMBER to its authenticity assessment:
+
+      {
+        "mapping": {
+          "0": "Authenticity Level",
+          "1": "Authenticity Level",
+          ...
+        }
+      }
+
+      RULES:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys
+      - Base assessment ONLY on content patterns, not assumptions
+      - Be careful: unusual ≠ inauthentic, formal ≠ bot
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+      max_attempts: 3
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

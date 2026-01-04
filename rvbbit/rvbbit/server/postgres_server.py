@@ -1300,26 +1300,38 @@ class ClientConnection:
                         print(f"[{self.session_id}]      Falling back to sequential execution")
                         # Fall through to normal execution
 
-            # Rewrite RVBBIT MAP/RUN syntax to standard SQL
-            query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
-
             # Check for prewarm sidecar opportunity (-- @ parallel: N annotation)
+            # IMPORTANT: Must run BEFORE rewrite_rvbbit_syntax which strips comments!
             # This launches a background thread to warm the cache for scalar semantic functions
             prewarm_sidecar = None
+            original_query = query  # Preserve original with annotations
+            print(f"[{self.session_id}]   📋 Prewarm check starting...")
             try:
                 from rvbbit.sql_tools.prewarm_sidecar import maybe_launch_prewarm_sidecar
                 from rvbbit.caller_context import get_caller_id
 
                 prewarm_caller_id = get_caller_id()
+                # If no caller_id but query has parallel annotation, generate one
+                if not prewarm_caller_id:
+                    from rvbbit.sql_tools.prewarm_sidecar import _get_parallel_annotation
+                    if _get_parallel_annotation(original_query):
+                        from rvbbit.session_naming import generate_woodland_id
+                        prewarm_caller_id = f"prewarm-{generate_woodland_id()}"
+                        print(f"[{self.session_id}]   🚀 Prewarm: Generated caller_id {prewarm_caller_id}")
+
                 if prewarm_caller_id:
                     prewarm_sidecar = maybe_launch_prewarm_sidecar(
-                        query=query,
+                        query=original_query,  # Use original query with annotations
                         caller_id=prewarm_caller_id,
                         duckdb_conn=self.duckdb_conn,
                     )
             except Exception as prewarm_e:
                 # Prewarm failures are non-fatal
                 print(f"[{self.session_id}]   ⚠️  Prewarm check failed: {prewarm_e}")
+
+            # Rewrite RVBBIT MAP/RUN syntax to standard SQL
+            # This strips annotations/comments, so prewarm check must happen first
+            query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
             # Execute on DuckDB (with defensive None check)
             result = self.duckdb_conn.execute(query)

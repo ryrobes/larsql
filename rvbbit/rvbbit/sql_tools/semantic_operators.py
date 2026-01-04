@@ -65,7 +65,7 @@ log = logging.getLogger(__name__)
 
 # When True, rewriter uses cascade-based function names (e.g., cascade_matches)
 # When False, uses direct UDF names (e.g., matches)
-USE_CASCADE_FUNCTIONS = False
+USE_CASCADE_FUNCTIONS = True
 
 # Mapping from operator to function name (direct UDF vs cascade-backed)
 OPERATOR_FUNCTIONS = {

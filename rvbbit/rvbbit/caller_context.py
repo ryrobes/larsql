@@ -118,11 +118,11 @@ def get_caller_id(connection_id: str = None) -> Optional[str]:
             # Return the first (and likely only) caller_id
             result = next(iter(_global_caller_registry.values()))[0]
             # DEBUG: Log when we fall back to global registry
-            print(f"[caller_context] get_caller_id() using global registry fallback: {result}")
+            #print(f"[caller_context] get_caller_id() using global registry fallback: {result}")
             return result
 
     # DEBUG: Log when no caller_id is found
-    print(f"[caller_context] get_caller_id() returning None - no caller context set")
+    #print(f"[caller_context] get_caller_id() returning None - no caller context set")
     return None
 
 

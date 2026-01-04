@@ -1,0 +1,111 @@
+# INTENT - Tweet/Post Intent Dimension
+# A dimension function that classifies the communicative intent of social media posts.
+#
+# SQL Usage:
+#   SELECT intent(tweet_text) as purpose, COUNT(*)
+#   FROM tweets
+#   GROUP BY intent(tweet_text)
+#
+#   -- With custom intent categories
+#   SELECT intent(tweet_text, 'Question, Complaint, Praise') as type, COUNT(*)
+#   FROM support_tweets
+#   GROUP BY intent(tweet_text, 'Question, Complaint, Praise')
+
+cascade_id: intent_dimension
+internal: true
+
+description: |
+  Communicative intent classifier for social media posts. Identifies what
+  the author is trying to accomplish with their post.
+
+  Default intents: Question, Statement, Opinion, Complaint, Praise,
+  Announcement, Joke/Humor, Promotion, Request, Warning
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  intents: Optional comma-separated list of intent categories (uses defaults if not provided)
+
+sql_function:
+  name: intent
+  description: |
+    Classify the communicative intent of text. What is the author trying to do?
+    Optionally specify custom intent categories.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: intents
+      type: VARCHAR
+      default: null
+      description: Optional comma-separated intent categories
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: classify_intent
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Classify the communicative INTENT of these {{ input.texts | length }} social media posts.
+      What is each author trying to accomplish?
+
+      {% if input.intents %}
+      USE THESE INTENT CATEGORIES:
+      {% for intent in input.intents.split(',') %}
+      - {{ intent | trim }}
+      {% endfor %}
+      {% else %}
+      USE THESE INTENT CATEGORIES:
+      - Question (asking for information or opinions)
+      - Statement (sharing facts or information)
+      - Opinion (expressing a personal view or belief)
+      - Complaint (expressing dissatisfaction)
+      - Praise (expressing appreciation or admiration)
+      - Announcement (declaring news or updates)
+      - Humor (jokes, sarcasm, memes)
+      - Promotion (marketing, self-promotion, selling)
+      - Request (asking for help or action)
+      - Engagement Bait (asking for likes/shares/follows)
+      - Rant (venting frustration at length)
+      - Commentary (reacting to news/events)
+      {% endif %}
+
+      Posts to classify (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v[:500] | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each post's INDEX NUMBER to its primary intent:
+
+      {
+        "mapping": {
+          "0": "Intent Category",
+          "1": "Intent Category",
+          ...
+        }
+      }
+
+      RULES:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys
+      - Assign the PRIMARY/dominant intent (posts may have multiple, pick the main one)
+      - Use exact category names from the list above
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+      max_attempts: 3
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

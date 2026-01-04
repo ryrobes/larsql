@@ -4,7 +4,7 @@
 # Used by the training system to auto-populate confidence scores
 # for training example curation
 
-cascade_id: assess_training_confidence
+cascade_id: assess_confidence
 
 # Exclude from meta-analysis to prevent self-referential loops
 internal: true

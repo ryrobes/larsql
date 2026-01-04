@@ -43,44 +43,138 @@ def analyze_query_for_prewarm(query: str) -> List[Dict[str, Any]]:
         log.warning(f"[prewarm] Failed to parse query: {e}")
         return []
 
+    # Get registered SQL functions from registry
+    registered_functions = _get_registered_scalar_functions()
+
     results = []
     seen = set()
 
     for func in parsed.find_all(exp.Anonymous):
         func_name = func.name.lower()
 
-        # Only process semantic scalar functions
-        if not func_name.startswith('semantic_'):
+        # Check if this is a registered semantic SQL function
+        # Try multiple naming conventions:
+        # 1. Direct name (e.g., 'condense')
+        # 2. With semantic_ prefix (e.g., 'semantic_condense')
+        # 3. Short name if called with semantic_ prefix
+        func_info = registered_functions.get(func_name)
+        registry_name = func_name  # Will be updated to canonical name
+        if not func_info:
+            # Try with semantic_ prefix
+            func_info = registered_functions.get(f'semantic_{func_name}')
+            if func_info:
+                registry_name = f'semantic_{func_name}'
+        if not func_info:
+            # If called as semantic_*, try the short name
+            if func_name.startswith('semantic_'):
+                short_name = func_name.replace('semantic_', '')
+                func_info = registered_functions.get(short_name)
+                if func_info:
+                    registry_name = short_name
+                if not func_info:
+                    func_info = registered_functions.get(f'semantic_{short_name}')
+                    if func_info:
+                        registry_name = f'semantic_{short_name}'
+
+        if not func_info:
             continue
+
+        # Use the canonical registry name for cache key matching
+        registry_name = func_info.get('name', registry_name)
+
+        # Only prewarm SCALAR functions (not aggregates)
+        if func_info.get('shape', 'SCALAR') != 'SCALAR':
+            log.debug(f"[prewarm] Skipping non-scalar function: {func_name} (shape={func_info.get('shape')})")
+            continue
+
         if not func.expressions:
             continue
 
-        arg = func.expressions[0]
-        arg_sql = arg.sql(dialect='duckdb')
+        # Extract ALL arguments from the function call
+        # First arg is typically the column (varies per row), others may be constants
+        all_args = []
+        column_arg_index = 0  # First arg is the variable column by default
 
-        # Dedupe by (function, arg) - same function on same expression only needs one prewarm
-        key = (func_name, arg_sql)
+        for i, arg_expr in enumerate(func.expressions):
+            arg_sql = arg_expr.sql(dialect='duckdb')
+            # Check if this is a column reference or a constant
+            is_column = isinstance(arg_expr, (exp.Column, exp.Identifier)) or \
+                       (hasattr(arg_expr, 'find') and arg_expr.find(exp.Column))
+            all_args.append({
+                'sql': arg_sql,
+                'is_column': is_column,
+                'index': i,
+            })
+
+        if not all_args:
+            continue
+
+        # Find the column argument (first column reference)
+        column_arg = next((a for a in all_args if a['is_column']), all_args[0])
+        column_arg_sql = column_arg['sql']
+        column_arg_index = column_arg['index']
+
+        # Dedupe by (registry_name, all args) - same function on same args only needs one prewarm
+        key = (registry_name, tuple(a['sql'] for a in all_args))
         if key in seen:
             continue
         seen.add(key)
 
-        # Build the distinct values query
-        distinct_query = _build_distinct_query(parsed, func, arg_sql)
+        # Build the distinct values query for the column argument
+        distinct_query = _build_distinct_query(parsed, func, column_arg_sql)
 
         if distinct_query:
-            # Derive cascade path from function name
-            cascade_name = func_name.replace('semantic_', '')
-            cascade_path = f"cascades/semantic_sql/{cascade_name}.cascade.yaml"
+            # Get arg names from registry
+            arg_names = func_info.get('arg_names', ['text'])
 
             results.append({
-                'function': func_name,
-                'arg_sql': arg_sql,
+                'function': registry_name,  # Use canonical registry name!
+                'arg_sql': column_arg_sql,
                 'distinct_query': distinct_query,
-                'cascade': cascade_path,
-                'input_key': 'text',  # Most scalar cascades use 'text' as input
+                'cascade': func_info['cascade_path'],
+                'input_key': func_info.get('input_key', 'text'),
+                # Include all args for proper cache key matching
+                'all_args': all_args,
+                'arg_names': arg_names,
+                'column_arg_index': column_arg_index,
             })
 
     return results
+
+
+def _get_registered_scalar_functions() -> Dict[str, Dict[str, Any]]:
+    """
+    Get all registered scalar SQL functions from the semantic SQL registry.
+
+    Returns dict mapping function_name -> {cascade_path, shape, input_key, arg_names, ...}
+    """
+    try:
+        from rvbbit.semantic_sql.registry import get_sql_function_registry
+
+        registry = get_sql_function_registry()
+        result = {}
+
+        for name, entry in registry.items():
+            # Get ALL arg names (for multi-arg functions)
+            arg_names = []
+            input_key = 'text'
+            if entry.args:
+                arg_names = [a.get('name', f'arg{i}') for i, a in enumerate(entry.args)]
+                input_key = arg_names[0] if arg_names else 'text'
+
+            result[name.lower()] = {
+                'name': name,  # Canonical registry name
+                'cascade_path': entry.cascade_path,
+                'shape': entry.shape,
+                'input_key': input_key,
+                'arg_names': arg_names,
+            }
+
+        return result
+
+    except Exception as e:
+        log.warning(f"[prewarm] Failed to load registry: {e}")
+        return {}
 
 
 def _build_distinct_query(

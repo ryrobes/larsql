@@ -51,6 +51,10 @@ sql_function:
 cells:
   - name: extract_and_assign
     #model: google/gemini-2.5-flash-lite
+    #model: anthropic/claude-sonnet-4
+    #model: anthropic/claude-opus-4.5::high
+    #model: openrouter/auto
+    model: x-ai/grok-4
 
     instructions: |
       Analyze these {{ input.texts | length }} texts and:
@@ -81,6 +85,7 @@ cells:
       - Topic names should be concise but descriptive (2-5 words)
       - Every input text must be assigned to exactly one topic
       - Return ONLY the JSON object
+      - This is a grouping and classifying task - you are only creating {{ input.num_topics | default(8) }} groups!
 
     rules:
       max_turns: 1

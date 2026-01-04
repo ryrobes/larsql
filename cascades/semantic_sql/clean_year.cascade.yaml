@@ -17,6 +17,7 @@
 #   SELECT semantic_clean_year(year_field) FROM messy_data
 
 cascade_id: semantic_clean_year
+internal: true
 
 description: |
   Scalar function to clean/extract 4-digit years from messy string data.

@@ -23,85 +23,72 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+from .config import RVBBIT_ROOT
 
-@lru_cache(maxsize=128)
-def _is_internal_cascade(cascade_path: str) -> bool:
+
+# Build a lookup table of cascade_id -> internal flag by scanning all cascade files
+# This is done once at module load and cached
+_INTERNAL_CASCADE_LOOKUP: Dict[str, bool] = {}
+
+def _build_internal_cascade_lookup() -> Dict[str, bool]:
     """
-    Check if a cascade is marked as internal (excluded from meta-analysis).
+    Scan all cascade directories and build a lookup table: cascade_id -> internal flag.
 
-    Uses LRU cache since cascade configs don't change during runtime.
-
-    Args:
-        cascade_path: Path to cascade YAML/JSON file (e.g., 'traits/analyze_context_relevance.yaml')
-
-    Returns:
-        True if cascade has internal: true, False otherwise
+    This avoids relying on any naming convention between cascade_id and filename.
     """
-    try:
-        from .cascade import CascadeConfig
-        import yaml
+    import yaml
+    import glob
 
-        # Handle various path formats
-        if not cascade_path:
-            return False
+    lookup = {}
 
-        # Try to find the cascade file
-        from .config import RVBBIT_ROOT
-        possible_paths = [
-            cascade_path,
-            os.path.join(RVBBIT_ROOT, cascade_path),
-            os.path.join(RVBBIT_ROOT, 'cascades', cascade_path),
-            os.path.join(RVBBIT_ROOT, 'traits', cascade_path),
-        ]
+    # Directories to scan for cascades
+    scan_dirs = [
+        os.path.join(RVBBIT_ROOT, 'cascades', 'semantic_sql'),
+        os.path.join(RVBBIT_ROOT, 'cascades'),
+        os.path.join(RVBBIT_ROOT, 'traits'),
+    ]
 
-        # Add extensions if not present
-        extended_paths = []
-        for p in possible_paths:
-            extended_paths.append(p)
-            if not p.endswith(('.yaml', '.yml', '.json')):
-                extended_paths.append(f"{p}.yaml")
-                extended_paths.append(f"{p}.cascade.yaml")
-                extended_paths.append(f"{p}.json")
+    for scan_dir in scan_dirs:
+        if not os.path.isdir(scan_dir):
+            continue
 
-        for path in extended_paths:
-            if os.path.exists(path):
-                with open(path, 'r') as f:
-                    if path.endswith('.json'):
-                        config_dict = json.load(f)
-                    else:
-                        config_dict = yaml.safe_load(f)
+        # Find all YAML files (but not subdirectories for cascades/ to avoid duplicates)
+        if scan_dir.endswith('cascades') and not scan_dir.endswith('semantic_sql'):
+            # Only scan top-level cascades, not subdirs (semantic_sql is scanned separately)
+            pattern = os.path.join(scan_dir, '*.yaml')
+        else:
+            pattern = os.path.join(scan_dir, '*.yaml')
 
-                return config_dict.get('internal', False)
+        for filepath in glob.glob(pattern):
+            try:
+                with open(filepath, 'r') as f:
+                    config = yaml.safe_load(f)
 
-        return False
+                if config and isinstance(config, dict):
+                    cascade_id = config.get('cascade_id')
+                    internal = config.get('internal', False)
 
-    except Exception as e:
-        logger.debug(f"Could not check internal flag for {cascade_path}: {e}")
-        return False
+                    if cascade_id:
+                        lookup[cascade_id] = internal
+
+            except Exception as e:
+                logger.debug(f"Could not parse cascade {filepath}: {e}")
+                continue
+
+    logger.debug(f"Built internal cascade lookup: {len(lookup)} cascades, {sum(lookup.values())} internal")
+    return lookup
+
+# Build lookup at module load
+_INTERNAL_CASCADE_LOOKUP = _build_internal_cascade_lookup()
 
 
 def is_internal_cascade_by_id(cascade_id: str) -> bool:
     """
     Check if a cascade_id refers to an internal cascade.
 
-    This is a convenience wrapper that tries common path patterns.
+    Uses pre-built lookup table (fast, O(1)).
     """
-    # Try various path patterns
-    patterns = [
-        cascade_id,
-        f"cascades/{cascade_id}",
-        f"cascades/{cascade_id}.yaml",
-        f"cascades/{cascade_id}.cascade.yaml",
-        f"traits/{cascade_id}",
-        f"traits/{cascade_id}.yaml",
-        f"cascades/semantic_sql/{cascade_id}.cascade.yaml",
-    ]
-
-    for pattern in patterns:
-        if _is_internal_cascade(pattern):
-            return True
-
-    return False
+    return _INTERNAL_CASCADE_LOOKUP.get(cascade_id, False)
 
 
 def _wait_for_cost_data(session_id: str, db, max_wait_seconds: int = 10) -> Optional[Dict]:

@@ -1,0 +1,100 @@
+cascade_id: embed_status
+internal: true
+
+description: |
+  Check embedding status for a table/column - how many rows are embedded vs total.
+
+  SQL Usage:
+    SELECT embed_status('products', 'description', 'id');
+
+  Returns JSON stats:
+    {
+      "table": "products",
+      "column": "description",
+      "rows_total": 1000,
+      "rows_embedded": 850,
+      "rows_pending": 150,
+      "coverage_pct": 85.0,
+      "embedding_model": "qwen/qwen3-embedding-8b"
+    }
+
+inputs_schema:
+  table_name: "Source table name"
+  column_name: "Column that was embedded"
+  id_column: "ID column"
+
+sql_function:
+  name: embed_status
+  description: "Check embedding coverage for a table/column"
+  args:
+    - name: table_name
+      type: VARCHAR
+      description: "Source table name"
+    - name: column_name
+      type: VARCHAR
+      description: "Text column"
+    - name: id_column
+      type: VARCHAR
+      description: "ID column"
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false
+
+cells:
+  - name: check_status
+    tool: python_data
+    inputs:
+      code: |
+        import json
+        from rvbbit.db_adapter import get_db_adapter
+
+        table_name = input.get('table_name')
+        column_name = input.get('column_name')
+        id_column = input.get('id_column')
+
+        if not all([table_name, column_name, id_column]):
+            result = json.dumps({"error": "table_name, column_name, and id_column are required"})
+        else:
+            db = get_db_adapter()
+
+            # Count total rows with non-empty text
+            total_query = f"""
+                SELECT COUNT(*) as cnt
+                FROM {table_name}
+                WHERE {column_name} IS NOT NULL AND {column_name} != ''
+            """
+
+            # Count embedded rows
+            embedded_query = f"""
+                SELECT COUNT(DISTINCT source_id) as cnt, any(embedding_model) as model
+                FROM rvbbit_embeddings
+                WHERE source_table = '{table_name}'
+            """
+
+            try:
+                total_result = db.query(total_query, output_format="dict")
+                embedded_result = db.query(embedded_query, output_format="dict")
+
+                rows_total = total_result[0]['cnt'] if total_result else 0
+                rows_embedded = embedded_result[0]['cnt'] if embedded_result else 0
+                model = embedded_result[0].get('model') if embedded_result else None
+
+                rows_pending = rows_total - rows_embedded
+                coverage = round((rows_embedded / rows_total * 100), 1) if rows_total > 0 else 0
+
+                result = json.dumps({
+                    "table": table_name,
+                    "column": column_name,
+                    "rows_total": rows_total,
+                    "rows_embedded": rows_embedded,
+                    "rows_pending": rows_pending,
+                    "coverage_pct": coverage,
+                    "embedding_model": model
+                })
+
+            except Exception as e:
+                result = json.dumps({"error": str(e)})
+
+        result = result
+    context:
+      enabled: false

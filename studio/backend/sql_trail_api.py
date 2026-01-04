@@ -97,6 +97,7 @@ def get_overview():
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
                   AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
@@ -306,6 +307,7 @@ def get_queries():
                     COUNT(*) as llm_calls_count
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE {where_sql}
@@ -401,6 +403,7 @@ def get_query_detail(caller_id: str):
                     COUNT(*) as llm_calls_count
                 FROM unified_logs
                 WHERE caller_id = '{caller_id}'
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.caller_id = '{caller_id}'
@@ -568,6 +571,7 @@ def get_patterns():
 
         # Join with live cost aggregation from unified_logs
         # sql_query_log.total_cost is not used (always NULL)
+        # Filter for actual LLM API calls (request_id indicates API response)
         query = f"""
             SELECT
                 q.query_fingerprint,
@@ -591,6 +595,7 @@ def get_patterns():
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
                   AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
@@ -662,6 +667,7 @@ def get_cache_stats():
         current_start = datetime.now() - timedelta(days=days)
 
         # Overall stats - join with unified_logs for live cost data
+        # Filter for actual LLM API calls (request_id indicates API response)
         overall_query = f"""
             SELECT
                 SUM(q.cache_hits) as total_hits,
@@ -673,6 +679,7 @@ def get_cache_stats():
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
                   AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
@@ -691,6 +698,7 @@ def get_cache_stats():
         savings = avg_cost_per_miss * total_hits
 
         # By query type - join with unified_logs for live cost data
+        # Filter for actual LLM API calls (request_id indicates API response)
         by_type_query = f"""
             SELECT
                 q.query_type,
@@ -704,6 +712,7 @@ def get_cache_stats():
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
                   AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
@@ -826,6 +835,7 @@ def get_time_series():
                 FROM unified_logs
                 WHERE caller_id LIKE 'sql-%%'
                   AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
                 GROUP BY caller_id
             ) c ON q.caller_id = c.caller_id
             WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')

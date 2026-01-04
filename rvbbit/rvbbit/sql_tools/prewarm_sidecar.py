@@ -57,16 +57,19 @@ def maybe_launch_prewarm_sidecar(
         return None
 
     log.info(f"[prewarm] Detected parallel annotation: {parallel} workers")
+    print(f"🚀 [prewarm] Detected -- @ parallel: {parallel}")
 
     # 2. Analyze query for prewarm opportunities
     from .prewarm_analyzer import analyze_query_for_prewarm
     specs = analyze_query_for_prewarm(query)
 
     if not specs:
+        print(f"⚠️ [prewarm] No eligible scalar semantic functions found in query")
         log.debug("[prewarm] No eligible scalar semantic functions found")
         return None
 
     log.info(f"[prewarm] Found {len(specs)} prewarm opportunities: {[s['function'] for s in specs]}")
+    print(f"🚀 [prewarm] Found {len(specs)} eligible functions: {[s['function'] for s in specs]}")
 
     # 3. Execute distinct queries NOW (on main thread, fast SQL only)
     #    This gets us the values before launching the background thread
@@ -78,6 +81,7 @@ def maybe_launch_prewarm_sidecar(
 
     total_values = sum(len(d['values']) for d in prewarm_data)
     log.info(f"[prewarm] Launching sidecar for {total_values} total distinct values")
+    print(f"🚀 [prewarm] Launching sidecar: {total_values} distinct values, {parallel} workers")
 
     # 4. Launch sidecar thread
     sidecar = threading.Thread(
@@ -97,11 +101,16 @@ def _get_parallel_annotation(query: str) -> Optional[int]:
         from .semantic_operators import _parse_annotations
         annotations = _parse_annotations(query)
 
-        for _, _, annotation in annotations:
+        print(f"🔍 [prewarm] Parsed {len(annotations)} annotation blocks from query")
+        for i, (line, pos, annotation) in enumerate(annotations):
+            print(f"🔍 [prewarm]   [{i}] line={line}, parallel={annotation.parallel}, model={annotation.model}")
             if annotation.parallel:
                 return annotation.parallel
 
     except Exception as e:
+        print(f"⚠️ [prewarm] Failed to parse annotations: {e}")
+        import traceback
+        traceback.print_exc()
         log.debug(f"[prewarm] Failed to parse annotations: {e}")
 
     return None
@@ -151,20 +160,28 @@ def _run_prewarm_sidecar(
 
     For each function's distinct values, runs the cascade in parallel.
     Cache hits from this warm the cache for the main query.
+
+    IMPORTANT: Uses execute_sql_function_sync to ensure results are cached
+    with the same keys as the main query execution path.
     """
-    from rvbbit.runner import RVBBITRunner
+    from rvbbit.semantic_sql.registry import execute_sql_function_sync, get_cached_result
 
     sidecar_session = f"prewarm_{uuid.uuid4().hex[:8]}"
 
     log.info(f"[prewarm] Sidecar {sidecar_session} started (parent: {caller_id})")
+    print(f"🔥 [prewarm] Sidecar {sidecar_session} started")
 
     for data in prewarm_data:
         function = data['function']
-        cascade = data['cascade']
         input_key = data['input_key']
         values = data['values']
+        # Get all args info for multi-argument functions
+        all_args = data.get('all_args', [])
+        arg_names = data.get('arg_names', [input_key])
+        column_arg_index = data.get('column_arg_index', 0)
 
         log.info(f"[prewarm] Processing {function}: {len(values)} values with {parallel} workers")
+        print(f"🔥 [prewarm] Processing {function}: {len(values)} values, {parallel} workers")
 
         # Track stats
         completed = 0
@@ -174,29 +191,57 @@ def _run_prewarm_sidecar(
         def process_value(value):
             nonlocal completed, cache_hits, errors
             try:
-                # Create runner with parent tracking
-                # Each value gets a unique session for isolation, but shares parent_session_id
+                # Build args dict matching what the UDF passes
+                # Include ALL arguments for proper cache key matching
+                args = {}
+
+                for i, arg_info in enumerate(all_args):
+                    if i < len(arg_names):
+                        arg_name = arg_names[i]
+                    else:
+                        arg_name = f'arg{i}'
+
+                    if i == column_arg_index:
+                        # This is the variable column - use the distinct value
+                        args[arg_name] = str(value)
+                    elif not arg_info.get('is_column', False):
+                        # This is a constant - parse the SQL literal
+                        const_sql = arg_info.get('sql', '')
+                        # Strip quotes from string literals
+                        if const_sql.startswith("'") and const_sql.endswith("'"):
+                            args[arg_name] = const_sql[1:-1]
+                        elif const_sql.startswith('"') and const_sql.endswith('"'):
+                            args[arg_name] = const_sql[1:-1]
+                        else:
+                            args[arg_name] = const_sql
+
+                # Fallback: if no all_args, just use input_key
+                if not args:
+                    args = {input_key: str(value)}
+
+                # Debug: show what we're caching
+                if completed == 0:  # Only log first value
+                    import json
+                    print(f"🔍 [prewarm] Cache key preview: {function}:{json.dumps(args, sort_keys=True)[:100]}")
+
+                # Check if already cached (another thread may have done it)
+                found, _ = get_cached_result(function, args)
+                if found:
+                    cache_hits += 1
+                    completed += 1
+                    return
+
+                # Execute through the registry's SQL function path
+                # This ensures the result gets cached with the correct key
                 value_session = f"{sidecar_session}_{function}_{abs(hash(str(value))) % 10000:04d}"
 
-                runner = RVBBITRunner(
-                    cascade,
+                execute_sql_function_sync(
+                    name=function,
+                    args=args,
                     session_id=value_session,
-                    parent_session_id=caller_id,  # Links cost to original query
-                    caller_id=caller_id,          # Propagates to logs
                 )
 
-                result = runner.run(input_data={input_key: str(value)})
-
                 completed += 1
-
-                # Check if this was a cache hit (result came back instantly)
-                # The cache check happens inside the cascade execution
-                # We can infer cache hit by checking if lineage is empty/minimal
-                if result and 'lineage' in result:
-                    # If lineage has no LLM calls, it was likely cached
-                    lineage = result.get('lineage', [])
-                    if not lineage or all(not l.get('model') for l in lineage):
-                        cache_hits += 1
 
             except Exception as e:
                 errors += 1

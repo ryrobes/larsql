@@ -351,15 +351,13 @@ async def execute_sql_function(
 
         # If still None, try ALL keys in global registry (brute force search)
         if not caller_id and _global_caller_registry:
-            print(f"[sql_registry:async] DEBUG: Trying global registry, {len(_global_caller_registry)} entries")
+            log.debug(f"[sql_fn] Trying global registry, {len(_global_caller_registry)} entries")
             # Get any caller_id from registry (all postgres connections for this server)
             caller_id = next(iter(_global_caller_registry.values()))[0] if _global_caller_registry else None
 
-        print(f"[sql_registry:async] DEBUG: Function={name}, FINAL caller_id={caller_id!r}")
+        log.debug(f"[sql_fn] {name}: caller_id={caller_id!r}")
     except Exception as e:
-        print(f"[sql_registry:async] DEBUG: get_caller_id() failed: {e}")
-        import traceback
-        traceback.print_exc()
+        log.debug(f"[sql_fn] get_caller_id() failed: {e}")
         caller_id = None
 
     # Check cache first
@@ -403,13 +401,11 @@ async def execute_sql_function(
     from ..runner import RVBBITRunner
 
     # Create runner with session_id AND caller_id for proper tracking
-    print(f"[sql_registry] DEBUG: Creating RVBBITRunner with caller_id={caller_id!r}, session_id={session_id}")
     runner = RVBBITRunner(
         fn.cascade_path,
         session_id=session_id,
         caller_id=caller_id  # Pass caller_id so Echo gets it and propagates to all logs!
     )
-    print(f"[sql_registry] DEBUG: Runner created, runner.echo.caller_id={runner.echo.caller_id!r}")
 
     # Execute cascade with args as input_data
     result = runner.run(input_data=args)
@@ -493,14 +489,6 @@ def execute_sql_function_sync(
     # Capture current context (includes caller_id)
     ctx = contextvars.copy_context()
 
-    # DEBUG: Check what caller_id we have before crossing boundaries
-    try:
-        from ..caller_context import get_caller_id
-        current_caller = get_caller_id()
-        print(f"[sql_registry:sync] DEBUG: Function={name}, caller_id BEFORE async={current_caller!r}")
-    except Exception as e:
-        print(f"[sql_registry:sync] DEBUG: Could not get caller_id: {e}")
-
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -509,7 +497,6 @@ def execute_sql_function_sync(
     if loop and loop.is_running():
         # We're in an async context, need to run in a thread
         # CRITICAL: Run in copied context to preserve caller_id!
-        print(f"[sql_registry:sync] DEBUG: Using ThreadPoolExecutor path (async loop running)")
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
@@ -518,7 +505,6 @@ def execute_sql_function_sync(
             return future.result()
     else:
         # Run directly in current context
-        print(f"[sql_registry:sync] DEBUG: Using direct asyncio.run path (no loop)")
         return ctx.run(lambda: asyncio.run(execute_sql_function(name, args, session_id)))
 
 

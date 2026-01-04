@@ -5,7 +5,6 @@ Executes RVBBIT cascades as SQL UDFs, bridging the SQL and cascade systems.
 """
 
 import json
-import hashlib
 import asyncio
 from typing import Any, Dict, Optional, List
 from concurrent.futures import ThreadPoolExecutor
@@ -16,24 +15,10 @@ log = logging.getLogger(__name__)
 # Shared thread pool for cascade execution
 _executor = ThreadPoolExecutor(max_workers=8)
 
-# Result cache
-_cache: Dict[str, Any] = {}
-
-
-def _make_cache_key(cascade_id: str, inputs: Dict[str, Any]) -> str:
-    """Create a cache key from cascade ID and inputs."""
-    inputs_json = json.dumps(inputs, sort_keys=True, default=str)
-    key_data = f"{cascade_id}:{inputs_json}"
-    return hashlib.md5(key_data.encode()).hexdigest()
-
 
 def _run_cascade_sync(cascade_path: str, session_id: str, inputs: Dict[str, Any], caller_id: str = None) -> Dict[str, Any]:
     """Run a cascade synchronously (blocking)."""
     from ..runner import RVBBITRunner
-
-    # DEBUG: Log caller_id propagation
-    if session_id.startswith('dim_') or session_id.startswith('sql_fn_'):
-        print(f"[_run_cascade_sync] Creating runner for {session_id}, caller_id={caller_id}")
 
     # RVBBITRunner takes session_id AND caller_id for proper tracking
     runner = RVBBITRunner(cascade_path, session_id=session_id, caller_id=caller_id)

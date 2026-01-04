@@ -30,7 +30,9 @@ def bash_data(
     _session_id: str = None,
     _outputs: Dict[str, Any] = None,
     _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None
+    _input: Dict[str, Any] = None,
+    _caller_id: str = None,
+    _cascade_id: str = None
 ) -> Dict[str, Any]:
     """
     Execute bash script as a data transformation cell.

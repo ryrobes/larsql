@@ -222,7 +222,9 @@ def sql_data(
     limit: int = 10000,
     materialize: bool = True,
     _cell_name: str = None,
-    _session_id: str = None
+    _session_id: str = None,
+    _caller_id: str = None,
+    _cascade_id: str = None
 ) -> Dict[str, Any]:
     """
     Execute SQL query and return results as DataFrame.
@@ -237,6 +239,8 @@ def sql_data(
         materialize: If True, create temp table for downstream references
         _cell_name: Injected by runner - used for temp table naming
         _session_id: Injected by runner - used for session DuckDB
+        _caller_id: Injected by runner - caller ID for SQL Trail correlation
+        _cascade_id: Injected by runner - cascade ID for context
 
     Returns:
         {
@@ -421,7 +425,9 @@ def python_data(
     _state: Dict[str, Any] = None,
     _input: Dict[str, Any] = None,
     _cell_name: str = None,
-    _session_id: str = None
+    _session_id: str = None,
+    _caller_id: str = None,
+    _cascade_id: str = None
 ) -> Dict[str, Any]:
     """
     Execute inline Python code with access to prior cell DataFrames.
@@ -430,7 +436,7 @@ def python_data(
         - data.<cell_name>: DataFrame from prior sql_data/python_data cells
         - data['cell_name']: Alternative dict-style access
         - state: Current cascade state dict (read-only recommended)
-        - input: Original cascade input dict
+        - input: Original cascade input dict (includes _session_id, _caller_id, _cascade_id, _cell_name)
         - pd: pandas module
         - np: numpy module
         - json: json module
@@ -445,6 +451,8 @@ def python_data(
         _input: Injected by runner - original cascade input
         _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
+        _caller_id: Injected by runner - caller ID for SQL Trail correlation
+        _cascade_id: Injected by runner - cascade ID for context
 
     Returns:
         {
@@ -475,11 +483,18 @@ def python_data(
         # Build data namespace
         data = DataNamespace(_outputs or {}, session_db)
 
+        # Build input dict with injected context for cascade code access
+        input_with_context = dict(_input or {})
+        input_with_context['_session_id'] = _session_id
+        input_with_context['_caller_id'] = _caller_id
+        input_with_context['_cascade_id'] = _cascade_id
+        input_with_context['_cell_name'] = _cell_name
+
         # Build execution environment with common libraries
         exec_globals = {
             'data': data,
             'state': _state or {},
-            'input': _input or {},
+            'input': input_with_context,
             'pd': pd,
             'np': np,
             'json': json_module,
@@ -755,6 +770,8 @@ def js_data(
     _input: Dict[str, Any] = None,
     _cell_name: str = None,
     _session_id: str = None,
+    _caller_id: str = None,
+    _cascade_id: str = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
@@ -776,6 +793,8 @@ def js_data(
         _input: Injected by runner - original cascade input
         _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
+        _caller_id: Injected by runner - caller ID for SQL Trail correlation
+        _cascade_id: Injected by runner - cascade ID for context
         timeout: Execution timeout in seconds (default 30)
 
     Returns:
@@ -901,6 +920,8 @@ def clojure_data(
     _input: Dict[str, Any] = None,
     _cell_name: str = None,
     _session_id: str = None,
+    _caller_id: str = None,
+    _cascade_id: str = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
@@ -925,6 +946,8 @@ def clojure_data(
         _input: Injected by runner - original cascade input
         _cell_name: Injected by runner - current cell name
         _session_id: Injected by runner - session ID for temp tables
+        _caller_id: Injected by runner - caller ID for SQL Trail correlation
+        _cascade_id: Injected by runner - cascade ID for context
         timeout: Execution timeout in seconds (default 30)
 
     Returns:
@@ -1051,6 +1074,8 @@ def rvbbit_data(
     _session_id: str = None,
     _state: Dict[str, Any] = None,
     _input: Dict[str, Any] = None,
+    _caller_id: str = None,
+    _cascade_id: str = None,
 ) -> Dict[str, Any]:
     """
     Execute a full RVBBIT LLM cell within a notebook cell.

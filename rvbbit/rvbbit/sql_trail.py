@@ -641,6 +641,9 @@ def aggregate_query_costs(caller_id: str) -> dict:
     Queries unified_logs to sum up costs, tokens, and call counts
     for all sessions/messages with the given caller_id.
 
+    Only counts rows with request_id set (actual LLM API calls),
+    not all log messages (user, system, tool, etc.).
+
     Args:
         caller_id: The caller_id for the SQL query
 
@@ -659,7 +662,7 @@ def aggregate_query_costs(caller_id: str) -> dict:
                 COUNT(*) as llm_calls_count
             FROM unified_logs
             WHERE caller_id = '{caller_id}'
-              AND cost IS NOT NULL
+              AND request_id IS NOT NULL AND request_id != ''
         """)
 
         if result:

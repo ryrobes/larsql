@@ -77,33 +77,57 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     # Check for EXPLAIN prefix
     explain_match = re.match(r'EXPLAIN\s+', normalized, re.IGNORECASE)
     if explain_match:
-        from rvbbit.sql_explain import explain_rvbbit_map, format_explain_result
+        from rvbbit.sql_explain import (
+            explain_rvbbit_map,
+            explain_semantic_query,
+            format_explain_result
+        )
 
         # Strip EXPLAIN and parse statement
         inner_query = normalized[explain_match.end():].strip()
+
+        # Check for EXPLAIN (FORMAT JSON) syntax
+        format_json = False
+        format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
+        if format_match:
+            format_json = True
+            inner_query = inner_query[format_match.end():].strip()
 
         if not _is_rvbbit_statement(inner_query):
             # Not an RVBBIT statement, return as-is (might be regular EXPLAIN)
             return query
 
-        stmt = _parse_rvbbit_statement(inner_query)
-
-        if stmt.mode != 'MAP':
-            # EXPLAIN only supported for MAP currently
-            raise RVBBITSyntaxError("EXPLAIN is only supported for RVBBIT MAP")
-
-        # Analyze (don't execute)
+        # Can't analyze without connection
         if duckdb_conn is None:
-            # Can't analyze without connection, return error message
             return "SELECT 'ERROR: EXPLAIN requires database connection for analysis' AS error"
 
-        result = explain_rvbbit_map(stmt, duckdb_conn)
+        # Check if it's RVBBIT MAP/RUN syntax or inline semantic functions
+        if _is_map_run_statement(inner_query):
+            # Parse the RVBBIT statement
+            stmt = _parse_rvbbit_statement(inner_query)
+
+            if stmt.mode == 'MAP':
+                result = explain_rvbbit_map(stmt, duckdb_conn)
+            elif stmt.mode == 'RUN':
+                # For RUN, use the generic semantic query analyzer
+                result = explain_semantic_query(inner_query, duckdb_conn)
+            else:
+                raise RVBBITSyntaxError(f"EXPLAIN not supported for mode: {stmt.mode}")
+        else:
+            # Inline semantic functions (semantic_clean_year, CONDENSE, etc.)
+            result = explain_semantic_query(inner_query, duckdb_conn)
 
         # Return formatted plan as a SELECT query
-        plan_text = format_explain_result(result)
-        # Escape single quotes for SQL
-        plan_text_escaped = plan_text.replace("'", "''")
-        return f"SELECT '{plan_text_escaped}' AS query_plan"
+        if format_json:
+            from rvbbit.sql_explain import format_explain_json
+            import json
+            plan_json = json.dumps(format_explain_json(result), indent=2)
+            plan_json_escaped = plan_json.replace("'", "''")
+            return f"SELECT '{plan_json_escaped}' AS query_plan"
+        else:
+            plan_text = format_explain_result(result)
+            plan_text_escaped = plan_text.replace("'", "''")
+            return f"SELECT '{plan_text_escaped}' AS query_plan"
 
     result = query
 

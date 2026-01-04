@@ -706,8 +706,8 @@ def log_unified(
             pass  # No Echo available, that's OK
 
     # DEBUG: Log what caller_id we're about to write
-    if session_id.startswith('sql_fn_') or session_id.startswith('dim_'):
-        print(f"[unified_logs] DEBUG: Logging {role} for {session_id[:40]}, caller_id={caller_id!r}")
+    # if session_id.startswith('sql_fn_') or session_id.startswith('dim_'):
+    #     print(f"[unified_logs] DEBUG: Logging {role} for {session_id[:40]}, caller_id={caller_id!r}")
 
     _get_logger().log(
         session_id=session_id,

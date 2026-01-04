@@ -57,7 +57,9 @@ def agent_embed(
     model: Optional[str] = None,
     session_id: Optional[str] = None,
     _session_id: Optional[str] = None,  # Injected by cascade runner
-    _cell_name: Optional[str] = None
+    _cell_name: Optional[str] = None,
+    _caller_id: Optional[str] = None,  # For SQL Trail correlation
+    _cascade_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate text embedding using Agent.embed().
@@ -108,7 +110,10 @@ def agent_embed(
         result = Agent.embed(
             texts=[text],
             model=model,
-            session_id=effective_session_id
+            session_id=effective_session_id,
+            cell_name=_cell_name,
+            caller_id=_caller_id,
+            cascade_id=_cascade_id,
         )
 
         return {
@@ -421,7 +426,399 @@ def cosine_similarity_texts(
 
 
 # ============================================================================
-# Tool 5: Elasticsearch Hybrid Search (Optional Fallback)
+# Tool 5: Elasticsearch Store Embedding
+# ============================================================================
+
+def elasticsearch_create_embeddings_index(index_name: str = "rvbbit_embeddings") -> Dict[str, Any]:
+    """
+    Create Elasticsearch index for general-purpose embeddings with hybrid search support.
+
+    Unlike rvbbit_sql_schemas (for table metadata), this is for arbitrary text embeddings
+    from any source table. Supports both vector similarity and BM25 keyword search.
+
+    Schema:
+        - source_table: keyword (e.g., 'products')
+        - source_id: keyword (row ID)
+        - text: text field with analyzers for BM25
+        - embedding: dense_vector (4096 dims)
+        - embedding_model: keyword
+        - metadata: JSON object
+        - created_at: date
+
+    Args:
+        index_name: Index name (default: 'rvbbit_embeddings')
+
+    Returns:
+        {"success": True, "index": str, "created": bool}
+    """
+    try:
+        from rvbbit.elastic import get_elastic_client
+        es = get_elastic_client()
+
+        # Check if index exists
+        if es.indices.exists(index=index_name):
+            logger.info(f"Elasticsearch index {index_name} already exists")
+            return {"success": True, "index": index_name, "created": False}
+
+        # Create index with mapping for hybrid search
+        mapping = {
+            "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+                "analysis": {
+                    "analyzer": {
+                        "text_analyzer": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": ["lowercase", "asciifolding"]
+                        }
+                    }
+                }
+            },
+            "mappings": {
+                "properties": {
+                    "source_table": {"type": "keyword"},
+                    "source_id": {"type": "keyword"},
+                    "text": {
+                        "type": "text",
+                        "analyzer": "text_analyzer",
+                        "fields": {
+                            "keyword": {"type": "keyword", "ignore_above": 256}
+                        }
+                    },
+                    "embedding": {
+                        "type": "dense_vector",
+                        "dims": 4096,  # qwen/qwen3-embedding-8b
+                        "index": True,
+                        "similarity": "cosine"
+                    },
+                    "embedding_model": {"type": "keyword"},
+                    "embedding_dim": {"type": "integer"},
+                    "metadata": {"type": "object", "enabled": True},
+                    "created_at": {"type": "date"}
+                }
+            }
+        }
+
+        es.indices.create(index=index_name, body=mapping)
+        logger.info(f"Created Elasticsearch index: {index_name}")
+
+        return {"success": True, "index": index_name, "created": True}
+
+    except Exception as e:
+        logger.error(f"Failed to create ES index {index_name}: {e}")
+        raise RuntimeError(f"Failed to create Elasticsearch index: {e}")
+
+
+def elasticsearch_store_embedding(
+    source_table: str,
+    source_id: str,
+    text: str,
+    embedding: List[float],
+    model: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    index_name: str = "rvbbit_embeddings"
+) -> Dict[str, Any]:
+    """
+    Store embedding in Elasticsearch index.
+
+    Creates the index if it doesn't exist. Uses upsert semantics (update or insert).
+
+    Args:
+        source_table: Name of source table (e.g., 'products')
+        source_id: ID of source row (e.g., '42')
+        text: Original text (stored for keyword search)
+        embedding: 4096-dim vector
+        model: Model name used for embedding
+        metadata: Optional additional metadata
+        index_name: ES index name (default: 'rvbbit_embeddings')
+
+    Returns:
+        {
+            "success": True,
+            "source_table": str,
+            "source_id": str,
+            "backend": "elasticsearch"
+        }
+
+    Example:
+        >>> elasticsearch_store_embedding(
+        ...     source_table="products",
+        ...     source_id="42",
+        ...     text="Eco-friendly bamboo toothbrush",
+        ...     embedding=[0.1, 0.2, ...],  # 4096 dims
+        ...     model="qwen/qwen3-embedding-8b"
+        ... )
+    """
+    try:
+        from rvbbit.elastic import get_elastic_client, _sanitize_for_json
+        from datetime import datetime
+
+        es = get_elastic_client()
+
+        # Ensure index exists
+        if not es.indices.exists(index=index_name):
+            elasticsearch_create_embeddings_index(index_name)
+
+        # Document ID: source_table:source_id for upsert
+        doc_id = f"{source_table}:{source_id}"
+
+        # Prepare document
+        doc = {
+            "source_table": source_table,
+            "source_id": str(source_id),
+            "text": text[:10000],  # Truncate very long text
+            "embedding": embedding,
+            "embedding_model": model,
+            "embedding_dim": len(embedding),
+            "metadata": metadata or {},
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+        # Sanitize for JSON (handle numpy types, NaN, etc.)
+        doc = _sanitize_for_json(doc)
+
+        # Index document (upsert)
+        es.index(index=index_name, id=doc_id, document=doc)
+        logger.debug(f"Stored embedding in ES: {doc_id}")
+
+        return {
+            "success": True,
+            "source_table": source_table,
+            "source_id": source_id,
+            "backend": "elasticsearch"
+        }
+
+    except Exception as e:
+        logger.error(f"elasticsearch_store_embedding failed: {e}")
+        raise RuntimeError(f"Failed to store embedding in Elasticsearch: {e}")
+
+
+def elasticsearch_bulk_store_embeddings(
+    documents: List[Dict[str, Any]],
+    index_name: str = "rvbbit_embeddings"
+) -> Dict[str, Any]:
+    """
+    Bulk store multiple embeddings in Elasticsearch.
+
+    Much more efficient than individual inserts for large batches.
+
+    Args:
+        documents: List of dicts with keys:
+            - source_table, source_id, text, embedding, model, metadata
+        index_name: ES index name
+
+    Returns:
+        {
+            "success": True,
+            "indexed": int,
+            "errors": int,
+            "backend": "elasticsearch"
+        }
+    """
+    try:
+        from rvbbit.elastic import get_elastic_client, _sanitize_for_json
+        from elasticsearch import helpers
+        from datetime import datetime
+        import json
+
+        es = get_elastic_client()
+
+        # Ensure index exists
+        if not es.indices.exists(index=index_name):
+            elasticsearch_create_embeddings_index(index_name)
+
+        # Build bulk actions
+        actions = []
+        now = datetime.utcnow().isoformat()
+
+        for doc in documents:
+            doc_id = f"{doc['source_table']}:{doc['source_id']}"
+
+            source = {
+                "source_table": doc["source_table"],
+                "source_id": str(doc["source_id"]),
+                "text": doc.get("text", "")[:10000],
+                "embedding": doc["embedding"],
+                "embedding_model": doc.get("model", ""),
+                "embedding_dim": len(doc["embedding"]),
+                "metadata": doc.get("metadata", {}),
+                "created_at": now
+            }
+
+            # Sanitize for JSON
+            source = _sanitize_for_json(source)
+
+            actions.append({
+                "_index": index_name,
+                "_id": doc_id,
+                "_source": source
+            })
+
+        if not actions:
+            return {"success": True, "indexed": 0, "errors": 0, "backend": "elasticsearch"}
+
+        # Bulk index
+        success_count, errors = helpers.bulk(es, actions, raise_on_error=False, stats_only=True)
+
+        logger.info(f"Bulk indexed {success_count} embeddings to ES, {errors} errors")
+
+        return {
+            "success": errors == 0,
+            "indexed": success_count,
+            "errors": errors,
+            "backend": "elasticsearch"
+        }
+
+    except Exception as e:
+        logger.error(f"elasticsearch_bulk_store_embeddings failed: {e}")
+        raise RuntimeError(f"Failed to bulk store embeddings: {e}")
+
+
+def elasticsearch_vector_search(
+    query: str,
+    query_embedding: List[float],
+    source_table: Optional[str] = None,
+    limit: int = 10,
+    threshold: Optional[float] = None,
+    semantic_weight: float = 0.7,
+    keyword_weight: float = 0.3,
+    index_name: str = "rvbbit_embeddings"
+) -> Dict[str, Any]:
+    """
+    Hybrid vector + keyword search in Elasticsearch.
+
+    Combines:
+    - Vector similarity (70% default) - cosine distance on dense_vector
+    - Keyword matching (30% default) - BM25 on text field
+
+    This is the preferred search for better recall than pure vector search.
+
+    Args:
+        query: Text query (for keyword matching)
+        query_embedding: 4096-dim vector (for semantic matching)
+        source_table: Optional filter by source table
+        limit: Max results (default: 10)
+        threshold: Optional min similarity threshold
+        semantic_weight: Vector weight (default: 0.7)
+        keyword_weight: Keyword weight (default: 0.3)
+        index_name: ES index name
+
+    Returns:
+        {
+            "results": [
+                {
+                    "source_id": str,
+                    "source_table": str,
+                    "text": str,
+                    "similarity": float,
+                    "metadata": dict
+                },
+                ...
+            ],
+            "count": int,
+            "backend": "elasticsearch"
+        }
+    """
+    try:
+        from rvbbit.elastic import get_elastic_client
+
+        es = get_elastic_client()
+
+        if not es.indices.exists(index=index_name):
+            return {"results": [], "count": 0, "backend": "elasticsearch", "error": "Index not found"}
+
+        # Build filter
+        filter_clauses = []
+        if source_table:
+            filter_clauses.append({"term": {"source_table": source_table}})
+
+        # Hybrid search query with script_score
+        search_body = {
+            "size": limit,
+            "_source": {
+                "excludes": ["embedding"]  # Don't return the embedding vector
+            },
+            "query": {
+                "script_score": {
+                    "query": {
+                        "bool": {
+                            "should": [
+                                # BM25 keyword match on text
+                                {
+                                    "match": {
+                                        "text": {
+                                            "query": query,
+                                            "boost": 1.0
+                                        }
+                                    }
+                                }
+                            ],
+                            "filter": filter_clauses if filter_clauses else None,
+                            "minimum_should_match": 0
+                        }
+                    },
+                    "script": {
+                        "source": f"""
+                            // Vector similarity (cosine, range 0-2 after +1)
+                            double vectorScore = cosineSimilarity(params.query_vector, 'embedding') + 1.0;
+                            // BM25 score (normalized)
+                            double textScore = _score > 0 ? _score / 10.0 : 0.0;
+                            // Weighted combination
+                            return (vectorScore * {semantic_weight}) + (textScore * {keyword_weight});
+                        """,
+                        "params": {
+                            "query_vector": query_embedding
+                        }
+                    }
+                }
+            }
+        }
+
+        # Remove None filter
+        if not filter_clauses:
+            del search_body["query"]["script_score"]["query"]["bool"]["filter"]
+
+        response = es.search(index=index_name, body=search_body)
+
+        # Format results
+        results = []
+        for hit in response["hits"]["hits"]:
+            source = hit["_source"]
+            # Convert script_score back to similarity (0-1 range)
+            raw_score = hit["_score"]
+            # The vector part contributes (cosineSim + 1) * 0.7, which is 0.7-1.4
+            # Normalize roughly to 0-1
+            similarity = min(1.0, (raw_score - 0.5) / 1.2) if raw_score > 0.5 else raw_score / 2.0
+
+            result = {
+                "source_id": source.get("source_id"),
+                "source_table": source.get("source_table"),
+                "text": source.get("text", ""),
+                "similarity": round(similarity, 4),
+                "score": round(raw_score, 4),
+                "metadata": source.get("metadata", {})
+            }
+
+            # Apply threshold filter
+            if threshold is None or similarity >= threshold:
+                results.append(result)
+
+        logger.info(f"ES hybrid search returned {len(results)} results")
+
+        return {
+            "results": results,
+            "count": len(results),
+            "backend": "elasticsearch"
+        }
+
+    except Exception as e:
+        logger.error(f"elasticsearch_vector_search failed: {e}")
+        raise RuntimeError(f"Elasticsearch search failed: {e}")
+
+
+# ============================================================================
+# Tool 6: Elasticsearch Hybrid Search (Legacy Fallback)
 # ============================================================================
 
 def elasticsearch_hybrid_search(
@@ -563,7 +960,9 @@ def agent_embed_batch(
     model: Optional[str] = None,
     session_id: Optional[str] = None,
     _session_id: Optional[str] = None,  # Injected by cascade runner
-    _cell_name: Optional[str] = None
+    _cell_name: Optional[str] = None,
+    _caller_id: Optional[str] = None,  # For SQL Trail correlation
+    _cascade_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate embeddings for multiple texts (batched API call).
@@ -609,7 +1008,10 @@ def agent_embed_batch(
         result = Agent.embed(
             texts=texts,
             model=model,
-            session_id=effective_session_id
+            session_id=effective_session_id,
+            cell_name=_cell_name,
+            caller_id=_caller_id,
+            cascade_id=_cascade_id,
         )
 
         return {
@@ -636,4 +1038,10 @@ register_trait("cosine_similarity_texts", cosine_similarity_texts)
 register_trait("elasticsearch_hybrid_search", elasticsearch_hybrid_search)
 register_trait("agent_embed_batch", agent_embed_batch)
 
-logger.info("Registered 6 embedding storage tools for Semantic SQL")
+# Elasticsearch-specific tools
+register_trait("elasticsearch_create_embeddings_index", elasticsearch_create_embeddings_index)
+register_trait("elasticsearch_store_embedding", elasticsearch_store_embedding)
+register_trait("elasticsearch_bulk_store_embeddings", elasticsearch_bulk_store_embeddings)
+register_trait("elasticsearch_vector_search", elasticsearch_vector_search)
+
+logger.info("Registered 10 embedding storage tools for Semantic SQL")

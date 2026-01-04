@@ -1,0 +1,106 @@
+# BUCKET - General Classifier Dimension
+# A dimension function that classifies text into user-specified buckets/topics.
+#
+# SQL Usage:
+#   SELECT bucket(tweet_text, 'Politics, Tech, Sports, Entertainment, Other') as topic, COUNT(*)
+#   FROM tweets
+#   GROUP BY bucket(tweet_text, 'Politics, Tech, Sports, Entertainment, Other')
+#
+#   -- With confidence requirement
+#   SELECT bucket(content, 'Positive, Negative, Neutral', true) as sentiment, COUNT(*)
+#   FROM reviews
+#   GROUP BY bucket(content, 'Positive, Negative, Neutral', true)
+
+cascade_id: bucket_dimension
+internal: true
+
+description: |
+  General-purpose classifier dimension. Classifies text into user-specified
+  buckets/categories provided as a comma-separated list.
+
+  Unlike CATEGORY (which can auto-detect categories), BUCKET requires explicit
+  categories - perfect when you know exactly what buckets you want.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  buckets: Comma-separated list of bucket/category names (REQUIRED)
+  strict: "If true, only use exact bucket names; if false, allow Other (default false)"
+
+sql_function:
+  name: bucket
+  description: |
+    Classify text into user-specified buckets. REQUIRES a comma-separated
+    list of bucket names as the second argument.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: buckets
+      type: VARCHAR
+      description: Comma-separated list of bucket names (e.g., 'Tech, Finance, Health')
+    - name: strict
+      type: BOOLEAN
+      default: false
+      description: If true, force all items into provided buckets; if false, allow "Other"
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: classify_into_buckets
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Classify these {{ input.texts | length }} texts into the specified buckets.
+
+      BUCKETS TO USE:
+      {% for bucket in input.buckets.split(',') %}
+      - {{ bucket | trim }}
+      {% endfor %}
+      {% if not input.strict %}
+      - Other (for items that don't clearly fit the above)
+      {% endif %}
+
+      Texts to classify (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v[:500] | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its bucket:
+
+      {
+        "mapping": {
+          "0": "Bucket Name",
+          "1": "Bucket Name",
+          ...
+        }
+      }
+
+      RULES:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
+      - Every text must be assigned to exactly ONE bucket
+      - Use ONLY the bucket names provided above (case-sensitive)
+      {% if input.strict %}
+      - STRICT MODE: You must use one of the specified buckets, no exceptions
+      {% else %}
+      - Use "Other" only if the text genuinely doesn't fit any specified bucket
+      {% endif %}
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+      max_attempts: 3
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

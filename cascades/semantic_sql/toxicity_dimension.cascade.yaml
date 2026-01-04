@@ -1,0 +1,128 @@
+# TOXICITY - Content Toxicity/Civility Dimension
+# A dimension function that assesses the toxicity or civility level of text.
+#
+# SQL Usage:
+#   SELECT toxicity(tweet_text) as level, COUNT(*)
+#   FROM tweets
+#   GROUP BY toxicity(tweet_text)
+#
+#   -- With specific focus
+#   SELECT toxicity(comment, 'harassment') as harassment_level, COUNT(*)
+#   FROM comments
+#   GROUP BY toxicity(comment, 'harassment')
+
+cascade_id: toxicity_dimension
+internal: true
+
+description: |
+  Toxicity/civility analyzer for social media content. Assesses how toxic,
+  hostile, or uncivil text content is.
+
+  Can focus on specific types: harassment, hate speech, personal attacks,
+  profanity, threats, etc.
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  focus: Optional focus area (harassment, hate_speech, profanity, threats, etc.)
+  num_levels: Number of toxicity levels (default 5)
+
+sql_function:
+  name: toxicity
+  description: |
+    Assess toxicity/civility level of text content.
+    Optional focus parameter targets specific toxicity types.
+
+  shape: DIMENSION
+  mode: mapping
+
+  args:
+    - name: text
+      type: VARCHAR
+      role: dimension_source
+    - name: focus
+      type: VARCHAR
+      default: null
+      description: Focus on specific type (harassment, hate_speech, threats, profanity)
+    - name: num_levels
+      type: INTEGER
+      default: 5
+
+  returns: VARCHAR
+  cache: true
+
+cells:
+  - name: assess_toxicity
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Assess the TOXICITY/CIVILITY level of these {{ input.texts | length }} texts.
+
+      {% if input.focus %}
+      FOCUS SPECIFICALLY ON: {{ input.focus }}
+      {% if input.focus == 'harassment' %}
+      Look for: targeted attacks, bullying, intimidation, pile-ons
+      {% elif input.focus == 'hate_speech' %}
+      Look for: discrimination, slurs, dehumanization based on identity
+      {% elif input.focus == 'threats' %}
+      Look for: threats of violence, harm, doxxing, real-world consequences
+      {% elif input.focus == 'profanity' %}
+      Look for: explicit language, crude terms, vulgar expressions
+      {% elif input.focus == 'personal_attacks' %}
+      Look for: ad hominem attacks, insults, character assassination
+      {% endif %}
+      {% else %}
+      Assess OVERALL toxicity including: hostility, aggression, incivility, harmful content
+      {% endif %}
+
+      Use {{ input.num_levels | default(5) }} distinct levels:
+
+      {% if input.focus %}
+      Levels for "{{ input.focus }}":
+      - No {{ input.focus | replace('_', ' ') | title }}
+      - Mild {{ input.focus | replace('_', ' ') | title }}
+      - Moderate {{ input.focus | replace('_', ' ') | title }}
+      - Severe {{ input.focus | replace('_', ' ') | title }}
+      - Extreme {{ input.focus | replace('_', ' ') | title }}
+      {% else %}
+      Toxicity Levels:
+      - Civil (constructive, respectful, or neutral)
+      - Mildly Uncivil (slightly rude, dismissive)
+      - Moderately Toxic (hostile, aggressive, insulting)
+      - Highly Toxic (very hostile, personal attacks, harmful)
+      - Severely Toxic (extreme hostility, threats, hate)
+      {% endif %}
+
+      Texts to analyze (with index numbers):
+      {% for v in input.texts %}
+      [{{ loop.index0 }}] "{{ v[:500] | replace('"', '\\"') }}"
+      {% endfor %}
+
+      Return a JSON object mapping each text's INDEX NUMBER to its toxicity level:
+
+      {
+        "mapping": {
+          "0": "Level Name",
+          "1": "Level Name",
+          ...
+        }
+      }
+
+      RULES:
+      - Use the INDEX NUMBER (0, 1, 2, ...) as keys
+      - Be consistent with level names across all assignments
+      - Consider context (criticism ≠ toxicity, debate ≠ harassment)
+      - Return ONLY the JSON object
+
+    rules:
+      max_turns: 1
+      max_attempts: 3
+
+    output_schema:
+      type: object
+      properties:
+        mapping:
+          type: object
+      required:
+        - mapping

@@ -15,6 +15,10 @@ from pydantic import BaseModel, Field, ConfigDict
 # Get RVBBIT_ROOT once at module load
 _RVBBIT_ROOT = os.getenv("RVBBIT_ROOT", os.getcwd())
 
+# Export as RVBBIT_ROOT for backward compatibility with modules that import it directly
+# (e.g., analytics_worker.py uses `from .config import RVBBIT_ROOT`)
+RVBBIT_ROOT = _RVBBIT_ROOT
+
 
 class Config(BaseModel):
     """

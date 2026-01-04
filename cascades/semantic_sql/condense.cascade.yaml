@@ -121,6 +121,6 @@ cells:
     rules:
       max_turns: 1
 
-    output_schema:
-      type: string
-      description: "Condensed summary of the input text"
+    # output_schema:
+    #   type: string
+    #   description: "Condensed summary of the input text"

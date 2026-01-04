@@ -513,6 +513,7 @@ class Agent:
         parent_id: str = None,
         cell_name: str = None,
         cascade_id: str = None,
+        caller_id: str = None,
     ) -> Dict[str, Any]:
         """
         Generate embeddings using the standard provider config.
@@ -631,6 +632,7 @@ class Agent:
             session_id=session_id,
             trace_id=trace_id,
             parent_id=parent_id,
+            caller_id=caller_id,  # For SQL Trail correlation
             node_type="embedding",
             role="assistant",
             depth=0,

@@ -469,6 +469,7 @@ def bodybuilder(
     _session_id: str = None,
     _cell_name: str = None,
     _cascade_id: str = None,
+    _caller_id: str = None,  # Also injected by runner (takes precedence over caller_id if set)
     _outputs: Dict[str, Any] = None,
     _state: Dict[str, Any] = None,
     _input: Dict[str, Any] = None,
@@ -545,14 +546,16 @@ def bodybuilder(
             "error": "Must provide either 'body' (direct execution) or 'request' (planning mode)"
         }
 
-    # Get caller_id from caller_context if not explicitly provided
+    # Get caller_id - prefer injected _caller_id, then explicit caller_id, then context
     # This enables SQL Trail cost rollup for SQL-originated LLM calls
-    if caller_id is None:
+    effective_caller_id = _caller_id or caller_id
+    if effective_caller_id is None:
         try:
             from ..caller_context import get_caller_id
-            caller_id = get_caller_id()
+            effective_caller_id = get_caller_id()
         except ImportError:
             pass
+    caller_id = effective_caller_id  # Use unified value for rest of function
 
     # Planning mode - convert request to body
     if request is not None:

@@ -484,6 +484,8 @@ def execute_deterministic_cell(
     if cell.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder"):
         rendered_inputs["_cell_name"] = cell.name
         rendered_inputs["_session_id"] = echo.session_id
+        rendered_inputs["_caller_id"] = echo.caller_id  # For SQL Trail correlation
+        rendered_inputs["_cascade_id"] = echo._current_cascade_id  # Set by runner when entering cascade
 
         # Enable materialization by default for sql_data (creates _cell_name temp tables)
         if cell.tool == "sql_data" and "materialize" not in rendered_inputs:
