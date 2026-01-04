@@ -1,0 +1,43 @@
+# TRAIT - Universal trait/tool caller for SQL
+# Allows calling any registered trait from SQL with full observability
+#
+# SQL Usage:
+#   SELECT * FROM trait('say', json_object('text', 'Hello world'))
+#   SELECT * FROM trait('brave_web_search', json_object('query', 'python tutorials'))
+#
+# With table data:
+#   SELECT t.id, r.*
+#   FROM messages t,
+#   LATERAL trait('say', json_object('text', t.content)) r
+
+cascade_id: trait
+internal: true
+
+description: |
+  Universal trait executor - call any registered trait from SQL.
+  Provides full observability through the cascade system.
+
+inputs_schema:
+  trait_name: Name of the trait to call (e.g., 'say', 'brave_web_search')
+  args: JSON object of arguments to pass to the trait
+
+sql_function:
+  name: trait
+  description: Call any registered trait and return results as a table
+  args:
+    - name: trait_name
+      type: VARCHAR
+    - name: args
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "trait({{ trait_name }}, {{ args }})"
+  cache: false  # Don't cache - traits may have side effects
+
+cells:
+  - name: call_trait
+    tool: trait_executor
+    inputs:
+      trait_name: "{{ input.trait_name }}"
+      args: "{{ input.args }}"

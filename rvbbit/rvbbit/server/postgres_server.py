@@ -1555,7 +1555,7 @@ class ClientConnection:
                         clear_cascade_executions(caller_id)
                     clear_caller_context(connection_id=self.session_id)
                 except Exception as trail_e:
-                    import traceback
+                    # Note: traceback is imported at module level
                     print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
                     traceback.print_exc()
 

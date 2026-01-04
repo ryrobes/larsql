@@ -24,3 +24,4 @@ marimo/docs
 research_dbs/market_research.duckdb.wal
 *.log 
 
+.playwright-mcp

@@ -48,6 +48,25 @@ def safe_int(value, default=0):
         return default
 
 
+def format_timestamp_utc(ts):
+    """
+    Format a timestamp as ISO string with UTC timezone indicator.
+
+    ClickHouse stores timestamps in UTC but returns naive datetime objects.
+    Adding 'Z' suffix tells the browser to interpret as UTC and convert
+    to the user's local timezone when displaying.
+    """
+    if ts is None:
+        return None
+    if hasattr(ts, 'isoformat'):
+        iso = ts.isoformat()
+        # Add UTC indicator if not present
+        if not iso.endswith('Z') and '+' not in iso and '-' not in iso[-6:]:
+            return iso + 'Z'
+        return iso
+    return str(ts)
+
+
 sql_trail_bp = Blueprint('sql_trail', __name__)
 
 
@@ -358,13 +377,6 @@ def get_queries():
             total_ops = cache_hits + cache_misses
             cache_rate = (cache_hits / total_ops * 100) if total_ops > 0 else 0
 
-            # Handle timestamp
-            ts = row.get('timestamp')
-            if hasattr(ts, 'isoformat'):
-                ts = ts.isoformat()
-            else:
-                ts = str(ts)
-
             formatted.append({
                 'query_id': row.get('query_id'),
                 'caller_id': row.get('caller_id'),
@@ -374,7 +386,7 @@ def get_queries():
                 'query_type': row.get('query_type'),
                 'udf_types': row.get('udf_types', []),
                 'status': row.get('status'),
-                'started_at': row.get('started_at').isoformat() if hasattr(row.get('started_at'), 'isoformat') else str(row.get('started_at')),
+                'started_at': format_timestamp_utc(row.get('started_at')),
                 'duration_ms': round(safe_float(row.get('duration_ms')), 2),
                 'total_cost': round(safe_float(row.get('total_cost')), 4),
                 'cache_hits': cache_hits,
@@ -386,7 +398,7 @@ def get_queries():
                 'cascade_count': safe_int(row.get('cascade_count')),
                 'cascade_paths': row.get('cascade_paths', []),
                 'error_message': row.get('error_message'),
-                'timestamp': ts
+                'timestamp': format_timestamp_utc(row.get('timestamp'))
             })
 
         return jsonify({
@@ -499,17 +511,6 @@ def get_query_detail(caller_id: str):
         """
         models_used = db.query(models_query)
 
-        # Format query row
-        ts = query_row.get('timestamp')
-        if hasattr(ts, 'isoformat'):
-            ts = ts.isoformat()
-        started = query_row.get('started_at')
-        if hasattr(started, 'isoformat'):
-            started = started.isoformat()
-        completed = query_row.get('completed_at')
-        if completed and hasattr(completed, 'isoformat'):
-            completed = completed.isoformat()
-
         return jsonify({
             'query': {
                 'query_id': str(query_row.get('query_id')),
@@ -520,8 +521,8 @@ def get_query_detail(caller_id: str):
                 'query_type': query_row.get('query_type'),
                 'udf_types': query_row.get('udf_types', []),
                 'status': query_row.get('status'),
-                'started_at': started,
-                'completed_at': completed,
+                'started_at': format_timestamp_utc(query_row.get('started_at')),
+                'completed_at': format_timestamp_utc(query_row.get('completed_at')),
                 'duration_ms': round(safe_float(query_row.get('duration_ms')), 2),
                 'rows_input': safe_int(query_row.get('rows_input')),
                 'rows_output': safe_int(query_row.get('rows_output')),
@@ -535,7 +536,7 @@ def get_query_detail(caller_id: str):
                 'cascade_paths': query_row.get('cascade_paths', []),
                 'error_message': query_row.get('error_message'),
                 'protocol': query_row.get('protocol'),
-                'timestamp': ts,
+                'timestamp': format_timestamp_utc(query_row.get('timestamp')),
                 # Result location for auto-materialized RVBBIT query results
                 'result_db_name': query_row.get('result_db_name'),
                 'result_db_path': query_row.get('result_db_path'),
@@ -551,8 +552,8 @@ def get_query_detail(caller_id: str):
                     'total_tokens_in': safe_int(row.get('total_tokens_in')),
                     'total_tokens_out': safe_int(row.get('total_tokens_out')),
                     'message_count': safe_int(row.get('message_count')),
-                    'started_at': row.get('started_at').isoformat() if hasattr(row.get('started_at'), 'isoformat') else str(row.get('started_at')),
-                    'completed_at': row.get('completed_at').isoformat() if hasattr(row.get('completed_at'), 'isoformat') else str(row.get('completed_at'))
+                    'started_at': format_timestamp_utc(row.get('started_at')),
+                    'completed_at': format_timestamp_utc(row.get('completed_at'))
                 }
                 for row in spawned_sessions
             ],
@@ -572,7 +573,7 @@ def get_query_detail(caller_id: str):
                     'cascade_path': row.get('cascade_path'),
                     'session_id': row.get('session_id'),
                     'inputs_summary': row.get('inputs_summary'),
-                    'timestamp': row.get('timestamp').isoformat() if hasattr(row.get('timestamp'), 'isoformat') else str(row.get('timestamp'))
+                    'timestamp': format_timestamp_utc(row.get('timestamp'))
                 }
                 for row in cascade_executions
             ]
@@ -667,9 +668,6 @@ def get_patterns():
             error_count = safe_int(row.get('error_count'))
             error_rate = (error_count / run_count * 100) if run_count > 0 else 0
 
-            first = row.get('first_seen')
-            last = row.get('last_seen')
-
             formatted.append({
                 'fingerprint': row.get('query_fingerprint'),
                 'template': row.get('template'),
@@ -684,8 +682,8 @@ def get_patterns():
                 'cache_rate': round(cache_rate, 1),       # Also include for compatibility
                 'total_rows': safe_int(row.get('total_rows')),
                 'error_rate': round(error_rate, 1),
-                'first_seen': first.isoformat() if hasattr(first, 'isoformat') else str(first),
-                'last_seen': last.isoformat() if hasattr(last, 'isoformat') else str(last)
+                'first_seen': format_timestamp_utc(row.get('first_seen')),
+                'last_seen': format_timestamp_utc(row.get('last_seen'))
             })
 
         return jsonify({'patterns': formatted})
@@ -825,9 +823,8 @@ def get_cache_stats():
             misses = safe_int(row.get('misses'))
             ops = hits + misses
             rate = (hits / ops * 100) if ops > 0 else 0
-            d = row.get('date')
             ts_formatted.append({
-                'date': d.isoformat() if hasattr(d, 'isoformat') else str(d),
+                'date': format_timestamp_utc(row.get('date')),
                 'hits': hits,
                 'misses': misses,
                 'rate': round(rate, 1)
@@ -938,9 +935,8 @@ def get_time_series():
             ops = hits + misses
             cache_rate = (hits / ops * 100) if ops > 0 else 0
 
-            p = row.get('period')
             formatted.append({
-                'period': p.isoformat() if hasattr(p, 'isoformat') else str(p),
+                'period': format_timestamp_utc(row.get('period')),
                 'query_count': safe_int(row.get('query_count')),
                 'total_cost': round(safe_float(row.get('sum_cost')), 4),
                 'llm_calls': safe_int(row.get('sum_llm_calls')),

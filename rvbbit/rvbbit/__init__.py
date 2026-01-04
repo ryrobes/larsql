@@ -184,6 +184,11 @@ register_trait("llm_analyze", llm_analyze)
 register_trait("llm_batch_analyze", llm_batch_analyze)
 register_trait("chunk_text", chunk_text)
 
+# Universal trait executor - backend for SQL trait() operator
+from .traits.trait_executor import trait_executor, list_available_traits
+register_trait("trait_executor", trait_executor)
+register_trait("list_traits", list_available_traits)
+
 # Backward compatibility aliases (for old cascade definitions)
 register_trait("run_sql", run_sql)  # Alias for smart_sql_run (from .traits.sql)
 

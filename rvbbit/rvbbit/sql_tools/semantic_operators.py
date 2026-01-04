@@ -288,8 +288,17 @@ def rewrite_semantic_operators(query: str) -> str:
     Returns:
         Rewritten SQL with UDF calls
     """
-    if not has_semantic_operators(query):
+    # Check for semantic operators OR trait syntax
+    query_lower = query.lower()
+    has_trait = 'trait(' in query_lower or 'trait::' in query_lower or re.search(r'\btrait\s+\w+', query_lower)
+    if not has_semantic_operators(query) and not has_trait:
         return query
+
+    # Rewrite trait::name() syntax first (before other rewrites)
+    query = _rewrite_trait_namespace_syntax(query)
+
+    # Rewrite TRAIT name ... END block syntax
+    query = _rewrite_trait_block_syntax(query)
 
     # Parse annotations first (we need line numbers)
     annotations = _parse_annotations(query)
@@ -361,6 +370,9 @@ def rewrite_semantic_operators(query: str) -> str:
 
     # GROUP BY TOPICS(col, n): Group by extracted themes
     result = _rewrite_group_by_topics(result, annotation_prefix)
+
+    # TRAIT(): Universal trait caller - wrap in read_json_auto for table output
+    result = _rewrite_trait_function(result)
 
     return result
 
@@ -1129,6 +1141,11 @@ def get_semantic_operators_info() -> Dict[str, Any]:
                 'syntax': "a CONTRADICTS b / a CONTRADICTS 'statement'",
                 'rewrites_to': "contradicts(a, b)",
                 'description': 'Check if statements contradict each other'
+            },
+            'trait()': {
+                'syntax': "trait('tool_name', json_object('arg', value))",
+                'rewrites_to': "read_json_auto(trait(...))",
+                'description': 'Call any registered trait/tool and return as table'
             }
         },
         'annotation_support': {
@@ -1137,6 +1154,424 @@ def get_semantic_operators_info() -> Dict[str, Any]:
             'threshold': "-- @ threshold: 0.7"
         }
     }
+
+
+# ============================================================================
+# Trait Syntax Sugar Rewriters
+# ============================================================================
+
+def _get_trait_params(trait_name: str) -> List[str]:
+    """
+    Get parameter names for a trait by introspecting its signature.
+
+    Returns list of parameter names (excluding internal _params).
+    Returns empty list if trait not found or introspection fails.
+    """
+    try:
+        from ..trait_registry import get_trait
+        import inspect
+
+        trait_func = get_trait(trait_name)
+        if not trait_func:
+            return []
+
+        sig = inspect.signature(trait_func)
+        params = []
+        for name, param in sig.parameters.items():
+            if not name.startswith('_'):  # Skip internal params
+                params.append(name)
+        return params
+    except Exception:
+        return []
+
+
+def _rewrite_trait_namespace_syntax(query: str) -> str:
+    """
+    Rewrite trait::name() namespace syntax to trait() function calls.
+
+    Supports:
+    - Positional args: trait::say('Hello') → trait('say', json_object('text', 'Hello'))
+    - Named args: trait::say(text := 'Hello') → trait('say', json_object('text', 'Hello'))
+    - Mixed: trait::tool('first', other := 'val') → trait('tool', json_object('param1', 'first', 'other', 'val'))
+    - No args: trait::list_traits() → trait('list_traits', '{}')
+
+    The rewriter introspects trait signatures to map positional args to param names.
+    """
+    # Quick check - if no trait:: in query, skip
+    if 'trait::' not in query.lower():
+        return query
+
+    def parse_trait_call(sql: str, start_pos: int) -> Optional[Tuple[int, str, str]]:
+        """
+        Parse a trait::name(...) call starting at start_pos.
+
+        Returns (end_pos, trait_name, json_object_expr) or None if parse fails.
+        """
+        # Match trait::name pattern
+        match = re.match(r'trait::(\w+)\s*\(', sql[start_pos:], re.IGNORECASE)
+        if not match:
+            return None
+
+        trait_name = match.group(1)
+        paren_start = start_pos + match.end() - 1  # Position of (
+
+        # Find matching closing paren
+        paren_count = 1
+        pos = paren_start + 1
+        while pos < len(sql) and paren_count > 0:
+            if sql[pos] == '(':
+                paren_count += 1
+            elif sql[pos] == ')':
+                paren_count -= 1
+            elif sql[pos] == "'" and paren_count > 0:
+                # Skip string literal
+                pos += 1
+                while pos < len(sql) and sql[pos] != "'":
+                    if sql[pos] == "'" and pos + 1 < len(sql) and sql[pos + 1] == "'":
+                        pos += 2  # Escaped quote
+                    else:
+                        pos += 1
+            pos += 1
+
+        if paren_count != 0:
+            return None
+
+        # Extract args string (between parens)
+        args_str = sql[paren_start + 1:pos - 1].strip()
+        end_pos = pos
+
+        # Parse args into json_object expression
+        json_obj_expr = _parse_trait_args(trait_name, args_str)
+
+        return (end_pos, trait_name, json_obj_expr)
+
+    def _parse_trait_args(trait_name: str, args_str: str) -> str:
+        """
+        Parse trait arguments and generate json_object() expression.
+
+        Handles:
+        - Empty: '' → '{}'
+        - Positional: 'value' → json_object('param1', 'value')
+        - Named: 'param := value' → json_object('param', value)
+        - Mixed: 'val1, param2 := val2' → json_object('param1', val1, 'param2', val2)
+        """
+        if not args_str:
+            return "'{}'"
+
+        # Get trait's parameter names for positional mapping
+        param_names = _get_trait_params(trait_name)
+
+        # Parse arguments (handle nested parens and strings)
+        args = _split_args(args_str)
+
+        if not args:
+            return "'{}'"
+
+        # Build json_object arguments
+        json_parts = []
+        positional_idx = 0
+
+        for arg in args:
+            arg = arg.strip()
+
+            # Check for named parameter (param := value or param => value)
+            named_match = re.match(r'(\w+)\s*(?::=|=>)\s*(.+)$', arg, re.DOTALL)
+
+            if named_match:
+                param_name = named_match.group(1)
+                value = named_match.group(2).strip()
+                json_parts.append(f"'{param_name}'")
+                json_parts.append(value)
+            else:
+                # Positional argument - map to param name
+                if positional_idx < len(param_names):
+                    param_name = param_names[positional_idx]
+                else:
+                    param_name = f"arg{positional_idx + 1}"
+                json_parts.append(f"'{param_name}'")
+                json_parts.append(arg)
+                positional_idx += 1
+
+        if not json_parts:
+            return "'{}'"
+
+        return f"json_object({', '.join(json_parts)})"
+
+    def _split_args(args_str: str) -> List[str]:
+        """Split argument string by commas, respecting nested parens and strings."""
+        args = []
+        current = []
+        paren_depth = 0
+        in_string = False
+        i = 0
+
+        while i < len(args_str):
+            ch = args_str[i]
+
+            if ch == "'" and not in_string:
+                in_string = True
+                current.append(ch)
+            elif ch == "'" and in_string:
+                # Check for escaped quote
+                if i + 1 < len(args_str) and args_str[i + 1] == "'":
+                    current.append("''")
+                    i += 1
+                else:
+                    in_string = False
+                    current.append(ch)
+            elif in_string:
+                current.append(ch)
+            elif ch == '(':
+                paren_depth += 1
+                current.append(ch)
+            elif ch == ')':
+                paren_depth -= 1
+                current.append(ch)
+            elif ch == ',' and paren_depth == 0:
+                args.append(''.join(current).strip())
+                current = []
+            else:
+                current.append(ch)
+
+            i += 1
+
+        if current:
+            args.append(''.join(current).strip())
+
+        return args
+
+    # Find and replace all trait::name() patterns
+    result = []
+    last_end = 0
+
+    # Find all occurrences of trait::
+    pattern = re.compile(r'trait::', re.IGNORECASE)
+
+    for match in pattern.finditer(query):
+        start = match.start()
+
+        # Try to parse the full trait::name(...) call
+        parsed = parse_trait_call(query, start)
+
+        if parsed:
+            end_pos, trait_name, json_obj_expr = parsed
+
+            # Add everything before this match
+            result.append(query[last_end:start])
+
+            # Add the rewritten trait() call
+            result.append(f"trait('{trait_name}', {json_obj_expr})")
+
+            last_end = end_pos
+
+    # Add remaining content
+    result.append(query[last_end:])
+
+    return ''.join(result)
+
+
+def _rewrite_trait_block_syntax(query: str) -> str:
+    """
+    Rewrite TRAIT name ... END block syntax to trait() function calls.
+
+    Supports multi-line parameter specification:
+        SELECT * FROM TRAIT say
+          text = 'Hello from SQL'
+          voice_id = 'abc123'
+        END
+
+    Becomes:
+        SELECT * FROM trait('say', json_object('text', 'Hello from SQL', 'voice_id', 'abc123'))
+
+    Also supports single-line:
+        SELECT * FROM TRAIT list_traits END
+    """
+    # Quick check - if no TRAIT keyword, skip
+    if 'TRAIT ' not in query.upper():
+        return query
+
+    # Pattern to match TRAIT name ... END blocks
+    # TRAIT followed by trait name, then params until END
+    pattern = re.compile(
+        r'\bTRAIT\s+(\w+)\s*(.*?)\s*\bEND\b',
+        re.IGNORECASE | re.DOTALL
+    )
+
+    def parse_block_params(params_str: str) -> str:
+        """Parse param = value lines into json_object() expression."""
+        params_str = params_str.strip()
+        if not params_str:
+            return "'{}'"
+
+        # Split by lines or by param = value pattern
+        # Handle both:
+        #   text = 'Hello'
+        #   count = 5
+        # And:
+        #   text = 'Hello', count = 5
+
+        json_parts = []
+
+        # Pattern for param = value (value can be string, number, or expression)
+        param_pattern = re.compile(
+            r"(\w+)\s*=\s*("
+            r"'(?:[^']|'')*'"  # Single-quoted string
+            r"|\"(?:[^\"]|\"\")*\""  # Double-quoted string
+            r"|\d+(?:\.\d+)?"  # Number
+            r"|[^\s,\n]+"  # Other expression (until whitespace/comma/newline)
+            r")",
+            re.MULTILINE
+        )
+
+        for match in param_pattern.finditer(params_str):
+            param_name = match.group(1)
+            value = match.group(2)
+            json_parts.append(f"'{param_name}'")
+            json_parts.append(value)
+
+        if not json_parts:
+            return "'{}'"
+
+        return f"json_object({', '.join(json_parts)})"
+
+    def replacer(match):
+        trait_name = match.group(1)
+        params_str = match.group(2)
+
+        json_obj_expr = parse_block_params(params_str)
+        return f"trait('{trait_name}', {json_obj_expr})"
+
+    return pattern.sub(replacer, query)
+
+
+def _rewrite_trait_function(query: str) -> str:
+    """
+    Rewrite trait() function calls to wrap in read_json_auto() for table output.
+
+    The trait() function is a universal caller for any registered trait/tool.
+    It returns JSON that needs read_json_auto() to become a table.
+
+    SQL Usage:
+        SELECT * FROM trait('say', json_object('text', 'Hello world'))
+
+    Becomes:
+        SELECT * FROM read_json_auto(trait('say', json_object('text', 'Hello world')))
+
+    With LATERAL:
+        SELECT t.id, r.* FROM messages t, LATERAL trait('say', json_object('text', t.content)) r
+
+    Becomes:
+        SELECT t.id, r.* FROM messages t, LATERAL read_json_auto(trait('say', json_object('text', t.content))) r
+
+    The function detects trait() in FROM clauses and wraps appropriately.
+    Does NOT wrap if already inside read_json_auto().
+    """
+    # Quick check - if no trait( in query, skip
+    if 'trait(' not in query.lower():
+        return query
+
+    # Pattern to match trait(...) in FROM context, not already wrapped
+    # This regex matches:
+    #   FROM trait(...)
+    #   , trait(...)  (in FROM list)
+    #   LATERAL trait(...)
+    #   JOIN trait(...)
+    # But NOT:
+    #   read_json_auto(trait(...))  (already wrapped)
+
+    def wrap_trait_call(match):
+        """Wrap a trait() call with read_json_auto()."""
+        prefix = match.group(1)  # FROM, LATERAL, comma, etc.
+        trait_call = match.group(2)  # The full trait(...) call
+        suffix = match.group(3)  # Alias or trailing content
+
+        # Don't double-wrap if read_json_auto is already there
+        # (checked in the negative lookbehind)
+
+        return f"{prefix}read_json_auto({trait_call}){suffix}"
+
+    # Pattern explanation:
+    # - Negative lookbehind: not preceded by read_json_auto(
+    # - Group 1: FROM|LATERAL|,|JOIN followed by whitespace
+    # - Group 2: trait(...) with balanced parentheses (up to 3 levels deep)
+    # - Group 3: Optional alias
+
+    # Match trait() calls in FROM context (not already wrapped)
+    # We use a simpler approach: find trait( and balance parens
+    result = query
+
+    # Pattern for FROM/LATERAL/JOIN/comma followed by trait(
+    from_pattern = re.compile(
+        r'((?:FROM|LATERAL|JOIN)\s+|,\s*)'  # Context keyword
+        r'(?<!read_json_auto\()'  # Not already wrapped (simple check)
+        r'(trait\s*\([^)]*(?:\([^)]*(?:\([^)]*\)[^)]*)*\)[^)]*)*\))'  # trait(...) with nesting
+        r'(\s+(?:AS\s+)?[a-zA-Z_]\w*)?',  # Optional alias
+        re.IGNORECASE
+    )
+
+    # Simpler approach: find all occurrences of trait(...) after FROM-like keywords
+    # and wrap them if not already wrapped
+
+    # Split by FROM, LATERAL, JOIN, comma (keeping delimiters)
+    # Actually, let's use a token-aware approach
+
+    # Simple regex replacement - match " trait(" or ",trait(" not preceded by "read_json_auto"
+    # This is a pragmatic approach that handles most cases
+
+    # Pattern: (FROM|LATERAL|,)\s*trait\(  ->  \1 read_json_auto(trait(
+    # Then we need to balance the closing paren
+
+    def balance_and_wrap(sql: str) -> str:
+        """Find trait() in FROM context and wrap with read_json_auto()."""
+        # Find all positions where we have FROM/LATERAL/JOIN/comma followed by trait(
+        pattern = re.compile(
+            r'((?:FROM|LATERAL|JOIN)\s+|,\s*)(trait\s*\()',
+            re.IGNORECASE
+        )
+
+        result = []
+        last_end = 0
+
+        for match in pattern.finditer(sql):
+            start = match.start()
+            prefix = match.group(1)
+            trait_start = match.group(2)
+
+            # Check if already wrapped (look back for read_json_auto)
+            lookback = sql[max(0, start - 20):start]
+            if 'read_json_auto(' in lookback.lower():
+                continue
+
+            # Find the matching closing paren for trait(
+            paren_start = match.end() - 1  # Position of the (
+            paren_count = 1
+            pos = match.end()
+
+            while pos < len(sql) and paren_count > 0:
+                if sql[pos] == '(':
+                    paren_count += 1
+                elif sql[pos] == ')':
+                    paren_count -= 1
+                pos += 1
+
+            if paren_count != 0:
+                # Unbalanced - skip
+                continue
+
+            # pos now points just after the closing )
+            trait_call = sql[match.start(2):pos]
+
+            # Add everything before this match
+            result.append(sql[last_end:match.start()])
+            # Add the wrapped version
+            result.append(f"{prefix}read_json_auto({trait_call})")
+            last_end = pos
+
+        # Add remaining content
+        result.append(sql[last_end:])
+        return ''.join(result)
+
+    return balance_and_wrap(query)
 
 
 # ============================================================================
