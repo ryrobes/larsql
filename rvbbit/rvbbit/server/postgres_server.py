@@ -1190,6 +1190,17 @@ class ClientConnection:
                 self._handle_show_command(query)
                 return
 
+            # Handle BACKGROUND queries (async execution)
+            if query_upper.startswith('BACKGROUND '):
+                self._handle_background_query(query[11:].strip())
+                return
+
+            # Handle ANALYZE queries (async execution + LLM analysis)
+            # Syntax: ANALYZE 'prompt here' SELECT * FROM table;
+            if query_upper.startswith('ANALYZE '):
+                self._handle_analyze_query(query[8:].strip())
+                return
+
             # Handle transaction commands (BEGIN, COMMIT, ROLLBACK)
             if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
                 self._handle_begin()
@@ -2495,6 +2506,502 @@ class ClientConnection:
                 send_error(self.sock, str(e))
             else:
                 self.sock.sendall(ErrorResponse.encode('ERROR', str(e)))
+
+    def _handle_background_query(self, query: str):
+        """
+        Execute a query in the background and return job info immediately.
+
+        The query runs asynchronously in a separate thread with its own DuckDB
+        connection to the same database file. Results are materialized to a
+        table and status is tracked in sql_query_log (ClickHouse).
+
+        Usage:
+            BACKGROUND SELECT * FROM expensive_computation;
+
+        Returns immediately with:
+            job_id (e.g., 'job-swift-fox-abc123'), status, result_table, check_status
+
+        The user can then:
+            - Poll: SELECT * FROM job('job-swift-fox-abc123')
+            - Wait: SELECT * FROM await_job('job-swift-fox-abc123')
+            - List all: SELECT * FROM jobs()
+            - Query results: SELECT * FROM _results_YYYYMMDD.job_swift_fox_abc123
+        """
+        import time
+        import pandas as pd
+        from datetime import datetime
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Check for persistent database (required for background queries)
+        if not self.is_persistent_db:
+            send_error(self.sock, "BACKGROUND queries require a persistent database. Connect with a database name other than 'memory'.")
+            return
+
+        # Generate job ID using woodland naming (user-friendly, unique)
+        from ..session_naming import generate_woodland_id
+        job_id = f"job-{generate_woodland_id()}"
+
+        # Log query start (also generates internal UUID query_id)
+        from ..sql_trail import log_query_start, log_query_complete, log_query_error
+        internal_query_id = log_query_start(
+            caller_id=job_id,  # Use job_id as caller_id for lookup
+            query_raw=query,
+            protocol='postgresql_wire_background'
+        )
+
+        if not internal_query_id:
+            send_error(self.sock, "Failed to initialize background job")
+            return
+
+        # Capture database info for background thread
+        db_name = self.database_name
+        from ..config import get_config
+        config = get_config()
+        safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+        db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
+        session_id = self.session_id
+
+        # Predict result table location (use full job_id as table name)
+        date_str = datetime.now().strftime('%Y%m%d')
+        result_schema = f"_results_{date_str}"
+        # Convert job-swift-fox-abc123 to job_swift_fox_abc123 (valid SQL identifier)
+        safe_job_id = job_id.replace('-', '_')
+        result_table_name = safe_job_id
+        full_result_table = f"{result_schema}.{result_table_name}"
+
+        def execute_in_background():
+            """Background thread: execute query, materialize results, update status."""
+            import duckdb
+            import traceback as tb_module
+            bg_start = time.time()
+            bg_conn = None
+
+            try:
+                # Set caller context for cost tracking
+                from ..caller_context import set_caller_context, build_sql_metadata, clear_caller_context
+                metadata = build_sql_metadata(
+                    sql_query=query,
+                    protocol="postgresql_wire_background",
+                    triggered_by="background_query"
+                )
+                set_caller_context(job_id, metadata)
+
+                print(f"[{session_id}] 🔄 Background job {job_id} starting")
+
+                # Open fresh DuckDB connection to same database file
+                bg_conn = duckdb.connect(db_path)
+                bg_conn.execute("SET threads TO 4")
+
+                # Register UDFs on this connection
+                from ..sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
+                register_rvbbit_udf(bg_conn)
+                register_dynamic_sql_functions(bg_conn)
+
+                # Rewrite the query (handles RVBBIT syntax, semantic operators, etc.)
+                from ..sql_rewriter import rewrite_rvbbit_syntax
+                rewritten = rewrite_rvbbit_syntax(query, duckdb_conn=bg_conn)
+
+                # Execute
+                result = bg_conn.execute(rewritten)
+                result_df = result.fetchdf() if result else pd.DataFrame()
+
+                print(f"[{session_id}] 📊 Background job {job_id} executed, {len(result_df)} rows")
+
+                # Materialize results to the database
+                result_location = None
+                if len(result_df) > 0:
+                    try:
+                        # Create schema if not exists
+                        bg_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {result_schema}")
+
+                        # Register DataFrame and create table
+                        temp_name = f"_temp_bg_{safe_job_id}"
+                        bg_conn.register(temp_name, result_df)
+                        bg_conn.execute(f"CREATE OR REPLACE TABLE {full_result_table} AS SELECT * FROM {temp_name}")
+                        bg_conn.unregister(temp_name)
+
+                        result_location = {
+                            'db_name': db_name,
+                            'db_path': db_path,
+                            'schema_name': result_schema,
+                            'table_name': result_table_name
+                        }
+
+                        print(f"[{session_id}] 💾 Background job {job_id} materialized to {full_result_table}")
+
+                    except Exception as mat_err:
+                        print(f"[{session_id}] ⚠️  Background job {job_id} materialization failed: {mat_err}")
+
+                # Log completion
+                duration_ms = (time.time() - bg_start) * 1000
+                log_query_complete(
+                    query_id=internal_query_id,
+                    status='completed',
+                    rows_output=len(result_df),
+                    duration_ms=duration_ms,
+                    result_db_name=result_location.get('db_name') if result_location else None,
+                    result_db_path=result_location.get('db_path') if result_location else None,
+                    result_schema=result_location.get('schema_name') if result_location else None,
+                    result_table=result_location.get('table_name') if result_location else None,
+                )
+
+                print(f"[{session_id}] ✅ Background job {job_id} completed: {len(result_df)} rows in {duration_ms:.0f}ms")
+
+            except Exception as e:
+                tb_module.print_exc()
+                duration_ms = (time.time() - bg_start) * 1000
+                log_query_error(internal_query_id, str(e), duration_ms=duration_ms)
+                print(f"[{session_id}] ❌ Background job {job_id} failed: {e}")
+
+            finally:
+                if bg_conn:
+                    try:
+                        bg_conn.close()
+                    except:
+                        pass
+                try:
+                    from ..caller_context import clear_caller_context
+                    clear_caller_context()
+                except:
+                    pass
+
+        # Initialize background executor if needed
+        if not hasattr(self, '_background_executor'):
+            self._background_executor = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix='bg_query'
+            )
+
+        # Submit to background executor
+        self._background_executor.submit(execute_in_background)
+
+        # Return job info immediately
+        job_df = pd.DataFrame([{
+            'job_id': job_id,
+            'status': 'running',
+            'result_table': full_result_table,
+            'submitted_at': datetime.now().isoformat(),
+            'query_preview': query[:100] + ('...' if len(query) > 100 else ''),
+            'check_status': f"SELECT * FROM job('{job_id}')",
+            'await_completion': f"SELECT * FROM await_job('{job_id}')",
+            'message_log': f"SELECT * FROM messages('{job_id}')",
+        }])
+
+        send_query_results(self.sock, job_df, self.transaction_status)
+        print(f"[{self.session_id}] 🚀 Background job {job_id} submitted → {full_result_table}")
+
+    def _handle_analyze_query(self, query_with_prompt: str):
+        """
+        Execute a query in background, then analyze results with LLM.
+
+        The query runs asynchronously, results are formatted for LLM consumption,
+        then passed to an analysis cascade. Results and analysis are stored.
+
+        Usage:
+            ANALYZE 'why were sales low in December?' SELECT * FROM sales;
+
+        Returns immediately with:
+            job_id (e.g., 'analysis-swift-fox-abc123'), status, prompt, result_table
+
+        The user can then:
+            - Poll: SELECT * FROM job('analysis-swift-fox-abc123')
+            - Get analysis: SELECT * FROM analysis('analysis-swift-fox-abc123')
+            - Query results: SELECT * FROM _results_YYYYMMDD.analysis_swift_fox_abc123
+            - View logs: SELECT * FROM messages('analysis-swift-fox-abc123')
+        """
+        import time
+        import re
+        import pandas as pd
+        from datetime import datetime
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Parse prompt from query: ANALYZE 'prompt' SELECT ...
+        # Support both single and double quotes
+        prompt_match = re.match(r"""^(['"])(.*?)\1\s+(.+)$""", query_with_prompt, re.DOTALL)
+        if not prompt_match:
+            send_error(self.sock, "ANALYZE syntax: ANALYZE 'your question' SELECT ... ")
+            return
+
+        prompt = prompt_match.group(2)
+        query = prompt_match.group(3).strip()
+
+        if not query:
+            send_error(self.sock, "ANALYZE requires a SQL query after the prompt")
+            return
+
+        # Check for persistent database (required)
+        if not self.is_persistent_db:
+            send_error(self.sock, "ANALYZE queries require a persistent database. Connect with a database name other than 'memory'.")
+            return
+
+        # Generate job ID using woodland naming
+        from ..session_naming import generate_woodland_id
+        job_id = f"analysis-{generate_woodland_id()}"
+
+        # Log query start
+        from ..sql_trail import log_query_start, log_query_complete, log_query_error
+        internal_query_id = log_query_start(
+            caller_id=job_id,
+            query_raw=f"ANALYZE '{prompt}' {query}",
+            protocol='postgresql_wire_analysis'
+        )
+
+        if not internal_query_id:
+            send_error(self.sock, "Failed to initialize analysis job")
+            return
+
+        # Capture database info for background thread
+        db_name = self.database_name
+        from ..config import get_config
+        config = get_config()
+        safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
+        db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
+        session_id = self.session_id
+
+        # Predict result table location
+        date_str = datetime.now().strftime('%Y%m%d')
+        result_schema = f"_results_{date_str}"
+        safe_job_id = job_id.replace('-', '_')
+        result_table_name = safe_job_id
+        full_result_table = f"{result_schema}.{result_table_name}"
+
+        def format_for_llm(df: pd.DataFrame, max_rows: int = 100) -> str:
+            """Format DataFrame for LLM consumption - compact but informative."""
+            if len(df) == 0:
+                return "No rows returned."
+
+            lines = []
+            lines.append(f"Rows: {len(df):,} | Columns: {len(df.columns)}")
+
+            # Column info with types
+            col_types = [f"{c} ({df[c].dtype})" for c in df.columns]
+            lines.append(f"Schema: {', '.join(col_types)}")
+            lines.append("")
+
+            # Sample data as markdown table (truncated)
+            sample_df = df.head(max_rows)
+            try:
+                # Truncate long string values for display
+                display_df = sample_df.copy()
+                for col in display_df.select_dtypes(include=['object']).columns:
+                    display_df[col] = display_df[col].astype(str).str[:100]
+                lines.append(display_df.to_markdown(index=False))
+            except Exception:
+                # Fallback to CSV if markdown fails
+                lines.append(sample_df.to_csv(index=False))
+
+            if len(df) > max_rows:
+                lines.append(f"\n... ({len(df) - max_rows:,} more rows not shown)")
+
+            # Numeric column statistics
+            numeric_cols = df.select_dtypes(include=['number']).columns
+            if len(numeric_cols) > 0:
+                lines.append("\nNumeric Statistics:")
+                try:
+                    stats = df[numeric_cols].describe().round(2)
+                    lines.append(stats.to_markdown())
+                except Exception:
+                    pass
+
+            return "\n".join(lines)
+
+        def execute_and_analyze():
+            """Background thread: execute query, analyze with LLM, store results."""
+            import duckdb
+            import traceback as tb_module
+            import json
+            bg_start = time.time()
+            bg_conn = None
+            result_df = pd.DataFrame()
+            analysis_text = None
+
+            try:
+                # Set caller context for cost tracking
+                from ..caller_context import set_caller_context, build_sql_metadata, clear_caller_context
+                metadata = build_sql_metadata(
+                    sql_query=query,
+                    protocol="postgresql_wire_analysis",
+                    triggered_by="analyze_query"
+                )
+                set_caller_context(job_id, metadata)
+
+                print(f"[{session_id}] 🔬 Analysis job {job_id} starting: {prompt[:50]}...")
+
+                # Open fresh DuckDB connection
+                bg_conn = duckdb.connect(db_path)
+                bg_conn.execute("SET threads TO 4")
+
+                # Register UDFs
+                from ..sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
+                register_rvbbit_udf(bg_conn)
+                register_dynamic_sql_functions(bg_conn)
+
+                # Rewrite and execute query
+                from ..sql_rewriter import rewrite_rvbbit_syntax
+                rewritten = rewrite_rvbbit_syntax(query, duckdb_conn=bg_conn)
+                result = bg_conn.execute(rewritten)
+                result_df = result.fetchdf() if result else pd.DataFrame()
+
+                print(f"[{session_id}] 📊 Analysis job {job_id} query complete: {len(result_df)} rows")
+
+                # Materialize query results
+                result_location = None
+                if len(result_df) > 0:
+                    try:
+                        bg_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {result_schema}")
+                        temp_name = f"_temp_analysis_{safe_job_id}"
+                        bg_conn.register(temp_name, result_df)
+                        bg_conn.execute(f"CREATE OR REPLACE TABLE {full_result_table} AS SELECT * FROM {temp_name}")
+                        bg_conn.unregister(temp_name)
+                        result_location = {
+                            'db_name': db_name,
+                            'db_path': db_path,
+                            'schema_name': result_schema,
+                            'table_name': result_table_name
+                        }
+                        print(f"[{session_id}] 💾 Analysis job {job_id} results saved to {full_result_table}")
+                    except Exception as mat_err:
+                        print(f"[{session_id}] ⚠️  Analysis job {job_id} materialization failed: {mat_err}")
+
+                # Format data for LLM
+                formatted_data = format_for_llm(result_df, max_rows=100)
+
+                # Call analysis via trait
+                print(f"[{session_id}] 🤖 Analysis job {job_id} calling LLM...")
+                try:
+                    from ..trait_registry import get_trait
+                    analyze_trait = get_trait('sql_analyze')
+
+                    if analyze_trait:
+                        analysis_result = analyze_trait(
+                            prompt=prompt,
+                            query=query,
+                            data=formatted_data,
+                            row_count=len(result_df),
+                            columns=list(result_df.columns)
+                        )
+                        if isinstance(analysis_result, dict):
+                            analysis_text = analysis_result.get('analysis') or analysis_result.get('result') or str(analysis_result)
+                        else:
+                            analysis_text = str(analysis_result)
+                    else:
+                        # Fallback: use simple LLM call
+                        from ..sql_tools.llm_aggregates import _call_llm
+                        llm_prompt = f"""You are a data analyst. The user ran this SQL query:
+
+```sql
+{query}
+```
+
+Results:
+{formatted_data}
+
+User's question: {prompt}
+
+Provide a clear, concise analysis that directly answers the question. Focus on insights from the data."""
+
+                        analysis_text = _call_llm(llm_prompt, max_tokens=2000)
+
+                except Exception as llm_err:
+                    print(f"[{session_id}] ⚠️  Analysis job {job_id} LLM call failed: {llm_err}")
+                    analysis_text = f"Analysis failed: {llm_err}"
+
+                # Store analysis in _analysis table
+                try:
+                    bg_conn.execute("""
+                        CREATE TABLE IF NOT EXISTS _analysis (
+                            job_id VARCHAR PRIMARY KEY,
+                            prompt VARCHAR,
+                            analysis TEXT,
+                            query_sql VARCHAR,
+                            row_count INTEGER,
+                            column_count INTEGER,
+                            columns VARCHAR,
+                            result_table VARCHAR,
+                            created_at TIMESTAMP DEFAULT current_timestamp
+                        )
+                    """)
+
+                    # Use parameterized insert to handle special characters
+                    bg_conn.execute("""
+                        INSERT OR REPLACE INTO _analysis
+                        (job_id, prompt, analysis, query_sql, row_count, column_count, columns, result_table, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, [
+                        job_id,
+                        prompt,
+                        analysis_text,
+                        query[:1000],  # Truncate long queries
+                        len(result_df),
+                        len(result_df.columns),
+                        json.dumps(list(result_df.columns)),
+                        full_result_table if result_location else None,
+                        datetime.now()
+                    ])
+
+                    print(f"[{session_id}] 📝 Analysis job {job_id} stored in _analysis table")
+
+                except Exception as store_err:
+                    print(f"[{session_id}] ⚠️  Analysis job {job_id} failed to store: {store_err}")
+
+                # Log completion
+                duration_ms = (time.time() - bg_start) * 1000
+                log_query_complete(
+                    query_id=internal_query_id,
+                    status='completed',
+                    rows_output=len(result_df),
+                    duration_ms=duration_ms,
+                    result_db_name=result_location.get('db_name') if result_location else None,
+                    result_db_path=result_location.get('db_path') if result_location else None,
+                    result_schema=result_location.get('schema_name') if result_location else None,
+                    result_table=result_location.get('table_name') if result_location else None,
+                )
+
+                print(f"[{session_id}] ✅ Analysis job {job_id} completed in {duration_ms:.0f}ms")
+
+            except Exception as e:
+                tb_module.print_exc()
+                duration_ms = (time.time() - bg_start) * 1000
+                log_query_error(internal_query_id, str(e), duration_ms=duration_ms)
+                print(f"[{session_id}] ❌ Analysis job {job_id} failed: {e}")
+
+            finally:
+                if bg_conn:
+                    try:
+                        bg_conn.close()
+                    except:
+                        pass
+                try:
+                    from ..caller_context import clear_caller_context
+                    clear_caller_context()
+                except:
+                    pass
+
+        # Initialize background executor if needed
+        if not hasattr(self, '_background_executor'):
+            self._background_executor = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix='bg_query'
+            )
+
+        # Submit to background executor
+        self._background_executor.submit(execute_and_analyze)
+
+        # Return job info immediately
+        job_df = pd.DataFrame([{
+            'job_id': job_id,
+            'status': 'running',
+            'prompt': prompt[:100] + ('...' if len(prompt) > 100 else ''),
+            'result_table': full_result_table,
+            'submitted_at': datetime.now().isoformat(),
+            'query_preview': query[:100] + ('...' if len(query) > 100 else ''),
+            'check_status': f"SELECT * FROM job('{job_id}')",
+            'get_analysis': f"SELECT * FROM analysis('{job_id}')",
+            'message_log': f"SELECT * FROM messages('{job_id}')",
+        }])
+
+        send_query_results(self.sock, job_df, self.transaction_status)
+        print(f"[{self.session_id}] 🔬 Analysis job {job_id} submitted: {prompt[:50]}...")
 
     def _handle_parse(self, msg: dict):
         """

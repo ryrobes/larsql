@@ -1506,6 +1506,476 @@ def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str,
         import logging
         logging.getLogger(__name__).warning(f"Could not register dimension compute UDFs: {e}")
 
+    # Register background job status UDFs
+    try:
+        _register_job_status_udfs(connection)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not register job status UDFs: {e}")
+
+
+def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection):
+    """
+    Register table-valued UDFs for checking background job status and logs.
+
+    These query sql_query_log and unified_logs in ClickHouse, plus
+    local _analysis table for ANALYZE query results.
+    All functions return proper table results (can be used in FROM clause).
+
+    Implementation: Python scalar functions return JSON, SQL TABLE macros
+    wrap them with from_json+unnest to produce proper table output.
+
+    UDFs:
+        job(job_id) - Get status of a single job (table function)
+        jobs() - List recent jobs (last 24 hours, table function)
+        await_job(job_id, timeout_seconds) - Wait for job completion (table function)
+        messages(caller_id) - Get all unified_logs entries for a caller_id
+        analysis(job_id) - Get analysis result for an ANALYZE job
+        analyses() - List recent analyses
+
+    Usage:
+        SELECT * FROM job('job-swift-fox-abc123')
+        SELECT * FROM jobs()
+        SELECT * FROM await_job('job-swift-fox-abc123', 60)
+        SELECT * FROM messages('job-swift-fox-abc123')
+        SELECT * FROM analysis('analysis-swift-fox-abc123')
+        SELECT * FROM analyses()
+    """
+    import json
+
+    def _safe_value(v):
+        """Convert value to JSON-serializable type."""
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):  # datetime
+            return v.isoformat()
+        if hasattr(v, 'hex'):  # UUID
+            return str(v)
+        return v
+
+    def _query_job(job_id: str) -> dict:
+        """Query a job by job_id (caller_id) from sql_query_log, with stats from unified_logs."""
+        from ..db_adapter import get_db
+        db = get_db()
+
+        # Query by caller_id (the woodland job ID)
+        # Join with unified_logs to get:
+        #   - total_cost: sum of all LLM costs
+        #   - messages: count of all log entries
+        #   - requests: count of actual LLM API calls (has request_id or cost)
+        result = db.query(f"""
+            SELECT
+                q.caller_id as job_id,
+                q.status,
+                toString(q.started_at) as started_at,
+                toString(q.completed_at) as completed_at,
+                q.duration_ms,
+                q.rows_output,
+                COALESCE(agg.total_cost, 0) as total_cost,
+                COALESCE(agg.messages, 0) as messages,
+                COALESCE(agg.requests, 0) as requests,
+                q.result_db_name,
+                q.result_schema,
+                q.result_table,
+                q.error_message,
+                q.query_raw
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost,
+                    COUNT(*) as messages,
+                    countIf(request_id IS NOT NULL AND request_id != '' OR cost > 0) as requests
+                FROM unified_logs
+                WHERE caller_id = '{job_id}'
+                GROUP BY caller_id
+            ) agg ON agg.caller_id = q.caller_id
+            WHERE q.caller_id = '{job_id}'
+            ORDER BY q.started_at DESC
+            LIMIT 1
+        """)
+
+        if not result:
+            return {
+                "job_id": job_id, "status": "not_found", "error_message": f"Job '{job_id}' not found",
+                "started_at": None, "completed_at": None, "duration_ms": None,
+                "rows_output": None, "total_cost": None, "messages": None, "requests": None,
+                "result_db_name": None, "result_table": None, "query_preview": None
+            }
+
+        row = result[0]
+        # Build result table path
+        result_table_full = None
+        if row.get('result_schema') and row.get('result_table'):
+            result_table_full = f"{row['result_schema']}.{row['result_table']}"
+
+        return {
+            "job_id": _safe_value(row.get('job_id')),
+            "status": _safe_value(row.get('status')),
+            "started_at": _safe_value(row.get('started_at')),
+            "completed_at": _safe_value(row.get('completed_at')),
+            "duration_ms": _safe_value(row.get('duration_ms')),
+            "rows_output": _safe_value(row.get('rows_output')),
+            "total_cost": _safe_value(row.get('total_cost')),
+            "messages": _safe_value(row.get('messages')),
+            "requests": _safe_value(row.get('requests')),
+            "result_db_name": _safe_value(row.get('result_db_name')),
+            "result_table": result_table_full,
+            "error_message": _safe_value(row.get('error_message')),
+            "query_preview": (str(row.get('query_raw') or ''))[:200]
+        }
+
+    # Schema for job status result (used in from_json)
+    JOB_SCHEMA = '''[{
+        "job_id": "VARCHAR",
+        "status": "VARCHAR",
+        "started_at": "VARCHAR",
+        "completed_at": "VARCHAR",
+        "duration_ms": "DOUBLE",
+        "rows_output": "BIGINT",
+        "total_cost": "DOUBLE",
+        "messages": "BIGINT",
+        "requests": "BIGINT",
+        "result_db_name": "VARCHAR",
+        "result_table": "VARCHAR",
+        "error_message": "VARCHAR",
+        "query_preview": "VARCHAR"
+    }]'''
+
+    # --- Scalar functions that return JSON ---
+
+    def job_json(job_id: str) -> str:
+        """Get job status as JSON array (internal, use job() table function)."""
+        try:
+            row = _query_job(job_id)
+            return json.dumps([row])
+        except Exception as e:
+            return json.dumps([{
+                "job_id": job_id, "status": "error", "error_message": str(e),
+                "started_at": None, "completed_at": None, "duration_ms": None,
+                "rows_output": None, "total_cost": None, "messages": None, "requests": None,
+                "result_db_name": None, "result_table": None, "query_preview": None
+            }])
+
+    def jobs_json() -> str:
+        """List recent jobs as JSON array (internal, use jobs() table function)."""
+        try:
+            from ..db_adapter import get_db
+            db = get_db()
+
+            # Join with unified_logs to get stats per job:
+            #   - total_cost: sum of all LLM costs
+            #   - messages: count of all log entries
+            #   - requests: count of actual LLM API calls (has request_id or cost)
+            result = db.query("""
+                SELECT
+                    q.caller_id as job_id,
+                    q.status,
+                    toString(q.started_at) as started_at,
+                    toString(q.completed_at) as completed_at,
+                    q.duration_ms,
+                    q.rows_output,
+                    COALESCE(agg.total_cost, 0) as total_cost,
+                    COALESCE(agg.messages, 0) as messages,
+                    COALESCE(agg.requests, 0) as requests,
+                    q.result_db_name,
+                    q.result_schema,
+                    q.result_table,
+                    substring(q.query_raw, 1, 100) as query_preview
+                FROM sql_query_log q
+                LEFT JOIN (
+                    SELECT
+                        caller_id,
+                        SUM(cost) as total_cost,
+                        COUNT(*) as messages,
+                        countIf(request_id IS NOT NULL AND request_id != '' OR cost > 0) as requests
+                    FROM unified_logs
+                    WHERE caller_id IN (
+                        SELECT caller_id FROM sql_query_log
+                        WHERE protocol = 'postgresql_wire_background'
+                          AND started_at > now() - INTERVAL 24 HOUR
+                    )
+                    GROUP BY caller_id
+                ) agg ON agg.caller_id = q.caller_id
+                WHERE q.protocol = 'postgresql_wire_background'
+                  AND q.started_at > now() - INTERVAL 24 HOUR
+                ORDER BY q.started_at DESC
+                LIMIT 100
+            """)
+
+            jobs = []
+            for row in result:
+                result_table_full = None
+                if row.get('result_schema') and row.get('result_table'):
+                    result_table_full = f"{row['result_schema']}.{row['result_table']}"
+
+                jobs.append({
+                    "job_id": _safe_value(row.get('job_id')),
+                    "status": _safe_value(row.get('status')),
+                    "started_at": _safe_value(row.get('started_at')),
+                    "completed_at": _safe_value(row.get('completed_at')),
+                    "duration_ms": _safe_value(row.get('duration_ms')),
+                    "rows_output": _safe_value(row.get('rows_output')),
+                    "total_cost": _safe_value(row.get('total_cost')),
+                    "messages": _safe_value(row.get('messages')),
+                    "requests": _safe_value(row.get('requests')),
+                    "result_db_name": _safe_value(row.get('result_db_name')),
+                    "result_table": result_table_full,
+                    "error_message": None,
+                    "query_preview": str(row.get('query_preview') or '')
+                })
+
+            # Return at least one row with nulls if empty (for schema consistency)
+            if not jobs:
+                jobs = [{
+                    "job_id": None, "status": "no_jobs", "started_at": None,
+                    "completed_at": None, "duration_ms": None, "rows_output": None,
+                    "total_cost": None, "messages": None, "requests": None,
+                    "result_db_name": None, "result_table": None, "error_message": None,
+                    "query_preview": "No background jobs in last 24 hours"
+                }]
+
+            return json.dumps(jobs)
+
+        except Exception as e:
+            return json.dumps([{
+                "job_id": None, "status": "error", "error_message": str(e),
+                "started_at": None, "completed_at": None, "duration_ms": None,
+                "rows_output": None, "total_cost": None, "messages": None, "requests": None,
+                "result_db_name": None, "result_table": None, "query_preview": None
+            }])
+
+    def await_job_json(job_id: str, timeout_seconds: float = 300.0) -> str:
+        """Wait for job completion and return status as JSON (internal)."""
+        import time
+        start = time.time()
+        poll_interval = 0.5  # Start with 500ms
+
+        while time.time() - start < timeout_seconds:
+            row = _query_job(job_id)
+
+            if row.get('status') == 'not_found':
+                return json.dumps([row])
+
+            status = row.get('status')
+            if status in ('completed', 'error'):
+                return json.dumps([row])
+
+            # Exponential backoff up to 5 seconds
+            time.sleep(poll_interval)
+            poll_interval = min(poll_interval * 1.5, 5.0)
+
+        return json.dumps([{
+            "job_id": job_id, "status": "timeout",
+            "error_message": f"Timeout waiting for job '{job_id}' after {timeout_seconds}s",
+            "started_at": None, "completed_at": None, "duration_ms": None,
+            "rows_output": None, "total_cost": None, "messages": None, "requests": None,
+            "result_db_name": None, "result_table": None, "query_preview": None
+        }])
+
+    # Schema for messages result (unified_logs rows)
+    MESSAGES_SCHEMA = '''[{
+        "message_id": "VARCHAR",
+        "timestamp": "VARCHAR",
+        "session_id": "VARCHAR",
+        "trace_id": "VARCHAR",
+        "caller_id": "VARCHAR",
+        "node_type": "VARCHAR",
+        "role": "VARCHAR",
+        "semantic_actor": "VARCHAR",
+        "semantic_purpose": "VARCHAR",
+        "cascade_id": "VARCHAR",
+        "cell_name": "VARCHAR",
+        "model": "VARCHAR",
+        "provider": "VARCHAR",
+        "request_id": "VARCHAR",
+        "duration_ms": "DOUBLE",
+        "tokens_in": "BIGINT",
+        "tokens_out": "BIGINT",
+        "total_tokens": "BIGINT",
+        "cost": "DOUBLE",
+        "is_sql_udf": "BOOLEAN",
+        "udf_type": "VARCHAR",
+        "cache_hit": "BOOLEAN",
+        "content_preview": "VARCHAR",
+        "tool_name": "VARCHAR",
+        "error_message": "VARCHAR"
+    }]'''
+
+    def messages_json(caller_id: str) -> str:
+        """Get all unified_logs entries for a caller_id (internal, use messages() table function)."""
+        try:
+            from ..db_adapter import get_db
+            db = get_db()
+
+            result = db.query(f"""
+                SELECT
+                    toString(message_id) as message_id,
+                    toString(timestamp) as timestamp,
+                    session_id,
+                    trace_id,
+                    caller_id,
+                    node_type,
+                    role,
+                    semantic_actor,
+                    semantic_purpose,
+                    cascade_id,
+                    cell_name,
+                    model,
+                    provider,
+                    request_id,
+                    duration_ms,
+                    tokens_in,
+                    tokens_out,
+                    total_tokens,
+                    cost,
+                    is_sql_udf,
+                    udf_type,
+                    cache_hit,
+                    substring(content, 1, 500) as content_preview,
+                    JSONExtractString(tool_calls, '$[0].function.name') as tool_name,
+                    error_message
+                FROM unified_logs
+                WHERE caller_id = '{caller_id}'
+                ORDER BY timestamp DESC
+                LIMIT 1000
+            """)
+
+            messages = []
+            for row in result:
+                messages.append({
+                    "message_id": _safe_value(row.get('message_id')),
+                    "timestamp": _safe_value(row.get('timestamp')),
+                    "session_id": _safe_value(row.get('session_id')),
+                    "trace_id": _safe_value(row.get('trace_id')),
+                    "caller_id": _safe_value(row.get('caller_id')),
+                    "node_type": _safe_value(row.get('node_type')),
+                    "role": _safe_value(row.get('role')),
+                    "semantic_actor": _safe_value(row.get('semantic_actor')),
+                    "semantic_purpose": _safe_value(row.get('semantic_purpose')),
+                    "cascade_id": _safe_value(row.get('cascade_id')),
+                    "cell_name": _safe_value(row.get('cell_name')),
+                    "model": _safe_value(row.get('model')),
+                    "provider": _safe_value(row.get('provider')),
+                    "request_id": _safe_value(row.get('request_id')),
+                    "duration_ms": _safe_value(row.get('duration_ms')),
+                    "tokens_in": _safe_value(row.get('tokens_in')),
+                    "tokens_out": _safe_value(row.get('tokens_out')),
+                    "total_tokens": _safe_value(row.get('total_tokens')),
+                    "cost": _safe_value(row.get('cost')),
+                    "is_sql_udf": _safe_value(row.get('is_sql_udf')),
+                    "udf_type": _safe_value(row.get('udf_type')),
+                    "cache_hit": _safe_value(row.get('cache_hit')),
+                    "content_preview": _safe_value(row.get('content_preview')),
+                    "tool_name": _safe_value(row.get('tool_name')),
+                    "error_message": _safe_value(row.get('error_message'))
+                })
+
+            if not messages:
+                messages = [{
+                    "message_id": None, "timestamp": None, "session_id": None,
+                    "trace_id": None, "caller_id": caller_id, "node_type": None,
+                    "role": None, "semantic_actor": None, "semantic_purpose": None,
+                    "cascade_id": None, "cell_name": None, "model": None,
+                    "provider": None, "request_id": None, "duration_ms": None,
+                    "tokens_in": None, "tokens_out": None, "total_tokens": None,
+                    "cost": None, "is_sql_udf": None, "udf_type": None,
+                    "cache_hit": None, "content_preview": f"No messages found for caller_id '{caller_id}'",
+                    "tool_name": None, "error_message": None
+                }]
+
+            return json.dumps(messages)
+
+        except Exception as e:
+            return json.dumps([{
+                "message_id": None, "timestamp": None, "session_id": None,
+                "trace_id": None, "caller_id": caller_id, "node_type": None,
+                "role": None, "semantic_actor": None, "semantic_purpose": None,
+                "cascade_id": None, "cell_name": None, "model": None,
+                "provider": None, "request_id": None, "duration_ms": None,
+                "tokens_in": None, "tokens_out": None, "total_tokens": None,
+                "cost": None, "is_sql_udf": None, "udf_type": None,
+                "cache_hit": None, "content_preview": None,
+                "tool_name": None, "error_message": str(e)
+            }])
+
+    # Register scalar JSON functions (internal use)
+    connection.create_function("_job_json", job_json, [str], str)
+    connection.create_function("_jobs_json", jobs_json, [], str)
+    connection.create_function("_await_job_json", await_job_json, [str, float], str)
+    connection.create_function("_messages_json", messages_json, [str], str)
+
+    # Create TABLE macros that wrap the JSON functions
+    # These allow: SELECT * FROM job('id')
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO job(jid) AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_job_json(jid), '{JOB_SCHEMA}')) as item
+        )
+    ''')
+
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO jobs() AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_jobs_json(), '{JOB_SCHEMA}')) as item
+        )
+    ''')
+
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO await_job(jid, timeout_secs := 300.0) AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_await_job_json(jid, timeout_secs), '{JOB_SCHEMA}')) as item
+        )
+    ''')
+
+    # Aliases for compatibility
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO job_status(jid) AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_job_json(jid), '{JOB_SCHEMA}')) as item
+        )
+    ''')
+
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO list_jobs() AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_jobs_json(), '{JOB_SCHEMA}')) as item
+        )
+    ''')
+
+    # messages() - get all unified_logs entries for a caller_id
+    connection.execute(f'''
+        CREATE OR REPLACE MACRO messages(cid) AS TABLE
+        SELECT item.* FROM (
+            SELECT UNNEST(from_json(_messages_json(cid), '{MESSAGES_SCHEMA}')) as item
+        )
+    ''')
+
+    # analysis() and analyses() - query the local _analysis table
+    # Create _analysis table if it doesn't exist (so macros work immediately)
+    connection.execute('''
+        CREATE TABLE IF NOT EXISTS _analysis (
+            job_id VARCHAR PRIMARY KEY,
+            prompt VARCHAR,
+            analysis TEXT,
+            query_sql VARCHAR,
+            row_count INTEGER,
+            column_count INTEGER,
+            columns VARCHAR,
+            result_table VARCHAR,
+            created_at TIMESTAMP DEFAULT current_timestamp
+        )
+    ''')
+
+    connection.execute('''
+        CREATE OR REPLACE MACRO analysis(jid) AS TABLE
+        SELECT * FROM _analysis WHERE job_id = jid
+    ''')
+
+    connection.execute('''
+        CREATE OR REPLACE MACRO analyses() AS TABLE
+        SELECT * FROM _analysis ORDER BY created_at DESC LIMIT 100
+    ''')
 
 
 def clear_udf_cache():

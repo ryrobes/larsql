@@ -1624,7 +1624,12 @@ def llm_cluster_impl(
                 kw.get("values"), kw.get("num_clusters"), kw.get("criterion"), use_cache
             )
         )
-        return result if result else "{}"
+        if result is None:
+            return "{}"
+        # Cascade may return dict or string - ensure we return JSON string
+        if isinstance(result, dict):
+            return json.dumps(result)
+        return result
     except Exception as e:
         return _llm_cluster_fallback(values_json, num_clusters, criteria, use_cache)
 

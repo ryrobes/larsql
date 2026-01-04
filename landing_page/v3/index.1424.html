@@ -141,65 +141,52 @@
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 20px;
-        border-radius: 6px;
-        border: 1px solid var(--cyan);
-        background: rgba(28, 246, 255, 0.15);
-        color: var(--cyan);
-        font-weight: 500;
-        font-size: 0.9rem;
+        padding: 12px 20px;
+        border-radius: 999px;
+        border: 1px solid rgba(28, 246, 255, 0.4);
+        background: linear-gradient(120deg, rgba(28, 246, 255, 0.25), rgba(255, 47, 168, 0.2));
+        box-shadow: 0 0 20px rgba(28, 246, 255, 0.2);
+        color: var(--ink);
+        font-weight: 600;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
       .btn:hover {
-        background: rgba(28, 246, 255, 0.25);
-        box-shadow: 0 0 20px rgba(28, 246, 255, 0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 0 30px rgba(28, 246, 255, 0.35);
       }
 
       .btn.secondary {
         background: transparent;
-        border-color: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.2);
         color: var(--muted);
+        box-shadow: none;
       }
 
       .btn.secondary:hover {
-        border-color: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.4);
         color: var(--ink);
       }
 
       /* ========== HERO ========== */
       .hero {
         padding: 80px 0 40px;
-      }
-
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 48px;
-        align-items: center;
-        margin-bottom: 48px;
-      }
-
-      .hero-content {
-        text-align: left;
+        text-align: center;
       }
 
       .hero-eyebrow {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 12px;
-        border-radius: 4px;
+        padding: 8px 16px;
+        border-radius: 999px;
         border: 1px solid rgba(28, 246, 255, 0.3);
-        background: rgba(28, 246, 255, 0.1);
+        background: rgba(13, 18, 30, 0.7);
         color: var(--cyan);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.7rem;
-        font-weight: 500;
+        font-size: 0.8rem;
         letter-spacing: 0.05em;
-        text-transform: uppercase;
-        margin-bottom: 24px;
+        margin-bottom: 28px;
       }
 
       .hero-eyebrow .dot {
@@ -216,9 +203,12 @@
       }
 
       h1 {
-        font-size: clamp(2.2rem, 4vw, 3.2rem);
-        line-height: 1.15;
-        margin: 0 0 20px;
+        font-size: clamp(2.6rem, 5vw, 4rem);
+        line-height: 1.1;
+        margin: 0 0 24px;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
       }
 
       .gradient-text {
@@ -229,103 +219,23 @@
       }
 
       .hero-sub {
-        font-size: 1.05rem;
+        font-size: 1.2rem;
         color: var(--muted);
         line-height: 1.6;
-        margin: 0 0 28px;
+        max-width: 600px;
+        margin: 0 auto 36px;
       }
 
       .hero-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      /* Hero Screenshot/Video */
-      .hero-visual {
-        position: relative;
-      }
-
-      .hero-screenshot {
-        width: 100%;
-        max-width: 550px;
-        aspect-ratio: 550 / 400;
-        background: #0a0d14;
-        border-radius: 8px;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
+        gap: 16px;
         justify-content: center;
-        position: relative;
-      }
-
-      .hero-screenshot img,
-      .hero-screenshot video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 6px;
-      }
-
-      .hero-screenshot-placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
-        color: var(--muted);
-        font-size: 0.8rem;
-        opacity: 0.6;
-      }
-
-      .hero-screenshot-placeholder svg {
-        width: 48px;
-        height: 48px;
-        opacity: 0.4;
-      }
-
-      .hero-screenshot-badge {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        background: rgba(0, 0, 0, 0.7);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        border-radius: 4px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.6rem;
-        font-weight: 500;
-        color: var(--cyan);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        z-index: 1;
-      }
-
-      @media (max-width: 900px) {
-        .hero-grid {
-          grid-template-columns: 1fr;
-          gap: 32px;
-        }
-
-        .hero-content {
-          text-align: center;
-        }
-
-        .hero-actions {
-          justify-content: center;
-        }
-
-        .hero-screenshot {
-          max-width: 100%;
-          margin: 0 auto;
-        }
       }
 
       /* ========== LIVE TERMINAL ========== */
       .live-terminal-wrapper {
-        margin-top: 0;
+        margin-top: 48px;
         display: flex;
         justify-content: center;
       }
@@ -333,51 +243,47 @@
       .live-terminal {
         width: 100%;
         max-width: 680px;
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 3px solid var(--cyan);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        background: linear-gradient(180deg, #08090c 0%, #050608 100%);
+        border-radius: 12px;
+        border: 1px solid rgba(28, 246, 255, 0.12);
+        box-shadow:
+          0 0 40px rgba(28, 246, 255, 0.08),
+          0 20px 60px rgba(0, 0, 0, 0.4),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
         overflow: hidden;
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
       }
 
+      .live-terminal::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px
+        );
+        pointer-events: none;
+        opacity: 0.5;
+      }
+
       .terminal-header {
         display: flex;
         align-items: center;
-        gap: 12px;
+        justify-content: center;
         padding: 10px 16px;
-        background: rgba(0, 0, 0, 0.3);
-        border-bottom: 1px solid rgba(28, 246, 255, 0.1);
-      }
-
-      .terminal-type-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        background: rgba(28, 246, 255, 0.15);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        border-radius: 4px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.65rem;
-        font-weight: 500;
-        color: var(--cyan);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .terminal-type-badge::before {
-        content: "⬡";
-        font-size: 0.7rem;
+        background: rgba(0, 0, 0, 0.6);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       }
 
       .terminal-title {
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         color: var(--muted);
-        opacity: 0.7;
+        opacity: 0.5;
       }
 
       .terminal-body {
@@ -441,14 +347,14 @@
 
       .terminal-result {
         display: flex;
-        align-items: flex-start;
-        gap: 12px;
+        align-items: center;
+        gap: 10px;
         font-family: "JetBrains Mono", monospace;
         font-size: 0.75rem;
         color: var(--muted);
         margin-top: 16px;
         padding-top: 12px;
-        border-top: 1px solid rgba(28, 246, 255, 0.1);
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
         opacity: 0;
         transform: translateY(5px);
         transition: all 0.4s ease;
@@ -461,42 +367,17 @@
 
       .terminal-result-arrow {
         color: var(--green);
-        font-weight: 600;
-        font-size: 0.9rem;
+        font-weight: bold;
       }
 
       .terminal-result-text {
         flex: 1;
-        color: var(--ink);
-        opacity: 0.85;
-        line-height: 1.5;
+        color: #8b949e;
       }
 
       .terminal-result-meta {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-
-      .terminal-meta-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 8px;
-        border-radius: 4px;
-        font-size: 0.65rem;
-        font-weight: 500;
-      }
-
-      .terminal-meta-badge.time {
-        background: rgba(28, 246, 255, 0.1);
-        color: var(--cyan);
-        border: 1px solid rgba(28, 246, 255, 0.2);
-      }
-
-      .terminal-meta-badge.cost {
-        background: rgba(0, 255, 136, 0.1);
-        color: var(--green);
-        border: 1px solid rgba(0, 255, 136, 0.2);
+        color: rgba(139, 148, 158, 0.6);
+        font-size: 0.7rem;
       }
 
       .terminal-cursor {
@@ -537,34 +418,32 @@
         position: fixed;
         bottom: 24px;
         right: 24px;
-        width: 400px;
+        width: 420px;
         max-width: calc(100vw - 48px);
         z-index: 1000;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        transform: scale(0.95);
+        box-shadow:
+          0 0 60px rgba(28, 246, 255, 0.12),
+          0 25px 80px rgba(0, 0, 0, 0.5);
       }
 
       .live-terminal.sticky-mode .terminal-body {
-        min-height: 90px;
-        padding: 14px 16px 16px;
+        min-height: 100px;
+        padding: 16px 20px 20px;
       }
 
       .live-terminal.sticky-mode .terminal-line {
-        font-size: 0.72rem;
+        font-size: 0.75rem;
       }
 
       .live-terminal.sticky-mode .terminal-result {
-        font-size: 0.68rem;
-        margin-top: 10px;
+        font-size: 0.7rem;
+        margin-top: 12px;
         padding-top: 10px;
       }
 
-      .live-terminal.sticky-mode .terminal-meta-badge {
-        font-size: 0.6rem;
-        padding: 2px 6px;
-      }
-
       .live-terminal.sticky-mode:hover {
-        box-shadow: 0 8px 40px rgba(28, 246, 255, 0.15);
+        transform: scale(1);
       }
 
       .terminal-close {
@@ -693,17 +572,18 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 8px 12px;
-        border: 1px solid rgba(28, 246, 255, 0.15);
-        border-radius: 6px;
-        background: #0a0d14;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(11, 15, 26, 0.6);
         transition: all 0.2s ease;
         cursor: default;
       }
 
       .integration-item:hover {
-        border-color: rgba(28, 246, 255, 0.3);
-        background: rgba(28, 246, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.2);
+        background: rgba(11, 15, 26, 0.8);
+        transform: translateY(-1px);
       }
 
       .integration-item svg {
@@ -1184,34 +1064,30 @@
       }
 
       .journey-step {
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 3px solid var(--cyan);
-        padding: 20px;
+        background: linear-gradient(150deg, rgba(11, 15, 26, 0.95), rgba(15, 19, 34, 0.85));
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(28, 246, 255, 0.15);
+        padding: 24px 20px;
         position: relative;
-        transition: border-color 0.3s ease;
+        transition: border-color 0.3s ease, transform 0.3s ease;
       }
 
       .journey-step:hover {
         border-color: rgba(28, 246, 255, 0.4);
+        transform: translateY(-4px);
       }
 
       .journey-step-time {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 4px;
-        background: rgba(28, 246, 255, 0.15);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.65rem;
-        font-weight: 500;
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(28, 246, 255, 0.1);
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        font-size: 0.7rem;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.08em;
         color: var(--cyan);
-        margin-bottom: 14px;
+        margin-bottom: 16px;
       }
 
       .journey-step h3 {
@@ -1279,11 +1155,10 @@
       }
 
       .semantic-demo {
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 3px solid var(--cyan);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        background: linear-gradient(150deg, #08090c, #050608);
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(28, 246, 255, 0.15);
+        box-shadow: var(--shadow), 0 0 40px rgba(28, 246, 255, 0.06);
         overflow: hidden;
         margin-bottom: 32px;
       }
@@ -1291,56 +1166,17 @@
       .code-header {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 10px 16px;
-        border-bottom: 1px solid rgba(28, 246, 255, 0.1);
-        background: rgba(0, 0, 0, 0.3);
-      }
-
-      .code-type-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        background: rgba(28, 246, 255, 0.15);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        border-radius: 4px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.65rem;
-        font-weight: 500;
-        color: var(--cyan);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .code-type-badge::before {
-        content: "⬡";
-        font-size: 0.7rem;
-      }
-
-      .code-type-badge.python {
-        background: rgba(255, 189, 46, 0.15);
-        border-color: rgba(255, 189, 46, 0.3);
-        color: var(--orange);
-      }
-
-      .code-type-badge.yaml {
-        background: rgba(255, 47, 168, 0.15);
-        border-color: rgba(255, 47, 168, 0.3);
-        color: var(--magenta);
-      }
-
-      .code-type-badge.config {
-        background: rgba(122, 92, 255, 0.15);
-        border-color: rgba(122, 92, 255, 0.3);
-        color: var(--purple);
+        justify-content: center;
+        padding: 10px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        background: rgba(0, 0, 0, 0.6);
       }
 
       .code-title {
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         color: var(--muted);
         font-family: "JetBrains Mono", monospace;
-        opacity: 0.7;
+        opacity: 0.6;
       }
 
       .semantic-demo-grid {
@@ -1560,29 +1396,22 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 14px;
-        background: #0a0d14;
-        border-radius: 6px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 2px solid var(--cyan);
+        padding: 12px 16px;
+        background: rgba(11, 15, 26, 0.8);
+        border-radius: 8px;
+        border: 1px solid rgba(28, 246, 255, 0.12);
         font-family: "JetBrains Mono", monospace;
-        font-size: 0.75rem;
-        transition: border-color 0.2s ease;
-      }
-
-      .operator-chip:hover {
-        border-color: rgba(28, 246, 255, 0.4);
+        font-size: 0.8rem;
       }
 
       .operator-chip .op-name {
         color: var(--cyan);
-        font-weight: 500;
       }
 
       .operator-chip .op-desc {
         color: var(--muted);
         font-family: "Space Grotesk", sans-serif;
-        font-size: 0.7rem;
+        font-size: 0.75rem;
       }
 
       /* ========== UNDER THE HOOD (Teaser) ========== */
@@ -1591,16 +1420,26 @@
       }
 
       .hood-teaser {
-        background: #0a0d14;
-        border-radius: 8px;
+        background: linear-gradient(150deg, rgba(11, 15, 26, 0.95), rgba(15, 19, 34, 0.9));
+        border-radius: var(--radius-lg);
         border: 1px solid rgba(28, 246, 255, 0.2);
-        border-top: 3px solid var(--cyan);
-        padding: 40px;
+        padding: 48px;
         text-align: center;
         max-width: 800px;
         margin: 0 auto;
         position: relative;
         overflow: hidden;
+      }
+
+      .hood-teaser::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle at 30% 30%, rgba(28, 246, 255, 0.08), transparent 50%);
+        pointer-events: none;
       }
 
       .hood-teaser h2 {
@@ -1625,28 +1464,26 @@
       }
 
       .hood-item {
-        padding: 16px;
+        padding: 20px;
         background: rgba(0, 0, 0, 0.3);
-        border-radius: 6px;
-        border: 1px solid rgba(28, 246, 255, 0.15);
-        text-align: left;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
       }
 
       .hood-item-icon {
-        font-size: 1.2rem;
-        margin-bottom: 10px;
+        font-size: 1.4rem;
+        margin-bottom: 12px;
       }
 
       .hood-item h4 {
         margin: 0 0 6px;
-        font-size: 0.85rem;
-        color: var(--cyan);
-        font-weight: 500;
+        font-size: 0.95rem;
+        color: var(--ink);
       }
 
       .hood-item p {
         margin: 0;
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         color: var(--muted);
         line-height: 1.4;
       }
@@ -1676,142 +1513,6 @@
         }
       }
 
-      /* ========== SECTION SCREENSHOTS & CAROUSEL ========== */
-      .section-screenshot {
-        margin-top: 48px;
-        display: flex;
-        justify-content: center;
-      }
-
-      .screenshot-placeholder {
-        width: 100%;
-        max-width: 800px;
-        aspect-ratio: 16 / 9;
-        background: #0a0d14;
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        color: var(--muted);
-        font-size: 0.8rem;
-        opacity: 0.6;
-      }
-
-      .screenshot-placeholder svg {
-        width: 48px;
-        height: 48px;
-        opacity: 0.4;
-      }
-
-      .screenshot-placeholder .screenshot-size {
-        font-size: 0.7rem;
-        opacity: 0.7;
-      }
-
-      .section-screenshot img {
-        width: 100%;
-        max-width: 800px;
-        border-radius: 8px;
-      }
-
-      /* Screenshot Carousel */
-      .screenshot-carousel {
-        margin-top: 48px;
-        position: relative;
-        max-width: 900px;
-        margin-left: auto;
-        margin-right: auto;
-      }
-
-      .carousel-track {
-        display: flex;
-        gap: 16px;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-        padding: 8px 0;
-      }
-
-      .carousel-track::-webkit-scrollbar {
-        display: none;
-      }
-
-      .carousel-slide {
-        flex: 0 0 100%;
-        scroll-snap-align: center;
-        background: #0a0d14;
-        border-radius: 8px;
-        overflow: hidden;
-      }
-
-      .carousel-slide img {
-        width: 100%;
-        display: block;
-      }
-
-      .carousel-slide .screenshot-placeholder {
-        aspect-ratio: 16 / 9;
-        max-width: none;
-      }
-
-      .carousel-nav {
-        display: flex;
-        justify-content: center;
-        gap: 8px;
-        margin-top: 16px;
-      }
-
-      .carousel-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: rgba(28, 246, 255, 0.2);
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-
-      .carousel-dot:hover,
-      .carousel-dot.active {
-        background: var(--cyan);
-      }
-
-      .carousel-arrows {
-        position: absolute;
-        top: 50%;
-        left: 0;
-        right: 0;
-        transform: translateY(-50%);
-        display: flex;
-        justify-content: space-between;
-        pointer-events: none;
-        padding: 0 8px;
-      }
-
-      .carousel-arrow {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: rgba(10, 13, 20, 0.8);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        color: var(--cyan);
-        cursor: pointer;
-        pointer-events: auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        transition: all 0.2s ease;
-      }
-
-      .carousel-arrow:hover {
-        background: rgba(28, 246, 255, 0.15);
-        border-color: var(--cyan);
-      }
-
       /* ========== OBSERVABILITY ========== */
       .observability-section {
         padding: 80px 0;
@@ -1839,31 +1540,37 @@
       }
 
       .obs-card {
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 3px solid var(--cyan);
-        padding: 24px;
+        background: linear-gradient(150deg, rgba(11, 15, 26, 0.95), rgba(15, 19, 34, 0.85));
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(28, 246, 255, 0.18);
+        padding: 28px;
         position: relative;
         overflow: hidden;
-        transition: border-color 0.3s ease;
       }
 
-      .obs-card:hover {
-        border-color: rgba(28, 246, 255, 0.4);
+      .obs-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 40%, rgba(28, 246, 255, 0.06), transparent 60%);
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+
+      .obs-card:hover::after {
+        opacity: 1;
       }
 
       .obs-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        background: rgba(28, 246, 255, 0.15);
-        border: 1px solid rgba(28, 246, 255, 0.25);
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(28, 246, 255, 0.15), rgba(255, 47, 168, 0.15));
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 14px;
-        font-size: 1.2rem;
+        margin-bottom: 16px;
+        font-size: 1.4rem;
       }
 
       .obs-card h3 {
@@ -2036,16 +1743,14 @@
       }
 
       .yaml-block {
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 47, 168, 0.2);
-        border-left: 3px solid var(--magenta);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        background: linear-gradient(150deg, #08090c, #050608);
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(255, 47, 168, 0.15);
         overflow: hidden;
       }
 
       .yaml-block .code-header {
-        border-color: rgba(255, 47, 168, 0.1);
+        border-color: rgba(255, 47, 168, 0.15);
       }
 
       .yaml-block .code-content {
@@ -2070,18 +1775,16 @@
       }
 
       .result-card {
-        padding: 20px;
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(0, 255, 136, 0.2);
-        border-left: 3px solid var(--green);
+        padding: 24px;
+        background: linear-gradient(150deg, rgba(11, 15, 26, 0.9), rgba(15, 19, 34, 0.8));
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(28, 246, 255, 0.15);
       }
 
       .result-card h3 {
         margin: 0 0 12px;
-        font-size: 0.9rem;
-        color: var(--green);
-        font-weight: 500;
+        font-size: 1rem;
+        color: var(--cyan);
       }
 
       .result-card code {
@@ -2686,16 +2389,14 @@
       .candidates-yaml {
         max-width: 600px;
         margin: 0 auto 40px;
-        background: #0a0d14;
-        border-radius: 8px;
+        background: linear-gradient(150deg, #08090c, #050608);
+        border-radius: var(--radius-lg);
         border: 1px solid rgba(122, 92, 255, 0.2);
-        border-left: 3px solid var(--purple);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
         overflow: hidden;
       }
 
       .candidates-yaml .code-header {
-        border-color: rgba(122, 92, 255, 0.1);
+        border-color: rgba(122, 92, 255, 0.2);
       }
 
       .candidates-yaml .code-content {
@@ -2719,12 +2420,11 @@
       }
 
       .mode-card {
-        padding: 16px;
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(122, 92, 255, 0.2);
-        border-left: 3px solid var(--purple);
-        text-align: left;
+        padding: 20px 16px;
+        background: rgba(11, 15, 26, 0.8);
+        border-radius: 12px;
+        border: 1px solid rgba(122, 92, 255, 0.15);
+        text-align: center;
         transition: border-color 0.3s ease;
       }
 
@@ -2734,16 +2434,15 @@
 
       .mode-card h4 {
         margin: 0 0 8px;
-        font-size: 0.85rem;
+        font-size: 0.9rem;
         color: var(--purple);
-        font-weight: 500;
       }
 
       .mode-card p {
         margin: 0;
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         color: var(--muted);
-        line-height: 1.5;
+        line-height: 1.4;
       }
 
       @media (max-width: 900px) {
@@ -3429,52 +3128,36 @@
         <!-- ========== HERO ========== -->
       <section class="hero">
         <div class="container">
-          <div class="hero-grid">
-            <div class="hero-content">
-              <h1 class="reveal delay-1">
-                Your team knows SQL.<br>
-                <span class="gradient-text">Why learn Python for AI?</span>
-              </h1>
-              <p class="hero-sub reveal delay-2">
-                Add AI operators to SQL—from your own SQL client, on your own database.
-                No notebooks. No orchestration code. Just
-                <code style="background: rgba(28,246,255,0.15); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">WHERE text MEANS 'urgent'</code>
-              </p>
-              <div class="hero-actions reveal delay-3">
-                <a class="btn" href="#get-started">Try It Now</a>
-                <a class="btn secondary" href="#how-it-works">See How It Works</a>
-              </div>
-            </div>
-
-            <div class="hero-visual reveal delay-2">
-              <div class="hero-screenshot">
-                <!-- Replace with: <img src="screenshots/hero-studio.png" alt="RVBBIT Studio"> -->
-                <!-- Or video: <video autoplay loop muted playsinline><source src="screenshots/hero-demo.mp4" type="video/mp4"></video> -->
-                <div class="hero-screenshot-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                    <path d="M6 8l4 3-4 3V8zM14 10h4M14 13h2"/>
-                  </svg>
-                  <span>hero-studio.png</span>
-                  <span style="font-size: 0.7rem; opacity: 0.7;">550 × 400</span>
-                </div>
-              </div>
-            </div>
+          <div class="hero-eyebrow reveal">
+            <span class="dot"></span>
+            Open Source
+          </div>
+          <h1 class="reveal delay-1">
+            Your team knows SQL.<br>
+            <span class="gradient-text">Why make them learn Python for AI?</span>
+          </h1>
+          <p class="hero-sub reveal delay-2">
+            Add AI operators to SQL - from your own SQL client - on your own Database.
+            No notebooks of pain. No orchestration code.
+            Just <code style="background: rgba(28,246,255,0.15); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;">WHERE text MEANS 'urgent'</code>
+            in the queries you already write.
+          </p>
+          <div class="hero-actions reveal delay-3">
+            <a class="btn" href="#get-started">Try It Now</a>
+            <a class="btn secondary" href="#how-it-works">See How It Works</a>
           </div>
 
           <!-- Live Terminal Demo -->
           <div class="live-terminal-wrapper reveal delay-4">
             <div class="live-terminal" id="liveTerminal">
               <div class="terminal-header">
-                <span class="terminal-type-badge">SQL</span>
-                <div class="terminal-title">live_queries</div>
+                <div class="terminal-title">psql — your_database</div>
               </div>
               <button class="terminal-close" onclick="closeTerminal()" title="Close">&times;</button>
               <div class="terminal-paused-indicator">paused</div>
               <div class="terminal-body">
                 <div class="terminal-line">
-                  <span class="terminal-prompt">&gt;</span>
+                  <span class="terminal-prompt">psql&gt;</span>
                   <span class="terminal-query" id="terminalQuery"></span>
                   <span class="terminal-cursor" id="terminalCursor"></span>
                 </div>
@@ -3762,11 +3445,11 @@
       <section id="candidates" class="candidates-section">
         <div class="container">
           <div class="candidates-header reveal">
-            <h2>LLMs are unpredictable. <span class="gradient-text">So run them all.</span></h2>
+            <h2>The secret? <span class="gradient-text">Run them all. Best answer wins.</span></h2>
             <p>
-              Same prompt, wildly different results. Instead of hoping for the best, run 5 variations
-              in parallel—different prompts, different models—and let an evaluator pick the winner.
-              Bad outputs don't need handling. They just don't win.
+              Traditional LLM systems retry on failure. RVBBIT runs 5 variations in parallel&mdash;different prompts,
+              different models&mdash;and the evaluator picks the winner. Errors don't need handling.
+              They just don't win.
             </p>
           </div>
 
@@ -3819,8 +3502,8 @@
               <div class="benefit-item">
                 <div class="benefit-icon">&#x21bb;</div>
                 <div class="benefit-content">
-                  <h4>Simpler error handling</h4>
-                  <p>Failures filter out naturally. Retries still exist when you need them—but candidates handle most cases.</p>
+                  <h4>No retry loops</h4>
+                  <p>Errors filter out naturally. The 2 failures above? Ignored. Good answer still wins.</p>
                 </div>
               </div>
               <div class="benefit-item">
@@ -3849,8 +3532,7 @@
 
           <div class="candidates-yaml reveal delay-3">
             <div class="code-header">
-              <span class="code-type-badge config">CONFIG</span>
-              <span class="code-title">That's 3 lines</span>
+              <span class="code-title">That's 3 lines of YAML</span>
             </div>
             <div class="code-content">
 <pre><span class="yaml-key">candidates:</span>
@@ -3885,11 +3567,11 @@
         <div class="container">
           <div class="champion-grid">
             <div class="champion-content reveal">
-              <h2>Prompts that <span class="gradient-text">evolve themselves.</span></h2>
+              <h2>Found a winner? <span class="gradient-text">Clone it.</span></h2>
               <p>
-                Run a generation of prompt mutations. Winners feed back as training data for the next generation.
-                Repeat until convergence. Promote the winner to production—where it runs cloned 3x per request,
-                best execution wins. The cycle continues: production data trains the next evolution.
+                In development, run 5 different variations to find the best prompt.
+                In production, clone that winner 3x and pick the best execution.
+                Same prompt. Different random seeds. Errors filter out.
               </p>
               <div class="champion-stats">
                 <div class="stat-box">
@@ -3935,19 +3617,6 @@
                   <p>Random hallucinations? JSON parse failures? They just don't win. No retry logic.</p>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Evolution Screenshot -->
-          <div class="section-screenshot reveal delay-2">
-            <!-- Replace with: <img src="screenshots/evolution-ui.png" alt="Evolution UI"> -->
-            <div class="screenshot-placeholder">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8M12 17v4"/>
-              </svg>
-              <span>evolution-ui.png</span>
-              <span class="screenshot-size">800 × 450</span>
             </div>
           </div>
         </div>
@@ -4044,7 +3713,6 @@
 
           <div class="semantic-demo reveal delay-1">
             <div class="code-header">
-              <span class="code-type-badge">SQL</span>
               <span class="code-title">my_query.sql</span>
             </div>
             <div class="semantic-demo-grid">
@@ -4197,8 +3865,8 @@
               </div>
               <div class="hood-item">
                 <div class="hood-item-icon">&#x21bb;</div>
-                <h4>Self-healing</h4>
-                <p>Failures auto-retry with different models or prompts.</p>
+                <h4>Auto-retry</h4>
+                <p>Failures repair themselves with different models.</p>
               </div>
               <div class="hood-item">
                 <div class="hood-item-icon">$</div>
@@ -4294,11 +3962,10 @@
       <!-- ========== OBSERVABILITY ========== -->
       <section id="observability" class="observability-section">
         <div class="container">
-          <h2 class="reveal">When finance asks where your LLM budget went...</h2>
+          <h2 class="reveal">When the CFO asks why AI costs spiked...</h2>
           <p class="reveal delay-1">
-            Show them exactly which queries, which models, which users drove that OpenAI bill.
-            Not buried in JSON trace files or separate dashboards—<strong>it's all in SQL tables</strong>.
-            Query your costs the same way you query your data.
+            You can show them exactly which queries, which tokens, which users.
+            Not "somewhere in the AI pipeline." The actual query. The actual cost.
           </p>
 
           <div class="obs-grid">
@@ -4321,54 +3988,6 @@
               <div class="obs-highlight">Top contributor: user_input (439 tok, 36%)</div>
             </div>
           </div>
-
-          <!-- Observability Screenshots Carousel -->
-          <div class="screenshot-carousel reveal delay-2" id="obsCarousel">
-            <div class="carousel-track">
-              <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/cost-analytics.png" alt="Cost Analytics Dashboard"> -->
-                <div class="screenshot-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                  </svg>
-                  <span>cost-analytics.png</span>
-                  <span class="screenshot-size">Cost timeline & model distribution</span>
-                </div>
-              </div>
-              <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/context-inspector.png" alt="Context Inspector"> -->
-                <div class="screenshot-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                  </svg>
-                  <span>context-inspector.png</span>
-                  <span class="screenshot-size">Token-level cost breakdown</span>
-                </div>
-              </div>
-              <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/session-detail.png" alt="Session Detail View"> -->
-                <div class="screenshot-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                  </svg>
-                  <span>session-detail.png</span>
-                  <span class="screenshot-size">Full execution trace</span>
-                </div>
-              </div>
-            </div>
-            <div class="carousel-arrows">
-              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', -1)">&#8249;</button>
-              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', 1)">&#8250;</button>
-            </div>
-            <div class="carousel-nav">
-              <button class="carousel-dot active" onclick="goToSlide('obsCarousel', 0)"></button>
-              <button class="carousel-dot" onclick="goToSlide('obsCarousel', 1)"></button>
-              <button class="carousel-dot" onclick="goToSlide('obsCarousel', 2)"></button>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -4383,7 +4002,6 @@
           <div class="extend-demo">
             <div class="yaml-block reveal delay-2">
               <div class="code-header">
-                <span class="code-type-badge yaml">YAML</span>
                 <span class="code-title">cascades/sounds_like.yaml</span>
               </div>
               <div class="code-content">
@@ -4971,20 +4589,7 @@
 
         function showResult(result, meta) {
           resultTextEl.textContent = result;
-          // Parse meta like "0.8s · $0.003" into badges
-          const parts = meta.split(' · ');
-          let badgesHtml = '';
-          parts.forEach(part => {
-            if (part.startsWith('$')) {
-              badgesHtml += `<span class="terminal-meta-badge cost">${part}</span>`;
-            } else if (part.match(/^\d+\.?\d*s$/)) {
-              badgesHtml += `<span class="terminal-meta-badge time">${part}</span>`;
-            } else {
-              // Model name or other info
-              badgesHtml += `<span class="terminal-meta-badge time">${part}</span>`;
-            }
-          });
-          resultMetaEl.innerHTML = badgesHtml;
+          resultMetaEl.textContent = meta;
           resultEl.classList.add('visible');
         }
 
