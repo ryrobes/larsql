@@ -262,18 +262,20 @@ def _create_mcp_prompt_tools(
 
     for prompt in prompts:
         prompt_safe_name = prompt.name.replace("-", "_").replace("/", "_")
+        prompt_name = prompt.name
+        prompt_description = prompt.description
 
         # Build dynamic function for this prompt
-        def get_prompt_tool(**kwargs):
+        def get_prompt_tool(_prompt_name: str = prompt_name, **kwargs):
             client = get_mcp_client(server_config, on_progress=progress_logger)
-            return client.get_prompt(prompt.name, kwargs)
+            return client.get_prompt(_prompt_name, kwargs)
 
         # Set metadata
         tool_name = f"mcp_{server_safe_name}_prompt_{prompt_safe_name}"
         get_prompt_tool.__name__ = tool_name
-        get_prompt_tool.__doc__ = prompt.description or f"MCP prompt: {prompt.name} (server: {server_config.name})"
+        get_prompt_tool.__doc__ = prompt_description or f"MCP prompt: {prompt_name} (server: {server_config.name})"
         get_prompt_tool._mcp_server = server_config.name
-        get_prompt_tool._mcp_prompt = prompt.name
+        get_prompt_tool._mcp_prompt = prompt_name
         get_prompt_tool._tool_type = "mcp_prompt"
 
         # Build signature from prompt arguments
@@ -308,6 +310,8 @@ def discover_and_register_mcp_tools(server_configs: Optional[List[MCPServerConfi
     """
     if server_configs is None:
         config = get_config()
+        if not getattr(config, "mcp_enabled", True):
+            return
         server_configs = config.mcp_servers
 
     if not server_configs:

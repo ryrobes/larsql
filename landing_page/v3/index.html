@@ -4610,6 +4610,22 @@
                 </div>
               </div>
             </div>
+
+            <!-- Tools Row -->
+            <div class="integrations-row">
+              <div class="integrations-row-label">Tools</div>
+              <div class="integrations-row-items">
+                <div class="integration-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#1cf6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="6" cy="12" r="2"/>
+                    <circle cx="18" cy="6" r="2"/>
+                    <circle cx="18" cy="18" r="2"/>
+                    <path d="M8 12h8M16.5 7.5l-4 4M16.5 16.5l-4-4"/>
+                  </svg>
+                  <span>MCP (tool servers)</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <p class="integrations-note reveal delay-2">
@@ -5284,7 +5300,7 @@
             <div class="self-card">
               <div class="self-icon">&#x1F9ED;</div>
               <h4>Self-Orchestrating</h4>
-              <p>Agent picks tools based on context. No hardcoded tool lists.</p>
+              <p>Agent picks tools based on context&mdash;including MCP tool servers. No hardcoded tool lists.</p>
             </div>
             <div class="self-card">
               <div class="self-icon">&#x1F9EA;</div>
@@ -5882,8 +5898,8 @@
           <div class="traits-callout reveal delay-4">
             <h3>Tools are cascades too. Call any of them from SQL.</h3>
             <p>
-              Every RVBBIT tool—Python, JavaScript, Clojure, TTS, even HuggingFace Spaces—is
-              callable directly from SQL. Browse what's available, call what you need.
+              Every RVBBIT tool—Python, JavaScript, Clojure, TTS, HuggingFace Spaces, even MCP tool servers—is
+              callable directly from SQL. Tools are auto-discovered and indexed, so agents can find what they need without hardcoded lists.
             </p>
             <div class="traits-examples">
               <div class="trait-example">
@@ -5893,6 +5909,10 @@
               <div class="trait-example">
                 <div class="trait-example-label">Call HuggingFace Space</div>
                 <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::huggingface</span>(<br>&nbsp;&nbsp;space := <span class="trait-arg">'stabilityai/sdxl'</span>,<br>&nbsp;&nbsp;prompt := <span class="trait-arg">'data visualization rabbit'</span><br>);</code>
+              </div>
+              <div class="trait-example">
+                <div class="trait-example-label">MCP (Filesystem)</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::list_directory</span>(<br>&nbsp;&nbsp;path := <span class="trait-arg">'/tmp'</span><br>);</code>
               </div>
               <div class="trait-example">
                 <div class="trait-example-label">Text to Speech</div>
