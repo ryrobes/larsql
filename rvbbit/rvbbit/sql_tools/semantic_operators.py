@@ -385,6 +385,12 @@ def rewrite_semantic_operators(query: str) -> str:
         first_annotation = annotations[0][2]  # (line_num, end_pos, annotation)
         if first_annotation.prompt:
             annotation_prefix = first_annotation.prompt + " - "
+        # Inject candidates prefix if present (for cascade-level sampling)
+        if first_annotation.candidates:
+            import json
+            candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(first_annotation.candidates)}__"
+            annotation_prefix = candidates_prefix + annotation_prefix
+            print(f"[semantic_operators] 💉 Injecting candidates prefix for query-level rewrite: {candidates_prefix}")
 
     # Query-level rewrites (these transform the entire query structure)
     #
@@ -603,6 +609,12 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
         annotation_prefix = annotation.prompt + " - "
     elif annotation and annotation.model:
         annotation_prefix = f"Use {annotation.model} - "
+    # Inject candidates prefix if present (for cascade-level sampling)
+    if annotation and annotation.candidates:
+        import json
+        candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(annotation.candidates)}__"
+        annotation_prefix = candidates_prefix + annotation_prefix
+        print(f"[semantic_operators] 💉 Injecting candidates prefix for line-level rewrite: {candidates_prefix}")
 
     # Get threshold from annotation or use default
     default_threshold = 0.5

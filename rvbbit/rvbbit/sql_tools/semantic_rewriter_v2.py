@@ -77,6 +77,9 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
     pending_threshold: Optional[float] = None
     pending_candidates: Optional[Dict[str, Any]] = None  # Candidates config for cascade-level sampling
 
+    import logging
+    _log = logging.getLogger(__name__)
+
     while i < len(tokens):
         tok = tokens[i]
 
@@ -94,6 +97,8 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                         if pending_candidates is None:
                             pending_candidates = {}
                         pending_candidates.update(ann.candidates)
+                        _log.info(f"[semantic_rewriter_v2] Parsed candidates annotation: {ann.candidates}, accumulated: {pending_candidates}")
+                        print(f"[semantic_rewriter_v2] 🎯 Parsed candidates annotation: {ann.candidates}, accumulated: {pending_candidates}")
             out_tokens.append(tok)
             i += 1
             continue
@@ -162,6 +167,9 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                 candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(pending_candidates)}__"
                 rhs_text_injected = _inject_prefix_into_string_literal(rhs_text, candidates_prefix)
                 consumed_candidates = True
+                _log.info(f"[semantic_rewriter_v2] Injecting candidates prefix into '{rhs_text}' -> '{rhs_text_injected}'")
+                print(f"[semantic_rewriter_v2] 💉 Injecting candidates prefix: {candidates_prefix}")
+                print(f"[semantic_rewriter_v2] 💉 Result: {rhs_text_injected}")
 
             # Inject annotation prefix (model hints, etc.)
             if pending_annotation_prefix:

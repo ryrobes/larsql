@@ -324,6 +324,15 @@ async def execute_sql_function(
     """
     Execute a SQL function by running its backing cascade.
 
+    Supports cascade-level candidates via SQL comment hints:
+        -- @ candidates.factor: 3
+        -- @ candidates.evaluator: Pick the most accurate response
+        -- @ models: [claude-sonnet, gpt-4o, gemini-pro]
+        SELECT description MEANS 'is eco-friendly' FROM products
+
+    When candidates config is detected (embedded in args as __RVBBIT_CANDIDATES:...__ prefix),
+    the cascade is run multiple times and an evaluator picks the best result.
+
     Args:
         name: Function name
         args: Function arguments (mapped to cascade inputs)
@@ -336,9 +345,14 @@ async def execute_sql_function(
         ValueError: If function not found
         Exception: If cascade execution fails
     """
+    from .executor import _extract_candidates_from_inputs, _inject_candidates_into_cascade
+
     fn = get_sql_function(name)
     if not fn:
         raise ValueError(f"SQL function not found: {name}")
+
+    # Extract candidates config from args (embedded as special prefix in criterion strings)
+    cleaned_args, candidates_config = _extract_candidates_from_inputs(args)
 
     # Get caller_id from context (set by postgres_server for SQL queries)
     # Try ALL storage layers: contextvar → thread-local → global registry
@@ -360,17 +374,18 @@ async def execute_sql_function(
         log.debug(f"[sql_fn] get_caller_id() failed: {e}")
         caller_id = None
 
-    # Check cache first
-    found, cached = get_cached_result(name, args)
-    if found:
-        log.debug(f"[sql_fn] Cache hit for {name}")
-        # Track cache hit for SQL Trail
-        if caller_id:
-            try:
-                increment_cache_hit(caller_id)
-            except Exception:
-                pass
-        return cached
+    # Check cache first (skip if candidates - candidates bypass cache for fresh sampling)
+    if not candidates_config:
+        found, cached = get_cached_result(name, cleaned_args)
+        if found:
+            log.debug(f"[sql_fn] Cache hit for {name}")
+            # Track cache hit for SQL Trail
+            if caller_id:
+                try:
+                    increment_cache_hit(caller_id)
+                except Exception:
+                    pass
+            return cached
 
     # Track cache miss for SQL Trail
     if caller_id:
@@ -392,7 +407,7 @@ async def execute_sql_function(
                 cascade_id=name,
                 cascade_path=fn.cascade_path,
                 session_id=session_id,
-                inputs=args
+                inputs=cleaned_args
             )
         except Exception as e:
             log.debug(f"[sql_fn] Failed to register cascade execution: {e}")
@@ -400,15 +415,31 @@ async def execute_sql_function(
     # Import here to avoid circular imports
     from ..runner import RVBBITRunner
 
-    # Create runner with session_id AND caller_id for proper tracking
-    runner = RVBBITRunner(
-        fn.cascade_path,
-        session_id=session_id,
-        caller_id=caller_id  # Pass caller_id so Echo gets it and propagates to all logs!
-    )
+    # Determine what to run: original cascade or modified with candidates
+    if candidates_config:
+        # Inject candidates into cascade config (in-memory, not modifying file)
+        cascade_config = _inject_candidates_into_cascade(fn.cascade_path, candidates_config)
+        log.info(f"[sql_fn] Running {name} with candidates: factor={candidates_config.get('factor', 'N/A')}")
+        print(f"[sql_fn] 🚀 Running {name} WITH CANDIDATES: {candidates_config}")
+        print(f"[sql_fn] 🚀 Injected cascade config has candidates: {cascade_config.get('candidates', 'NONE')}")
 
-    # Execute cascade with args as input_data
-    result = runner.run(input_data=args)
+        # Create runner with modified config
+        runner = RVBBITRunner(
+            cascade_config,
+            session_id=session_id,
+            caller_id=caller_id
+        )
+    else:
+        # Create runner with session_id AND caller_id for proper tracking
+        print(f"[sql_fn] ▶️ Running {name} normally (no candidates)")
+        runner = RVBBITRunner(
+            fn.cascade_path,
+            session_id=session_id,
+            caller_id=caller_id  # Pass caller_id so Echo gets it and propagates to all logs!
+        )
+
+    # Execute cascade with cleaned args as input_data
+    result = runner.run(input_data=cleaned_args)
 
     # Extract result from cascade output using proper parsing
     from .executor import _extract_cascade_output
@@ -466,8 +497,9 @@ async def execute_sql_function(
             except json.JSONDecodeError:
                 pass
 
-    # Cache result
-    set_cached_result(name, args, output)
+    # Cache result (but not candidates runs - they're for fresh sampling)
+    if not candidates_config:
+        set_cached_result(name, cleaned_args, output)
 
     return output
 

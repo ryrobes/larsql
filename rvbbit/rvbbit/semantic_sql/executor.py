@@ -35,22 +35,32 @@ def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, A
     candidates_config = None
     cleaned_inputs = {}
 
+    log.info(f"[cascade_udf] 🔍 Checking inputs for candidates config: {inputs}")
+    print(f"[cascade_udf] 🔍 Checking inputs for candidates config: {list(inputs.keys())}")
+
     for key, value in inputs.items():
         if isinstance(value, str):
+            print(f"[cascade_udf] 🔍 Checking key '{key}': value starts with '{value[:80]}...' " if len(value) > 80 else f"[cascade_udf] 🔍 Checking key '{key}': value='{value}'")
             match = _CANDIDATES_PATTERN.match(value)
             if match:
                 try:
                     candidates_config = json.loads(match.group(1))
                     # Strip the prefix from the value
                     cleaned_inputs[key] = value[match.end():].lstrip()
-                    log.debug(f"[cascade_udf] Extracted candidates config: {candidates_config}")
+                    log.info(f"[cascade_udf] ✅ Extracted candidates config: {candidates_config}")
+                    print(f"[cascade_udf] ✅ Extracted candidates config: {candidates_config}")
+                    print(f"[cascade_udf] ✅ Cleaned value: '{cleaned_inputs[key]}'")
                 except json.JSONDecodeError as e:
-                    log.warning(f"[cascade_udf] Failed to parse candidates config: {e}")
+                    log.warning(f"[cascade_udf] ❌ Failed to parse candidates config: {e}")
+                    print(f"[cascade_udf] ❌ Failed to parse candidates config: {e}")
                     cleaned_inputs[key] = value
             else:
                 cleaned_inputs[key] = value
         else:
             cleaned_inputs[key] = value
+
+    if not candidates_config:
+        print(f"[cascade_udf] ⚪ No candidates config found in inputs")
 
     return cleaned_inputs, candidates_config
 
@@ -317,9 +327,12 @@ def execute_cascade_udf(
             # Inject candidates into cascade config (in-memory, not modifying file)
             cascade_config = _inject_candidates_into_cascade(fn.cascade_path, candidates_config)
             log.info(f"[cascade_udf] Running {cascade_id} with candidates: factor={candidates_config.get('factor', 'N/A')}")
+            print(f"[cascade_udf] 🚀 Running {cascade_id} WITH CANDIDATES: {candidates_config}")
+            print(f"[cascade_udf] 🚀 Injected cascade config has candidates: {cascade_config.get('candidates', 'NONE')}")
             result = _run_cascade_sync(cascade_config, session_id, cleaned_inputs, caller_id=caller_id)
         else:
             # Execute the cascade normally (pass caller_id so it propagates to unified_logs!)
+            print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no candidates)")
             result = _run_cascade_sync(fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id)
 
         # Extract the output using proper cascade result parsing

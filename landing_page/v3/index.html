@@ -382,9 +382,10 @@
 
       .terminal-body {
         padding: 20px 24px 24px;
-        min-height: 140px;
+        height: 180px; /* Fixed height to prevent layout shifts during example cycling */
         position: relative;
         text-align: left;
+        overflow: hidden;
       }
 
       .terminal-line {
@@ -532,70 +533,6 @@
         height: 12px;
       }
 
-      /* Sticky terminal mode */
-      .live-terminal.sticky-mode {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        width: 400px;
-        max-width: calc(100vw - 48px);
-        z-index: 1000;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-      }
-
-      .live-terminal.sticky-mode .terminal-body {
-        min-height: 90px;
-        padding: 14px 16px 16px;
-      }
-
-      .live-terminal.sticky-mode .terminal-line {
-        font-size: 0.72rem;
-      }
-
-      .live-terminal.sticky-mode .terminal-result {
-        font-size: 0.68rem;
-        margin-top: 10px;
-        padding-top: 10px;
-      }
-
-      .live-terminal.sticky-mode .terminal-meta-badge {
-        font-size: 0.6rem;
-        padding: 2px 6px;
-      }
-
-      .live-terminal.sticky-mode:hover {
-        box-shadow: 0 8px 40px rgba(28, 246, 255, 0.15);
-      }
-
-      .terminal-close {
-        position: absolute;
-        top: 10px;
-        right: 12px;
-        width: 20px;
-        height: 20px;
-        border: none;
-        background: transparent;
-        color: var(--muted);
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.2s;
-        font-size: 14px;
-        display: none;
-      }
-
-      .live-terminal.sticky-mode .terminal-close {
-        display: block;
-      }
-
-      .live-terminal.sticky-mode:hover .terminal-close {
-        opacity: 0.6;
-      }
-
-      .terminal-close:hover {
-        opacity: 1 !important;
-        color: var(--ink);
-      }
-
       .live-terminal.hidden {
         display: none;
       }
@@ -630,13 +567,6 @@
 
         .terminal-line {
           font-size: 0.75rem;
-        }
-
-        .live-terminal.sticky-mode {
-          bottom: 16px;
-          right: 16px;
-          left: 16px;
-          width: auto;
         }
       }
 
@@ -904,7 +834,9 @@
       /* ========== TOPICS MINDBLOWING ========== */
       .topics-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(255, 47, 168, 0.03), transparent);
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.04) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 47, 168, 0.12);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.12);
       }
 
       .topics-header {
@@ -1481,7 +1413,9 @@
       /* ========== SEMANTIC SQL DEMO ========== */
       .semantic-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(255, 47, 168, 0.02), transparent);
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 47, 168, 0.1);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.1);
       }
 
       .semantic-header {
@@ -2040,7 +1974,9 @@
       /* ========== OBSERVABILITY ========== */
       .observability-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(28, 246, 255, 0.03), transparent);
+        background: linear-gradient(135deg, rgba(0, 255, 209, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(0, 255, 209, 0.1);
+        border-bottom: 1px solid rgba(0, 255, 209, 0.1);
       }
 
       .observability-section h2 {
@@ -2237,6 +2173,9 @@
       /* ========== EXTENSIBILITY ========== */
       .extend-section {
         padding: 80px 0;
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 47, 168, 0.1);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.1);
       }
 
       .extend-section h2 {
@@ -2329,7 +2268,9 @@
       /* ========== THE RABBIT HOLE ========== */
       .rabbithole-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(255, 47, 168, 0.03), rgba(28, 246, 255, 0.02));
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.03) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 255, 209, 0.02) 100%);
+        border-top: 1px solid rgba(255, 47, 168, 0.1);
+        border-bottom: 1px solid rgba(0, 255, 209, 0.1);
       }
 
       .rabbithole-header {
@@ -2997,7 +2938,9 @@
       /* ========== CHAMPION MODE SECTION ========== */
       .champion-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.02), transparent);
+        background: linear-gradient(135deg, rgba(0, 255, 136, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(0, 255, 136, 0.1);
+        border-bottom: 1px solid rgba(0, 255, 136, 0.1);
       }
 
       .champion-grid {
@@ -3592,7 +3535,9 @@
       /* ========== PGWIRE SECTION ========== */
       .pgwire-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.02), transparent);
+        background: linear-gradient(135deg, rgba(0, 255, 136, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(0, 255, 136, 0.1);
+        border-bottom: 1px solid rgba(0, 255, 136, 0.1);
       }
 
       .pgwire-grid {
@@ -3835,7 +3780,9 @@
       /* ========== TRAINING SECTION ========== */
       .training-section {
         padding: 80px 0;
-        background: linear-gradient(180deg, transparent, rgba(255, 189, 46, 0.03), transparent);
+        background: linear-gradient(135deg, rgba(255, 189, 46, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 189, 46, 0.1);
+        border-bottom: 1px solid rgba(255, 189, 46, 0.1);
       }
 
       .training-grid {
@@ -4099,6 +4046,307 @@
           grid-template-columns: 1fr;
         }
       }
+
+      /* ========== ANALYZE SECTION ========== */
+      .analyze-section {
+        padding: 80px 0;
+        background: linear-gradient(135deg, rgba(255, 189, 46, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 189, 46, 0.1);
+        border-bottom: 1px solid rgba(255, 189, 46, 0.1);
+      }
+
+      .analyze-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 60px;
+        align-items: center;
+      }
+
+      .analyze-content h2 {
+        font-size: 2.2rem;
+        margin-bottom: 16px;
+      }
+
+      .analyze-content p {
+        font-size: 1.1rem;
+        color: var(--muted);
+        line-height: 1.7;
+        margin-bottom: 20px;
+      }
+
+      .analyze-how {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .analyze-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .analyze-step-num {
+        background: rgba(255, 189, 46, 0.15);
+        color: var(--orange);
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+
+      .analyze-code {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 189, 46, 0.2);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .analyze-code .code-header {
+        padding: 12px 20px;
+        background: rgba(255, 189, 46, 0.08);
+        border-bottom: 1px solid rgba(255, 189, 46, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .analyze-code .code-content {
+        padding: 24px;
+      }
+
+      .analyze-code pre {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.7;
+      }
+
+      .analyze-keyword {
+        color: var(--orange);
+        font-weight: 600;
+      }
+
+      .analyze-question {
+        color: var(--green);
+      }
+
+      .analyze-result {
+        margin-top: 16px;
+        padding: 16px 20px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        border-left: 3px solid var(--orange);
+      }
+
+      .analyze-result-label {
+        font-size: 0.75rem;
+        color: var(--orange);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+
+      .analyze-result-text {
+        font-size: 0.9rem;
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .analyze-custom {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px dashed rgba(255, 189, 46, 0.2);
+      }
+
+      .analyze-custom-label {
+        font-size: 0.7rem;
+        color: var(--cyan);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+      }
+
+      .analyze-custom pre {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: rgba(0, 255, 209, 0.03);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border-left: 2px solid var(--cyan);
+      }
+
+      .analyze-with {
+        color: var(--cyan);
+        font-weight: 600;
+      }
+
+      .analyze-cascade {
+        color: var(--pink);
+        font-weight: 600;
+      }
+
+      .analyze-custom-note {
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin-top: 10px;
+        margin-bottom: 0;
+        font-style: italic;
+      }
+
+      @media (max-width: 900px) {
+        .analyze-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+
+      /* ========== INLINE CANDIDATES ========== */
+      .inline-candidates {
+        margin-top: 40px;
+        padding-top: 40px;
+        border-top: 1px solid rgba(0, 255, 209, 0.1);
+      }
+
+      .inline-candidates-header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .inline-candidates-header h3 {
+        font-size: 1.5rem;
+        margin-bottom: 8px;
+      }
+
+      .inline-candidates-header p {
+        color: var(--muted);
+        font-size: 1rem;
+      }
+
+      .inline-candidates-examples {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+
+      .inline-example {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(0, 255, 209, 0.15);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .inline-example-header {
+        padding: 12px 16px;
+        background: rgba(0, 255, 209, 0.05);
+        border-bottom: 1px solid rgba(0, 255, 209, 0.1);
+        font-size: 0.85rem;
+        color: var(--cyan);
+        font-weight: 500;
+      }
+
+      .inline-example pre {
+        padding: 16px;
+        margin: 0;
+        font-size: 0.82rem;
+        line-height: 1.6;
+      }
+
+      .inline-comment {
+        color: var(--cyan);
+        opacity: 0.9;
+      }
+
+      .inline-models {
+        color: var(--magenta);
+      }
+
+      .inline-candidates-tagline {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 1.1rem;
+        color: var(--ink);
+      }
+
+      .inline-candidates-tagline strong {
+        color: var(--cyan);
+      }
+
+      @media (max-width: 800px) {
+        .inline-candidates-examples {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ========== TRAITS IN SQL ========== */
+      .traits-callout {
+        margin-top: 50px;
+        padding: 40px;
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.05) 0%, rgba(0, 0, 0, 0) 70%);
+        border: 1px solid rgba(255, 47, 168, 0.15);
+        border-radius: 16px;
+      }
+
+      .traits-callout h3 {
+        font-size: 1.4rem;
+        margin-bottom: 12px;
+        color: var(--ink);
+      }
+
+      .traits-callout > p {
+        color: var(--muted);
+        margin-bottom: 20px;
+        font-size: 1rem;
+      }
+
+      .traits-examples {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+
+      .trait-example {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 47, 168, 0.1);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .trait-example-label {
+        font-size: 0.75rem;
+        color: var(--magenta);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+      }
+
+      .trait-example code {
+        font-size: 0.8rem;
+        color: var(--ink);
+        display: block;
+        line-height: 1.5;
+      }
+
+      .trait-example .trait-fn {
+        color: var(--cyan);
+      }
+
+      .trait-example .trait-arg {
+        color: var(--green);
+      }
+
+      @media (max-width: 700px) {
+        .traits-examples {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
@@ -4117,6 +4365,7 @@
           <a href="#federated" class="toc-link">Data Stays Home</a>
           <a href="#pgwire" class="toc-link">Your SQL Client</a>
           <a href="#vector" class="toc-link">Vector Search</a>
+          <a href="#analyze" class="toc-link">ANALYZE</a>
         </div>
 
         <div class="toc-group" data-group="reliability">
@@ -4210,7 +4459,6 @@
                 <span class="terminal-type-badge">SQL</span>
                 <div class="terminal-title">live_queries</div>
               </div>
-              <button class="terminal-close" onclick="closeTerminal()" title="Close">&times;</button>
               <div class="terminal-paused-indicator">paused</div>
               <div class="terminal-body">
                 <div class="terminal-line">
@@ -4329,12 +4577,33 @@
               <div class="integrations-row-label">AI</div>
               <div class="integrations-row-items">
                 <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#6366F1"><circle cx="12" cy="12" r="10" fill="none" stroke="#6366F1" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="#6366F1" stroke-width="2"/></svg>
+                  <!-- OpenRouter logo -->
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="6" width="20" height="12" rx="2" stroke="#6366F1" stroke-width="2"/>
+                    <circle cx="7" cy="12" r="2" fill="#6366F1"/>
+                    <circle cx="17" cy="12" r="2" fill="#6366F1"/>
+                    <path d="M9 12h6" stroke="#6366F1" stroke-width="2"/>
+                  </svg>
                   <span>OpenRouter</span>
                 </div>
                 <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#FFD21E"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+                  <!-- HuggingFace logo -->
+                  <svg viewBox="0 0 24 24" fill="#FFD21E">
+                    <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
+                    <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
+                    <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
+                    <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                    <ellipse cx="6" cy="12" rx="1.5" ry="2" fill="#FFB6C1"/>
+                    <ellipse cx="18" cy="12" rx="1.5" ry="2" fill="#FFB6C1"/>
+                  </svg>
                   <span>HuggingFace</span>
+                </div>
+                <div class="integration-item">
+                  <!-- Ollama logo -->
+                  <svg viewBox="0 0 24 24" fill="#FFFFFF">
+                    <path d="M12 2C8.5 2 6 4.5 6 7c0 1.5.5 2.5 1 3.5-.5.5-1 1.5-1 2.5 0 2 1.5 3.5 3 4v1c0 1.5 1 3 3 3s3-1.5 3-3v-1c1.5-.5 3-2 3-4 0-1-.5-2-1-2.5.5-1 1-2 1-3.5 0-2.5-2.5-5-6-5zm-2 7.5c.5 0 1 .5 1 1s-.5 1-1 1-1-.5-1-1 .5-1 1-1zm4 0c.5 0 1 .5 1 1s-.5 1-1 1-1-.5-1-1 .5-1 1-1zm-2 5c1 0 2-.5 2.5-1 0 0-1 2-2.5 2s-2.5-2-2.5-2c.5.5 1.5 1 2.5 1z" fill="#FFFFFF" stroke="#888" stroke-width="0.5"/>
+                  </svg>
+                  <span>Ollama</span>
                 </div>
                 <div class="integration-item subtle">
                   <span class="ai-count">300+ models</span>
@@ -4564,7 +4833,7 @@
                       <span>Gemini</span>
                       <span>+300 more</span>
                     </div>
-                    <div class="target-note">OpenRouter · HuggingFace Spaces as tools</div>
+                    <div class="target-note">OpenRouter · HuggingFace · Ollama</div>
                   </div>
                 </div>
               </div>
@@ -4700,6 +4969,66 @@
         </div>
       </section>
 
+      <!-- ========== ANALYZE ========== -->
+      <section id="analyze" class="analyze-section">
+        <div class="container">
+          <div class="analyze-grid">
+            <div class="analyze-content reveal">
+              <h2>Ask questions, <span style="color: var(--orange)">not just queries.</span></h2>
+              <p>
+                You ran a query. Now you want to know <em>why</em>.
+                ANALYZE hands your results to an agent with SQL access, Python access,
+                and your full context—then writes its findings to a table you can query later.
+              </p>
+              <div class="analyze-how">
+                <div class="analyze-step">
+                  <span class="analyze-step-num">1</span>
+                  <span>Query runs in the background</span>
+                </div>
+                <div class="analyze-step">
+                  <span class="analyze-step-num">2</span>
+                  <span>Results + question go to an agent cascade</span>
+                </div>
+                <div class="analyze-step">
+                  <span class="analyze-step-num">3</span>
+                  <span>Agent investigates (can run more SQL, Python, etc.)</span>
+                </div>
+                <div class="analyze-step">
+                  <span class="analyze-step-num">4</span>
+                  <span>Analysis saved to <code style="background: rgba(255,189,46,0.15); padding: 2px 6px; border-radius: 4px;">analyze</code> table</span>
+                </div>
+              </div>
+            </div>
+            <div class="analyze-code reveal delay-1">
+              <div class="code-header">
+                <span class="code-type-badge sql">SQL</span>
+                <span class="code-title">Fire and forget</span>
+              </div>
+              <div class="code-content">
+<pre><span class="analyze-keyword">ANALYZE</span> <span class="analyze-question">'Why did churn spike in Q3?'</span>
+<span class="sql-keyword">SELECT</span> month, churn_rate, segment
+<span class="sql-keyword">FROM</span> metrics
+<span class="sql-keyword">WHERE</span> year = 2024;</pre>
+                <div class="analyze-result">
+                  <div class="analyze-result-label">Later, check the analysis</div>
+                  <div class="analyze-result-text">
+                    <code style="color: var(--ink);">SELECT * FROM analyze WHERE question LIKE '%churn%';</code>
+                  </div>
+                </div>
+                <div class="analyze-custom">
+                  <div class="analyze-custom-label">Bring your own agent</div>
+<pre><span class="analyze-keyword">ANALYZE</span> <span class="analyze-question">'Why did churn spike in Q3?'</span> <span class="analyze-with">WITH</span> <span class="analyze-cascade">CALLIOPE</span>
+<span class="sql-keyword">SELECT</span> month, churn_rate, segment <span class="sql-keyword">FROM</span> metrics;</pre>
+                  <p class="analyze-custom-note">
+                    Any cascade can be the analysis engine. Domain expert? Compliance bot? Your call.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ========== THE CANDIDATE PRIMITIVE ========== -->
       <section id="candidates" class="candidates-section">
         <div class="container">
@@ -4799,6 +5128,31 @@
   <span class="yaml-key">factor:</span> <span class="yaml-value">5</span>                              <span class="sql-comment"># Run 5 variations</span>
   <span class="yaml-key">evaluator_instructions:</span> <span class="yaml-value">"Pick the most accurate and complete summary"</span></pre>
             </div>
+          </div>
+
+          <!-- Inline Candidates -->
+          <div class="inline-candidates reveal delay-3">
+            <div class="inline-candidates-header">
+              <h3>For ad-hoc queries? <span style="color: var(--cyan)">A SQL comment.</span></h3>
+              <p>No config files. Just annotate your query.</p>
+            </div>
+            <div class="inline-candidates-examples">
+              <div class="inline-example">
+                <div class="inline-example-header">3 variations, best wins</div>
+<pre><span class="inline-comment">-- @ candidates.factor: 3</span>
+<span class="sql-keyword">SELECT</span> description <span class="sql-operator">MEANS</span> <span class="sql-string">'eco-friendly'</span>
+<span class="sql-keyword">FROM</span> products;</pre>
+              </div>
+              <div class="inline-example">
+                <div class="inline-example-header">Multi-model ensemble</div>
+<pre><span class="inline-comment">-- @ models: <span class="inline-models">[claude-sonnet, gpt-4o, gemini-pro]</span></span>
+<span class="sql-keyword">SELECT</span> review <span class="sql-operator">SUMMARIZE</span> <span class="sql-string">'key complaints'</span>
+<span class="sql-keyword">FROM</span> reviews;</pre>
+              </div>
+            </div>
+            <p class="inline-candidates-tagline">
+              Three frontier models. <strong>One SQL comment.</strong> Best answer wins.
+            </p>
           </div>
 
           <div class="candidates-modes reveal delay-4">
@@ -5523,6 +5877,33 @@
               </div>
             </div>
           </div>
+
+          <!-- Traits callout -->
+          <div class="traits-callout reveal delay-4">
+            <h3>Tools are cascades too. Call any of them from SQL.</h3>
+            <p>
+              Every RVBBIT tool—Python, JavaScript, Clojure, TTS, even HuggingFace Spaces—is
+              callable directly from SQL. Browse what's available, call what you need.
+            </p>
+            <div class="traits-examples">
+              <div class="trait-example">
+                <div class="trait-example-label">Run Python</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::python_data</span>(<br>&nbsp;&nbsp;code := <span class="trait-arg">'[x**2 for x in range(10)]'</span><br>);</code>
+              </div>
+              <div class="trait-example">
+                <div class="trait-example-label">Call HuggingFace Space</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::huggingface</span>(<br>&nbsp;&nbsp;space := <span class="trait-arg">'stabilityai/sdxl'</span>,<br>&nbsp;&nbsp;prompt := <span class="trait-arg">'data visualization rabbit'</span><br>);</code>
+              </div>
+              <div class="trait-example">
+                <div class="trait-example-label">Text to Speech</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::say</span>(<br>&nbsp;&nbsp;text := <span class="trait-arg">'Query complete. 47 anomalies found.'</span><br>);</code>
+              </div>
+              <div class="trait-example">
+                <div class="trait-example-label">Browse Available Tools</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait</span>(<span class="trait-arg">'list_traits'</span>, <span class="trait-arg">'{}'</span>);</code>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -6006,7 +6387,6 @@
 
         let currentIndex = 0;
         let isPaused = false;
-        let isSticky = false;
         let isClosed = false;
         let typingTimeout = null;
         let cycleTimeout = null;
@@ -6118,28 +6498,6 @@
           }, 7000);
         }
 
-        const wrapper = document.querySelector('.live-terminal-wrapper');
-
-        function handleScroll() {
-          if (isClosed) return;
-          if (!wrapper) return;
-
-          const rect = wrapper.getBoundingClientRect();
-          const shouldBeSticky = rect.bottom < -100;
-
-          if (shouldBeSticky && !isSticky) {
-            isSticky = true;
-            // Move terminal to body to escape transform containing block
-            document.body.appendChild(terminal);
-            terminal.classList.add('sticky-mode');
-          } else if (!shouldBeSticky && isSticky) {
-            isSticky = false;
-            terminal.classList.remove('sticky-mode');
-            // Move terminal back to wrapper
-            wrapper.appendChild(terminal);
-          }
-        }
-
         terminal.addEventListener('mouseenter', () => {
           isPaused = true;
         });
@@ -6155,14 +6513,24 @@
           if (cycleTimeout) clearTimeout(cycleTimeout);
         };
 
-        let scrollTicking = false;
-        window.addEventListener('scroll', () => {
-          if (!scrollTicking) {
-            requestAnimationFrame(() => {
-              handleScroll();
-              scrollTicking = false;
-            });
-            scrollTicking = true;
+        // Pause animation when tab is hidden to prevent queued transitions
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            // Tab is hidden - clear all pending timeouts
+            if (typingTimeout) clearTimeout(typingTimeout);
+            if (cycleTimeout) clearTimeout(cycleTimeout);
+            isPaused = true;
+          } else {
+            // Tab is visible again - resume from current state
+            isPaused = false;
+            if (!isClosed) {
+              // Small delay then show next example fresh
+              setTimeout(() => {
+                if (!isPaused && !isClosed) {
+                  showNextExample();
+                }
+              }, 500);
+            }
           }
         });
 

@@ -164,6 +164,7 @@ class LLMAnnotation:
     max_tokens: Optional[int] = None      # Token limit
     start_pos: int = 0                    # Start position in query
     end_pos: int = 0                      # End position in query
+    candidates: Optional[Dict[str, Any]] = None  # Cascade-level candidates config
 
 
 def _parse_annotations(query: str) -> List[Tuple[int, LLMAnnotation]]:
@@ -221,6 +222,33 @@ def _parse_annotations(query: str) -> List[Tuple[int, LLMAnnotation]]:
                 elif key == 'prompt':
                     # Explicit prompt key
                     prompt_lines.append(value)
+                elif key.startswith('candidates.'):
+                    # Candidates config for cascade-level sampling
+                    subkey = key[11:]  # Remove 'candidates.' prefix
+                    if current_annotation.candidates is None:
+                        current_annotation.candidates = {}
+                    if subkey in ('factor', 'max_parallel', 'reforge'):
+                        try:
+                            current_annotation.candidates[subkey] = int(value)
+                        except ValueError:
+                            current_annotation.candidates[subkey] = value
+                    elif subkey == 'mutate':
+                        current_annotation.candidates[subkey] = value.lower() in ('true', 'yes', '1')
+                    else:
+                        # evaluator, mode, evaluator_model, etc.
+                        current_annotation.candidates[subkey] = value
+                elif key == 'models':
+                    # Multi-model shorthand: models: [a, b, c]
+                    import json
+                    if current_annotation.candidates is None:
+                        current_annotation.candidates = {}
+                    try:
+                        models = json.loads(value)
+                    except (json.JSONDecodeError, ValueError):
+                        # Try comma-separated
+                        models = [m.strip() for m in value.strip('[]').split(',')]
+                    current_annotation.candidates['multi_model'] = models
+                    current_annotation.candidates['factor'] = len(models)
                 else:
                     # Unknown key, treat as prompt text
                     prompt_lines.append(content)
@@ -568,12 +596,34 @@ def _build_replacement(
 
     Model hints from annotations are prepended to prompts so bodybuilder's
     request mode can pick the appropriate model.
+
+    Candidates config from annotations is injected as a special prefix
+    to enable cascade-level sampling (tree-of-thought, multi-model, etc).
     """
+    import json
+
     # Helper to quote a string for SQL
     def sql_quote(s: str) -> str:
         # Escape single quotes by doubling them
         escaped = s.replace("'", "''")
         return f"'{escaped}'"
+
+    def build_prompt_with_candidates_and_model(prompt: str) -> str:
+        """
+        Prepend candidates prefix and model hint to prompt if annotation specifies them.
+
+        Format: __RVBBIT_CANDIDATES:{"factor":3}__Use model - prompt
+        """
+        result = prompt
+        # First add model hint (innermost)
+        if annotation and annotation.model:
+            result = f"Use {annotation.model} - {result}"
+        # Then add candidates prefix (outermost)
+        if annotation and annotation.candidates:
+            candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(annotation.candidates)}__"
+            result = f"{candidates_prefix}{result}"
+            print(f"[llm_agg_rewriter] 💉 Injecting candidates prefix: {candidates_prefix}")
+        return result
 
     def build_prompt_with_model_hint(prompt: str) -> str:
         """Prepend model hint to prompt if annotation specifies a model."""
@@ -592,11 +642,11 @@ def _build_replacement(
             # Prepend annotation to existing prompt
             existing = prompt.strip("'\"")
             combined = f"{annotation.prompt} {existing}"
-            prompt = sql_quote(build_prompt_with_model_hint(combined))
-        elif annotation and annotation.model:
-            # Just model hint, no prompt override
+            prompt = sql_quote(build_prompt_with_candidates_and_model(combined))
+        elif annotation and (annotation.model or annotation.candidates):
+            # Model hint or candidates config, no prompt override
             existing = prompt.strip("'\"")
-            prompt = sql_quote(build_prompt_with_model_hint(existing))
+            prompt = sql_quote(build_prompt_with_candidates_and_model(existing))
         return f"llm_agg_2({prompt}, LIST({col})::VARCHAR)"
 
     elif func_def.name == "LLM_SUMMARIZE":
@@ -604,10 +654,14 @@ def _build_replacement(
         # Determine prompt: explicit arg > annotation > none
         prompt_arg = args[1] if len(args) >= 2 else None
         if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(build_prompt_with_model_hint(annotation.prompt))
-        elif prompt_arg is None and annotation and annotation.model:
-            # Model hint but no custom prompt - use default with hint
-            prompt_arg = sql_quote(build_prompt_with_model_hint("summarize these items"))
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(annotation.prompt))
+        elif prompt_arg is None and annotation and (annotation.model or annotation.candidates):
+            # Model hint or candidates config, but no custom prompt - use default
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model("summarize these items"))
+        elif prompt_arg is not None and annotation and annotation.candidates:
+            # Explicit prompt arg but with candidates - inject prefix into existing prompt
+            existing = prompt_arg.strip("'\"")
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(existing))
 
         # Determine max_items: explicit arg > annotation > none
         max_items_arg = args[2] if len(args) >= 3 else None
@@ -616,6 +670,7 @@ def _build_replacement(
             max_items_arg = str(annotation.max_tokens)
 
         if prompt_arg is None:
+            # No annotation with candidates - just basic call
             return f"llm_summarize_1(LIST({col})::VARCHAR)"
         elif max_items_arg is None:
             return f"llm_summarize_2(LIST({col})::VARCHAR, {prompt_arg})"
@@ -628,10 +683,14 @@ def _build_replacement(
         # Prompt is optional 3rd arg
         prompt_arg = args[2] if len(args) >= 3 else None
         if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(build_prompt_with_model_hint(annotation.prompt))
-        elif prompt_arg is None and annotation and annotation.model:
-            # Model hint but no custom prompt - use default with hint
-            prompt_arg = sql_quote(build_prompt_with_model_hint("classify these items"))
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(annotation.prompt))
+        elif prompt_arg is None and annotation and (annotation.model or annotation.candidates):
+            # Model hint or candidates config, but no custom prompt - use default
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model("classify these items"))
+        elif prompt_arg is not None and annotation and annotation.candidates:
+            # Explicit prompt arg but with candidates - inject prefix into existing prompt
+            existing = prompt_arg.strip("'\"")
+            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(existing))
 
         if prompt_arg is None:
             return f"llm_classify_2(LIST({col})::VARCHAR, {categories})"
