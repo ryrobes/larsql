@@ -1,10 +1,58 @@
 import json
 from typing import Any, List, Dict, Optional
 import litellm
+import logging
 from .echo import Echo
 from .logs import log_message
 from .config import get_config
 from .reasoning import parse_model_with_reasoning, ReasoningConfig
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_llm_response_content(content: Any) -> Any:
+    """
+    Parse LLM response content - try TOON, then JSON, then return as-is.
+
+    Some LLMs may respond in TOON format if we sent TOON-encoded data in the request.
+    This function attempts to decode it gracefully.
+
+    Args:
+        content: Response content from LLM (usually string)
+
+    Returns:
+        Parsed Python object or original content
+    """
+    from .toon_utils import decode, TOON_AVAILABLE, _looks_like_toon
+
+    if not isinstance(content, str):
+        return content
+
+    content_str = content.strip()
+    if not content_str:
+        return content
+
+    # Try TOON first if available and looks like TOON
+    if TOON_AVAILABLE and _looks_like_toon(content_str):
+        try:
+            decoded, metrics = decode(content_str, fallback_to_json=False)
+            if metrics.get("decode_success"):
+                logger.debug(
+                    f"Successfully decoded TOON response: {metrics.get('decode_format')}"
+                )
+                return decoded
+        except Exception:
+            pass  # Fall through to JSON
+
+    # Try JSON
+    if content_str.startswith('{') or content_str.startswith('['):
+        try:
+            return json.loads(content_str)
+        except Exception:
+            pass
+
+    # Return as-is
+    return content
 
 class Agent:
     """
@@ -196,10 +244,15 @@ class Agent:
 
                 message = response.choices[0].message
 
+                # Extract and parse content (may be TOON format)
+                raw_content = message.content if message.content is not None else ""
+                parsed_content = _parse_llm_response_content(raw_content)
+
                 # Convert to dict
                 msg_dict = {
                     "role": message.role,
-                    "content": message.content if message.content is not None else "",
+                    "content": parsed_content if isinstance(parsed_content, str) else raw_content,
+                    "content_json": parsed_content if not isinstance(parsed_content, str) else None,
                     "id": response.id # Capture Request ID
                 }
                 if hasattr(message, "tool_calls") and message.tool_calls:
@@ -407,6 +460,23 @@ class Agent:
                 if provider == "ollama":
                     cost = 0.0  # Local models are free
 
+                # Extract TOON telemetry from context messages (if any)
+                toon_telemetry = {}
+                if context_messages:
+                    for msg in context_messages:
+                        if isinstance(msg, dict) and "metadata" in msg:
+                            msg_toon = msg.get("metadata", {}).get("toon_telemetry")
+                            if msg_toon:
+                                # Aggregate telemetry from multiple context messages
+                                if not toon_telemetry:
+                                    toon_telemetry = msg_toon.copy()
+                                else:
+                                    # Sum up sizes if multiple TOON-encoded messages
+                                    if msg_toon.get("data_size_json"):
+                                        toon_telemetry["data_size_json"] = toon_telemetry.get("data_size_json", 0) + msg_toon["data_size_json"]
+                                    if msg_toon.get("data_size_toon"):
+                                        toon_telemetry["data_size_toon"] = toon_telemetry.get("data_size_toon", 0) + msg_toon["data_size_toon"]
+
                 # Add metadata to response
                 msg_dict.update({
                     "full_request": full_request,
@@ -423,6 +493,8 @@ class Agent:
                     "reasoning_enabled": self.reasoning_config is not None,
                     "reasoning_effort": self.reasoning_config.effort if self.reasoning_config else None,
                     "reasoning_max_tokens": self.reasoning_config.max_tokens if self.reasoning_config else None,
+                    # TOON telemetry (if any)
+                    "toon_telemetry": toon_telemetry if toon_telemetry else None,
                 })
 
                 return msg_dict

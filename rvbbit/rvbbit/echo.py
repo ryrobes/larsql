@@ -158,6 +158,10 @@ class Echo:
             # Species hash (prompt DNA for evolution tracking)
             species_hash = meta.get("species_hash")
 
+            # Extract TOON telemetry from metadata OR from entry itself
+            # (agent responses have it in entry.toon_telemetry, context messages have it in metadata)
+            toon_telemetry = entry.get("toon_telemetry") or meta.get("toon_telemetry", {})
+
             # Generate mermaid diagram content (includes the newly added entry)
             # CRITICAL: Maintain continuity - never log NULL mermaid if we have a previous good one
             # The mermaid chart is monotonically growing, so previous state is always a valid subset
@@ -208,6 +212,11 @@ class Echo:
                 is_callout=is_callout,  # Pass callout info
                 callout_name=callout_name,
                 species_hash=species_hash,  # Pass species hash for prompt evolution tracking
+                data_format=toon_telemetry.get("data_format"),
+                data_size_json=toon_telemetry.get("data_size_json"),
+                data_size_toon=toon_telemetry.get("data_size_toon"),
+                data_token_savings_pct=toon_telemetry.get("data_token_savings_pct"),
+                toon_encoding_ms=toon_telemetry.get("toon_encoding_ms"),
             )
 
             # Queue context card generation for auto-context system

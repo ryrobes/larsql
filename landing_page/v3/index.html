@@ -32,6 +32,22 @@
         --radius-sm: 12px;
       }
 
+          @font-face {
+      font-display: swap;
+      font-family: 'Outrun future';
+      src: url('Outrun-future.otf') format('opentype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    
+        @font-face {
+      font-display: swap;
+      font-family: 'Outrun future';
+      src: url('Outrun-future-Bold.otf') format('opentype');
+      font-weight: bold;
+      font-style: bold;
+    }
+
       * {
         box-sizing: border-box;
       }
@@ -44,9 +60,9 @@
 	        font-family: "Quicksand", "Space Grotesk", "Segoe UI", sans-serif;
 	      }
 
-	      pre {
-	        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-	      }
+		      pre {
+		        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+		      }
 
 	      body {
 	        min-height: 100vh;
@@ -180,13 +196,13 @@
         padding: 80px 0 40px;
       }
 
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 48px;
-        align-items: center;
-        margin-bottom: 48px;
-      }
+	      .hero-grid {
+	        display: grid;
+	        grid-template-columns: 1fr 1fr;
+	        gap: 48px;
+	        align-items: start;
+	        margin-bottom: 32px;
+	      }
 
       .hero-content {
         text-align: left;
@@ -249,18 +265,20 @@
       }
 
       /* Hero Screenshot/Video */
-      .hero-visual {
-        position: relative;
-      }
+	      .hero-visual {
+	        position: relative;
+	        display: flex;
+	        justify-content: flex-end;
+	      }
 
-      .hero-screenshot {
-        width: 100%;
-        max-width: 550px;
-        aspect-ratio: 550 / 400;
-        background: #0a0d14;
-        border-radius: 8px;
-        overflow: hidden;
-        display: flex;
+	      .hero-screenshot {
+	        width: 100%;
+	        max-width: 100%;
+	        aspect-ratio: 550 / 400;
+	        background: #0a0d14;
+	        border-radius: 8px;
+	        overflow: hidden;
+	        display: flex;
         align-items: center;
         justify-content: center;
         position: relative;
@@ -337,14 +355,14 @@
         justify-content: center;
       }
 
-      .live-terminal {
-        width: 100%;
-        max-width: 680px;
-        background: #0a0d14;
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.2);
-        border-left: 3px solid var(--cyan);
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+	      .live-terminal {
+	        width: 100%;
+	        max-width: 980px;
+	        background: #0a0d14;
+	        border-radius: 8px;
+	        border: 1px solid rgba(28, 246, 255, 0.2);
+	        border-left: 3px solid var(--cyan);
+	        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
         overflow: hidden;
         transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         position: relative;
@@ -578,15 +596,104 @@
       }
 
       /* ========== INTEGRATIONS BAR ========== */
-      .integrations-bar {
-        padding: 50px 0 70px;
-        text-align: center;
-      }
+	      .integrations-bar {
+	        padding: 50px 0 70px;
+	        text-align: center;
+	      }
 
-      .integrations-label {
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
+	      .integrations-layout {
+	        display: grid;
+	        grid-template-columns: 1fr;
+	        gap: 24px;
+	      }
+
+	      .integrations-card {
+	        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
+	        border-radius: var(--radius-lg);
+	        border: 1px solid rgba(28, 246, 255, 0.12);
+	        padding: 28px 24px;
+	      }
+
+	      .integrations-card .integrations-label {
+	        margin-bottom: 20px;
+	      }
+
+	      .integrations-card .integrations-note {
+	        margin-bottom: 0;
+	      }
+
+	      .integrations-panel {
+	        background: radial-gradient(120% 120% at 40% 0%, rgba(28, 246, 255, 0.16), rgba(11, 15, 26, 0.95) 65%);
+	        border-radius: var(--radius-lg);
+	        border: 1px solid rgba(28, 246, 255, 0.18);
+	        padding: 28px 24px;
+	        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+	      }
+
+	      .integrations-panel-kicker {
+	        display: inline-flex;
+	        align-items: center;
+	        gap: 8px;
+	        padding: 6px 12px;
+	        border-radius: 999px;
+	        border: 1px solid rgba(28, 246, 255, 0.25);
+	        background: rgba(28, 246, 255, 0.1);
+	        color: var(--cyan);
+	        font-family: "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.65rem;
+	        font-weight: 500;
+	        letter-spacing: 0.12em;
+	        text-transform: uppercase;
+	        margin-bottom: 16px;
+	      }
+
+	      .integrations-panel h3 {
+	        margin: 0 0 12px;
+	        font-size: 1.4rem;
+	        line-height: 1.2;
+	      }
+
+	      .integrations-panel p {
+	        margin: 0 0 18px;
+	        color: var(--muted);
+	        line-height: 1.6;
+	      }
+
+	      .integrations-panel-actions {
+	        display: flex;
+	        gap: 12px;
+	        flex-wrap: wrap;
+	        justify-content: center;
+	      }
+
+	      .integrations-panel-actions .btn {
+	        padding: 10px 14px;
+	        font-size: 0.85rem;
+	      }
+
+	      @media (min-width: 1050px) {
+	        .integrations-layout {
+	          grid-template-columns: minmax(0, 1fr) 380px;
+	          align-items: start;
+	          gap: 36px;
+	        }
+
+	        .integrations-card,
+	        .integrations-panel {
+	          text-align: left;
+	        }
+
+	        .integrations-row,
+	        .integrations-row-items,
+	        .integrations-panel-actions {
+	          justify-content: flex-start;
+	        }
+	      }
+
+	      .integrations-label {
+	        font-size: 0.75rem;
+	        text-transform: uppercase;
+	        letter-spacing: 0.15em;
         color: var(--muted);
         opacity: 0.7;
         margin-bottom: 28px;
@@ -795,13 +902,13 @@
         padding: 24px;
       }
 
-      .code-card pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.8;
-        color: #cde7ff;
-      }
+	      .code-card pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.8;
+	        color: #cde7ff;
+	      }
 
       .sql-keyword { color: var(--magenta); }
       .sql-function { color: var(--cyan); }
@@ -891,14 +998,14 @@
         padding: 24px;
       }
 
-      .topics-query pre,
-      .topics-result pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.8;
-        color: #cde7ff;
-      }
+	      .topics-query pre,
+	      .topics-result pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.8;
+	        color: #cde7ff;
+	      }
 
       .topics-arrow {
         display: flex;
@@ -1520,13 +1627,13 @@
         border-right: 1px solid rgba(28, 246, 255, 0.1);
       }
 
-      .semantic-demo pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.9rem;
-        line-height: 1.7;
-        color: #cde7ff;
-      }
+	      .semantic-demo pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.9rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	      }
 
       /* Semantic operator hover hints */
       .semantic-hint {
@@ -2223,13 +2330,13 @@
         padding: 24px;
       }
 
-      .yaml-block pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.7;
-        color: #cde7ff;
-      }
+	      .yaml-block pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	      }
 
       .yaml-key { color: var(--cyan); }
       .yaml-value { color: var(--green); }
@@ -2314,13 +2421,13 @@
         padding: 20px 24px;
       }
 
-      .rabbithole-surface pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.9rem;
-        line-height: 1.6;
-        color: #cde7ff;
-      }
+	      .rabbithole-surface pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.9rem;
+	        line-height: 1.6;
+	        color: #cde7ff;
+	      }
 
       .rabbithole-result {
         display: flex;
@@ -2875,13 +2982,13 @@
         padding: 20px 24px;
       }
 
-      .candidates-yaml pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.7;
-        color: #cde7ff;
-      }
+	      .candidates-yaml pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	      }
 
       .candidates-modes {
         display: grid;
@@ -3298,6 +3405,9 @@
       .toc-brand {
         display: flex;
         align-items: center;
+        font-family: "Outrun future";
+        height: 55px;
+        font-size: 28px;
         gap: 10px;
         padding: 0 0 20px 0;
         margin-bottom: 20px;
@@ -3305,16 +3415,17 @@
       }
 
       .toc-brand img {
-        width: 32px;
-        height: 32px;
+        width: 45px;
+        height: 45px;
         filter: drop-shadow(0 0 8px rgba(28, 246, 255, 0.4));
       }
 
       .toc-brand span {
-        font-size: 0.85rem;
+        /* font-size: 0.85rem;
         letter-spacing: 0.25em;
         text-transform: uppercase;
-        font-weight: 600;
+        font-weight: 600; */
+        font-family: "Outrun future";
         color: #d9f7ff;
       }
 
@@ -3608,13 +3719,13 @@
         padding: 20px 24px;
       }
 
-      .pgwire-terminal pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.8;
-        color: #cde7ff;
-      }
+	      .pgwire-terminal pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.8;
+	        color: #cde7ff;
+	      }
 
       .pgwire-note {
         margin-top: 20px;
@@ -3700,13 +3811,13 @@
         padding: 20px;
       }
 
-      .vector-step pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.7;
-        color: #cde7ff;
-      }
+	      .vector-step pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	      }
 
       .vector-step-note {
         margin-top: 12px;
@@ -3736,13 +3847,13 @@
         font-size: 0.95rem;
       }
 
-      .vector-hybrid pre {
-        margin: 0 0 20px;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.85rem;
-        line-height: 1.7;
-        color: #cde7ff;
-        background: rgba(0, 0, 0, 0.3);
+	      .vector-hybrid pre {
+	        margin: 0 0 20px;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.85rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	        background: rgba(0, 0, 0, 0.3);
         padding: 20px;
         border-radius: 8px;
         overflow-x: auto;
@@ -3956,14 +4067,14 @@
         overflow: hidden;
       }
 
-      .cascade-reveal-yaml pre {
-        margin: 0;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.8rem;
-        line-height: 1.7;
-        color: #cde7ff;
-        padding: 20px;
-      }
+	      .cascade-reveal-yaml pre {
+	        margin: 0;
+	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+	        font-size: 0.8rem;
+	        line-height: 1.7;
+	        color: #cde7ff;
+	        padding: 20px;
+	      }
 
       .cascade-reveal-points {
         display: flex;
@@ -4361,7 +4472,7 @@
       <!-- ========== STICKY SIDEBAR TOC ========== -->
       <nav class="toc-sidebar">
         <div class="toc-brand">
-          <img src="../v2/codex-clipboard-8i032e.png" alt="RVBBIT logo">
+          <img src="rvbbit-logo-square.png" alt="RVBBIT logo">
           <span>RVBBIT</span>
         </div>
 
@@ -4409,7 +4520,7 @@
         <header>
           <div class="container nav">
             <div class="brand">
-              <img src="../v2/codex-clipboard-8i032e.png" alt="RVBBIT logo">
+              <img src="rvbbit-logo-square.png" alt="RVBBIT logo">
               <span>RVBBIT</span>
             </div>
             <div class="nav-actions">
@@ -4484,16 +4595,17 @@
         </div>
       </section>
 
-      <!-- ========== INTEGRATIONS BAR ========== -->
-      <section class="integrations-bar">
-        <div class="container">
-          <div class="integrations-label reveal">Works with your existing databases, SQL clients &amp; AI providers</div>
+	      <!-- ========== INTEGRATIONS BAR ========== -->
+	      <section class="integrations-bar">
+	        <div class="container integrations-layout">
+	          <div class="integrations-card integrations-main">
+	            <div class="integrations-label reveal">Works with your existing databases, SQL clients &amp; AI providers</div>
 
-          <div class="integrations-grid reveal delay-1">
-            <!-- Databases Row -->
-            <div class="integrations-row">
-              <div class="integrations-row-label">Databases</div>
-              <div class="integrations-row-items">
+	            <div class="integrations-grid reveal delay-1">
+	            <!-- Databases Row -->
+	            <div class="integrations-row">
+	              <div class="integrations-row-label">Databases</div>
+	              <div class="integrations-row-items">
                 <div class="integration-item">
                   <svg viewBox="0 0 24 24" fill="#336791"><path d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698z"/></svg>
                   <span>PostgreSQL</span>
@@ -4631,15 +4743,26 @@
                   </svg>
                   <span>MCP (tool servers)</span>
                 </div>
-              </div>
-            </div>
-          </div>
+	              </div>
+	            </div>
+	          </div>
 
-          <p class="integrations-note reveal delay-2">
-            Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.
-          </p>
-        </div>
-      </section>
+	            <p class="integrations-note reveal delay-2">
+	              Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.
+	            </p>
+	          </div>
+
+	          <aside class="integrations-panel reveal delay-2">
+	            <div class="integrations-panel-kicker">Drop-in</div>
+	            <h3>Keep your workflow.</h3>
+	            <p>Point your SQL client at RVBBIT, keep your data where it already lives, and start adding AI operators.</p>
+	            <div class="integrations-panel-actions">
+	              <a class="btn secondary" href="#federated">Federated engine</a>
+	              <a class="btn secondary" href="#pgwire">PGWire clients</a>
+	            </div>
+	          </aside>
+	        </div>
+	      </section>
 
       <!-- ========== SIMPLEST EXAMPLE ========== -->
       <section id="how-it-works" class="simplest-section">

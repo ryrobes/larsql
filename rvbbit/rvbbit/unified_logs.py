@@ -353,7 +353,16 @@ class UnifiedLogger:
         metadata: Dict = None,
 
         # Content type override (optional - normally auto-classified)
-        content_type: str = None
+        content_type: str = None,
+
+        # TOON telemetry (NEW - for tracking token savings)
+        data_format: str = None,
+        data_size_json: int = None,
+        data_size_toon: int = None,
+        data_token_savings_pct: float = None,
+        toon_encoding_ms: float = None,
+        toon_decode_attempted: bool = None,
+        toon_decode_success: bool = None,
     ):
         """
         Log a single message/event to ClickHouse.
@@ -520,7 +529,16 @@ class UnifiedLogger:
             "metadata_json": safe_json(metadata),
 
             # Content classification (for filtering and rendering)
-            "content_type": content_type
+            "content_type": content_type,
+
+            # TOON telemetry (NEW)
+            "data_format": data_format or "",
+            "data_size_json": data_size_json,
+            "data_size_toon": data_size_toon,
+            "data_token_savings_pct": data_token_savings_pct,
+            "toon_encoding_ms": toon_encoding_ms,
+            "toon_decode_attempted": toon_decode_attempted,
+            "toon_decode_success": toon_decode_success
         }
 
         # INSERT immediately to ClickHouse (no buffering for snappy UI)
@@ -667,7 +685,14 @@ def log_unified(
     is_callout: bool = False,
     callout_name: str = None,
     metadata: Dict = None,
-    content_type: str = None
+    content_type: str = None,
+    data_format: str = None,
+    data_size_json: int = None,
+    data_size_toon: int = None,
+    data_token_savings_pct: float = None,
+    toon_encoding_ms: float = None,
+    toon_decode_attempted: bool = None,
+    toon_decode_success: bool = None,
 ):
     """
     Global function to log unified mega-table entries.
@@ -767,7 +792,14 @@ def log_unified(
         is_callout=is_callout,
         callout_name=callout_name,
         metadata=metadata,
-        content_type=content_type
+        content_type=content_type,
+        data_format=data_format,
+        data_size_json=data_size_json,
+        data_size_toon=data_size_toon,
+        data_token_savings_pct=data_token_savings_pct,
+        toon_encoding_ms=toon_encoding_ms,
+        toon_decode_attempted=toon_decode_attempted,
+        toon_decode_success=toon_decode_success,
     )
 
 

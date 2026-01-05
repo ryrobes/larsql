@@ -21,6 +21,24 @@
   --radius-sm: 12px;
 }
 
+    @font-face {
+      font-display: swap;
+      font-family: 'Outrun future';
+      src: url('Outrun-future.otf') format('opentype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    
+        @font-face {
+      font-display: swap;
+      font-family: 'Outrun future';
+      src: url('Outrun-future-Bold.otf') format('opentype');
+      font-weight: bold;
+      font-style: bold;
+    }
+
+    @import url('https://fonts.googleapis.com/css2?family=Cascadia+Code:ital,wght@0,200..700;1,200..700&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Quicksand:wght@300..700&display=swap');
+
 * {
   box-sizing: border-box;
 }
@@ -30,7 +48,7 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  font-family: "Quicksand", "Segoe UI", sans-serif;
 }
 
 body {
@@ -69,10 +87,17 @@ a:hover {
 }
 
 .container {
-  width: min(1100px, 92vw);
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 24px;
   position: relative;
   z-index: 1;
+}
+
+.container.centered {
+  width: min(1100px, 92vw);
+  margin: 0 auto;
 }
 
 /* Header & Navigation */
@@ -82,6 +107,7 @@ header {
   background: rgba(5, 7, 12, 0.8);
   backdrop-filter: blur(10px);
   position: sticky;
+  height: 80px;
   top: 0;
   z-index: 100;
 }
@@ -96,6 +122,8 @@ header {
 .brand {
   display: flex;
   align-items: center;
+  font-size: 28px;
+  font-family: "Outrun future";
   gap: 12px;
 }
 
@@ -107,10 +135,11 @@ header {
 }
 
 .brand span {
-  font-size: 0.95rem;
+  /* font-size: 0.95rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  font-weight: 600;
+  font-weight: 600; */
+  margin-top: -20px;
   color: #d9f7ff;
 }
 
@@ -133,17 +162,24 @@ header {
 
 /* Documentation Layout */
 .docs-layout {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 48px;
-  padding: 40px 0 80px;
+  display: flex;
+  gap: 0;
+  padding: 0;
   align-items: start;
+  min-height: calc(100vh - 80px);
 }
 
 /* Sidebar */
 .sidebar {
   position: sticky;
-  top: 100px;
+  top: 80px;
+  width: 280px;
+  min-width: 280px;
+  height: calc(100vh - 80px);
+  overflow-y: auto;
+  background: rgba(11, 15, 26, 0.4);
+  border-right: 1px solid rgba(28, 246, 255, 0.15);
+  padding: 32px 24px;
 }
 
 .sidebar-section {
@@ -193,7 +229,10 @@ header {
 
 /* Main Content */
 .docs-content {
-  max-width: 800px;
+  flex: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 48px 80px 48px;
 }
 
 .docs-content h1 {
@@ -434,21 +473,41 @@ tr:hover {
 }
 
 /* Responsive */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 240px;
+    min-width: 240px;
+    padding: 24px 16px;
+  }
+
+  .docs-content {
+    padding: 32px 32px 60px 32px;
+  }
+}
+
+@media (max-width: 768px) {
   .docs-layout {
-    grid-template-columns: 1fr;
-    gap: 32px;
+    flex-direction: column;
   }
 
   .sidebar {
     position: static;
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+    border-right: none;
     border-bottom: 1px solid rgba(28, 246, 255, 0.2);
-    padding-bottom: 24px;
+    padding: 20px;
   }
 
   .sidebar-section {
     display: inline-block;
     margin-right: 24px;
+    margin-bottom: 16px;
+  }
+
+  .docs-content {
+    padding: 24px 20px 60px 20px;
   }
 }
 

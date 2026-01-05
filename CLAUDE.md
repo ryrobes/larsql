@@ -484,6 +484,90 @@ def sentiment_with_threshold(pipeline, text: str, threshold: float = 0.8) -> str
 
 ### Key Features
 
+#### TOON Format Integration (Token Efficiency)
+
+RVBBIT uses **TOON (Token-Oriented Object Notation)** as the preferred transport format for SQL data and large datasets sent to LLMs, achieving **45-60% token savings** compared to JSON.
+
+**What is TOON?**
+TOON combines YAML-style indentation with CSV-style tabular arrays for token-efficient data encoding:
+
+```yaml
+# JSON: 184 characters
+[{"id": 1, "name": "Alice", "score": 95.5}, ...]
+
+# TOON: 116 characters (37% savings)
+[3]{id,name,score,status}:
+  1,Alice,95.5,active
+  2,Bob,87.2,active
+  3,Carol,92,inactive
+```
+
+**Automatic TOON Encoding:**
+- **SQL results**: `format="auto"` (default) uses TOON for >5 rows
+- **Context injection**: Auto-detects and formats tabular data
+- **Aggregate operators**: Auto-TOON for `summarize()`, `themes()`, etc.
+- **Smart fallback**: Uses JSON for non-uniform or small datasets
+
+**Jinja2 Filters:**
+```yaml
+cells:
+  - name: analyze_data
+    instructions: |
+      Analyze this data:
+      {{ outputs.load_data | totoon }}  # Explicit TOON
+      {{ outputs.load_data | tojson }}  # Explicit JSON
+      {{ outputs.load_data }}           # Auto-format
+```
+
+**Configuration:**
+```bash
+export RVBBIT_DATA_FORMAT=auto          # auto, toon, json (default: auto)
+export RVBBIT_TOON_MIN_ROWS=5           # Minimum rows for TOON (default: 5)
+```
+
+**Cell-Level Override:**
+```yaml
+- name: load_data
+  tool: sql_data
+  inputs:
+    query: "SELECT * FROM customers"
+    format: toon  # Force TOON encoding
+```
+
+**Telemetry & Analytics:**
+TOON usage and savings are tracked in ClickHouse `unified_logs` table:
+```sql
+-- View TOON savings
+SELECT
+    data_format,
+    COUNT(*) as operations,
+    AVG(data_token_savings_pct) as avg_savings_pct,
+    SUM(data_size_json - data_size_toon) as total_chars_saved
+FROM rvbbit.unified_logs
+WHERE data_format = 'toon'
+GROUP BY data_format;
+
+-- Check decoder success rate
+SELECT
+    COUNT(*) as decode_attempts,
+    COUNTIf(toon_decode_success) as successful,
+    (COUNTIf(toon_decode_success) * 100.0 / COUNT(*)) as success_rate
+FROM rvbbit.unified_logs
+WHERE toon_decode_attempted;
+```
+
+**When TOON Provides Benefits:**
+- ✅ Uniform arrays of objects (SQL results)
+- ✅ Wide tables (many columns)
+- ✅ Large datasets (>10 rows)
+- ❌ Simple string arrays (minimal savings)
+- ❌ Deeply nested non-uniform objects
+- ❌ Small datasets (<5 rows)
+
+**See:** `examples/toon_demo.yaml` for a complete demonstration.
+
+---
+
 #### Auto-Fix (Self-Healing Cells)
 When deterministic cells fail, use LLM to debug and retry:
 ```yaml

@@ -26,6 +26,29 @@ def _to_json(value):
         return str(value)
 
 
+def _to_toon(value):
+    """Jinja filter to convert Python object to TOON string."""
+    from .toon_utils import encode, TOON_AVAILABLE
+
+    if value is None:
+        return 'null'
+
+    if not TOON_AVAILABLE:
+        # Fall back to JSON if TOON not installed
+        return _to_json(value)
+
+    try:
+        # Handle sql_data output structure
+        if isinstance(value, dict) and "rows" in value:
+            toon_str, _ = encode(value["rows"])
+            return toon_str
+
+        toon_str, _ = encode(value)
+        return toon_str
+    except Exception:
+        return _to_json(value)  # Fallback to JSON
+
+
 class PromptEngine:
     def __init__(self, template_dirs: list[str] = None):
         # Use CWD if not specified, plus standard prompt locations
@@ -46,10 +69,12 @@ class PromptEngine:
 
         self.env = Environment(loader=FileSystemLoader(dirs))
 
-        # Add custom filters for JSON handling
+        # Add custom filters for JSON and TOON handling
         self.env.filters['from_json'] = _from_json
         self.env.filters['to_json'] = _to_json
         self.env.filters['tojson'] = _to_json  # Alias for convenience
+        self.env.filters['to_toon'] = _to_toon  # TOON format encoding
+        self.env.filters['totoon'] = _to_toon   # Alias for convenience
         
     def render(self, template_str_or_path: str, context: Dict[str, Any]) -> str:
         """

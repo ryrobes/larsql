@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 from contextvars import ContextVar
 import logging
 import litellm
@@ -10,6 +10,30 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.spinner import Spinner
 import threading
+
+
+def _extract_toon_telemetry(response_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract TOON telemetry from agent response dict.
+
+    Args:
+        response_dict: Response from agent.run()
+
+    Returns:
+        Dict with TOON telemetry fields (empty if not present)
+    """
+    toon_telemetry = response_dict.get("toon_telemetry") or {}
+    if not isinstance(toon_telemetry, dict):
+        toon_telemetry = {}
+
+    return {
+        "data_format": toon_telemetry.get("data_format"),
+        "data_size_json": toon_telemetry.get("data_size_json"),
+        "data_size_toon": toon_telemetry.get("data_size_toon"),
+        "data_token_savings_pct": toon_telemetry.get("data_token_savings_pct"),
+        "toon_encoding_ms": toon_telemetry.get("toon_encoding_ms"),
+    }
+
 
 # Context variable for current hooks - allows tools to call hook methods
 _current_hooks: ContextVar[Optional['RVBBITHooks']] = ContextVar('current_hooks', default=None)
@@ -1530,6 +1554,72 @@ class RVBBITRunner:
                     return str(output)
         return None
 
+    def _format_output_for_context(self, output: Any, format_hint: str = "auto") -> Tuple[str, Dict[str, Any]]:
+        """
+        Format cell output for LLM context injection with TOON support.
+
+        Automatically detects sql_data structures and applies optimal formatting.
+
+        Args:
+            output: Raw output from prior cell
+            format_hint: "auto", "toon", "json", "repr"
+
+        Returns:
+            Tuple of (formatted_string, telemetry_dict)
+        """
+        from .toon_utils import format_for_llm_context, TOON_AVAILABLE
+        from .config import get_config
+
+        config = get_config()
+        if format_hint == "auto":
+            format_hint = getattr(config, 'context_format', 'auto')
+
+        # Handle sql_data output structure
+        if isinstance(output, dict):
+            # Check if it's already TOON-formatted
+            if output.get("format") == "toon" and "rows_encoded" in output:
+                telemetry = output.get("telemetry", {})
+                return output["rows_encoded"], telemetry
+
+            # Check if it's sql_data structure
+            if "rows" in output and "columns" in output:
+                rows = output["rows"]
+                # Format the rows (might already be string or list)
+                if isinstance(rows, str):
+                    # Already formatted, extract telemetry if available
+                    telemetry = output.get("telemetry", {})
+                    return rows, telemetry
+                else:
+                    # Format as TOON/JSON
+                    if TOON_AVAILABLE:
+                        formatted, metrics = format_for_llm_context(rows, format=format_hint)
+                        telemetry = {
+                            "data_format": metrics.get("format"),
+                            "data_size_json": metrics.get("size_json"),
+                            "data_size_toon": metrics.get("size_toon"),
+                            "data_token_savings_pct": metrics.get("token_savings_pct"),
+                            "toon_encoding_ms": metrics.get("encoding_time_ms")
+                        }
+                        return formatted, telemetry
+                    else:
+                        import json
+                        formatted = json.dumps(rows, indent=2, default=str)
+                        return formatted, {}
+
+        # Default formatting
+        if TOON_AVAILABLE:
+            formatted, metrics = format_for_llm_context(output, format=format_hint)
+            telemetry = {
+                "data_format": metrics.get("format"),
+                "data_size_json": metrics.get("size_json"),
+                "data_size_toon": metrics.get("size_toon"),
+                "data_token_savings_pct": metrics.get("token_savings_pct"),
+                "toon_encoding_ms": metrics.get("encoding_time_ms")
+            }
+            return formatted, telemetry
+        else:
+            return str(output), {}
+
     def _get_cell_messages(self, cell_name: str, config: ContextSourceConfig) -> List[Dict]:
         """
         Get messages from a specific cell via echo.history.
@@ -1627,10 +1717,34 @@ class RVBBITRunner:
         if "output" in config.include:
             output = self._get_cell_output(cell_name)
             if output:
-                messages.append({
+                # Format with TOON support
+                format_hint = getattr(config, 'format', 'auto')
+                # Need to get the actual output object, not the string
+                output_obj = None
+                for entry in self.echo.lineage:
+                    if entry.get('cell') == cell_name:
+                        output_obj = entry.get('output')
+                        break
+
+                if output_obj is not None:
+                    formatted, telemetry = self._format_output_for_context(output_obj, format_hint)
+                else:
+                    formatted = output
+                    telemetry = {}
+
+                # Create message with telemetry metadata
+                msg = {
                     "role": config.as_role,
-                    "content": f"[Output from {cell_name}]:\n{output}"
-                })
+                    "content": f"[Output from {cell_name}]:\n{formatted}"
+                }
+
+                # Attach TOON telemetry as metadata for potential logging
+                if telemetry:
+                    if "metadata" not in msg:
+                        msg["metadata"] = {}
+                    msg["metadata"]["toon_telemetry"] = telemetry
+
+                messages.append(msg)
 
         # Include messages (full conversation replay)
         if "messages" in config.include:
@@ -3824,7 +3938,8 @@ To call this tool, output a JSON code block:
                 "factor": factor,
                 "semantic_actor": "evaluator",
                 "semantic_purpose": "evaluation_output"
-            }
+            },
+            **_extract_toon_telemetry(eval_response)
         )
 
         # Also add to echo history for visualization (skip unified log since we just logged above)
@@ -10819,6 +10934,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     reasoning_max_tokens = response_dict.get("reasoning_max_tokens")
                     tokens_reasoning = response_dict.get("tokens_reasoning")
 
+                    # Extract TOON telemetry (if present)
+                    toon_telemetry_dict = _extract_toon_telemetry(response_dict)
+
                     # Build metadata
                     agent_metadata = {
                         "retry_attempt": self.current_retry_attempt,
@@ -10883,7 +11001,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         has_base64=False,
                         is_callout=is_callout,
                         callout_name=callout_name,
-                        metadata=agent_metadata
+                        metadata=agent_metadata,
+                        **toon_telemetry_dict
                     )
 
                     if content:

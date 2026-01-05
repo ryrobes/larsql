@@ -65,6 +65,48 @@ def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, A
     return cleaned_inputs, candidates_config
 
 
+def _auto_format_inputs_as_toon(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Auto-format large arrays in inputs as TOON for token efficiency.
+
+    This is applied to aggregate operators (summarize, themes, etc.) that
+    receive large arrays of text/data from SQL GROUP BY operations.
+
+    Args:
+        inputs: Cascade inputs dictionary
+
+    Returns:
+        Modified inputs with TOON-encoded arrays where beneficial
+    """
+    from ..toon_utils import format_for_llm_context, TOON_AVAILABLE
+
+    if not TOON_AVAILABLE:
+        return inputs
+
+    modified_inputs = {}
+
+    for key, value in inputs.items():
+        if isinstance(value, list) and len(value) > 10:
+            try:
+                # Format as TOON if beneficial
+                formatted, metrics = format_for_llm_context(value, format="auto", min_rows=10)
+                if metrics.get("format") == "toon":
+                    modified_inputs[key] = formatted
+                    log.info(
+                        f"[cascade_udf] Auto-formatted '{key}' as TOON "
+                        f"({len(value)} items, {metrics.get('token_savings_pct', 0):.1f}% savings)"
+                    )
+                else:
+                    modified_inputs[key] = value
+            except Exception as e:
+                log.debug(f"[cascade_udf] TOON formatting skipped for '{key}': {e}")
+                modified_inputs[key] = value
+        else:
+            modified_inputs[key] = value
+
+    return modified_inputs
+
+
 def _inject_candidates_into_cascade(cascade_path: str, candidates_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Load a cascade file and inject candidates config at the top level.
@@ -288,6 +330,9 @@ def execute_cascade_udf(
 
         # Extract candidates config from inputs (embedded as special prefix)
         cleaned_inputs, candidates_config = _extract_candidates_from_inputs(inputs)
+
+        # Auto-format large arrays as TOON for token efficiency
+        cleaned_inputs = _auto_format_inputs_as_toon(cleaned_inputs)
 
         # Look up the function
         fn = get_sql_function(cascade_id)

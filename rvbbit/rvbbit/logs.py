@@ -21,7 +21,9 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
                 turn_number: int = None, attempt_number: int = None, parent_session_id: str = None,
                 species_hash: str = None, genus_hash: str = None, cell_config: dict = None,
                 # Caller tracking (NEW)
-                caller_id: str = None, invocation_metadata: dict = None):
+                caller_id: str = None, invocation_metadata: dict = None,
+                # TOON telemetry (NEW)
+                toon_telemetry: dict = None):
     """
     Log a message to the unified logging system.
 
@@ -62,6 +64,11 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
         cascade_file = cascade_file or metadata.get("cascade_file") or metadata.get("config_path")
         cell_name = cell_name or metadata.get("cell_name")
 
+    # Extract TOON telemetry from metadata or parameter
+    toon_metrics = toon_telemetry or {}
+    if metadata and isinstance(metadata, dict) and "toon_telemetry" in metadata:
+        toon_metrics = metadata["toon_telemetry"]
+
     log_unified(
         session_id=session_id,
         parent_session_id=parent_session_id,
@@ -93,7 +100,12 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
         images=images,
         has_base64=has_base64,
         model=model,
-        metadata=metadata
+        metadata=metadata,
+        data_format=toon_metrics.get("data_format") if toon_metrics else None,
+        data_size_json=toon_metrics.get("data_size_json") if toon_metrics else None,
+        data_size_toon=toon_metrics.get("data_size_toon") if toon_metrics else None,
+        data_token_savings_pct=toon_metrics.get("data_token_savings_pct") if toon_metrics else None,
+        toon_encoding_ms=toon_metrics.get("toon_encoding_ms") if toon_metrics else None,
     )
 
 
