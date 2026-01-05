@@ -196,15 +196,14 @@
         padding: 60px 0 40px;
       }
 
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 40px;
-        align-items: center;
+      /* Headline: Full width, centered */
+      .hero-headline {
+        text-align: center;
+        margin-bottom: 40px;
       }
 
-      .hero-content {
-        text-align: center;
+      .hero-headline h1 {
+        margin: 0;
       }
 
       @keyframes pulse {
@@ -213,7 +212,7 @@
       }
 
       h1 {
-        font-size: clamp(2.2rem, 4vw, 3.2rem);
+        font-size: clamp(2.2rem, 4.5vw, 3.5rem);
         line-height: 1.15;
         margin: 0 0 20px;
       }
@@ -225,85 +224,150 @@
         color: transparent;
       }
 
-      .hero-sub {
-        font-size: 1.05rem;
+      /* Two-column grid below headline */
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 32px;
+        align-items: start;
+      }
+
+      .hero-content {
+        text-align: center;
+      }
+
+      /* Hero Statement - impactful text hierarchy */
+      .hero-statement {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .statement-main {
+        font-size: clamp(1.3rem, 2.5vw, 1.6rem);
+        font-weight: 600;
+        color: var(--ink);
+        margin: 0 0 12px;
+        line-height: 1.3;
+      }
+
+      .statement-points {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .statement-points li {
+        font-size: 1rem;
         color: var(--muted);
-        line-height: 1.6;
-        margin: 0 0 24px;
-        max-width: 480px;
-      }
-
-      .hero-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        justify-content: center;
-        margin-bottom: 28px;
-      }
-
-      /* Hero Trust Badges - inline */
-      .hero-trust-badges {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        justify-content: center;
-      }
-
-      .trust-badge {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        background: rgba(8, 12, 20, 0.8);
-        border: 1px solid rgba(28, 246, 255, 0.12);
-        border-radius: 6px;
-        font-size: 0.75rem;
+        gap: 10px;
+        padding-left: 4px;
       }
 
-      .trust-badge-icon {
-        width: 18px;
-        height: 18px;
+      .statement-points li::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        background: var(--cyan);
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: 0 0 8px var(--cyan);
+      }
+
+      .statement-points li code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+        background: rgba(255, 100, 100, 0.12);
+        color: rgba(255, 150, 150, 0.9);
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 100, 100, 0.2);
+        text-decoration: line-through;
+        opacity: 0.85;
+      }
+
+      .statement-sub {
+        font-size: 1rem;
+        color: var(--muted);
+        margin: 0 0 20px;
+        opacity: 0.85;
+      }
+
+      .statement-highlight {
         display: flex;
         align-items: center;
-        justify-content: center;
-        color: var(--cyan);
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
-      .trust-badge-icon svg {
-        width: 14px;
-        height: 14px;
-      }
-
-      .trust-badge-text {
-        color: var(--muted);
-      }
-
-      .trust-badge-text strong {
+      .statement-highlight .just {
+        font-size: 1.1rem;
         color: var(--ink);
         font-weight: 500;
       }
 
-      /* Medium+ screens: 2-column hero */
+      .statement-highlight code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.95rem;
+        background: linear-gradient(135deg, rgba(28, 246, 255, 0.15), rgba(181, 55, 255, 0.1));
+        padding: 8px 14px;
+        border-radius: 6px;
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        color: var(--cyan);
+        box-shadow: 0 0 20px rgba(28, 246, 255, 0.1);
+      }
+
+      /* Hero Intent - full-width philosophy line */
+      .hero-intent {
+        text-align: center;
+        font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+        color: var(--muted);
+        margin: 48px auto 0;
+        font-style: italic;
+        line-height: 1.5;
+      }
+
+      .hero-intent .highlight-intent {
+        color: var(--cyan);
+        font-weight: 800;
+        font-style: normal;
+        text-shadow: 0 0 20px rgba(28, 246, 255, 0.4);
+      }
+
+      .hero-intent .highlight-patterns {
+        color: rgba(255, 150, 150, 0.85);
+        font-weight: 500;
+        font-style: normal;
+      }
+
+      .hero-intent .highlight-especially {
+        color: var(--cyan);
+        font-weight: 700;
+        font-style: normal;
+      }
+
+      /* Medium+ screens: 2-column below headline */
       @media (min-width: 900px) {
+        .hero-headline {
+          margin-bottom: 48px;
+        }
+
         .hero-grid {
-          grid-template-columns: minmax(380px, 1fr) 1.4fr;
+          grid-template-columns: minmax(320px, 0.8fr) 1.2fr;
           gap: 48px;
-          align-items: center;
+          align-items: start;
         }
 
         .hero-content {
           text-align: left;
         }
 
-        .hero-sub {
-          margin-left: 0;
-        }
-
-        .hero-actions {
-          justify-content: flex-start;
-        }
-
-        .hero-trust-badges {
+        .statement-highlight {
           justify-content: flex-start;
         }
       }
@@ -311,8 +375,16 @@
       /* Wide screens */
       @media (min-width: 1200px) {
         .hero-grid {
-          grid-template-columns: minmax(420px, 1fr) 1.5fr;
+          grid-template-columns: minmax(380px, 0.8fr) 1.2fr;
           gap: 64px;
+        }
+
+        .statement-main {
+          font-size: 1.7rem;
+        }
+
+        .statement-points li {
+          font-size: 1.1rem;
         }
       }
 
@@ -332,7 +404,7 @@
 	      .live-terminal {
 	        width: 100%;
 	        max-width: 900px;
-	        background: #0a0d14;
+	        background: #050608;
 	        border-radius: 8px;
 	        border: 1px solid rgba(28, 246, 255, 0.2);
 	        border-left: 3px solid var(--cyan);
@@ -446,7 +518,10 @@
         font-family: "Google Sans Code", "JetBrains Mono", monospace;
         font-size: 0.75rem;
         color: var(--muted);
-        margin-top: 16px;
+        position: absolute;
+        bottom: 20px;
+        left: 24px;
+        right: 24px;
         padding-top: 12px;
         border-top: 1px solid rgba(28, 246, 255, 0.1);
         opacity: 0;
@@ -500,14 +575,7 @@
       }
 
       .terminal-cursor {
-        display: inline-block;
-        width: 8px;
-        height: 16px;
-        background: var(--cyan);
-        margin-left: 2px;
-        animation: blink 1s step-end infinite;
-        vertical-align: middle;
-        opacity: 0.8;
+        display: none;
       }
 
       @keyframes blink {
@@ -3421,6 +3489,7 @@
       }
 
       .toc-cta {
+        display: none;
         margin-top: 24px;
         padding: 16px 12px;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -3702,8 +3771,8 @@
       .vector-step-num {
         width: 28px;
         height: 28px;
-        border-radius: 50%;
-        background: var(--purple);
+        /* border-radius: 50%;
+        background: var(--purple); */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -4446,49 +4515,28 @@
         <!-- ========== HERO ========== -->
       <section class="hero">
         <div class="container">
+          <!-- Headline: Full width, centered -->
+          <div class="hero-headline reveal delay-1">
+            <h1>
+              Your team knows SQL.<br>
+              <span class="gradient-text">Why learn Python for AI?</span>
+            </h1>
+          </div>
+
+          <!-- Two-column: Sub-content + Terminal -->
           <div class="hero-grid">
             <div class="hero-content">
-              <h1 class="reveal delay-1">
-                Your team knows SQL.<br>
-                <span class="gradient-text">Why learn Python for AI?</span>
-              </h1>
-              <p class="hero-sub reveal delay-2">
-                Add AI operators to SQL—from your own SQL client, on your own database.
-                No notebooks. No orchestration code. Just
-                <code style="background: rgba(28,246,255,0.15); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">WHERE text MEANS 'urgent'</code>
-              </p>
-              <div class="hero-actions reveal delay-3">
-                <a class="btn" href="#get-started">Try It Now</a>
-                <a class="btn secondary" href="#how-it-works">See How It Works</a>
-              </div>
-              <div class="hero-trust-badges reveal delay-4">
-                <div class="trust-badge">
-                  <span class="trust-badge-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <ellipse cx="12" cy="6" rx="8" ry="3"/>
-                      <path d="M4 6v6c0 1.657 3.582 3 8 3s8-1.343 8-3V6"/>
-                      <path d="M4 12v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6"/>
-                    </svg>
-                  </span>
-                  <span class="trust-badge-text"><strong>Your database</strong></span>
-                </div>
-                <div class="trust-badge">
-                  <span class="trust-badge-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      <path d="M9 3v18M3 9h18"/>
-                    </svg>
-                  </span>
-                  <span class="trust-badge-text"><strong>Your SQL client</strong></span>
-                </div>
-                <div class="trust-badge">
-                  <span class="trust-badge-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
-                    </svg>
-                  </span>
-                  <span class="trust-badge-text"><strong>Any AI</strong></span>
+              <div class="hero-statement reveal delay-2">
+                <p class="statement-main">Add AI operators to SQL</p>
+                <ul class="statement-points">
+                  <li>from your own SQL client</li>
+                  <li>on your own database</li>
+                  <li>real syntax — not <code>ai_query('{json...}')</code></li>
+                </ul>
+                <p class="statement-sub">No notebooks. No orchestration code.</p>
+                <div class="statement-highlight">
+                  <span class="just">Just</span>
+                  <code>WHERE description MEANS 'urgent'</code>
                 </div>
               </div>
             </div>
@@ -4497,8 +4545,8 @@
             <div class="live-terminal-wrapper reveal delay-2">
               <div class="live-terminal" id="liveTerminal">
                 <div class="terminal-header">
-                  <span class="terminal-type-badge">SQL</span>
-                  <div class="terminal-title">live_queries</div>
+                  <!-- <span class="terminal-type-badge">SQL</span> -->
+                  <div class="terminal-title">SQL + Intent</div>
                 </div>
                 <div class="terminal-paused-indicator">paused</div>
                 <div class="terminal-body">
@@ -4516,6 +4564,11 @@
               </div>
             </div>
           </div>
+
+          <!-- Intent Philosophy Line -->
+          <p class="hero-intent reveal delay-3">
+            Express <span class="highlight-intent">intent</span>, not <span class="highlight-patterns">patterns</span> — <span class="highlight-especially">especially</span> when you don't know what you're looking for.
+          </p>
         </div>
       </section>
 
@@ -4673,7 +4726,16 @@
                   <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
                   <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
                 </svg>
-                <span>HuggingFace</span>
+                <span>HF Spaces</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFD21E">
+                  <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
+                  <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
+                  <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
+                  <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                </svg>
+                <span>HF Transformers</span>
               </div>
               <div class="integration-item ai-item">
                 <svg viewBox="0 0 24 24" fill="#FFFFFF">
@@ -4681,8 +4743,12 @@
                 </svg>
                 <span>Ollama</span>
               </div>
-              <div class="integration-item model-count">
-                <span>300+ models</span>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L4 6v6c0 5.5 3.4 10.6 8 12 4.6-1.4 8-6.5 8-12V6l-8-4z" stroke="#00A4A6" stroke-width="1.5" fill="none"/>
+                  <circle cx="12" cy="10" r="3" fill="#00A4A6"/>
+                </svg>
+                <span>Pinecone</span>
               </div>
               <div class="integration-item">
                 <svg viewBox="0 0 24 24" fill="#1C3C50"><path d="M10.374 10.53a3.102 3.102 0 0 1-.428-.222l.555.143c0 .02-.01.036-.01.055l-.117.025z"/></svg>
@@ -4730,7 +4796,16 @@
                   <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
                   <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
                 </svg>
-                <span>HuggingFace</span>
+                <span>HF Spaces</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFD21E">
+                  <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
+                  <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
+                  <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
+                  <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                </svg>
+                <span>HF Transformers</span>
               </div>
               <div class="integration-item ai-item">
                 <svg viewBox="0 0 24 24" fill="#FFFFFF">
@@ -4738,8 +4813,12 @@
                 </svg>
                 <span>Ollama</span>
               </div>
-              <div class="integration-item model-count">
-                <span>300+ models</span>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L4 6v6c0 5.5 3.4 10.6 8 12 4.6-1.4 8-6.5 8-12V6l-8-4z" stroke="#00A4A6" stroke-width="1.5" fill="none"/>
+                  <circle cx="12" cy="10" r="3" fill="#00A4A6"/>
+                </svg>
+                <span>Pinecone</span>
               </div>
               <div class="integration-item">
                 <svg viewBox="0 0 24 24" fill="#1C3C50"><path d="M10.374 10.53a3.102 3.102 0 0 1-.428-.222l.555.143c0 .02-.01.036-.01.055l-.117.025z"/></svg>
@@ -5044,9 +5123,9 @@
       <section id="vector" class="vector-section">
         <div class="container">
           <div class="vector-header reveal">
-            <h2>Vector search in SQL. <span class="gradient-text">No vector database.</span></h2>
+            <h2>Vector search in SQL. <span class="gradient-text">No extra infrastructure. Ad-hoc.</span></h2>
             <p>
-              Embeddings are powerful. Setting them up usually isn't. RVBBIT makes it trivial.
+              No ingestion pipelines. No upfront planning. Embed any column from any source DuckDB can reach—storage and indexing handled automatically.
             </p>
           </div>
 
@@ -5060,8 +5139,8 @@
 <pre><span class="sql-keyword">SELECT</span> id, <span class="sql-function">EMBED</span>(description)
 <span class="sql-keyword">FROM</span> products;</pre>
                 <p class="vector-step-note">
-                  That's it. No schema changes. No external vector DB.<br>
-                  RVBBIT stores embeddings in its system database automatically.
+                  That's it. No schema changes. No separate setup.<br>
+                  Vectors are stored and indexed automatically.
                 </p>
               </div>
             </div>
@@ -5117,8 +5196,8 @@
               <h2>Ask questions, <span style="color: var(--orange)">not just queries.</span></h2>
               <p>
                 You ran a query. Now you want to know <em>why</em>.
-                ANALYZE hands your results to an agent with SQL access, Python access,
-                and your full context—then writes its findings to a table you can query later.
+                ANALYZE hands your results to an agent with SQL, Python, and your whole tool catalog (and it already KNOWS your data) - 
+                then writes its findings to a table you can query later. Async, all without leaving your SQL IDE.
               </p>
               <div class="analyze-how">
                 <div class="analyze-step">
@@ -5378,26 +5457,26 @@
           <div class="screenshot-carousel reveal delay-2" id="evolutionCarousel">
             <div class="carousel-track">
               <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/evolution-candidates.png" alt="Candidates running"> -->
-                <div class="screenshot-placeholder">
+                <img src="screenshot-2026-01-05_17-30-24.png" alt="Candidates running">
+                <!-- <div class="screenshot-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="2" y="3" width="20" height="14" rx="2"/>
                     <path d="M8 21h8M12 17v4"/>
                   </svg>
                   <span>evolution-candidates.png</span>
                   <span class="screenshot-size">Candidates running with mutations</span>
-                </div>
+                </div> -->
               </div>
               <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/evolution-winners.png" alt="Winner selection"> -->
-                <div class="screenshot-placeholder">
+                <img src="screenshot-2026-01-05_17-29-54.png" alt="Winner selection">
+                <!-- <div class="screenshot-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="2" y="3" width="20" height="14" rx="2"/>
                     <path d="M8 21h8M12 17v4"/>
                   </svg>
                   <span>evolution-winners.png</span>
                   <span class="screenshot-size">Winner selection & promotion</span>
-                </div>
+                </div> -->
               </div>
             </div>
             <div class="carousel-arrows">

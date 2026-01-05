@@ -50,38 +50,28 @@ JSON_ARRAY_PATTERN = re.compile(
 )
 
 
-def _find_json_arrays_in_text(text: str) -> List[Tuple[int, int, str]]:
+def _find_json_structures_in_text(text: str) -> List[Tuple[int, int, str, str]]:
     """
-    Find JSON array candidates in text content.
+    Find all JSON structures in text content.
 
-    Returns list of (start_pos, end_pos, json_str) tuples.
-    Only returns arrays that successfully parse as JSON.
+    Returns list of (start_pos, end_pos, json_str, structure_type) tuples.
+    structure_type is one of: "array_of_objects", "array_of_primitives", "object", "other"
     """
     if not isinstance(text, str) or not text:
         return []
 
-    candidates = []
+    structures = []
 
-    # Quick check: must have array with object pattern somewhere
-    # Look for [ followed by { with only whitespace between
-    has_array_object = False
-    for i, c in enumerate(text):
-        if c == '[':
-            # Check if { follows within reasonable whitespace
-            rest = text[i+1:i+50].lstrip()
-            if rest.startswith('{'):
-                has_array_object = True
-                break
-
-    if not has_array_object:
-        return []
-
-    # Find potential JSON arrays by looking for [ followed by {
-    # and tracking bracket depth
+    # Find potential JSON by looking for [ or { and tracking bracket depth
     i = 0
     while i < len(text):
-        # Look for start of array
-        if text[i] == '[':
+        start_char = text[i]
+
+        # Look for start of array or object
+        if start_char in '[{':
+            open_char = start_char
+            close_char = ']' if start_char == '[' else '}'
+
             # Find matching close bracket
             depth = 1
             j = i + 1
@@ -98,32 +88,51 @@ def _find_json_arrays_in_text(text: str) -> List[Tuple[int, int, str]]:
                 elif c == '"' and not escape_next:
                     in_string = not in_string
                 elif not in_string:
-                    if c == '[':
+                    if c == open_char:
                         depth += 1
-                    elif c == ']':
+                    elif c == close_char:
                         depth -= 1
 
                 j += 1
 
             if depth == 0:
                 candidate = text[i:j]
-                # Quick validation: must start with [ then { (allowing whitespace/newlines)
-                stripped = candidate.strip()
-                if stripped.startswith('['):
-                    after_bracket = stripped[1:].lstrip()
-                    if after_bracket.startswith('{'):
-                        # Try to parse as JSON
-                        try:
-                            parsed = json.loads(candidate)
-                            if isinstance(parsed, list) and len(parsed) > 0:
-                                if all(isinstance(item, dict) for item in parsed):
-                                    candidates.append((i, j, candidate))
-                        except json.JSONDecodeError:
-                            pass
+                # Try to parse as JSON
+                try:
+                    parsed = json.loads(candidate)
+
+                    # Classify the structure
+                    if isinstance(parsed, list):
+                        if len(parsed) > 0 and all(isinstance(item, dict) for item in parsed):
+                            structure_type = "array_of_objects"
+                        elif len(parsed) > 0:
+                            structure_type = "array_of_primitives"
+                        else:
+                            structure_type = "empty_array"
+                    elif isinstance(parsed, dict):
+                        structure_type = "object"
+                    else:
+                        structure_type = "other"
+
+                    structures.append((i, j, candidate, structure_type))
+                    # Skip past this structure to avoid finding nested ones
+                    i = j - 1
+                except json.JSONDecodeError:
+                    pass
 
         i += 1
 
-    return candidates
+    return structures
+
+
+def _find_json_arrays_in_text(text: str) -> List[Tuple[int, int, str]]:
+    """
+    Find JSON array-of-objects candidates in text content (TOON-eligible).
+
+    Returns list of (start_pos, end_pos, json_str) tuples.
+    """
+    structures = _find_json_structures_in_text(text)
+    return [(s, e, json_str) for s, e, json_str, stype in structures if stype == "array_of_objects"]
 
 
 def _transform_json_to_toon(
@@ -196,19 +205,21 @@ def _transform_message_content(
     """
     Transform JSON arrays in message content to TOON.
 
+    Also tracks ALL JSON structures for telemetry (not just TOON-eligible ones).
+
     Returns:
         (transformed_content, aggregated_metrics)
     """
     if not isinstance(content, str) or not content:
-        return content, {"transforms": 0}
+        return content, {"transforms": 0, "total_rows": 0, "max_columns": 0}
 
-    # Find JSON arrays
-    candidates = _find_json_arrays_in_text(content)
+    # Find ALL JSON structures for telemetry
+    all_structures = _find_json_structures_in_text(content)
 
-    if not candidates:
-        return content, {"transforms": 0}
+    if not all_structures:
+        return content, {"transforms": 0, "total_rows": 0, "max_columns": 0}
 
-    # Process candidates from end to start (to preserve positions)
+    # Process and track all structures
     result = content
     total_metrics = {
         "transforms": 0,
@@ -217,20 +228,51 @@ def _transform_message_content(
         "total_savings_chars": 0,
         "total_rows": 0,
         "max_columns": 0,
-        "details": []
+        "details": [],
+        "structure_counts": {
+            "array_of_objects": 0,
+            "array_of_primitives": 0,
+            "object": 0,
+            "other": 0
+        }
     }
 
-    for start, end, json_str in reversed(candidates):
+    # First pass: count all structures and track shapes for telemetry
+    for start, end, json_str, structure_type in all_structures:
+        total_metrics["structure_counts"][structure_type] = total_metrics["structure_counts"].get(structure_type, 0) + 1
+
+        try:
+            parsed = json.loads(json_str)
+
+            if structure_type == "array_of_objects":
+                # Array of objects: rows = array length, cols = keys in first object
+                rows = len(parsed)
+                cols = len(parsed[0].keys()) if parsed else 0
+                total_metrics["total_rows"] += rows
+                total_metrics["max_columns"] = max(total_metrics["max_columns"], cols)
+                print(f"[TOON Debug] array_of_objects: {rows} rows × {cols} cols")
+
+            elif structure_type == "array_of_primitives":
+                # Array of primitives: rows = array length, cols = 0
+                rows = len(parsed)
+                total_metrics["total_rows"] += rows
+                print(f"[TOON Debug] array_of_primitives: {rows} rows × 0 cols")
+
+            elif structure_type == "object":
+                # Single object: rows = 0, cols = number of keys
+                cols = len(parsed.keys())
+                total_metrics["max_columns"] = max(total_metrics["max_columns"], cols)
+                print(f"[TOON Debug] object: 0 rows × {cols} cols")
+
+        except (json.JSONDecodeError, AttributeError, IndexError):
+            pass
+
+    # Second pass: attempt TOON transforms on eligible structures (array_of_objects only)
+    # Process from end to start to preserve positions
+    toon_eligible = [(s, e, js) for s, e, js, st in all_structures if st == "array_of_objects"]
+
+    for start, end, json_str in reversed(toon_eligible):
         toon_str, metrics = _transform_json_to_toon(json_str, min_rows)
-
-        # Track data shape even if not transformed (for telemetry)
-        if metrics.get("rows"):
-            total_metrics["total_rows"] += metrics["rows"]
-        if metrics.get("columns"):
-            total_metrics["max_columns"] = max(total_metrics["max_columns"], metrics["columns"])
-
-        # Debug: show what we found
-        print(f"[TOON Debug] Found JSON array: rows={metrics.get('rows')}, cols={metrics.get('columns')}, transformed={metrics.get('transformed')}, reason={metrics.get('reason')}")
 
         if toon_str and metrics["transformed"]:
             # Replace JSON with TOON in content
@@ -243,6 +285,9 @@ def _transform_message_content(
                 metrics["size_json"] - metrics["size_toon"]
             )
             total_metrics["details"].append(metrics)
+            print(f"[TOON Debug] ✅ Transformed: {metrics.get('rows')} rows, saved {metrics.get('savings_pct')}%")
+        else:
+            print(f"[TOON Debug] ⚪ Not transformed: reason={metrics.get('reason')}")
 
     # Calculate overall savings percentage
     if total_metrics["total_json_size"] > 0:
@@ -318,20 +363,6 @@ def transform_messages_for_transport(
 
         # Transform content
         new_content, metrics = _transform_message_content(content, min_rows)
-
-        # Debug: Show content sample if nothing found
-        if metrics.get("transforms", 0) == 0 and metrics.get("total_rows", 0) == 0:
-            # Check if there's JSON-like content we're missing
-            has_bracket = '[' in content
-            has_brace = '{' in content
-            if has_bracket or has_brace:
-                # Find first occurrence
-                sample_start = content.find('[{') if '[{' in content else content.find('[')
-                if sample_start == -1:
-                    sample_start = content.find('{')
-                if sample_start >= 0:
-                    sample = content[sample_start:sample_start+200].replace('\n', '\\n')
-                    print(f"[TOON Debug] Content has JSON-like chars but no arrays found. Sample: {sample}...")
 
         # Always aggregate data shape (rows/columns) for telemetry
         if metrics.get("total_rows"):
