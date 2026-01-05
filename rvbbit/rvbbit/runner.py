@@ -10173,16 +10173,16 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     tools_schema.append(get_tool_schema(memory_tool, name=t_name))
                     tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
                 else:
-                    # Check if this is a cascade tool (triggers registration if needed)
+                    # Check if this is a cascade tool or MCP tool (triggers discovery/registration if needed)
                     from .traits_manifest import get_trait_manifest
                     manifest = get_trait_manifest()
-                    if t_name in manifest and manifest[t_name].get("type") == "cascade":
-                        # Try to get the now-registered tool
-                        cascade_tool = get_trait(t_name)
-                        if cascade_tool:
-                            tool_map[t_name] = cascade_tool
-                            tools_schema.append(get_tool_schema(cascade_tool, name=t_name))
-                            tool_descriptions.append(self._generate_tool_description(cascade_tool, t_name))
+                    if t_name in manifest:
+                        # Try to get the now-registered tool (works for cascade, MCP, declarative, etc.)
+                        discovered_tool = get_trait(t_name)
+                        if discovered_tool:
+                            tool_map[t_name] = discovered_tool
+                            tools_schema.append(get_tool_schema(discovered_tool, name=t_name))
+                            tool_descriptions.append(self._generate_tool_description(discovered_tool, t_name))
                     # else: Tool not found
 
         # Inject 'route_to' tool if routing enabled

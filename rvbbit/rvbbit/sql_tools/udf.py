@@ -2075,11 +2075,18 @@ def register_dynamic_sql_functions(connection):
             existing_names = set()
         
         for name, entry in registry.items():
+            # Skip AGGREGATE-shaped functions UNLESS they return TABLE
+            # TABLE-returning aggregates (like vector_search_elastic) should be registered
+            # Only skip scalar aggregates (like llm_consensus) that have numbered UDFs
+            if entry.shape.upper() == 'AGGREGATE' and entry.returns.upper() != 'TABLE':
+                print(f"[DynamicUDF]   ⊘ Skipping aggregate (handled by numbered UDFs): {name}")
+                continue
+
             # Skip any function name that already exists in DuckDB (built-in or previously registered).
             # This replaces prior hardcoded skip lists and keeps us aligned with "cascades all the way down".
             if str(name).lower() in existing_names:
                 continue
-            
+
             # Create wrapper that calls execute_cascade_udf
             def make_wrapper(fn_name, fn_entry):
                 def wrapper(*args):
@@ -2134,9 +2141,10 @@ def register_dynamic_sql_functions(connection):
                 if return_type == 'JSON':
                     return_type = 'VARCHAR'  # DuckDB doesn't have JSON type, use VARCHAR
                 elif return_type == 'TABLE':
-                    # Table functions not supported via create_function, skip
-                    print(f"[DynamicUDF]   ⚠️  Skipping table function: {name}")
-                    continue
+                    # Table-valued functions return JSON arrays that get parsed by read_json_auto
+                    # Register as VARCHAR (returns JSON string)
+                    return_type = 'VARCHAR'
+                    print(f"[DynamicUDF]   ℹ️  Registering TABLE function as VARCHAR: {name} (returns JSON for read_json_auto)")
 
                 connection.create_function(
                     name,

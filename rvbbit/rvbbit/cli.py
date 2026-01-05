@@ -492,6 +492,58 @@ def main():
         help='Show model statistics'
     )
 
+    # models local - Local model management (HuggingFace transformers)
+    models_local_parser = models_subparsers.add_parser(
+        'local',
+        help='Local model management (HuggingFace transformers)'
+    )
+    models_local_subparsers = models_local_parser.add_subparsers(dest='local_command', help='Local model subcommands')
+
+    # models local status
+    models_local_status_parser = models_local_subparsers.add_parser(
+        'status',
+        help='Show local model system status (device, memory, loaded models)'
+    )
+
+    # models local list
+    models_local_list_parser = models_local_subparsers.add_parser(
+        'list',
+        help='List available local model tools and loaded models'
+    )
+    models_local_list_parser.add_argument('--loaded', action='store_true', help='Only show currently loaded models')
+
+    # models local load
+    models_local_load_parser = models_local_subparsers.add_parser(
+        'load',
+        help='Preload a model into cache'
+    )
+    models_local_load_parser.add_argument('model_id', help='HuggingFace model ID (e.g., distilbert/distilbert-base-uncased-finetuned-sst-2-english)')
+    models_local_load_parser.add_argument('--task', required=True, help='Pipeline task (e.g., text-classification, ner, summarization)')
+    models_local_load_parser.add_argument('--device', default='auto', help='Device to use: auto, cuda, mps, cpu (default: auto)')
+
+    # models local unload
+    models_local_unload_parser = models_local_subparsers.add_parser(
+        'unload',
+        help='Unload a model from cache'
+    )
+    models_local_unload_parser.add_argument('model_id', help='Model ID to unload')
+
+    # models local clear
+    models_local_clear_parser = models_local_subparsers.add_parser(
+        'clear',
+        help='Clear all loaded models from cache'
+    )
+
+    # models local export
+    models_local_export_parser = models_local_subparsers.add_parser(
+        'export',
+        help='Generate a .tool.yaml definition for a model'
+    )
+    models_local_export_parser.add_argument('model_id', help='HuggingFace model ID')
+    models_local_export_parser.add_argument('--task', required=True, help='Pipeline task')
+    models_local_export_parser.add_argument('-o', '--output', help='Output file path (default: stdout)')
+    models_local_export_parser.add_argument('--name', help='Tool name (default: derived from model_id)')
+
     # Tools command group - Tool registry management
     tools_parser = subparsers.add_parser('tools', help='Tool registry management and analytics')
     tools_subparsers = tools_parser.add_subparsers(dest='tools_command', help='Tools subcommands')
@@ -544,6 +596,89 @@ def main():
     )
     tools_find_parser.add_argument('query', help='Natural language query (e.g., "parse PDF documents")')
     tools_find_parser.add_argument('--limit', type=int, default=10, help='Max results to show')
+
+    # MCP (Model Context Protocol) command group
+    mcp_parser = subparsers.add_parser('mcp', help='MCP (Model Context Protocol) server management')
+    mcp_subparsers = mcp_parser.add_subparsers(dest='mcp_command', help='MCP subcommands')
+
+    # mcp add - Add a new server
+    mcp_add_parser = mcp_subparsers.add_parser(
+        'add',
+        help='Add a new MCP server to configuration'
+    )
+    mcp_add_parser.add_argument('name', help='Server name (e.g., filesystem, brave-search)')
+    mcp_add_parser.add_argument('command', nargs='?', help='Full command with args (e.g., "npx -y @modelcontextprotocol/server-filesystem /tmp")')
+    mcp_add_parser.add_argument('--transport', choices=['stdio', 'http'], default='stdio', help='Transport type (default: stdio)')
+    mcp_add_parser.add_argument('--url', help='URL for HTTP transport')
+    mcp_add_parser.add_argument('--env', action='append', help='Environment variables (format: KEY=VALUE, can be used multiple times)')
+    mcp_add_parser.add_argument('--disabled', action='store_true', help='Add server as disabled')
+
+    # mcp remove - Remove a server
+    mcp_remove_parser = mcp_subparsers.add_parser(
+        'remove',
+        help='Remove an MCP server from configuration',
+        aliases=['rm']
+    )
+    mcp_remove_parser.add_argument('name', help='Server name to remove')
+
+    # mcp enable - Enable a server
+    mcp_enable_parser = mcp_subparsers.add_parser(
+        'enable',
+        help='Enable a disabled MCP server'
+    )
+    mcp_enable_parser.add_argument('name', help='Server name to enable')
+
+    # mcp disable - Disable a server
+    mcp_disable_parser = mcp_subparsers.add_parser(
+        'disable',
+        help='Disable an MCP server'
+    )
+    mcp_disable_parser.add_argument('name', help='Server name to disable')
+
+    # mcp list - List configured servers
+    mcp_list_parser = mcp_subparsers.add_parser(
+        'list',
+        help='List configured MCP servers'
+    )
+    mcp_list_parser.add_argument('--enabled-only', action='store_true', help='Show only enabled servers')
+
+    # mcp status - Show server health
+    mcp_status_parser = mcp_subparsers.add_parser(
+        'status',
+        help='Show MCP server status and health'
+    )
+    mcp_status_parser.add_argument('server', nargs='?', help='Check specific server (default: all servers)')
+
+    # mcp introspect - Show tools from server
+    mcp_introspect_parser = mcp_subparsers.add_parser(
+        'introspect',
+        help='List tools/resources/prompts from a specific MCP server'
+    )
+    mcp_introspect_parser.add_argument('server', help='Server name to introspect')
+    mcp_introspect_parser.add_argument('--resources', action='store_true', help='Show resources instead of tools')
+    mcp_introspect_parser.add_argument('--prompts', action='store_true', help='Show prompts instead of tools')
+
+    # mcp manifest - Show all MCP tools
+    mcp_manifest_parser = mcp_subparsers.add_parser(
+        'manifest',
+        help='Show all MCP tools in the trait manifest'
+    )
+    mcp_manifest_parser.add_argument('--json', action='store_true', help='Output as JSON')
+
+    # mcp refresh - Re-discover tools
+    mcp_refresh_parser = mcp_subparsers.add_parser(
+        'refresh',
+        help='Re-discover tools from all MCP servers'
+    )
+
+    # mcp test - Test a specific tool
+    mcp_test_parser = mcp_subparsers.add_parser(
+        'test',
+        help='Test calling an MCP tool'
+    )
+    mcp_test_parser.add_argument('server', help='Server name')
+    mcp_test_parser.add_argument('tool', help='Tool name')
+    mcp_test_parser.add_argument('--args', help='JSON arguments for the tool (e.g., \'{"path": "/tmp/test.txt"}\')', default='{}')
 
     # Cache command group - Semantic SQL cache management
     cache_parser = subparsers.add_parser('cache', help='Semantic SQL cache management (persistent LLM result cache)')
@@ -868,6 +1003,22 @@ def main():
             cmd_models_verify(args)
         elif args.models_command == 'stats':
             cmd_models_stats(args)
+        elif args.models_command == 'local':
+            if args.local_command == 'status':
+                cmd_models_local_status(args)
+            elif args.local_command == 'list':
+                cmd_models_local_list(args)
+            elif args.local_command == 'load':
+                cmd_models_local_load(args)
+            elif args.local_command == 'unload':
+                cmd_models_local_unload(args)
+            elif args.local_command == 'clear':
+                cmd_models_local_clear(args)
+            elif args.local_command == 'export':
+                cmd_models_local_export(args)
+            else:
+                models_local_parser.print_help()
+                sys.exit(1)
         else:
             models_parser.print_help()
             sys.exit(1)
@@ -886,6 +1037,30 @@ def main():
             cmd_tools_find(args)
         else:
             tools_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'mcp':
+        if args.mcp_command == 'add':
+            cmd_mcp_add(args)
+        elif args.mcp_command == 'remove' or args.mcp_command == 'rm':
+            cmd_mcp_remove(args)
+        elif args.mcp_command == 'enable':
+            cmd_mcp_enable(args)
+        elif args.mcp_command == 'disable':
+            cmd_mcp_disable(args)
+        elif args.mcp_command == 'list':
+            cmd_mcp_list(args)
+        elif args.mcp_command == 'status':
+            cmd_mcp_status(args)
+        elif args.mcp_command == 'introspect':
+            cmd_mcp_introspect(args)
+        elif args.mcp_command == 'manifest':
+            cmd_mcp_manifest(args)
+        elif args.mcp_command == 'refresh':
+            cmd_mcp_refresh(args)
+        elif args.mcp_command == 'test':
+            cmd_mcp_test(args)
+        else:
+            mcp_parser.print_help()
             sys.exit(1)
     elif args.command == 'cache':
         if args.cache_command == 'stats':
@@ -3252,6 +3427,280 @@ def cmd_models_stats(args):
     show_stats()
 
 
+# =============================================================================
+# Local Model Commands
+# =============================================================================
+
+def cmd_models_local_status(args):
+    """Show local model system status (device, memory, loaded models)."""
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    try:
+        from rvbbit.local_models import is_available, get_device_info, get_model_registry
+    except ImportError:
+        console.print("[red]Local models module not available.[/red]")
+        console.print("Install with: pip install rvbbit\\[local-models]")
+        sys.exit(1)
+
+    if not is_available():
+        console.print("[yellow]Local models not available (transformers/torch not installed).[/yellow]")
+        console.print("Install with: pip install rvbbit\\[local-models]")
+        sys.exit(1)
+
+    # Device info
+    device_info = get_device_info()
+    console.print("\n[bold]Device Information[/bold]")
+    console.print(f"  Current device: [cyan]{device_info['current_device']}[/cyan]")
+    console.print(f"  CUDA available: {'[green]Yes[/green]' if device_info['cuda_available'] else '[red]No[/red]'}")
+    if device_info['cuda_devices']:
+        for dev in device_info['cuda_devices']:
+            console.print(f"    - {dev['name']} ({dev['total_memory_gb']} GB)")
+    console.print(f"  MPS available: {'[green]Yes[/green]' if device_info['mps_available'] else '[red]No[/red]'}")
+    console.print(f"  CPU cores: {device_info['cpu_count']}")
+
+    # Cache stats
+    registry = get_model_registry()
+    stats = registry.get_stats()
+    console.print("\n[bold]Model Cache[/bold]")
+    console.print(f"  Loaded models: {stats['loaded_models']}")
+    console.print(f"  Memory used: {stats['current_memory_mb']} MB / {stats['max_memory_mb']} MB ({stats['memory_utilization']}%)")
+
+    # Loaded models
+    loaded = registry.list_loaded()
+    if loaded:
+        console.print("\n[bold]Loaded Models[/bold]")
+        table = Table()
+        table.add_column("Model ID", style="cyan")
+        table.add_column("Task")
+        table.add_column("Device")
+        table.add_column("Memory (MB)")
+        table.add_column("Uses")
+
+        for m in loaded:
+            table.add_row(
+                m['model_id'],
+                m['task'],
+                m['device'],
+                str(m['estimated_memory_mb']),
+                str(m['use_count'])
+            )
+        console.print(table)
+
+
+def cmd_models_local_list(args):
+    """List available local model tools and loaded models."""
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    try:
+        from rvbbit.local_models import is_available, get_model_registry
+    except ImportError:
+        console.print("[red]Local models module not available.[/red]")
+        console.print("Install with: pip install rvbbit\\[local-models]")
+        sys.exit(1)
+
+    if args.loaded:
+        # Show only loaded models
+        if not is_available():
+            console.print("[yellow]No local models loaded (transformers/torch not installed).[/yellow]")
+            return
+
+        registry = get_model_registry()
+        loaded = registry.list_loaded()
+
+        if not loaded:
+            console.print("No models currently loaded.")
+            return
+
+        table = Table(title="Loaded Local Models")
+        table.add_column("Model ID", style="cyan")
+        table.add_column("Task")
+        table.add_column("Device")
+        table.add_column("Memory (MB)")
+        table.add_column("Uses")
+
+        for m in loaded:
+            table.add_row(
+                m['model_id'],
+                m['task'],
+                m['device'],
+                str(m['estimated_memory_mb']),
+                str(m['use_count'])
+            )
+        console.print(table)
+    else:
+        # Show available local model tools from manifest
+        from rvbbit.traits_manifest import get_trait_manifest
+
+        manifest = get_trait_manifest(refresh=True)
+        local_tools = {k: v for k, v in manifest.items() if 'local_model' in v.get('type', '')}
+
+        if not local_tools:
+            console.print("No local model tools found.")
+            console.print("\nCreate a .tool.yaml file with type: local_model in your traits/ directory.")
+            return
+
+        table = Table(title="Local Model Tools")
+        table.add_column("Tool ID", style="cyan")
+        table.add_column("Type")
+        table.add_column("Description")
+
+        for name, info in sorted(local_tools.items()):
+            desc = info.get('description', '')[:60]
+            if len(info.get('description', '')) > 60:
+                desc += '...'
+            table.add_row(name, info.get('type', ''), desc)
+
+        console.print(table)
+
+
+def cmd_models_local_load(args):
+    """Preload a model into cache."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from rvbbit.local_models import is_available, get_model_registry
+    except ImportError:
+        console.print("[red]Local models module not available.[/red]")
+        console.print("Install with: pip install rvbbit\\[local-models]")
+        sys.exit(1)
+
+    if not is_available():
+        console.print("[red]transformers/torch not installed.[/red]")
+        console.print("Install with: pip install rvbbit\\[local-models]")
+        sys.exit(1)
+
+    console.print(f"Loading model: [cyan]{args.model_id}[/cyan]")
+    console.print(f"  Task: {args.task}")
+    console.print(f"  Device: {args.device}")
+
+    try:
+        registry = get_model_registry()
+        with console.status("Loading model..."):
+            pipeline = registry.get_or_load(args.model_id, args.task, args.device)
+
+        console.print(f"[green]✓ Model loaded successfully[/green]")
+
+        # Show updated cache stats
+        stats = registry.get_stats()
+        console.print(f"\nCache: {stats['loaded_models']} models, {stats['current_memory_mb']} MB used")
+
+    except Exception as e:
+        console.print(f"[red]Failed to load model: {e}[/red]")
+        sys.exit(1)
+
+
+def cmd_models_local_unload(args):
+    """Unload a model from cache."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from rvbbit.local_models import is_available, get_model_registry
+    except ImportError:
+        console.print("[red]Local models module not available.[/red]")
+        sys.exit(1)
+
+    if not is_available():
+        console.print("[red]transformers/torch not installed.[/red]")
+        sys.exit(1)
+
+    registry = get_model_registry()
+    if registry.unload(args.model_id):
+        console.print(f"[green]✓ Model '{args.model_id}' unloaded[/green]")
+    else:
+        console.print(f"[yellow]Model '{args.model_id}' not found in cache[/yellow]")
+
+
+def cmd_models_local_clear(args):
+    """Clear all loaded models from cache."""
+    from rich.console import Console
+
+    console = Console()
+
+    try:
+        from rvbbit.local_models import is_available, get_model_registry
+    except ImportError:
+        console.print("[red]Local models module not available.[/red]")
+        sys.exit(1)
+
+    if not is_available():
+        console.print("[red]transformers/torch not installed.[/red]")
+        sys.exit(1)
+
+    registry = get_model_registry()
+    count = registry.clear()
+    console.print(f"[green]✓ Cleared {count} model(s) from cache[/green]")
+
+
+def cmd_models_local_export(args):
+    """Generate a .tool.yaml definition for a model."""
+    import yaml
+    from rich.console import Console
+
+    console = Console()
+
+    # Generate tool name from model_id if not provided
+    tool_name = args.name
+    if not tool_name:
+        # Convert model_id to valid tool name
+        tool_name = args.model_id.replace('/', '_').replace('-', '_').lower()
+        # Remove common prefixes
+        for prefix in ['distilbert_', 'bert_', 'facebook_', 'google_']:
+            if tool_name.startswith(prefix):
+                tool_name = tool_name[len(prefix):]
+                break
+
+    # Build tool definition
+    tool_def = {
+        'tool_id': tool_name,
+        'description': f'Run {args.task} using {args.model_id}',
+        'inputs_schema': {},
+        'type': 'local_model',
+        'model_id': args.model_id,
+        'task': args.task,
+        'device': 'auto',
+    }
+
+    # Add common inputs based on task
+    task_inputs = {
+        'text-classification': {'text': 'The text to classify'},
+        'sentiment-analysis': {'text': 'The text to analyze for sentiment'},
+        'token-classification': {'text': 'The text to extract entities from'},
+        'ner': {'text': 'The text to extract entities from'},
+        'summarization': {'text': 'The text to summarize'},
+        'text-generation': {'text': 'The prompt or text to continue'},
+        'text2text-generation': {'text': 'The input text'},
+        'fill-mask': {'text': 'The text with [MASK] token to fill'},
+        'question-answering': {'question': 'The question to answer', 'context': 'The context containing the answer'},
+        'zero-shot-classification': {'text': 'The text to classify', 'candidate_labels': 'Comma-separated list of possible labels'},
+        'image-classification': {'image': 'Path to the image file'},
+    }
+
+    tool_def['inputs_schema'] = task_inputs.get(args.task, {'text': 'The input text'})
+
+    # Output
+    yaml_str = yaml.dump(tool_def, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(f"# Local Model Tool: {tool_name}\n")
+            f.write(f"# Generated for: {args.model_id}\n")
+            f.write("# Install dependencies: pip install rvbbit[local-models]\n\n")
+            f.write(yaml_str)
+        console.print(f"[green]✓ Tool definition saved to {args.output}[/green]")
+    else:
+        console.print(yaml_str)
+
+
 def cmd_harbor_refresh(args):
     """Refresh HuggingFace Spaces from API and cache in database."""
     from rvbbit.harbor_mgmt import refresh_spaces
@@ -3775,6 +4224,70 @@ def cmd_sql_crawl(args):
     from rvbbit.sql_tools.discovery import discover_all_schemas
 
     discover_all_schemas(session_id=args.session)
+
+
+# =============================================================================
+# MCP Commands
+# =============================================================================
+
+def cmd_mcp_add(args):
+    """Add a new MCP server."""
+    from .mcp_cli import cmd_mcp_add as impl
+    impl(args)
+
+
+def cmd_mcp_remove(args):
+    """Remove an MCP server."""
+    from .mcp_cli import cmd_mcp_remove as impl
+    impl(args)
+
+
+def cmd_mcp_enable(args):
+    """Enable an MCP server."""
+    from .mcp_cli import cmd_mcp_enable as impl
+    impl(args)
+
+
+def cmd_mcp_disable(args):
+    """Disable an MCP server."""
+    from .mcp_cli import cmd_mcp_disable as impl
+    impl(args)
+
+
+def cmd_mcp_list(args):
+    """List configured MCP servers."""
+    from .mcp_cli import cmd_mcp_list as impl
+    impl(args)
+
+
+def cmd_mcp_status(args):
+    """Show MCP server status."""
+    from .mcp_cli import cmd_mcp_status as impl
+    impl(args)
+
+
+def cmd_mcp_introspect(args):
+    """Introspect MCP server tools/resources/prompts."""
+    from .mcp_cli import cmd_mcp_introspect as impl
+    impl(args)
+
+
+def cmd_mcp_manifest(args):
+    """Show MCP tools in manifest."""
+    from .mcp_cli import cmd_mcp_manifest as impl
+    impl(args)
+
+
+def cmd_mcp_refresh(args):
+    """Refresh MCP tool discovery."""
+    from .mcp_cli import cmd_mcp_refresh as impl
+    impl(args)
+
+
+def cmd_mcp_test(args):
+    """Test an MCP tool."""
+    from .mcp_cli import cmd_mcp_test as impl
+    impl(args)
 
 
 if __name__ == "__main__":

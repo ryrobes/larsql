@@ -1,8 +1,32 @@
 # Unified Block Operator Migration Plan
 
-## Executive Summary
+## Problem Statement and Intent
 
-Replace all hardcoded SQL operator rewriters with a single, cascade-driven block operator system. Cascades become fully self-describing - defining both execution logic AND SQL syntax patterns.
+### The Core Problem
+
+RVBBIT's Semantic SQL system has grown organically, resulting in **multiple redundant, hardcoded rewriter systems** that duplicate logic and prevent the "cascades all the way down" philosophy from being fully realized.
+
+**Today:** Adding a new semantic operator requires:
+1. Adding a cascade file (execution logic)
+2. Editing Python code to add hardcoded patterns (syntax recognition)
+3. Potentially editing multiple files (`semantic_rewriter_v2.py`, `llm_agg_rewriter.py`, `semantic_operators.py`)
+
+**Goal:** Adding a new semantic operator requires:
+1. Adding a cascade file with `operators` declared - **DONE**
+
+### Why This Matters
+
+1. **Cascades should be self-describing** - A cascade defines WHAT it does (execution) AND HOW to invoke it (syntax)
+2. **No code changes for new operators** - Drop in a cascade file, it just works
+3. **Consistency** - All operators use the same matching/rewriting system
+4. **Maintainability** - One system to understand, test, and debug
+5. **User empowerment** - Users can create custom operators without touching Python
+
+### The Insight
+
+**Infix is just syntax sugar.** `col MEANS 'x'` and `semantic_means(col, 'x')` are the same cascade call. The cascade does the work; the syntax is cosmetic. ANY cascade should be able to declare ANY syntax patterns it wants.
+
+---
 
 ## Current State (Problems)
 
@@ -10,9 +34,9 @@ Replace all hardcoded SQL operator rewriters with a single, cascade-driven block
 
 | System | File | What it does | Problem |
 |--------|------|--------------|---------|
-| Block operators | `block_operators.py` | Parses `SEMANTIC_CASE...END` | Only one working, cascade-driven |
+| Block operators | `block_operators.py` | Parses `SEMANTIC_CASE...END` | **Working, cascade-driven** |
 | Dynamic operators | `dynamic_operators.py` | Detects operators from cascades | Detection works, **rewriting not wired up** |
-| Dimension rewriter | `dimension_rewriter.py` | `GROUP BY topics(...)` | Works, reads from registry |
+| Dimension rewriter | `dimension_rewriter.py` | `GROUP BY topics(...)` | **Working, cascade-driven** |
 | v2 rewriter | `semantic_rewriter_v2.py` | Infix operators (MEANS, ~) | **Hardcoded `_INFIX_SPECS`** |
 | Aggregate rewriter | `llm_agg_rewriter.py` | SUMMARIZE, THEMES, etc. | **Hardcoded `LLM_AGG_FUNCTIONS`** |
 | Semantic operators | `semantic_operators.py` | GROUP BY MEANING, SEMANTIC JOIN | **Hardcoded functions** |
@@ -42,6 +66,19 @@ def _rewrite_group_by_topics(query, ...): ...   # 80+ lines
 def _rewrite_semantic_distinct(query, ...): ... # 60+ lines
 ```
 
+### The Irony
+
+Cascades ALREADY declare their operators:
+```yaml
+operators:
+  - "{{ text }} MEANS {{ criterion }}"
+  - "MEANS({{ text }}, {{ criterion }})"
+```
+
+But this metadata is only used for **detection** (`dynamic_operators.py`), not **rewriting**. The hardcoded rewriters shadow it.
+
+---
+
 ## Target State
 
 ### Single Unified System
@@ -51,9 +88,9 @@ SQL Query
     ↓
 unified_operator_rewriter.py
     ↓
-reads block_operator definitions from all cascades
+loads operator patterns from cascades (inferred or explicit)
     ↓
-token-aware pattern matching
+token-aware pattern matching (no regex on user SQL)
     ↓
 output template generation
     ↓
@@ -65,499 +102,446 @@ DuckDB executes, calls cascades via registry
 ### Cascade-Driven Everything
 
 ```yaml
-# Every operator is defined in its cascade
+# Simple case - patterns INFERRED from operators list
 cascade_id: semantic_means
-
 sql_function:
   name: semantic_means
-  returns: BOOLEAN
+  operators:
+    - "{{ text }} MEANS {{ criterion }}"      # Inferred: infix binary
+    - "{{ text }} ~ {{ criterion }}"          # Inferred: infix symbol
+    - "MEANS({{ text }}, {{ criterion }})"    # Inferred: function call
 
-  # Multiple syntax patterns - ALL using block_operator
-  patterns:
-    - name: infix
-      block_operator:
-        inline: true
-        structure:
-          - capture: text
-            as: expression
-          - keyword: MEANS
-          - capture: criterion
-            as: string
-        output: "semantic_means({{ text }}, {{ criterion }})"
-
-    - name: function
-      block_operator:
-        start: "MEANS("
-        end: ")"
-        structure:
-          - capture: text
-            as: expression
-          - keyword: ","
-          - capture: criterion
-            as: string
-        output: "semantic_means({{ text }}, {{ criterion }})"
-
-    - name: symbol
-      block_operator:
-        inline: true
-        structure:
-          - capture: text
-            as: expression
-          - keyword: "~"
-          - capture: criterion
-            as: string
-        output: "semantic_means({{ text }}, {{ criterion }})"
-
-cells:
-  - name: evaluate
-    instructions: ...
+# Complex case - explicit block_operator (only when needed)
+cascade_id: semantic_case
+sql_function:
+  name: semantic_case
+  block_operator:
+    start: SEMANTIC_CASE
+    end: END
+    structure:
+      - capture: text
+        as: expression
+      - repeat:
+          min: 1
+          pattern:
+            - keyword: WHEN SEMANTIC
+            - capture: condition
+              as: string
+            - keyword: THEN
+            - capture: result
+              as: string
+      - optional:
+          pattern:
+            - keyword: ELSE
+            - capture: default
+              as: string
 ```
+
+---
+
+## Key Design Decision: Inferred Operators
+
+### The Simpler Approach
+
+Instead of requiring every cascade to define verbose `block_operator` specs, **infer them from the existing `operators` template syntax**.
+
+The template syntax already contains structure:
+- `{{ name }}` → capture a value
+- `'{{ name }}'` → capture a string (quoted)
+- Literal text → keyword to match
+- Position → order of elements
+
+### Inference Rules
+
+| Template Pattern | Inferred Type | Example |
+|------------------|---------------|---------|
+| `{{ a }} KEYWORD {{ b }}` | `infix_binary` | `{{ text }} MEANS {{ criterion }}` |
+| `{{ a }} KW1 KW2 {{ b }}` | `infix_binary` (multi-word) | `{{ text }} ALIGNS WITH {{ narrative }}` |
+| `{{ a }} SYMBOL {{ b }}` | `infix_binary` (symbol) | `{{ text }} ~ {{ criterion }}` |
+| `FUNC({{ a }})` | `function_1` | `SUMMARIZE({{ column }})` |
+| `FUNC({{ a }}, {{ b }})` | `function_2` | `MEANS({{ text }}, {{ criterion }})` |
+| `FUNC({{ a }}, '{{ b }}')` | `function_2` (string arg) | `SUMMARIZE({{ col }}, '{{ prompt }}')` |
+
+### Implementation
+
+```python
+def infer_block_operator(template: str, func_name: str) -> BlockOperatorSpec:
+    """
+    Convert template syntax to BlockOperatorSpec.
+
+    "{{ text }} MEANS {{ criterion }}" →
+    BlockOperatorSpec(
+        inline=True,
+        structure=[
+            {"capture": "text", "as": "expression"},
+            {"keyword": "MEANS"},
+            {"capture": "criterion", "as": "string"},
+        ],
+        output_template=f"{func_name}({{{{ text }}}}, {{{{ criterion }}}})"
+    )
+    """
+    parts = parse_template(template)  # Regex here, but limited scope
+
+    structure = []
+    captures = []
+
+    for part in parts:
+        if part.is_capture:
+            capture_type = "string" if part.is_quoted else "expression"
+            structure.append({"capture": part.name, "as": capture_type})
+            captures.append(part.name)
+        else:
+            structure.append({"keyword": part.text.strip()})
+
+    # Determine if inline or function-style
+    is_function = re.match(r'^\w+\s*\(', template.strip())
+
+    # Build output template
+    args = ", ".join(f"{{{{ {c} }}}}" for c in captures)
+    output = f"{func_name}({args})"
+
+    return BlockOperatorSpec(
+        name=func_name,
+        inline=not is_function,
+        structure=structure,
+        output_template=output,
+    )
+```
+
+### Multiple Shapes Per Cascade
+
+A single cascade can support ALL syntax variations:
+
+```yaml
+operators:
+  # All inferred automatically, all work simultaneously
+  - "{{ text }} MEANS {{ criterion }}"           # infix
+  - "{{ text }} ~ {{ criterion }}"               # infix symbol
+  - "{{ text }} SEMANTICALLY MATCHES {{ c }}"   # infix multi-word alias
+  - "MEANS({{ text }}, {{ criterion }})"         # function
+  - "matches({{ text }}, {{ criterion }})"       # function alias
+```
+
+User writes whichever they prefer - all resolve to the same cascade.
+
+### When to Use Explicit block_operator
+
+Only for patterns that can't be expressed as simple templates:
+
+1. **Block structures** with `start`/`end` keywords (`SEMANTIC_CASE...END`)
+2. **Repeating elements** (`WHEN...THEN` pairs)
+3. **Optional elements** in complex arrangements
+4. **Context-sensitive** patterns (GROUP BY specific)
+5. **Complex output** (CTE generation)
+
+**99% of operators use inference. 1% need explicit block_operator.**
+
+---
+
+## Regex Usage Strategy
+
+| Where | Uses Regex? | When | Why OK |
+|-------|-------------|------|--------|
+| **Template parsing** | Yes | Once at server startup | Limited scope, simple patterns |
+| **SQL rewriting** | **NO** | Every query | Token-based matching |
+| **Pattern matching** | **NO** | Every query | Structured keyword/capture |
+
+```python
+# Template parsing - regex, but trivial and one-time
+CAPTURE_PATTERN = re.compile(r"('?)(\{\{\s*(\w+)\s*\}\})('?)")
+
+def parse_template(template: str) -> List[Part]:
+    """Parse "{{ text }} MEANS {{ criterion }}" into structured parts."""
+    # This regex runs ONCE per cascade at load time, not on user queries
+```
+
+**The main rewriting path is 100% regex-free.** Token-based, structured matching only.
 
 ---
 
 ## Migration Phases
 
-### Phase 1: Extend Block Operator System
+### Phase 1: Add Template Inference to Block Operators
 
-**Goal:** Make `block_operators.py` capable of handling ALL pattern types.
+**Goal:** Make `block_operators.py` infer patterns from `operators` templates.
 
-#### 1.1 Add Inline Pattern Support
-
-Currently block operators require `start`/`end` keywords for block structures. Add `inline: true` mode for patterns that appear inline in expressions.
-
-```yaml
-# Block pattern (existing)
-block_operator:
-  start: SEMANTIC_CASE
-  end: END
-  structure: ...
-
-# Inline pattern (new)
-block_operator:
-  inline: true  # No start/end wrapper
-  structure:
-    - capture: lhs
-      as: expression
-    - keyword: MEANS
-    - capture: rhs
-      as: string
-```
-
-**Changes to `block_operators.py`:**
-- `BlockOperatorSpec`: Add `inline: bool = False` field
-- `_find_block_match()`: For inline specs, scan for pattern anywhere in token stream
-- Pattern matching: Match sequence without requiring start/end delimiters
-
-#### 1.2 Add Output Template Support
-
-Block operators currently generate function calls by positional argument assembly. Add explicit output templates.
-
-```yaml
-block_operator:
-  structure: ...
-  output: "semantic_means({{ text }}, '{{ criterion }}')"
-
-  # Or structured output for complex cases
-  output:
-    function: semantic_means
-    args:
-      - "{{ text }}"
-      - "'{{ criterion }}'"
-```
-
-**Changes:**
-- `BlockOperatorSpec`: Add `output_template: Optional[str]` field
-- `_generate_function_call()`: Use Jinja2 template if provided, fall back to positional
-
-#### 1.3 Add Expression Capture Improvements
-
-Current capture only handles simple identifiers. Need to handle:
-- Qualified names: `table.column`
-- Function calls: `LOWER(name)`
-- Arithmetic: `price * quantity`
-- Nested expressions with parens
-
-**Changes to `_capture_value()`:**
-- `as: expression` - capture until next keyword/operator (balanced parens)
-- `as: qualified_name` - capture `identifier(.identifier)*`
-- `as: string` - capture quoted string (existing)
-- `as: number` - capture numeric literal
-
-#### 1.4 Add Multiple Patterns Per Cascade
-
-A cascade may support multiple syntaxes (infix, function, aliases).
-
-```yaml
-sql_function:
-  patterns:
-    - name: infix
-      block_operator: ...
-    - name: function
-      block_operator: ...
-    - name: alias
-      block_operator: ...
-```
-
-**Changes:**
-- `load_block_operator_specs()`: Extract multiple patterns per cascade
-- `BlockOperatorSpec`: Add `pattern_name: str` for debugging
-
-#### 1.5 Add Context Markers
-
-Some patterns only apply in certain contexts (GROUP BY, ORDER BY, WHERE).
-
-```yaml
-block_operator:
-  context: group_by  # Only match after GROUP BY
-  structure:
-    - keyword: MEANING(
-    - capture: column
-      as: expression
-    - keyword: )
-```
-
-**Changes:**
-- `BlockOperatorSpec`: Add `context: Optional[str]` field
-- `_find_block_match()`: Check context before matching
-
----
-
-### Phase 2: Create Block Operator Definitions
-
-**Goal:** Add `block_operator` / `patterns` to all existing cascades.
-
-#### 2.1 Infix Operators
-
-| Operator | Pattern | Output |
-|----------|---------|--------|
-| MEANS | `{{ a }} MEANS {{ b }}` | `semantic_means(a, b)` |
-| ABOUT | `{{ a }} ABOUT {{ b }}` | `semantic_about(a, b)` |
-| ~ | `{{ a }} ~ {{ b }}` | `semantic_means(a, b)` |
-| !~ | `{{ a }} !~ {{ b }}` | `NOT semantic_means(a, b)` |
-| IMPLIES | `{{ a }} IMPLIES {{ b }}` | `semantic_implies(a, b)` |
-| CONTRADICTS | `{{ a }} CONTRADICTS {{ b }}` | `semantic_contradicts(a, b)` |
-| ALIGNS WITH | `{{ a }} ALIGNS WITH {{ b }}` | `semantic_aligns(a, b)` |
-| ASK | `{{ a }} ASK '{{ b }}'` | `semantic_ask(a, b)` |
-
-**Files to update:**
-- `traits/semantic_sql/means.cascade.yaml`
-- `traits/semantic_sql/about.cascade.yaml`
-- `traits/semantic_sql/implies.cascade.yaml`
-- etc.
-
-#### 2.2 Aggregate Functions
-
-| Function | Arities | Output |
-|----------|---------|--------|
-| SUMMARIZE | 1, 2, 3 | `llm_summarize_N(LIST(col)::VARCHAR, ...)` |
-| THEMES | 1, 2 | `llm_themes_N(LIST(col)::VARCHAR, ...)` |
-| CLASSIFY | 2, 3 | `llm_classify_N(LIST(col)::VARCHAR, ...)` |
-| CONSENSUS | 1, 2 | `llm_consensus_N(LIST(col)::VARCHAR, ...)` |
-| DEDUPE | 1, 2 | `llm_dedupe_N(LIST(col)::VARCHAR, ...)` |
-| OUTLIERS | 1, 2, 3 | `llm_outliers_N(LIST(col)::VARCHAR, ...)` |
-
-Multi-arity example:
-```yaml
-block_operator:
-  start: "SUMMARIZE("
-  end: ")"
-  structure:
-    - capture: column
-      as: expression
-    - optional:
-        pattern:
-          - keyword: ","
-          - capture: prompt
-            as: string
-    - optional:
-        pattern:
-          - keyword: ","
-          - capture: max_items
-            as: number
-  output:
-    function: llm_summarize
-    arity_suffix: true  # Appends _1, _2, _3 based on captured args
-    args:
-      - "LIST({{ column }})::VARCHAR"
-      - "{{ prompt }}"
-      - "{{ max_items }}"
-```
-
-**Files to update:**
-- `traits/semantic_sql/summarize.cascade.yaml`
-- `traits/semantic_sql/themes.cascade.yaml`
-- etc.
-
-#### 2.3 Structural/Dimension Operators
-
-| Pattern | Context | Output |
-|---------|---------|--------|
-| `GROUP BY MEANING(col, n, hint)` | group_by | CTE with clustering |
-| `GROUP BY TOPICS(col, n)` | group_by | CTE with topic extraction |
-| `SEMANTIC DISTINCT col` | select | CTE with deduplication |
-| `ORDER BY col RELEVANCE TO 'x'` | order_by | `ORDER BY score('x', col) DESC` |
-
-These may need `shape: dimension` treatment or CTE generation templates.
-
-```yaml
-block_operator:
-  context: group_by
-  structure:
-    - keyword: "MEANING("
-    - capture: column
-      as: expression
-    - optional:
-        pattern:
-          - keyword: ","
-          - capture: num_clusters
-            as: number
-    - optional:
-        pattern:
-          - keyword: ","
-          - capture: criterion
-            as: string
-    - keyword: ")"
-
-  # Complex output - generates CTE
-  output_mode: dimension
-  output_template: |
-    WITH _clustered AS (
-      SELECT *, meaning_fn({{ column }},
-        (SELECT to_json(LIST({{ column }})) FROM {{ source_table }}),
-        {{ num_clusters | default('NULL') }},
-        {{ criterion | default('NULL') }}
-      ) as _semantic_cluster
-      FROM {{ source_table }}
-    )
-    -- rest of query uses _semantic_cluster
-```
-
-**Files to update:**
-- `traits/semantic_sql/cluster_dimension.cascade.yaml` (new, replaces MEANING)
-- Already have `topics_dimension.cascade.yaml`
-
----
-
-### Phase 3: Wire Up Unified Rewriter
-
-**Goal:** Single entry point replaces all hardcoded rewriters.
-
-#### 3.1 Create `unified_operator_rewriter.py`
+#### 1.1 Add Template Parser
 
 ```python
-"""
-Unified Operator Rewriter.
+# block_operators.py or new inference module
 
-Single system for all SQL operator rewriting, driven entirely by cascade metadata.
-Replaces: semantic_rewriter_v2.py, llm_agg_rewriter.py, semantic_operators.py
-"""
+@dataclass
+class TemplatePart:
+    text: str
+    is_capture: bool
+    is_quoted: bool = False
+    name: Optional[str] = None
+
+def parse_operator_template(template: str) -> List[TemplatePart]:
+    """Parse "{{ text }} MEANS '{{ criterion }}'" into parts."""
+    ...
+
+def infer_block_operator(template: str, func_name: str) -> BlockOperatorSpec:
+    """Convert template to BlockOperatorSpec."""
+    ...
+```
+
+#### 1.2 Add Inline Pattern Support
+
+Extend `BlockOperatorSpec` for patterns without `start`/`end`:
+
+```python
+@dataclass
+class BlockOperatorSpec:
+    name: str
+    cascade_path: str
+    structure: List[Dict[str, Any]]
+    returns: str = "VARCHAR"
+
+    # Existing (for SEMANTIC_CASE...END)
+    start_keyword: Optional[str] = None
+    end_keyword: Optional[str] = None
+
+    # New (for infix/function patterns)
+    inline: bool = False
+    output_template: Optional[str] = None
+```
+
+#### 1.3 Update Pattern Loading
+
+```python
+def load_all_operator_specs() -> List[BlockOperatorSpec]:
+    specs = []
+
+    for entry in get_sql_function_registry().values():
+        # Explicit block_operator takes priority
+        if entry.block_operator:
+            specs.append(parse_explicit_block_operator(entry))
+
+        # Infer from operators templates
+        for template in entry.operators:
+            specs.append(infer_block_operator(template, entry.name))
+
+    return specs
+```
+
+#### 1.4 Add Output Template Support
+
+```python
+def _generate_function_call(match: BlockMatch) -> str:
+    """Generate function call from matched pattern."""
+    if match.spec.output_template:
+        # Use Jinja2 template
+        return render_template(match.spec.output_template, match.captures)
+    else:
+        # Fall back to positional assembly (existing behavior)
+        return assemble_positional(match)
+```
+
+---
+
+### Phase 2: Wire Up Unified Rewriter
+
+**Goal:** Single entry point uses inferred + explicit patterns.
+
+#### 2.1 Create Unified Entry Point
+
+```python
+# unified_operator_rewriter.py
 
 def rewrite_all_operators(sql: str) -> str:
     """
-    Rewrite all semantic operators using block_operator definitions from cascades.
+    Rewrite all semantic operators using patterns from cascades.
+
+    Sources:
+    1. Explicit block_operator definitions (complex patterns)
+    2. Inferred from operators templates (simple patterns)
 
     Order:
-    1. Block patterns (SEMANTIC_CASE...END)
-    2. Dimension patterns (GROUP BY MEANING, GROUP BY TOPICS)
-    3. Inline patterns (MEANS, ABOUT, ~)
-    4. Function patterns (SUMMARIZE, THEMES)
+    1. Block patterns (SEMANTIC_CASE...END) - must be first
+    2. Dimension patterns (shape: dimension cascades)
+    3. Inline patterns (infix operators)
+    4. Function patterns (SUMMARIZE, etc.)
     """
+    specs = load_all_operator_specs()
+
+    # Sort by priority (block > dimension > inline > function)
+    specs.sort(key=lambda s: s.priority)
+
     result = sql
+    tokens = tokenize(sql)
 
-    # Load all patterns from registry
-    patterns = load_all_operator_patterns()
-
-    # Apply in priority order
-    for pattern in sorted(patterns, key=lambda p: p.priority):
-        result = apply_pattern(result, pattern)
+    for spec in specs:
+        result, tokens = apply_spec(result, tokens, spec)
 
     return result
 ```
 
-#### 3.2 Update `sql_rewriter.py` Pipeline
+#### 2.2 Update sql_rewriter.py Pipeline
 
 ```python
-# Before (multiple hardcoded rewriters)
+# Before: multiple hardcoded rewriters
 result = _rewrite_block_operators(result)      # cascade-driven
 result = _rewrite_dimension_functions(result)  # cascade-driven
 result = _rewrite_semantic_operators(result)   # HARDCODED
 result = _rewrite_llm_aggregates(result)       # HARDCODED
 
-# After (single unified rewriter)
+# After: single unified rewriter
+from .sql_tools.unified_operator_rewriter import rewrite_all_operators
 result = rewrite_all_operators(result)  # ALL cascade-driven
-```
-
-#### 3.3 Maintain Backwards Compatibility
-
-During transition, support BOTH old cascade format (no `block_operator`) and new format:
-
-```python
-def load_all_operator_patterns():
-    patterns = []
-
-    for cascade in get_all_cascades():
-        # New format: explicit block_operator
-        if cascade.has_block_operators():
-            patterns.extend(cascade.get_block_operators())
-
-        # Legacy format: infer from operators list
-        elif cascade.has_operators():
-            patterns.extend(infer_patterns_from_operators(cascade))
-
-    return patterns
 ```
 
 ---
 
-### Phase 4: Remove Hardcoded Code
+### Phase 3: Remove Hardcoded Code
 
 **Goal:** Delete all legacy hardcoded operator definitions.
 
-#### 4.1 Delete from `semantic_rewriter_v2.py`
+#### 3.1 Delete from `semantic_rewriter_v2.py`
 
 - Delete `_INFIX_SPECS` list
-- Delete `_InfixSpec` class (or keep for backwards compat)
-- Delete infix matching logic (replaced by block operator matching)
-- Keep tokenizer (`_tokenize`) - reused by block operators
+- Delete `_InfixSpec` class
+- Delete infix matching logic
+- **Keep** tokenizer (`_tokenize`) - reused by unified rewriter
 
-#### 4.2 Delete from `llm_agg_rewriter.py`
+#### 3.2 Delete from `llm_agg_rewriter.py`
 
 - Delete `LLM_AGG_FUNCTIONS` dict
 - Delete `LLM_AGG_ALIASES` dict
 - Delete `LLMAggFunction` class
 - Delete `_build_replacement()` function
-- Delete `rewrite_llm_aggregates()` function
-- Keep `LLMAnnotation` parsing if still needed for `-- @` hints
+- **Keep** `LLMAnnotation` parsing for `-- @` hints (move to shared module)
 
-#### 4.3 Delete from `semantic_operators.py`
+#### 3.3 Delete from `semantic_operators.py`
 
 - Delete `_rewrite_group_by_meaning()`
 - Delete `_rewrite_group_by_topics()`
 - Delete `_rewrite_semantic_distinct()`
 - Delete `_rewrite_semantic_join()`
-- Keep `_parse_annotations()` for `-- @` hint parsing
+- **Keep** `_parse_annotations()` for `-- @` hints
 
-#### 4.4 Delete from `llm_aggregates.py`
+#### 3.4 Delete from `llm_aggregates.py`
 
-- Delete all `_*_fallback()` functions (cascades are the only path)
+- Delete all `_*_fallback()` functions
 - Simplify `_execute_cascade()` - remove fallback parameter
+- Cascades are the only execution path
 
-#### 4.5 Consolidate Files
+#### 3.5 Consolidate Files
 
-Consider merging:
-- `block_operators.py` + `dynamic_operators.py` → `unified_operator_rewriter.py`
-- Keep `dimension_rewriter.py` or merge into unified system
+```
+Before:
+  sql_tools/
+    block_operators.py
+    dynamic_operators.py
+    semantic_rewriter_v2.py
+    llm_agg_rewriter.py
+    semantic_operators.py
+    dimension_rewriter.py
+
+After:
+  sql_tools/
+    unified_operator_rewriter.py  # Main entry point
+    block_operators.py            # BlockOperatorSpec, matching logic
+    operator_inference.py         # Template parsing, inference
+    tokenizer.py                  # Shared tokenizer (from v2)
+    annotations.py                # -- @ hint parsing (shared)
+    dimension_rewriter.py         # Keep for now, or merge later
+```
 
 ---
 
-### Phase 5: Testing and Validation
+### Phase 4: Testing and Validation
 
-#### 5.1 Create Comprehensive Test Suite
+#### 4.1 Comprehensive Test Suite
 
 ```python
-# tests/test_unified_operators.py
+class TestInferredOperators:
+    def test_infix_binary(self):
+        spec = infer_block_operator("{{ text }} MEANS {{ criterion }}", "semantic_means")
+        assert spec.inline == True
+        assert len(spec.structure) == 3
+        assert spec.output_template == "semantic_means({{ text }}, {{ criterion }})"
 
-class TestInfixOperators:
-    def test_means_basic(self):
-        assert rewrite("SELECT * FROM t WHERE col MEANS 'x'") == \
-               "SELECT * FROM t WHERE semantic_means(col, 'x')"
+    def test_infix_symbol(self):
+        spec = infer_block_operator("{{ a }} ~ {{ b }}", "semantic_means")
+        assert spec.structure[1]["keyword"] == "~"
 
-    def test_means_with_annotation(self):
-        assert rewrite("""
-            -- @ model: claude-haiku
-            SELECT * FROM t WHERE col MEANS 'x'
-        """) == ...
+    def test_function_form(self):
+        spec = infer_block_operator("SUMMARIZE({{ col }}, '{{ prompt }}')", "llm_summarize")
+        assert spec.inline == False
+        assert spec.structure[1]["as"] == "string"  # quoted capture
 
-    def test_about_with_threshold(self):
-        assert rewrite("SELECT * FROM t WHERE col ABOUT 'x' > 0.7") == \
-               "SELECT * FROM t WHERE semantic_about(col, 'x') > 0.7"
+class TestUnifiedRewriter:
+    def test_infix_rewrite(self):
+        result = rewrite_all_operators("SELECT * FROM t WHERE col MEANS 'x'")
+        assert "semantic_means(col, 'x')" in result
 
-class TestAggregateOperators:
-    def test_summarize_arity_1(self):
-        assert rewrite("SELECT SUMMARIZE(col) FROM t GROUP BY x") == \
-               "SELECT llm_summarize_1(LIST(col)::VARCHAR) FROM t GROUP BY x"
+    def test_function_rewrite(self):
+        result = rewrite_all_operators("SELECT SUMMARIZE(col) FROM t GROUP BY x")
+        assert "llm_summarize" in result
+        assert "LIST(col)" in result
 
-    def test_summarize_arity_2(self):
-        assert rewrite("SELECT SUMMARIZE(col, 'prompt') FROM t GROUP BY x") == \
-               "SELECT llm_summarize_2(LIST(col)::VARCHAR, 'prompt') FROM t GROUP BY x"
-
-class TestDimensionOperators:
-    def test_group_by_meaning(self):
-        result = rewrite("SELECT col, COUNT(*) FROM t GROUP BY MEANING(col, 5)")
-        assert "WITH _clustered AS" in result
-        assert "meaning" in result.lower()
-
-class TestBlockOperators:
-    def test_semantic_case(self):
-        result = rewrite("""
-            SELECT SEMANTIC_CASE description
+    def test_block_rewrite(self):
+        result = rewrite_all_operators("""
+            SELECT SEMANTIC_CASE desc
                 WHEN SEMANTIC 'eco' THEN 'green'
-                WHEN SEMANTIC 'fast' THEN 'performance'
-                ELSE 'standard'
-            END FROM products
+            END FROM t
         """)
         assert "semantic_case(" in result
 ```
 
-#### 5.2 Regression Testing
+#### 4.2 Regression Testing
 
-Run all existing tests to ensure backwards compatibility:
 ```bash
+# All existing tests must pass
 pytest tests/test_semantic_sql*.py -v
 pytest tests/test_llm_agg*.py -v
+pytest tests/test_block_operators*.py -v
 ```
 
-#### 5.3 Performance Validation
+#### 4.3 Performance Validation
 
-Block operator parsing should be similar or faster than regex-based rewriters:
 ```python
-def benchmark_rewriter():
-    queries = load_test_queries()
+def benchmark():
+    queries = load_test_queries()  # 1000+ queries
 
-    # Old system
-    old_times = [time_rewrite_old(q) for q in queries]
+    # Unified system should be same speed or faster
+    # (token-based matching vs regex)
+    old_time = timeit(lambda: [old_rewrite(q) for q in queries])
+    new_time = timeit(lambda: [rewrite_all_operators(q) for q in queries])
 
-    # New system
-    new_times = [time_rewrite_new(q) for q in queries]
-
-    assert mean(new_times) <= mean(old_times) * 1.1  # No more than 10% slower
+    assert new_time <= old_time * 1.1  # No more than 10% slower
 ```
 
 ---
 
 ## Implementation Order
 
-### Sprint 1: Foundation (Phase 1)
-- [ ] Add `inline: true` support to block operators
-- [ ] Add output template support
-- [ ] Add expression capture improvements
-- [ ] Add multiple patterns per cascade support
-- [ ] Unit tests for new block operator features
+### Sprint 1: Inference Foundation
+- [ ] Create `operator_inference.py` with template parser
+- [ ] Add `infer_block_operator()` function
+- [ ] Add `inline` and `output_template` to `BlockOperatorSpec`
+- [ ] Unit tests for inference logic
 
-### Sprint 2: Cascade Definitions (Phase 2)
-- [ ] Add block_operator to infix cascade files
-- [ ] Add block_operator to aggregate cascade files
-- [ ] Create cluster_dimension.cascade.yaml (replaces MEANING)
-- [ ] Verify existing dimension cascades work
-
-### Sprint 3: Unified Rewriter (Phase 3)
-- [ ] Create unified_operator_rewriter.py
-- [ ] Wire into sql_rewriter.py pipeline
-- [ ] Add backwards compatibility for old format
+### Sprint 2: Unified Rewriter
+- [ ] Create `unified_operator_rewriter.py`
+- [ ] Integrate inference with explicit block_operator loading
+- [ ] Wire into `sql_rewriter.py` pipeline
 - [ ] Integration tests
 
-### Sprint 4: Cleanup (Phase 4)
-- [ ] Delete hardcoded specs from semantic_rewriter_v2.py
-- [ ] Delete hardcoded specs from llm_agg_rewriter.py
-- [ ] Delete hardcoded functions from semantic_operators.py
-- [ ] Delete fallback implementations from llm_aggregates.py
+### Sprint 3: Cleanup
+- [ ] Delete hardcoded specs from all files
+- [ ] Delete fallback implementations
 - [ ] Consolidate files
+- [ ] Update imports across codebase
 
-### Sprint 5: Validation (Phase 5)
+### Sprint 4: Validation
 - [ ] Full regression test suite
 - [ ] Performance benchmarks
-- [ ] Documentation updates
 - [ ] Edge case testing
+- [ ] Documentation updates
+
+**Estimated Total: 1.5-2 weeks** (simplified from original 2-3 weeks)
 
 ---
 
@@ -565,88 +549,150 @@ def benchmark_rewriter():
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Expression capture edge cases | Medium | Extensive test suite, fall back to old parser |
-| Performance regression | Low | Block operators already tokenize; profile early |
-| Breaking existing queries | High | Full regression suite, canary deployment |
-| Complex CTE generation | Medium | Keep dimension_rewriter.py for now, migrate later |
+| Inference edge cases | Medium | Extensive test suite; explicit block_operator as escape hatch |
+| Template parsing bugs | Low | Limited regex scope; well-tested patterns |
+| Performance regression | Low | Token-based matching is fast; profile early |
+| Breaking existing queries | High | Full regression suite; gradual rollout |
 
 ---
 
 ## Success Criteria
 
 1. **Zero hardcoded operator lists** in Python code
-2. **All operators defined in cascade YAML files**
+2. **Existing `operators` fields work** - no cascade changes needed
 3. **Single unified rewriter** handles all pattern types
 4. **100% backwards compatibility** with existing queries
 5. **Performance parity** or better with old system
-6. **Adding new operator = adding cascade file only**
+6. **Adding new operator = adding cascade file only** (with `operators` declared)
+7. **Complex patterns use explicit block_operator** - escape hatch available
 
 ---
 
-## Appendix: Example Cascade After Migration
+## Appendix A: Inference Examples
 
+### Infix Binary
 ```yaml
-cascade_id: semantic_about
-description: Score how well text relates to a topic (0.0-1.0)
+operators:
+  - "{{ text }} MEANS {{ criterion }}"
+```
+Inferred:
+```python
+BlockOperatorSpec(
+    inline=True,
+    structure=[
+        {"capture": "text", "as": "expression"},
+        {"keyword": "MEANS"},
+        {"capture": "criterion", "as": "string"},
+    ],
+    output_template="semantic_means({{ text }}, {{ criterion }})"
+)
+```
 
-sql_function:
-  name: semantic_about
-  returns: DOUBLE
+### Infix Symbol
+```yaml
+operators:
+  - "{{ a }} ~ {{ b }}"
+```
+Inferred:
+```python
+BlockOperatorSpec(
+    inline=True,
+    structure=[
+        {"capture": "a", "as": "expression"},
+        {"keyword": "~"},
+        {"capture": "b", "as": "string"},
+    ],
+    output_template="semantic_means({{ a }}, {{ b }})"
+)
+```
 
-  patterns:
-    # col ABOUT 'topic'
-    - name: infix_about
-      block_operator:
-        inline: true
-        structure:
-          - capture: text
-            as: expression
-          - keyword: ABOUT
-          - capture: topic
+### Function with Optional Args
+```yaml
+operators:
+  - "SUMMARIZE({{ col }})"
+  - "SUMMARIZE({{ col }}, '{{ prompt }}')"
+```
+Inferred as TWO specs (one per template), or merged with optional handling.
+
+### Multi-word Keyword
+```yaml
+operators:
+  - "{{ text }} ALIGNS WITH {{ narrative }}"
+```
+Inferred:
+```python
+BlockOperatorSpec(
+    inline=True,
+    structure=[
+        {"capture": "text", "as": "expression"},
+        {"keyword": "ALIGNS WITH"},  # Multi-word keyword
+        {"capture": "narrative", "as": "string"},
+    ],
+    output_template="semantic_aligns({{ text }}, {{ narrative }})"
+)
+```
+
+---
+
+## Appendix B: When Explicit block_operator is Needed
+
+### 1. Block Structures (START...END)
+```yaml
+block_operator:
+  start: SEMANTIC_CASE
+  end: END
+  structure: ...
+```
+
+### 2. Repeating Elements
+```yaml
+block_operator:
+  structure:
+    - repeat:
+        min: 1
+        pattern:
+          - keyword: WHEN SEMANTIC
+          - capture: condition
             as: string
-        output: "semantic_about({{ text }}, {{ topic }})"
+```
 
-    # col REGARDING 'topic' (alias)
-    - name: infix_regarding
-      block_operator:
-        inline: true
-        structure:
-          - capture: text
-            as: expression
-          - keyword: REGARDING
-          - capture: topic
-            as: string
-        output: "semantic_about({{ text }}, {{ topic }})"
-
-    # ABOUT(col, 'topic') (function form)
-    - name: function
-      block_operator:
-        start: "ABOUT("
-        end: ")"
-        structure:
-          - capture: text
-            as: expression
+### 3. Complex Optional Arrangements
+```yaml
+block_operator:
+  structure:
+    - capture: col
+      as: expression
+    - optional:
+        pattern:
           - keyword: ","
-          - capture: topic
+          - capture: n
+            as: number
+    - optional:
+        pattern:
+          - keyword: ","
+          - capture: hint
             as: string
-        output: "semantic_about({{ text }}, {{ topic }})"
+```
 
-    # score('topic', col) (direct function - no rewrite needed)
+### 4. Context-Sensitive (GROUP BY)
+```yaml
+block_operator:
+  context: group_by
+  structure:
+    - keyword: MEANING(
+    - capture: col
+      as: expression
+    - keyword: )
+```
 
-inputs_schema:
-  text: The text to evaluate
-  topic: The topic to score against
-
-cells:
-  - name: score
-    instructions: |
-      Score how well this text relates to the given topic.
-      Return a number from 0.0 (completely unrelated) to 1.0 (perfect match).
-
-      Text: {{ input.text }}
-      Topic: {{ input.topic }}
-    output_schema:
-      type: number
-      minimum: 0.0
-      maximum: 1.0
+### 5. Complex Output (CTE Generation)
+```yaml
+block_operator:
+  output_mode: dimension
+  output_template: |
+    WITH _clustered AS (
+      SELECT *, meaning_fn({{ column }}, ...) as _cluster
+      FROM {{ source }}
+    )
+    ...
 ```

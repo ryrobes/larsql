@@ -192,6 +192,36 @@ register_trait("list_traits", list_available_traits)
 # Backward compatibility aliases (for old cascade definitions)
 register_trait("run_sql", run_sql)  # Alias for smart_sql_run (from .traits.sql)
 
+# Conditional: Local Models (HuggingFace transformers - only if installed)
+# Install with: pip install rvbbit[local-models]
+from .local_models import is_available as local_models_available
+if local_models_available():
+    from .local_models import (
+        get_model_registry,
+        local_model_tool,
+        auto_device,
+        get_device_info,
+    )
+    # Note: Local model tools are registered via .tool.yaml files in traits/
+    # or programmatically using the @local_model_tool decorator
+else:
+    # Provide stubs that show helpful error messages
+    def get_model_registry():
+        """Local models not available. Install with: pip install rvbbit[local-models]"""
+        raise ImportError("Local models not available. Install with: pip install rvbbit[local-models]")
+
+    def local_model_tool(*args, **kwargs):
+        """Local models not available. Install with: pip install rvbbit[local-models]"""
+        raise ImportError("Local models not available. Install with: pip install rvbbit[local-models]")
+
+    def auto_device():
+        """Local models not available. Install with: pip install rvbbit[local-models]"""
+        return "cpu"
+
+    def get_device_info():
+        """Local models not available. Install with: pip install rvbbit[local-models]"""
+        return {"error": "Local models not available. Install with: pip install rvbbit[local-models]"}
+
 __all__ = [
     "run_cascade",
     "set_provider",
@@ -217,4 +247,10 @@ __all__ = [
     "bodybuilder",
     "execute_body",
     "plan_and_execute",
+    # Local Models (HuggingFace transformers)
+    "local_models_available",
+    "get_model_registry",
+    "local_model_tool",
+    "auto_device",
+    "get_device_info",
 ]

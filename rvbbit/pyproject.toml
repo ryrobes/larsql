@@ -44,8 +44,16 @@ browser = [
 docker = [
     "docker",  # For linux_shell and run_code tools
 ]
+local-models = [
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+    "accelerate>=0.20.0",
+]
 all = [
     "docker",
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+    "accelerate>=0.20.0",
 ]
 
 [project.scripts]

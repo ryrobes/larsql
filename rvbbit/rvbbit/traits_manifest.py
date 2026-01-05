@@ -19,6 +19,7 @@ from .config import get_config
 
 _traits_manifest_cache: Dict[str, Any] = None
 _declarative_tools_registered: bool = False
+_mcp_tools_registered: bool = False
 
 def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
     """
@@ -199,6 +200,62 @@ def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
             }
     except Exception as e:
         # Harbor not available or error occurred
+        pass
+
+    # 5. Scan MCP (Model Context Protocol) Servers
+    global _mcp_tools_registered
+    if not _mcp_tools_registered:
+        try:
+            from .mcp_discovery import discover_and_register_mcp_tools
+            discover_and_register_mcp_tools()
+            _mcp_tools_registered = True
+        except Exception as e:
+            # Don't fail if MCP discovery has issues
+            print(f"[MCP Discovery] Warning: {e}")
+            pass
+
+    try:
+        from .mcp_discovery import get_mcp_manifest
+        mcp_manifest = get_mcp_manifest()
+
+        for tool_name, tool_info in mcp_manifest.items():
+            server_name = tool_info.get("mcp_server", "unknown")
+            tool_type = tool_info.get("type", "mcp")
+            schema = tool_info.get("schema", {})
+
+            # Extract parameter descriptions from schema
+            params = schema.get("function", {}).get("parameters", {}).get("properties", {})
+            params_desc = []
+            for param_name, param_info in params.items():
+                param_type = param_info.get("type", "string")
+                param_desc_text = param_info.get("description", "")
+                params_desc.append(f"  - {param_name} ({param_type}): {param_desc_text}")
+
+            base_desc = tool_info.get("description", "")
+            if not base_desc:
+                base_desc = f"MCP tool from server '{server_name}'"
+
+            # Indicate tool type (tool, resource, prompt)
+            if tool_type == "mcp_resource_list":
+                base_desc = f"[MCP Resource List] {base_desc}"
+            elif tool_type == "mcp_resource_read":
+                base_desc = f"[MCP Resource Read] {base_desc}"
+            elif tool_type == "mcp_prompt":
+                base_desc = f"[MCP Prompt] {base_desc}"
+
+            if params_desc:
+                full_description = base_desc + "\n\nParameters:\n" + "\n".join(params_desc)
+            else:
+                full_description = base_desc
+
+            manifest[tool_name] = {
+                "type": tool_type,
+                "description": full_description,
+                "mcp_server": server_name,
+                "schema": schema,
+            }
+    except Exception as e:
+        # MCP not available or error occurred
         pass
 
     _traits_manifest_cache = manifest

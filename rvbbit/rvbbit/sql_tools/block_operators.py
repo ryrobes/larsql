@@ -60,18 +60,48 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class BlockOperatorSpec:
-    """Specification for a block operator loaded from cascade YAML."""
+    """
+    Specification for a block or inline operator loaded from cascade YAML.
+
+    Supports two types of operators:
+
+    1. Block operators (explicit block_operator config):
+       - Have start_keyword and end_keyword (e.g., SEMANTIC_CASE...END)
+       - Complex patterns with repeat/optional elements
+       - inline=False
+
+    2. Inline operators (inferred from operators templates):
+       - No start/end keywords (inline=True)
+       - Simple infix or function-call patterns
+       - Generated from templates like "{{ text }} MEANS {{ criterion }}"
+    """
     name: str                          # Function name
-    cascade_path: str                  # Path to cascade file
-    start_keyword: str                 # e.g., "SEMANTIC_CASE"
-    end_keyword: str                   # e.g., "END"
     structure: List[Dict[str, Any]]    # Structure definition
+    cascade_path: str = ""             # Path to cascade file
     returns: str = "VARCHAR"           # Return type
 
+    # Block operator fields (for SEMANTIC_CASE...END style)
+    start_keyword: Optional[str] = None  # e.g., "SEMANTIC_CASE"
+    end_keyword: Optional[str] = None    # e.g., "END"
+
+    # Inline operator fields (for infix/function patterns)
+    inline: bool = False               # True for infix operators (no start/end)
+    output_template: Optional[str] = None  # Jinja2 template for function call
+
     def __post_init__(self):
-        # Normalize keywords to uppercase
-        self.start_keyword = self.start_keyword.upper()
-        self.end_keyword = self.end_keyword.upper()
+        # Normalize keywords to uppercase if present
+        if self.start_keyword:
+            self.start_keyword = self.start_keyword.upper()
+        if self.end_keyword:
+            self.end_keyword = self.end_keyword.upper()
+
+    def is_block_operator(self) -> bool:
+        """Check if this is a block operator (has start/end keywords)."""
+        return bool(self.start_keyword and self.end_keyword)
+
+    def is_inline_operator(self) -> bool:
+        """Check if this is an inline operator (infix or function call)."""
+        return self.inline
 
 
 @dataclass
@@ -91,9 +121,14 @@ _block_specs_lock = None
 
 def load_block_operator_specs(force: bool = False) -> List[BlockOperatorSpec]:
     """
-    Load all block operator specs from the cascade registry.
+    Load all operator specs from the cascade registry.
 
-    Scans for cascades with sql_function.block_operator config.
+    Loads BOTH:
+    1. Explicit block operators (from block_operator config)
+    2. Inferred inline operators (from operators templates)
+
+    This unified approach means all semantic operators come from cascades,
+    with no hardcoded patterns in Python code.
     """
     global _block_specs
 
@@ -101,10 +136,12 @@ def load_block_operator_specs(force: bool = False) -> List[BlockOperatorSpec]:
         return _block_specs
 
     from rvbbit.semantic_sql.registry import get_sql_function_registry
+    from .operator_inference import infer_operators_from_cascade
 
     specs = []
     registry = get_sql_function_registry()
 
+    # Pass 1: Load explicit block operators (SEMANTIC_CASE...END style)
     for fn_name, entry in registry.items():
         block_config = entry.sql_function.get('block_operator')
         if not block_config:
@@ -118,11 +155,46 @@ def load_block_operator_specs(force: bool = False) -> List[BlockOperatorSpec]:
                 end_keyword=block_config.get('end', 'END'),
                 structure=block_config.get('structure', []),
                 returns=entry.returns,
+                inline=False,  # Block operators are not inline
             )
             specs.append(spec)
-            log.debug(f"Loaded block operator: {fn_name} ({spec.start_keyword}...{spec.end_keyword})")
+            log.debug(f"Loaded explicit block operator: {fn_name} ({spec.start_keyword}...{spec.end_keyword})")
         except Exception as e:
             log.warning(f"Failed to load block operator {fn_name}: {e}")
+
+    # Pass 2: Infer inline operators from operators templates
+    # These are the MEANS, ABOUT, SUMMARIZE, etc. patterns
+    for fn_name, entry in registry.items():
+        # Skip if this function has explicit block_operator (already handled above)
+        if entry.sql_function.get('block_operator'):
+            continue
+
+        # Skip if no operators templates defined
+        if not entry.operators:
+            continue
+
+        try:
+            # Infer specs from all operator templates
+            inferred_specs = infer_operators_from_cascade(entry.cascade_path, entry)
+
+            for inferred_dict in inferred_specs:
+                # Convert dict to BlockOperatorSpec
+                spec = BlockOperatorSpec(
+                    name=inferred_dict['name'],
+                    cascade_path=inferred_dict.get('cascade_path', entry.cascade_path),
+                    structure=inferred_dict['structure'],
+                    returns=inferred_dict['returns'],
+                    start_keyword=inferred_dict.get('start_keyword'),
+                    end_keyword=inferred_dict.get('end_keyword'),
+                    inline=inferred_dict['inline'],
+                    output_template=inferred_dict.get('output_template'),
+                )
+                specs.append(spec)
+
+                log.debug(f"Inferred inline operator: {fn_name} (inline={spec.inline}, template={spec.output_template})")
+
+        except Exception as e:
+            log.warning(f"Failed to infer operators from {fn_name}: {e}")
 
     _block_specs = specs
     log.info(f"Loaded {len(specs)} block operator specs")
@@ -451,11 +523,25 @@ def _generate_function_call(match: BlockMatch) -> str:
     """
     Generate a function call from a block match.
 
-    Converts captured arrays to JSON for the function arguments.
+    For inline operators with output_template, uses Jinja2 rendering.
+    For block operators, converts captured arrays to JSON for arguments.
     """
     spec = match.spec
     captures = match.captures
 
+    # If spec has output_template, use Jinja2 rendering
+    if spec.output_template:
+        try:
+            from jinja2 import Template
+            template = Template(spec.output_template)
+            result = template.render(**captures)
+            log.debug(f"Generated function call from template: {result}")
+            return result
+        except Exception as e:
+            log.warning(f"Failed to render output_template for {spec.name}: {e}")
+            # Fall through to positional assembly
+
+    # Fall back to positional assembly for block operators
     # Build argument list based on captures
     args = []
 

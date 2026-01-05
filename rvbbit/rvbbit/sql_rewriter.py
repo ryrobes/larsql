@@ -53,6 +53,16 @@ class RVBBITStatement:
     output_columns: Optional[List[Tuple[str, str]]] = None  # [(col_name, sql_type), ...]
 
 
+@dataclass
+class RVBBITEmbedStatement:
+    """Parsed RVBBIT EMBED statement."""
+    field_ref: str              # "bird_line.text" (full reference)
+    table_name: str             # "bird_line"
+    column_name: str            # "text"
+    using_query: str            # SELECT ... query
+    with_options: Dict[str, Any]  # backend, batch_size, index, etc.
+
+
 # ============================================================================
 # Main Entry Point
 # ============================================================================
@@ -142,22 +152,58 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
         else:
             raise RVBBITSyntaxError(f"Unknown mode: {stmt.mode}")
 
-    # Process block operators (SEMANTIC_CASE...END, etc.)
-    # This must run FIRST to handle complex multi-token patterns before simpler rewrites
-    result = _rewrite_block_operators(result)
+    # Process RVBBIT EMBED statements (vector/embedding indexing)
+    if _is_embed_statement(normalized):
+        stmt = _parse_rvbbit_embed(normalized)
+        result = _rewrite_embed(stmt)
 
-    # Process dimension functions (GROUP BY TOPICS(...), GROUP BY sentiment(...), etc.)
-    # This must run BEFORE semantic operators to properly handle dimension expressions
-    result = _rewrite_dimension_functions(result)
-
-    # Process semantic SQL operators (MEANS, ABOUT, ~, SEMANTIC JOIN, RELEVANCE TO)
-    # This must run BEFORE LLM aggregates since both use -- @ annotations
-    result = _rewrite_semantic_operators(result)
-
-    # Process LLM aggregate functions (can be in original query or in rewritten query)
-    result = _rewrite_llm_aggregates(result)
+    # UNIFIED OPERATOR REWRITING
+    # Single entry point that handles ALL semantic SQL operators:
+    # - Block operators (SEMANTIC_CASE...END)
+    # - Dimension functions (GROUP BY topics(...))
+    # - Infix operators (MEANS, ABOUT, ~)
+    # - Aggregate functions (SUMMARIZE, CLASSIFY)
+    # All patterns loaded from cascades - no hardcoded lists!
+    result = _rewrite_all_operators_unified(result)
 
     return result
+
+
+def _rewrite_all_operators_unified(query: str) -> str:
+    """
+    Unified entry point for ALL semantic SQL operator rewriting.
+
+    Calls the new unified operator rewriter that loads patterns from cascades.
+
+    This replaces the old fragmented approach:
+    - _rewrite_block_operators() - REPLACED
+    - _rewrite_dimension_functions() - REPLACED
+    - _rewrite_semantic_operators() - REPLACED
+    - _rewrite_llm_aggregates() - REPLACED
+
+    All operator patterns now come from cascade metadata, with no hardcoded lists.
+    """
+    try:
+        from .sql_tools.unified_operator_rewriter import rewrite_all_operators
+        return rewrite_all_operators(query)
+    except ImportError as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Unified rewriter not available: {e}, falling back to legacy")
+        # Fallback to legacy rewriters if unified not available
+        result = _rewrite_block_operators(query)
+        result = _rewrite_dimension_functions(result)
+        result = _rewrite_semantic_operators(result)
+        result = _rewrite_llm_aggregates(result)
+        return result
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Unified rewriter failed: {e}, falling back to legacy")
+        # Fallback on any error
+        result = _rewrite_block_operators(query)
+        result = _rewrite_dimension_functions(result)
+        result = _rewrite_semantic_operators(result)
+        result = _rewrite_llm_aggregates(result)
+        return result
 
 
 def _rewrite_block_operators(query: str) -> str:
@@ -346,6 +392,14 @@ def _is_map_run_statement(query: str) -> bool:
     lines = [line.split('--')[0].strip() for line in clean.split('\n')]
     clean = ' '.join(line for line in lines if line)
     return 'RVBBIT MAP' in clean or 'RVBBIT RUN' in clean
+
+
+def _is_embed_statement(query: str) -> bool:
+    """Check if query contains RVBBIT EMBED syntax."""
+    clean = query.strip().upper()
+    lines = [line.split('--')[0].strip() for line in clean.split('\n')]
+    clean = ' '.join(line for line in lines if line)
+    return 'RVBBIT EMBED' in clean
 
 
 def _is_rvbbit_statement(query: str) -> bool:
@@ -999,6 +1053,203 @@ SELECT rvbbit_run_batch(
     """.strip()
 
     return rewritten
+
+
+# ============================================================================
+# EMBED Rewrite
+# ============================================================================
+
+def _parse_rvbbit_embed(query: str) -> RVBBITEmbedStatement:
+    """
+    Parse RVBBIT EMBED statement.
+
+    Syntax:
+        RVBBIT EMBED table.column
+        USING (SELECT id, text FROM ...)
+        [WITH (backend='clickhouse', batch_size=100)]
+    """
+    query = query.strip()
+    # Remove SQL comments and normalize whitespace
+    lines = [line.split('--')[0].strip() for line in query.split('\n')]
+    query = ' '.join(line for line in lines if line)
+
+    # Extract RVBBIT EMBED prefix
+    embed_match = re.match(r'RVBBIT\s+EMBED\s+', query, re.IGNORECASE)
+    if not embed_match:
+        raise RVBBITSyntaxError(f"Expected RVBBIT EMBED, got: {query[:50]}...")
+
+    remaining = query[embed_match.end():].strip()
+
+    # Extract field reference (table.column)
+    field_match = re.match(r'([a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*)', remaining)
+    if not field_match:
+        raise RVBBITSyntaxError(
+            f"Expected field reference (table.column), got: {remaining[:50]}...\n"
+            f"Example: RVBBIT EMBED bird_line.text"
+        )
+
+    field_ref = field_match.group(1)
+    remaining = remaining[field_match.end():].strip()
+
+    # Parse field reference
+    from .sql_tools.field_reference import validate_field_reference
+    parsed_field = validate_field_reference(field_ref, "RVBBIT EMBED")
+
+    # Extract USING clause
+    if not remaining.upper().startswith('USING'):
+        raise RVBBITSyntaxError("Expected USING (SELECT ...)")
+
+    remaining = remaining[5:].strip()  # Skip 'USING'
+    using_query, remaining = _extract_balanced_parens(remaining)
+    if using_query is None:
+        raise RVBBITSyntaxError("Expected balanced parentheses after USING")
+
+    # Extract WITH options (optional)
+    with_options = {}
+    remaining = remaining.strip()
+    if remaining.upper().startswith('WITH'):
+        remaining = remaining[4:].strip()
+        with_clause, remaining = _extract_balanced_parens(remaining)
+        if with_clause is None:
+            raise RVBBITSyntaxError("Expected balanced parentheses after WITH")
+        with_options = _parse_with_options(with_clause)
+
+    return RVBBITEmbedStatement(
+        field_ref=field_ref,
+        table_name=parsed_field.table,
+        column_name=parsed_field.column,
+        using_query=using_query,
+        with_options=with_options
+    )
+
+
+def _rewrite_embed(stmt: RVBBITEmbedStatement) -> str:
+    """
+    Rewrite RVBBIT EMBED to embed_batch() or embed_batch_elastic() calls.
+
+    Args:
+        stmt: Parsed EMBED statement
+
+    Returns:
+        Rewritten SQL that executes the embedding operation
+
+    Example:
+        Input:  RVBBIT EMBED bird_line.text
+                USING (SELECT id::VARCHAR AS id, text FROM bird_line)
+                WITH (backend='clickhouse', batch_size=50)
+
+        Output: SELECT embed_batch(
+                  'bird_line',
+                  'text',
+                  (SELECT id::VARCHAR AS id, text FROM bird_line),
+                  50
+                )
+    """
+    # Extract options
+    backend = stmt.with_options.get('backend', 'clickhouse')
+    batch_size = stmt.with_options.get('batch_size', 100)
+
+    # Validate USING query has required columns
+    _validate_embed_using_query(stmt.using_query)
+
+    if backend == 'clickhouse':
+        # ClickHouse backend: embed_batch(table, column, json_array, batch_size)
+        # The function expects a single JSON column containing array of {id, text} objects
+        # We wrap the USING query to convert 2 columns → 1 JSON column
+        # Then extract fields to display as nice table (avoids read_json_auto subquery issues)
+        rewritten = f"""
+WITH _embed_result AS (
+  SELECT embed_batch(
+    '{stmt.table_name}',
+    '{stmt.column_name}',
+    (SELECT to_json(list({{'id': id, 'text': text}})) FROM ({stmt.using_query}) AS _src),
+    {batch_size}
+  ) AS result
+)
+SELECT
+  CAST(json_extract(result, '$.rows_embedded') AS INTEGER) AS rows_embedded,
+  CAST(json_extract(result, '$.batches') AS INTEGER) AS batches,
+  CAST(json_extract(result, '$.duration_seconds') AS DOUBLE) AS duration_seconds,
+  CAST(json_extract(result, '$.rows_per_second') AS DOUBLE) AS rows_per_second,
+  json_extract_string(result, '$.backend') AS backend,
+  json_extract_string(result, '$.model') AS model
+FROM _embed_result
+        """.strip()
+
+    elif backend == 'elastic':
+        # Elastic backend: embed_batch_elastic(table, column, json_array, batch_size, index)
+        # Arg order: table, column, rows_json, batch_size (INT), index_name (VARCHAR)
+        # Same as ClickHouse - expects single JSON column with array of {id, text} objects
+        # Extract fields to display as nice table (avoids read_json_auto subquery issues)
+        index = stmt.with_options.get('index', 'rvbbit_embeddings')
+
+        rewritten = f"""
+WITH _embed_result AS (
+  SELECT embed_batch_elastic(
+    '{stmt.table_name}',
+    '{stmt.column_name}',
+    (SELECT to_json(list({{'id': id, 'text': text}})) FROM ({stmt.using_query}) AS _src),
+    {batch_size},
+    '{index}'
+  ) AS result
+)
+SELECT
+  CAST(json_extract(result, '$.rows_embedded') AS INTEGER) AS rows_embedded,
+  CAST(json_extract(result, '$.rows_total') AS INTEGER) AS rows_total,
+  CAST(json_extract(result, '$.batches') AS INTEGER) AS batches,
+  CAST(json_extract(result, '$.duration_seconds') AS DOUBLE) AS duration_seconds,
+  CAST(json_extract(result, '$.rows_per_second') AS DOUBLE) AS rows_per_second,
+  json_extract_string(result, '$.backend') AS backend,
+  json_extract_string(result, '$.index') AS index_name,
+  json_extract_string(result, '$.model') AS model
+FROM _embed_result
+        """.strip()
+
+    else:
+        raise RVBBITSyntaxError(
+            f"Unknown embedding backend: {backend}\n"
+            f"Available backends: 'clickhouse', 'elastic'"
+        )
+
+    return rewritten
+
+
+def _validate_embed_using_query(using_query: str):
+    """
+    Validate that USING query has required id and text columns.
+
+    This is a basic string-based check. Full validation happens at execution time.
+
+    Args:
+        using_query: The SELECT query from USING clause
+
+    Raises:
+        RVBBITSyntaxError: If required columns appear to be missing
+    """
+    query_upper = using_query.upper()
+
+    # Check for 'id' and 'text' in SELECT list (basic heuristic)
+    # This catches obvious errors but isn't foolproof
+    has_id = re.search(r'\bAS\s+id\b', query_upper, re.IGNORECASE) or \
+             re.search(r'\bid\s*,', query_upper, re.IGNORECASE) or \
+             re.search(r'SELECT\s+id\b', query_upper, re.IGNORECASE)
+
+    has_text = re.search(r'\bAS\s+text\b', query_upper, re.IGNORECASE) or \
+               re.search(r'\btext\s*,', query_upper, re.IGNORECASE) or \
+               re.search(r'\btext\s+FROM\b', query_upper, re.IGNORECASE)
+
+    if not has_id or not has_text:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"RVBBIT EMBED: USING query may be missing required columns.\n"
+            f"Required columns:\n"
+            f"  - id: VARCHAR (must be aliased as 'id')\n"
+            f"  - text: VARCHAR (must be aliased as 'text')\n"
+            f"\n"
+            f"Your query: {using_query[:200]}...\n"
+            f"\n"
+            f"Example: SELECT id::VARCHAR AS id, content AS text FROM table"
+        )
 
 
 def _ensure_limit(query: str) -> str:

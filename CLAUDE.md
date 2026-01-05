@@ -141,6 +141,30 @@ rvbbit models verify --model-id anthropic/claude-sonnet-4
 rvbbit models stats
 ```
 
+### Local Models (HuggingFace Transformers)
+
+Run ML models locally without API calls using HuggingFace transformers.
+
+**Installation**:
+```bash
+pip install rvbbit[local-models]  # Installs transformers, torch, accelerate
+```
+
+**CLI Commands**:
+```bash
+rvbbit models local status              # Show device info, loaded models
+rvbbit models local list                # List local model tools
+rvbbit models local list --loaded       # Show only loaded models
+rvbbit models local load MODEL --task TASK  # Preload a model
+rvbbit models local unload MODEL        # Unload from cache
+rvbbit models local clear               # Clear all cached models
+rvbbit models local export MODEL --task TASK -o tool.yaml  # Generate tool definition
+```
+
+**Environment Variables**:
+- `RVBBIT_LOCAL_MODEL_DEVICE`: Default device (`auto`, `cuda`, `mps`, `cpu`)
+- `RVBBIT_LOCAL_MODEL_CACHE_SIZE_GB`: Max cache memory in GB (default: `8`)
+
 ### Tool Management
 ```bash
 rvbbit tools sync --force
@@ -174,6 +198,50 @@ rvbbit harbor manifest
 rvbbit harbor wake user/space-name
 rvbbit harbor refresh
 ```
+
+### MCP (Model Context Protocol) Servers
+```bash
+rvbbit mcp list                     # List configured MCP servers
+rvbbit mcp status                   # Show server status and health
+rvbbit mcp introspect filesystem    # List tools from specific server
+rvbbit mcp manifest                 # Show all MCP tools in manifest
+rvbbit mcp refresh                  # Re-discover tools from all servers
+rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'  # Test tool
+```
+
+**Configuration**:
+MCP servers are configured via `config/mcp_servers.yaml` or `RVBBIT_MCP_SERVERS_YAML` env var.
+
+Example `config/mcp_servers.yaml`:
+```yaml
+# Filesystem server
+- name: filesystem
+  transport: stdio
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  enabled: true
+
+# Brave Search
+- name: brave-search
+  transport: stdio
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-brave-search"]
+  env:
+    BRAVE_API_KEY: ${BRAVE_API_KEY}
+  enabled: true
+
+# HTTP server example
+- name: github
+  transport: http
+  url: http://localhost:3000/mcp
+  headers:
+    Authorization: Bearer ${GITHUB_TOKEN}
+  enabled: false
+```
+
+**Environment Variables**:
+- `RVBBIT_MCP_ENABLED`: Enable MCP integration (default: `true`)
+- `RVBBIT_MCP_SERVERS_YAML`: YAML array of server configs (alternative to config file)
 
 ### Testing
 ```bash
@@ -304,11 +372,13 @@ cells:
 
 ### Tool System ("Traits")
 
-**Four Types**:
-1. **Python Functions**: Registered via `register_tackle("name", func)`
+**Six Types**:
+1. **Python Functions**: Registered via `register_trait("name", func)`
 2. **Cascade Tools**: YAML cascades with `inputs_schema` in `traits/` directory
 3. **Gradio Tools (Harbor)**: HuggingFace Spaces as tools via `.tool.json`
 4. **Memory Tools**: RAG-searchable knowledge bases
+5. **Local Model Tools**: HuggingFace transformers via `.tool.yaml` with `type: local_model`
+6. **MCP Tools**: Model Context Protocol servers (stdio/HTTP) with auto-discovery
 
 **Built-in Tools**:
 - **Core**: `linux_shell`, `run_code`, `set_state`, `spawn_cascade`, `map_cascade`
@@ -326,14 +396,91 @@ cells:
 
 **Registering Custom Tools**:
 ```python
-from rvbbit import register_tackle
+from rvbbit import register_trait
 
 def my_tool(param: str) -> str:
     """Tool description for LLM."""
     return f"Result: {param}"
 
-register_tackle("my_tool", my_tool)
+register_trait("my_tool", my_tool)
 ```
+
+### Custom SQL Operators
+
+**NEW (2026):** Create custom SQL operators through cascade files - no Python code needed!
+
+The template inference system automatically converts operator patterns into structured matching:
+
+```yaml
+# cascades/my_operators/similar_to.cascade.yaml
+sql_function:
+  name: similar_to
+  operators:
+    - "{{ text }} SIMILAR_TO {{ reference }}"
+    - "SIMILAR_TO({{ text }}, {{ reference }})"
+  args:
+    - name: text
+      type: VARCHAR
+    - name: reference
+      type: VARCHAR
+  returns: BOOLEAN
+
+cells:
+  - name: check_similarity
+    instructions: |
+      Are these semantically similar?
+      TEXT: {{ input.text }}
+      REFERENCE: {{ input.reference }}
+      Answer: true or false
+```
+
+**Usage:**
+```sql
+-- Both syntaxes work automatically:
+SELECT * FROM docs WHERE title SIMILAR_TO 'sustainability report'
+SELECT SIMILAR_TO(title, 'eco-friendly') FROM products
+```
+
+**See:** `docs/CUSTOM_SQL_OPERATORS.md` for complete guide with examples, best practices, and troubleshooting.
+
+**Creating Local Model Tools**:
+
+Declarative (`.tool.yaml`):
+```yaml
+tool_id: local_sentiment
+description: Analyze text sentiment using local DistilBERT model
+inputs_schema:
+  text: The text to analyze
+type: local_model
+model_id: distilbert/distilbert-base-uncased-finetuned-sst-2-english
+task: text-classification
+device: auto  # auto, cuda, mps, cpu
+```
+
+Programmatic (Python decorator):
+```python
+from rvbbit import local_model_tool
+
+@local_model_tool(
+    "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+    "text-classification",
+    name="sentiment_with_threshold"
+)
+def sentiment_with_threshold(pipeline, text: str, threshold: float = 0.8) -> str:
+    result = pipeline(text)
+    if result[0]["score"] < threshold:
+        return "uncertain"
+    return result[0]["label"]
+```
+
+**Supported Local Model Tasks**:
+- `text-classification` / `sentiment-analysis`
+- `token-classification` / `ner`
+- `summarization`
+- `question-answering`
+- `text-generation`
+- `zero-shot-classification`
+- `image-classification`
 
 ### Key Features
 

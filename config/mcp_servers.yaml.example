@@ -1,0 +1,79 @@
+# MCP Server Configuration
+#
+# Configure Model Context Protocol servers for RVBBIT.
+# Servers are auto-discovered at startup and their tools registered in trait_registry.
+#
+# Copy this file to mcp_servers.yaml to activate.
+
+# Filesystem server - Read/write files
+- name: filesystem
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-filesystem"
+    - "/tmp"  # Root directory for file access
+  enabled: true
+
+# Brave Search - Web search via Brave API
+- name: brave-search
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-brave-search"
+  env:
+    BRAVE_API_KEY: ${BRAVE_API_KEY}  # Environment variable substitution
+  enabled: true
+
+# GitHub (HTTP example) - Access GitHub API
+- name: github
+  transport: http
+  url: http://localhost:3000/mcp
+  headers:
+    Authorization: Bearer ${GITHUB_TOKEN}
+  timeout: 60
+  enabled: false  # Disabled by default
+
+# Memory (context/conversation) server
+- name: memory
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-memory"
+  enabled: false
+
+# Slack integration
+- name: slack
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-slack"
+  env:
+    SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+    SLACK_TEAM_ID: ${SLACK_TEAM_ID}
+  enabled: false
+
+# PostgreSQL database
+- name: postgres
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-postgres"
+    - "postgresql://localhost/mydb"
+  enabled: false
+
+# Google Drive
+- name: gdrive
+  transport: stdio
+  command: npx
+  args:
+    - "-y"
+    - "@modelcontextprotocol/server-gdrive"
+  env:
+    GDRIVE_CLIENT_ID: ${GDRIVE_CLIENT_ID}
+    GDRIVE_CLIENT_SECRET: ${GDRIVE_CLIENT_SECRET}
+  enabled: false

@@ -9,7 +9,8 @@ Key changes from dual-mode:
 - All log/analytics data goes to ClickHouse tables directly
 """
 import os
-from typing import Optional, List
+import json
+from typing import Optional, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 # Get RVBBIT_ROOT once at module load
@@ -18,6 +19,83 @@ _RVBBIT_ROOT = os.getenv("RVBBIT_ROOT", os.getcwd())
 # Export as RVBBIT_ROOT for backward compatibility with modules that import it directly
 # (e.g., analytics_worker.py uses `from .config import RVBBIT_ROOT`)
 RVBBIT_ROOT = _RVBBIT_ROOT
+
+
+# ============================================================================
+# MCP Server Configuration Loader
+# ============================================================================
+
+def _load_mcp_servers_from_env() -> List[Any]:
+    """
+    Load MCP server configurations from environment variables or config file.
+
+    Supports two methods:
+    1. RVBBIT_MCP_SERVERS_YAML - YAML string with array of server configs
+    2. RVBBIT_ROOT/config/mcp_servers.yaml - YAML file with server configs
+
+    Returns:
+        List of MCPServerConfig instances (or empty list if not configured)
+    """
+    # Try loading from environment variable first (supports both YAML and JSON for backwards compat)
+    mcp_yaml = os.getenv("RVBBIT_MCP_SERVERS_YAML")
+    mcp_json = os.getenv("RVBBIT_MCP_SERVERS_JSON")  # Legacy support
+
+    if mcp_yaml or mcp_json:
+        try:
+            import yaml
+            from .mcp_client import MCPServerConfig, MCPTransport
+
+            # Prefer YAML, fallback to JSON
+            servers_data = yaml.safe_load(mcp_yaml) if mcp_yaml else json.loads(mcp_json)
+
+            return [
+                MCPServerConfig(
+                    name=s["name"],
+                    transport=MCPTransport(s.get("transport", "stdio")),
+                    command=s.get("command"),
+                    args=s.get("args"),
+                    env=s.get("env"),
+                    url=s.get("url"),
+                    headers=s.get("headers"),
+                    timeout=s.get("timeout", 30),
+                    enabled=s.get("enabled", True)
+                )
+                for s in servers_data
+            ]
+        except Exception as e:
+            print(f"[Config] Warning: Failed to parse MCP servers from env: {e}")
+            return []
+
+    # Try loading from YAML config file
+    config_file = os.path.join(_RVBBIT_ROOT, "config", "mcp_servers.yaml")
+    if os.path.exists(config_file):
+        try:
+            import yaml
+            from .mcp_client import MCPServerConfig, MCPTransport
+
+            with open(config_file, 'r') as f:
+                servers_data = yaml.safe_load(f)
+
+            return [
+                MCPServerConfig(
+                    name=s["name"],
+                    transport=MCPTransport(s.get("transport", "stdio")),
+                    command=s.get("command"),
+                    args=s.get("args"),
+                    env=s.get("env"),
+                    url=s.get("url"),
+                    headers=s.get("headers"),
+                    timeout=s.get("timeout", 30),
+                    enabled=s.get("enabled", True)
+                )
+                for s in servers_data
+            ]
+        except Exception as e:
+            print(f"[Config] Warning: Failed to load {config_file}: {e}")
+            return []
+
+    # No MCP servers configured
+    return []
 
 
 class Config(BaseModel):
@@ -152,6 +230,17 @@ class Config(BaseModel):
     )
     harbor_cache_ttl: int = Field(
         default_factory=lambda: int(os.getenv("RVBBIT_HARBOR_CACHE_TTL", "300"))
+    )
+
+    # =========================================================================
+    # MCP (Model Context Protocol) Configuration
+    # =========================================================================
+    mcp_enabled: bool = Field(
+        default_factory=lambda: os.getenv("RVBBIT_MCP_ENABLED", "true").lower() == "true"
+    )
+    # MCP servers loaded from config/mcp_servers.yaml or RVBBIT_MCP_SERVERS_YAML env var
+    mcp_servers: List[Any] = Field(
+        default_factory=lambda: _load_mcp_servers_from_env()
     )
 
     # =========================================================================

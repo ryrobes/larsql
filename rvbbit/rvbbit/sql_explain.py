@@ -540,15 +540,16 @@ def _analyze_semantic_operation(
 
 def _get_llm_agg_registry() -> tuple:
     """
-    Get LLM aggregate function registry from llm_agg_rewriter.
+    Get LLM aggregate function registry from cascade system.
 
-    Returns (functions_dict, aliases_dict) from the canonical source.
+    Returns (functions_dict, aliases_dict) dynamically loaded from cascades.
+    This replaces the old hardcoded LLM_AGG_FUNCTIONS/LLM_AGG_ALIASES.
     """
     try:
-        from rvbbit.sql_tools.llm_agg_rewriter import LLM_AGG_FUNCTIONS, LLM_AGG_ALIASES
-        return LLM_AGG_FUNCTIONS, LLM_AGG_ALIASES
+        from rvbbit.sql_tools.aggregate_registry import get_llm_agg_functions_compat
+        return get_llm_agg_functions_compat()
     except ImportError:
-        log.warning("[explain] Could not import LLM aggregate registry")
+        log.warning("[explain] Could not import aggregate registry")
         return {}, {}
 
 

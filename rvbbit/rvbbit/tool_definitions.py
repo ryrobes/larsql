@@ -54,18 +54,19 @@ class ToolDefinition(BaseModel):
     """
     Schema for .tool.json declarative tool definitions.
 
-    Supports five tool types:
+    Supports six tool types:
     - shell: Execute a shell command
     - http: Make an HTTP request
     - python: Call a Python function by import path
     - composite: Chain multiple tools together
     - gradio: Call a Gradio endpoint (HuggingFace Spaces or direct URL)
+    - local_model: Run a local HuggingFace transformers model
     """
     tool_id: str = Field(..., description="Unique identifier for the tool")
     description: str = Field(..., description="Description shown to LLM")
     inputs_schema: Dict[str, str] = Field(default_factory=dict, description="Parameter name -> description mapping")
 
-    type: Literal["shell", "http", "python", "composite", "gradio"] = Field(..., description="Tool execution type")
+    type: Literal["shell", "http", "python", "composite", "gradio", "local_model"] = Field(..., description="Tool execution type")
 
     # Shell options
     command: Optional[str] = Field(None, description="Shell command (Jinja2 template)")
@@ -92,6 +93,13 @@ class ToolDefinition(BaseModel):
     api_name: Optional[str] = Field(None, description="Gradio endpoint name (e.g., '/predict')")
     introspect: bool = Field(False, description="Auto-fetch inputs_schema from Gradio API if not provided")
 
+    # Local model options (HuggingFace transformers)
+    model_id: Optional[str] = Field(None, description="HuggingFace model ID (e.g., 'distilbert/distilbert-base-uncased-finetuned-sst-2-english')")
+    task: Optional[str] = Field(None, description="Pipeline task (e.g., 'text-classification', 'ner', 'summarization')")
+    device: Optional[str] = Field(None, description="Device to use: 'auto', 'cuda', 'mps', 'cpu' (default: auto)")
+    model_kwargs: Optional[Dict[str, Any]] = Field(None, description="Additional kwargs for model loading")
+    pipeline_kwargs: Optional[Dict[str, Any]] = Field(None, description="Additional kwargs for pipeline execution")
+
     # Output processing
     output_transform: Optional[Literal["json", "text", "lines"]] = Field(None, description="How to transform output")
     error_pattern: Optional[str] = Field(None, description="Regex pattern to detect errors in output")
@@ -113,6 +121,10 @@ class ToolDefinition(BaseModel):
             raise ValueError(f"Tool '{self.tool_id}': composite type requires 'steps' field")
         if self.type == "gradio" and not self.space and not self.gradio_url:
             raise ValueError(f"Tool '{self.tool_id}': gradio type requires 'space' or 'gradio_url' field")
+        if self.type == "local_model" and not self.model_id:
+            raise ValueError(f"Tool '{self.tool_id}': local_model type requires 'model_id' field")
+        if self.type == "local_model" and not self.task:
+            raise ValueError(f"Tool '{self.tool_id}': local_model type requires 'task' field")
 
 
 # ============================================================================
@@ -631,6 +643,56 @@ def _process_single_gradio_result(result: Any, config) -> Any:
     return str(result) if result is not None else ""
 
 
+def execute_local_model_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str, Any]) -> str:
+    """
+    Execute a local_model-type tool using HuggingFace transformers.
+
+    Supports text classification, NER, summarization, question answering,
+    and other tasks supported by transformers pipelines.
+    """
+    try:
+        from .local_models import is_available, get_model_registry, TransformersExecutor
+    except ImportError:
+        return "[ERROR] Local models module not available. Install with: pip install rvbbit[local-models]"
+
+    if not is_available():
+        return "[ERROR] transformers/torch not installed. Run: pip install rvbbit[local-models]"
+
+    registry = get_model_registry()
+    device = tool.device or "auto"
+
+    # Load or get cached model
+    try:
+        pipeline = registry.get_or_load(
+            model_id=tool.model_id,
+            task=tool.task,
+            device=device,
+            **(tool.model_kwargs or {})
+        )
+    except Exception as e:
+        return f"[ERROR] Failed to load model '{tool.model_id}': {str(e)}"
+
+    # Execute the pipeline
+    try:
+        executor = TransformersExecutor(pipeline, tool)
+        result = executor.execute(inputs)
+
+        # Handle multi-modal results (images need special formatting)
+        if isinstance(result, dict) and "images" in result:
+            return f"{result.get('content', '')}\n\nImages: {', '.join(result['images'])}"
+
+        # Return raw data structure - framework handles serialization
+        # This allows data cells to access results directly via data.cell_name
+        return result
+
+    except Exception as e:
+        error_msg = str(e)
+        # Check for common errors
+        if "CUDA out of memory" in error_msg:
+            return "[ERROR] CUDA out of memory. Try a smaller model or use device='cpu'."
+        return f"[ERROR] Local model execution failed: {error_msg}"
+
+
 # ============================================================================
 # Tool Loading and Registration
 # ============================================================================
@@ -677,6 +739,8 @@ def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str
         return execute_composite_tool(tool, inputs, context)
     elif tool.type == "gradio":
         return execute_gradio_tool(tool, inputs, context)
+    elif tool.type == "local_model":
+        return execute_local_model_tool(tool, inputs, context)
     else:
         return f"[ERROR] Unknown tool type: {tool.type}"
 

@@ -42,114 +42,34 @@ from dataclasses import dataclass, field
 # Supported Aggregate Functions
 # ============================================================================
 
-@dataclass
-class LLMAggFunction:
-    """Definition of an LLM aggregate function."""
-    name: str                    # SQL name (e.g., "LLM_SUMMARIZE")
-    impl_name: str               # Implementation function name
-    min_args: int                # Minimum arguments
-    max_args: int                # Maximum arguments
-    return_type: str             # SQL return type
-    arg_template: str            # Template for impl call args
+# LLMAggFunction class DELETED - now defined in aggregate_registry.py
+# The class is recreated dynamically from cascade metadata
 
 
-LLM_AGG_FUNCTIONS = {
-    "LLM_SUMMARIZE": LLMAggFunction(
-        name="LLM_SUMMARIZE",
-        impl_name="llm_summarize_impl",
-        min_args=1,
-        max_args=3,  # (column, prompt, max_items)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_CLASSIFY": LLMAggFunction(
-        name="LLM_CLASSIFY",
-        impl_name="llm_classify_impl",
-        min_args=2,
-        max_args=3,  # (column, categories, prompt)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_SENTIMENT": LLMAggFunction(
-        name="LLM_SENTIMENT",
-        impl_name="llm_sentiment_impl",
-        min_args=1,
-        max_args=1,
-        return_type="DOUBLE",
-        arg_template="LIST({col})::VARCHAR"
-    ),
-    "LLM_THEMES": LLMAggFunction(
-        name="LLM_THEMES",
-        impl_name="llm_themes_impl",
-        min_args=1,
-        max_args=2,  # (column, max_themes)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_AGG": LLMAggFunction(
-        name="LLM_AGG",
-        impl_name="llm_agg_impl",
-        min_args=2,
-        max_args=2,  # (prompt, column)
-        return_type="VARCHAR",
-        arg_template="{prompt}, LIST({col})::VARCHAR"  # Note: prompt comes first
-    ),
-    "LLM_DEDUPE": LLMAggFunction(
-        name="LLM_DEDUPE",
-        impl_name="llm_dedupe_impl",
-        min_args=1,
-        max_args=2,  # (column, criteria)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_CLUSTER": LLMAggFunction(
-        name="LLM_CLUSTER",
-        impl_name="llm_cluster_impl",
-        min_args=1,
-        max_args=3,  # (column, num_clusters, criteria)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_CONSENSUS": LLMAggFunction(
-        name="LLM_CONSENSUS",
-        impl_name="llm_consensus_impl",
-        min_args=1,
-        max_args=2,  # (column, prompt)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-    "LLM_OUTLIERS": LLMAggFunction(
-        name="LLM_OUTLIERS",
-        impl_name="llm_outliers_impl",
-        min_args=1,
-        max_args=3,  # (column, num_outliers, criteria)
-        return_type="VARCHAR",
-        arg_template="LIST({col})::VARCHAR{extra_args}"
-    ),
-}
-
-
-# Short aliases for cleaner SQL (map to canonical names)
-# These are rewritten before DuckDB sees them, so reserved words don't matter
-LLM_AGG_ALIASES = {
-    "SUMMARIZE": "LLM_SUMMARIZE",
-    "CLASSIFY": "LLM_CLASSIFY",
-    # Split: SENTIMENT(text) is scalar; SENTIMENT_AGG(col) is aggregate sugar.
-    "SENTIMENT_AGG": "LLM_SENTIMENT",
-    "THEMES": "LLM_THEMES",
-    "TOPICS": "LLM_THEMES",       # Alias for THEMES
-    "DEDUPE": "LLM_DEDUPE",       # Semantic deduplication
-    "CLUSTER": "LLM_CLUSTER",     # Semantic clustering
-    "CONSENSUS": "LLM_CONSENSUS", # Find common ground
-    "OUTLIERS": "LLM_OUTLIERS",   # Find unusual items
-    # Note: AGG is intentionally omitted - too generic
-}
+# ============================================================================
+# DELETED: Hardcoded aggregate function definitions
+# ============================================================================
+# The LLM_AGG_FUNCTIONS and LLM_AGG_ALIASES dicts have been removed.
+# These are now loaded dynamically from cascade registry via aggregate_registry.py.
+#
+# Migration: 2026-01-04
+# See: sql_tools/aggregate_registry.py for dynamic loading
+# See: UNIFIED_OPERATOR_MIGRATION_COMPLETE.md for details
+# ============================================================================
 
 
 def _resolve_alias(name: str) -> str:
-    """Resolve alias to canonical function name."""
+    """
+    Resolve alias to canonical function name.
+
+    Uses cascade registry but maps to legacy LLM_* names for backwards
+    compatibility with existing DuckDB UDFs (llm_summarize_1, etc.)
+    """
+    from .aggregate_registry import get_llm_agg_functions_compat
+
+    _, aliases_compat = get_llm_agg_functions_compat()
     upper = name.upper()
-    return LLM_AGG_ALIASES.get(upper, upper)
+    return aliases_compat.get(upper, upper)
 
 
 # ============================================================================
@@ -310,16 +230,26 @@ def _find_annotation_for_position(
 
 def has_llm_aggregates(query: str) -> bool:
     """Check if query contains any LLM aggregate functions or aliases."""
+    from .aggregate_registry import get_all_aggregate_names
+
     query_upper = query.upper()
-    # Check canonical names
-    for name in LLM_AGG_FUNCTIONS.keys():
-        if f"{name}(" in query_upper:
-            return True
-    # Check aliases
-    for alias in LLM_AGG_ALIASES.keys():
+    all_names = get_all_aggregate_names()
+
+    # Exclude vector search table functions (they're not aggregates)
+    excluded_functions = {
+        'VECTOR_SEARCH', 'ELASTIC_SEARCH', 'HYBRID_SEARCH', 'KEYWORD_SEARCH'
+    }
+
+    # Check all function names (canonical + aliases)
+    for name in all_names:
+        # Skip vector search functions
+        if name in excluded_functions:
+            continue
+
         # Use word boundary to avoid matching e.g. "SUMMARIZED"
-        if re.search(rf'\b{alias}\s*\(', query_upper):
+        if re.search(rf'\b{name}\s*\(', query_upper):
             return True
+
     return False
 
 
@@ -402,12 +332,22 @@ def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
     Returns list of (start_pos, end_pos, func_name, args)
     where func_name is the CANONICAL name (aliases are resolved).
     """
+    from .aggregate_registry import get_all_aggregate_names
+
     results = []
 
-    # Build list of all names to search for (canonical + aliases)
-    all_names = list(LLM_AGG_FUNCTIONS.keys()) + list(LLM_AGG_ALIASES.keys())
+    # Build list of all names to search for (canonical + aliases) from cascade registry
+    all_names = get_all_aggregate_names()
+
+    # Exclude vector search table functions (they're not aggregates)
+    excluded_functions = {
+        'VECTOR_SEARCH', 'ELASTIC_SEARCH', 'HYBRID_SEARCH', 'KEYWORD_SEARCH'
+    }
 
     for search_name in all_names:
+        # Skip vector search functions
+        if search_name in excluded_functions:
+            continue
         # Case-insensitive search for function calls
         pattern = re.compile(
             rf'\b({search_name})\s*\(',
@@ -439,6 +379,16 @@ def _find_llm_agg_calls(query: str) -> List[Tuple[int, int, str, List[str]]]:
 
             # Resolve alias to canonical name
             canonical_name = _resolve_alias(match.group(1))
+
+            # Skip vector search table functions (they're not aggregates)
+            # Normalize to uppercase for comparison
+            excluded_functions_upper = {
+                'VECTOR_SEARCH', 'ELASTIC_SEARCH', 'HYBRID_SEARCH', 'KEYWORD_SEARCH',
+                'VECTOR_SEARCH_ELASTIC'  # The actual cascade function name
+            }
+            if canonical_name.upper() in excluded_functions_upper:
+                continue
+
             results.append((start, end, canonical_name, args))
 
     # Sort by position (reverse order for safe replacement)
@@ -530,7 +480,11 @@ def rewrite_llm_aggregates(query: str) -> str:
     # Replace in reverse order (to preserve positions)
     result = query
     for start, end, func_name, args in calls:
-        func_def = LLM_AGG_FUNCTIONS.get(func_name)
+        # Look up function from cascade registry
+        from .aggregate_registry import get_llm_agg_functions_compat
+        funcs_compat, _ = get_llm_agg_functions_compat()
+
+        func_def = funcs_compat.get(func_name.upper())
         if not func_def:
             continue
 
@@ -794,7 +748,11 @@ def process_llm_aggregates(query: str) -> str:
 # ============================================================================
 
 def get_supported_aggregates() -> Dict[str, Dict[str, Any]]:
-    """Get information about supported LLM aggregate functions."""
+    """Get information about supported LLM aggregate functions (from cascade registry)."""
+    from .aggregate_registry import get_llm_agg_functions_compat
+
+    funcs_compat, _ = get_llm_agg_functions_compat()
+
     return {
         name: {
             "impl": func.impl_name,
@@ -803,7 +761,7 @@ def get_supported_aggregates() -> Dict[str, Dict[str, Any]]:
             "return_type": func.return_type,
             "description": _get_func_description(name)
         }
-        for name, func in LLM_AGG_FUNCTIONS.items()
+        for name, func in funcs_compat.items()
     }
 
 

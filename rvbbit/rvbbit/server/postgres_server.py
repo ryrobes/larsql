@@ -1191,15 +1191,26 @@ class ClientConnection:
                 return
 
             # Handle BACKGROUND queries (async execution)
-            if query_upper.startswith('BACKGROUND '):
-                self._handle_background_query(query[11:].strip())
-                return
+            # Token-based parsing handles newlines and whitespace properly
+            if query_upper.startswith('BACKGROUND'):
+                from ..sql_tools.sql_directives import parse_sql_directives
+                directive, inner_sql = parse_sql_directives(query)
+                if directive and directive.directive_type == 'BACKGROUND':
+                    self._handle_background_query(inner_sql)
+                    return
 
             # Handle ANALYZE queries (async execution + LLM analysis)
             # Syntax: ANALYZE 'prompt here' SELECT * FROM table;
-            if query_upper.startswith('ANALYZE '):
-                self._handle_analyze_query(query[8:].strip())
-                return
+            # Token-based parsing handles newlines and whitespace properly
+            if query_upper.startswith('ANALYZE'):
+                from ..sql_tools.sql_directives import parse_sql_directives
+                directive, inner_sql = parse_sql_directives(query)
+                if directive and directive.directive_type == 'ANALYZE':
+                    # Reconstruct format expected by _handle_analyze_query
+                    # (it expects to parse the prompt itself for backwards compatibility)
+                    reconstructed = f"'{directive.prompt}' {inner_sql}"
+                    self._handle_analyze_query(reconstructed)
+                    return
 
             # Handle transaction commands (BEGIN, COMMIT, ROLLBACK)
             if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
@@ -2600,6 +2611,10 @@ class ClientConnection:
                 # Rewrite the query (handles RVBBIT syntax, semantic operators, etc.)
                 from ..sql_rewriter import rewrite_rvbbit_syntax
                 rewritten = rewrite_rvbbit_syntax(query, duckdb_conn=bg_conn)
+
+                # Debug: print rewritten query
+                print(f"[{session_id}] 📝 Rewritten query (first 500 chars):")
+                print(rewritten[:500])
 
                 # Execute
                 result = bg_conn.execute(rewritten)
