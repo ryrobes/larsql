@@ -193,43 +193,18 @@
 
       /* ========== HERO ========== */
       .hero {
-        padding: 80px 0 80px;
+        padding: 60px 0 40px;
       }
 
-	      .hero-grid {
-	        display: grid;
-	        grid-template-columns: 1fr;
-	        gap: 32px;
-	        align-items: start;
-	      }
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 40px;
+        align-items: center;
+      }
 
       .hero-content {
         text-align: center;
-      }
-
-      .hero-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        border-radius: 4px;
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        background: rgba(28, 246, 255, 0.1);
-        color: var(--cyan);
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.7rem;
-        font-weight: 500;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        margin-bottom: 24px;
-      }
-
-      .hero-eyebrow .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--green);
-        animation: pulse 2s infinite;
       }
 
       @keyframes pulse {
@@ -254,7 +229,8 @@
         font-size: 1.05rem;
         color: var(--muted);
         line-height: 1.6;
-        margin: 0 0 28px;
+        margin: 0 0 24px;
+        max-width: 480px;
       }
 
       .hero-actions {
@@ -262,189 +238,81 @@
         flex-wrap: wrap;
         gap: 12px;
         justify-content: center;
+        margin-bottom: 28px;
       }
 
-      /* Hero Screenshot/Video */
-	      .hero-visual {
-	        position: relative;
-	        display: flex;
-	        justify-content: flex-end;
-	      }
-
-	      .hero-screenshot {
-	        width: 100%;
-	        max-width: 100%;
-	        aspect-ratio: 550 / 400;
-	        background: #0a0d14;
-	        border-radius: 8px;
-	        overflow: hidden;
-	        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-      }
-
-      .hero-screenshot img,
-      .hero-screenshot video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 6px;
-      }
-
-      .hero-screenshot-placeholder {
+      /* Hero Trust Badges - inline */
+      .hero-trust-badges {
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
-        color: var(--muted);
-        font-size: 0.8rem;
-        opacity: 0.6;
-      }
-
-      .hero-screenshot-placeholder svg {
-        width: 48px;
-        height: 48px;
-        opacity: 0.4;
-      }
-
-      .hero-screenshot-badge {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        background: rgba(0, 0, 0, 0.7);
-        border: 1px solid rgba(28, 246, 255, 0.3);
-        border-radius: 4px;
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.6rem;
-        font-weight: 500;
-        color: var(--cyan);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        z-index: 1;
-      }
-
-      /* Hero Stats */
-      .hero-stats {
-        display: flex;
-        flex-direction: column;
+        flex-wrap: wrap;
         gap: 16px;
-        padding: 20px;
-        background: linear-gradient(135deg, rgba(8, 12, 20, 0.95), rgba(12, 16, 28, 0.9));
-        border-radius: 8px;
-        border: 1px solid rgba(28, 246, 255, 0.15);
+        justify-content: center;
       }
 
-      .stats-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-      }
-
-      .stats-icon {
-        flex-shrink: 0;
-        width: 32px;
-        height: 32px;
+      .trust-badge {
         display: flex;
         align-items: center;
-        justify-content: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: rgba(8, 12, 20, 0.8);
+        border: 1px solid rgba(28, 246, 255, 0.12);
         border-radius: 6px;
-        background: rgba(28, 246, 255, 0.1);
-        border: 1px solid rgba(28, 246, 255, 0.2);
+        font-size: 0.75rem;
       }
 
-      .stats-icon svg {
+      .trust-badge-icon {
         width: 18px;
         height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         color: var(--cyan);
       }
 
-      .stats-text {
-        flex: 1;
+      .trust-badge-icon svg {
+        width: 14px;
+        height: 14px;
       }
 
-      .stats-label {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--ink);
-        margin-bottom: 2px;
-      }
-
-      .stats-value {
-        font-size: 0.75rem;
+      .trust-badge-text {
         color: var(--muted);
       }
 
-      /* Medium screens: 2-column layout (content + terminal) */
-      @media (min-width: 900px) and (max-width: 1199px) {
+      .trust-badge-text strong {
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      /* Medium+ screens: 2-column hero */
+      @media (min-width: 900px) {
         .hero-grid {
-          grid-template-columns: 1fr 1.2fr;
-          grid-template-areas:
-            "content terminal"
-            "visual stats";
-          gap: 40px;
+          grid-template-columns: minmax(380px, 1fr) 1.4fr;
+          gap: 48px;
+          align-items: center;
         }
 
         .hero-content {
-          grid-area: content;
           text-align: left;
+        }
+
+        .hero-sub {
+          margin-left: 0;
         }
 
         .hero-actions {
           justify-content: flex-start;
         }
 
-        .live-terminal-wrapper {
-          grid-area: terminal;
-        }
-
-        .hero-visual {
-          grid-area: visual;
-        }
-
-        .hero-stats {
-          grid-area: stats;
+        .hero-trust-badges {
+          justify-content: flex-start;
         }
       }
 
-      /* Wide screens: 3-column asymmetric grid */
+      /* Wide screens */
       @media (min-width: 1200px) {
         .hero-grid {
-          grid-template-columns: 1fr 1.4fr 0.8fr;
-          grid-template-areas:
-            "content terminal visual"
-            "content terminal stats";
-          gap: 40px;
-          align-items: start;
-        }
-
-        .hero-content {
-          grid-area: content;
-          text-align: left;
-        }
-
-        .hero-actions {
-          justify-content: flex-start;
-        }
-
-        .live-terminal-wrapper {
-          grid-area: terminal;
-        }
-
-        .hero-visual {
-          grid-area: visual;
-        }
-
-        .hero-stats {
-          grid-area: stats;
-        }
-
-        .live-terminal {
-          max-width: 100%;
+          grid-template-columns: minmax(420px, 1fr) 1.5fr;
+          gap: 64px;
         }
       }
 
@@ -701,159 +569,97 @@
         }
       }
 
-      /* ========== INTEGRATIONS BAR ========== */
-	      .integrations-bar {
-	        padding: 80px 0 70px;
-	        text-align: center;
-	      }
-
-	      .integrations-layout {
-	        display: grid;
-	        grid-template-columns: 1fr;
-	        gap: 24px;
-	      }
-
-	      .integrations-card {
-	        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
-	        border-radius: var(--radius-lg);
-	        border: 1px solid rgba(28, 246, 255, 0.12);
-	        padding: 28px 24px;
-	      }
-
-	      .integrations-card .integrations-label {
-	        margin-bottom: 20px;
-	      }
-
-	      .integrations-card .integrations-note {
-	        margin-bottom: 0;
-	      }
-
-	      .integrations-panel {
-	        background: radial-gradient(120% 120% at 40% 0%, rgba(28, 246, 255, 0.16), rgba(11, 15, 26, 0.95) 65%);
-	        border-radius: var(--radius-lg);
-	        border: 1px solid rgba(28, 246, 255, 0.18);
-	        padding: 28px 24px;
-	        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
-	      }
-
-	      .integrations-panel-kicker {
-	        display: inline-flex;
-	        align-items: center;
-	        gap: 8px;
-	        padding: 6px 12px;
-	        border-radius: 999px;
-	        border: 1px solid rgba(28, 246, 255, 0.25);
-	        background: rgba(28, 246, 255, 0.1);
-	        color: var(--cyan);
-	        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-	        font-size: 0.65rem;
-	        font-weight: 500;
-	        letter-spacing: 0.12em;
-	        text-transform: uppercase;
-	        margin-bottom: 16px;
-	      }
-
-	      .integrations-panel h3 {
-	        margin: 0 0 12px;
-	        font-size: 1.4rem;
-	        line-height: 1.2;
-	      }
-
-	      .integrations-panel p {
-	        margin: 0 0 18px;
-	        color: var(--muted);
-	        line-height: 1.6;
-	      }
-
-	      .integrations-panel-actions {
-	        display: flex;
-	        gap: 12px;
-	        flex-wrap: wrap;
-	        justify-content: center;
-	      }
-
-	      .integrations-panel-actions .btn {
-	        padding: 10px 14px;
-	        font-size: 0.85rem;
-	      }
-
-	      @media (min-width: 1050px) {
-	        .integrations-layout {
-	          grid-template-columns: minmax(0, 1fr) 380px;
-	          align-items: start;
-	          gap: 36px;
-	        }
-
-	        .integrations-card,
-	        .integrations-panel {
-	          text-align: left;
-	        }
-
-	        .integrations-row,
-	        .integrations-row-items,
-	        .integrations-panel-actions {
-	          justify-content: flex-start;
-	        }
-	      }
-
-	      .integrations-label {
-	        font-size: 0.75rem;
-	        text-transform: uppercase;
-	        letter-spacing: 0.15em;
-        color: var(--muted);
-        opacity: 0.7;
-        margin-bottom: 28px;
+      /* ========== INTEGRATIONS MARQUEE ========== */
+      .integrations-section {
+        padding: 32px 0 60px;
+        position: relative;
+        overflow: hidden;
       }
 
-      .integrations-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        margin-bottom: 24px;
+      .integrations-section::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(28, 246, 255, 0.2), transparent);
       }
 
-      .integrations-row {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        flex-wrap: wrap;
+      .integrations-header {
+        text-align: center;
+        margin-bottom: 32px;
       }
 
-      .integrations-row-label {
-        font-size: 0.65rem;
+      .integrations-header p {
+        font-size: 0.8rem;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.15em;
         color: var(--muted);
-        opacity: 0.5;
-        width: 80px;
-        text-align: right;
-        flex-shrink: 0;
+        opacity: 0.6;
+        margin: 0;
       }
 
-      .integrations-row-items {
+      /* Marquee container */
+      .integrations-marquee-wrapper {
+        position: relative;
+        overflow: hidden;
+        mask-image: linear-gradient(90deg, transparent, black 5%, black 95%, transparent);
+        -webkit-mask-image: linear-gradient(90deg, transparent, black 5%, black 95%, transparent);
+      }
+
+      .integrations-marquee {
         display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        justify-content: center;
+        gap: 12px;
+        animation: marquee-scroll 60s linear infinite;
+        width: max-content;
       }
 
+      .integrations-marquee:hover {
+        animation-play-state: paused;
+      }
+
+      .integrations-marquee.reverse {
+        animation: marquee-scroll-reverse 55s linear infinite;
+      }
+
+      @keyframes marquee-scroll {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+      }
+
+      @keyframes marquee-scroll-reverse {
+        0% { transform: translateX(-50%); }
+        100% { transform: translateX(0); }
+      }
+
+      .marquee-row {
+        margin-bottom: 12px;
+      }
+
+      .marquee-row:last-child {
+        margin-bottom: 0;
+      }
+
+      /* Integration items */
       .integration-item {
-        display: flex;
+        display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 8px 12px;
-        border: 1px solid rgba(28, 246, 255, 0.15);
+        padding: 8px 14px;
+        border: 1px solid rgba(28, 246, 255, 0.12);
         border-radius: 6px;
-        background: #0a0d14;
-        transition: all 0.2s ease;
+        background: rgba(8, 12, 20, 0.6);
+        backdrop-filter: blur(4px);
+        transition: all 0.25s ease;
         cursor: default;
+        white-space: nowrap;
       }
 
       .integration-item:hover {
-        border-color: rgba(28, 246, 255, 0.3);
-        background: rgba(28, 246, 255, 0.05);
+        border-color: rgba(28, 246, 255, 0.35);
+        background: rgba(28, 246, 255, 0.08);
+        transform: translateY(-2px);
       }
 
       .integration-item svg {
@@ -864,64 +670,62 @@
 
       .integration-item span {
         font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         color: var(--muted);
+        transition: color 0.2s ease;
       }
 
       .integration-item:hover span {
         color: var(--ink);
       }
 
-      .integrations-note {
-        margin-top: 20px;
-        font-size: 0.85rem;
-        color: var(--muted);
-        opacity: 0.7;
+      /* AI items get magenta accent */
+      .integration-item.ai-item {
+        border-color: rgba(255, 47, 168, 0.15);
       }
 
-      .integrations-note code {
+      .integration-item.ai-item:hover {
+        border-color: rgba(255, 47, 168, 0.4);
+        background: rgba(255, 47, 168, 0.08);
+      }
+
+      /* Model count badge */
+      .integration-item.model-count {
+        border: none;
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.15), rgba(122, 92, 255, 0.15));
+        padding: 8px 16px;
+      }
+
+      .integration-item.model-count span {
+        background: linear-gradient(120deg, var(--magenta), var(--purple));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        font-weight: 500;
+      }
+
+      /* DuckDB footer note */
+      .integrations-footer {
+        text-align: center;
+        margin-top: 28px;
+        padding: 0 20px;
+      }
+
+      .integrations-footer p {
+        font-size: 0.82rem;
+        color: var(--muted);
+        opacity: 0.65;
+        margin: 0;
+        line-height: 1.6;
+      }
+
+      .integrations-footer code {
         background: rgba(28, 246, 255, 0.1);
-        padding: 2px 6px;
+        padding: 2px 8px;
         border-radius: 4px;
         font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         color: var(--cyan);
-      }
-
-      .integrations-row.ai-row .integrations-row-label {
-        color: var(--magenta);
-      }
-
-      .integrations-row.ai-row .integration-item {
-        border-color: rgba(255, 47, 168, 0.2);
-      }
-
-      .integrations-row.ai-row .integration-item:hover {
-        border-color: rgba(255, 47, 168, 0.4);
-        background: rgba(255, 47, 168, 0.05);
-      }
-
-      .integration-item.subtle {
-        border: none;
-        background: transparent;
-        padding: 8px 4px;
-      }
-
-      .integration-item.subtle:hover {
-        background: transparent;
-      }
-
-      .ai-count {
-        font-family: "Google Sans Code", "JetBrains Mono", monospace;
-        font-size: 0.75rem;
-        color: var(--magenta);
-        opacity: 0.8;
-      }
-
-      @media (max-width: 800px) {
-        .integrations-row-label {
-          display: none;
-        }
       }
 
       /* ========== SIMPLEST EXAMPLE ========== */
@@ -4657,10 +4461,40 @@
                 <a class="btn" href="#get-started">Try It Now</a>
                 <a class="btn secondary" href="#how-it-works">See How It Works</a>
               </div>
+              <div class="hero-trust-badges reveal delay-4">
+                <div class="trust-badge">
+                  <span class="trust-badge-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <ellipse cx="12" cy="6" rx="8" ry="3"/>
+                      <path d="M4 6v6c0 1.657 3.582 3 8 3s8-1.343 8-3V6"/>
+                      <path d="M4 12v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6"/>
+                    </svg>
+                  </span>
+                  <span class="trust-badge-text"><strong>Your database</strong></span>
+                </div>
+                <div class="trust-badge">
+                  <span class="trust-badge-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <path d="M9 3v18M3 9h18"/>
+                    </svg>
+                  </span>
+                  <span class="trust-badge-text"><strong>Your SQL client</strong></span>
+                </div>
+                <div class="trust-badge">
+                  <span class="trust-badge-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                      <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                  </span>
+                  <span class="trust-badge-text"><strong>Any AI</strong></span>
+                </div>
+              </div>
             </div>
 
             <!-- Live Terminal Demo -->
-            <div class="live-terminal-wrapper reveal delay-4">
+            <div class="live-terminal-wrapper reveal delay-2">
               <div class="live-terminal" id="liveTerminal">
                 <div class="terminal-header">
                   <span class="terminal-type-badge">SQL</span>
@@ -4681,222 +4515,248 @@
                 </div>
               </div>
             </div>
-
-            <div class="hero-visual reveal delay-2">
-              <div class="hero-screenshot">
-                <!-- Replace with: <img src="screenshots/hero-studio.png" alt="RVBBIT Studio"> -->
-                <!-- Or video: <video autoplay loop muted playsinline><source src="screenshots/hero-demo.mp4" type="video/mp4"></video> -->
-                <div class="hero-screenshot-placeholder">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                    <path d="M6 8l4 3-4 3V8zM14 10h4M14 13h2"/>
-                  </svg>
-                  <span>hero-studio.png</span>
-                  <span style="font-size: 0.7rem; opacity: 0.7;">550 × 400</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="hero-stats reveal delay-3">
-              <div class="stats-item">
-                <div class="stats-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 6v6l4 2"/>
-                  </svg>
-                </div>
-                <div class="stats-text">
-                  <div class="stats-label">Your Database</div>
-                  <div class="stats-value">No migration</div>
-                </div>
-              </div>
-              <div class="stats-item">
-                <div class="stats-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <path d="M9 3v18M3 9h18M3 15h18"/>
-                  </svg>
-                </div>
-                <div class="stats-text">
-                  <div class="stats-label">Your SQL Client</div>
-                  <div class="stats-value">Works today</div>
-                </div>
-              </div>
-              <div class="stats-item">
-                <div class="stats-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
-                  </svg>
-                </div>
-                <div class="stats-text">
-                  <div class="stats-label">Any AI Provider</div>
-                  <div class="stats-value">Your choice</div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-	      <!-- ========== INTEGRATIONS BAR ========== -->
-	      <section class="integrations-bar">
-	        <div class="container">
-	            <div class="integrations-label reveal">Works with your existing databases, SQL clients &amp; AI providers</div>
+      <!-- ========== INTEGRATIONS MARQUEE ========== -->
+      <section class="integrations-section">
+        <div class="integrations-header reveal">
+          <p>Works with your existing databases, SQL clients & AI providers</p>
+        </div>
 
-	            <div class="integrations-bricks reveal delay-1">
-	            <!-- Databases Row -->
-	            <div class="integrations-row">
-	              <div class="integrations-row-label">Databases</div>
-	              <div class="integrations-row-items">
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#336791"><path d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698z"/></svg>
-                  <span>PostgreSQL</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#4479A1"><path d="M16.405 5.501c-.115 0-.193.014-.274.033v.013h.014c.054.104.146.18.214.273.054.107.1.214.154.32l.014-.015c.094-.066.14-.172.14-.333-.04-.047-.046-.094-.08-.14-.04-.067-.126-.1-.18-.153zM5.77 18.695h-.927a50.854 50.854 0 00-.27-4.41h-.008l-1.41 4.41H2.45l-1.4-4.41h-.01a72.892 72.892 0 00-.195 4.41H0c.055-1.966.192-3.81.41-5.53h1.15l1.335 4.064h.008l1.347-4.064h1.095c.242 2.015.384 3.86.428 5.53zm4.017-4.08c-.378 2.045-.876 3.533-1.492 4.46-.482.716-1.01 1.073-1.583 1.073-.153 0-.34-.046-.566-.138v-.494c.11.017.24.026.386.026.268 0 .483-.075.647-.222.197-.18.295-.382.295-.605 0-.155-.077-.47-.23-.944L6.23 14.615h.91l.727 2.36c.164.536.233.91.205 1.123.4-1.064.678-2.227.835-3.483zm12.325 4.08h-2.63v-5.53h.885v4.85h1.745zm-3.32.135l-1.016-.5c.09-.076.177-.158.255-.25.433-.506.648-1.258.648-2.253 0-1.83-.718-2.746-2.155-2.746-.704 0-1.254.232-1.65.697-.43.508-.646 1.256-.646 2.245 0 .972.19 1.686.574 2.14.35.41.877.615 1.583.615.264 0 .506-.033.725-.098l1.325.772.36-.622z"/></svg>
-                  <span>MySQL</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#003B57"><path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521z"/></svg>
-                  <span>SQLite</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#47A248"><path d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"/></svg>
-                  <span>MongoDB</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#DC382D"><path d="M10.5 2.661l.54.997-1.797.644 2.409.218.748 1.246.467-1.121 2.077-.208-1.61-.613.426-1.017-1.578.519zm6.905 2.077L13.76 6.182l3.292 1.298.353-.146 3.293-1.298zm-10.51.312a2.97 1.153 0 0 0-2.97 1.152 2.97 1.153 0 0 0 2.97 1.153 2.97 1.153 0 0 0 2.97-1.153 2.97 1.153 0 0 0-2.97-1.152zM24 6.805s-8.983 4.278-10.395 4.953c-1.226.561-1.901.561-3.261.094C8.318 11.022 0 7.241 0 7.241v1.038c0 .24.332.499.966.8 1.277.613 8.34 3.677 9.45 4.206 1.112.53 1.9.54 3.313-.197 1.412-.738 8.049-3.905 9.326-4.57.654-.342.945-.602.945-.84zm-10.042.602L8.39 8.26l3.884 1.61zM24 10.637s-8.983 4.279-10.395 4.954c-1.226.56-1.901.56-3.261.093C8.318 14.854 0 11.074 0 11.074v1.038c0 .238.332.498.966.8 1.277.612 8.34 3.676 9.45 4.205 1.112.53 1.9.54 3.313-.197 1.412-.737 8.049-3.905 9.326-4.57.654-.332.945-.602.945-.84zm0 3.842l-10.395 4.954c-1.226.56-1.901.56-3.261.094C8.318 18.696 0 14.916 0 14.916v1.038c0 .239.332.499.966.8 1.277.613 8.34 3.676 9.45 4.206 1.112.53 1.9.54 3.313-.198 1.412-.737 8.049-3.904 9.326-4.569.654-.343.945-.613.945-.841z"/></svg>
-                  <span>Redis</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#1C3C50"><path d="M10.374 10.53a3.102 3.102 0 0 1-.428-.222l.555.143c0 .02-.01.036-.01.055l-.117.025zm-.283 1.506-.315.253.852-1.079-1.078.391c.002.017.009.033.009.05a.57.57 0 0 1-.184.42c.102.217.228.424.375.616a3.2 3.2 0 0 1 .34-.651zm.717-2.347-.652-.82a.427.427 0 0 1-.506.162c-.054.073-.083.162-.13.24l1.258.463c.011-.015.019-.031.03-.045zm-1.666.444c-.07.314-.087.637-.05.956a.566.566 0 0 1 .451.475l.946-.606c-.067-.022-.126-.06-.191-.088l-1.119-.08.64-.14a3.186 3.186 0 0 1-.668-.554l-.01.037zM20.1 11.648c-.164.202.833 1.022.833 1.022s-1.654-1.022-2.234-.72c-.278.144.574.811 1.175 1.242-.428-.274-.982-.571-1.175-.408-.328.277 1.565 2.549 1.565 2.549s-2.145-2.322-2.36-2.209c-.214.114.593 1.224.593 1.224s-1.06-1.16-1.35-.959c-.29.202 1.514 3.218 1.514 3.218s-1.956-3.091-2.763-2.574c1.268 2.782.795 3.18.795 3.18s-.162-2.839-1.742-2.764c-.795.038.379 2.12.379 2.12s-1.08-1.902-1.8-1.864c1.326 2.51.854 3.53.854 3.53s.219-2.143-1.58-3.336c.682.606-.427 3.336-.427 3.336s.976-4.023-.719-3.256c-.268.121-.019 2.007-.019 2.007s-.34-2.158-.851-2.045c-.298.066-1.893 2.99-1.893 2.99s1.306-3.16.908-3.027c-.29.096-.833 1.4-.833 1.4s.265-1.287 0-1.363c-.264-.075-1.74 1.363-1.74 1.363s1.097-1.287.908-1.552c-.287-.402-.623-.42-1.022-.265-.581.226-1.363 1.287-1.363 1.287s.78-1.074.643-1.476c-.219-.647-2.46 1.249-2.46 1.249s1.325-1.25 1.022-1.514c-.303-.265-1.947-.183-2.46-.185-1.515-.004-2.039-.36-2.498-.724 1.987.997 3.803-.151 6.094.494l.21.06c-1.3-.558-2.144-1.378-2.226-2.354-.036-.416.074-.827.297-1.222.619-.4 1.29-.773 2.06-1.095a4 4 0 0 0-.064.698c0 2.44 2.203 4.417 4.92 4.417s4.92-1.977 4.92-4.417c0-.45-.083-.881-.223-1.29 1.431.404 2.45.968 3.132 1.335.022.092.045.184.053.279.024.274-.018.547-.11.814.095-.147.198-.288.28-.445.367-.997 1.855.227 1.855.227s-1.085-.454-1.06-.24c.026.215 1.628.96 1.628.96s-1.45-.455-1.362-.114c.088.34 1.817 1.703 1.817 1.703s-1.956-1.489-2.12-1.287z"/></svg>
-                  <span>Cassandra</span>
-                </div>
+        <!-- Row 1: Scrolling left -->
+        <div class="marquee-row">
+          <div class="integrations-marquee-wrapper">
+            <div class="integrations-marquee">
+              <!-- First set -->
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#336791"><path d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698z"/></svg>
+                <span>PostgreSQL</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#4479A1"><path d="M16.405 5.501c-.115 0-.193.014-.274.033v.013h.014c.054.104.146.18.214.273.054.107.1.214.154.32l.014-.015c.094-.066.14-.172.14-.333-.04-.047-.046-.094-.08-.14-.04-.067-.126-.1-.18-.153z"/></svg>
+                <span>MySQL</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#003B57"><path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521z"/></svg>
+                <span>SQLite</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#29B5E8"><path d="M24 3.459c0 .646-.418 1.18-1.141 1.18-.723 0-1.142-.534-1.142-1.18 0-.647.419-1.18 1.142-1.18.723 0 1.141.533 1.141 1.18zM7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876z"/></svg>
+                <span>Snowflake</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#669DF6"><path d="M5.676 10.595h2.052v5.244a5.892 5.892 0 0 1-2.052-2.088v-3.156zm18.179 10.836a.504.504 0 0 1 0 .708l-1.716 1.716a.504.504 0 0 1-.708 0l-4.248-4.248c4.835 0 10.8-4.835 10.8-10.8z"/></svg>
+                <span>BigQuery</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#47A248"><path d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"/></svg>
+                <span>MongoDB</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#DC382D"><path d="M10.5 2.661l.54.997-1.797.644 2.409.218.748 1.246.467-1.121 2.077-.208-1.61-.613.426-1.017-1.578.519zm6.905 2.077L13.76 6.182l3.292 1.298.353-.146 3.293-1.298z"/></svg>
+                <span>Redis</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#50ABF1"><path d="M10.953 20.391c-.95-1.013-.978-1.057-.807-1.248.27-.304 11.811-10.868 11.977-10.964.143-.083 1.558.6 1.867.902.119.115-.8 1.098-5.817 6.218-3.277 3.345-6.021 6.095-6.097 6.112-.076.016-.582-.442-1.123-1.02z"/></svg>
+                <span>Parquet</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#00ADD8"><path d="M24 13.455h-.689l-.288-.739h-1.2l-.289.739h-.644l1.233-2.96h.666zm-1.16-1.233l-.411-1.044-.411 1.044zM0 13.85h4.626l-2.31-.978zm.172-.395l2.144-1.033 2.143 1.033-2.143-3.304Z"/></svg>
+                <span>Delta</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#36B4C7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <span>Iceberg</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#0078D4"><path d="M22.379 23.343a1.62 1.62 0 0 0 1.536-2.14v.002L17.35 1.76A1.62 1.62 0 0 0 15.816.657H8.184A1.62 1.62 0 0 0 6.65 1.76L.086 21.204a1.62 1.62 0 0 0 1.536 2.139h4.741z"/></svg>
+                <span>Azure</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#569A31"><path d="M20.913 13.147l.12-.895c.947.576 1.258.922 1.354 1.071-.16.031-.562.046-1.474-.176z"/></svg>
+                <span>S3</span>
+              </div>
+              <!-- Duplicate set for seamless loop -->
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#336791"><path d="M23.5594 14.7228a.5269.5269 0 0 0-.0563-.1191c-.139-.2632-.4768-.3418-1.0074-.2321-1.6533.3411-2.2935.1312-2.5256-.0191 1.342-2.0482 2.445-4.522 3.0411-6.8297.2714-1.0507.7982-3.5237.1222-4.7316a1.5641 1.5641 0 0 0-.1509-.235C21.6931.9086 19.8007.0248 17.5099.0005c-1.4947-.0158-2.7705.3461-3.1161.4794a9.449 9.449 0 0 0-.5159-.0816 8.044 8.044 0 0 0-1.3114-.1278c-1.1822-.0184-2.2038.2642-3.0498.8406-.8573-.3211-4.7888-1.645-7.2219.0788C.9359 2.1526.3086 3.8733.4302 6.3043c.0409.818.5069 3.334 1.2423 5.7436.4598 1.5065.9387 2.7019 1.4334 3.582.553.9942 1.1259 1.5933 1.7143 1.7895.4474.1491 1.1327.1441 1.8581-.7279.8012-.9635 1.5903-1.8258 1.9446-2.2069.4351.2355.9064.3625 1.39.3772a.0569.0569 0 0 0 .0004.0041 11.0312 11.0312 0 0 0-.2472.3054c-.3389.4302-.4094.5197-1.5002.7443-.3102.064-1.1344.2339-1.1464.8115-.0025.1224.0329.2309.0919.3268.2269.4231.9216.6097 1.015.6331 1.3345.3335 2.5044.092 3.3714-.6787-.017 2.231.0775 4.4174.3454 5.0874.2212.5529.7618 1.9045 2.4692 1.9043.2505 0 .5263-.0291.8296-.0941 1.7819-.3821 2.5557-1.1696 2.855-2.9059.1503-.8707.4016-2.8753.5388-4.1012.0169-.0703.0357-.1207.057-.1362.0007-.0005.0697-.0471.4272.0307a.3673.3673 0 0 0 .0443.0068l.2539.0223.0149.001c.8468.0384 1.9114-.1426 2.5312-.4308.6438-.2988 1.8057-1.0323 1.5951-1.6698z"/></svg>
+                <span>PostgreSQL</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#4479A1"><path d="M16.405 5.501c-.115 0-.193.014-.274.033v.013h.014c.054.104.146.18.214.273.054.107.1.214.154.32l.014-.015c.094-.066.14-.172.14-.333-.04-.047-.046-.094-.08-.14-.04-.067-.126-.1-.18-.153z"/></svg>
+                <span>MySQL</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#003B57"><path d="M21.678.521c-1.032-.92-2.28-.55-3.513.544a8.71 8.71 0 0 0-.547.535c-2.109 2.237-4.066 6.38-4.674 9.544.237.48.422 1.093.544 1.561a13.044 13.044 0 0 1 .164.703s-.019-.071-.096-.296l-.05-.146a1.689 1.689 0 0 0-.033-.08c-.138-.32-.518-.995-.686-1.289-.143.423-.27.818-.376 1.176.484.884.778 2.4.778 2.4s-.025-.099-.147-.442c-.107-.303-.644-1.244-.772-1.464-.217.804-.304 1.346-.226 1.478.152.256.296.698.422 1.186.286 1.1.485 2.44.485 2.44l.017.224a22.41 22.41 0 0 0 .056 2.748c.095 1.146.273 2.13.5 2.657l.155-.084c-.334-1.038-.47-2.399-.41-3.967.09-2.398.642-5.29 1.661-8.304 1.723-4.55 4.113-8.201 6.3-9.945-1.993 1.8-4.692 7.63-5.5 9.788-.904 2.416-1.545 4.684-1.931 6.857.666-2.037 2.821-2.912 2.821-2.912s1.057-1.304 2.292-3.166c-.74.169-1.955.458-2.362.629-.6.251-.762.337-.762.337s1.945-1.184 3.613-1.72C21.695 7.9 24.195 2.767 21.678.521z"/></svg>
+                <span>SQLite</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#29B5E8"><path d="M24 3.459c0 .646-.418 1.18-1.141 1.18-.723 0-1.142-.534-1.142-1.18 0-.647.419-1.18 1.142-1.18.723 0 1.141.533 1.141 1.18zM7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876z"/></svg>
+                <span>Snowflake</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#669DF6"><path d="M5.676 10.595h2.052v5.244a5.892 5.892 0 0 1-2.052-2.088v-3.156zm18.179 10.836a.504.504 0 0 1 0 .708l-1.716 1.716a.504.504 0 0 1-.708 0l-4.248-4.248c4.835 0 10.8-4.835 10.8-10.8z"/></svg>
+                <span>BigQuery</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#47A248"><path d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"/></svg>
+                <span>MongoDB</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#DC382D"><path d="M10.5 2.661l.54.997-1.797.644 2.409.218.748 1.246.467-1.121 2.077-.208-1.61-.613.426-1.017-1.578.519zm6.905 2.077L13.76 6.182l3.292 1.298.353-.146 3.293-1.298z"/></svg>
+                <span>Redis</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#50ABF1"><path d="M10.953 20.391c-.95-1.013-.978-1.057-.807-1.248.27-.304 11.811-10.868 11.977-10.964.143-.083 1.558.6 1.867.902.119.115-.8 1.098-5.817 6.218-3.277 3.345-6.021 6.095-6.097 6.112-.076.016-.582-.442-1.123-1.02z"/></svg>
+                <span>Parquet</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#00ADD8"><path d="M24 13.455h-.689l-.288-.739h-1.2l-.289.739h-.644l1.233-2.96h.666zm-1.16-1.233l-.411-1.044-.411 1.044zM0 13.85h4.626l-2.31-.978zm.172-.395l2.144-1.033 2.143 1.033-2.143-3.304Z"/></svg>
+                <span>Delta</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#36B4C7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <span>Iceberg</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#0078D4"><path d="M22.379 23.343a1.62 1.62 0 0 0 1.536-2.14v.002L17.35 1.76A1.62 1.62 0 0 0 15.816.657H8.184A1.62 1.62 0 0 0 6.65 1.76L.086 21.204a1.62 1.62 0 0 0 1.536 2.139h4.741z"/></svg>
+                <span>Azure</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#569A31"><path d="M20.913 13.147l.12-.895c.947.576 1.258.922 1.354 1.071-.16.031-.562.046-1.474-.176z"/></svg>
+                <span>S3</span>
               </div>
             </div>
+          </div>
+        </div>
 
-            <!-- Cloud Data Warehouses Row -->
-            <div class="integrations-row">
-              <div class="integrations-row-label">Warehouses</div>
-              <div class="integrations-row-items">
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#29B5E8"><path d="M24 3.459c0 .646-.418 1.18-1.141 1.18-.723 0-1.142-.534-1.142-1.18 0-.647.419-1.18 1.142-1.18.723 0 1.141.533 1.141 1.18zm-.228 0c0-.533-.38-.951-.913-.951s-.913.38-.913.95c0 .533.38.952.913.952.57 0 .913-.419.913-.951zm-1.37-.533h.495c.266 0 .456.152.456.38 0 .153-.076.229-.19.305l.19.266v.038h-.266l-.19-.266h-.229v.266h-.266zm.495.228h-.229v.267h.229c.114 0 .152-.038.152-.114.038-.077-.038-.153-.152-.153zM7.602 12.4c.038-.151.076-.304.076-.456 0-.114-.038-.228-.038-.342-.114-.343-.304-.647-.646-.838l-4.87-2.777c-.685-.38-1.56-.152-1.94.533-.381.685-.153 1.56.532 1.94l2.701 1.56-2.701 1.56c-.685.38-.913 1.256-.533 1.94.38.685 1.256.914 1.94.533l4.832-2.777c.343-.267.571-.533.647-.876zm1.332 2.626c-.266-.038-.57.038-.837.19l-4.832 2.777c-.685.38-.913 1.256-.532 1.94.38.686 1.255.914 1.94.533l2.701-1.56v3.12c0 .8.647 1.408 1.446 1.408.799 0 1.407-.647 1.407-1.408v-5.592c0-.761-.57-1.37-1.293-1.408zm4.946-6.088c.266.038.57-.038.837-.19l4.832-2.777c.685-.38.913-1.256.532-1.94-.38-.686-1.255-.914-1.94-.533l-2.701 1.56V1.975c0-.799-.647-1.408-1.446-1.408-.799 0-1.446.609-1.446 1.408V7.53c0 .76.609 1.37 1.332 1.407zM3.265 5.97l4.832 2.777c.266.152.533.19.837.19.723-.038 1.331-.684 1.331-1.407V1.975c0-.799-.646-1.408-1.407-1.408-.799 0-1.446.647-1.446 1.408v3.12l-2.701-1.56c-.685-.38-1.56-.152-1.94.533-.419.646-.19 1.521.494 1.902z"/></svg>
-                  <span>Snowflake</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#669DF6"><path d="M5.676 10.595h2.052v5.244a5.892 5.892 0 0 1-2.052-2.088v-3.156zm18.179 10.836a.504.504 0 0 1 0 .708l-1.716 1.716a.504.504 0 0 1-.708 0l-4.248-4.248a.206.206 0 0 1-.007-.007c-.02-.02-.028-.045-.043-.066a10.736 10.736 0 0 1-6.334 2.065C4.835 21.599 0 16.764 0 10.799S4.835 0 10.8 0s10.799 4.835 10.799 10.8c0 2.369-.772 4.553-2.066 6.333.025.017.052.028.074.05l4.248 4.248zm-5.028-10.632a8.015 8.015 0 1 0-8.028 8.028h.024a8.016 8.016 0 0 0 8.004-8.028zm-4.86 4.98a6.002 6.002 0 0 0 2.04-2.184v-1.764h-2.04v3.948zm-4.5.948c.442.057.887.08 1.332.072.4.025.8.025 1.2 0V7.692H9.468v9.035z"/></svg>
-                  <span>BigQuery</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#4285F4"><path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007-.007.03a6.717 6.717 0 0 0 4.077 1.356h5.173l.03.03h5.192c6.687.053 9.376-8.605 3.835-12.35a9.365 9.365 0 0 0-2.821-4.552l-.043.043.006-.05A9.344 9.344 0 0 0 12.19 2.38zm-.358 4.146c1.244-.04 2.518.368 3.486 1.15a5.186 5.186 0 0 1 1.862 4.078v.518c3.53-.07 3.53 5.262 0 5.193h-5.193l-.008.009v-.04H6.785a2.59 2.59 0 0 1-1.067-.23h.001a2.597 2.597 0 1 1 3.437-3.437l3.013-3.012A6.747 6.747 0 0 0 8.11 8.24c.018-.01.04-.026.054-.023a5.186 5.186 0 0 1 3.67-1.69z"/></svg>
-                  <span>GCS</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#0078D4"><path d="M22.379 23.343a1.62 1.62 0 0 0 1.536-2.14v.002L17.35 1.76A1.62 1.62 0 0 0 15.816.657H8.184A1.62 1.62 0 0 0 6.65 1.76L.086 21.204a1.62 1.62 0 0 0 1.536 2.139h4.741a1.62 1.62 0 0 0 1.535-1.103l.977-2.892 4.947 3.675c.28.208.618.32.966.32m-3.084-12.531 3.624 10.739a.54.54 0 0 1-.51.713v-.001h-.03a.54.54 0 0 1-.322-.106l-9.287-6.9h4.853m6.313 7.006c.116-.326.13-.694.007-1.058L9.79 1.76a1.722 1.722 0 0 0-.007-.02h6.034a.54.54 0 0 1 .512.366l6.562 19.445a.54.54 0 0 1-.338.684"/></svg>
-                  <span>Azure</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#569A31"><path d="M20.913 13.147l.12-.895c.947.576 1.258.922 1.354 1.071-.16.031-.562.046-1.474-.176zm-2.174 7.988a.547.547 0 0 0-.005.073c0 .084-.207.405-1.124.768a10.28 10.28 0 0 1-1.438.432c-1.405.325-3.128.504-4.853.504-4.612 0-7.412-1.184-7.412-1.704a.547.547 0 0 0-.005-.073L1.81 5.602c.135.078.28.154.432.227.042.02.086.038.128.057.134.062.272.122.417.18l.179.069c.154.058.314.114.478.168.043.013.084.029.13.043.207.065.423.127.646.187l.176.044c.175.044.353.087.534.127a23.414 23.414 0 0 0 .843.17l.121.023c.252.045.508.085.768.122.071.011.144.02.216.03.2.027.4.053.604.077l.24.027c.245.026.49.05.74.07l.081.009c.275.022.552.04.83.056l.233.012c.21.01.422.018.633.025a33.088 33.088 0 0 0 2.795-.026l.232-.011c.278-.016.555-.034.83-.056l.08-.008c.25-.02.497-.045.742-.072l.238-.026c.205-.024.408-.05.609-.077.07-.01.141-.019.211-.03.261-.037.519-.078.772-.122l.111-.02c.215-.04.427-.082.634-.125l.212-.047c.186-.041.368-.085.546-.13l.166-.042c.225-.06.444-.122.654-.189.04-.012.077-.026.115-.038a10.6 10.6 0 0 0 .493-.173c.058-.021.114-.044.17-.066.15-.06.293-.12.43-.185.038-.017.079-.034.116-.052.153-.073.3-.15.436-.228l-.976 7.245c-2.488-.78-5.805-2.292-7.311-3a1.09 1.09 0 0 0-1.088-1.085c-.6 0-1.088.489-1.088 1.088 0 .6.488 1.089 1.088 1.089.196 0 .378-.056.537-.148 1.72.812 5.144 2.367 7.715 3.15z"/></svg>
-                  <span>S3</span>
-                </div>
+        <!-- Row 2: Scrolling right (reverse) with AI items -->
+        <div class="marquee-row">
+          <div class="integrations-marquee-wrapper">
+            <div class="integrations-marquee reverse">
+              <!-- First set -->
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#217346"><path d="M23 1.5q.41 0 .7.3.3.29.3.7v19q0 .41-.3.7-.29.3-.7.3H7q-.41 0-.7-.3-.3-.29-.3-.7V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h5V2.5q0-.41.3-.7.29-.3.7-.3z"/></svg>
+                <span>Excel</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#F7DF1E"><path d="M12.043 23.968c.479-.004.953-.029 1.426-.094a11.805 11.805 0 003.146-.863 12.404 12.404 0 003.793-2.542 11.977 11.977 0 002.44-3.427z"/></svg>
+                <span>JSON</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#9CA3AF"><path d="M4 4h16v2H4V4zm0 4h16v2H4V8zm0 4h16v2H4v-2zm0 4h10v2H4v-2z"/></svg>
+                <span>CSV</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#1cf6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="6" cy="12" r="2"/>
+                  <circle cx="18" cy="6" r="2"/>
+                  <circle cx="18" cy="18" r="2"/>
+                  <path d="M8 12h8M16.5 7.5l-4 4M16.5 16.5l-4-4"/>
+                </svg>
+                <span>MCP</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="6" width="20" height="12" rx="2" stroke="#6366F1" stroke-width="2"/>
+                  <circle cx="7" cy="12" r="2" fill="#6366F1"/>
+                  <circle cx="17" cy="12" r="2" fill="#6366F1"/>
+                  <path d="M9 12h6" stroke="#6366F1" stroke-width="2"/>
+                </svg>
+                <span>OpenRouter</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFD21E">
+                  <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
+                  <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
+                  <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
+                  <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                </svg>
+                <span>HuggingFace</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFFFFF">
+                  <path d="M12 2C8.5 2 6 4.5 6 7c0 1.5.5 2.5 1 3.5-.5.5-1 1.5-1 2.5 0 2 1.5 3.5 3 4v1c0 1.5 1 3 3 3s3-1.5 3-3v-1c1.5-.5 3-2 3-4 0-1-.5-2-1-2.5.5-1 1-2 1-3.5 0-2.5-2.5-5-6-5z" fill="#FFFFFF" stroke="#888" stroke-width="0.5"/>
+                </svg>
+                <span>Ollama</span>
+              </div>
+              <div class="integration-item model-count">
+                <span>300+ models</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#1C3C50"><path d="M10.374 10.53a3.102 3.102 0 0 1-.428-.222l.555.143c0 .02-.01.036-.01.055l-.117.025z"/></svg>
+                <span>Cassandra</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#4285F4"><path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007z"/></svg>
+                <span>GCS</span>
+              </div>
+              <!-- Duplicate set for seamless loop -->
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#217346"><path d="M23 1.5q.41 0 .7.3.3.29.3.7v19q0 .41-.3.7-.29.3-.7.3H7q-.41 0-.7-.3-.3-.29-.3-.7V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h5V2.5q0-.41.3-.7.29-.3.7-.3z"/></svg>
+                <span>Excel</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#F7DF1E"><path d="M12.043 23.968c.479-.004.953-.029 1.426-.094a11.805 11.805 0 003.146-.863 12.404 12.404 0 003.793-2.542 11.977 11.977 0 002.44-3.427z"/></svg>
+                <span>JSON</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#9CA3AF"><path d="M4 4h16v2H4V4zm0 4h16v2H4V8zm0 4h16v2H4v-2zm0 4h10v2H4v-2z"/></svg>
+                <span>CSV</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#1cf6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="6" cy="12" r="2"/>
+                  <circle cx="18" cy="6" r="2"/>
+                  <circle cx="18" cy="18" r="2"/>
+                  <path d="M8 12h8M16.5 7.5l-4 4M16.5 16.5l-4-4"/>
+                </svg>
+                <span>MCP</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="6" width="20" height="12" rx="2" stroke="#6366F1" stroke-width="2"/>
+                  <circle cx="7" cy="12" r="2" fill="#6366F1"/>
+                  <circle cx="17" cy="12" r="2" fill="#6366F1"/>
+                  <path d="M9 12h6" stroke="#6366F1" stroke-width="2"/>
+                </svg>
+                <span>OpenRouter</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFD21E">
+                  <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
+                  <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
+                  <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
+                  <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                </svg>
+                <span>HuggingFace</span>
+              </div>
+              <div class="integration-item ai-item">
+                <svg viewBox="0 0 24 24" fill="#FFFFFF">
+                  <path d="M12 2C8.5 2 6 4.5 6 7c0 1.5.5 2.5 1 3.5-.5.5-1 1.5-1 2.5 0 2 1.5 3.5 3 4v1c0 1.5 1 3 3 3s3-1.5 3-3v-1c1.5-.5 3-2 3-4 0-1-.5-2-1-2.5.5-1 1-2 1-3.5 0-2.5-2.5-5-6-5z" fill="#FFFFFF" stroke="#888" stroke-width="0.5"/>
+                </svg>
+                <span>Ollama</span>
+              </div>
+              <div class="integration-item model-count">
+                <span>300+ models</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#1C3C50"><path d="M10.374 10.53a3.102 3.102 0 0 1-.428-.222l.555.143c0 .02-.01.036-.01.055l-.117.025z"/></svg>
+                <span>Cassandra</span>
+              </div>
+              <div class="integration-item">
+                <svg viewBox="0 0 24 24" fill="#4285F4"><path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007z"/></svg>
+                <span>GCS</span>
               </div>
             </div>
+          </div>
+        </div>
 
-            <!-- File Formats Row -->
-            <div class="integrations-row">
-              <div class="integrations-row-label">Formats</div>
-              <div class="integrations-row-items">
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#50ABF1"><path d="M10.953 20.391c-.95-1.013-.978-1.057-.807-1.248.27-.304 11.811-10.868 11.977-10.964.143-.083 1.558.6 1.867.902.119.115-.8 1.098-5.817 6.218-3.277 3.345-6.021 6.095-6.097 6.112-.076.016-.582-.442-1.123-1.02zM8.333 17.7c-.511-.515-.835-.92-.803-1.003.058-.152 6.693-5.515 6.817-5.51.153.005 1.714 1.191 1.714 1.302 0 .116-6.67 6.073-6.8 6.073-.038 0-.456-.388-.928-.862zM5.91 15.227c-.4-.448-.652-.81-.598-.86.28-.26 3.164-2.26 3.26-2.26.154.002 1.547 1.196 1.547 1.327 0 .161-3.124 2.566-3.334 2.566-.1 0-.494-.348-.875-.773z"/></svg>
-                  <span>Parquet</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#00ADD8"><path d="M24 13.455h-.689l-.288-.739h-1.2l-.289.739h-.644l1.233-2.96h.666zm-1.16-1.233l-.411-1.044-.411 1.044zm-4.315 1.233h.66v-2.438h.995v-.51h-2.644v.51h.989zm-3.826 0h1.927v-.511H15.36v-2.438h-.661zm-3.282-2.438h1.416v-.51h-2.077v2.948h2.121v-.511h-1.46v-.766h1.25v-.511h-1.25zm-4.981 2.438h1.038c1.072 0 1.71-.555 1.71-1.472 0-.916-.638-1.471-1.71-1.471H6.436zm.655-2.438h.383c.694 0 1.044.344 1.044.96 0 .617-.344.961-1.044.961h-.383zM0 13.85h4.626l-2.31-.978zm.172-.395l2.144-1.033 2.143 1.033-2.143-3.304Z"/></svg>
-                  <span>Delta</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#36B4C7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                  <span>Iceberg</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#217346"><path d="M23 1.5q.41 0 .7.3.3.29.3.7v19q0 .41-.3.7-.29.3-.7.3H7q-.41 0-.7-.3-.3-.29-.3-.7V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h5V2.5q0-.41.3-.7.29-.3.7-.3zM6 13.28l1.42 2.66h2.14l-2.38-3.87 2.34-3.8H7.46l-1.3 2.4-.05.08-.04.09-.64-1.28-.66-1.29H2.59l2.27 3.82-2.48 3.85h2.16zM14.25 21v-3H7.5v3zm0-4.5v-3.75H12v3.75zm0-5.25V7.5H12v3.75zm0-5.25V3H7.5v3zm8.25 15v-3h-6.75v3zm0-4.5v-3.75h-6.75v3.75zm0-5.25V7.5h-6.75v3.75zm0-5.25V3h-6.75v3Z"/></svg>
-                  <span>Excel</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#F7DF1E"><path d="M12.043 23.968c.479-.004.953-.029 1.426-.094a11.805 11.805 0 003.146-.863 12.404 12.404 0 003.793-2.542 11.977 11.977 0 002.44-3.427 11.794 11.794 0 001.02-3.476c.149-1.16.135-2.346-.045-3.499a11.96 11.96 0 00-.793-2.788 11.197 11.197 0 00-.854-1.617c-1.168-1.837-2.861-3.314-4.81-4.3a12.835 12.835 0 00-2.172-.87h-.005c.119.063.24.132.345.201.12.074.239.146.351.225a8.93 8.93 0 011.559 1.33c1.063 1.145 1.797 2.548 2.218 4.041.284.982.434 1.998.495 3.017.044.743.044 1.491-.047 2.229-.149 1.27-.554 2.51-1.228 3.596a7.475 7.475 0 01-1.903 2.084c-1.244.928-2.877 1.482-4.436 1.114a3.916 3.916 0 01-.748-.258 4.692 4.692 0 01-.779-.45 6.08 6.08 0 01-1.244-1.105 6.507 6.507 0 01-1.049-1.747 7.366 7.366 0 01-.494-2.54c-.03-1.273.225-2.553.854-3.67a6.43 6.43 0 011.663-1.918c.225-.178.464-.333.704-.479l.016-.007a5.121 5.121 0 00-1.441-.12 4.963 4.963 0 00-1.228.24c-.359.12-.704.27-1.019.45a6.146 6.146 0 00-.733.494c-.211.18-.42.36-.615.555-1.123 1.153-1.768 2.682-2.022 4.256-.15.973-.15 1.96-.091 2.95.105 1.395.391 2.787.945 4.062a8.518 8.518 0 001.348 2.173 8.14 8.14 0 003.132 2.23 7.934 7.934 0 002.113.54c.074.015.149.015.209.015z"/></svg>
-                  <span>JSON</span>
-                </div>
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="#9CA3AF"><path d="M4 4h16v2H4V4zm0 4h16v2H4V8zm0 4h16v2H4v-2zm0 4h10v2H4v-2z"/></svg>
-                  <span>CSV</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- AI Providers Row -->
-            <div class="integrations-row ai-row">
-              <div class="integrations-row-label">AI</div>
-              <div class="integrations-row-items">
-                <div class="integration-item">
-                  <!-- OpenRouter logo -->
-                  <svg viewBox="0 0 24 24" fill="none">
-                    <rect x="2" y="6" width="20" height="12" rx="2" stroke="#6366F1" stroke-width="2"/>
-                    <circle cx="7" cy="12" r="2" fill="#6366F1"/>
-                    <circle cx="17" cy="12" r="2" fill="#6366F1"/>
-                    <path d="M9 12h6" stroke="#6366F1" stroke-width="2"/>
-                  </svg>
-                  <span>OpenRouter</span>
-                </div>
-                <div class="integration-item">
-                  <!-- HuggingFace logo -->
-                  <svg viewBox="0 0 24 24" fill="#FFD21E">
-                    <circle cx="12" cy="12" r="10" fill="#FFD21E"/>
-                    <circle cx="8.5" cy="10" r="1.5" fill="#000"/>
-                    <circle cx="15.5" cy="10" r="1.5" fill="#000"/>
-                    <path d="M7 14.5c0 0 2 3 5 3s5-3 5-3" stroke="#000" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-                    <ellipse cx="6" cy="12" rx="1.5" ry="2" fill="#FFB6C1"/>
-                    <ellipse cx="18" cy="12" rx="1.5" ry="2" fill="#FFB6C1"/>
-                  </svg>
-                  <span>HuggingFace</span>
-                </div>
-                <div class="integration-item">
-                  <!-- Ollama logo -->
-                  <svg viewBox="0 0 24 24" fill="#FFFFFF">
-                    <path d="M12 2C8.5 2 6 4.5 6 7c0 1.5.5 2.5 1 3.5-.5.5-1 1.5-1 2.5 0 2 1.5 3.5 3 4v1c0 1.5 1 3 3 3s3-1.5 3-3v-1c1.5-.5 3-2 3-4 0-1-.5-2-1-2.5.5-1 1-2 1-3.5 0-2.5-2.5-5-6-5zm-2 7.5c.5 0 1 .5 1 1s-.5 1-1 1-1-.5-1-1 .5-1 1-1zm4 0c.5 0 1 .5 1 1s-.5 1-1 1-1-.5-1-1 .5-1 1-1zm-2 5c1 0 2-.5 2.5-1 0 0-1 2-2.5 2s-2.5-2-2.5-2c.5.5 1.5 1 2.5 1z" fill="#FFFFFF" stroke="#888" stroke-width="0.5"/>
-                  </svg>
-                  <span>Ollama</span>
-                </div>
-                <div class="integration-item subtle">
-                  <span class="ai-count">300+ models</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tools Row -->
-            <div class="integrations-row">
-              <div class="integrations-row-label">Tools</div>
-              <div class="integrations-row-items">
-                <div class="integration-item">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#1cf6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="6" cy="12" r="2"/>
-                    <circle cx="18" cy="6" r="2"/>
-                    <circle cx="18" cy="18" r="2"/>
-                    <path d="M8 12h8M16.5 7.5l-4 4M16.5 16.5l-4-4"/>
-                  </svg>
-                  <span>MCP (tool servers)</span>
-                </div>
-	              </div>
-	            </div>
-	          </div>
-
-	            <p class="integrations-note reveal delay-2">
-	              Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.
-	            </p>
-	          </div>
-	        </div>
-	      </section>
+        <div class="integrations-footer reveal delay-1">
+          <p>Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.</p>
+        </div>
+      </section>
 
       <!-- ========== SIMPLEST EXAMPLE ========== -->
       <section id="how-it-works" class="simplest-section">

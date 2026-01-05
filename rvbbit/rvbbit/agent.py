@@ -220,6 +220,20 @@ class Agent:
             "reasoning": self.reasoning_config.to_api_dict() if self.reasoning_config else None
         }
 
+        # TOON Transport: Transform JSON to TOON in messages before sending
+        # This is the single interception point for request-side TOON encoding
+        toon_transport_metrics = None
+        try:
+            from .toon_transport import transform_messages_for_transport, is_toon_transport_enabled
+            if is_toon_transport_enabled():
+                args["messages"], toon_transport_metrics = transform_messages_for_transport(
+                    args["messages"]
+                )
+        except ImportError:
+            pass  # TOON transport not available
+        except Exception as e:
+            logger.debug(f"TOON transport transformation failed: {e}")
+
         retries = 2
         for attempt in range(retries + 1):
             try:
@@ -460,8 +474,51 @@ class Agent:
                 if provider == "ollama":
                     cost = 0.0  # Local models are free
 
-                # Extract TOON telemetry from context messages (if any)
+                # Build TOON telemetry from transport metrics
+                # ALWAYS log baseline metrics for analytics, even if no transforms occurred
                 toon_telemetry = {}
+
+                if toon_transport_metrics:
+                    # Calculate total content size across all messages for baseline
+                    total_content_size = sum(
+                        len(m.get("content", "")) for m in args.get("messages", [])
+                        if isinstance(m.get("content"), str)
+                    )
+
+                    if toon_transport_metrics.get("total_transforms", 0) > 0:
+                        # TOON was used - log full metrics
+                        toon_telemetry = {
+                            "data_format": "toon",
+                            "data_size_json": toon_transport_metrics.get("total_json_size"),
+                            "data_size_toon": toon_transport_metrics.get("total_toon_size"),
+                            "data_token_savings_pct": toon_transport_metrics.get("savings_pct"),
+                            "toon_transforms": toon_transport_metrics.get("total_transforms"),
+                            "toon_messages_modified": toon_transport_metrics.get("messages_modified"),
+                            "total_content_size": total_content_size,
+                            "data_rows": toon_transport_metrics.get("data_rows"),
+                            "data_columns": toon_transport_metrics.get("data_columns"),
+                        }
+                        logger.info(
+                            f"[TOON] Transformed {toon_transport_metrics.get('total_transforms')} arrays, "
+                            f"saved {toon_transport_metrics.get('savings_pct')}% "
+                            f"({toon_transport_metrics.get('total_savings_chars')} chars)"
+                        )
+                    else:
+                        # No transforms - log baseline for comparison
+                        toon_telemetry = {
+                            "data_format": "json",  # No TOON used
+                            "data_size_json": total_content_size,  # Baseline size
+                            "data_size_toon": None,
+                            "data_token_savings_pct": None,
+                            "toon_transforms": 0,
+                            "toon_messages_modified": 0,
+                            "total_content_size": total_content_size,
+                            "toon_skip_reason": "no_eligible_arrays",
+                            "data_rows": toon_transport_metrics.get("data_rows"),
+                            "data_columns": toon_transport_metrics.get("data_columns"),
+                        }
+
+                # Also aggregate from context messages (legacy path)
                 if context_messages:
                     for msg in context_messages:
                         if isinstance(msg, dict) and "metadata" in msg:

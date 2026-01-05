@@ -204,17 +204,14 @@ def _should_use_toon(data: Any, min_rows: int) -> bool:
     """
     # Handle sql_data output structure
     if isinstance(data, dict) and "rows" in data:
-        print(f"[TOON] Detected sql_data structure with {len(data.get('rows', []))} rows")
         data = data["rows"]
 
     # Check if it's a list of dicts (SQL result pattern)
     if isinstance(data, list):
         if not data:
-            print(f"[TOON] ❌ Empty list - skipping TOON")
             return False  # Empty list - doesn't matter
 
         if len(data) < min_rows:
-            print(f"[TOON] ❌ Too small ({len(data)} < {min_rows}) - skipping TOON")
             return False  # Too small to benefit
 
         # Check if uniform array of objects
@@ -224,22 +221,14 @@ def _should_use_toon(data: Any, min_rows: int) -> bool:
                 first_keys = set(data[0].keys())
                 is_uniform = all(set(item.keys()) == first_keys for item in data)
                 if is_uniform and len(first_keys) > 0:
-                    print(
-                        f"[TOON] ✅ USING TOON: {len(data)} rows × {len(first_keys)} columns"
-                    )
                     logger.debug(
                         f"TOON beneficial: {len(data)} rows × {len(first_keys)} columns"
                     )
                     return True
-                else:
-                    print(f"[TOON] ❌ Non-uniform keys - skipping TOON")
 
         # Simple string arrays don't benefit much from TOON
         if all(isinstance(item, str) for item in data):
-            print(f"[TOON] ❌ Simple string array ({len(data)} items) - skipping TOON")
             return False
-
-        print(f"[TOON] ❌ Mixed array types - skipping TOON")
 
     # Nested object with potential tabular children
     if isinstance(data, dict):
@@ -308,9 +297,6 @@ def format_for_llm_context(
     """
     start_time = time.time()
 
-    print(f"[TOON] format_for_llm_context() called with format={format}, min_rows={min_rows}")
-    print(f"[TOON] Data type: {type(data).__name__}, length: {len(data) if isinstance(data, (list, dict)) else 'N/A'}")
-
     if format == "repr":
         result = str(data)
         metrics = {
@@ -339,10 +325,8 @@ def format_for_llm_context(
     # Auto mode: smart selection
     if format == "auto":
         should_use = _should_use_toon(data, min_rows)
-        print(f"[TOON] Auto mode decision: {'USE TOON' if should_use else 'USE JSON'}")
         if should_use:
             result, metrics = encode(data, fallback_to_json=True, min_rows_for_toon=min_rows)
-            print(f"[TOON] Encoded as {metrics['format']}, savings: {metrics.get('token_savings_pct')}%")
             return result, metrics
         else:
             result = json.dumps(data, indent=2, default=str, ensure_ascii=False)
@@ -353,7 +337,6 @@ def format_for_llm_context(
                 "token_savings_pct": None,
                 "encoding_time_ms": (time.time() - start_time) * 1000
             }
-            print(f"[TOON] Using JSON fallback (size: {len(result)} chars)")
             return result, metrics
 
     raise ValueError(f"Unknown format: {format}")

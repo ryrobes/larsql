@@ -422,7 +422,7 @@ def _generate_dimension_ctes(
             # 2. Column values may contain special chars ($, commas, quotes, etc.)
             # The subquery expands the JSON object and filters by key = column value
             classify_cols.append(f"""COALESCE(
-            (SELECT value::VARCHAR
+            (SELECT TRIM(BOTH '"' FROM value::VARCHAR)
              FROM json_each(_{expr_id}_mapping._result->'mapping')
              WHERE key = _source.{expr.source_col}
              LIMIT 1),

@@ -26,13 +26,22 @@ def _extract_toon_telemetry(response_dict: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(toon_telemetry, dict):
         toon_telemetry = {}
 
-    return {
+    # Always return the dict even if empty - this ensures baseline metrics are logged
+    result = {
         "data_format": toon_telemetry.get("data_format"),
         "data_size_json": toon_telemetry.get("data_size_json"),
         "data_size_toon": toon_telemetry.get("data_size_toon"),
         "data_token_savings_pct": toon_telemetry.get("data_token_savings_pct"),
         "toon_encoding_ms": toon_telemetry.get("toon_encoding_ms"),
+        "data_rows": toon_telemetry.get("data_rows"),
+        "data_columns": toon_telemetry.get("data_columns"),
     }
+
+    # Debug: print if we have telemetry
+    if toon_telemetry:
+        print(f"[TOON Telemetry] format={result['data_format']}, json_size={result['data_size_json']}, toon_size={result['data_size_toon']}, savings={result['data_token_savings_pct']}%, rows={result['data_rows']}, cols={result['data_columns']}")
+
+    return result
 
 
 # Context variable for current hooks - allows tools to call hook methods

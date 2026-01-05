@@ -372,6 +372,10 @@ class UnifiedLogger:
         toon_encoding_ms: float = None,
         toon_decode_attempted: bool = None,
         toon_decode_success: bool = None,
+
+        # Data shape telemetry (for debugging and analytics)
+        data_rows: int = None,
+        data_columns: int = None,
     ):
         """
         Log a single message/event to ClickHouse.
@@ -547,7 +551,11 @@ class UnifiedLogger:
             "data_token_savings_pct": data_token_savings_pct,
             "toon_encoding_ms": toon_encoding_ms,
             "toon_decode_attempted": toon_decode_attempted,
-            "toon_decode_success": toon_decode_success
+            "toon_decode_success": toon_decode_success,
+
+            # Data shape telemetry
+            "data_rows": data_rows,
+            "data_columns": data_columns,
         }
 
         # INSERT immediately to ClickHouse (no buffering for snappy UI)
@@ -704,6 +712,8 @@ def log_unified(
     toon_encoding_ms: float = None,
     toon_decode_attempted: bool = None,
     toon_decode_success: bool = None,
+    data_rows: int = None,
+    data_columns: int = None,
 ):
     """
     Global function to log unified mega-table entries.
@@ -811,6 +821,8 @@ def log_unified(
         toon_encoding_ms=toon_encoding_ms,
         toon_decode_attempted=toon_decode_attempted,
         toon_decode_success=toon_decode_success,
+        data_rows=data_rows,
+        data_columns=data_columns,
     )
 
 
