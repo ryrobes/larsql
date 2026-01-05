@@ -21,7 +21,11 @@ Becomes:
     ),
     _dim_classified AS (
         SELECT *,
-            json_extract_string(_mapping->'mapping', observed) as __dim_sentiment_observed_abc123
+            COALESCE(
+                (SELECT value::VARCHAR FROM json_each(_mapping->'mapping')
+                 WHERE key = observed LIMIT 1),
+                'Unknown'
+            ) as __dim_sentiment_observed_abc123
         FROM bigfoot_vw, _dim_sentiment_observed_abc123_mapping
     )
     SELECT state, __dim_sentiment_observed_abc123 as mood, COUNT(*)
@@ -413,11 +417,15 @@ def _generate_dimension_ctes(
         if mode == 'mapping':
             # Look up value in the mapping
             # The cascade returns JSON like: {"mapping": {"value1": "bucket1", ...}}
+            # NOTE: Use json_each() subquery for dynamic key lookup because:
+            # 1. json_extract_string(json, path) requires path to be constant
+            # 2. Column values may contain special chars ($, commas, quotes, etc.)
+            # The subquery expands the JSON object and filters by key = column value
             classify_cols.append(f"""COALESCE(
-            json_extract_string(
-                _{expr_id}_mapping._result->'mapping',
-                _source.{expr.source_col}
-            ),
+            (SELECT value::VARCHAR
+             FROM json_each(_{expr_id}_mapping._result->'mapping')
+             WHERE key = _source.{expr.source_col}
+             LIMIT 1),
             'Unknown'
         ) as {expr_id}""")
             cross_joins.append(f"_{expr_id}_mapping")

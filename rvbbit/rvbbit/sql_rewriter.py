@@ -270,7 +270,11 @@ def _rewrite_dimension_functions(query: str) -> str:
         ),
         _dim_classified AS (
             SELECT *,
-                json_extract_string(_result->'mapping', title) as __dim_topics_title_abc123
+                COALESCE(
+                    (SELECT value::VARCHAR FROM json_each(_result->'mapping')
+                     WHERE key = title LIMIT 1),
+                    'Unknown'
+                ) as __dim_topics_title_abc123
             FROM bigfoot_vw, _dim_topics_title_abc123_mapping
         )
         SELECT state, __dim_topics_title_abc123 as topic, COUNT(*)

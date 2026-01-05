@@ -193,19 +193,18 @@
 
       /* ========== HERO ========== */
       .hero {
-        padding: 80px 0 40px;
+        padding: 80px 0 80px;
       }
 
 	      .hero-grid {
 	        display: grid;
-	        grid-template-columns: 1fr 1fr;
-	        gap: 48px;
+	        grid-template-columns: 1fr;
+	        gap: 32px;
 	        align-items: start;
-	        margin-bottom: 32px;
 	      }
 
       .hero-content {
-        text-align: left;
+        text-align: center;
       }
 
       .hero-eyebrow {
@@ -262,6 +261,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
+        justify-content: center;
       }
 
       /* Hero Screenshot/Video */
@@ -328,36 +328,142 @@
         z-index: 1;
       }
 
-      @media (max-width: 900px) {
+      /* Hero Stats */
+      .hero-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px;
+        background: linear-gradient(135deg, rgba(8, 12, 20, 0.95), rgba(12, 16, 28, 0.9));
+        border-radius: 8px;
+        border: 1px solid rgba(28, 246, 255, 0.15);
+      }
+
+      .stats-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .stats-icon {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        background: rgba(28, 246, 255, 0.1);
+        border: 1px solid rgba(28, 246, 255, 0.2);
+      }
+
+      .stats-icon svg {
+        width: 18px;
+        height: 18px;
+        color: var(--cyan);
+      }
+
+      .stats-text {
+        flex: 1;
+      }
+
+      .stats-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 2px;
+      }
+
+      .stats-value {
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      /* Medium screens: 2-column layout (content + terminal) */
+      @media (min-width: 900px) and (max-width: 1199px) {
         .hero-grid {
-          grid-template-columns: 1fr;
-          gap: 32px;
+          grid-template-columns: 1fr 1.2fr;
+          grid-template-areas:
+            "content terminal"
+            "visual stats";
+          gap: 40px;
         }
 
         .hero-content {
-          text-align: center;
+          grid-area: content;
+          text-align: left;
         }
 
         .hero-actions {
-          justify-content: center;
+          justify-content: flex-start;
         }
 
-        .hero-screenshot {
+        .live-terminal-wrapper {
+          grid-area: terminal;
+        }
+
+        .hero-visual {
+          grid-area: visual;
+        }
+
+        .hero-stats {
+          grid-area: stats;
+        }
+      }
+
+      /* Wide screens: 3-column asymmetric grid */
+      @media (min-width: 1200px) {
+        .hero-grid {
+          grid-template-columns: 1fr 1.4fr 0.8fr;
+          grid-template-areas:
+            "content terminal visual"
+            "content terminal stats";
+          gap: 40px;
+          align-items: start;
+        }
+
+        .hero-content {
+          grid-area: content;
+          text-align: left;
+        }
+
+        .hero-actions {
+          justify-content: flex-start;
+        }
+
+        .live-terminal-wrapper {
+          grid-area: terminal;
+        }
+
+        .hero-visual {
+          grid-area: visual;
+        }
+
+        .hero-stats {
+          grid-area: stats;
+        }
+
+        .live-terminal {
           max-width: 100%;
-          margin: 0 auto;
         }
       }
 
       /* ========== LIVE TERMINAL ========== */
       .live-terminal-wrapper {
-        margin-top: 0;
         display: flex;
         justify-content: center;
       }
 
+      /* Mobile: add spacing between elements */
+      @media (max-width: 899px) {
+        .live-terminal-wrapper {
+          margin-top: 0;
+        }
+      }
+
 	      .live-terminal {
 	        width: 100%;
-	        max-width: 980px;
+	        max-width: 900px;
 	        background: #0a0d14;
 	        border-radius: 8px;
 	        border: 1px solid rgba(28, 246, 255, 0.2);
@@ -597,7 +703,7 @@
 
       /* ========== INTEGRATIONS BAR ========== */
 	      .integrations-bar {
-	        padding: 50px 0 70px;
+	        padding: 80px 0 70px;
 	        text-align: center;
 	      }
 
@@ -4553,6 +4659,29 @@
               </div>
             </div>
 
+            <!-- Live Terminal Demo -->
+            <div class="live-terminal-wrapper reveal delay-4">
+              <div class="live-terminal" id="liveTerminal">
+                <div class="terminal-header">
+                  <span class="terminal-type-badge">SQL</span>
+                  <div class="terminal-title">live_queries</div>
+                </div>
+                <div class="terminal-paused-indicator">paused</div>
+                <div class="terminal-body">
+                  <div class="terminal-line">
+                    <span class="terminal-prompt">&gt;</span>
+                    <span class="terminal-query" id="terminalQuery"></span>
+                    <span class="terminal-cursor" id="terminalCursor"></span>
+                  </div>
+                  <div class="terminal-result" id="terminalResult">
+                    <span class="terminal-result-arrow">→</span>
+                    <span class="terminal-result-text" id="terminalResultText"></span>
+                    <span class="terminal-result-meta" id="terminalResultMeta"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="hero-visual reveal delay-2">
               <div class="hero-screenshot">
                 <!-- Replace with: <img src="screenshots/hero-studio.png" alt="RVBBIT Studio"> -->
@@ -4568,26 +4697,42 @@
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Live Terminal Demo -->
-          <div class="live-terminal-wrapper reveal delay-4">
-            <div class="live-terminal" id="liveTerminal">
-              <div class="terminal-header">
-                <span class="terminal-type-badge">SQL</span>
-                <div class="terminal-title">live_queries</div>
-              </div>
-              <div class="terminal-paused-indicator">paused</div>
-              <div class="terminal-body">
-                <div class="terminal-line">
-                  <span class="terminal-prompt">&gt;</span>
-                  <span class="terminal-query" id="terminalQuery"></span>
-                  <span class="terminal-cursor" id="terminalCursor"></span>
+            <div class="hero-stats reveal delay-3">
+              <div class="stats-item">
+                <div class="stats-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
                 </div>
-                <div class="terminal-result" id="terminalResult">
-                  <span class="terminal-result-arrow">→</span>
-                  <span class="terminal-result-text" id="terminalResultText"></span>
-                  <span class="terminal-result-meta" id="terminalResultMeta"></span>
+                <div class="stats-text">
+                  <div class="stats-label">Your Database</div>
+                  <div class="stats-value">No migration</div>
+                </div>
+              </div>
+              <div class="stats-item">
+                <div class="stats-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="M9 3v18M3 9h18M3 15h18"/>
+                  </svg>
+                </div>
+                <div class="stats-text">
+                  <div class="stats-label">Your SQL Client</div>
+                  <div class="stats-value">Works today</div>
+                </div>
+              </div>
+              <div class="stats-item">
+                <div class="stats-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  </svg>
+                </div>
+                <div class="stats-text">
+                  <div class="stats-label">Any AI Provider</div>
+                  <div class="stats-value">Your choice</div>
                 </div>
               </div>
             </div>
@@ -4597,11 +4742,10 @@
 
 	      <!-- ========== INTEGRATIONS BAR ========== -->
 	      <section class="integrations-bar">
-	        <div class="container integrations-layout">
-	          <div class="integrations-card integrations-main">
+	        <div class="container">
 	            <div class="integrations-label reveal">Works with your existing databases, SQL clients &amp; AI providers</div>
 
-	            <div class="integrations-grid reveal delay-1">
+	            <div class="integrations-bricks reveal delay-1">
 	            <!-- Databases Row -->
 	            <div class="integrations-row">
 	              <div class="integrations-row-label">Databases</div>
@@ -4751,16 +4895,6 @@
 	              Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.
 	            </p>
 	          </div>
-
-	          <aside class="integrations-panel reveal delay-2">
-	            <div class="integrations-panel-kicker">Drop-in</div>
-	            <h3>Keep your workflow.</h3>
-	            <p>Point your SQL client at RVBBIT, keep your data where it already lives, and start adding AI operators.</p>
-	            <div class="integrations-panel-actions">
-	              <a class="btn secondary" href="#federated">Federated engine</a>
-	              <a class="btn secondary" href="#pgwire">PGWire clients</a>
-	            </div>
-	          </aside>
 	        </div>
 	      </section>
 

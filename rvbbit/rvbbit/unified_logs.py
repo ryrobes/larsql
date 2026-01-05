@@ -206,6 +206,8 @@ class UnifiedLogger:
         # Retry schedule: immediate, then 1s, 2s, 3s delays
         wait_times = [0, 1, 2, 3]
 
+        last_was_404 = False
+
         for attempt, wait_time in enumerate(wait_times):
             if wait_time > 0:
                 time.sleep(wait_time)
@@ -245,6 +247,7 @@ class UnifiedLogger:
 
                 elif resp.status_code == 404:
                     # Data not ready yet - continue retrying
+                    last_was_404 = True
                     continue
 
                 else:
@@ -256,6 +259,12 @@ class UnifiedLogger:
                 continue
 
         # All retries exhausted
+        # If we consistently got 404, this is likely a cached/free response
+        # Set cost=0 instead of None so it shows as $0.00 in the UI
+        if last_was_404:
+            print(f"[Unified Log] Cost fetch 404 for {request_id[:20]}... - likely cached/free response, setting cost=0")
+            return {"cost": 0.0, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "cached", "model": None}
+
         return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
 
     def log(
@@ -550,12 +559,12 @@ class UnifiedLogger:
             print(f"[Unified Log] INSERT error: {e}")
 
         # Queue for cost UPDATE if needed (LLM response with no cost yet)
-        # Only fetch from OpenRouter - other providers (Ollama, etc.) handle cost inline
+        # If there's a request_id and no cost, try to fetch it from OpenRouter
+        # The API will return 404 if it's cached/free, and we'll set cost=0
         needs_cost_update = (
             request_id is not None and
             cost is None and
-            role == "assistant" and
-            provider != "ollama"  # Skip cost fetch for local Ollama models
+            role == "assistant"
         )
 
         if needs_cost_update:
@@ -572,6 +581,8 @@ class UnifiedLogger:
                     'provider': provider,  # Include provider for debugging
                     'queued_at': time.time()
                 })
+                # Debug logging to track what's being queued (uncomment if debugging)
+                # print(f"[Cost Queue] {request_id[:20]}... provider={provider} model={model}", flush=True)
 
     def flush(self):
         """
