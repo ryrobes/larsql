@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cell Types - RVBBIT Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="container">
+        <nav class="nav">
+          <a href="index.html" class="brand">
+            <span>RVBBIT</span>
+          </a>
+          <div class="nav-links">
+            <a href="index.html">Docs</a>
+            <a href="https://github.com/rvbbit/rvbbit">GitHub</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="docs-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+          <nav>
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Getting Started</h4>
+              <ul class="sidebar-links">
+                <li><a href="index.html">Overview</a></li>
+                <li><a href="core-concepts.html">Core Concepts</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Cascade DSL</h4>
+              <ul class="sidebar-links">
+                <li><a href="cascade-dsl.html">DSL Reference</a></li>
+                <li><a href="cell-types.html" class="active">Cell Types</a></li>
+                <li><a href="validation.html">Validation (Wards)</a></li>
+                <li><a href="context.html">Context Management</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Features</h4>
+              <ul class="sidebar-links">
+                <li><a href="semantic-sql.html">Semantic SQL</a></li>
+                <li><a href="candidates.html">Candidates & Evaluation</a></li>
+                <li><a href="tools.html">Tools (Traits)</a></li>
+                <li><a href="mcp.html">MCP Integration</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="docs-content">
+          <h1>Cell Types</h1>
+          <p class="lead">
+            RVBBIT supports four primary cell execution types, each optimized for
+            different use cases. Understanding when to use each type is key to
+            building efficient, maintainable cascades.
+          </p>
+
+          <div class="info-box">
+            <div class="info-box-title">Cell Type Selection</div>
+            <p>
+              Every cell must have <strong>exactly one</strong> primary execution type:
+              <code>instructions</code> (LLM), <code>tool</code> (deterministic),
+              <code>htmx</code> (HITL screen), or <code>for_each_row</code> (SQL mapping).
+            </p>
+          </div>
+
+          <h2>Type 1: LLM Cells</h2>
+          <p>
+            Traditional agentic cells powered by language models. Use these when you need
+            intelligent decision-making, natural language understanding, or complex reasoning.
+          </p>
+
+          <h3>Configuration</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">LLM Cell Structure</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: research_phase
+  <span class="key">instructions</span>: <span class="str">|
+    Research {{ input.topic }} thoroughly using web search.
+    Focus on recent developments (2024+).
+    Summarize findings in 3-5 bullet points.
+  </span>
+  <span class="key">traits</span>:
+    - brave_web_search
+    - take_screenshot
+  <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">10</span>
+    <span class="key">max_attempts</span>: <span class="num">2</span>
+    <span class="key">turn_prompt</span>: <span class="str">"Continue your research. You have {{ max_turns - turn_index }} turns remaining."</span>
+  <span class="key">handoffs</span>: [analyze_results]</pre>
+            </div>
+          </div>
+
+          <h3>Key Properties</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>instructions</code></td>
+                <td>string</td>
+                <td>Jinja2-templated system prompt (required)</td>
+              </tr>
+              <tr>
+                <td><code>traits</code></td>
+                <td>array</td>
+                <td>List of tool names, or <code>"manifest"</code> for auto-selection</td>
+              </tr>
+              <tr>
+                <td><code>model</code></td>
+                <td>string</td>
+                <td>Override default model (optional)</td>
+              </tr>
+              <tr>
+                <td><code>rules</code></td>
+                <td>object</td>
+                <td>Execution rules (max_turns, max_attempts, loop_until)</td>
+              </tr>
+              <tr>
+                <td><code>handoffs</code></td>
+                <td>array</td>
+                <td>Valid next-cell targets (enables <code>route_to</code> tool)</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Execution Flow</h3>
+          <ol>
+            <li>Render <code>instructions</code> with Jinja2 (substituting <code>{{ input.* }}</code>, <code>{{ state.* }}</code>, etc.)</li>
+            <li>Initialize LLM conversation with system prompt</li>
+            <li>Enter turn loop (up to <code>max_turns</code>):
+              <ul>
+                <li>LLM generates response (may include tool calls)</li>
+                <li>Execute tool calls and return results</li>
+                <li>Validate with turn wards (if configured)</li>
+                <li>Continue until LLM completes or hits turn limit</li>
+              </ul>
+            </li>
+            <li>Validate output with post wards (if configured)</li>
+            <li>Extract final output and update Echo</li>
+          </ol>
+
+          <h3>Dynamic Tool Selection (Manifest)</h3>
+          <p>
+            Set <code>traits: "manifest"</code> to enable automatic tool discovery based on context.
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Manifest Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: dynamic_agent
+  <span class="key">instructions</span>: <span class="str">|
+    Complete this task: {{ input.task_description }}
+    Use whatever tools you need.
+  </span>
+  <span class="key">traits</span>: manifest
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">15</span></pre>
+            </div>
+          </div>
+
+          <p>
+            The Quartermaster agent analyzes the instructions and context to select
+            appropriate tools from the full manifest.
+          </p>
+
+          <h2>Type 2: Deterministic Cells</h2>
+          <p>
+            Execute tools directly without LLM mediation. Use these for predictable,
+            fast operations where you don't need intelligent decision-making.
+          </p>
+
+          <h3>Configuration</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Deterministic Cell Structure</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: load_sales_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">query</span>: <span class="str">|
+      SELECT
+        date,
+        SUM(revenue) as total_revenue,
+        COUNT(DISTINCT customer_id) as customers
+      FROM sales
+      WHERE date >= '{{ input.start_date }}'
+        AND date <= '{{ input.end_date }}'
+      GROUP BY date
+      ORDER BY date
+    </span>
+  <span class="key">timeout</span>: <span class="str">5m</span>
+  <span class="key">retry</span>:
+    <span class="key">max_attempts</span>: <span class="num">3</span>
+    <span class="key">backoff</span>: exponential
+  <span class="key">on_error</span>: auto_fix
+  <span class="key">routing</span>:
+    <span class="key">success</span>: process_data
+    <span class="key">error</span>: notify_admin</pre>
+            </div>
+          </div>
+
+          <h3>Tool Specification Formats</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Format</th>
+                <th>Example</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Registered tool</td>
+                <td><code>sql_data</code></td>
+                <td>Tool name from traits registry</td>
+              </tr>
+              <tr>
+                <td>Python function</td>
+                <td><code>python:mymodule.utils.transform</code></td>
+                <td>Import and call Python function</td>
+              </tr>
+              <tr>
+                <td>SQL file</td>
+                <td><code>sql:queries/get_users.sql</code></td>
+                <td>Execute SQL from file</td>
+              </tr>
+              <tr>
+                <td>Shell script</td>
+                <td><code>shell:scripts/backup.sh</code></td>
+                <td>Execute bash script</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Auto-Fix on Error</h3>
+          <p>
+            When <code>on_error: auto_fix</code> is set, failures trigger LLM-assisted debugging:
+          </p>
+
+          <ol>
+            <li>Cell fails (e.g., SQL syntax error)</li>
+            <li>Error captured with full context</li>
+            <li>LLM analyzes error and suggests fix</li>
+            <li>Fixed version auto-applied (up to <code>max_attempts</code>)</li>
+            <li>Success or final failure logged</li>
+          </ol>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Auto-Fix Configuration</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: risky_query
+  <span class="key">tool</span>: sql_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">query</span>: <span class="str">"SELECT * FROM {{ input.table }}"</span>
+  <span class="key">on_error</span>:
+    <span class="key">auto_fix</span>:
+      <span class="key">max_attempts</span>: <span class="num">3</span>
+      <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+      <span class="key">prompt</span>: <span class="str">|
+        Fix this SQL error. Ensure the query is valid for ClickHouse.
+        Error: {{ error }}
+        Original query: {{ original_query }}
+      </span></pre>
+            </div>
+          </div>
+
+          <h3>Dynamic Routing</h3>
+          <p>
+            Deterministic cells can route dynamically based on tool output:
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Routing Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: validate_input
+  <span class="key">tool</span>: python:validators.check_input
+  <span class="key">tool_inputs</span>:
+    <span class="key">data</span>: <span class="str">"{{ input.user_data }}"</span>
+  <span class="key">routing</span>:
+    <span class="key">valid</span>: process_data
+    <span class="key">invalid</span>: show_error
+    <span class="key">needs_clarification</span>: ask_user
+    <span class="key">default</span>: fallback_handler</pre>
+            </div>
+          </div>
+
+          <p>
+            The tool must return <code>{"_route": "valid"}</code> or <code>{"status": "invalid"}</code>
+            to trigger routing.
+          </p>
+
+          <h2>Type 3: HITL Screen Cells</h2>
+          <p>
+            Present HTML/HTMX interfaces for human approval, data collection, or decision-making.
+          </p>
+
+          <h3>Basic HITL Screen</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">HITL Screen Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: review_report
+  <span class="key">htmx</span>: <span class="str">|
+    &lt;div style="padding: 24px; max-width: 800px;"&gt;
+      &lt;h2&gt;Review Generated Report&lt;/h2&gt;
+
+      &lt;div style="background: #f5f5f5; padding: 16px; margin: 16px 0; border-radius: 8px;"&gt;
+        {{ outputs.generate_report.content | safe }}
+      &lt;/div&gt;
+
+      &lt;p&gt;Does this report meet your requirements?&lt;/p&gt;
+
+      &lt;form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"&gt;
+        &lt;button type="submit" name="response[action]" value="approve"
+                style="background: #00cc66; color: white; padding: 12px 24px; border: none; border-radius: 6px; margin-right: 12px;"&gt;
+          ✓ Approve & Publish
+        &lt;/button&gt;
+
+        &lt;button type="submit" name="response[action]" value="reject"
+                style="background: #ff4444; color: white; padding: 12px 24px; border: none; border-radius: 6px;"&gt;
+          ✗ Reject & Regenerate
+        &lt;/button&gt;
+
+        &lt;textarea name="response[feedback]" placeholder="Optional feedback..."
+                  style="width: 100%; margin-top: 16px; padding: 12px; border-radius: 6px;"&gt;&lt;/textarea&gt;
+      &lt;/form&gt;
+    &lt;/div&gt;
+  </span>
+  <span class="key">htmx_title</span>: <span class="str">Review Report</span>
+  <span class="key">htmx_description</span>: <span class="str">Please review the generated report and approve or reject.</span>
+  <span class="key">handoffs</span>: [publish_report, regenerate_report]</pre>
+            </div>
+          </div>
+
+          <h3>Available Context Variables</h3>
+          <p>
+            HTMX templates have access to full Jinja2 context:
+          </p>
+
+          <ul>
+            <li><code>{{ input.* }}</code> - Cascade input parameters</li>
+            <li><code>{{ state.* }}</code> - Session state</li>
+            <li><code>{{ outputs.cell_name.* }}</code> - Previous cell outputs</li>
+            <li><code>{{ checkpoint_id }}</code> - Current checkpoint ID (required for form posts)</li>
+            <li><code>{{ lineage }}</code> - Execution history</li>
+          </ul>
+
+          <h3>Response Handling</h3>
+          <p>
+            When the user submits the form, the response is captured and available as
+            <code>{{ outputs.review_report.response }}</code> in subsequent cells.
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Accessing User Response</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: process_review
+  <span class="key">instructions</span>: <span class="str">|
+    User {{ outputs.review_report.response.action }}ed the report.
+    {% if outputs.review_report.response.feedback %}
+    Feedback: {{ outputs.review_report.response.feedback }}
+    {% endif %}
+
+    {% if outputs.review_report.response.action == 'approve' %}
+    Proceed with publishing.
+    {% else %}
+    Regenerate with improvements based on feedback.
+    {% endif %}
+  </span></pre>
+            </div>
+          </div>
+
+          <h3>Non-Blocking HITL (Progress Displays)</h3>
+          <p>
+            Combine <code>htmx</code> with <code>tool</code> or <code>instructions</code> to show
+            progress while execution continues:
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Progress Display</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: long_running_task
+  <span class="key">htmx</span>: <span class="str">|
+    &lt;div&gt;
+      &lt;h3&gt;Processing {{ input.batch_name }}&lt;/h3&gt;
+      &lt;p&gt;Processing {{ input.record_count }} records...&lt;/p&gt;
+      &lt;div class="spinner"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+  </span>
+  <span class="key">tool</span>: python:batch.process_records
+  <span class="key">tool_inputs</span>:
+    <span class="key">records</span>: <span class="str">"{{ input.records }}"</span></pre>
+            </div>
+          </div>
+
+          <p>
+            The HTMX template renders immediately, but doesn't block execution.
+            The tool runs in parallel.
+          </p>
+
+          <h2>Type 4: SQL Mapping Cells</h2>
+          <p>
+            Execute a cell for each row returned by a SQL query. Enables row-level
+            processing with automatic parallelization.
+          </p>
+
+          <h3>Configuration</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">SQL Mapping Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: send_welcome_emails
+  <span class="key">for_each_row</span>:
+    <span class="key">query</span>: <span class="str">|
+      SELECT
+        user_id,
+        email,
+        first_name,
+        signup_date
+      FROM users
+      WHERE welcome_email_sent = false
+      LIMIT 100
+    </span>
+    <span class="key">max_parallel</span>: <span class="num">5</span>
+  <span class="key">instructions</span>: <span class="str">|
+    Send a personalized welcome email to {{ row.first_name }} at {{ row.email }}.
+    They signed up on {{ row.signup_date }}.
+
+    Use the send_email tool with:
+    - To: {{ row.email }}
+    - Subject: Welcome to our platform, {{ row.first_name }}!
+    - Body: [personalized welcome message]
+  </span>
+  <span class="key">traits</span>:
+    - send_email</pre>
+            </div>
+          </div>
+
+          <h3>Row Context</h3>
+          <p>
+            Each row's columns are available as <code>{{ row.column_name }}</code> in the
+            cell's instructions or tool_inputs.
+          </p>
+
+          <h3>Execution Behavior</h3>
+          <ul>
+            <li>Query executes once to get all rows</li>
+            <li>Cell executes once per row (parallel up to <code>max_parallel</code>)</li>
+            <li>Each execution is independent (separate trace ID)</li>
+            <li>Final output aggregates all row results</li>
+          </ul>
+
+          <h3>Combined with Deterministic Cells</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Deterministic SQL Mapping</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: enrich_user_data
+  <span class="key">for_each_row</span>:
+    <span class="key">query</span>: <span class="str">"SELECT user_id, company_domain FROM users WHERE needs_enrichment = true"</span>
+    <span class="key">max_parallel</span>: <span class="num">10</span>
+  <span class="key">tool</span>: python:enrichment.lookup_company
+  <span class="key">tool_inputs</span>:
+    <span class="key">domain</span>: <span class="str">"{{ row.company_domain }}"</span>
+    <span class="key">user_id</span>: <span class="str">"{{ row.user_id }}"</span></pre>
+            </div>
+          </div>
+
+          <h2>Hybrid Cells</h2>
+          <p>
+            Some combinations enable powerful hybrid behaviors:
+          </p>
+
+          <h3>LLM + HITL Progress Display</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Hybrid Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: research_with_progress
+  <span class="key">htmx</span>: <span class="str">|
+    &lt;div&gt;
+      &lt;h3&gt;Researching {{ input.topic }}&lt;/h3&gt;
+      &lt;p&gt;Agent is searching the web and analyzing results...&lt;/p&gt;
+    &lt;/div&gt;
+  </span>
+  <span class="key">instructions</span>: <span class="str">"Research {{ input.topic }} thoroughly"</span>
+  <span class="key">traits</span>: [brave_web_search]
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">10</span></pre>
+            </div>
+          </div>
+
+          <p>
+            The HTMX template shows a progress indicator while the LLM cell executes.
+          </p>
+
+          <h2>Choosing the Right Cell Type</h2>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Use Case</th>
+                <th>Cell Type</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Natural language processing</td>
+                <td>LLM Cell</td>
+                <td>Requires understanding and reasoning</td>
+              </tr>
+              <tr>
+                <td>Data extraction/transformation</td>
+                <td>Deterministic Cell</td>
+                <td>Predictable, fast, no reasoning needed</td>
+              </tr>
+              <tr>
+                <td>Human approval checkpoint</td>
+                <td>HITL Screen</td>
+                <td>Requires human judgment</td>
+              </tr>
+              <tr>
+                <td>Bulk email sending</td>
+                <td>SQL Mapping</td>
+                <td>Row-level processing with parallelization</td>
+              </tr>
+              <tr>
+                <td>Multi-step research</td>
+                <td>LLM Cell</td>
+                <td>Iterative exploration with tool use</td>
+              </tr>
+              <tr>
+                <td>Database query</td>
+                <td>Deterministic Cell</td>
+                <td>No LLM needed for SQL execution</td>
+              </tr>
+              <tr>
+                <td>Data entry form</td>
+                <td>HITL Screen</td>
+                <td>Collect structured input from user</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="info-box tip">
+            <div class="info-box-title">Performance Tip</div>
+            <p>
+              Always prefer <strong>deterministic cells</strong> for operations that don't
+              require reasoning. They're faster, cheaper, and more reliable. Reserve LLM
+              cells for tasks that truly need intelligence.
+            </p>
+          </div>
+
+          <hr style="margin: 48px 0; border: none; border-top: 1px solid rgba(28, 246, 255, 0.2);">
+
+          <h2>Next Steps</h2>
+          <ul>
+            <li><a href="validation.html">Validation (Wards)</a> - Add validation to your cells</li>
+            <li><a href="candidates.html">Candidates</a> - Run multiple attempts and pick the best</li>
+            <li><a href="tools.html">Tools Reference</a> - Explore available tools (traits)</li>
+          </ul>
+
+        </main>
+      </div>
+    </div>
+
+    <footer>
+      <div class="container">
+        <p>
+          RVBBIT &copy; 2026 |
+          <a href="https://github.com/rvbbit/rvbbit">GitHub</a> |
+          <a href="https://github.com/rvbbit/rvbbit/issues">Report Issues</a>
+        </p>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

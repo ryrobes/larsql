@@ -1,0 +1,193 @@
+cascade_id: embed_batch_pinecone
+internal: true
+
+description: |
+  Batch embed rows from a table, storing results in Pinecone.
+
+  Uses RVBBIT's Qwen embedding model (4096 dimensions) and upserts to Pinecone
+  with metadata for filtering. Supports namespaces for multi-tenancy.
+
+  SQL Usage:
+    -- Basic (default namespace):
+    RVBBIT EMBED products.description
+    USING (SELECT id::VARCHAR AS id, description AS text FROM products)
+    WITH (backend='pinecone');
+
+    -- With custom namespace:
+    RVBBIT EMBED products.description
+    USING (SELECT id::VARCHAR AS id, description AS text FROM products)
+    WITH (backend='pinecone', namespace='products_v2', batch_size=100);
+
+  Returns JSON stats:
+    {
+      "rows_embedded": 850,
+      "batches": 9,
+      "model": "qwen/qwen3-embedding-8b",
+      "duration_seconds": 12.4,
+      "backend": "pinecone",
+      "namespace": "products_v2"
+    }
+
+inputs_schema:
+  table_name: "Source table name (for metadata)"
+  column_name: "Column name (for metadata)"
+  rows_json: "JSON array of {id, text} objects"
+  batch_size: "Vectors per upsert batch (default: 100)"
+  namespace: "Pinecone namespace (default: 'default')"
+
+sql_function:
+  name: embed_batch_pinecone
+  description: "Batch embed rows and store in Pinecone for vector search"
+  args:
+    - name: table_name
+      type: VARCHAR
+    - name: column_name
+      type: VARCHAR
+    - name: rows_json
+      type: VARCHAR
+    - name: batch_size
+      type: INTEGER
+      optional: true
+      default: 100
+    - name: namespace
+      type: VARCHAR
+      optional: true
+      default: "default"
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false
+
+cells:
+  - name: batch_embed_pinecone
+    tool: python_data
+    inputs:
+      code: |
+        import time
+        import json
+        import logging
+        import os
+        from pathlib import Path
+
+        logger = logging.getLogger(__name__)
+        start_time = time.time()
+
+        # Load Pinecone config
+        config_path = Path(os.getenv('RVBBIT_ROOT', os.getcwd())) / 'config' / 'pinecone.yaml'
+        if not config_path.exists():
+            result = json.dumps({"error": f"Pinecone config not found at {config_path}"})
+        else:
+            import yaml
+            with open(config_path) as f:
+                pinecone_config = yaml.safe_load(f)
+
+            # Get API key from environment
+            api_key_env = pinecone_config['connection']['api_key_env']
+            api_key = os.getenv(api_key_env)
+            if not api_key:
+                result = json.dumps({"error": f"Environment variable {api_key_env} not set"})
+            else:
+                # Get parameters
+                table_name = input.get('table_name', 'unknown')
+                column_name = input.get('column_name', 'unknown')
+                rows_json = input.get('rows_json', '[]')
+                batch_size = input.get('batch_size') or 100
+                namespace = input.get('namespace') or pinecone_config['defaults']['namespace']
+
+                try:
+                    rows = json.loads(rows_json) if isinstance(rows_json, str) else rows_json
+                except:
+                    result = json.dumps({"error": "Invalid JSON in rows_json"})
+                else:
+                    if not rows:
+                        result = json.dumps({"rows_embedded": 0, "message": "No rows provided"})
+                    else:
+                        from rvbbit.traits.embedding_storage import agent_embed_batch
+                        from pinecone import Pinecone
+
+                        # Initialize Pinecone client
+                        pc = Pinecone(api_key=api_key)
+                        index = pc.Index(
+                            pinecone_config['connection']['index_name'],
+                            host=pinecone_config['connection']['host']
+                        )
+
+                        rows_embedded = 0
+                        batch_count = 0
+                        model_used = None
+                        errors = []
+
+                        # Process in batches
+                        for i in range(0, len(rows), batch_size):
+                            batch = rows[i:i + batch_size]
+                            batch_texts = [r.get('text', '') for r in batch]
+                            batch_ids = [str(r.get('id', '')) for r in batch]
+
+                            # Skip empty texts
+                            valid = [(id, text) for id, text in zip(batch_ids, batch_texts) if text and text.strip()]
+                            if not valid:
+                                continue
+
+                            batch_ids, batch_texts = zip(*valid)
+
+                            try:
+                                # Get embeddings via RVBBIT agent (cost-tracked)
+                                embed_result = agent_embed_batch(
+                                    texts=list(batch_texts),
+                                    _session_id=input.get('_session_id'),
+                                    _caller_id=input.get('_caller_id'),
+                                    _cascade_id=input.get('_cascade_id'),
+                                    _cell_name=input.get('_cell_name'),
+                                )
+                                embeddings = embed_result['embeddings']
+                                model_used = embed_result['model']
+
+                                # Prepare vectors for Pinecone upsert
+                                # CRITICAL: Pinecone requires all values to be floats (not ints)
+                                vectors = []
+                                for row_id, text, embedding in zip(batch_ids, batch_texts, embeddings):
+                                    # Ensure all embedding values are floats (not mixed int/float)
+                                    embedding_floats = [float(v) for v in embedding]
+
+                                    vectors.append({
+                                        'id': row_id,
+                                        'values': embedding_floats,
+                                        'metadata': {
+                                            'source_table': table_name,
+                                            'column_name': column_name,
+                                            'text': text[:1000],  # Truncate for metadata size limits
+                                            'model': model_used
+                                        }
+                                    })
+
+                                # Upsert to Pinecone
+                                try:
+                                    index.upsert(vectors=vectors, namespace=namespace)
+                                    rows_embedded += len(vectors)
+                                    batch_count += 1
+                                    logger.info(f"Upserted batch {batch_count}: {len(vectors)} vectors to Pinecone namespace '{namespace}'")
+                                except Exception as e:
+                                    errors.append(f"batch {batch_count + 1} upsert: {e}")
+                                    logger.error(f"Pinecone upsert failed: {e}")
+
+                            except Exception as e:
+                                logger.error(f"Batch {batch_count + 1} failed: {e}")
+                                errors.append(f"batch {batch_count + 1}: {e}")
+
+                        duration = time.time() - start_time
+
+                        result = json.dumps({
+                            "rows_embedded": rows_embedded,
+                            "rows_total": len(rows),
+                            "batches": batch_count,
+                            "model": model_used,
+                            "duration_seconds": round(duration, 2),
+                            "rows_per_second": round(rows_embedded / duration, 1) if duration > 0 else 0,
+                            "backend": "pinecone",
+                            "namespace": namespace,
+                            "index": pinecone_config['connection']['index_name'],
+                            "errors": errors[:5] if errors else None
+                        })
+
+        result = result
+    context:
+      enabled: false

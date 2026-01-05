@@ -70,6 +70,8 @@ class ClientConnection:
         self.session_id = None  # Will be set in handle_startup based on database name
         self.session_prefix = session_prefix
         self.database_name = 'default'  # Logical database name from client connection
+        self.user_name = 'rvbbit'       # Logical user name from client connection
+        self.application_name = 'unknown'
         self.is_persistent_db = False   # True if using persistent DuckDB file
         self.duckdb_conn = None
         self.db_lock = None  # Lock for thread-safe DuckDB access
@@ -80,6 +82,13 @@ class ClientConnection:
         # Extended Query Protocol state
         self.prepared_statements = {}  # name → {query, param_types, param_count}
         self.portals = {}               # name → {statement_name, params, result_formats, query}
+
+        # Lazy attach manager (initialized in setup_session)
+        self._lazy_attach = None
+        self._duckdb_catalog_name = None
+
+        # Cache: last seen attached database set (to refresh views after lazy ATTACH)
+        self._last_attached_db_names = set()
 
     def setup_session(self):
         """
@@ -129,11 +138,28 @@ class ClientConnection:
                 else:
                     print(f"[{self.session_id}]   📂 Opened persistent database: {safe_db_name}")
 
+            # Cache DuckDB's internal catalog name (filename base or 'memory')
+            try:
+                self._duckdb_catalog_name = self.duckdb_conn.execute("SELECT current_database()").fetchone()[0]
+            except Exception:
+                self._duckdb_catalog_name = None
+
             # Configure DuckDB
             self.duckdb_conn.execute("SET threads TO 4")
 
             # Reset our transaction status to idle
             self.transaction_status = 'I'
+
+            # DataGrip/PostgreSQL clients frequently schema-qualify functions as pg_catalog.func(...),
+            # but DuckDB parses that as a column reference. We register unqualified compat macros
+            # and later strip the pg_catalog. prefix for function calls at execution time.
+            try:
+                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_get_userbyid(x) AS 'rvbbit'")
+                self.duckdb_conn.execute("CREATE OR REPLACE MACRO txid_current() AS (epoch_ms(now())::BIGINT % 4294967296)")
+                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_is_in_recovery() AS false")
+                self.duckdb_conn.execute("CREATE OR REPLACE MACRO pg_tablespace_location(x) AS NULL")
+            except Exception:
+                pass
 
             # Register RVBBIT UDFs (rvbbit_udf + rvbbit_cascade_udf + hardcoded aggregates)
             register_rvbbit_udf(self.duckdb_conn)
@@ -141,6 +167,15 @@ class ClientConnection:
             # Register dynamic SQL functions from cascade registry (SUMMARIZE_URLS, etc.)
             from ..sql_tools.udf import register_dynamic_sql_functions
             register_dynamic_sql_functions(self.duckdb_conn)
+
+            # Lazy ATTACH: configured sql_connections/*.json attached on first reference.
+            # Non-fatal if config loading fails.
+            try:
+                from ..sql_tools.config import load_sql_connections
+                from ..sql_tools.lazy_attach import LazyAttachManager
+                self._lazy_attach = LazyAttachManager(self.duckdb_conn, load_sql_connections())
+            except Exception:
+                self._lazy_attach = None
 
             # DuckDB v1.4.2+ has built-in pg_catalog support
             print(f"[{self.session_id}]   ℹ️  Using DuckDB's built-in pg_catalog (v1.4.2+)")
@@ -175,6 +210,355 @@ class ClientConnection:
         """
         with self.db_lock:
             return self.duckdb_conn.execute(query)
+
+    @staticmethod
+    def _rewrite_pg_catalog_function_calls(query: str) -> str:
+        """
+        Rewrite `pg_catalog.func(` → `func(` for function-style calls.
+
+        DuckDB does not support schema-qualified function calls, but Postgres clients
+        commonly emit them in catalog queries (especially DataGrip).
+        """
+        import re
+        return re.sub(
+            r'(?i)\bpg_catalog\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(',
+            r'\1(',
+            query
+        )
+
+    @staticmethod
+    def _rewrite_pg_system_column_refs(query: str) -> str:
+        """
+        Rewrite PostgreSQL system columns that DuckDB's pg_catalog tables don't expose.
+
+        JetBrains DataGrip (and some other clients) select `xmin` as a "state_number"
+        to detect catalog changes. DuckDB's pg_catalog compatibility tables do not
+        include `xmin`, so these queries fail unless we replace it with a constant.
+
+        DuckDB's pg_class also does not include `relforcerowsecurity` (present in newer
+        PostgreSQL versions), which can appear in DataGrip introspection queries.
+        """
+        import re
+
+        # Replace tablealias.xmin with a stable constant
+        query = re.sub(r'(?i)\b[a-zA-Z_][a-zA-Z0-9_]*\.xmin\b', '0', query)
+
+        # Replace missing pg_class column (Postgres-only) with a stable constant
+        query = re.sub(r'(?i)\b[a-zA-Z_][a-zA-Z0-9_]*\.relforcerowsecurity\b', 'false', query)
+
+        return query
+
+    @staticmethod
+    def _quote_ident(name: str) -> str:
+        return f'"{name.replace(chr(34), chr(34) * 2)}"'
+
+    def _rewrite_information_schema_catalog_filters(self, query: str) -> str:
+        """
+        Restrict `information_schema` catalog views to the current DuckDB database.
+
+        DuckDB's information_schema.* surfaces attached database catalogs, which can confuse
+        PostgreSQL clients (DataGrip shows them as FDW/foreign catalogs). Postgres exposes only
+        the connected database, so we filter these queries to the current DuckDB catalog.
+        """
+        import re
+
+        catalog = self._duckdb_catalog_name
+        if not catalog:
+            return query
+
+        def inject(table_ref: str, catalog_col: str) -> str:
+            nonlocal query
+
+            m = re.search(
+                rf'(?is)\bfrom\s+({re.escape(table_ref)})(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?',
+                query,
+            )
+            if not m:
+                return query
+
+            table_ref_end = m.end(1)
+            alias_candidate = m.group(2)
+            reserved = {
+                'where',
+                'order',
+                'group',
+                'having',
+                'limit',
+                'offset',
+                'fetch',
+                'union',
+                'join',
+                'left',
+                'right',
+                'inner',
+                'full',
+                'cross',
+            }
+
+            alias = alias_candidate if alias_candidate and alias_candidate.lower() not in reserved else None
+            from_end = m.end(0) if alias else table_ref_end
+
+            qualifier = f"{alias}.{catalog_col}" if alias else catalog_col
+            escaped_catalog = catalog.replace("'", "''")
+            cond = f"{qualifier} = '{escaped_catalog}'"
+
+            # Find WHERE after the FROM match (avoid CTE/subquery WHEREs earlier in the SQL)
+            after_from = query[from_end:]
+            w = re.search(r'(?is)\bwhere\b', after_from)
+            if w:
+                insert_at = from_end + w.end()
+                query = query[:insert_at] + f" {cond} AND" + query[insert_at:]
+                return query
+
+            # Insert WHERE before ORDER/GROUP/HAVING/LIMIT/OFFSET/FETCH if present
+            tail = after_from
+            k = re.search(r'(?is)\b(order\s+by|group\s+by|having|limit|offset|fetch)\b', tail)
+            if k:
+                insert_at = from_end + k.start()
+                query = query[:insert_at] + f" WHERE {cond} " + query[insert_at:]
+                return query
+
+            query = query.rstrip() + f" WHERE {cond}"
+            return query
+
+        # Apply to common info_schema views used for introspection
+        inject('information_schema.schemata', 'catalog_name')
+        inject('information_schema.tables', 'table_catalog')
+        inject('information_schema.columns', 'table_catalog')
+        return query
+
+    def _refresh_attached_view_cache(self) -> None:
+        """
+        Refresh view exposure for any newly ATTACH'd databases.
+
+        Lazy ATTACH can occur outside explicit ATTACH commands; detect and rebuild
+        exposure views when the set of attached DBs changes.
+        """
+        try:
+            current = self.duckdb_conn.execute(
+                """
+                SELECT database_name
+                FROM duckdb_databases()
+                WHERE NOT internal
+                """
+            ).fetchall()
+            names = {r[0] for r in current}
+        except Exception:
+            return
+
+        if names != self._last_attached_db_names:
+            self._last_attached_db_names = names
+            self._create_attached_db_views()
+
+    @staticmethod
+    def _extract_top_level_select_list(query: str) -> Optional[str]:
+        """
+        Extract the top-level SELECT list (text between SELECT and FROM) for simple parsing.
+
+        Best-effort: handles parentheses, quotes, and block/line comments well enough for
+        typical client catalog queries.
+        """
+        sql = query.strip().rstrip(';')
+        lower = sql.lower()
+
+        in_single = False
+        in_double = False
+        depth = 0
+        i = 0
+        select_start = None
+
+        def is_word_boundary(idx: int) -> bool:
+            if idx <= 0:
+                return True
+            return not (lower[idx - 1].isalnum() or lower[idx - 1] == '_')
+
+        while i < len(sql):
+            ch = sql[i]
+
+            # Comments (only when not in quotes)
+            if not in_single and not in_double:
+                if sql.startswith('/*', i):
+                    end = sql.find('*/', i + 2)
+                    i = len(sql) if end == -1 else end + 2
+                    continue
+                if sql.startswith('--', i):
+                    end = sql.find('\n', i + 2)
+                    i = len(sql) if end == -1 else end + 1
+                    continue
+
+            # Quotes
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+                i += 1
+                continue
+            if ch == '"' and not in_single:
+                in_double = not in_double
+                i += 1
+                continue
+
+            if in_single or in_double:
+                i += 1
+                continue
+
+            # Parens
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+
+            # Find top-level SELECT, then top-level FROM
+            if depth == 0:
+                if select_start is None and lower.startswith('select', i) and is_word_boundary(i):
+                    select_start = i + 6
+                    i += 6
+                    continue
+                if select_start is not None and lower.startswith('from', i) and is_word_boundary(i):
+                    return sql[select_start:i].strip()
+
+            i += 1
+
+        # SELECT without FROM (common for client probe queries)
+        if select_start is not None:
+            return sql[select_start:].strip()
+
+        return None
+
+    @staticmethod
+    def _split_top_level_commas(select_list: str) -> list[str]:
+        items: list[str] = []
+        current: list[str] = []
+        in_single = False
+        in_double = False
+        depth = 0
+        i = 0
+        while i < len(select_list):
+            ch = select_list[i]
+
+            # Comments (only when not in quotes)
+            if not in_single and not in_double:
+                if select_list.startswith('/*', i):
+                    end = select_list.find('*/', i + 2)
+                    i = len(select_list) if end == -1 else end + 2
+                    continue
+                if select_list.startswith('--', i):
+                    end = select_list.find('\n', i + 2)
+                    i = len(select_list) if end == -1 else end + 1
+                    continue
+
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < len(select_list) and select_list[i + 1] == "'":
+                    current.append("''")
+                    i += 2
+                    continue
+                in_single = not in_single
+                current.append(ch)
+                i += 1
+                continue
+            if ch == '"' and not in_single:
+                in_double = not in_double
+                current.append(ch)
+                i += 1
+                continue
+
+            if in_single or in_double:
+                current.append(ch)
+                i += 1
+                continue
+
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth = max(0, depth - 1)
+
+            if ch == ',' and depth == 0:
+                item = ''.join(current).strip()
+                if item:
+                    items.append(item)
+                current = []
+                i += 1
+                continue
+
+            current.append(ch)
+            i += 1
+
+        tail = ''.join(current).strip()
+        if tail:
+            items.append(tail)
+        return items
+
+    @staticmethod
+    def _infer_select_item_output_name(select_item: str) -> str:
+        """
+        Infer the output column name for a single SELECT item.
+
+        Examples:
+          - "N.oid::bigint as id" -> "id"
+          - "rolsuper is_super"   -> "is_super"
+          - "D.description"       -> "description"
+          - "current_user"        -> "current_user"
+        """
+        import re
+
+        item = select_item.strip()
+        # Normalize whitespace
+        item = re.sub(r'\s+', ' ', item)
+
+        # Prefer explicit AS alias
+        m = re.search(r'(?i)\s+as\s+(".*?"|[a-zA-Z_][a-zA-Z0-9_]*)\s*$', item)
+        if m:
+            alias = m.group(1)
+            return alias[1:-1] if alias.startswith('"') and alias.endswith('"') else alias
+
+        # Alias without AS: last token if more than one token
+        tokens = item.split(' ')
+        if len(tokens) >= 2:
+            alias = tokens[-1]
+            return alias[1:-1] if alias.startswith('"') and alias.endswith('"') else alias
+
+        # No alias: derive from expression
+        expr = tokens[0]
+        expr = expr.strip()
+
+        # Strip casts suffixes
+        expr = re.sub(r'::[a-zA-Z_][a-zA-Z0-9_]*(?:\\(.*?\\))?$', '', expr)
+
+        # Unwrap simple schema/table qualification
+        if '.' in expr:
+            expr = expr.split('.')[-1]
+
+        # Function call name
+        if expr.endswith(')') and '(' in expr:
+            expr = expr[:expr.find('(')]
+
+        return expr.strip('"')
+
+    def _expected_result_columns(self, query: str) -> Optional[list[str]]:
+        select_list = self._extract_top_level_select_list(query)
+        if not select_list:
+            return None
+        items = self._split_top_level_commas(select_list)
+        if not items:
+            return None
+        return [self._infer_select_item_output_name(item) for item in items]
+
+    @staticmethod
+    def _empty_df_for_columns(columns: list[str]):
+        import pandas as pd
+
+        def dtype_for(col: str):
+            name = col.strip('"').lower()
+            if name in {'id', 'oid', 'object_id', 'transaction_id', 'role_id', 'usesysid'} or name.endswith('_id'):
+                return 'int64'
+            if name.startswith('is_') or name.startswith('has_') or name.endswith('_option') or name in {
+                'allow_connections', 'is_template', 'usesuper', 'usecreatedb'
+            }:
+                return 'bool'
+            return 'object'
+
+        return pd.DataFrame({c: pd.Series([], dtype=dtype_for(c)) for c in columns})
 
     def _create_attachments_metadata_table(self):
         """
@@ -722,43 +1106,75 @@ class ClientConnection:
         This method drops orphaned views (views with __ pattern that point to non-existent DBs).
         """
         try:
-            # Get all currently attached databases
+            # Get all currently attached databases (exclude current DB)
             attached_db_names = set()
-            attached_dbs = self.duckdb_conn.execute("""
+            attached_dbs = self.duckdb_conn.execute(
+                """
                 SELECT database_name
                 FROM duckdb_databases()
                 WHERE NOT internal
-                  AND database_name NOT IN ('system', 'temp', 'memory')
+                  AND database_name NOT IN ('system', 'temp')
+                  AND database_name <> current_database()
                   AND database_name NOT LIKE 'pg_client_%'
-            """).fetchall()
+                """
+            ).fetchall()
 
             for (db_name,) in attached_dbs:
                 attached_db_names.add(db_name)
 
-            # Get all views with __ pattern (ATTACH'd database views)
-            views = self.duckdb_conn.execute("""
-                SELECT table_name
+            # Get all views with __ pattern in main schema (legacy exposure)
+            views = self.duckdb_conn.execute(
+                """
+                SELECT table_schema, table_name
                 FROM information_schema.tables
-                WHERE table_schema = 'main'
-                  AND table_type = 'VIEW'
-                  AND table_name LIKE '%__%'
-            """).fetchall()
+                WHERE table_type = 'VIEW'
+                  AND (
+                    (table_schema = 'main' AND table_name LIKE '%__%')
+                    OR (table_schema NOT IN ('main', 'pg_catalog', 'information_schema') AND table_schema LIKE '%__%')
+                  )
+                """
+            ).fetchall()
 
             dropped_count = 0
-            for (view_name,) in views:
-                # Extract database name from view (before __)
-                db_prefix = view_name.split('__')[0] if '__' in view_name else None
+            dropped_schemas = set()
+            for view_schema, view_name in views:
+                # Extract database name from schema/view prefix (before __)
+                db_prefix = None
+                if view_schema != 'main' and '__' in view_schema:
+                    db_prefix = view_schema.split('__')[0]
+                elif '__' in view_name:
+                    db_prefix = view_name.split('__')[0]
 
                 # If database doesn't exist, drop the view
                 if db_prefix and db_prefix not in attached_db_names:
                     try:
-                        self.duckdb_conn.execute(f'DROP VIEW IF EXISTS main."{view_name}"')
+                        self.duckdb_conn.execute(
+                            f"DROP VIEW IF EXISTS {self._quote_ident(view_schema)}.{self._quote_ident(view_name)}"
+                        )
                         dropped_count += 1
+                        if view_schema != 'main':
+                            dropped_schemas.add(view_schema)
                     except:
                         pass
 
             if dropped_count > 0:
                 print(f"[{self.session_id}]   🧹 Cleaned up {dropped_count} orphaned views (DETACH'd databases)")
+
+            # Best-effort: drop any now-empty orphan schemas we created for exposure
+            for schema_name in sorted(dropped_schemas):
+                try:
+                    remaining = self.duckdb_conn.execute(
+                        """
+                        SELECT COUNT(*)::BIGINT
+                        FROM information_schema.tables
+                        WHERE table_schema = ?
+                        """,
+                        [schema_name],
+                    ).fetchone()[0]
+                    if int(remaining) == 0:
+                        self.duckdb_conn.execute(f"DROP SCHEMA IF EXISTS {self._quote_ident(schema_name)}")
+                except Exception:
+                    pass
 
         except Exception as e:
             # Non-fatal
@@ -770,58 +1186,100 @@ class ClientConnection:
 
         This makes ATTACH'd cascade sessions browsable in DBeaver!
 
-        For each table in attached database:
-          test_session.main._load_products → view: test_session__load_products
+        For each relation in an attached database:
+          ext.main.t1 → schema: ext__main, view: ext__main.t1
 
-        DBeaver can then browse these views under the main schema.
+        This keeps attached catalogs out of information_schema introspection while still
+        making the data browsable as normal schemas/views in Postgres clients.
         """
         try:
             # First, clean up any orphaned views from DETACH'd databases
             self._cleanup_orphaned_views()
 
+            # Cache current attached DBs for change detection
+            try:
+                self._last_attached_db_names = {
+                    r[0]
+                    for r in self.duckdb_conn.execute(
+                        "SELECT database_name FROM duckdb_databases() WHERE NOT internal"
+                    ).fetchall()
+                }
+            except Exception:
+                pass
+
             # Get all attached databases (exclude system DBs and current DB)
-            attached_dbs = self.duckdb_conn.execute("""
+            attached_dbs = self.duckdb_conn.execute(
+                """
                 SELECT database_name, database_oid
                 FROM duckdb_databases()
                 WHERE NOT internal
-                  AND database_name NOT IN ('system', 'temp', 'memory')
+                  AND database_name NOT IN ('system', 'temp')
+                  AND database_name <> current_database()
                   AND database_name NOT LIKE 'pg_client_%'
                 ORDER BY database_name
-            """).fetchall()
+                """
+            ).fetchall()
 
             if not attached_dbs:
                 print(f"[{self.session_id}]   ℹ️  No ATTACH'd databases to expose")
                 return
 
+            schema_count = 0
             view_count = 0
             for db_name, db_oid in attached_dbs:
                 # Get tables in this database
-                tables = self.duckdb_conn.execute(f"""
+                tables = self.duckdb_conn.execute(
+                    """
                     SELECT schema_name, table_name
                     FROM duckdb_tables()
-                    WHERE database_name = '{db_name}'
+                    WHERE database_name = ?
+                      AND NOT internal
                       AND NOT temporary
                     ORDER BY schema_name, table_name
-                """).fetchall()
+                    """,
+                    [db_name],
+                ).fetchall()
 
                 for schema, table in tables:
-                    # Create view name: dbname__tablename
-                    # Use double underscore to distinguish from regular table names
-                    view_name = f"{db_name}__{table}"
+                    # Expose attached db.schema as a schema in the current database.
+                    # This avoids Postgres clients interpreting attached catalogs as FDW/foreign objects.
+                    expose_schema = f"{db_name}__{schema}"
 
                     try:
-                        # Create view pointing to attached database table
-                        self.duckdb_conn.execute(f"""
-                            CREATE OR REPLACE VIEW main."{view_name}" AS
-                            SELECT * FROM "{db_name}"."{schema}"."{table}"
-                        """)
+                        self.duckdb_conn.execute(
+                            f"CREATE SCHEMA IF NOT EXISTS {self._quote_ident(expose_schema)}"
+                        )
+                        schema_count += 1
+                    except Exception:
+                        pass
+
+                    try:
+                        # Create a view in the exposure schema with the original table name
+                        self.duckdb_conn.execute(
+                            f"""
+                            CREATE OR REPLACE VIEW {self._quote_ident(expose_schema)}.{self._quote_ident(table)} AS
+                            SELECT * FROM {self._quote_ident(db_name)}.{self._quote_ident(schema)}.{self._quote_ident(table)}
+                            """
+                        )
                         view_count += 1
                     except Exception as e:
                         # Skip if view creation fails
                         pass
 
+                    # Back-compat (legacy): also create a flattened view in main.
+                    legacy_view = f"{db_name}__{table}" if schema in ("main", "public") else f"{db_name}__{schema}__{table}"
+                    try:
+                        self.duckdb_conn.execute(
+                            f"""
+                            CREATE OR REPLACE VIEW main.{self._quote_ident(legacy_view)} AS
+                            SELECT * FROM {self._quote_ident(db_name)}.{self._quote_ident(schema)}.{self._quote_ident(table)}
+                            """
+                        )
+                    except Exception:
+                        pass
+
             if view_count > 0:
-                print(f"[{self.session_id}]   ✅ Created {view_count} views for ATTACH'd databases")
+                print(f"[{self.session_id}]   ✅ Exposed {view_count} relation(s) from ATTACH'd databases")
             else:
                 print(f"[{self.session_id}]   ℹ️  No tables found in ATTACH'd databases")
 
@@ -1124,9 +1582,34 @@ class ClientConnection:
         - 'memory' or 'default' → in-memory DuckDB (ephemeral)
         - Any other name → persistent file at session_dbs/{database}.duckdb
         """
-        database = startup_params.get('database', 'default')
-        user = startup_params.get('user', 'rvbbit')
+        import re
+
+        # Different clients vary slightly in startup param keys; be liberal in what we accept.
+        database = (
+            startup_params.get('database')
+            or startup_params.get('dbname')
+            or startup_params.get('db')
+            or 'default'
+        )
+        user = (
+            startup_params.get('user')
+            or startup_params.get('username')
+            or 'rvbbit'
+        )
         application_name = startup_params.get('application_name', 'unknown')
+
+        # Some drivers may smuggle dbname via `options` (rare); best-effort.
+        options = startup_params.get('options')
+        if (not startup_params.get('database')) and options:
+            m = re.search(r'(?i)(?:--dbname=|-d\s+)([a-zA-Z0-9_-]+)', options)
+            if m:
+                database = m.group(1)
+
+        self.user_name = user
+        self.application_name = application_name
+
+        if os.environ.get('RVBBIT_PG_LOG_STARTUP_PARAMS') == '1':
+            print(f"[{self.session_id or self.addr}]   🔎 Startup params: {startup_params}")
 
         # Store database name for session setup
         self.database_name = database
@@ -1237,6 +1720,15 @@ class ClientConnection:
             if self._is_catalog_query(query):
                 self._handle_catalog_query(query)
                 return
+
+            # Lazy ATTACH: attach configured sql_connections on-demand when referenced.
+            # Do this before MAP/RUN execution and before prewarm distinct queries.
+            if self._lazy_attach is not None:
+                try:
+                    self._lazy_attach.ensure_for_query(query, aggressive=False)
+                    self._refresh_attached_view_cache()
+                except Exception:
+                    pass
 
             # Set caller context for RVBBIT queries (enables cost tracking and debugging)
             from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement, _is_map_run_statement
@@ -1516,7 +2008,17 @@ class ClientConnection:
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
 
             # Execute on DuckDB (with defensive None check)
-            result = self.duckdb_conn.execute(query)
+            try:
+                result = self.duckdb_conn.execute(query)
+            except Exception as first_exec_error:
+                # Retry once with aggressive lazy attach (catches missed patterns)
+                if self._lazy_attach is not None:
+                    try:
+                        self._lazy_attach.ensure_for_query(original_query, aggressive=True)
+                        result = self.duckdb_conn.execute(query)
+                    except Exception:
+                        raise first_exec_error
+                raise
             if result is None:
                 # Query returned no result object (e.g., empty after rewrite)
                 import pandas as pd
@@ -1677,26 +2179,69 @@ class ClientConnection:
         print(f"[{self.session_id}]   📋 Catalog query detected: {query[:80]}...")
 
         try:
-            # Special case 0: pg_database queries (DataGrip schema browser)
-            # Must come BEFORE current_database() handler since queries often contain both
-            if 'PG_DATABASE' in query_upper and 'FROM' in query_upper:
-                # DataGrip queries pg_database to list databases
-                # Return database entry for the current connection
+            # ACL aggregation queries (DataGrip) often UNION tablespace + database ACLs.
+            # DuckDB's pg_database lacks datacl, so return an empty but correctly-shaped result.
+            if 'PG_TABLESPACE' in query_upper and 'PG_DATABASE' in query_upper and 'DATACL' in query_upper:
+                cols = self._expected_result_columns(query) or ['object_id', 'acl']
+                send_query_results(self.sock, self._empty_df_for_columns(cols), self.transaction_status)
+                print(f"[{self.session_id}]   ✓ ACL union catalog query handled (empty)")
+                return
+
+            # pg_database list queries (DataGrip schema browser)
+            # Must come BEFORE current_database() handler since queries often contain both.
+            import re
+            is_pg_database_from = re.search(r'(?is)\bfrom\s+(?:pg_catalog\.)?pg_database\b', query) is not None
+            wants_extended_pg_database = any(
+                token in query_upper
+                for token in (
+                    'DATDBA',
+                    'DATISTEMPLATE',
+                    'DATALLOWCONN',
+                    'DATCONNLIMIT',
+                    'DATCOLLATE',
+                    'DATCTYPE',
+                    'ENCODING',
+                    'DATTABLESPACE',
+                    'PG_DATABASE_SIZE',
+                    'PG_GET_USERBYID',
+                    'PG_ENCODING_TO_CHAR',
+                )
+            )
+            if is_pg_database_from and wants_extended_pg_database:
+                cols = self._expected_result_columns(query)
+                if not cols:
+                    cols = [
+                        'id',
+                        'name',
+                        'description',
+                        'is_template',
+                        'allow_connections',
+                        'owner',
+                    ]
+
                 db_description = 'RVBBIT Persistent Database' if self.is_persistent_db else 'RVBBIT In-Memory Database'
-                result_df = pd.DataFrame({
-                    'id': [1],
-                    'name': [self.database_name],
-                    'description': [db_description],
-                    'is_template': [False],
-                    'allow_connections': [True],
-                    'owner': ['rvbbit'],
-                    'encoding': ['UTF8'],
-                    'collate': ['en_US.UTF-8'],
-                    'ctype': ['en_US.UTF-8'],
-                    'connection_limit': [-1],
-                    'tablespace': ['pg_default'],
-                    'size': ['N/A'],
-                })
+                base = {
+                    'id': 1,
+                    'oid': 1,
+                    'name': self.database_name,
+                    'datname': self.database_name,
+                    'description': db_description,
+                    'is_template': False,
+                    'datistemplate': False,
+                    'allow_connections': True,
+                    'datallowconn': True,
+                    'owner': self.user_name,
+                    'datdba': 1,
+                    'encoding': 6,
+                    'collate': 'en_US.UTF-8',
+                    'ctype': 'en_US.UTF-8',
+                    'connection_limit': -1,
+                    'datconnlimit': -1,
+                    'tablespace': 'pg_default',
+                    'dattablespace': 0,
+                    'size': None,
+                }
+                result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_database → {self.database_name}")
                 return
@@ -1706,41 +2251,61 @@ class ClientConnection:
             if 'PG_NAMESPACE' in query_upper and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_namespace query for schema browser...")
                 try:
-                    # Build schema list from ALL DuckDB schemas across attached databases
-                    # Use hash of schema name as OID for consistent linking with pg_class
-                    enhanced_query = """
-                        SELECT
-                            hash(database_name || '.' || schema_name) % 2147483647 as oid,
-                            hash(database_name || '.' || schema_name) % 2147483647 as id,
-                            database_name || '.' || schema_name as nspname,
-                            database_name || '.' || schema_name as name,
-                            'rvbbit' as owner,
-                            NULL as description,
-                            false as is_system,
-                            0 as state_number,
-                            0 as xmin
-                        FROM duckdb_schemas()
-                        WHERE database_name NOT IN ('system', 'temp')
-                          AND schema_name NOT IN ('pg_catalog', 'information_schema')
+                    # Prefer DuckDB's built-in pg_catalog when possible (keeps types and OIDs consistent)
+                    try:
+                        direct_df = self.duckdb_conn.execute(self._rewrite_pg_catalog_function_calls(query)).fetchdf()
+                        send_query_results(self.sock, direct_df, self.transaction_status)
+                        print(f"[{self.session_id}]   ✅ pg_namespace executed natively ({len(direct_df)} rows)")
+                        return
+                    except Exception:
+                        pass
 
-                        UNION ALL
+                    # DataGrip's schema browser query references columns DuckDB doesn't expose
+                    # on pg_namespace (e.g., xmin). Provide a compatible projection while
+                    # preserving DuckDB's *real* schema OIDs so joins against pg_class work.
+                    schema_rows = self.duckdb_conn.execute(
+                        "SELECT oid, nspname, nspowner FROM pg_catalog.pg_namespace"
+                    ).fetchdf()
 
-                        SELECT 11 as oid, 11 as id, 'pg_catalog' as nspname, 'pg_catalog' as name,
-                               'rvbbit' as owner, 'System catalog' as description, true as is_system,
-                               0 as state_number, 0 as xmin
-                        UNION ALL
-                        SELECT 12 as oid, 12 as id, 'information_schema' as nspname, 'information_schema' as name,
-                               'rvbbit' as owner, 'Information schema' as description, true as is_system,
-                               0 as state_number, 0 as xmin
+                    # Shape to match common DataGrip query:
+                    #   N.oid::bigint as id,
+                    #   N.xmin as state_number,
+                    #   nspname as name,
+                    #   D.description,
+                    #   pg_get_userbyid(N.nspowner) as owner
+                    result_df = pd.DataFrame({
+                        'id': schema_rows['oid'].astype('int64'),
+                        'state_number': 0,
+                        'name': schema_rows['nspname'].astype(str),
+                        'description': None,
+                        'owner': self.user_name,
+                    })
 
-                        ORDER BY nspname
-                    """
-                    result_df = self.duckdb_conn.execute(enhanced_query).fetchdf()
+                    # Ensure pg_catalog + information_schema appear (some clients expect them)
+                    existing = set(result_df['name'].tolist())
+                    if 'pg_catalog' not in existing:
+                        result_df = pd.concat([result_df, pd.DataFrame([{
+                            'id': 11,
+                            'state_number': 0,
+                            'name': 'pg_catalog',
+                            'description': 'System catalog',
+                            'owner': self.user_name,
+                        }])], ignore_index=True)
+                    if 'information_schema' not in existing:
+                        result_df = pd.concat([result_df, pd.DataFrame([{
+                            'id': 12,
+                            'state_number': 0,
+                            'name': 'information_schema',
+                            'description': 'Information schema',
+                            'owner': self.user_name,
+                        }])], ignore_index=True)
+
+                    result_df = result_df.sort_values('name').reset_index(drop=True)
 
                     # Debug: show what schemas we found
                     print(f"[{self.session_id}]   📋 Schemas found:")
                     for _, row in result_df.head(10).iterrows():
-                        print(f"[{self.session_id}]      - {row['nspname']} (oid={row['oid']})")
+                        print(f"[{self.session_id}]      - {row['name']} (id={row['id']})")
 
                     send_query_results(self.sock, result_df, self.transaction_status)
                     print(f"[{self.session_id}]   ✅ pg_namespace handled ({len(result_df)} schemas)")
@@ -1752,7 +2317,19 @@ class ClientConnection:
             # Simple function handlers (AFTER pg_namespace to not intercept schema queries)
             # Skip if this is a pg_database or pg_namespace query
             if 'CURRENT_DATABASE()' in query_upper and 'PG_DATABASE' not in query_upper and 'PG_NAMESPACE' not in query_upper:
-                result_df = pd.DataFrame({'current_database': [self.database_name]})
+                cols = self._expected_result_columns(query) or ['current_database']
+                row = {}
+                for c in cols:
+                    key = c.strip('"').lower()
+                    if key in {'current_database', 'current_database()'}:
+                        row[c] = self.database_name
+                    elif key in {'current_schema', 'current_schema()'}:
+                        row[c] = 'main'
+                    elif key in {'current_user', 'session_user'}:
+                        row[c] = self.user_name
+                    else:
+                        row[c] = None
+                result_df = pd.DataFrame({c: [row[c]] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ CURRENT_DATABASE() → {self.database_name}")
                 return
@@ -1850,10 +2427,10 @@ class ClientConnection:
             if 'PG_STAT_ACTIVITY' in query_upper:
                 result_df = pd.DataFrame({
                     'datid': [0],
-                    'datname': ['default'],
+                    'datname': [self.database_name],
                     'pid': [1],
-                    'usename': ['rvbbit'],
-                    'application_name': [''],
+                    'usename': [self.user_name],
+                    'application_name': [self.application_name or ''],
                     'state': ['active']
                 })
                 send_query_results(self.sock, result_df, self.transaction_status)
@@ -1863,13 +2440,15 @@ class ClientConnection:
             # Handle pg_timezone_names/pg_timezone_abbrevs (DataGrip queries these)
             if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling timezone catalog query...")
-                # Return common timezones
-                result_df = pd.DataFrame({
-                    'name': ['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London'],
-                    'abbrev': ['UTC', 'EST', 'PST', 'GMT'],
-                    'is_dst': [False, False, False, False],
-                    'utc_offset': ['00:00:00', '-05:00:00', '-08:00:00', '00:00:00'],
-                })
+                cols = self._expected_result_columns(query) or ['name', 'is_dst']
+                # Return common timezones (minimal shape, matching DataGrip's union query)
+                rows = [
+                    {'name': 'UTC', 'is_dst': False},
+                    {'name': 'America/New_York', 'is_dst': False},
+                    {'name': 'America/Los_Angeles', 'is_dst': False},
+                    {'name': 'Europe/London', 'is_dst': False},
+                ]
+                result_df = pd.DataFrame([{c: r.get(c, None) for c in cols} for r in rows])
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ timezone catalog handled")
                 return
@@ -1877,25 +2456,28 @@ class ClientConnection:
             # Handle pg_roles (DataGrip queries this for user management)
             if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_roles query...")
-                result_df = pd.DataFrame({
-                    'role_id': [1],
-                    'oid': [1],
-                    'rolname': ['rvbbit'],
-                    'role_name': ['rvbbit'],
-                    'is_super': [True],
-                    'rolsuper': [True],
-                    'is_inherit': [True],
-                    'rolinherit': [True],
-                    'can_createrole': [True],
-                    'rolcreaterole': [True],
-                    'can_createdb': [True],
-                    'rolcreatedb': [True],
-                    'can_login': [True],
-                    'rolcanlogin': [True],
-                    'rolreplication': [False],
-                    'rolbypassrls': [False],
-                    'rolconnlimit': [-1],
-                })
+                cols = self._expected_result_columns(query) or ['role_id', 'role_name']
+                base = {
+                    'role_id': 1,
+                    'id': 1,
+                    'oid': 1,
+                    'rolname': self.user_name,
+                    'role_name': self.user_name,
+                    'is_super': True,
+                    'rolsuper': True,
+                    'is_inherit': True,
+                    'rolinherit': True,
+                    'can_createrole': True,
+                    'rolcreaterole': True,
+                    'can_createdb': True,
+                    'rolcreatedb': True,
+                    'can_login': True,
+                    'rolcanlogin': True,
+                    'rolreplication': False,
+                    'rolbypassrls': False,
+                    'rolconnlimit': -1,
+                }
+                result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_roles handled")
                 return
@@ -1903,17 +2485,19 @@ class ClientConnection:
             # Handle pg_user (DataGrip queries this for user permissions)
             if 'PG_USER' in query_upper and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_user query...")
-                result_df = pd.DataFrame({
-                    'usename': ['rvbbit'],
-                    'usesysid': [1],
-                    'usecreatedb': [True],
-                    'usesuper': [True],
-                    'userepl': [False],
-                    'usebypassrls': [False],
-                    'passwd': ['********'],
-                    'valuntil': [None],
-                    'useconfig': [None],
-                })
+                cols = self._expected_result_columns(query) or ['usename', 'usesuper']
+                base = {
+                    'usename': self.user_name,
+                    'usesysid': 1,
+                    'usecreatedb': True,
+                    'usesuper': True,
+                    'userepl': False,
+                    'usebypassrls': False,
+                    'passwd': '********',
+                    'valuntil': None,
+                    'useconfig': None,
+                }
+                result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_user handled")
                 return
@@ -1921,14 +2505,8 @@ class ClientConnection:
             # Handle pg_auth_members (DataGrip queries for role membership)
             if 'PG_AUTH_MEMBERS' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_auth_members query...")
-                # Return empty - no role membership
-                result_df = pd.DataFrame({
-                    'id': pd.Series([], dtype='int64'),
-                    'role_id': pd.Series([], dtype='int64'),
-                    'member': pd.Series([], dtype='int64'),
-                    'roleid': pd.Series([], dtype='int64'),
-                    'admin_option': pd.Series([], dtype='bool'),
-                })
+                cols = self._expected_result_columns(query) or ['id', 'role_id', 'admin_option']
+                result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_auth_members handled (empty)")
                 return
@@ -1936,92 +2514,28 @@ class ClientConnection:
             # Handle pg_tablespace queries (DataGrip queries this)
             if 'PG_TABLESPACE' in query_upper and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_tablespace query...")
-                result_df = pd.DataFrame({
-                    'id': [1],
-                    'name': ['pg_default'],
-                    'spcname': ['pg_default'],
-                    'oid': [1],
-                    'owner': ['rvbbit'],
-                    'location': [''],
-                    'description': ['Default tablespace'],
-                    'state_number': [0],
-                })
+                cols = self._expected_result_columns(query) or ['id', 'name']
+                base = {
+                    'id': 1,
+                    'oid': 0,
+                    'name': 'pg_default',
+                    'spcname': 'pg_default',
+                    'spcowner': 1,
+                    'owner': self.user_name,
+                    'location': '',
+                    'description': 'Default tablespace',
+                    'state_number': 0,
+                }
+                result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_tablespace handled")
                 return
-
-            # Special case: pg_class/pg_tables queries for table listing (DataGrip)
-            # Return actual DuckDB tables from information_schema
-            # NOTE: pg_tablespace handled above (contains 'PG_TABLES' substring)
-            is_table_query = ('PG_CLASS' in query_upper or 'PG_TABLES' in query_upper) and 'FROM' in query_upper
-            is_tablespace_query = 'PG_TABLESPACE' in query_upper
-            if is_table_query and not is_tablespace_query:
-                # Check if this is NOT the DBeaver-specific pattern (which has its own handler below)
-                if not ('C.*' in query_upper or 'C.OID' in query_upper):
-                    print(f"[{self.session_id}]   🔧 Handling pg_class/pg_tables for table browser...")
-                    try:
-                        # Return ALL tables from DuckDB including ATTACH'd databases
-                        # Use duckdb_tables() which sees across all attached databases
-                        # relnamespace must match pg_namespace.oid (use same hash function)
-                        tables_query = """
-                            SELECT
-                                ROW_NUMBER() OVER () as oid,
-                                ROW_NUMBER() OVER ()::bigint as id,
-                                table_name as relname,
-                                table_name as name,
-                                database_name || '.' || schema_name as schemaname,
-                                database_name || '.' || schema_name as nspname,
-                                hash(database_name || '.' || schema_name) % 2147483647 as relnamespace,
-                                'r' as relkind,
-                                'rvbbit' as owner,
-                                NULL as description,
-                                false as is_insertable_into,
-                                true as has_indexes
-                            FROM duckdb_tables()
-                            WHERE database_name NOT IN ('system', 'temp')
-                              AND schema_name NOT IN ('pg_catalog', 'information_schema')
-
-                            UNION ALL
-
-                            -- Also include views from duckdb_views()
-                            SELECT
-                                ROW_NUMBER() OVER () + 10000 as oid,
-                                ROW_NUMBER() OVER ()::bigint + 10000 as id,
-                                view_name as relname,
-                                view_name as name,
-                                database_name || '.' || schema_name as schemaname,
-                                database_name || '.' || schema_name as nspname,
-                                hash(database_name || '.' || schema_name) % 2147483647 as relnamespace,
-                                'v' as relkind,
-                                'rvbbit' as owner,
-                                NULL as description,
-                                false as is_insertable_into,
-                                false as has_indexes
-                            FROM duckdb_views()
-                            WHERE database_name NOT IN ('system', 'temp')
-                              AND schema_name NOT IN ('pg_catalog', 'information_schema')
-
-                            ORDER BY schemaname, relname
-                        """
-                        result_df = self.duckdb_conn.execute(tables_query).fetchdf()
-
-                        # Debug: show what tables we found
-                        print(f"[{self.session_id}]   📋 Tables/views found:")
-                        for _, row in result_df.head(10).iterrows():
-                            print(f"[{self.session_id}]      - {row['schemaname']}.{row['relname']} ({row['relkind']}, ns={row['relnamespace']})")
-
-                        send_query_results(self.sock, result_df, self.transaction_status)
-                        print(f"[{self.session_id}]   ✅ pg_class handled ({len(result_df)} tables/views)")
-                        return
-                    except Exception as e:
-                        print(f"[{self.session_id}]   ⚠️  Could not handle pg_class: {e}")
-                        # Fall through to other handlers
 
             # Special case 4: pg_class queries with regclass type columns
             # DBeaver queries pg_class with c.*, which has regclass-typed columns
             # Even after column rewriting, JOIN conditions and functions still fail
             # Solution: Replace entire query with pg_tables equivalent
-            if 'FROM PG_CATALOG.PG_CLASS' in query_upper and ('C.*' in query_upper or 'C.OID' in query_upper):
+            if 'FROM PG_CATALOG.PG_CLASS' in query_upper and 'C.*' in query_upper:
                 # Log the FULL original query for debugging
                 print(f"[{self.session_id}]   📝 ORIGINAL QUERY:")
                 print(f"[{self.session_id}]      {query[:500]}")
@@ -2133,6 +2647,9 @@ class ClientConnection:
                 clean_query = query.replace('::regclass', '').replace('::oid', '').replace('::regproc', '').replace('::regtype', '')
                 clean_query = clean_query.replace('::REGCLASS', '').replace('::OID', '').replace('::REGPROC', '').replace('::REGTYPE', '')
                 try:
+                    clean_query = self._rewrite_pg_catalog_function_calls(clean_query)
+                    clean_query = self._rewrite_information_schema_catalog_filters(clean_query)
+                    clean_query = self._rewrite_pg_system_column_refs(clean_query)
                     result_df = self.duckdb_conn.execute(clean_query).fetchdf()
                     send_query_results(self.sock, result_df, self.transaction_status)
                     print(f"[{self.session_id}]   ✓ Type cast query handled")
@@ -2144,7 +2661,20 @@ class ClientConnection:
             # Default: Try to execute the query as-is
             # With pg_catalog views created, most queries should work!
             try:
-                result_df = self.duckdb_conn.execute(query).fetchdf()
+                rewritten_query = self._rewrite_pg_catalog_function_calls(query)
+                rewritten_query = self._rewrite_information_schema_catalog_filters(rewritten_query)
+                rewritten_query = self._rewrite_pg_system_column_refs(rewritten_query)
+                result_df = self.duckdb_conn.execute(rewritten_query).fetchdf()
+
+                # Normalize catalog names for Postgres clients (DuckDB uses 'memory' for in-memory)
+                if 'INFORMATION_SCHEMA' in query_upper and self._duckdb_catalog_name:
+                    try:
+                        if 'catalog_name' in result_df.columns:
+                            result_df.loc[result_df['catalog_name'] == self._duckdb_catalog_name, 'catalog_name'] = self.database_name
+                        if 'table_catalog' in result_df.columns:
+                            result_df.loc[result_df['table_catalog'] == self._duckdb_catalog_name, 'table_catalog'] = self.database_name
+                    except Exception:
+                        pass
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ Catalog query executed ({len(result_df)} rows)")
                 return
@@ -2154,15 +2684,18 @@ class ClientConnection:
                 print(f"[{self.session_id}]   ⚠️  Catalog query failed: {str(query_error)[:100]}")
 
                 # Fallback: Return empty result (safe - clients handle this gracefully)
-                empty_df = pd.DataFrame()
-                send_query_results(self.sock, empty_df)
+                cols = self._expected_result_columns(query)
+                empty_df = self._empty_df_for_columns(cols) if cols else pd.DataFrame()
+                send_query_results(self.sock, empty_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ Returned empty result (fallback)")
 
         except Exception as e:
             # Complete failure - return empty result to keep client from crashing
             print(f"[{self.session_id}]   ⚠️  Catalog query handler error: {e}")
             import pandas as pd
-            send_query_results(self.sock, pd.DataFrame())
+            cols = self._expected_result_columns(query)
+            empty_df = self._empty_df_for_columns(cols) if cols else pd.DataFrame()
+            send_query_results(self.sock, empty_df, self.transaction_status)
 
     def _rewrite_pg_class_query(self, query: str) -> str:
         """
@@ -2608,6 +3141,14 @@ class ClientConnection:
                 register_rvbbit_udf(bg_conn)
                 register_dynamic_sql_functions(bg_conn)
 
+                # Lazy attach configured sources for background execution too
+                try:
+                    from ..sql_tools.config import load_sql_connections
+                    from ..sql_tools.lazy_attach import LazyAttachManager
+                    LazyAttachManager(bg_conn, load_sql_connections()).ensure_for_query(query, aggressive=False)
+                except Exception:
+                    pass
+
                 # Rewrite the query (handles RVBBIT syntax, semantic operators, etc.)
                 from ..sql_rewriter import rewrite_rvbbit_syntax
                 rewritten = rewrite_rvbbit_syntax(query, duckdb_conn=bg_conn)
@@ -2850,6 +3391,14 @@ class ClientConnection:
                 from ..sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
                 register_rvbbit_udf(bg_conn)
                 register_dynamic_sql_functions(bg_conn)
+
+                # Lazy attach configured sources for analysis execution too
+                try:
+                    from ..sql_tools.config import load_sql_connections
+                    from ..sql_tools.lazy_attach import LazyAttachManager
+                    LazyAttachManager(bg_conn, load_sql_connections()).ensure_for_query(query, aggressive=False)
+                except Exception:
+                    pass
 
                 # Rewrite and execute query
                 from ..sql_rewriter import rewrite_rvbbit_syntax
@@ -3259,7 +3808,7 @@ class ClientConnection:
                 return
 
             # pg_class queries with c.* - Use the bypass logic
-            if 'FROM PG_CATALOG.PG_CLASS' in query_upper and ('C.*' in query_upper or 'C.OID' in query_upper):
+            if 'FROM PG_CATALOG.PG_CLASS' in query_upper and 'C.*' in query_upper:
                 print(f"[{self.session_id}]      Detected pg_class c.* query - using safe column bypass")
                 try:
                     # Extract WHERE clause from original query
@@ -3370,6 +3919,9 @@ class ClientConnection:
                 duckdb_query = clean_query
                 for i in range(len(params), 0, -1):
                     duckdb_query = duckdb_query.replace(f'${i}', '?')
+                duckdb_query = self._rewrite_pg_catalog_function_calls(duckdb_query)
+                duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
+                duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
 
                 try:
                     result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()
@@ -3410,8 +3962,21 @@ class ClientConnection:
             for i in range(len(params), 0, -1):
                 duckdb_query = duckdb_query.replace(f'${i}', '?')
 
+            # Strip pg_catalog. prefix for function calls (DuckDB doesn't support qualified funcs)
+            duckdb_query = self._rewrite_pg_catalog_function_calls(duckdb_query)
+            duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
+            duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
+
             print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
             print(f"[{self.session_id}]      Parameters: {params}")
+
+            # Lazy attach configured sources for Extended Query Protocol too
+            if self._lazy_attach is not None:
+                try:
+                    self._lazy_attach.ensure_for_query(duckdb_query, aggressive=False)
+                    self._refresh_attached_view_cache()
+                except Exception:
+                    pass
 
             # Execute with parameters
             result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()

@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Validation (Wards) - RVBBIT Documentation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="container">
+        <nav class="nav">
+          <a href="index.html" class="brand">
+            <span>RVBBIT</span>
+          </a>
+          <div class="nav-links">
+            <a href="index.html">Docs</a>
+            <a href="https://github.com/rvbbit/rvbbit">GitHub</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class="docs-layout">
+        <aside class="sidebar">
+          <nav>
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Getting Started</h4>
+              <ul class="sidebar-links">
+                <li><a href="index.html">Overview</a></li>
+                <li><a href="core-concepts.html">Core Concepts</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Cascade DSL</h4>
+              <ul class="sidebar-links">
+                <li><a href="cascade-dsl.html">DSL Reference</a></li>
+                <li><a href="cell-types.html">Cell Types</a></li>
+                <li><a href="validation.html" class="active">Validation (Wards)</a></li>
+                <li><a href="context.html">Context Management</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <h4 class="sidebar-title">Features</h4>
+              <ul class="sidebar-links">
+                <li><a href="semantic-sql.html">Semantic SQL</a></li>
+                <li><a href="candidates.html">Candidates & Evaluation</a></li>
+                <li><a href="tools.html">Tools (Traits)</a></li>
+                <li><a href="mcp.html">MCP Integration</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <main class="docs-content">
+          <h1>Validation (Wards)</h1>
+          <p class="lead">
+            Wards are protective validation barriers that guard cell execution. Use them to
+            enforce constraints, validate outputs, and ensure quality before proceeding.
+          </p>
+
+          <div class="info-box">
+            <div class="info-box-title">Validator Protocol</div>
+            <p>
+              All validators must return: <code>{"valid": bool, "reason": str}</code>
+            </p>
+          </div>
+
+          <h2>Ward Types</h2>
+          <p>RVBBIT supports three types of wards, each executing at different stages:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Ward Configuration</span>
+            </div>
+            <div class="code-block-content">
+              <pre><span class="key">wards</span>:
+  <span class="key">pre</span>:     <span class="cmt"># Pre-execution validation (check inputs)</span>
+    - <span class="key">validator</span>: <span class="str">"input_checker"</span>
+      <span class="key">mode</span>: blocking
+
+  <span class="key">post</span>:    <span class="cmt"># Post-execution validation (check outputs)</span>
+    - <span class="key">validator</span>:
+        <span class="key">python</span>: <span class="str">|
+          result = {
+            "valid": len(content) > 100,
+            "reason": "Too short" if len(content) <= 100 else "OK"
+          }
+        </span>
+      <span class="key">mode</span>: retry
+      <span class="key">max_attempts</span>: <span class="num">3</span>
+
+  <span class="key">turn</span>:    <span class="cmt"># Per-turn validation (within loop)</span>
+    - <span class="key">validator</span>: <span class="str">"quality_check"</span>
+      <span class="key">mode</span>: advisory</pre>
+            </div>
+          </div>
+
+          <h3>Ward Modes</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Mode</th>
+                <th>Pre-Ward</th>
+                <th>Post-Ward</th>
+                <th>Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>blocking</code></td>
+                <td>✓</td>
+                <td>✓</td>
+                <td>Aborts execution immediately on failure</td>
+              </tr>
+              <tr>
+                <td><code>advisory</code></td>
+                <td>✓</td>
+                <td>✓</td>
+                <td>Logs warning but continues execution</td>
+              </tr>
+              <tr>
+                <td><code>retry</code></td>
+                <td>✗</td>
+                <td>✓</td>
+                <td>Triggers attempt retry with error feedback</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2>Validator Types</h2>
+
+          <h3>1. Named Validators</h3>
+          <p>Reference registered tools or cascade files by name:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Named Validator Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre><span class="key">wards</span>:
+  <span class="key">post</span>:
+    - <span class="key">validator</span>: <span class="str">"quality_validator"</span>  <span class="cmt"># Python function or cascade</span>
+      <span class="key">mode</span>: blocking</pre>
+            </div>
+          </div>
+
+          <p>The validator is resolved in this order:</p>
+          <ol>
+            <li>Python function from traits registry</li>
+            <li>Cascade tool with <code>inputs_schema</code></li>
+            <li>Local model tool</li>
+            <li>MCP tool</li>
+          </ol>
+
+          <h3>2. Polyglot Validators (Inline)</h3>
+          <p>Write validation logic directly in the cascade using any supported language:</p>
+
+          <h4>Python Validator</h4>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Inline Python</span>
+            </div>
+            <div class="code-block-content">
+              <pre><span class="key">validator</span>:
+  <span class="key">python</span>: <span class="str">|
+    # Variables available: content, original_input
+    word_count = len(content.split())
+    result = {
+      "valid": word_count >= 50,
+      "reason": f"Only {word_count} words (need 50+)" if word_count < 50 else "OK"
+    }
+  </span></pre>
+            </div>
+          </div>
+
+          <h4>SQL Validator</h4>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Inline SQL</span>
+            </div>
+            <div class="code-block-content">
+              <pre><span class="key">validator</span>:
+  <span class="key">sql</span>: <span class="str">|
+    SELECT
+      COUNT(*) > 0 as valid,
+      'Has required data' as reason
+    FROM parse_json(content)
+    WHERE required_field IS NOT NULL
+  </span></pre>
+            </div>
+          </div>
+
+          <h4>JavaScript Validator</h4>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Inline JavaScript</span>
+            </div>
+            <div class="code-block-content">
+              <pre><span class="key">validator</span>:
+  <span class="key">javascript</span>: <span class="str">|
+    const hasKeyword = content.includes("IMPORTANT");
+    result = {
+      valid: hasKeyword,
+      reason: hasKeyword ? "Found keyword" : "Missing IMPORTANT keyword"
+    };
+  </span></pre>
+            </div>
+          </div>
+
+          <h2>Loop Until (Iterative Validation)</h2>
+          <p>
+            <code>loop_until</code> enables early exit from turn loops when validation passes,
+            saving context and cost.
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Loop Until Configuration</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: write_summary
+  <span class="key">instructions</span>: <span class="str">"Write a comprehensive summary"</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">10</span>
+    <span class="key">max_attempts</span>: <span class="num">3</span>
+    <span class="key">loop_until</span>:
+      <span class="key">python</span>: <span class="str">|
+        word_count = len(content.split())
+        result = {
+          "valid": word_count >= 100,
+          "reason": f"Need {100 - word_count} more words"
+        }
+      </span>
+    <span class="key">loop_until_prompt</span>: <span class="str">"Your summary must have at least 100 words."</span>
+    <span class="key">loop_until_silent</span>: <span class="kw">false</span>  <span class="cmt"># Inject goal into prompt</span></pre>
+            </div>
+          </div>
+
+          <h3>Execution Flow</h3>
+          <ol>
+            <li><strong>Turn 1</strong>: LLM generates output → validator runs → if valid, exit early</li>
+            <li><strong>Turn 2</strong>: If invalid, continue → validator runs → if valid, exit early</li>
+            <li><strong>Turn N</strong>: Repeat until valid or max_turns reached</li>
+            <li><strong>Post-Loop</strong>: Final validation attempt after turn loop completes</li>
+          </ol>
+
+          <div class="info-box tip">
+            <div class="info-box-title">Early Exit Optimization</div>
+            <p>
+              Per-turn validation enables early exit when quality threshold is met,
+              saving both context tokens and API costs. Set <code>max_turns</code> high
+              and let validation determine when to stop.
+            </p>
+          </div>
+
+          <h2>Output Schema Validation</h2>
+          <p>
+            Validate structured JSON outputs using JSON Schema. RVBBIT automatically
+            extracts JSON from LLM responses and validates against your schema.
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Output Schema Example</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: generate_api_response
+  <span class="key">instructions</span>: <span class="str">"Generate a JSON API response"</span>
+  <span class="key">output_schema</span>:
+    <span class="key">type</span>: object
+    <span class="key">required</span>: [<span class="str">"status"</span>, <span class="str">"code"</span>, <span class="str">"data"</span>]
+    <span class="key">properties</span>:
+      <span class="key">status</span>:
+        <span class="key">type</span>: string
+        <span class="key">enum</span>: [<span class="str">"success"</span>, <span class="str">"error"</span>]
+      <span class="key">code</span>:
+        <span class="key">type</span>: integer
+        <span class="key">minimum</span>: <span class="num">100</span>
+        <span class="key">maximum</span>: <span class="num">599</span>
+      <span class="key">data</span>:
+        <span class="key">type</span>: object
+  <span class="key">rules</span>:
+    <span class="key">max_attempts</span>: <span class="num">3</span></pre>
+            </div>
+          </div>
+
+          <h3>JSON Extraction</h3>
+          <p>RVBBIT tries multiple strategies to extract JSON:</p>
+          <ol>
+            <li>Direct parse of full response</li>
+            <li>Extract from markdown code fences (<code>```json</code>)</li>
+            <li>Regex search for JSON objects/arrays</li>
+          </ol>
+
+          <h3>Auto-Prompt Injection</h3>
+          <p>When <code>output_schema</code> is configured, this is automatically added to the prompt:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Auto-Injected Prompt</span>
+            </div>
+            <div class="code-block-content">
+              <pre>**OUTPUT FORMAT REQUIREMENT:**
+Your response must contain valid JSON matching this schema:
+```json
+{
+  "type": "object",
+  "required": ["status", "code", "data"],
+  ...
+}
+```
+You have 3 attempt(s) to produce valid output.</pre>
+            </div>
+          </div>
+
+          <h2>Combining Validation Methods</h2>
+          <p>You can combine multiple validation approaches in a single cell:</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Multi-Layer Validation</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: generate_report
+  <span class="key">instructions</span>: <span class="str">"Generate structured report with analysis"</span>
+
+  <span class="cmt"># Layer 1: JSON structure</span>
+  <span class="key">output_schema</span>:
+    <span class="key">type</span>: object
+    <span class="key">required</span>: [<span class="str">"summary"</span>, <span class="str">"findings"</span>, <span class="str">"score"</span>]
+
+  <span class="cmt"># Layer 2: Content quality (ward)</span>
+  <span class="key">wards</span>:
+    <span class="key">post</span>:
+      - <span class="key">validator</span>:
+          <span class="key">python</span>: <span class="str">|
+            import json
+            data = json.loads(content)
+            findings_count = len(data.get("findings", []))
+            result = {
+              "valid": findings_count >= 3,
+              "reason": f"Need at least 3 findings, got {findings_count}"
+            }
+          </span>
+        <span class="key">mode</span>: retry
+        <span class="key">max_attempts</span>: <span class="num">2</span>
+
+  <span class="cmt"># Layer 3: Iterative refinement</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">5</span>
+    <span class="key">loop_until</span>: <span class="str">"quality_check_cascade"</span>
+    <span class="key">max_attempts</span>: <span class="num">3</span></pre>
+            </div>
+          </div>
+
+          <h2>Real-World Examples</h2>
+
+          <h3>Code Generation with Validation</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">Code Quality Validation</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: generate_python_function
+  <span class="key">instructions</span>: <span class="str">"Write a Python function to {{ input.task }}"</span>
+  <span class="key">wards</span>:
+    <span class="key">post</span>:
+      - <span class="key">validator</span>:
+          <span class="key">python</span>: <span class="str">|
+            import ast
+            try:
+              tree = ast.parse(content)
+              has_function = any(isinstance(node, ast.FunctionDef) for node in ast.walk(tree))
+              result = {
+                "valid": has_function,
+                "reason": "Valid Python with function" if has_function else "No function found"
+              }
+            except SyntaxError as e:
+              result = {"valid": False, "reason": f"Syntax error: {e}"}
+          </span>
+        <span class="key">mode</span>: retry
+        <span class="key">max_attempts</span>: <span class="num">3</span></pre>
+            </div>
+          </div>
+
+          <h3>Data Validation</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <span class="code-block-lang">SQL Data Validation</span>
+            </div>
+            <div class="code-block-content">
+              <pre>- <span class="key">name</span>: extract_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">query</span>: <span class="str">"SELECT * FROM {{ input.table }}"</span>
+  <span class="key">wards</span>:
+    <span class="key">post</span>:
+      - <span class="key">validator</span>:
+          <span class="key">sql</span>: <span class="str">|
+            WITH parsed AS (
+              SELECT * FROM read_json_auto(content::VARCHAR)
+            )
+            SELECT
+              COUNT(*) > 0 AS valid,
+              'Has data: ' || COUNT(*) || ' rows' AS reason
+            FROM parsed
+          </span>
+        <span class="key">mode</span>: blocking</pre>
+            </div>
+          </div>
+
+          <div class="info-box warning">
+            <div class="info-box-title">Performance Consideration</div>
+            <p>
+              Validators execute synchronously and can add latency. For expensive validation
+              logic (e.g., running test suites), consider using <code>advisory</code> mode
+              or async cascade validators.
+            </p>
+          </div>
+
+          <hr style="margin: 48px 0; border: none; border-top: 1px solid rgba(28, 246, 255, 0.2);">
+
+          <h2>Next Steps</h2>
+          <ul>
+            <li><a href="candidates.html">Candidates</a> - Combine validation with parallel execution</li>
+            <li><a href="cell-types.html">Cell Types</a> - Apply validation to different cell types</li>
+            <li><a href="tools.html">Tools</a> - Create custom validator tools</li>
+          </ul>
+
+        </main>
+      </div>
+    </div>
+
+    <footer>
+      <div class="container">
+        <p>
+          RVBBIT &copy; 2026 |
+          <a href="https://github.com/rvbbit/rvbbit">GitHub</a> |
+          <a href="https://github.com/rvbbit/rvbbit/issues">Report Issues</a>
+        </p>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

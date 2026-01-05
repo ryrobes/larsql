@@ -1,0 +1,31 @@
+# Pinecone Vector Database Configuration
+#
+# Connection details for RVBBIT's Pinecone integration.
+# Used by embed_batch_pinecone and vector_search_pinecone cascades.
+
+connection:
+  # API key from environment variable
+  api_key_env: PINECONE_API_KEY
+
+  # Index details
+  host: https://rvbbit-roiw3h8.svc.aped-4627-b74a.pinecone.io
+  index_name: rvbbit
+
+  # Vector configuration
+  dimension: 4096  # Matches Qwen embedding model
+  metric: cosine   # Similarity metric
+
+defaults:
+  # Default namespace for embeddings
+  namespace: default
+
+  # Default search settings
+  top_k: 10
+  include_metadata: true
+  include_values: false  # Don't return raw vectors (large)
+
+batch:
+  # Embedding batch settings
+  upsert_batch_size: 100  # Vectors per batch
+  max_retries: 3
+  timeout_seconds: 60
