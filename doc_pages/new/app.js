@@ -1,9 +1,7 @@
 // RVBBIT Documentation - Main Application
 // SPA-style documentation with shared components
 
-import { renderHeader } from './components/header.js';
 import { renderSidebar, updateSidebarActive } from './components/sidebar.js';
-import { renderFooter } from './components/footer.js';
 import Router from './router.js';
 
 class DocsApp {
@@ -53,30 +51,45 @@ class DocsApp {
     if (!pageEl) return;
 
     // Get current page from hash
-    this.currentPage = window.location.hash.slice(1) || 'overview';
+    this.currentPage = window.location.hash.slice(1).split('#')[0] || 'overview';
 
-    // Build the shell
+    // Build the shell - sidebar + main content only (no header)
     pageEl.innerHTML = `
-      ${renderHeader(this.navData, this.currentPage)}
-      <div class="container full">
-        <div class="docs-layout">
-          ${renderSidebar(this.navData, this.currentPage)}
-          <main class="docs-content" id="docs-content">
-            <div class="loading">Loading</div>
-          </main>
-        </div>
-      </div>
-      ${renderFooter()}
+      ${renderSidebar(this.navData, this.currentPage)}
+      <main class="main-content" id="docs-content">
+        <div class="loading">Loading</div>
+      </main>
     `;
+  }
+
+  updateSidebar() {
+    // Re-render sidebar to show/hide sub-sections for current page
+    const sidebar = document.querySelector('.toc-sidebar');
+    if (sidebar) {
+      const newSidebar = document.createElement('div');
+      newSidebar.innerHTML = renderSidebar(this.navData, this.currentPage);
+      sidebar.replaceWith(newSidebar.firstElementChild);
+    }
   }
 
   onPageChange(pageId) {
     this.currentPage = pageId;
-    updateSidebarActive(pageId);
+
+    // Re-render sidebar to show sub-sections for new page
+    this.updateSidebar();
 
     // Update document title
     const pageTitle = this.getPageTitle(pageId);
     document.title = pageTitle ? `${pageTitle} - RVBBIT Documentation` : 'RVBBIT Documentation';
+
+    // Scroll to top of content
+    const content = document.getElementById('docs-content');
+    if (content) {
+      content.scrollTop = 0;
+    }
+
+    // Scroll window to top too
+    window.scrollTo(0, 0);
   }
 
   getPageTitle(pageId) {
@@ -93,13 +106,56 @@ class DocsApp {
   setupLinkHandlers() {
     // Delegate click events for navigation links
     document.addEventListener('click', (e) => {
-      const link = e.target.closest('a[data-link]');
-      if (link) {
-        const href = link.getAttribute('href');
+      // Handle page navigation links
+      const pageLink = e.target.closest('a[data-link]');
+      if (pageLink) {
+        const href = pageLink.getAttribute('href');
         if (href && href.startsWith('#')) {
           e.preventDefault();
-          this.router.navigate(href.slice(1));
+          const pageId = href.slice(1).split('#')[0];
+          this.router.navigate(pageId);
         }
+        return;
+      }
+
+      // Handle section anchor links
+      const sectionLink = e.target.closest('a[data-section-link]');
+      if (sectionLink) {
+        e.preventDefault();
+        const anchor = sectionLink.dataset.anchor;
+        this.scrollToAnchor(anchor);
+
+        // Update URL without triggering navigation
+        const currentPage = this.currentPage;
+        history.replaceState(null, '', `#${currentPage}#${anchor}`);
+
+        // Update active section in sidebar
+        this.updateActiveSectionLink(anchor);
+      }
+    });
+  }
+
+  scrollToAnchor(anchor) {
+    const element = document.getElementById(anchor);
+    if (element) {
+      // Scroll into view with some offset for the fixed position
+      const offset = 20;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
+  }
+
+  updateActiveSectionLink(anchor) {
+    document.querySelectorAll('.toc-sublink').forEach(link => {
+      if (link.dataset.anchor === anchor) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
       }
     });
   }

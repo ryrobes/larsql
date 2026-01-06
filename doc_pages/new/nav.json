@@ -2,33 +2,133 @@
   "sections": [
     {
       "title": "Getting Started",
+      "icon": "mdi:rocket-launch",
+      "color": "cyan",
       "items": [
-        { "id": "overview", "title": "Overview", "file": "overview.html" },
-        { "id": "core-concepts", "title": "Core Concepts", "file": "core-concepts.html" }
+        { "id": "overview", "title": "Overview" },
+        {
+          "id": "core-concepts",
+          "title": "Core Concepts",
+          "sections": [
+            { "anchor": "cascades", "title": "Cascades" },
+            { "anchor": "cells", "title": "Cells" },
+            { "anchor": "state-echo", "title": "State & Echo" },
+            { "anchor": "context", "title": "Context System" },
+            { "anchor": "execution", "title": "Execution Flow" },
+            { "anchor": "terminology", "title": "Nautical Terminology" }
+          ]
+        }
       ]
     },
     {
       "title": "Cascade DSL",
+      "icon": "mdi:code-json",
+      "color": "purple",
       "items": [
-        { "id": "cascade-dsl", "title": "DSL Reference", "file": "cascade-dsl.html" },
-        { "id": "cell-types", "title": "Cell Types", "file": "cell-types.html" },
-        { "id": "validation", "title": "Validation (Wards)", "file": "validation.html" },
-        { "id": "context", "title": "Context Management", "file": "context.html" }
+        {
+          "id": "cascade-dsl",
+          "title": "DSL Reference",
+          "sections": [
+            { "anchor": "cascade-level", "title": "Cascade-Level Properties" },
+            { "anchor": "cell-config", "title": "Cell Configuration" },
+            { "anchor": "jinja2", "title": "Jinja2 Templating" },
+            { "anchor": "routing", "title": "Routing & Handoffs" },
+            { "anchor": "triggers", "title": "Triggers" }
+          ]
+        },
+        {
+          "id": "cell-types",
+          "title": "Cell Types",
+          "sections": [
+            { "anchor": "llm-cells", "title": "LLM Cells" },
+            { "anchor": "deterministic", "title": "Deterministic Cells" },
+            { "anchor": "hitl", "title": "HITL Screen Cells" },
+            { "anchor": "sql-mapping", "title": "SQL Mapping Cells" },
+            { "anchor": "polyglot", "title": "Polyglot Cells" }
+          ]
+        },
+        {
+          "id": "validation",
+          "title": "Validation (Wards)",
+          "sections": [
+            { "anchor": "overview", "title": "Ward Overview" },
+            { "anchor": "modes", "title": "Validation Modes" },
+            { "anchor": "polyglot", "title": "Polyglot Validators" },
+            { "anchor": "loop-until", "title": "Loop Until" },
+            { "anchor": "output-schema", "title": "Output Schema" }
+          ]
+        },
+        {
+          "id": "context",
+          "title": "Context Management",
+          "sections": [
+            { "anchor": "overview", "title": "Context Overview" },
+            { "anchor": "intra-cell", "title": "Intra-Cell Context" },
+            { "anchor": "inter-cell", "title": "Inter-Cell Context" },
+            { "anchor": "auto-context", "title": "Auto Context" },
+            { "anchor": "token-budget", "title": "Token Budget" }
+          ]
+        }
       ]
     },
     {
       "title": "Features",
+      "icon": "mdi:star-four-points",
+      "color": "green",
       "items": [
-        { "id": "semantic-sql", "title": "Semantic SQL", "file": "semantic-sql.html" },
-        { "id": "embedding", "title": "Vector Search & Embedding", "file": "embedding.html" },
-        { "id": "candidates", "title": "Candidates & Evaluation", "file": "candidates.html" },
-        { "id": "tools", "title": "Tools (Traits)", "file": "tools.html" },
-        { "id": "mcp", "title": "MCP Integration", "file": "mcp.html" }
+        { "id": "semantic-sql", "title": "Semantic SQL" },
+        {
+          "id": "embedding",
+          "title": "Vector Search & Embedding",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "creating", "title": "Creating Embeddings" },
+            { "anchor": "searching", "title": "Vector Search" },
+            { "anchor": "hybrid", "title": "Hybrid Search" },
+            { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        },
+        {
+          "id": "candidates",
+          "title": "Candidates & Evaluation",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "configuration", "title": "Configuration" },
+            { "anchor": "evaluators", "title": "Evaluators" },
+            { "anchor": "human-eval", "title": "Human Evaluation" },
+            { "anchor": "aggregate", "title": "Aggregate Mode" },
+            { "anchor": "reforge", "title": "Reforge" }
+          ]
+        },
+        {
+          "id": "tools",
+          "title": "Tools (Traits)",
+          "sections": [
+            { "anchor": "overview", "title": "Tool System Overview" },
+            { "anchor": "six-types", "title": "Six Tool Types" },
+            { "anchor": "python", "title": "Python Functions" },
+            { "anchor": "cascade", "title": "Cascade Tools" },
+            { "anchor": "declarative", "title": "Declarative Tools" },
+            { "anchor": "local-models", "title": "Local Model Tools" },
+            { "anchor": "built-in", "title": "Built-in Tools" }
+          ]
+        },
+        {
+          "id": "mcp",
+          "title": "MCP Integration",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "configuration", "title": "Configuration" },
+            { "anchor": "stdio", "title": "Stdio Servers" },
+            { "anchor": "http", "title": "HTTP Servers" },
+            { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        }
       ]
     }
   ],
   "externalLinks": [
-    { "title": "Home", "url": "../landing_page/v3/index.html" },
-    { "title": "GitHub", "url": "https://github.com/rvbbit/rvbbit" }
+    { "title": "Home", "url": "../landing_page/v3/index.html", "icon": "mdi:home" },
+    { "title": "GitHub", "url": "https://github.com/rvbbit/rvbbit", "icon": "mdi:github" }
   ]
 }
