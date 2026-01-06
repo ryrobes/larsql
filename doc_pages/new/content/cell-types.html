@@ -1,0 +1,245 @@
+<h1>Cell Types</h1>
+<p class="lead">
+  Deep dive into the four primary cell types: LLM, Deterministic, HITL Screen, and SQL Mapping cells.
+  Each type serves different use cases and has unique configuration options.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#llm-cells">LLM Cells</a></li>
+    <li><a href="#deterministic">Deterministic Cells</a></li>
+    <li><a href="#hitl">HITL Screen Cells</a></li>
+    <li><a href="#sql-mapping">SQL Mapping Cells</a></li>
+    <li><a href="#polyglot">Polyglot Cells</a></li>
+  </ul>
+</div>
+
+<h2 id="llm-cells">LLM Cells</h2>
+
+<p>
+  LLM cells are the traditional agentic cells - they use language models to reason about tasks,
+  make decisions, and call tools in a multi-turn conversation loop.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Full LLM Cell Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: research_topic
+  <span class="key">instructions</span>: <span class="str">|
+    You are a research assistant. Research {{ input.topic }} thoroughly.
+
+    Requirements:
+    - Search for recent information
+    - Verify facts from multiple sources
+    - Summarize in 3-5 key points
+  </span>
+  <span class="key">traits</span>:
+    - brave_web_search
+    - take_screenshot
+  <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">8</span>
+    <span class="key">max_attempts</span>: <span class="num">2</span>
+  <span class="key">handoffs</span>: [analyze, report]
+  <span class="key">intra_context</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">window</span>: <span class="num">5</span>
+    <span class="key">mask_observations_after</span>: <span class="num">3</span></pre>
+  </div>
+</div>
+
+<h3>Key Properties</h3>
+
+<ul>
+  <li><strong>instructions</strong>: System prompt with Jinja2 templating</li>
+  <li><strong>traits</strong>: Available tools, or <code>"manifest"</code> for dynamic selection</li>
+  <li><strong>model</strong>: Override the default model</li>
+  <li><strong>rules</strong>: Constraints on execution (turns, attempts)</li>
+  <li><strong>handoffs</strong>: Possible next cells (enables <code>route_to</code> tool)</li>
+</ul>
+
+<h2 id="deterministic">Deterministic Cells</h2>
+
+<p>
+  Deterministic cells bypass the LLM entirely - they directly invoke tools with
+  templated inputs. Use these for predictable, fast operations.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Deterministic Cell</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: load_customer_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">query</span>: <span class="str">|
+      SELECT id, name, email, created_at
+      FROM customers
+      WHERE region = '{{ input.region }}'
+      ORDER BY created_at DESC
+      LIMIT {{ input.limit | default(100) }}
+    </span>
+  <span class="key">timeout</span>: <span class="str">30s</span>
+  <span class="key">on_error</span>: auto_fix
+  <span class="key">routing</span>:
+    <span class="key">success</span>: process_data
+    <span class="key">error</span>: handle_error</pre>
+  </div>
+</div>
+
+<h3>Auto-Fix</h3>
+
+<p>When errors occur, auto-fix uses an LLM to debug and retry:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Auto-Fix Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">on_error</span>:
+  <span class="key">auto_fix</span>:
+    <span class="key">max_attempts</span>: <span class="num">3</span>
+    <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+    <span class="key">prompt</span>: <span class="str">|
+      Fix this SQL error:
+      Error: {{ error }}
+      Query: {{ original_query }}
+    </span></pre>
+  </div>
+</div>
+
+<h2 id="hitl">HITL Screen Cells</h2>
+
+<p>
+  Human-in-the-loop screen cells render HTML directly for human interaction.
+  No LLM involved - just direct HTML with Jinja2 templating.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">HITL Screen Cell</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: approval_screen
+  <span class="key">htmx</span>: <span class="str">|
+    &lt;div class="review-panel"&gt;
+      &lt;h2&gt;Review Generated Report&lt;/h2&gt;
+      &lt;div class="content"&gt;
+        {{ outputs.generate_report.content | safe }}
+      &lt;/div&gt;
+      &lt;form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"&gt;
+        &lt;textarea name="response[feedback]"
+                  placeholder="Optional feedback..."&gt;&lt;/textarea&gt;
+        &lt;div class="actions"&gt;
+          &lt;button name="response[action]" value="approve"
+                  class="btn-approve"&gt;Approve&lt;/button&gt;
+          &lt;button name="response[action]" value="revise"
+                  class="btn-revise"&gt;Request Revisions&lt;/button&gt;
+          &lt;button name="response[action]" value="reject"
+                  class="btn-reject"&gt;Reject&lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/form&gt;
+    &lt;/div&gt;
+  </span>
+  <span class="key">htmx_title</span>: <span class="str">Approval Required</span>
+  <span class="key">htmx_description</span>: <span class="str">Review the generated report</span>
+  <span class="key">handoffs</span>: [publish, regenerate, archive]</pre>
+  </div>
+</div>
+
+<h2 id="sql-mapping">SQL Mapping Cells</h2>
+
+<p>
+  Process each row from a SQL query as a separate cell execution.
+  Great for batch processing with parallelization.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">SQL Mapping Cell</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: enrich_leads
+  <span class="key">for_each_row</span>:
+    <span class="key">query</span>: <span class="str">|
+      SELECT id, company_name, website
+      FROM leads
+      WHERE enriched = false
+      LIMIT 50
+    </span>
+    <span class="key">max_parallel</span>: <span class="num">5</span>
+    <span class="key">on_row_error</span>: continue  <span class="cmt"># or: stop</span>
+  <span class="key">instructions</span>: <span class="str">|
+    Research the company: {{ row.company_name }}
+    Website: {{ row.website }}
+
+    Find: company size, industry, recent news
+  </span>
+  <span class="key">traits</span>: [brave_web_search]</pre>
+  </div>
+</div>
+
+<h2 id="polyglot">Polyglot Cells</h2>
+
+<p>
+  Execute code in multiple languages using the data tools:
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:database"></iconify-icon></div>
+    <h4>sql_data</h4>
+    <p>Execute SQL against ClickHouse or DuckDB</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:language-python"></iconify-icon></div>
+    <h4>python_data</h4>
+    <p>Run Python with pandas, numpy, etc.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:language-javascript"></iconify-icon></div>
+    <h4>js_data</h4>
+    <p>Execute JavaScript code</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:code-parentheses"></iconify-icon></div>
+    <h4>clojure_data</h4>
+    <p>Run Clojure expressions</p>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Polyglot Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: transform_data
+  <span class="key">tool</span>: python_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">code</span>: <span class="str">|
+      import pandas as pd
+
+      # Input data from previous cell
+      data = {{ outputs.load_data.result | tojson }}
+      df = pd.DataFrame(data)
+
+      # Transform
+      df['score'] = df['value'] * df['weight']
+      df['category'] = df['type'].map(lambda x: x.upper())
+
+      # Return result
+      result = df.to_dict('records')
+    </span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: Validation (Wards)</h2>
+<p>
+  Learn how to validate cell inputs and outputs with <a href="#validation" data-link>Wards</a>.
+</p>

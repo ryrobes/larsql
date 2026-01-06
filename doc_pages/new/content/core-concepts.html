@@ -1,0 +1,459 @@
+<h1>Core Concepts</h1>
+<p class="lead">
+  Understanding the fundamental building blocks of RVBBIT: Cascades, Cells,
+  State, Context, and the execution model.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#cascades">Cascades</a></li>
+    <li><a href="#cells">Cells</a></li>
+    <li><a href="#state-echo">State & Echo</a></li>
+    <li><a href="#context">Context System</a></li>
+    <li><a href="#execution">Execution Flow</a></li>
+    <li><a href="#terminology">Nautical Terminology</a></li>
+  </ul>
+</div>
+
+<h2 id="cascades">Cascades</h2>
+<p>
+  A <strong>Cascade</strong> is the top-level workflow definition. It's a declarative
+  JSON or YAML file that describes a multi-step process composed of cells.
+</p>
+
+<h3>Cascade Structure</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">YAML Structure</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: <span class="str">unique_workflow_name</span>
+<span class="key">description</span>: <span class="str">Human-readable description (optional)</span>
+
+<span class="cmt"># Input schema defines expected parameters</span>
+<span class="key">inputs_schema</span>:
+  param_name: <span class="str">"Description of this parameter"</span>
+  another_param: <span class="str">"Another input parameter"</span>
+
+<span class="cmt"># Cells are the execution stages</span>
+<span class="key">cells</span>:
+  - <span class="key">name</span>: first_cell
+    <span class="key">instructions</span>: <span class="str">"Do something with {{ input.param_name }}"</span>
+    <span class="key">traits</span>: [tool_name]
+    <span class="key">handoffs</span>: [second_cell]
+
+  - <span class="key">name</span>: second_cell
+    <span class="key">instructions</span>: <span class="str">"Process results from previous cell"</span>
+    <span class="key">context</span>:
+      <span class="key">from</span>: [first_cell]</pre>
+  </div>
+</div>
+
+<h3>Key Properties</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>cascade_id</code></td>
+      <td>string</td>
+      <td>Unique identifier for the cascade (required)</td>
+    </tr>
+    <tr>
+      <td><code>description</code></td>
+      <td>string</td>
+      <td>Human-readable description (optional)</td>
+    </tr>
+    <tr>
+      <td><code>inputs_schema</code></td>
+      <td>object</td>
+      <td>Expected input parameters with descriptions</td>
+    </tr>
+    <tr>
+      <td><code>cells</code></td>
+      <td>array</td>
+      <td>List of execution cells (at least one required)</td>
+    </tr>
+    <tr>
+      <td><code>research_db</code></td>
+      <td>string</td>
+      <td>Name for persistent DuckDB database (optional)</td>
+    </tr>
+    <tr>
+      <td><code>triggers</code></td>
+      <td>array</td>
+      <td>Scheduling and event triggers (optional)</td>
+    </tr>
+    <tr>
+      <td><code>narrator</code></td>
+      <td>object</td>
+      <td>Voice narration config (optional)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">Cascades as Tools</div>
+  <p>
+    If a cascade has an <code>inputs_schema</code>, it's automatically registered
+    as a callable tool! Other cascades can invoke it using the <code>spawn_cascade</code>
+    or <code>map_cascade</code> tools.
+  </p>
+</div>
+
+<h2 id="cells">Cells</h2>
+<p>
+  <strong>Cells</strong> are the atomic units of execution within a cascade.
+  Each cell performs a single logical operation and can pass results to subsequent cells.
+</p>
+
+<h3>Four Primary Cell Types</h3>
+
+<h4>1. LLM Cells (Agent Execution)</h4>
+<p>Traditional agentic cells powered by language models with tool calling.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">LLM Cell Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: research
+  <span class="key">instructions</span>: <span class="str">|
+    Research {{ input.topic }} using available search tools.
+    Summarize the key findings in 3-5 bullet points.
+  </span>
+  <span class="key">traits</span>:
+    - brave_web_search
+    - take_screenshot
+  <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">5</span>
+    <span class="key">max_attempts</span>: <span class="num">2</span></pre>
+  </div>
+</div>
+
+<h4>2. Deterministic Cells (Direct Tool Execution)</h4>
+<p>Execute tools directly without LLM mediation for predictable, fast operations.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Deterministic Cell Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: load_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">tool_inputs</span>:
+    <span class="key">query</span>: <span class="str">|
+      SELECT * FROM {{ input.table_name }}
+      WHERE created_at > '{{ input.start_date }}'
+    </span>
+  <span class="key">timeout</span>: <span class="str">5m</span>
+  <span class="key">on_error</span>: auto_fix
+  <span class="key">routing</span>:
+    <span class="key">success</span>: process_data
+    <span class="key">error</span>: handle_error</pre>
+  </div>
+</div>
+
+<h4>3. HITL Screen Cells (Human Input)</h4>
+<p>Present HTML interfaces for human approval or input.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">HITL Screen Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: review_results
+  <span class="key">htmx</span>: <span class="str">|
+    &lt;h2&gt;Review Generated Report&lt;/h2&gt;
+    &lt;div&gt;{{ outputs.generate_report.content }}&lt;/div&gt;
+    &lt;form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"&gt;
+      &lt;button name="response[action]" value="approve"&gt;Approve&lt;/button&gt;
+      &lt;button name="response[action]" value="reject"&gt;Reject&lt;/button&gt;
+    &lt;/form&gt;
+  </span>
+  <span class="key">htmx_title</span>: <span class="str">Review Report</span>
+  <span class="key">handoffs</span>: [publish_report, regenerate]</pre>
+  </div>
+</div>
+
+<h4>4. SQL Mapping Cells (Row Processing)</h4>
+<p>Process each row from a SQL query as a separate execution.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">SQL Mapping Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: process_users
+  <span class="key">for_each_row</span>:
+    <span class="key">query</span>: <span class="str">SELECT id, email FROM users WHERE active = true</span>
+    <span class="key">max_parallel</span>: <span class="num">5</span>
+  <span class="key">instructions</span>: <span class="str">|
+    Send welcome email to {{ row.email }}
+    User ID: {{ row.id }}
+  </span>
+  <span class="key">traits</span>: [send_email]</pre>
+  </div>
+</div>
+
+<h3>Cell Lifecycle</h3>
+<ol>
+  <li><strong>Pre-validation</strong>: Pre-execution wards check inputs (if configured)</li>
+  <li><strong>Execution</strong>: LLM conversation loop or direct tool invocation</li>
+  <li><strong>Turn validation</strong>: Per-turn wards validate each iteration (if configured)</li>
+  <li><strong>Post-validation</strong>: Post-execution wards validate outputs (if configured)</li>
+  <li><strong>Routing</strong>: Determine next cell based on handoffs and routing config</li>
+  <li><strong>State update</strong>: Merge cell outputs into session state</li>
+</ol>
+
+<h2 id="state-echo">State & Echo</h2>
+<p>
+  RVBBIT maintains execution state through the <strong>Echo</strong> object,
+  which tracks state, history, lineage, and metadata throughout a session.
+</p>
+
+<h3>Echo Structure</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Python - Echo Class</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">class</span> <span class="fn">Echo</span>:
+    <span class="cmt">"""Container for session state and execution history."""</span>
+
+    <span class="key">state</span>: <span class="fn">Dict</span>[<span class="fn">str</span>, <span class="fn">Any</span>]
+        <span class="cmt"># Persistent key-value store across cells</span>
+        <span class="cmt"># Set via set_state() tool or cell outputs</span>
+
+    <span class="key">history</span>: <span class="fn">List</span>[<span class="fn">Dict</span>]
+        <span class="cmt"># Full message history (user, assistant, tool calls/results)</span>
+        <span class="cmt"># Accumulates within cells, selective between cells</span>
+
+    <span class="key">lineage</span>: <span class="fn">List</span>[<span class="fn">TraceNode</span>]
+        <span class="cmt"># Tree structure of all cells executed</span>
+        <span class="cmt"># Each node: cell name, inputs, outputs, cost, timing</span>
+
+    <span class="key">outputs</span>: <span class="fn">Dict</span>[<span class="fn">str</span>, <span class="fn">Any</span>]
+        <span class="cmt"># Latest output from each named cell</span>
+        <span class="cmt"># Accessible via {{ outputs.cell_name }}</span>
+
+    <span class="key">metadata</span>: <span class="fn">Dict</span>[<span class="fn">str</span>, <span class="fn">Any</span>]
+        <span class="cmt"># Session-level metadata (session_id, cascade_id, etc.)</span></pre>
+  </div>
+</div>
+
+<h3>State Management</h3>
+<p>State can be modified in three ways:</p>
+<ul>
+  <li><strong>Implicit</strong>: Cell outputs automatically merge into <code>state</code></li>
+  <li><strong>Explicit</strong>: Use <code>set_state()</code> tool to set specific keys</li>
+  <li><strong>Sub-Cascade</strong>: Child cascade state propagates via <code>context_out</code></li>
+</ul>
+
+<div class="info-box">
+  <div class="info-box-title">State vs Outputs</div>
+  <p>
+    <code>{{ state.key }}</code> persists across the entire session,
+    while <code>{{ outputs.cell_name }}</code> references the specific output
+    of a named cell. State is for shared data, outputs are for cell-specific results.
+  </p>
+</div>
+
+<h2 id="context">Context System</h2>
+<p>
+  RVBBIT implements a two-level context management system to balance
+  information availability with token efficiency.
+</p>
+
+<h3>Level 1: Intra-Cell Context (Within a Cell)</h3>
+<p>
+  Manages context accumulation during multi-turn conversations <em>within</em> a single cell.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Intra-Cell Context Config</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: research
+  <span class="key">instructions</span>: <span class="str">"Research the topic thoroughly"</span>
+  <span class="key">intra_context</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">window</span>: <span class="num">5</span>                    <span class="cmt"># Last 5 turns full fidelity</span>
+    <span class="key">mask_observations_after</span>: <span class="num">3</span>  <span class="cmt"># Mask tool results after 3 turns</span>
+    <span class="key">compress_loops</span>: <span class="kw">true</span>         <span class="cmt"># Compress retry attempts</span>
+    <span class="key">preserve_reasoning</span>: <span class="kw">true</span>     <span class="cmt"># Keep thinking without tool calls</span>
+    <span class="key">preserve_errors</span>: <span class="kw">true</span>        <span class="cmt"># Always keep error messages</span></pre>
+  </div>
+</div>
+
+<h3>Level 2: Inter-Cell Context (Between Cells)</h3>
+<p>
+  Controls what information from previous cells is included in subsequent cells.
+</p>
+
+<h4>Explicit Context (Default)</h4>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Explicit Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: analyze
+  <span class="key">instructions</span>: <span class="str">"Analyze the research findings"</span>
+  <span class="key">context</span>:
+    <span class="key">from</span>: [research, data_load]  <span class="cmt"># Only include these cells</span></pre>
+  </div>
+</div>
+
+<h4>Auto Context (Intelligent Selection)</h4>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Auto Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: analyze
+  <span class="key">instructions</span>: <span class="str">"Analyze the research findings"</span>
+  <span class="key">context</span>:
+    <span class="key">mode</span>: auto
+    <span class="key">selection</span>:
+      <span class="key">strategy</span>: hybrid         <span class="cmt"># heuristic, semantic, llm, hybrid</span>
+      <span class="key">max_tokens</span>: <span class="num">30000</span>
+      <span class="key">recency_weight</span>: <span class="num">0.3</span>
+      <span class="key">keyword_weight</span>: <span class="num">0.4</span>
+      <span class="key">similarity_threshold</span>: <span class="num">0.5</span></pre>
+  </div>
+</div>
+
+<h2 id="execution">Execution Flow</h2>
+<p>
+  Understanding how RVBBIT executes a cascade is key to building effective workflows.
+</p>
+
+<h3>Execution Phases</h3>
+<ol>
+  <li><strong>Initialization</strong>
+    <ul>
+      <li>Load cascade definition</li>
+      <li>Validate configuration</li>
+      <li>Create session and Echo</li>
+      <li>Initialize ClickHouse logging</li>
+    </ul>
+  </li>
+  <li><strong>Cell Execution Loop</strong>
+    <ul>
+      <li>Select starting cell (first in list)</li>
+      <li>Render Jinja2 templates with context</li>
+      <li>Execute cell (LLM, deterministic, or HITL)</li>
+      <li>Run validation (wards)</li>
+      <li>Update Echo state and lineage</li>
+      <li>Determine next cell via routing</li>
+      <li>Repeat until completion or error</li>
+    </ul>
+  </li>
+  <li><strong>Finalization</strong>
+    <ul>
+      <li>Flush logs to ClickHouse</li>
+      <li>Generate execution graph (Mermaid)</li>
+      <li>Return final Echo with results</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Session & Trace IDs</h3>
+<p>Every execution is tracked with hierarchical IDs:</p>
+<ul>
+  <li><strong>Session ID</strong>: Top-level execution identifier (e.g., <code>session_123</code>)</li>
+  <li><strong>Trace ID</strong>: Unique per execution node, includes candidate/reforge suffixes:
+    <ul>
+      <li><code>session_123</code> - Main session</li>
+      <li><code>session_123_sounding_0</code> - First candidate</li>
+      <li><code>session_123_reforge1_0</code> - First reforge attempt</li>
+      <li><code>session_123_subcascade_analyze</code> - Sub-cascade named "analyze"</li>
+    </ul>
+  </li>
+</ul>
+
+<h2 id="terminology">Nautical Terminology</h2>
+<p>
+  RVBBIT uses a nautical theme for core concepts. Here's a quick reference:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Term</th>
+      <th>Meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Cascade</strong></td>
+      <td>The overall workflow/journey</td>
+    </tr>
+    <tr>
+      <td><strong>Cell</strong></td>
+      <td>Individual execution stage (formerly "Phase")</td>
+    </tr>
+    <tr>
+      <td><strong>Traits</strong></td>
+      <td>Tools and functions available to cells (formerly "Tackle")</td>
+    </tr>
+    <tr>
+      <td><strong>Echo</strong></td>
+      <td>State and history accumulated during execution</td>
+    </tr>
+    <tr>
+      <td><strong>Candidates</strong></td>
+      <td>Parallel execution attempts (formerly "Soundings")</td>
+    </tr>
+    <tr>
+      <td><strong>Reforge</strong></td>
+      <td>Iterative refinement of winning candidate</td>
+    </tr>
+    <tr>
+      <td><strong>Wards</strong></td>
+      <td>Protective validation barriers</td>
+    </tr>
+    <tr>
+      <td><strong>Manifest</strong></td>
+      <td>Registry of available tools</td>
+    </tr>
+    <tr>
+      <td><strong>Quartermaster</strong></td>
+      <td>Agent that dynamically selects appropriate tools</td>
+    </tr>
+    <tr>
+      <td><strong>Harbor</strong></td>
+      <td>HuggingFace Spaces integration system</td>
+    </tr>
+    <tr>
+      <td><strong>Berth</strong></td>
+      <td>Specific HF Space connection (tool definition)</td>
+    </tr>
+    <tr>
+      <td><strong>Calliope</strong></td>
+      <td>Conversational cascade builder (muse of epic poetry)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">Why Nautical Terms?</div>
+  <p>
+    The nautical theme reflects RVBBIT's philosophy: workflows are journeys through
+    uncertain waters, with tools as tackle, validation as protective wards,
+    and parallel attempts as soundings to find the best route.
+  </p>
+</div>
+
+<hr>
+
+<h2>Next: Cascade DSL Reference</h2>
+<p>
+  Now that you understand the core concepts, dive into the complete
+  <a href="#cascade-dsl" data-link>Cascade DSL Reference</a> to learn about all
+  available configuration options.
+</p>

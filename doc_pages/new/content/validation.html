@@ -1,0 +1,205 @@
+<h1>Validation (Wards)</h1>
+<p class="lead">
+  Wards are protective validation barriers that ensure cell inputs and outputs meet
+  your requirements. They can block execution, trigger retries, or provide advisory feedback.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Ward Overview</a></li>
+    <li><a href="#modes">Validation Modes</a></li>
+    <li><a href="#polyglot">Polyglot Validators</a></li>
+    <li><a href="#loop-until">Loop Until</a></li>
+    <li><a href="#output-schema">Output Schema</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Ward Overview</h2>
+
+<p>
+  Wards validate data at three points in the cell lifecycle:
+</p>
+
+<ul>
+  <li><strong>Pre-execution</strong>: Validate inputs before the cell runs</li>
+  <li><strong>Per-turn</strong>: Validate after each conversation turn</li>
+  <li><strong>Post-execution</strong>: Validate final outputs</li>
+</ul>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Basic Ward Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: generate_report
+  <span class="key">instructions</span>: <span class="str">"Generate a financial report..."</span>
+  <span class="key">wards</span>:
+    - <span class="key">mode</span>: retry
+      <span class="key">max_attempts</span>: <span class="num">3</span>
+      <span class="key">validator</span>:
+        <span class="key">python</span>: <span class="str">|
+          return {
+            "valid": len(output) > 500,
+            "reason": "Report must be >500 chars"
+          }
+        </span>
+
+    - <span class="key">mode</span>: blocking
+      <span class="key">validator</span>:
+        <span class="key">sql</span>: <span class="str">|
+          SELECT
+            (SELECT COUNT(*) FROM parse_json(output)
+             WHERE section IS NOT NULL) >= 3 as valid,
+            'Must have at least 3 sections' as reason
+        </span></pre>
+  </div>
+</div>
+
+<h2 id="modes">Validation Modes</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Mode</th>
+      <th>Behavior</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>blocking</code></td>
+      <td>Fails cell if validation fails</td>
+      <td>Critical requirements</td>
+    </tr>
+    <tr>
+      <td><code>retry</code></td>
+      <td>Re-runs cell up to max_attempts</td>
+      <td>Recoverable issues</td>
+    </tr>
+    <tr>
+      <td><code>advisory</code></td>
+      <td>Logs warning but continues</td>
+      <td>Quality suggestions</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="polyglot">Polyglot Validators</h2>
+
+<p>
+  Validators can be written in Python, SQL, JavaScript, or Clojure:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Polyglot Validators</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">wards</span>:
+  <span class="cmt"># Python validator</span>
+  - <span class="key">mode</span>: retry
+    <span class="key">validator</span>:
+      <span class="key">python</span>: <span class="str">|
+        import json
+        try:
+            data = json.loads(output)
+            valid = 'summary' in data and len(data['summary']) > 100
+            return {"valid": valid, "reason": "Missing or short summary"}
+        except:
+            return {"valid": False, "reason": "Invalid JSON"}
+      </span>
+
+  <span class="cmt"># SQL validator</span>
+  - <span class="key">mode</span>: blocking
+    <span class="key">validator</span>:
+      <span class="key">sql</span>: <span class="str">|
+        SELECT
+          CASE WHEN output LIKE '%conclusion%' THEN true ELSE false END as valid,
+          'Must include a conclusion' as reason
+      </span>
+
+  <span class="cmt"># JavaScript validator</span>
+  - <span class="key">mode</span>: advisory
+    <span class="key">validator</span>:
+      <span class="key">javascript</span>: <span class="str">|
+        const words = output.split(/\s+/).length;
+        return { valid: words >= 200, reason: `Only ${words} words` };
+      </span></pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Validator Protocol</div>
+  <p>
+    All validators must return an object with <code>valid</code> (boolean) and
+    <code>reason</code> (string) properties.
+  </p>
+</div>
+
+<h2 id="loop-until">Loop Until</h2>
+
+<p>
+  The <code>loop_until</code> rule repeats a cell until a condition is met:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Loop Until Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: refine_output
+  <span class="key">instructions</span>: <span class="str">"Improve the draft based on feedback..."</span>
+  <span class="key">rules</span>:
+    <span class="key">max_turns</span>: <span class="num">3</span>
+    <span class="key">loop_until</span>: <span class="str">|
+      {{ outputs.refine_output.quality_score | default(0) }} >= 8
+    </span>
+    <span class="key">turn_prompt</span>: <span class="str">|
+      Previous score: {{ outputs.refine_output.quality_score }}
+      Feedback: {{ outputs.refine_output.feedback }}
+      Please address the issues and try again.
+    </span></pre>
+  </div>
+</div>
+
+<h2 id="output-schema">Output Schema</h2>
+
+<p>
+  Force structured JSON output matching a schema:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Output Schema</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: extract_entities
+  <span class="key">instructions</span>: <span class="str">"Extract entities from the text..."</span>
+  <span class="key">output_schema</span>:
+    <span class="key">type</span>: object
+    <span class="key">properties</span>:
+      <span class="key">people</span>:
+        <span class="key">type</span>: array
+        <span class="key">items</span>:
+          <span class="key">type</span>: object
+          <span class="key">properties</span>:
+            <span class="key">name</span>: {<span class="key">type</span>: string}
+            <span class="key">role</span>: {<span class="key">type</span>: string}
+      <span class="key">organizations</span>:
+        <span class="key">type</span>: array
+        <span class="key">items</span>: {<span class="key">type</span>: string}
+      <span class="key">confidence</span>:
+        <span class="key">type</span>: number
+        <span class="key">minimum</span>: <span class="num">0</span>
+        <span class="key">maximum</span>: <span class="num">1</span>
+    <span class="key">required</span>: [people, organizations, confidence]</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: Context Management</h2>
+<p>
+  Learn how to control information flow with <a href="#context" data-link>Context Management</a>.
+</p>

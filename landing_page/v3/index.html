@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cascadia+Code:ital,wght@0,200..700;1,200..700&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/iconify-icon@2.1.0/dist/iconify-icon.min.js"></script>
     <style>
       :root {
         --bg: #05070c;
@@ -50,6 +51,13 @@
 
       * {
         box-sizing: border-box;
+      }
+
+      /* Iconify icon base styling */
+      iconify-icon {
+        display: inline-flex;
+        vertical-align: middle;
+        color: inherit;
       }
 
 	      html, body {
@@ -4456,7 +4464,7 @@
         </div>
 
         <div class="toc-group" data-group="sql">
-          <div class="toc-group-label"><span class="group-icon">&#x2261;</span> Getting Started</div>
+          <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:layout-list"></iconify-icon></span> Getting Started</div>
           <a href="#how-it-works" class="toc-link">One Line Change</a>
           <a href="#topics" class="toc-link">Semantic Operators</a>
           <a href="#federated" class="toc-link">Data Stays Home</a>
@@ -4466,7 +4474,7 @@
         </div>
 
         <div class="toc-group" data-group="reliability">
-          <div class="toc-group-label"><span class="group-icon">&#x2694;</span> Production Ready</div>
+          <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:shield-check"></iconify-icon></span> Production Ready</div>
           <a href="#candidates" class="toc-link">Candidates</a>
           <a href="#champion" class="toc-link">Champion Mode</a>
           <a href="#self-properties" class="toc-link">Self-* Properties</a>
@@ -4475,7 +4483,7 @@
         </div>
 
         <div class="toc-group" data-group="evolution">
-          <div class="toc-group-label"><span class="group-icon">&#x1F50D;</span> Deep Dive</div>
+          <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:search"></iconify-icon></span> Deep Dive</div>
           <a href="#operators" class="toc-link">50+ Operators</a>
           <a href="#depth" class="toc-link">Surface or Deep</a>
           <a href="#observability" class="toc-link">Cost Tracking</a>
@@ -4484,7 +4492,7 @@
         </div>
 
         <div class="toc-group" data-group="beyond">
-          <div class="toc-group-label"><span class="group-icon">&#x26A1;</span> Beyond SQL</div>
+          <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:zap"></iconify-icon></span> Beyond SQL</div>
           <a href="#polyglot" class="toc-link">Chain Languages</a>
           <a href="#rabbit-hole" class="toc-link">The Rabbit Hole</a>
         </div>
@@ -4833,7 +4841,7 @@
         </div>
 
         <div class="integrations-footer reveal delay-1">
-          <p>Powered by <code>DuckDB</code> federated engine. If DuckDB can read it, RVBBIT can analyze it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.</p>
+          <p style="font-size: 14px">Powered by <code>DuckDB</code> federated engine. If DuckDB can <i>read</i> it, RVBBIT can <i>analyze</i> it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.</p>
         </div>
       </section>
 
@@ -4982,19 +4990,19 @@
               </p>
               <div class="federated-points">
                 <div class="federated-point">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>No data migration required</span>
                 </div>
                 <div class="federated-point">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Query multiple databases in one statement</span>
                 </div>
                 <div class="federated-point">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Results cached and costs tracked automatically</span>
                 </div>
                 <div class="federated-point">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Works with any SQL-compatible data source</span>
                 </div>
               </div>
@@ -5176,11 +5184,11 @@
 <span class="sql-keyword">LIMIT</span> 10;</pre>
             <div class="vector-hybrid-stats">
               <div class="vector-stat">
-                <span class="vector-stat-icon">&#x1F50D;</span>
+                <span class="vector-stat-icon"><iconify-icon icon="lucide:search"></iconify-icon></span>
                 <span class="vector-stat-text"><strong>Vector search:</strong> 1M rows &rarr; 100 candidates (fast, cheap)</span>
               </div>
               <div class="vector-stat">
-                <span class="vector-stat-icon">&#x1F9E0;</span>
+                <span class="vector-stat-icon"><iconify-icon icon="lucide:brain"></iconify-icon></span>
                 <span class="vector-stat-text"><strong>LLM evaluation:</strong> 100 &rarr; 10 winners (smart, still cheap)</span>
               </div>
             </div>
@@ -5269,27 +5277,27 @@
               <div class="candidates-lanes">
                 <div class="candidate-card success">
                   <div class="model-badge">Claude</div>
-                  <div class="status-icon">&#10003;</div>
+                  <div class="status-icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <div class="score">0.82</div>
                 </div>
                 <div class="candidate-card error">
                   <div class="model-badge">GPT-4</div>
-                  <div class="status-icon">&#10007;</div>
+                  <div class="status-icon"><iconify-icon icon="lucide:x"></iconify-icon></div>
                   <div class="score">err</div>
                 </div>
                 <div class="candidate-card winner">
                   <div class="model-badge">Gemini</div>
-                  <div class="status-icon">&#9733;</div>
+                  <div class="status-icon"><iconify-icon icon="lucide:star"></iconify-icon></div>
                   <div class="score">0.94</div>
                 </div>
                 <div class="candidate-card success">
                   <div class="model-badge">Claude</div>
-                  <div class="status-icon">&#10003;</div>
+                  <div class="status-icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <div class="score">0.78</div>
                 </div>
                 <div class="candidate-card error">
                   <div class="model-badge">Llama</div>
-                  <div class="status-icon">&#10007;</div>
+                  <div class="status-icon"><iconify-icon icon="lucide:x"></iconify-icon></div>
                   <div class="score">err</div>
                 </div>
               </div>
@@ -5307,28 +5315,28 @@
 
             <div class="candidates-benefits reveal delay-2">
               <div class="benefit-item">
-                <div class="benefit-icon">&#x21bb;</div>
+                <div class="benefit-icon"><iconify-icon icon="lucide:refresh-cw"></iconify-icon></div>
                 <div class="benefit-content">
                   <h4>Simpler error handling</h4>
                   <p>Failures filter out naturally. Retries still exist when you need them—but candidates handle most cases.</p>
                 </div>
               </div>
               <div class="benefit-item">
-                <div class="benefit-icon">&#x2694;</div>
+                <div class="benefit-icon"><iconify-icon icon="lucide:swords"></iconify-icon></div>
                 <div class="benefit-content">
                   <h4>Multi-model racing</h4>
                   <p>Run Claude, GPT-4, Gemini simultaneously. Discover which model works best for YOUR task.</p>
                 </div>
               </div>
               <div class="benefit-item">
-                <div class="benefit-icon">&#x1F3AF;</div>
+                <div class="benefit-icon"><iconify-icon icon="lucide:target"></iconify-icon></div>
                 <div class="benefit-content">
                   <h4>Prompt exploration</h4>
                   <p>Different prompt styles compete. Formal vs casual. Detailed vs concise. Best one emerges.</p>
                 </div>
               </div>
               <div class="benefit-item">
-                <div class="benefit-icon">&#x1F4CA;</div>
+                <div class="benefit-icon"><iconify-icon icon="lucide:bar-chart-3"></iconify-icon></div>
                 <div class="benefit-content">
                   <h4>Cascade-level too</h4>
                   <p>Run entire workflows in parallel. Only surface the winning execution. Wild.</p>
@@ -5428,7 +5436,7 @@
 
             <div class="champion-diagram reveal delay-1">
               <div class="evolution-stage dev">
-                <div class="stage-icon">&#x1F9EC;</div>
+                <div class="stage-icon"><iconify-icon icon="lucide:dna"></iconify-icon></div>
                 <div class="stage-content">
                   <h4>Development: Mutation</h4>
                   <p>5 different prompts compete. LLM evaluator picks winner. Genetic diversity.</p>
@@ -5436,7 +5444,7 @@
               </div>
               <div class="evolution-arrow">&darr;</div>
               <div class="evolution-stage prod">
-                <div class="stage-icon">&#x1F3C6;</div>
+                <div class="stage-icon"><iconify-icon icon="lucide:trophy"></iconify-icon></div>
                 <div class="stage-content">
                   <h4>Production: Cloning</h4>
                   <p>Champion prompt cloned 3x. Same prompt, different executions. Best one wins.</p>
@@ -5444,7 +5452,7 @@
               </div>
               <div class="evolution-arrow">&darr;</div>
               <div class="evolution-stage prod">
-                <div class="stage-icon">&#10003;</div>
+                <div class="stage-icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                 <div class="stage-content">
                   <h4>Result: Filtered Errors</h4>
                   <p>Random hallucinations? JSON parse failures? They just don't win. No retry logic.</p>
@@ -5480,8 +5488,8 @@
               </div>
             </div>
             <div class="carousel-arrows">
-              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', -1)">&#8249;</button>
-              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', 1)">&#8250;</button>
+              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', -1)"><iconify-icon icon="lucide:chevron-left"></iconify-icon></button>
+              <button class="carousel-arrow" onclick="scrollCarousel('evolutionCarousel', 1)"><iconify-icon icon="lucide:chevron-right"></iconify-icon></button>
             </div>
             <div class="carousel-nav">
               <button class="carousel-dot active" onclick="goToSlide('evolutionCarousel', 0)"></button>
@@ -5501,27 +5509,27 @@
 
           <div class="self-grid reveal delay-1">
             <div class="self-card">
-              <div class="self-icon">&#x1F9ED;</div>
+              <div class="self-icon"><iconify-icon icon="lucide:compass"></iconify-icon></div>
               <h4>Self-Orchestrating</h4>
               <p>Agent picks tools based on context&mdash;including MCP tool servers. No hardcoded tool lists.</p>
             </div>
             <div class="self-card">
-              <div class="self-icon">&#x1F9EA;</div>
+              <div class="self-icon"><iconify-icon icon="lucide:flask-conical"></iconify-icon></div>
               <h4>Self-Testing</h4>
               <p>Tests write themselves from real executions. Freeze &amp; replay.</p>
             </div>
             <div class="self-card">
-              <div class="self-icon">&#x1F4C8;</div>
+              <div class="self-icon"><iconify-icon icon="lucide:trending-up"></iconify-icon></div>
               <h4>Self-Optimizing</h4>
               <p>Prompts improve automatically through genetic selection.</p>
             </div>
             <div class="self-card">
-              <div class="self-icon">&#x1FA79;</div>
+              <div class="self-icon"><iconify-icon icon="lucide:heart-pulse"></iconify-icon></div>
               <h4>Self-Healing</h4>
               <p>Failed cells debug and repair themselves with LLM assistance.</p>
             </div>
             <div class="self-card">
-              <div class="self-icon">&#x1F3D7;</div>
+              <div class="self-icon"><iconify-icon icon="lucide:hammer"></iconify-icon></div>
               <h4>Self-Building</h4>
               <p>Cascades built through conversation. Chat to create workflows.</p>
             </div>
@@ -5541,19 +5549,19 @@
               </p>
               <div class="training-benefits">
                 <div class="training-benefit">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Works on ANY model&mdash;GPT-4, Claude, Gemini, open source</span>
                 </div>
                 <div class="training-benefit">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>No training runs. No GPU costs. No waiting.</span>
                 </div>
                 <div class="training-benefit">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Examples take effect immediately</span>
                 </div>
                 <div class="training-benefit">
-                  <div class="icon">&#10003;</div>
+                  <div class="icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <span>Easy to audit, edit, or remove</span>
                 </div>
               </div>
@@ -5579,7 +5587,7 @@
                 </div>
                 <div class="training-step">
                   <div class="training-step-num">4</div>
-                  <span class="training-step-text">Click <strong style="color: var(--green)">&#10003;</strong> to mark as trainable</span>
+                  <span class="training-step-text">Click <strong style="color: var(--green)"><iconify-icon icon="lucide:check"></iconify-icon></strong> to mark as trainable</span>
                 </div>
                 <div class="training-step">
                   <div class="training-step-num">5</div>
@@ -5800,7 +5808,7 @@
                 <p>Run multiple models. Compare outputs. Pick the best.</p>
               </div>
               <div class="hood-item">
-                <div class="hood-item-icon">&#x21bb;</div>
+                <div class="hood-item-icon"><iconify-icon icon="lucide:refresh-cw"></iconify-icon></div>
                 <h4>Self-healing</h4>
                 <p>Failures auto-retry with different models or prompts.</p>
               </div>
@@ -5919,7 +5927,7 @@
               <div class="obs-highlight">357 queries &bull; $14.20 total &bull; 78% cache hit</div>
             </div>
             <div class="obs-card reveal delay-3">
-              <div class="obs-icon">&#x1F50D;</div>
+              <div class="obs-icon"><iconify-icon icon="lucide:search"></iconify-icon></div>
               <h3>Full context lineage</h3>
               <p>See exactly what went into every LLM call. Which items were reused. What's driving cost growth.</p>
               <div class="obs-highlight">Top contributor: user_input (439 tok, 36%)</div>
@@ -5930,26 +5938,26 @@
           <div class="screenshot-carousel reveal delay-2" id="obsCarousel">
             <div class="carousel-track">
               <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/cost-analytics.png" alt="Cost Analytics Dashboard"> -->
-                <div class="screenshot-placeholder">
+                <img src="screenshot-2026-01-05_18-15-48.png" alt="Cost Analytics Dashboard">
+                <!-- <div class="screenshot-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="2" y="3" width="20" height="14" rx="2"/>
                     <path d="M8 21h8M12 17v4"/>
                   </svg>
                   <span>cost-analytics.png</span>
                   <span class="screenshot-size">Cost timeline & model distribution</span>
-                </div>
+                </div> -->
               </div>
               <div class="carousel-slide">
-                <!-- Replace with: <img src="screenshots/context-inspector.png" alt="Context Inspector"> -->
-                <div class="screenshot-placeholder">
+                <img src="screenshot-2026-01-05_18-13-17.png" alt="Context Inspector">
+                <!-- <div class="screenshot-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="2" y="3" width="20" height="14" rx="2"/>
                     <path d="M8 21h8M12 17v4"/>
                   </svg>
                   <span>context-inspector.png</span>
                   <span class="screenshot-size">Token-level cost breakdown</span>
-                </div>
+                </div> -->
               </div>
               <div class="carousel-slide">
                 <!-- Replace with: <img src="screenshots/session-detail.png" alt="Session Detail View"> -->
@@ -5964,8 +5972,8 @@
               </div>
             </div>
             <div class="carousel-arrows">
-              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', -1)">&#8249;</button>
-              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', 1)">&#8250;</button>
+              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', -1)"><iconify-icon icon="lucide:chevron-left"></iconify-icon></button>
+              <button class="carousel-arrow" onclick="scrollCarousel('obsCarousel', 1)"><iconify-icon icon="lucide:chevron-right"></iconify-icon></button>
             </div>
             <div class="carousel-nav">
               <button class="carousel-dot active" onclick="goToSlide('obsCarousel', 0)"></button>

@@ -15,6 +15,7 @@ from rvbbit.sql_rewriter import (
     _extract_balanced_parens,
     _parse_with_options,
     _parse_value,
+    _extract_arrow_alias,
     RVBBITSyntaxError,
     DEFAULT_MAP_LIMIT
 )
@@ -496,3 +497,136 @@ def test_error_with_malformed_options():
         rewrite_rvbbit_syntax("""
             RVBBIT MAP 'x' USING (SELECT 1) WITH (invalid_syntax)
         """)
+
+
+# ============================================================================
+# Arrow Alias Syntax Tests (-> table_name)
+# ============================================================================
+
+def test_arrow_extract_simple():
+    """Should extract simple arrow alias."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails -> players;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "players"
+
+
+def test_arrow_extract_no_semicolon():
+    """Should extract arrow alias without semicolon."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails -> results")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "results"
+
+
+def test_arrow_extract_dotted_name():
+    """Should extract arrow alias with schema.table notation."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails -> enron.suspects;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "enron.suspects"
+
+
+def test_arrow_extract_with_where():
+    """Should extract arrow from query with WHERE clause."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails WHERE x > 5 -> filtered;")
+    assert clean == "SELECT * FROM emails WHERE x > 5"
+    assert alias == "filtered"
+
+
+def test_arrow_extract_no_arrow():
+    """Should return None alias when no arrow present."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails")
+    assert clean == "SELECT * FROM emails"
+    assert alias is None
+
+
+def test_arrow_extract_arrow_in_string():
+    """Should handle arrow-like pattern in string literal."""
+    # Arrow at end should be extracted even if there's one in a string
+    clean, alias = _extract_arrow_alias('SELECT * FROM t WHERE body LIKE "->x" -> result;')
+    assert alias == "result"
+    assert "->" in clean  # The one in the string is preserved
+
+
+def test_arrow_rewrite_injects_hint():
+    """Should inject RVBBIT hint comment for arrow alias."""
+    result = rewrite_rvbbit_syntax('SELECT * FROM emails -> players;')
+    assert '/*RVBBIT:save_as=players*/' in result
+    assert '->' not in result
+
+
+def test_arrow_rewrite_dotted_hint():
+    """Should inject hint for dotted table names."""
+    result = rewrite_rvbbit_syntax('SELECT * FROM emails -> enron.suspects;')
+    assert '/*RVBBIT:save_as=enron.suspects*/' in result
+
+
+def test_arrow_rewrite_preserves_query():
+    """Should preserve the query content after removing arrow."""
+    result = rewrite_rvbbit_syntax('SELECT a, b, c FROM my_table WHERE x = 1 -> output;')
+    assert 'SELECT a, b, c FROM my_table WHERE x = 1' in result
+    assert '/*RVBBIT:save_as=output*/' in result
+
+
+def test_arrow_no_hint_without_arrow():
+    """Should not inject hint when no arrow present."""
+    result = rewrite_rvbbit_syntax('SELECT * FROM emails')
+    assert '/*RVBBIT:' not in result
+
+
+# ============================================================================
+# SHADOW AS Syntax Tests
+# ============================================================================
+
+def test_shadow_as_simple():
+    """Should extract SHADOW AS alias."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails SHADOW AS players;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "players"
+
+
+def test_shadow_as_lowercase():
+    """Should extract shadow as (lowercase)."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails shadow as results;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "results"
+
+
+def test_shadow_as_mixed_case():
+    """Should extract Shadow As (mixed case)."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails Shadow As MyTable;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "MyTable"
+
+
+def test_shadow_as_dotted_name():
+    """Should extract SHADOW AS with schema.table."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails SHADOW AS enron.suspects;")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "enron.suspects"
+
+
+def test_shadow_as_no_semicolon():
+    """Should extract SHADOW AS without semicolon."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails SHADOW AS results")
+    assert clean == "SELECT * FROM emails"
+    assert alias == "results"
+
+
+def test_shadow_as_with_where():
+    """Should extract SHADOW AS from query with WHERE clause."""
+    clean, alias = _extract_arrow_alias("SELECT * FROM emails WHERE x > 5 SHADOW AS filtered;")
+    assert clean == "SELECT * FROM emails WHERE x > 5"
+    assert alias == "filtered"
+
+
+def test_shadow_as_rewrite_injects_hint():
+    """Should inject RVBBIT hint comment for SHADOW AS alias."""
+    result = rewrite_rvbbit_syntax('SELECT * FROM emails SHADOW AS players;')
+    assert '/*RVBBIT:save_as=players*/' in result
+    assert 'SHADOW AS' not in result.upper()
+
+
+def test_shadow_as_rewrite_preserves_query():
+    """Should preserve query content after removing SHADOW AS."""
+    result = rewrite_rvbbit_syntax('SELECT a, b FROM t WHERE x = 1 SHADOW AS output;')
+    assert 'SELECT a, b FROM t WHERE x = 1' in result
+    assert '/*RVBBIT:save_as=output*/' in result

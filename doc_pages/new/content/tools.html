@@ -1,0 +1,278 @@
+<h1>Tools (Traits)</h1>
+<p class="lead">
+  RVBBIT's unified tool system supports six types of tools, all registered in
+  a single trait registry. From Python functions to HuggingFace Spaces -
+  everything is a first-class tool.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Tool System Overview</a></li>
+    <li><a href="#six-types">Six Tool Types</a></li>
+    <li><a href="#python">Python Functions</a></li>
+    <li><a href="#cascade">Cascade Tools</a></li>
+    <li><a href="#declarative">Declarative Tools</a></li>
+    <li><a href="#local-models">Local Model Tools</a></li>
+    <li><a href="#built-in">Built-in Tools</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Tool System Overview</h2>
+
+<p>
+  The trait registry is a simple global dictionary that treats all tools identically:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Trait Registry Pattern</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_trait, get_trait
+
+<span class="cmt"># Register a tool</span>
+register_trait(<span class="str">"my_tool"</span>, my_function)
+
+<span class="cmt"># Get a tool</span>
+tool = get_trait(<span class="str">"my_tool"</span>)</pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Unified System</div>
+  <p>
+    Whether a tool is a Python function, a cascade, a declarative definition,
+    a local model, or a HuggingFace Space - they all become callable entries
+    in the same registry.
+  </p>
+</div>
+
+<h2 id="six-types">Six Tool Types</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Definition</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Python Functions</strong></td>
+      <td>Direct registration</td>
+      <td>Custom Python logic</td>
+    </tr>
+    <tr>
+      <td><strong>Cascade Tools</strong></td>
+      <td>YAML with <code>inputs_schema</code></td>
+      <td>Workflows as tools</td>
+    </tr>
+    <tr>
+      <td><strong>Declarative Tools</strong></td>
+      <td>.tool.json/.yaml files</td>
+      <td>Shell, HTTP, composite</td>
+    </tr>
+    <tr>
+      <td><strong>Local Model Tools</strong></td>
+      <td>HuggingFace transformers</td>
+      <td>Run ML locally</td>
+    </tr>
+    <tr>
+      <td><strong>Harbor Tools</strong></td>
+      <td>HuggingFace Spaces</td>
+      <td>Remote Gradio apps</td>
+    </tr>
+    <tr>
+      <td><strong>MCP Tools</strong></td>
+      <td>Model Context Protocol</td>
+      <td>External servers</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="python">Python Functions</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Python Tool</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_trait
+
+<span class="kw">def</span> <span class="fn">analyze_sentiment</span>(text: <span class="fn">str</span>) -> <span class="fn">dict</span>:
+    <span class="str">"""
+    Analyze the sentiment of text.
+
+    Args:
+        text: The text to analyze
+
+    Returns:
+        dict with 'sentiment' (pos/neg/neutral) and 'confidence' (0-1)
+    """</span>
+    <span class="cmt"># Your implementation</span>
+    <span class="kw">return</span> {<span class="str">"sentiment"</span>: <span class="str">"positive"</span>, <span class="str">"confidence"</span>: <span class="num">0.85</span>}
+
+<span class="cmt"># Register the tool</span>
+register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)</pre>
+  </div>
+</div>
+
+<h2 id="cascade">Cascade Tools</h2>
+
+<p>
+  Any cascade with <code>inputs_schema</code> becomes a callable tool:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">traits/research.cascade.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: research_tool
+<span class="key">description</span>: <span class="str">Research a topic and return summary</span>
+
+<span class="key">inputs_schema</span>:
+  topic: <span class="str">"The topic to research"</span>
+  depth: <span class="str">"shallow, medium, or deep (default: medium)"</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: research
+    <span class="key">instructions</span>: <span class="str">"Research {{ input.topic }}..."</span>
+    <span class="key">traits</span>: [brave_web_search]</pre>
+  </div>
+</div>
+
+<h2 id="declarative">Declarative Tools</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">traits/weather.tool.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">tool_id</span>: get_weather
+<span class="key">description</span>: <span class="str">Get current weather for a location</span>
+<span class="key">type</span>: http
+
+<span class="key">inputs_schema</span>:
+  location: <span class="str">"City name or coordinates"</span>
+
+<span class="key">http</span>:
+  <span class="key">method</span>: GET
+  <span class="key">url</span>: <span class="str">"https://api.weather.com/v1/current"</span>
+  <span class="key">params</span>:
+    <span class="key">q</span>: <span class="str">"{{ location }}"</span>
+    <span class="key">key</span>: <span class="str">"${WEATHER_API_KEY}"</span>
+  <span class="key">extract</span>: <span class="str">".current"</span></pre>
+  </div>
+</div>
+
+<h2 id="local-models">Local Model Tools</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">traits/local_sentiment.tool.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">tool_id</span>: local_sentiment
+<span class="key">description</span>: <span class="str">Analyze sentiment using local DistilBERT</span>
+<span class="key">type</span>: local_model
+
+<span class="key">inputs_schema</span>:
+  text: <span class="str">"The text to analyze"</span>
+
+<span class="key">model_id</span>: <span class="str">distilbert/distilbert-base-uncased-finetuned-sst-2-english</span>
+<span class="key">task</span>: text-classification
+<span class="key">device</span>: auto  <span class="cmt"># auto, cuda, mps, cpu</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Local Model CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Check status and loaded models</span>
+rvbbit models local status
+
+<span class="cmt"># Preload a model</span>
+rvbbit models local load distilbert/distilbert-base-uncased-finetuned-sst-2-english --task text-classification
+
+<span class="cmt"># Export tool definition</span>
+rvbbit models local export MODEL --task TASK -o tool.yaml</pre>
+  </div>
+</div>
+
+<h2 id="built-in">Built-in Tools</h2>
+
+<h3>Core Tools</h3>
+<ul>
+  <li><code>linux_shell</code> - Execute shell commands</li>
+  <li><code>run_code</code> - Run Python code</li>
+  <li><code>set_state</code> - Set session state</li>
+  <li><code>spawn_cascade</code> - Run a sub-cascade</li>
+  <li><code>map_cascade</code> - Map cascade over items</li>
+</ul>
+
+<h3>Data Tools</h3>
+<ul>
+  <li><code>sql_data</code> - Execute SQL queries</li>
+  <li><code>python_data</code> - Run Python with pandas</li>
+  <li><code>js_data</code> - Execute JavaScript</li>
+  <li><code>clojure_data</code> - Run Clojure expressions</li>
+</ul>
+
+<h3>HITL Tools</h3>
+<ul>
+  <li><code>ask_human</code> - Request human input</li>
+  <li><code>ask_human_custom</code> - Custom HTML form</li>
+</ul>
+
+<h3>Media Tools</h3>
+<ul>
+  <li><code>take_screenshot</code> - Capture screenshots</li>
+  <li><code>create_chart</code> - Generate charts</li>
+  <li><code>say</code> - Text-to-speech</li>
+  <li><code>listen</code> - Speech-to-text</li>
+</ul>
+
+<h3>Browser Tools (Rabbitize)</h3>
+<ul>
+  <li><code>rabbitize_start</code> - Start browser session</li>
+  <li><code>rabbitize_navigate</code> - Navigate to URL</li>
+  <li><code>rabbitize_click</code> - Click elements</li>
+  <li><code>rabbitize_type</code> - Type text</li>
+  <li><code>rabbitize_screenshot</code> - Capture page</li>
+</ul>
+
+<h3>CLI Tool Management</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Tool Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># List all tools</span>
+rvbbit tools list
+
+<span class="cmt"># Search tools by keyword</span>
+rvbbit tools search <span class="str">"sql query"</span>
+
+<span class="cmt"># Semantic tool search</span>
+rvbbit tools find <span class="str">"parse PDF documents"</span>
+
+<span class="cmt"># View tool usage stats</span>
+rvbbit tools usage --days <span class="num">7</span>
+
+<span class="cmt"># Sync tool registry</span>
+rvbbit tools sync --force</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: MCP Integration</h2>
+<p>
+  Learn about external tool servers: <a href="#mcp" data-link>MCP Integration</a>.
+</p>

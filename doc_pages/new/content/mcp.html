@@ -1,0 +1,204 @@
+<h1>MCP Integration</h1>
+<p class="lead">
+  Connect to external tool servers using the Model Context Protocol (MCP).
+  RVBBIT supports both stdio and HTTP transports with automatic tool discovery.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#stdio">Stdio Servers</a></li>
+    <li><a href="#http">HTTP Servers</a></li>
+    <li><a href="#cli">CLI Commands</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  MCP (Model Context Protocol) allows RVBBIT to connect to external tool servers.
+  Tools from MCP servers are automatically discovered and registered in the trait registry.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:console"></iconify-icon></div>
+    <h4>Stdio Transport</h4>
+    <p>Run tools as local processes, communicate via stdin/stdout</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:web"></iconify-icon></div>
+    <h4>HTTP Transport</h4>
+    <p>Connect to remote servers via HTTP/HTTPS</p>
+  </div>
+</div>
+
+<h2 id="configuration">Configuration</h2>
+
+<p>
+  MCP servers are configured via <code>config/mcp_servers.yaml</code>:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">config/mcp_servers.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Filesystem server (stdio)</span>
+- <span class="key">name</span>: filesystem
+  <span class="key">transport</span>: stdio
+  <span class="key">command</span>: npx
+  <span class="key">args</span>: [<span class="str">"-y"</span>, <span class="str">"@modelcontextprotocol/server-filesystem"</span>, <span class="str">"/tmp"</span>]
+  <span class="key">enabled</span>: <span class="kw">true</span>
+
+<span class="cmt"># Brave Search (stdio with env)</span>
+- <span class="key">name</span>: brave-search
+  <span class="key">transport</span>: stdio
+  <span class="key">command</span>: npx
+  <span class="key">args</span>: [<span class="str">"-y"</span>, <span class="str">"@modelcontextprotocol/server-brave-search"</span>]
+  <span class="key">env</span>:
+    <span class="key">BRAVE_API_KEY</span>: <span class="str">${BRAVE_API_KEY}</span>
+  <span class="key">enabled</span>: <span class="kw">true</span>
+
+<span class="cmt"># HTTP server example</span>
+- <span class="key">name</span>: github
+  <span class="key">transport</span>: http
+  <span class="key">url</span>: <span class="str">http://localhost:3000/mcp</span>
+  <span class="key">headers</span>:
+    <span class="key">Authorization</span>: <span class="str">Bearer ${GITHUB_TOKEN}</span>
+  <span class="key">enabled</span>: <span class="kw">false</span></pre>
+  </div>
+</div>
+
+<h2 id="stdio">Stdio Servers</h2>
+
+<p>
+  Stdio servers run as child processes. RVBBIT manages their lifecycle:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Stdio Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: my-server
+  <span class="key">transport</span>: stdio
+  <span class="key">command</span>: /path/to/server
+  <span class="key">args</span>: [<span class="str">"--config"</span>, <span class="str">"config.json"</span>]
+  <span class="key">env</span>:
+    <span class="key">API_KEY</span>: <span class="str">${MY_API_KEY}</span>
+  <span class="key">cwd</span>: /working/directory  <span class="cmt"># Optional working dir</span>
+  <span class="key">enabled</span>: <span class="kw">true</span>
+  <span class="key">timeout</span>: <span class="num">30</span>  <span class="cmt"># Startup timeout in seconds</span></pre>
+  </div>
+</div>
+
+<h2 id="http">HTTP Servers</h2>
+
+<p>
+  Connect to remote MCP servers over HTTP:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">HTTP Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: remote-tools
+  <span class="key">transport</span>: http
+  <span class="key">url</span>: <span class="str">https://tools.example.com/mcp</span>
+  <span class="key">headers</span>:
+    <span class="key">Authorization</span>: <span class="str">Bearer ${API_TOKEN}</span>
+    <span class="key">X-Custom-Header</span>: <span class="str">value</span>
+  <span class="key">enabled</span>: <span class="kw">true</span>
+  <span class="key">retry</span>:
+    <span class="key">max_attempts</span>: <span class="num">3</span>
+    <span class="key">backoff</span>: exponential</pre>
+  </div>
+</div>
+
+<h2 id="cli">CLI Commands</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">MCP Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># List configured servers</span>
+rvbbit mcp list
+
+<span class="cmt"># Check server status</span>
+rvbbit mcp status
+
+<span class="cmt"># List tools from a specific server</span>
+rvbbit mcp introspect filesystem
+
+<span class="cmt"># Show all MCP tools in manifest</span>
+rvbbit mcp manifest
+
+<span class="cmt"># Re-discover tools from all servers</span>
+rvbbit mcp refresh
+
+<span class="cmt"># Test a specific tool</span>
+rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/test.txt"}'</span></pre>
+  </div>
+</div>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang config">Environment</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Enable/disable MCP integration</span>
+<span class="key">RVBBIT_MCP_ENABLED</span>=<span class="kw">true</span>
+
+<span class="cmt"># Alternative: inline YAML config</span>
+<span class="key">RVBBIT_MCP_SERVERS_YAML</span>=<span class="str">'
+- name: my-server
+  transport: stdio
+  command: my-tool
+  enabled: true
+'</span></pre>
+  </div>
+</div>
+
+<h3>Using MCP Tools in Cascades</h3>
+
+<p>
+  MCP tools are automatically prefixed with the server name:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using MCP Tools</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: file_operations
+  <span class="key">instructions</span>: <span class="str">"Read the config file and update settings"</span>
+  <span class="key">traits</span>:
+    - filesystem:read_file    <span class="cmt"># server_name:tool_name</span>
+    - filesystem:write_file
+    - filesystem:list_directory</pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Tool Discovery</div>
+  <p>
+    Use <code>rvbbit mcp introspect &lt;server&gt;</code> to see all available tools
+    from a server, including their parameters and descriptions.
+  </p>
+</div>
+
+<hr>
+
+<h2>Further Reading</h2>
+<ul>
+  <li><a href="https://modelcontextprotocol.io" target="_blank">MCP Specification</a></li>
+  <li><a href="https://github.com/modelcontextprotocol/servers" target="_blank">Official MCP Servers</a></li>
+  <li><a href="#tools" data-link>Tools (Traits)</a> - Overview of RVBBIT's tool system</li>
+</ul>

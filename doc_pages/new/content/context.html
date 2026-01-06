@@ -1,0 +1,199 @@
+<h1>Context Management</h1>
+<p class="lead">
+  Control how information flows between cells with RVBBIT's two-level context system.
+  Balance information availability with token efficiency.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Context System Overview</a></li>
+    <li><a href="#intra-cell">Intra-Cell Context</a></li>
+    <li><a href="#inter-cell">Inter-Cell Context</a></li>
+    <li><a href="#auto-context">Auto Context</a></li>
+    <li><a href="#token-budget">Token Budget</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Context System Overview</h2>
+
+<p>
+  RVBBIT manages context at two levels:
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:message-text-outline"></iconify-icon></div>
+    <h4>Intra-Cell (Within)</h4>
+    <p>Manages conversation history during multi-turn execution within a single cell</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:arrow-right-bold"></iconify-icon></div>
+    <h4>Inter-Cell (Between)</h4>
+    <p>Controls what information from previous cells is available to subsequent cells</p>
+  </div>
+</div>
+
+<h2 id="intra-cell">Intra-Cell Context</h2>
+
+<p>
+  Within a cell, context accumulates automatically. The <code>intra_context</code> settings
+  help manage this for long-running cells:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Intra-Cell Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: research
+  <span class="key">instructions</span>: <span class="str">"Research the topic thoroughly"</span>
+  <span class="key">intra_context</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">window</span>: <span class="num">5</span>                    <span class="cmt"># Last N turns at full fidelity</span>
+    <span class="key">mask_observations_after</span>: <span class="num">3</span>  <span class="cmt"># Truncate tool results after N turns</span>
+    <span class="key">compress_loops</span>: <span class="kw">true</span>         <span class="cmt"># Compress repeated retry attempts</span>
+    <span class="key">preserve_reasoning</span>: <span class="kw">true</span>     <span class="cmt"># Keep assistant messages without tool calls</span>
+    <span class="key">preserve_errors</span>: <span class="kw">true</span>        <span class="cmt"># Always preserve error messages</span></pre>
+  </div>
+</div>
+
+<h2 id="inter-cell">Inter-Cell Context</h2>
+
+<h3>Explicit Context (Default)</h3>
+
+<p>
+  By default, specify exactly which cells to include:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Explicit Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: analyze
+  <span class="key">instructions</span>: <span class="str">"Analyze the findings"</span>
+  <span class="key">context</span>:
+    <span class="key">from</span>: [research, load_data]  <span class="cmt"># Include outputs from these cells</span></pre>
+  </div>
+</div>
+
+<h3>Context Sugar</h3>
+
+<p>
+  Shorthand for common patterns:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Context Sugar</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># All previous cells</span>
+<span class="key">context</span>:
+  <span class="key">from</span>: all
+
+<span class="cmt"># Just the immediately previous cell</span>
+<span class="key">context</span>:
+  <span class="key">from</span>: previous
+
+<span class="cmt"># No context</span>
+<span class="key">context</span>:
+  <span class="key">from</span>: none
+
+<span class="cmt"># Specific cells with field selection</span>
+<span class="key">context</span>:
+  <span class="key">from</span>:
+    - cell: research
+      fields: [summary, sources]
+    - cell: data_load
+      fields: [row_count]</pre>
+  </div>
+</div>
+
+<h2 id="auto-context">Auto Context</h2>
+
+<p>
+  Let RVBBIT intelligently select relevant context:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Auto Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: synthesize
+  <span class="key">instructions</span>: <span class="str">"Synthesize all findings into a report"</span>
+  <span class="key">context</span>:
+    <span class="key">mode</span>: auto
+    <span class="key">selection</span>:
+      <span class="key">strategy</span>: hybrid       <span class="cmt"># heuristic, semantic, llm, hybrid</span>
+      <span class="key">max_tokens</span>: <span class="num">30000</span>       <span class="cmt"># Token budget for context</span>
+      <span class="key">recency_weight</span>: <span class="num">0.3</span>    <span class="cmt"># Weight for recent cells</span>
+      <span class="key">keyword_weight</span>: <span class="num">0.4</span>    <span class="cmt"># Weight for keyword matching</span>
+      <span class="key">similarity_threshold</span>: <span class="num">0.5</span>  <span class="cmt"># Min semantic similarity</span></pre>
+  </div>
+</div>
+
+<h3>Selection Strategies</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Strategy</th>
+      <th>Description</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>heuristic</code></td>
+      <td>Recency + keyword matching</td>
+      <td>Fast, low-cost selection</td>
+    </tr>
+    <tr>
+      <td><code>semantic</code></td>
+      <td>Embedding-based similarity</td>
+      <td>Finding related content</td>
+    </tr>
+    <tr>
+      <td><code>llm</code></td>
+      <td>LLM picks relevant cells</td>
+      <td>Complex reasoning</td>
+    </tr>
+    <tr>
+      <td><code>hybrid</code></td>
+      <td>Combines all approaches</td>
+      <td>Best accuracy</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="token-budget">Token Budget</h2>
+
+<p>
+  Automatically prune context to fit within a token budget:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Token Budget</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: final_analysis
+  <span class="key">instructions</span>: <span class="str">"Final analysis..."</span>
+  <span class="key">token_budget</span>:
+    <span class="key">max_context_tokens</span>: <span class="num">50000</span>
+    <span class="key">pruning_strategy</span>: smart  <span class="cmt"># smart, fifo, importance</span>
+    <span class="key">preserve</span>:
+      - <span class="str">"error messages"</span>
+      - <span class="str">"final outputs"</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: Semantic SQL</h2>
+<p>
+  Learn about <a href="#semantic-sql" data-link>Semantic SQL</a> for LLM-powered queries.
+</p>

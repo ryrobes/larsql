@@ -1,0 +1,465 @@
+<h1>Semantic SQL</h1>
+<p class="lead">
+  Use natural language and LLM-powered functions directly in SQL queries.
+  RVBBIT's semantic SQL system extends standard SQL with intelligent operators
+  powered by cascade-driven rewrites.
+</p>
+
+<div class="info-box tip">
+  <div class="info-box-title">Key Innovation</div>
+  <p>
+    Unlike traditional SQL extensions that require modifying the database engine,
+    RVBBIT's semantic SQL uses <strong>query rewriting</strong>. Your queries are
+    transformed into standard SQL + cascade UDFs before execution - no database
+    changes needed!
+  </p>
+</div>
+
+<h2>Architecture Overview</h2>
+<p>
+  The SQL rewriting pipeline processes queries in three stages:
+</p>
+
+<ol>
+  <li><strong>Detection & MAP/RUN Handling</strong>
+    <ul>
+      <li>Detects <code>RVBBIT MAP</code> and <code>RVBBIT RUN</code> statements</li>
+      <li>Handles <code>RVBBIT EMBED</code> for vector indexing</li>
+      <li>Processes SQL directives like <code>BACKGROUND</code> and <code>ANALYZE</code></li>
+    </ul>
+  </li>
+  <li><strong>Unified Operator Rewriting</strong>
+    <ul>
+      <li>Single entry point: <code>rewrite_all_operators(query)</code></li>
+      <li>All operator patterns loaded from cascade registry</li>
+      <li>No hardcoded operator lists - fully declarative</li>
+    </ul>
+  </li>
+  <li><strong>Execution</strong>
+    <ul>
+      <li>Rewritten query executes on ClickHouse or DuckDB</li>
+      <li>Cascade UDFs invoked via <code>rvbbit_cascade_udf()</code></li>
+      <li>Results returned as standard SQL result sets</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>Operator Types</h2>
+<p>
+  RVBBIT supports five categories of semantic SQL operators, each with different
+  rewriting strategies.
+</p>
+
+<h3>1. Vector Search Functions</h3>
+<p>
+  Semantic similarity search using embeddings.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Vector Search Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Basic vector search</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs
+<span class="kw">WHERE</span> title <span class="fn">SIMILAR_TO</span> <span class="str">'sustainability report'</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cmt">-- VECTOR_SEARCH function</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">VECTOR_SEARCH</span>(<span class="str">'climate change'</span>, docs.content, <span class="num">20</span>, <span class="num">0.7</span>)
+<span class="kw">WHERE</span> publication_date > <span class="str">'2024-01-01'</span>;
+
+<span class="cmt">-- Elasticsearch integration</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">ELASTIC_SEARCH</span>(<span class="str">'kubernetes deployment'</span>, logs.message, <span class="num">50</span>);
+
+<span class="cmt">-- Hybrid search (vector + keyword)</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">HYBRID_SEARCH</span>(<span class="str">'machine learning'</span>, articles.body, <span class="num">15</span>);</pre>
+  </div>
+</div>
+
+<h4>Vector Search Functions</h4>
+<table>
+  <thead>
+    <tr>
+      <th>Function</th>
+      <th>Signature</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>VECTOR_SEARCH</code></td>
+      <td><code>(query, column, limit[, min_score])</code></td>
+      <td>Pure embedding-based search</td>
+    </tr>
+    <tr>
+      <td><code>ELASTIC_SEARCH</code></td>
+      <td><code>(query, column, limit)</code></td>
+      <td>Elasticsearch backend integration</td>
+    </tr>
+    <tr>
+      <td><code>HYBRID_SEARCH</code></td>
+      <td><code>(query, column, limit)</code></td>
+      <td>Combined vector + keyword search</td>
+    </tr>
+    <tr>
+      <td><code>KEYWORD_SEARCH</code></td>
+      <td><code>(query, column, limit)</code></td>
+      <td>Traditional keyword matching</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box">
+  <div class="info-box-title">Natural Field-Aware Syntax</div>
+  <p>
+    Notice the syntax: <code>VECTOR_SEARCH('query', <strong>table.column</strong>, limit)</code>.
+    RVBBIT automatically extracts the table and column information to build the
+    appropriate vector search query against your indexed data.
+  </p>
+</div>
+
+<h3>2. LLM Aggregate Functions</h3>
+<p>
+  Apply LLM operations to groups of rows, just like traditional aggregates
+  (<code>SUM</code>, <code>AVG</code>, etc.).
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">LLM Aggregates</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Summarize all reviews per product</span>
+<span class="kw">SELECT</span>
+  product_id,
+  <span class="fn">LLM_SUMMARIZE</span>(review_text) <span class="kw">AS</span> summary,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> review_count
+<span class="kw">FROM</span> reviews
+<span class="kw">GROUP BY</span> product_id;
+
+<span class="cmt">-- Extract common themes</span>
+<span class="kw">SELECT</span>
+  category,
+  <span class="fn">LLM_EXTRACT_THEMES</span>(feedback, <span class="num">5</span>) <span class="kw">AS</span> themes
+<span class="kw">FROM</span> customer_feedback
+<span class="kw">GROUP BY</span> category;
+
+<span class="cmt">-- Custom model selection via comment annotation</span>
+<span class="cmt">-- @model: anthropic/claude-opus-4</span>
+<span class="kw">SELECT</span>
+  department,
+  <span class="fn">LLM_ANALYZE_SENTIMENT</span>(comments) <span class="kw">AS</span> sentiment_report
+<span class="kw">FROM</span> employee_surveys
+<span class="kw">GROUP BY</span> department;</pre>
+  </div>
+</div>
+
+<h4>How LLM Aggregates Work</h4>
+<p>
+  LLM aggregate functions are rewritten to call cascade implementations:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Rewrite Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Original query</span>
+<span class="kw">SELECT</span> category, <span class="fn">LLM_SUMMARIZE</span>(text) <span class="kw">FROM</span> articles <span class="kw">GROUP BY</span> category;
+
+<span class="cmt">-- Rewrites to:</span>
+<span class="kw">SELECT</span>
+  category,
+  <span class="fn">llm_summarize_impl</span>(<span class="fn">LIST</span>(text)::<span class="fn">VARCHAR</span>) <span class="kw">AS</span> text
+<span class="kw">FROM</span> articles
+<span class="kw">GROUP BY</span> category;</pre>
+  </div>
+</div>
+
+<p>
+  The <code>llm_summarize_impl</code> function is a ClickHouse/DuckDB UDF that calls
+  <code>rvbbit_cascade_udf('cascades/semantic_sql/llm_summarize', inputs)</code> internally.
+</p>
+
+<h3>3. Dimension Functions</h3>
+<p>
+  Semantic grouping - let the LLM determine buckets by analyzing all values first.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Dimension Functions</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Cluster titles into 5 topic groups</span>
+<span class="kw">SELECT</span>
+  <span class="fn">topics</span>(title, <span class="num">5</span>) <span class="kw">AS</span> topic_cluster,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> article_count,
+  <span class="kw">AVG</span>(views) <span class="kw">AS</span> avg_views
+<span class="kw">FROM</span> articles
+<span class="kw">GROUP BY</span> topic_cluster
+<span class="kw">ORDER BY</span> article_count <span class="kw">DESC</span>;
+
+<span class="cmt">-- Sentiment-based grouping</span>
+<span class="kw">SELECT</span>
+  <span class="fn">sentiment_bucket</span>(comment_text) <span class="kw">AS</span> sentiment,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> count
+<span class="kw">FROM</span> customer_reviews
+<span class="kw">GROUP BY</span> sentiment;</pre>
+  </div>
+</div>
+
+<h4>Two-Pass Execution</h4>
+<p>
+  Dimension functions require seeing all values before determining buckets:
+</p>
+
+<ol>
+  <li><strong>Pass 1</strong>: Extract all unique values, send to LLM to determine buckets</li>
+  <li><strong>Pass 2</strong>: Classify each row into the determined buckets</li>
+</ol>
+
+<h3>4. Block Operators</h3>
+<p>
+  Multi-line SQL constructs with start/end keywords and repeating patterns.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Block Operators</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- SEMANTIC_CASE: LLM-powered CASE statement</span>
+<span class="kw">SELECT</span>
+  title,
+  <span class="kw">SEMANTIC_CASE</span> title
+    <span class="kw">WHEN SEMANTIC</span> <span class="str">'positive news'</span> <span class="kw">THEN</span> <span class="str">'Good News'</span>
+    <span class="kw">WHEN SEMANTIC</span> <span class="str">'negative news'</span> <span class="kw">THEN</span> <span class="str">'Bad News'</span>
+    <span class="kw">ELSE</span> <span class="str">'Neutral'</span>
+  <span class="kw">END</span> <span class="kw">AS</span> sentiment
+<span class="kw">FROM</span> articles;</pre>
+  </div>
+</div>
+
+<h3>5. Infix Operators</h3>
+<p>
+  Binary operators like <code>col MEANS 'value'</code> or <code>col IMPLIES condition</code>.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Infix Operators</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Semantic equivalence check</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> documents
+<span class="kw">WHERE</span> title <span class="fn">MEANS</span> <span class="str">'financial report'</span>;
+
+<span class="cmt">-- Implication logic</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> rules
+<span class="kw">WHERE</span> condition <span class="fn">IMPLIES</span> <span class="str">'requires approval'</span>;</pre>
+  </div>
+</div>
+
+<h2>Creating Custom Operators</h2>
+<p>
+  The most powerful feature: define your own SQL operators using cascade files -
+  <strong>no Python code required</strong>!
+</p>
+
+<h3>Custom Operator Cascade</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">cascades/my_operators/sentiment_score.cascade.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: sentiment_score_operator
+
+<span class="cmt"># Define SQL operator metadata</span>
+<span class="key">sql_function</span>:
+  <span class="key">name</span>: sentiment_score
+  <span class="key">operators</span>:
+    - <span class="str">"SENTIMENT_SCORE({{ text }})"</span>
+    - <span class="str">"{{ text }} SENTIMENT_SCORE"</span>
+  <span class="key">args</span>:
+    - <span class="key">name</span>: text
+      <span class="key">type</span>: VARCHAR
+  <span class="key">returns</span>: FLOAT
+
+<span class="cmt"># Implementation</span>
+<span class="key">cells</span>:
+  - <span class="key">name</span>: score
+    <span class="key">instructions</span>: <span class="str">|
+      Analyze the sentiment of this text on a scale from -1.0 (very negative)
+      to +1.0 (very positive):
+
+      {{ input.text }}
+
+      Return ONLY a JSON object: {"score": 0.X}
+    </span>
+    <span class="key">output_schema</span>:
+      <span class="key">score</span>: number</pre>
+  </div>
+</div>
+
+<p>
+  Now you can use <code>SENTIMENT_SCORE()</code> in any query:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Using Custom Operator</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+  product_id,
+  <span class="kw">AVG</span>(<span class="fn">SENTIMENT_SCORE</span>(review_text)) <span class="kw">AS</span> avg_sentiment
+<span class="kw">FROM</span> reviews
+<span class="kw">GROUP BY</span> product_id
+<span class="kw">HAVING</span> avg_sentiment < <span class="num">-0.3</span>;</pre>
+  </div>
+</div>
+
+<h2>RVBBIT MAP/RUN Statements</h2>
+<p>
+  Execute cascades directly in SQL, mapping over result sets.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">MAP/RUN Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Run cascade for each row</span>
+<span class="kw">RVBBIT MAP</span> process_order(<span class="str">'{{ order_id }}'</span>, <span class="str">'{{ customer_email }}'</span>)
+<span class="kw">FROM</span> (
+  <span class="kw">SELECT</span> order_id, customer_email
+  <span class="kw">FROM</span> orders
+  <span class="kw">WHERE</span> status = <span class="str">'pending'</span>
+  <span class="kw">LIMIT</span> <span class="num">100</span>
+);
+
+<span class="cmt">-- Run single cascade with entire result set</span>
+<span class="kw">RVBBIT RUN</span> analyze_sales_trends(<span class="str">'{{ results }}'</span>)
+<span class="kw">FROM</span> (
+  <span class="kw">SELECT</span> date, revenue, region
+  <span class="kw">FROM</span> sales
+  <span class="kw">WHERE</span> date >= <span class="str">'2024-01-01'</span>
+);</pre>
+  </div>
+</div>
+
+<h3>MAP vs RUN</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Statement</th>
+      <th>Behavior</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>RVBBIT MAP</code></td>
+      <td>Execute cascade once per row</td>
+      <td>Row-level processing (send email, enrich data)</td>
+    </tr>
+    <tr>
+      <td><code>RVBBIT RUN</code></td>
+      <td>Execute cascade once with all rows as JSON</td>
+      <td>Aggregate analysis (trend detection, summarization)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Vector Indexing</h2>
+<p>
+  Create embeddings for columns to enable vector search.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">EMBED Statement</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Index a column for vector search</span>
+<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> published = <span class="kw">true</span>;
+
+<span class="cmt">-- Specify embedding model and batch size</span>
+<span class="kw">RVBBIT EMBED</span> documents.summary
+<span class="kw">FROM</span> documents
+<span class="kw">WITH</span> (
+  model = <span class="str">'qwen/qwen3-embedding-8b'</span>,
+  batch_size = <span class="num">100</span>
+);</pre>
+  </div>
+</div>
+
+<h2>PostgreSQL Wire Protocol Server</h2>
+<p>
+  Query RVBBIT's ClickHouse logs using any PostgreSQL client (DataGrip, DBeaver, psql).
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Start Server</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Start PostgreSQL wire protocol server</span>
+rvbbit serve sql --port <span class="num">15432</span>
+
+<span class="cmt"># Or shorter alias:</span>
+rvbbit sql server --port <span class="num">15432</span>
+
+<span class="cmt"># Connect with any PostgreSQL client</span>
+psql -h localhost -p <span class="num">15432</span> -U rvbbit -d rvbbit</pre>
+  </div>
+</div>
+
+<h2>Magic Tables</h2>
+<p>
+  RVBBIT provides several built-in tables for querying execution data:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Table</th>
+      <th>Contents</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>all_data</code></td>
+      <td>All execution logs (messages, tool calls, metadata)</td>
+    </tr>
+    <tr>
+      <td><code>all_evals</code></td>
+      <td>Evaluation data from candidates and human feedback</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="info-box warning">
+  <div class="info-box-title">Performance Note</div>
+  <p>
+    LLM aggregate and dimension functions can be expensive for large result sets.
+    Consider applying <code>LIMIT</code> or <code>WHERE</code> filters to reduce
+    the number of rows processed.
+  </p>
+</div>
+
+<hr>
+
+<h2>Next Steps</h2>
+<ul>
+  <li><a href="#cell-types" data-link>Cell Types</a> - Learn how to use SQL cells in cascades</li>
+  <li><a href="#tools" data-link>Tools Reference</a> - Explore <code>sql_data</code> and related tools</li>
+  <li>See <code>docs/CUSTOM_SQL_OPERATORS.md</code> for the complete custom operator guide</li>
+</ul>

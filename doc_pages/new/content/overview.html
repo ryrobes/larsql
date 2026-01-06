@@ -1,0 +1,301 @@
+<h1>RVBBIT Documentation</h1>
+<p class="lead">
+  A declarative agent framework that evolved into a full-stack AI-native data IDE
+  with visual workflow building, polyglot execution, and self-healing capabilities.
+</p>
+
+<div class="info-box tip">
+  <div class="info-box-title">Quick Start</div>
+  <p>
+    Install with <code>pip install rvbbit</code> and run your first cascade
+    with <code>rvbbit run examples/simple_flow.json --input '{"data": "test"}'</code>
+  </p>
+</div>
+
+<h2>What is RVBBIT?</h2>
+<p>
+  RVBBIT is a Python framework for building multi-step LLM workflows called <strong>Cascades</strong>.
+  Unlike traditional agentic frameworks, RVBBIT treats workflows as <strong>declarative configurations</strong>
+  that can mix LLM-powered intelligence with deterministic execution, human-in-the-loop checkpoints,
+  and polyglot code cells.
+</p>
+
+<h3>Key Philosophy</h3>
+<p>
+  Workflows (Cascades) are composed of <strong>Cells</strong>, where each cell can be:
+</p>
+<ul>
+  <li><strong>LLM-Powered</strong>: Traditional agent execution with tool calling and multi-turn conversations</li>
+  <li><strong>Deterministic</strong>: Direct tool invocation without LLM mediation for predictable operations</li>
+  <li><strong>Polyglot</strong>: Execute SQL, Python, JavaScript, Clojure, or nested cascades</li>
+  <li><strong>HITL Screens</strong>: Direct HTML rendering for human-in-the-loop checkpoints</li>
+  <li><strong>Hybrid</strong>: Mix all approaches in a single workflow</li>
+</ul>
+
+<h2>The Five Self-* Properties</h2>
+<p>RVBBIT implements five self-improving capabilities:</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:robot-outline"></iconify-icon></div>
+    <h4>Self-Orchestrating</h4>
+    <p>Manifest/Quartermaster system - workflows dynamically select tools based on context</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:test-tube"></iconify-icon></div>
+    <h4>Self-Testing</h4>
+    <p>Snapshot system - tests write themselves from real executions</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:chart-line"></iconify-icon></div>
+    <h4>Self-Optimizing</h4>
+    <p>Passive optimization - prompts improve automatically from usage data</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:wrench-outline"></iconify-icon></div>
+    <h4>Self-Healing</h4>
+    <p>Auto-fix - failed cells debug and repair themselves with LLM assistance</p>
+  </div>
+</div>
+
+<div class="feature-grid" style="grid-template-columns: 1fr;">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:creation"></iconify-icon></div>
+    <h4>Self-Building</h4>
+    <p>Calliope - workflows constructed through natural language conversation</p>
+  </div>
+</div>
+
+<h2>Core Architecture</h2>
+
+<h3>Cascades (Workflows)</h3>
+<p>
+  Cascades are JSON/YAML files that define multi-step workflows. Each cascade consists of:
+</p>
+<ul>
+  <li><strong>Metadata</strong>: ID, description, and input schema</li>
+  <li><strong>Cells</strong>: Individual execution stages with their own configuration</li>
+  <li><strong>State</strong>: Shared session state accessible across cells</li>
+  <li><strong>Handoffs</strong>: Dynamic routing between cells</li>
+</ul>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">YAML Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: my_workflow
+<span class="key">description</span>: Simple example cascade
+<span class="key">inputs_schema</span>:
+  query: <span class="str">"User's search query"</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: research
+    <span class="key">instructions</span>: <span class="str">"Research {{ input.query }} and summarize findings"</span>
+    <span class="key">traits</span>:
+      - brave_web_search
+    <span class="key">handoffs</span>: [analyze]
+
+  - <span class="key">name</span>: analyze
+    <span class="key">instructions</span>: <span class="str">"Analyze research and provide insights"</span>
+    <span class="key">context</span>:
+      <span class="key">from</span>: [research]</pre>
+  </div>
+</div>
+
+<h3>Cell Types</h3>
+<p>
+  Cells are the atomic units of execution. RVBBIT supports four primary cell types:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Cell Type</th>
+      <th>Configuration</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>LLM Cells</strong></td>
+      <td><code>instructions</code> + <code>traits</code></td>
+      <td>Agent tasks with tool calling</td>
+    </tr>
+    <tr>
+      <td><strong>Deterministic Cells</strong></td>
+      <td><code>tool</code> + <code>tool_inputs</code></td>
+      <td>Direct tool execution without LLM</td>
+    </tr>
+    <tr>
+      <td><strong>HITL Screen Cells</strong></td>
+      <td><code>htmx</code> (HTML template)</td>
+      <td>Human approval checkpoints</td>
+    </tr>
+    <tr>
+      <td><strong>SQL Mapping Cells</strong></td>
+      <td><code>for_each_row</code></td>
+      <td>Process each row from a query</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Installation</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Basic installation</span>
+pip install rvbbit
+
+<span class="cmt"># With local models support</span>
+pip install rvbbit[local-models]
+
+<span class="cmt"># From source</span>
+git clone https://github.com/rvbbit/rvbbit
+cd rvbbit/rvbbit
+pip install -e .</pre>
+  </div>
+</div>
+
+<h3>Required Environment Variables</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang config">Environment</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># LLM Provider (OpenRouter is default)</span>
+<span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-...</span>
+
+<span class="cmt"># ClickHouse (Required for logging and SQL features)</span>
+<span class="key">RVBBIT_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
+<span class="key">RVBBIT_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
+<span class="key">RVBBIT_CLICKHOUSE_DATABASE</span>=<span class="str">rvbbit</span>
+
+<span class="cmt"># Optional: Customize models</span>
+<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">x-ai/grok-4.1-fast</span>
+<span class="key">RVBBIT_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span></pre>
+  </div>
+</div>
+
+<div class="info-box warning">
+  <div class="info-box-title">Required Infrastructure</div>
+  <p>
+    RVBBIT requires a running ClickHouse instance. There is no embedded fallback.
+    See the <a href="https://clickhouse.com/docs/en/getting-started/install" target="_blank">ClickHouse installation guide</a>
+    to set up locally.
+  </p>
+</div>
+
+<h2>Quick Start Examples</h2>
+
+<h3>1. Run a Cascade</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang cli">CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Run with inline JSON input</span>
+rvbbit run examples/simple_flow.json --input <span class="str">'{"data": "test"}'</span>
+
+<span class="cmt"># Run with input file</span>
+rvbbit run examples/simple_flow.json --input input.json
+
+<span class="cmt"># Run with specific session ID</span>
+rvbbit run examples/simple_flow.json \
+  --input <span class="str">'{"key": "value"}'</span> \
+  --session my_session_123</pre>
+  </div>
+</div>
+
+<h3>2. Query Execution Logs</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL via CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Query ClickHouse via CLI</span>
+rvbbit sql query <span class="str">"SELECT COUNT(*) FROM all_data"</span>
+
+<span class="cmt"># View recent sessions with costs</span>
+rvbbit sql query <span class="str">"SELECT session_id, phase_name, cost
+  FROM all_data
+  WHERE cost > 0
+  LIMIT 10"</span>
+
+<span class="cmt"># Export to JSON</span>
+rvbbit sql query <span class="str">"SELECT * FROM all_data LIMIT 5"</span> --format json</pre>
+  </div>
+</div>
+
+<h3>3. Launch Studio Web UI</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Web Dashboard</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Production mode</span>
+rvbbit serve studio --port 5050
+
+<span class="cmt"># Development mode (hot reload)</span>
+rvbbit serve studio --dev
+
+<span class="cmt"># Access at http://localhost:5050</span>
+<span class="cmt"># Features:</span>
+<span class="cmt">#   - /sql-query: SQL IDE + Polyglot Notebooks</span>
+<span class="cmt">#   - /playground: Visual cascade builder</span>
+<span class="cmt">#   - /sessions: Session explorer</span>
+<span class="cmt">#   - /calliope: Conversational cascade builder</span></pre>
+  </div>
+</div>
+
+<h2>Semantic SQL</h2>
+<p>
+  One of RVBBIT's most powerful features is <strong>Semantic SQL</strong> -
+  the ability to use natural language and LLM-powered functions directly in SQL queries.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Semantic SQL Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Vector search with natural language</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs
+<span class="kw">WHERE</span> title <span class="fn">SIMILAR_TO</span> <span class="str">'sustainability report'</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cmt">-- LLM aggregation</span>
+<span class="kw">SELECT</span>
+  category,
+  <span class="fn">LLM_SUMMARIZE</span>(text) <span class="kw">AS</span> summary
+<span class="kw">FROM</span> articles
+<span class="kw">GROUP BY</span> category;
+
+<span class="cmt">-- Semantic grouping</span>
+<span class="kw">SELECT</span>
+  <span class="fn">topics</span>(title, <span class="num">5</span>) <span class="kw">AS</span> topic,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> count
+<span class="kw">FROM</span> documents
+<span class="kw">GROUP BY</span> topic;</pre>
+  </div>
+</div>
+
+<p>
+  These operators are powered by <strong>cascade-driven rewrites</strong>.
+  You can even create custom operators without modifying Python code -
+  just define a cascade file with operator patterns!
+</p>
+
+<h2>Next Steps</h2>
+<p>Explore the documentation to learn more:</p>
+<ul>
+  <li><a href="#core-concepts" data-link>Core Concepts</a> - Understand Cascades, Cells, State, and Context</li>
+  <li><a href="#cascade-dsl" data-link>Cascade DSL Reference</a> - Complete configuration guide</li>
+  <li><a href="#cell-types" data-link>Cell Types</a> - Deep dive into LLM, Deterministic, HITL, and Polyglot cells</li>
+  <li><a href="#semantic-sql" data-link>Semantic SQL</a> - Learn about SQL operators and rewrites</li>
+  <li><a href="#candidates" data-link>Candidates & Evaluation</a> - Parallel execution and multi-model benchmarking</li>
+  <li><a href="#tools" data-link>Tools (Traits)</a> - Six types of tools and how to create custom ones</li>
+</ul>

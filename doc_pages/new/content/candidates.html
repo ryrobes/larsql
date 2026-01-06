@@ -1,0 +1,225 @@
+<h1>Candidates & Evaluation</h1>
+<p class="lead">
+  Run cells multiple times in parallel to find the best output.
+  Use LLM evaluators, human evaluation, or aggregate all results.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#evaluators">Evaluators</a></li>
+    <li><a href="#human-eval">Human Evaluation</a></li>
+    <li><a href="#aggregate">Aggregate Mode</a></li>
+    <li><a href="#reforge">Reforge</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  The candidates system (formerly "soundings") allows you to:
+</p>
+
+<ul>
+  <li>Run a cell N times in parallel</li>
+  <li>Evaluate outputs to pick the best one</li>
+  <li>Use different models per candidate</li>
+  <li>Collect human feedback</li>
+  <li>Aggregate results instead of picking a winner</li>
+</ul>
+
+<h2 id="configuration">Configuration</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Basic Candidates</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: generate_copy
+  <span class="key">instructions</span>: <span class="str">"Write marketing copy for {{ input.product }}"</span>
+  <span class="key">candidates</span>:
+    <span class="key">factor</span>: <span class="num">5</span>  <span class="cmt"># Run 5 times</span>
+    <span class="key">evaluator_instructions</span>: <span class="str">|
+      Evaluate these marketing copies. Consider:
+      - Clarity and persuasiveness
+      - Brand alignment
+      - Call-to-action effectiveness
+      Pick the best one.
+    </span></pre>
+  </div>
+</div>
+
+<h3>Multi-Model Candidates</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Different Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: analyze_data
+  <span class="key">instructions</span>: <span class="str">"Analyze the sales data..."</span>
+  <span class="key">candidates</span>:
+    <span class="key">models</span>:
+      - <span class="str">anthropic/claude-sonnet-4</span>
+      - <span class="str">openai/gpt-4o</span>
+      - <span class="str">google/gemini-2.5-pro</span>
+    <span class="key">evaluator_instructions</span>: <span class="str">|
+      Compare the analyses. Pick the most thorough
+      and accurate one.
+    </span></pre>
+  </div>
+</div>
+
+<h2 id="evaluators">Evaluators</h2>
+
+<h3>LLM Evaluator (Default)</h3>
+
+<p>
+  An LLM reviews all outputs and picks the best:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">LLM Evaluator</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">5</span>
+  <span class="key">evaluator</span>: llm  <span class="cmt"># Default</span>
+  <span class="key">evaluator_model</span>: <span class="str">anthropic/claude-opus-4</span>  <span class="cmt"># Optional override</span>
+  <span class="key">evaluator_instructions</span>: <span class="str">|
+    Evaluate on: accuracy, clarity, completeness.
+    Explain your reasoning.
+  </span></pre>
+  </div>
+</div>
+
+<h3>Custom Validator Evaluator</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Custom Evaluator</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">3</span>
+  <span class="key">evaluator</span>:
+    <span class="key">python</span>: <span class="str">|
+      # outputs is a list of all candidate outputs
+      scores = [len(o.get('analysis', '')) for o in outputs]
+      best_idx = scores.index(max(scores))
+      return {"winner": best_idx, "scores": scores}
+    </span></pre>
+  </div>
+</div>
+
+<h2 id="human-eval">Human Evaluation</h2>
+
+<p>
+  Present candidates to humans for selection:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Human Evaluation</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">5</span>
+  <span class="key">evaluator</span>: human
+  <span class="key">human_eval</span>:
+    <span class="key">presentation</span>: side_by_side  <span class="cmt"># tabbed, carousel, diff, tournament</span>
+    <span class="key">selection_mode</span>: pick_one    <span class="cmt"># rank_all, rate_each</span>
+    <span class="key">show_metadata</span>: <span class="kw">true</span>
+    <span class="key">require_reasoning</span>: <span class="kw">false</span>
+    <span class="key">capture_for_training</span>: <span class="kw">true</span>  <span class="cmt"># Save choices for optimization</span>
+    <span class="key">timeout_seconds</span>: <span class="num">3600</span>
+    <span class="key">on_timeout</span>: llm_fallback</pre>
+  </div>
+</div>
+
+<h3>Hybrid Evaluation</h3>
+
+<p>
+  LLM prefilters, human makes final choice:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Hybrid</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">10</span>
+  <span class="key">evaluator</span>: hybrid
+  <span class="key">llm_prefilter</span>: <span class="num">3</span>  <span class="cmt"># LLM picks top 3</span>
+  <span class="key">human_eval</span>:
+    <span class="key">presentation</span>: tabbed
+    <span class="key">selection_mode</span>: pick_one</pre>
+  </div>
+</div>
+
+<h2 id="aggregate">Aggregate Mode</h2>
+
+<p>
+  Instead of picking a winner, combine all outputs:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Aggregate</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: brainstorm
+  <span class="key">instructions</span>: <span class="str">"Generate ideas for {{ input.topic }}"</span>
+  <span class="key">candidates</span>:
+    <span class="key">factor</span>: <span class="num">5</span>
+    <span class="key">mode</span>: aggregate  <span class="cmt"># Combine all outputs</span>
+    <span class="key">aggregator_instructions</span>: <span class="str">|
+      Merge these idea lists. Remove duplicates,
+      organize by theme, and rank by potential impact.
+    </span></pre>
+  </div>
+</div>
+
+<h2 id="reforge">Reforge</h2>
+
+<p>
+  Iteratively refine the winning candidate:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Reforge</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">3</span>
+  <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best draft"</span>
+  <span class="key">reforge</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">max_iterations</span>: <span class="num">3</span>
+    <span class="key">instructions</span>: <span class="str">|
+      Improve this output. Address:
+      {{ evaluation_feedback }}
+    </span>
+    <span class="key">stop_condition</span>: <span class="str">"score >= 8"</span></pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Cost Considerations</div>
+  <p>
+    Candidates multiply token usage. A <code>factor: 5</code> with reforge can
+    use 5-15x the tokens of a single run. Use wisely for high-value tasks.
+  </p>
+</div>
+
+<hr>
+
+<h2>Next: Tools (Traits)</h2>
+<p>
+  Learn about the tool system: <a href="#tools" data-link>Tools (Traits)</a>.
+</p>

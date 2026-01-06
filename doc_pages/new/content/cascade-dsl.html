@@ -1,0 +1,284 @@
+<h1>Cascade DSL Reference</h1>
+<p class="lead">
+  Complete reference for the Cascade configuration DSL. All properties, types,
+  and examples for defining workflows.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#cascade-level">Cascade-Level Properties</a></li>
+    <li><a href="#cell-config">Cell Configuration</a></li>
+    <li><a href="#jinja2">Jinja2 Templating</a></li>
+    <li><a href="#routing">Routing & Handoffs</a></li>
+    <li><a href="#triggers">Triggers</a></li>
+  </ul>
+</div>
+
+<h2 id="cascade-level">Cascade-Level Properties</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Required</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>cascade_id</code></td>
+      <td>string</td>
+      <td>Yes</td>
+      <td>Unique identifier for the cascade</td>
+    </tr>
+    <tr>
+      <td><code>description</code></td>
+      <td>string</td>
+      <td>No</td>
+      <td>Human-readable description</td>
+    </tr>
+    <tr>
+      <td><code>inputs_schema</code></td>
+      <td>object</td>
+      <td>No</td>
+      <td>Parameter definitions with descriptions</td>
+    </tr>
+    <tr>
+      <td><code>cells</code></td>
+      <td>array</td>
+      <td>Yes</td>
+      <td>List of cell configurations</td>
+    </tr>
+    <tr>
+      <td><code>research_db</code></td>
+      <td>string</td>
+      <td>No</td>
+      <td>DuckDB database name for research tools</td>
+    </tr>
+    <tr>
+      <td><code>triggers</code></td>
+      <td>array</td>
+      <td>No</td>
+      <td>Scheduling/event triggers</td>
+    </tr>
+    <tr>
+      <td><code>narrator</code></td>
+      <td>object</td>
+      <td>No</td>
+      <td>Voice narration configuration</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="cell-config">Cell Configuration</h2>
+
+<h3>Common Properties</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cell Structure</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: cell_name           <span class="cmt"># Required: unique identifier</span>
+    <span class="key">instructions</span>: <span class="str">"..."</span>       <span class="cmt"># LLM cells: system prompt</span>
+    <span class="key">tool</span>: tool_name            <span class="cmt"># Deterministic cells: direct tool</span>
+    <span class="key">traits</span>: [tool1, tool2]     <span class="cmt"># Available tools for this cell</span>
+    <span class="key">model</span>: <span class="str">"provider/model"</span>   <span class="cmt"># Override default model</span>
+    <span class="key">handoffs</span>: [next1, next2]   <span class="cmt"># Possible next cells</span>
+    <span class="key">rules</span>:                     <span class="cmt"># Execution constraints</span>
+      <span class="key">max_turns</span>: <span class="num">5</span>
+      <span class="key">max_attempts</span>: <span class="num">2</span>
+    <span class="key">context</span>:                   <span class="cmt"># Inter-cell context</span>
+      <span class="key">from</span>: [other_cell]
+    <span class="key">wards</span>: []                  <span class="cmt"># Validation rules</span>
+    <span class="key">candidates</span>: {}             <span class="cmt"># Parallel execution config</span></pre>
+  </div>
+</div>
+
+<h3>LLM Cell Properties</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>instructions</code></td>
+      <td>string</td>
+      <td>Jinja2-templated system prompt</td>
+    </tr>
+    <tr>
+      <td><code>traits</code></td>
+      <td>array | "manifest"</td>
+      <td>Tools available or dynamic selection</td>
+    </tr>
+    <tr>
+      <td><code>model</code></td>
+      <td>string</td>
+      <td>Model override (e.g., "anthropic/claude-sonnet-4")</td>
+    </tr>
+    <tr>
+      <td><code>rules.max_turns</code></td>
+      <td>integer</td>
+      <td>Max conversation turns (default: 10)</td>
+    </tr>
+    <tr>
+      <td><code>rules.loop_until</code></td>
+      <td>string</td>
+      <td>Condition to repeat cell execution</td>
+    </tr>
+    <tr>
+      <td><code>intra_context</code></td>
+      <td>object</td>
+      <td>Within-cell context management</td>
+    </tr>
+    <tr>
+      <td><code>output_schema</code></td>
+      <td>object</td>
+      <td>JSON schema for structured output</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Deterministic Cell Properties</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Property</th>
+      <th>Type</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>tool</code></td>
+      <td>string</td>
+      <td>Tool to invoke directly</td>
+    </tr>
+    <tr>
+      <td><code>tool_inputs</code></td>
+      <td>object</td>
+      <td>Jinja2-templated inputs for the tool</td>
+    </tr>
+    <tr>
+      <td><code>timeout</code></td>
+      <td>string</td>
+      <td>Execution timeout (e.g., "5m", "30s")</td>
+    </tr>
+    <tr>
+      <td><code>on_error</code></td>
+      <td>string | object</td>
+      <td>Error handling ("auto_fix", cell name, or config)</td>
+    </tr>
+    <tr>
+      <td><code>retry</code></td>
+      <td>object</td>
+      <td>Retry configuration (max_attempts, backoff)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="jinja2">Jinja2 Templating</h2>
+
+<p>
+  All string values support Jinja2 templating with these variables:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Available Variables</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Input data (from cascade invocation)</span>
+{{ input.variable_name }}
+
+<span class="cmt"># Persistent session state</span>
+{{ state.variable_name }}
+
+<span class="cmt"># Previous cell outputs</span>
+{{ outputs.cell_name }}
+{{ outputs.cell_name.field }}
+
+<span class="cmt"># Execution context</span>
+{{ lineage }}
+{{ history }}
+
+<span class="cmt"># Candidate context</span>
+{{ sounding_index }}      <span class="cmt"># Current candidate (0, 1, 2...)</span>
+{{ sounding_factor }}     <span class="cmt"># Total candidates</span>
+{{ is_sounding }}         <span class="cmt"># True when running as candidate</span>
+
+<span class="cmt"># HITL context</span>
+{{ checkpoint_id }}</pre>
+  </div>
+</div>
+
+<h2 id="routing">Routing & Handoffs</h2>
+
+<h3>Static Handoffs</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Static Routing</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">handoffs</span>: [analyze, report]  <span class="cmt"># LLM chooses via route_to tool</span></pre>
+  </div>
+</div>
+
+<h3>Conditional Routing</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Conditional Routing</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">routing</span>:
+  <span class="key">success</span>: process_data
+  <span class="key">error</span>: handle_error
+  <span class="key">default</span>: fallback_cell</pre>
+  </div>
+</div>
+
+<h2 id="triggers">Triggers</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Trigger Types</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">triggers</span>:
+  <span class="cmt"># Cron-based scheduling</span>
+  - <span class="key">name</span>: daily_run
+    <span class="key">type</span>: cron
+    <span class="key">schedule</span>: <span class="str">"0 6 * * *"</span>
+    <span class="key">timezone</span>: America/New_York
+    <span class="key">inputs</span>: {mode: full}
+
+  <span class="cmt"># Sensor-based (polling)</span>
+  - <span class="key">name</span>: on_data_ready
+    <span class="key">type</span>: sensor
+    <span class="key">check</span>: <span class="str">"python:sensors.table_freshness"</span>
+    <span class="key">args</span>: {table: raw.events, max_age_minutes: <span class="num">60</span>}
+    <span class="key">poll_interval</span>: 5m
+
+  <span class="cmt"># Webhook</span>
+  - <span class="key">name</span>: on_webhook
+    <span class="key">type</span>: webhook
+    <span class="key">auth</span>: <span class="str">"hmac:${WEBHOOK_SECRET}"</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: Cell Types</h2>
+<p>
+  Learn more about the different <a href="#cell-types" data-link>Cell Types</a>
+  and their specific configurations.
+</p>

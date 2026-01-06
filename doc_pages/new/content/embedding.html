@@ -1,0 +1,184 @@
+<h1>Vector Search & Embedding</h1>
+<p class="lead">
+  Index your data with embeddings and perform semantic similarity search.
+  RVBBIT integrates vector search directly into SQL queries.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#creating">Creating Embeddings</a></li>
+    <li><a href="#searching">Vector Search</a></li>
+    <li><a href="#hybrid">Hybrid Search</a></li>
+    <li><a href="#cli">CLI Commands</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  RVBBIT's embedding system allows you to:
+</p>
+
+<ul>
+  <li>Index text columns from any table with vector embeddings</li>
+  <li>Search using natural language with <code>SIMILAR_TO</code> operator</li>
+  <li>Combine vector search with traditional SQL filters</li>
+  <li>Use hybrid search for best results</li>
+</ul>
+
+<h2 id="creating">Creating Embeddings</h2>
+
+<h3>Via SQL</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">EMBED Statement</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Index a column for vector search</span>
+<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> published = <span class="kw">true</span>;
+
+<span class="cmt">-- With custom model and batch size</span>
+<span class="kw">RVBBIT EMBED</span> documents.summary
+<span class="kw">FROM</span> documents
+<span class="kw">WITH</span> (
+  model = <span class="str">'qwen/qwen3-embedding-8b'</span>,
+  batch_size = <span class="num">100</span>
+);</pre>
+  </div>
+</div>
+
+<h3>Via CLI</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Check embedding status</span>
+rvbbit embed status
+
+<span class="cmt"># Run embedding job</span>
+rvbbit embed run --batch-size <span class="num">50</span>
+
+<span class="cmt"># Preview without executing</span>
+rvbbit embed run --dry-run
+
+<span class="cmt"># Check costs</span>
+rvbbit embed costs</pre>
+  </div>
+</div>
+
+<h2 id="searching">Vector Search</h2>
+
+<h3>SIMILAR_TO Operator</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Vector Search</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Basic semantic search</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs
+<span class="kw">WHERE</span> title <span class="fn">SIMILAR_TO</span> <span class="str">'sustainability report'</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cmt">-- Combined with filters</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> content <span class="fn">SIMILAR_TO</span> <span class="str">'machine learning best practices'</span>
+  <span class="kw">AND</span> published_date > <span class="str">'2024-01-01'</span>
+  <span class="kw">AND</span> category = <span class="str">'technology'</span>
+<span class="kw">LIMIT</span> <span class="num">20</span>;</pre>
+  </div>
+</div>
+
+<h3>VECTOR_SEARCH Function</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Function Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- VECTOR_SEARCH(query, table.column, limit[, min_score])</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">VECTOR_SEARCH</span>(<span class="str">'climate change impact'</span>, papers.abstract, <span class="num">50</span>, <span class="num">0.7</span>)
+<span class="kw">ORDER BY</span> _score <span class="kw">DESC</span>;</pre>
+  </div>
+</div>
+
+<h2 id="hybrid">Hybrid Search</h2>
+
+<p>
+  Combine vector search with keyword matching for best results:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Hybrid Search</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Hybrid combines vector + keyword scoring</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">HYBRID_SEARCH</span>(<span class="str">'kubernetes deployment strategies'</span>, docs.content, <span class="num">25</span>);
+
+<span class="cmt">-- Keyword-only search (when embeddings not needed)</span>
+<span class="kw">SELECT</span> *
+<span class="kw">FROM</span> <span class="fn">KEYWORD_SEARCH</span>(<span class="str">'error 503 timeout'</span>, logs.message, <span class="num">100</span>);</pre>
+  </div>
+</div>
+
+<h2 id="cli">CLI Commands</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Embedding Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># View embedding status and statistics</span>
+rvbbit embed status
+
+<span class="cmt"># Run embedding jobs</span>
+rvbbit embed run --batch-size <span class="num">50</span> --dry-run
+rvbbit embed run
+
+<span class="cmt"># View embedding costs</span>
+rvbbit embed costs
+
+<span class="cmt"># Clear embeddings for a table</span>
+rvbbit embed clear --table articles</pre>
+  </div>
+</div>
+
+<h3>Configuration</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang config">Environment Variables</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Default embedding model</span>
+<span class="key">RVBBIT_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span>
+
+<span class="cmt"># Batch size for embedding jobs</span>
+<span class="key">RVBBIT_EMBED_BATCH_SIZE</span>=<span class="num">50</span></pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Performance Tip</div>
+  <p>
+    For large datasets, run embedding jobs in batches during off-peak hours.
+    Use <code>--dry-run</code> first to estimate time and cost.
+  </p>
+</div>
+
+<hr>
+
+<h2>Next: Candidates & Evaluation</h2>
+<p>
+  Learn about parallel execution with <a href="#candidates" data-link>Candidates</a>.
+</p>

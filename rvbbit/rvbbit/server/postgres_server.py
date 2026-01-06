@@ -746,6 +746,79 @@ class ClientConnection:
             print(f"[{self.session_id}]   ⚠️  Auto-materialize failed: {e}")
             return None
 
+    def _extract_rvbbit_hints(self, query: str) -> tuple:
+        """
+        Extract RVBBIT hint comments from query.
+
+        Hints are embedded as /*RVBBIT:key=value*/ comments by the sql_rewriter.
+        This method extracts them and returns a clean query for execution.
+
+        Returns:
+            (clean_query, hints_dict) where hints_dict contains extracted hints
+
+        Example:
+            Input:  "/*RVBBIT:save_as=players*/ SELECT * FROM emails"
+            Output: ("SELECT * FROM emails", {"save_as": "players"})
+        """
+        import re
+        hints = {}
+
+        # Match /*RVBBIT:key=value*/ patterns
+        # Value can be identifier or dotted identifier (schema.table)
+        pattern = r'/\*RVBBIT:(\w+)=([a-zA-Z_][a-zA-Z0-9_.]*)\*/'
+
+        for match in re.finditer(pattern, query):
+            hints[match.group(1)] = match.group(2)
+
+        # Strip hint comments from query
+        clean_query = re.sub(pattern, '', query).strip()
+
+        return clean_query, hints
+
+    def _save_result_as(self, name: str, result_df):
+        """
+        Save query result as a named table (arrow alias syntax).
+
+        This creates a full table copy, not a view. The table persists
+        in the session database for later reference.
+
+        Args:
+            name: Table name, optionally with schema (e.g., "players" or "enron.players")
+            result_df: pandas DataFrame with query results
+
+        Handles:
+            - Simple names: "players" -> creates table in default schema
+            - Dotted names: "enron.players" -> creates schema if needed, then table
+        """
+        if result_df is None or len(result_df) == 0:
+            print(f"[{self.session_id}]   ⚠️  Arrow save skipped: empty result")
+            return
+
+        try:
+            # Parse schema.table or just table
+            if '.' in name:
+                schema, table = name.rsplit('.', 1)
+                self.duckdb_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+                full_name = name
+            else:
+                full_name = name
+
+            # Register DataFrame and create table
+            # Use hash of name for temp table to avoid collisions
+            temp_name = f"_rvbbit_arrow_{hash(name) & 0xFFFFFF:06x}"
+            self.duckdb_conn.register(temp_name, result_df)
+
+            try:
+                # Drop existing table if any, then create new one
+                self.duckdb_conn.execute(f"DROP TABLE IF EXISTS {full_name}")
+                self.duckdb_conn.execute(f"CREATE TABLE {full_name} AS SELECT * FROM {temp_name}")
+                print(f"[{self.session_id}]   📌 Arrow saved: {full_name} ({len(result_df)} rows, {len(result_df.columns)} cols)")
+            finally:
+                self.duckdb_conn.unregister(temp_name)
+
+        except Exception as e:
+            print(f"[{self.session_id}]   ⚠️  Arrow save failed for '{name}': {e}")
+
     def _replay_attachments(self):
         """
         Re-execute ATTACH commands from metadata table.
@@ -2005,7 +2078,12 @@ class ClientConnection:
 
             # Rewrite RVBBIT MAP/RUN syntax to standard SQL
             # This strips annotations/comments, so prewarm check must happen first
+            # Arrow syntax (-> table_name) is converted to hint comments here
             query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
+
+            # Extract RVBBIT hints (e.g., save_as from arrow syntax)
+            # Hints are embedded as /*RVBBIT:key=value*/ comments
+            query, rvbbit_hints = self._extract_rvbbit_hints(query)
 
             # Execute on DuckDB (with defensive None check)
             try:
@@ -2028,6 +2106,10 @@ class ClientConnection:
 
             # Auto-materialize for query insurance (uses original query for detection)
             _result_location = self._maybe_materialize_result(original_query, result_df, _current_query_id)
+
+            # Arrow syntax: save result as named table if save_as hint present
+            if 'save_as' in rvbbit_hints:
+                self._save_result_as(rvbbit_hints['save_as'], result_df)
 
             # Send results back to client (with current transaction status)
             send_query_results(self.sock, result_df, self.transaction_status)

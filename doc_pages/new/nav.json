@@ -1,0 +1,34 @@
+{
+  "sections": [
+    {
+      "title": "Getting Started",
+      "items": [
+        { "id": "overview", "title": "Overview", "file": "overview.html" },
+        { "id": "core-concepts", "title": "Core Concepts", "file": "core-concepts.html" }
+      ]
+    },
+    {
+      "title": "Cascade DSL",
+      "items": [
+        { "id": "cascade-dsl", "title": "DSL Reference", "file": "cascade-dsl.html" },
+        { "id": "cell-types", "title": "Cell Types", "file": "cell-types.html" },
+        { "id": "validation", "title": "Validation (Wards)", "file": "validation.html" },
+        { "id": "context", "title": "Context Management", "file": "context.html" }
+      ]
+    },
+    {
+      "title": "Features",
+      "items": [
+        { "id": "semantic-sql", "title": "Semantic SQL", "file": "semantic-sql.html" },
+        { "id": "embedding", "title": "Vector Search & Embedding", "file": "embedding.html" },
+        { "id": "candidates", "title": "Candidates & Evaluation", "file": "candidates.html" },
+        { "id": "tools", "title": "Tools (Traits)", "file": "tools.html" },
+        { "id": "mcp", "title": "MCP Integration", "file": "mcp.html" }
+      ]
+    }
+  ],
+  "externalLinks": [
+    { "title": "Home", "url": "../landing_page/v3/index.html" },
+    { "title": "GitHub", "url": "https://github.com/rvbbit/rvbbit" }
+  ]
+}

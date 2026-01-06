@@ -64,6 +64,41 @@ class RVBBITEmbedStatement:
 
 
 # ============================================================================
+# Arrow/Shadow Alias Syntax (-> table_name / SHADOW AS table_name)
+# ============================================================================
+
+def _extract_arrow_alias(query: str) -> Tuple[str, Optional[str]]:
+    """
+    Extract result alias suffix from query end.
+
+    Supported syntaxes:
+        SELECT ... -> players;              (arrow syntax)
+        SELECT ... -> my_schema.players;    (arrow with schema)
+        SELECT ... SHADOW AS players;       (SQL-style syntax)
+        SELECT ... shadow as players;       (case-insensitive)
+
+    Returns:
+        (clean_query, alias_name) - alias_name is None if no alias found
+
+    The alias syntax allows users to name query results for later reference.
+    Results are saved as a full table copy (not a view).
+    """
+    # Pattern 1: Arrow syntax (-> identifier)
+    arrow_pattern = r'^(.*?)\s*->\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)\s*;?\s*$'
+    match = re.match(arrow_pattern, query, re.DOTALL)
+    if match:
+        return match.group(1).strip(), match.group(2)
+
+    # Pattern 2: SHADOW AS syntax (case-insensitive)
+    shadow_pattern = r'^(.*?)\s+SHADOW\s+AS\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)\s*;?\s*$'
+    match = re.match(shadow_pattern, query, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip(), match.group(2)
+
+    return query, None
+
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 
@@ -72,13 +107,18 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     Detect and rewrite RVBBIT extended SQL syntax.
 
     Handles:
-    1. RVBBIT MAP/RUN statements
-    2. Dimension functions in GROUP BY (TOPICS, SENTIMENT, etc.)
-    3. Semantic SQL operators (MEANS, ABOUT, ~, etc.)
-    4. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
+    1. Arrow alias syntax (-> table_name) for result persistence
+    2. RVBBIT MAP/RUN statements
+    3. Dimension functions in GROUP BY (TOPICS, SENTIMENT, etc.)
+    4. Semantic SQL operators (MEANS, ABOUT, ~, etc.)
+    5. LLM aggregate functions (LLM_SUMMARIZE, LLM_CLASSIFY, etc.)
 
     These can be combined - a query can have multiple features.
     """
+    # === ARROW ALIAS: Extract -> table_name before any processing ===
+    # This must happen first, on the raw query, before normalization
+    query, arrow_alias = _extract_arrow_alias(query.strip())
+
     # Normalize query first (remove comments, normalize whitespace)
     normalized = query.strip()
     lines = [line.split('--')[0].strip() for line in normalized.split('\n')]
@@ -165,6 +205,11 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     # - Aggregate functions (SUMMARIZE, CLASSIFY)
     # All patterns loaded from cascades - no hardcoded lists!
     result = _rewrite_all_operators_unified(result)
+
+    # === ARROW ALIAS: Inject hint comment if arrow was present ===
+    # The hint travels with the query and gets extracted before execution
+    if arrow_alias:
+        result = f"/*RVBBIT:save_as={arrow_alias}*/ {result}"
 
     return result
 
