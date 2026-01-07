@@ -707,15 +707,27 @@
     <span class="code-block-lang">PARSE_NAME Examples</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt">-- Parse names</span>
+    <pre><span class="cmt">-- Parse names with -&gt;&gt; operator</span>
 <span class="kw">SELECT</span>
-  <span class="fn">json_extract</span>(<span class="fn">PARSE_NAME</span>(full_name), <span class="str">'$.first'</span>) <span class="kw">AS</span> first_name,
-  <span class="fn">json_extract</span>(<span class="fn">PARSE_NAME</span>(full_name), <span class="str">'$.last'</span>) <span class="kw">AS</span> last_name
+  <span class="fn">PARSE_NAME</span>(full_name) -&gt;&gt; <span class="str">'first'</span> <span class="kw">AS</span> first_name,
+  <span class="fn">PARSE_NAME</span>(full_name) -&gt;&gt; <span class="str">'last'</span> <span class="kw">AS</span> last_name
 <span class="kw">FROM</span> contacts;
 
-<span class="cmt">-- Returns: {"prefix": "Dr.", "first": "John", "middle": "Q", "last": "Smith", "suffix": "Jr."}</span></pre>
+<span class="cmt">-- Returns JSON: {"prefix": "Dr.", "first": "John", "middle": "Q", "last": "Smith", "suffix": "Jr."}</span>
+<span class="cmt">-- Available fields: prefix, first, middle, last, suffix, nickname, formatted</span></pre>
   </div>
 </div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON</td></tr>
+    <tr><td>Args</td><td><code>(name VARCHAR)</code></td></tr>
+  </tbody>
+</table>
 
 <h3>PARSE_ADDRESS</h3>
 <p>
@@ -727,17 +739,68 @@
     <span class="code-block-lang">PARSE_ADDRESS Examples</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt">-- Parse addresses</span>
+    <pre><span class="cmt">-- Parse addresses with -&gt;&gt; operator</span>
 <span class="kw">SELECT</span>
-  <span class="fn">json_extract</span>(<span class="fn">PARSE_ADDRESS</span>(addr), <span class="str">'$.city'</span>) <span class="kw">AS</span> city,
-  <span class="fn">json_extract</span>(<span class="fn">PARSE_ADDRESS</span>(addr), <span class="str">'$.state'</span>) <span class="kw">AS</span> state
-<span class="kw">FROM</span> customers;</pre>
+  <span class="fn">PARSE_ADDRESS</span>(addr) -&gt;&gt; <span class="str">'city'</span> <span class="kw">AS</span> city,
+  <span class="fn">PARSE_ADDRESS</span>(addr) -&gt;&gt; <span class="str">'state'</span> <span class="kw">AS</span> state,
+  <span class="fn">PARSE_ADDRESS</span>(addr) -&gt;&gt; <span class="str">'zip'</span> <span class="kw">AS</span> zip
+<span class="kw">FROM</span> customers;
+
+<span class="cmt">-- Available fields: street_number, street_name, unit_number, city, state, zip, country, formatted</span></pre>
   </div>
 </div>
 
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON</td></tr>
+    <tr><td>Args</td><td><code>(address VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>PARSE_PHONE</h3>
+<p>
+  Parse phone numbers into structured components and normalized formats.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">PARSE_PHONE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Parse phone numbers with -&gt;&gt; operator</span>
+<span class="kw">SELECT</span>
+  <span class="fn">PARSE_PHONE</span>(phone) -&gt;&gt; <span class="str">'e164'</span> <span class="kw">AS</span> e164_format,
+  <span class="fn">PARSE_PHONE</span>(phone) -&gt;&gt; <span class="str">'national'</span> <span class="kw">AS</span> national_format,
+  <span class="fn">PARSE_PHONE</span>(phone) -&gt;&gt; <span class="str">'is_valid'</span> <span class="kw">AS</span> valid
+<span class="kw">FROM</span> contacts;
+
+<span class="cmt">-- Specify default country for numbers without country code</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE_PHONE</span>(phone, <span class="str">'GB'</span>) -&gt;&gt; <span class="str">'international'</span>
+<span class="kw">FROM</span> uk_customers;
+
+<span class="cmt">-- Available fields: country_code, area_code, exchange, subscriber, extension,</span>
+<span class="cmt">--   e164, national, international, is_valid, type</span></pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON</td></tr>
+    <tr><td>Args</td><td><code>(phone VARCHAR, default_country VARCHAR = 'US')</code></td></tr>
+  </tbody>
+</table>
+
 <h3>PARSE_DATE</h3>
 <p>
-  Parse any date format. Handles "January 15, 2024", "01/15/24", "2024-01-15", etc.
+  Parse any date format. Handles "January 15, 2024", "01/15/24", "2024-01-15", "March 2024", "Q1 2024", etc.
 </p>
 
 <div class="code-block">
@@ -745,15 +808,32 @@
     <span class="code-block-lang">PARSE_DATE Examples</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt">-- Parse various date formats</span>
-<span class="kw">SELECT</span> <span class="fn">PARSE_DATE</span>(date_text, <span class="str">'iso'</span>) <span class="kw">AS</span> iso_date
+    <pre><span class="cmt">-- Parse dates with -&gt;&gt; operator</span>
+<span class="kw">SELECT</span>
+  <span class="fn">PARSE_DATE</span>(date_text) -&gt;&gt; <span class="str">'iso'</span> <span class="kw">AS</span> iso_date,
+  <span class="fn">PARSE_DATE</span>(date_text) -&gt;&gt; <span class="str">'year'</span> <span class="kw">AS</span> year,
+  <span class="fn">PARSE_DATE</span>(date_text) -&gt;&gt; <span class="str">'day_of_week'</span> <span class="kw">AS</span> day
 <span class="kw">FROM</span> events;
 
-<span class="cmt">-- Extract specific component</span>
-<span class="kw">SELECT</span> <span class="fn">PARSE_DATE</span>(created_at, <span class="str">'year'</span>) <span class="kw">AS</span> year
-<span class="kw">FROM</span> records;</pre>
+<span class="cmt">-- Handle ambiguous formats (US vs EU)</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE_DATE</span>(date_text, <span class="str">'dmy'</span>) -&gt;&gt; <span class="str">'iso'</span>
+<span class="kw">FROM</span> eu_records;
+
+<span class="cmt">-- Available fields: year, month, day, hour, minute, second, timezone,</span>
+<span class="cmt">--   iso, iso_datetime, formatted, day_of_week, quarter, is_approximate, is_valid</span></pre>
   </div>
 </div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>JSON</td></tr>
+    <tr><td>Args</td><td><code>(date_text VARCHAR, prefer_format VARCHAR = 'mdy')</code></td></tr>
+  </tbody>
+</table>
 
 <h3>SMART_JSON / -></h3>
 <p>

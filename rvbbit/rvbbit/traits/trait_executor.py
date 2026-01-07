@@ -174,42 +174,62 @@ def _normalize_result(result: Any, trait_name: str) -> Union[Dict[str, Any], Lis
 
 def list_available_traits() -> List[Dict[str, Any]]:
     """
-    List all available traits with their signatures.
+    List all available traits from the manifest (tools visible to Quartermaster).
 
     Returns a list of trait info dicts - each becomes a row in SQL output.
+    Only includes tools in the manifest - cascades must have manifest: true to appear.
     """
     import inspect
-    from ..trait_registry import get_registry
+    from ..trait_registry import get_trait
+    from ..traits_manifest import get_trait_manifest
 
-    registry = get_registry()
-    all_traits = registry.get_all_traits()
+    # Get manifest - this is the filtered list of visible tools
+    try:
+        manifest = get_trait_manifest(refresh=False)
+    except Exception:
+        manifest = {}
 
     traits_info = []
-    for name, func in sorted(all_traits.items()):
-        info = {"name": name}
+    for name, manifest_entry in sorted(manifest.items()):
+        info = {
+            "name": name,
+            "tool_type": manifest_entry.get("type", "function"),
+            "path": manifest_entry.get("path", None),
+        }
 
-        # Get docstring
-        doc = func.__doc__
-        if doc:
+        # Get description from manifest or function docstring
+        description = manifest_entry.get("description", "")
+        if description:
             # First line only
-            info["description"] = doc.strip().split('\n')[0]
+            info["description"] = description.strip().split('\n')[0]
+        else:
+            # Fall back to function docstring
+            func = get_trait(name)
+            if func and func.__doc__:
+                info["description"] = func.__doc__.strip().split('\n')[0]
 
-        # Get signature
-        try:
-            sig = inspect.signature(func)
-            params = []
-            for pname, param in sig.parameters.items():
-                if pname.startswith('_'):
-                    continue  # Skip internal params
-                p = {"name": pname}
-                if param.annotation != inspect.Parameter.empty:
-                    p["type"] = str(param.annotation.__name__) if hasattr(param.annotation, '__name__') else str(param.annotation)
-                if param.default != inspect.Parameter.empty:
-                    p["default"] = str(param.default)
-                params.append(p)
-            info["params"] = params
-        except Exception:
-            info["params"] = []
+        # Get signature from function if available
+        func = get_trait(name)
+        if func:
+            try:
+                sig = inspect.signature(func)
+                params = []
+                for pname, param in sig.parameters.items():
+                    if pname.startswith('_'):
+                        continue  # Skip internal params
+                    p = {"name": pname}
+                    if param.annotation != inspect.Parameter.empty:
+                        p["type"] = str(param.annotation.__name__) if hasattr(param.annotation, '__name__') else str(param.annotation)
+                    if param.default != inspect.Parameter.empty:
+                        p["default"] = str(param.default)
+                    params.append(p)
+                info["params"] = params
+            except Exception:
+                info["params"] = []
+        else:
+            # Use inputs from manifest for cascades/etc that aren't in registry
+            inputs = manifest_entry.get("inputs", {})
+            info["params"] = [{"name": k} for k in inputs.keys()] if inputs else []
 
         traits_info.append(info)
 

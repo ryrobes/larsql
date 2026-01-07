@@ -1,0 +1,28 @@
+cascade_id: grammar_check
+description: Validates grammar and spelling in text
+tags:
+- text
+- quality
+- writing
+- validation
+inputs_schema:
+  content: The text to check for grammar and spelling issues
+cells:
+- name: check
+  instructions: |-
+    Review the following text for grammar and spelling errors:
+
+    {{ input.content }}
+
+    Check for:
+    - Spelling mistakes
+    - Grammar issues
+    - Punctuation errors
+    - Basic readability
+
+    Return ONLY a JSON object with this exact format:
+    {"valid": true/false, "reason": "explanation of issues found or confirmation it's good", "issues": [list of specific issues]}
+
+    If there are 3 or more significant issues, mark as invalid. Minor issues are acceptable.
+  rules:
+    max_turns: 1

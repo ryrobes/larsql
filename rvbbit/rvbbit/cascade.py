@@ -1654,6 +1654,13 @@ class CascadeConfig(BaseModel):
     # Use this for meta-cascades that analyze other cascades to prevent self-referential loops
     internal: bool = False
 
+    # Manifest visibility flag
+    # When true, this cascade appears in the Quartermaster's tool selection
+    # Cascades are opt-in for manifest visibility - most cascades are internal
+    # workflow steps and shouldn't clutter the tool selection
+    # Note: Cascades are ALWAYS callable as tools regardless of this setting
+    manifest: bool = False
+
     # SQL Function - expose this cascade as a SQL-callable function
     # When set, this cascade becomes available as a UDF in SQL queries
     # Built-in semantic operators (MEANS, ABOUT, MEANING, etc.) are cascades too
@@ -1696,6 +1703,37 @@ RuleConfig.model_rebuild()
 CandidatesConfig.model_rebuild()
 
 
+def _migrate_legacy_terminology(data: Dict) -> Dict:
+    """
+    Migrate legacy cascade terminology to current format.
+
+    Renames:
+    - phases → cells (top-level)
+    - tackle → traits (within each cell)
+
+    This ensures backward compatibility with old cascade files.
+    """
+    # Make a shallow copy to avoid mutating the original
+    data = dict(data)
+
+    # phases → cells (top-level)
+    if "phases" in data and "cells" not in data:
+        data["cells"] = data.pop("phases")
+
+    # tackle → traits (within each cell)
+    if "cells" in data:
+        migrated_cells = []
+        for cell in data["cells"]:
+            if isinstance(cell, dict):
+                cell = dict(cell)  # Copy
+                if "tackle" in cell and "traits" not in cell:
+                    cell["traits"] = cell.pop("tackle")
+            migrated_cells.append(cell)
+        data["cells"] = migrated_cells
+
+    return data
+
+
 def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> CascadeConfig:
     # If already a CascadeConfig, return as-is
     if isinstance(path_or_dict, CascadeConfig):
@@ -1705,4 +1743,8 @@ def load_cascade_config(path_or_dict: Union[str, Dict, "CascadeConfig"]) -> Casc
         data = load_config_file(path_or_dict)
     else:
         data = path_or_dict
+
+    # Apply legacy terminology migration
+    data = _migrate_legacy_terminology(data)
+
     return CascadeConfig(**data)

@@ -1,0 +1,19 @@
+cascade_id: summarize_text
+description: Summarizes long text into key points and takeaways
+inputs_schema:
+  text: The text to summarize
+  style: 'Summary style: ''bullets'' for bullet points, ''paragraph'' for prose (default: bullets)'
+cells:
+- name: summarize
+  instructions: |-
+    Summarize this text: {{ input.text }}
+
+    Style: {{ input.style | default('bullets') }}
+
+    If bullets: Create 3-5 bullet points capturing the main ideas.
+    If paragraph: Write a concise 2-3 sentence summary.
+
+    Focus on the most important information and key takeaways.
+  rules:
+    max_turns: 1
+  traits: []

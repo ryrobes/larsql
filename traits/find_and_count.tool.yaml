@@ -1,0 +1,15 @@
+tool_id: find_and_count
+description: Find files matching a pattern and count the total matches. Useful for codebase analysis.
+inputs_schema:
+  pattern: Text pattern to search for
+  directory: Directory to search in
+type: composite
+steps:
+- tool: search_files
+  args:
+    pattern: '{{ input.pattern }}'
+    path: '{{ input.directory }}'
+- tool: list_directory
+  args:
+    path: '{{ input.directory }}'
+  condition: '{{ steps[0].success }}'

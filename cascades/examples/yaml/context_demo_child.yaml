@@ -1,9 +1,0 @@
-cascade_id: context_demo_child
-cells:
-- instructions: 'I am the child. I see the secret code is: {{ input.secret_code }}.
-    Use ''set_state'' to set ''child_status'' to ''mission_accomplished''.'
-  name: child_step
-  rules:
-    max_turns: 1
-  traits:
-  - set_state

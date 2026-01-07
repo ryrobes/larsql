@@ -1,0 +1,11 @@
+tool_id: search_files
+description: Search for text patterns in files using grep. Returns matching lines with context.
+inputs_schema:
+  pattern: Text or regex pattern to search for
+  path: 'Directory or file to search in (default: current directory)'
+  file_type: Optional file extension filter (e.g., 'py', 'js', 'json')
+type: shell
+command: grep -rn {{ '--include=*.' + file_type if file_type else '' }} '{{ pattern }}' {{ path | default('.') }} | head -50
+timeout: 30
+sandbox: false
+output_transform: lines

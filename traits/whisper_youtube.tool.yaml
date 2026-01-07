@@ -1,0 +1,9 @@
+tool_id: whisper_youtube
+description: Transcribe audio from a YouTube video using Whisper large-v3-turbo. Returns the full transcription text.
+type: gradio
+space: hf-audio/whisper-large-v3-turbo
+api_name: /predict_2
+inputs_schema:
+  yt_url: YouTube video URL to transcribe
+  task: 'Task: ''transcribe'' (default) or ''translate'' to English'
+timeout: 120

@@ -275,12 +275,22 @@ def execute_sql_fragment(
             return int(value)
 
         if return_type == "JSON":
+            # For JSON return type, always return a proper JSON string
+            # DuckDB's json_object() returns a Python dict via the Python bindings
+            # We need to serialize it as valid JSON for ->> operator compatibility
+            if isinstance(value, (dict, list)):
+                return json.dumps(value)
             if isinstance(value, str):
+                # Already a string - validate it's proper JSON
                 try:
-                    return json.loads(value)
+                    parsed = json.loads(value)
+                    # Re-serialize to ensure proper JSON format
+                    return json.dumps(parsed)
                 except json.JSONDecodeError:
-                    pass
-            return value
+                    # Not valid JSON, return as-is
+                    return value
+            # Other types - try to serialize
+            return json.dumps(value, default=str)
 
         # VARCHAR or other - return as string
         if value is None:

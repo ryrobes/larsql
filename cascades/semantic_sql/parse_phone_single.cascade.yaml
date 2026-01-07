@@ -1,14 +1,17 @@
 cascade_id: parse_phone_single
 internal: true
-description: 'Parse phone number into structured components and normalized formats.
+description: |
+  Parse phone number into structured components and normalized formats.
+  Returns JSON - use ->> operator to extract fields:
+    PARSE_PHONE(num) ->> 'e164' -- "+15551234567"
+    PARSE_PHONE(num) ->> 'national' -- "(555) 123-4567"
 
-  '
 inputs_schema:
   phone: The phone number to parse
   default_country: 'Default country code if not specified (default: US)'
 sql_function:
-  name: parse_phone_llm
-  description: Parse phone number into components and formats
+  name: parse_phone
+  description: "Parse phone number into JSON with fields: country_code, area_code, e164, national, international, is_valid, type"
   args:
   - name: phone
     type: VARCHAR
@@ -16,12 +19,16 @@ sql_function:
     type: VARCHAR
     optional: true
     default: US
-  returns: VARCHAR
+  returns: JSON
   shape: SCALAR
   operators:
   - PARSE_PHONE({{ phone }})
   - PARSE_PHONE({{ phone }}, '{{ default_country }}')
   cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: [phone]
   test_cases:
   - sql: SELECT parse_phone_llm('Call me at (555) 123-4567')
     expect:
@@ -31,21 +38,46 @@ sql_function:
 cells:
 - name: parse
   model: google/gemini-2.5-flash-lite
-  instructions: "Parse this phone number into structured format.\n\nPHONE: {{ input.phone\
-    \ }}\nDEFAULT COUNTRY: {{ input.default_country | default('US') }}\n\nReturn a\
-    \ JSON object:\n{\n  \"country_code\": \"1\",\n  \"area_code\": \"555\",\n  \"\
-    exchange\": \"123\",\n  \"subscriber\": \"4567\",\n  \"extension\": \"890\",\n\
-    \  \"e164\": \"+15551234567\",\n  \"national\": \"(555) 123-4567\",\n  \"international\"\
-    : \"+1 555-123-4567\",\n  \"is_valid\": true,\n  \"type\": \"landline\"\n}\n\n\
-    Handle various formats:\n- \"(555) 123-4567\" → standard US\n- \"555-123-4567\"\
-    \ → US without parens\n- \"5551234567\" → US digits only\n- \"+1 555 123 4567\"\
-    \ → international format\n- \"555.123.4567 ext. 890\" → with extension\n- \"+44\
-    \ 20 7946 0958\" → UK format\n- \"1-800-555-1234\" → toll-free\n\nType detection:\n\
-    - \"mobile\" if recognizable mobile pattern\n- \"landline\" for standard numbers\n\
-    - \"tollfree\" for 800/888/877/866/855 numbers\n- \"unknown\" if cannot determine\n\
-    \nIf no country code provided, assume {{ input.default_country | default('US')\
-    \ }}.\nReturn ONLY the JSON object.\n"
+  instructions: |
+    Generate a DuckDB SQL expression that parses this phone format into a JSON object.
+
+    PHONE PATTERN: {{ input.phone }}
+    DEFAULT COUNTRY: {{ input.default_country | default('US') }}
+
+    Return a SQL expression using json_object() that extracts ALL fields:
+    - country_code: The country dialing code (e.g., "1" for US)
+    - area_code: The area/city code
+    - exchange: The exchange/central office code
+    - subscriber: The subscriber number
+    - extension: Any extension (null if none)
+    - e164: Full E.164 format (e.g., "+15551234567")
+    - national: National format (e.g., "(555) 123-4567")
+    - international: International format (e.g., "+1 555-123-4567")
+    - is_valid: true/false
+    - type: "landline", "mobile", "tollfree", or "unknown"
+
+    Use :phone as the parameter placeholder for the phone value.
+
+    EXAMPLE for "(555) 123-4567" pattern:
+    json_object(
+      'country_code', '1',
+      'area_code', regexp_extract(:phone, '^\((\d{3})\)', 1),
+      'exchange', regexp_extract(:phone, '^\(\d{3}\) (\d{3})-', 1),
+      'subscriber', regexp_extract(:phone, '-(\d{4})$', 1),
+      'extension', NULL,
+      'e164', '+1' || regexp_replace(regexp_replace(:phone, '[^0-9]', '', 'g'), '^1?', ''),
+      'national', :phone,
+      'international', '+1 ' || regexp_extract(:phone, '^\((\d{3})\)', 1) || '-' || regexp_extract(:phone, '^\(\d{3}\) (\d{3})-', 1) || '-' || regexp_extract(:phone, '-(\d{4})$', 1),
+      'is_valid', length(regexp_replace(:phone, '[^0-9]', '', 'g')) >= 10,
+      'type', CASE
+        WHEN regexp_extract(:phone, '^\(?(\d{3})', 1) IN ('800','888','877','866','855','844','833') THEN 'tollfree'
+        ELSE 'landline'
+      END
+    )
+
+    CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
+    The expression must build the COMPLETE JSON with ALL fields.
   rules:
     max_turns: 1
   output_schema:
-    type: object
+    type: string

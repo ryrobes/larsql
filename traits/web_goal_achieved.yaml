@@ -1,0 +1,33 @@
+cascade_id: web_goal_achieved
+description: Validates if a web navigation goal was achieved by examining current page content and screenshots
+inputs_schema:
+  goal: The goal that was supposed to be accomplished
+  current_context: Description of what the agent has done so far
+cells:
+- name: evaluate
+  instructions: |-
+    Evaluate if this goal was achieved: {{ input.goal }}
+
+    Context of actions taken: {{ input.current_context }}
+
+    You will see screenshots from the browser session. Examine them carefully.
+
+    Return a JSON response:
+    {
+      "valid": true or false,
+      "reason": "Explanation of whether the goal was achieved"
+    }
+
+    Be strict: only return valid=true if the goal is CLEARLY accomplished based on visible evidence.
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object
+    properties:
+      valid:
+        type: boolean
+      reason:
+        type: string
+    required:
+    - valid
+    - reason

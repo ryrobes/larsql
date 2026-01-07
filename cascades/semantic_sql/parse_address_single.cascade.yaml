@@ -2,9 +2,10 @@
 #
 # SQL Usage:
 #   SELECT PARSE_ADDRESS(raw_address) FROM contacts
-#   SELECT json_extract(PARSE_ADDRESS(addr), '$.city') as city FROM leads
+#   SELECT PARSE_ADDRESS(addr) ->> 'city' AS city FROM leads
+#   SELECT PARSE_ADDRESS(addr) ->> 'state' AS state FROM leads
 #
-# Returns: JSON with street, unit, city, state, zip, country
+# Returns: JSON with street_number, street_name, city, state, zip, country, formatted
 
 cascade_id: parse_address_single
 internal: true
@@ -12,21 +13,26 @@ internal: true
 description: |
   Parse address string into structured components.
   Handles various formats: US, international, partial addresses.
+  Returns JSON - use ->> operator to extract fields.
 
 inputs_schema:
   address: The address text to parse
 
 sql_function:
   name: parse_address
-  description: Parse address into structured components
+  description: "Parse address into JSON with fields: street_number, street_name, unit_number, city, state, zip, country, formatted"
   args:
     - name: address
       type: VARCHAR
-  returns: VARCHAR
+  returns: JSON
   shape: SCALAR
   operators:
     - "PARSE_ADDRESS({{ address }})"
   cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: [address]
   test_cases:
     - sql: "SELECT parse_address('123 Main St, Boston, MA 02101')"
       expect:
@@ -45,42 +51,75 @@ cells:
     model: google/gemini-2.5-flash-lite
 
     instructions: |
-      Parse this address into structured components.
+      Generate a DuckDB SQL expression that parses this address format into a JSON object.
 
-      ADDRESS: {{ input.address }}
+      ADDRESS PATTERN: {{ input.address }}
 
-      Return a JSON object with these fields (use null if not present):
-      {
-        "street_number": "123",
-        "street_name": "Main Street",
-        "street_type": "Street",
-        "unit_type": "Suite",
-        "unit_number": "100",
-        "city": "Boston",
-        "state": "MA",
-        "state_full": "Massachusetts",
-        "zip": "02101",
-        "zip_plus4": "1234",
-        "country": "US",
-        "country_full": "United States",
-        "formatted": "123 Main Street, Suite 100, Boston, MA 02101"
-      }
+      Return a SQL expression using json_object() that extracts ALL fields:
+      - street_number: House/building number or NULL
+      - street_name: Street name (expanded, not abbreviated)
+      - street_type: Street/Avenue/Boulevard/etc. or NULL
+      - unit_type: Apartment/Suite/Unit or NULL
+      - unit_number: Unit number or NULL
+      - city: City name
+      - state: State abbreviation (2-letter)
+      - state_full: Full state name or NULL
+      - zip: ZIP/postal code
+      - zip_plus4: ZIP+4 extension or NULL
+      - country: Country code (US, UK, etc.)
+      - country_full: Full country name
+      - formatted: Properly formatted address
 
-      Handle various formats:
-      - "123 Main St, Boston MA 02101"
-      - "123 Main Street, Suite 100, Boston, Massachusetts 02101-1234"
-      - "PO Box 123, Anytown, CA 90210"
-      - International: "10 Downing Street, London, SW1A 2AA, UK"
-      - Partial: "Boston, MA" (just city/state)
+      Use :address as the parameter placeholder.
 
-      Normalize abbreviations in output:
-      - St → Street, Ave → Avenue, Blvd → Boulevard
-      - Apt → Apartment, Ste → Suite
+      EXAMPLE for "123 Main St, Boston, MA 02101" pattern:
+      json_object(
+        'street_number', regexp_extract(:address, '^(\d+)\s', 1),
+        'street_name', regexp_replace(regexp_extract(:address, '^\d+\s+(.+?),', 1), '\s+(St|Ave|Blvd|Dr|Ln|Rd|Ct|Pl|Way)\.?$', '', 'i'),
+        'street_type', CASE
+          WHEN :address ~* '\bSt\.?\b' THEN 'Street'
+          WHEN :address ~* '\bAve\.?\b' THEN 'Avenue'
+          WHEN :address ~* '\bBlvd\.?\b' THEN 'Boulevard'
+          WHEN :address ~* '\bDr\.?\b' THEN 'Drive'
+          WHEN :address ~* '\bLn\.?\b' THEN 'Lane'
+          WHEN :address ~* '\bRd\.?\b' THEN 'Road'
+          ELSE NULL
+        END,
+        'unit_type', NULL,
+        'unit_number', NULL,
+        'city', trim(split_part(split_part(:address, ',', 2), ' ', 1) || ' ' || CASE WHEN split_part(split_part(:address, ',', 2), ' ', 2) ~ '^[A-Z]{2}$' THEN '' ELSE split_part(split_part(:address, ',', 2), ' ', 2) END),
+        'state', regexp_extract(:address, '\b([A-Z]{2})\s+\d{5}', 1),
+        'state_full', NULL,
+        'zip', regexp_extract(:address, '\b(\d{5})(-\d{4})?$', 1),
+        'zip_plus4', regexp_extract(:address, '\b\d{5}-(\d{4})$', 1),
+        'country', 'US',
+        'country_full', 'United States',
+        'formatted', :address
+      )
 
-      Return ONLY the JSON object.
+      EXAMPLE for "456 Oak Ave Apt 2B, New York NY 10001":
+      json_object(
+        'street_number', regexp_extract(:address, '^(\d+)\s', 1),
+        'street_name', 'Oak',
+        'street_type', 'Avenue',
+        'unit_type', 'Apartment',
+        'unit_number', regexp_extract(:address, '\b(?:Apt|Suite|Ste|Unit)\s*(\w+)', 1),
+        'city', 'New York',
+        'state', 'NY',
+        'state_full', 'New York',
+        'zip', '10001',
+        'zip_plus4', NULL,
+        'country', 'US',
+        'country_full', 'United States',
+        'formatted', :address
+      )
+
+      Analyze the specific format and generate appropriate regex patterns.
+      CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
+      The expression must build the COMPLETE JSON with ALL fields.
 
     rules:
       max_turns: 1
 
     output_schema:
-      type: object
+      type: string

@@ -98,8 +98,22 @@ def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
                 try:
                     cascade_config = load_cascade_config(cascade_path)
 
-                    # Only include cascades with inputs_schema (usable as tools)
-                    if cascade_config.inputs_schema:
+                    # Skip cascades without inputs_schema - they can't be called as tools
+                    if not cascade_config.inputs_schema:
+                        continue
+
+                    # ALWAYS register cascade as callable tool (regardless of manifest visibility)
+                    # This ensures cascades can call other cascades even if hidden from Quartermaster
+                    if not get_trait(cascade_config.cascade_id):
+                        try:
+                            register_cascade_as_tool(cascade_path)
+                        except Exception as reg_error:
+                            # Log but don't fail - tool will be discoverable but not callable
+                            pass
+
+                    # Only add to manifest if explicitly marked with manifest: true
+                    # This is opt-in - most cascades are internal workflow steps
+                    if cascade_config.manifest:
                         # Build parameter description from inputs_schema
                         params_desc = []
                         for param_name, param_desc in cascade_config.inputs_schema.items():
@@ -116,13 +130,6 @@ def get_trait_manifest(refresh: bool = False) -> Dict[str, Any]:
                             "path": cascade_path
                         }
 
-                        # Register cascade as callable tool if not already registered
-                        if not get_trait(cascade_config.cascade_id):
-                            try:
-                                register_cascade_as_tool(cascade_path)
-                            except Exception as reg_error:
-                                # Log but don't fail - tool will be discoverable but not callable
-                                pass
                 except Exception as e:
                     # Skip invalid cascade files
                     continue
