@@ -35,12 +35,12 @@ def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, A
     candidates_config = None
     cleaned_inputs = {}
 
-    log.info(f"[cascade_udf] 🔍 Checking inputs for candidates config: {inputs}")
-    print(f"[cascade_udf] 🔍 Checking inputs for candidates config: {list(inputs.keys())}")
+    #log.info(f"[cascade_udf] 🔍 Checking inputs for candidates config: {inputs}")
+    #print(f"[cascade_udf] 🔍 Checking inputs for candidates config: {list(inputs.keys())}")
 
     for key, value in inputs.items():
         if isinstance(value, str):
-            print(f"[cascade_udf] 🔍 Checking key '{key}': value starts with '{value[:80]}...' " if len(value) > 80 else f"[cascade_udf] 🔍 Checking key '{key}': value='{value}'")
+            #print(f"[cascade_udf] 🔍 Checking key '{key}': value starts with '{value[:80]}...' " if len(value) > 80 else f"[cascade_udf] 🔍 Checking key '{key}': value='{value}'")
             match = _CANDIDATES_PATTERN.match(value)
             if match:
                 try:
@@ -59,8 +59,8 @@ def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, A
         else:
             cleaned_inputs[key] = value
 
-    if not candidates_config:
-        print(f"[cascade_udf] ⚪ No candidates config found in inputs")
+    # if not candidates_config:
+    #     print(f"[cascade_udf] ⚪ No candidates config found in inputs")
 
     return cleaned_inputs, candidates_config
 
@@ -339,14 +339,38 @@ def execute_cascade_udf(
         if not fn:
             return json.dumps({"error": f"SQL function not found: {cascade_id}"})
 
+        # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
+        cache_name = fn.cache_name
+
         # Check cache (only if no candidates - candidates bypass cache for fresh sampling)
         if use_cache and not candidates_config:
-            found, cached = get_cached_result(cascade_id, cleaned_inputs)
+            found, cached = get_cached_result(cache_name, cleaned_inputs)
             if found:
-                log.debug(f"[cascade_udf] Cache hit for {cascade_id}")
+                log.debug(f"[cascade_udf] Cache hit for {cascade_id} (cache_name={cache_name})")
                 # Track cache hit for SQL Trail
                 if caller_id:
                     increment_cache_hit(caller_id)
+
+                # For sql_statement mode, cached value is SQL - need to execute it
+                if fn.output_mode == 'sql_statement' and isinstance(cached, str):
+                    from .sql_macro import bind_sql_parameters, execute_sql_statement
+                    import tempfile
+
+                    bound_sql = bind_sql_parameters(cached, cleaned_inputs, fn.args)
+                    results = execute_sql_statement(bound_sql)
+
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                        json.dump(results, f)
+                        return f.name
+
+                # For sql_execute mode, cached value is SQL expression - execute it
+                if fn.output_mode == 'sql_execute' and isinstance(cached, str):
+                    from .sql_macro import bind_sql_parameters, execute_sql_fragment
+
+                    bound_sql = bind_sql_parameters(cached, cleaned_inputs, fn.args)
+                    result_value = execute_sql_fragment(bound_sql, fn.returns)
+                    return str(result_value) if result_value is not None else ""
+
                 return json.dumps(cached) if not isinstance(cached, str) else cached
 
         # Track cache miss for SQL Trail
@@ -377,13 +401,63 @@ def execute_cascade_udf(
             result = _run_cascade_sync(cascade_config, session_id, cleaned_inputs, caller_id=caller_id)
         else:
             # Execute the cascade normally (pass caller_id so it propagates to unified_logs!)
-            print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no candidates)")
+            #print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no candidates)")
             result = _run_cascade_sync(fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id)
 
         # Extract the output using proper cascade result parsing
         output = _extract_cascade_output(result)
 
-        # Post-process based on return type
+        # Handle output_mode: sql_statement returns full SQL to execute
+        if fn.output_mode == 'sql_statement':
+            from .sql_macro import bind_sql_parameters, execute_sql_statement
+            import tempfile
+
+            sql_statement = str(output).strip()
+            log.debug(f"[cascade_udf] sql_statement mode - executing: {sql_statement[:100]}...")
+
+            # Bind parameters and execute
+            bound_sql = bind_sql_parameters(sql_statement, cleaned_inputs, fn.args)
+
+            # Execute and get table results
+            results = execute_sql_statement(bound_sql)
+
+            # Write to temp file for read_json_auto()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(results, f)
+                temp_path = f.name
+
+            log.debug(f"[cascade_udf] Wrote {len(results)} rows to {temp_path}")
+
+            # Cache the SQL statement (not the results file)
+            if use_cache and not candidates_config:
+                set_cached_result(cache_name, cleaned_inputs, sql_statement)
+
+            return temp_path
+
+        # Handle output_mode: sql_execute returns SQL expression for scalar
+        if fn.output_mode == 'sql_execute':
+            from .sql_macro import bind_sql_parameters, execute_sql_fragment
+
+            sql_fragment = str(output).strip()
+            log.debug(f"[cascade_udf] sql_execute mode - executing: {sql_fragment[:100]}...")
+
+            # Cache the SQL fragment
+            if use_cache and not candidates_config:
+                set_cached_result(cache_name, cleaned_inputs, sql_fragment)
+
+            # Bind and execute
+            bound_sql = bind_sql_parameters(sql_fragment, cleaned_inputs, fn.args)
+            result_value = execute_sql_fragment(bound_sql, fn.returns)
+            return str(result_value) if result_value is not None else ""
+
+        # Handle output_mode: sql_raw returns SQL as-is
+        if fn.output_mode == 'sql_raw':
+            sql_raw = str(output).strip()
+            if use_cache and not candidates_config:
+                set_cached_result(cache_name, cleaned_inputs, sql_raw)
+            return sql_raw
+
+        # Post-process based on return type (for output_mode: value)
         if fn.returns == "BOOLEAN":
             if isinstance(output, str):
                 output = output.lower().strip() in ("true", "yes", "1")
@@ -403,7 +477,7 @@ def execute_cascade_udf(
 
         # Cache result (but not candidates runs - they're for fresh sampling)
         if use_cache and not candidates_config:
-            set_cached_result(cascade_id, cleaned_inputs, output)
+            set_cached_result(cache_name, cleaned_inputs, output)
 
         # Return as JSON if complex, otherwise as string
         if isinstance(output, (dict, list)):

@@ -1,0 +1,80 @@
+# PARSE_NAME - Specialized name parsing
+#
+# SQL Usage:
+#   SELECT PARSE_NAME(full_name) FROM contacts
+#   SELECT json_extract(PARSE_NAME(name), '$.first') as first_name FROM leads
+#
+# Returns: JSON with prefix, first, middle, last, suffix
+
+cascade_id: parse_name_single
+internal: true
+
+description: |
+  Parse person name into structured components.
+  Handles various formats and cultural name patterns.
+
+inputs_schema:
+  name: The name to parse
+
+sql_function:
+  name: parse_name
+  description: Parse person name into components
+  args:
+    - name: name
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "PARSE_NAME({{ name }})"
+  cache: true
+  test_cases:
+    - sql: "SELECT parse_name('Dr. John Michael Smith Jr.')"
+      expect:
+        type: json_contains
+        path: "$.first"
+        value: "John"
+      description: "First name extracted"
+    - sql: "SELECT parse_name('Smith, Jane')"
+      expect:
+        type: contains
+        value: "Jane"
+      description: "Last-first format parsed"
+
+cells:
+  - name: parse
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Parse this person's name into structured components.
+
+      NAME: {{ input.name }}
+
+      Return a JSON object:
+      {
+        "prefix": "Dr.",
+        "first": "John",
+        "middle": "Quincy",
+        "last": "Smith",
+        "suffix": "Jr.",
+        "nickname": "Jack",
+        "formatted": "Dr. John Quincy Smith Jr."
+      }
+
+      Handle various formats:
+      - "John Smith" → first: John, last: Smith
+      - "Smith, John" → first: John, last: Smith
+      - "Dr. John Q. Smith Jr." → prefix: Dr., first: John, middle: Q., last: Smith, suffix: Jr.
+      - "John 'Jack' Smith" → first: John, nickname: Jack, last: Smith
+      - "María García López" (Spanish) → first: María, last: García López
+      - "Jean-Pierre Dupont" → first: Jean-Pierre, last: Dupont
+      - "Robert (Bob) Johnson" → first: Robert, nickname: Bob, last: Johnson
+      - "JOHN SMITH" → first: John, last: Smith (normalize case)
+
+      Use null for missing components.
+      Return ONLY the JSON object.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object

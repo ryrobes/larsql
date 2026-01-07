@@ -1,0 +1,119 @@
+cascade_id: cast_smart_single
+internal: true
+description: 'Smart type casting that handles messy real-world data.
+
+  More intelligent than SQL''s CAST - handles various formats.
+
+  '
+inputs_schema:
+  value: The value to cast
+  target_type: Target SQL type
+sql_function:
+  name: cast_smart
+  description: Intelligent type casting for messy data
+  args:
+  - name: value
+    type: VARCHAR
+  - name: target_type
+    type: VARCHAR
+    description: 'Target type: INTEGER, DECIMAL, DATE, TIMESTAMP, BOOLEAN, VARCHAR'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - CAST_SMART({{ value }}, '{{ target_type }}')
+  - '{{ value }} AS_SMART {{ target_type }}'
+  cache: true
+  test_cases:
+  - sql: SELECT cast_smart('25', 'integer')
+    expect:
+      type: one_of
+      values:
+      - '25'
+      - 25
+    description: String to integer
+cells:
+- name: smart_cast
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Cast this value to {{ input.target_type }}, handling messy formats.
+
+
+    VALUE: {{ input.value }}
+
+    TARGET TYPE: {{ input.target_type }}
+
+
+    **INTEGER**:
+
+    - "1,234" → 1234 (remove commas)
+
+    - "1.0" → 1 (drop decimal)
+
+    - "~100" → 100 (remove approximation marker)
+
+    - "100 units" → 100 (extract number)
+
+    - "one hundred" → 100 (words to number)
+
+    - "1k" → 1000, "1M" → 1000000
+
+
+    **DECIMAL / DOUBLE / FLOAT**:
+
+    - "$1,234.56" → 1234.56 (remove currency)
+
+    - "1,234.56%" → 12.3456 (handle percentage)
+
+    - "1.234,56" → 1234.56 (European format)
+
+    - "~3.14" → 3.14
+
+
+    **DATE**:
+
+    - "March 15, 2024" → 2024-03-15
+
+    - "15/03/2024" → 2024-03-15 (European)
+
+    - "03/15/24" → 2024-03-15 (US, 2-digit year)
+
+    - "2024-03-15T10:30:00" → 2024-03-15 (strip time)
+
+    - "yesterday" → [actual yesterday date]
+
+    - "Q1 2024" → 2024-01-01 (quarter start)
+
+
+    **TIMESTAMP / DATETIME**:
+
+    - "March 15, 2024 2:30 PM" → 2024-03-15T14:30:00
+
+    - "2024-03-15" → 2024-03-15T00:00:00 (add midnight)
+
+
+    **BOOLEAN**:
+
+    - "yes", "Yes", "YES", "Y", "y" → true
+
+    - "no", "No", "NO", "N", "n" → false
+
+    - "true", "TRUE", "1" → true
+
+    - "false", "FALSE", "0" → false
+
+    - "on", "off" → true, false
+
+    - "active", "inactive" → true, false
+
+
+    **VARCHAR / STRING**:
+
+    - Any value → trimmed string representation
+
+
+    If the value cannot be reasonably cast, return "NULL".
+
+    Return ONLY the casted value in a format suitable for SQL.
+
+    '
+  rules:
+    max_turns: 1

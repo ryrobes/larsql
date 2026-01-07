@@ -1,80 +1,59 @@
 cascade_id: semantic_embed_with_storage
-internal: true 
-
-description: |
-  Generate text embeddings AND store them in rvbbit_embeddings with table/ID tracking.
-
-  SQL Usage:
-    SELECT id, semantic_embed_with_storage(description, NULL, 'products', 'description', CAST(id AS VARCHAR)) FROM products;
-
-  This stores: source_table='products', metadata={'column_name': 'description'}, source_id='1'
-
+internal: true
+description: "Generate text embeddings AND store them in rvbbit_embeddings with table/ID\
+  \ tracking.\n\nSQL Usage:\n  SELECT id, semantic_embed_with_storage(description,\
+  \ NULL, 'products', 'description', CAST(id AS VARCHAR)) FROM products;\n\nThis stores:\
+  \ source_table='products', metadata={'column_name': 'description'}, source_id='1'\n"
 inputs_schema:
-  text: "Text to embed (required)"
-  model: "Optional model override"
-  source_table: "Table name where text came from"
-  column_name: "Column name that was embedded"
-  source_id: "Row ID (as string)"
-
+  text: Text to embed (required)
+  model: Optional model override
+  source_table: Table name where text came from
+  column_name: Column name that was embedded
+  source_id: Row ID (as string)
 sql_function:
   name: semantic_embed_with_storage
-  description: "Generate embedding and store with table/column/ID tracking"
+  description: Generate embedding and store with table/column/ID tracking
   args:
-    - name: text
-      type: VARCHAR
-      description: "Text to embed"
-    - name: model
-      type: VARCHAR
-      optional: true
-      description: "Optional model"
-    - name: source_table
-      type: VARCHAR
-      description: "Source table name"
-    - name: column_name
-      type: VARCHAR
-      description: "Source column name"
-    - name: source_id
-      type: VARCHAR
-      description: "Source row ID"
+  - name: text
+    type: VARCHAR
+    description: Text to embed
+  - name: model
+    type: VARCHAR
+    optional: true
+    description: Optional model
+  - name: source_table
+    type: VARCHAR
+    description: Source table name
+  - name: column_name
+    type: VARCHAR
+    description: Source column name
+  - name: source_id
+    type: VARCHAR
+    description: Source row ID
   returns: DOUBLE[]
   shape: SCALAR
   cache: true
-
+  test_cases:
+  - sql: -- Requires storage backend
+    skip: true
+    description: Embed storage needs backend
 cells:
-  - name: generate_and_store
-    tool: python_data
-    inputs:
-      code: |
-        # Complete embedding generation + storage in one cell
-        from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
-        import json
-
-        text = input.get('text', '')
-        model = input.get('model')
-        source_table = input.get('source_table', 'unknown')
-        column_name = input.get('column_name', 'unknown')
-        source_id = input.get('source_id', 'unknown')
-
-        # Step 1: Generate embedding
-        embed_result = agent_embed(text=text, model=model)
-        embedding = embed_result['embedding']
-
-        # Step 2: Store in ClickHouse with table/column/ID association
-        try:
-            clickhouse_store_embedding(
-                source_table=source_table,
-                source_id=source_id,
-                text=text,
-                embedding=embedding,
-                model=embed_result['model'],
-                metadata={'column_name': column_name}  # Store column name in metadata!
-            )
-        except Exception as e:
-            # Log warning but don't fail - embedding still returned
-            import logging
-            logging.getLogger(__name__).warning(f"Could not store embedding: {e}")
-
-        # Step 3: Return embedding for SQL result
-        result = embedding
-    context:
-      enabled: false
+- name: generate_and_store
+  tool: python_data
+  inputs:
+    code: "# Complete embedding generation + storage in one cell\nfrom rvbbit.traits.embedding_storage\
+      \ import agent_embed, clickhouse_store_embedding\nimport json\n\ntext = input.get('text',\
+      \ '')\nmodel = input.get('model')\nsource_table = input.get('source_table',\
+      \ 'unknown')\ncolumn_name = input.get('column_name', 'unknown')\nsource_id =\
+      \ input.get('source_id', 'unknown')\n\n# Step 1: Generate embedding\nembed_result\
+      \ = agent_embed(text=text, model=model)\nembedding = embed_result['embedding']\n\
+      \n# Step 2: Store in ClickHouse with table/column/ID association\ntry:\n   \
+      \ clickhouse_store_embedding(\n        source_table=source_table,\n        source_id=source_id,\n\
+      \        text=text,\n        embedding=embedding,\n        model=embed_result['model'],\n\
+      \        metadata={'column_name': column_name}  # Store column name in metadata!\n\
+      \    )\nexcept Exception as e:\n    # Log warning but don't fail - embedding\
+      \ still returned\n    import logging\n    logging.getLogger(__name__).warning(f\"\
+      Could not store embedding: {e}\")\n\n# Step 3: Return embedding for SQL result\n\
+      result = embedding\n"
+  context:
+    enabled: false

@@ -1,143 +1,95 @@
 cascade_id: vector_search_elastic
 internal: true
-
-description: |
-  Semantic search using Elasticsearch hybrid search (dense_vector + BM25 keywords).
-
-  Combines vector similarity (70% default) with keyword matching (30% default)
-  for better recall than pure vector search. Keywords help when exact terms matter,
-  vectors help with semantic understanding.
-
-  SQL Usage:
-    -- Returns table directly (no JSON parsing needed)
-    SELECT * FROM vector_search_elastic('Venezuela', 'bird_line');
-    SELECT * FROM vector_search_elastic('sustainable materials', 'products', 20);
-
-    -- Join with source table
-    SELECT p.*, v.similarity
-    FROM vector_search_elastic('eco-friendly', 'products') v
-    JOIN products p ON p.id = v.id;
-
-  Returns columns: id, text, similarity, score
-
+description: "Semantic search using Elasticsearch hybrid search (dense_vector + BM25\
+  \ keywords).\n\nCombines vector similarity (70% default) with keyword matching (30%\
+  \ default)\nfor better recall than pure vector search. Keywords help when exact\
+  \ terms matter,\nvectors help with semantic understanding.\n\nSQL Usage:\n  -- Returns\
+  \ table directly (no JSON parsing needed)\n  SELECT * FROM vector_search_elastic('Venezuela',\
+  \ 'bird_line');\n  SELECT * FROM vector_search_elastic('sustainable materials',\
+  \ 'products', 20);\n\n  -- Join with source table\n  SELECT p.*, v.similarity\n\
+  \  FROM vector_search_elastic('eco-friendly', 'products') v\n  JOIN products p ON\
+  \ p.id = v.id;\n\nReturns columns: id, text, similarity, score\n"
 inputs_schema:
-  query: "Search query text"
-  source_table: "Filter by source table (optional)"
-  limit: "Max results (default: 10)"
-  threshold: "Min similarity 0-1 (optional)"
-  semantic_weight: "Vector similarity weight (default: 0.7)"
-  keyword_weight: "BM25 keyword weight (default: 0.3)"
-  index_name: "Elasticsearch index (default: rvbbit_embeddings)"
-
+  query: Search query text
+  source_table: Filter by source table (optional)
+  limit: 'Max results (default: 10)'
+  threshold: Min similarity 0-1 (optional)
+  semantic_weight: 'Vector similarity weight (default: 0.7)'
+  keyword_weight: 'BM25 keyword weight (default: 0.3)'
+  index_name: 'Elasticsearch index (default: rvbbit_embeddings)'
 sql_function:
   name: vector_search_elastic
-  description: "Hybrid semantic + keyword search in Elasticsearch"
+  description: Hybrid semantic + keyword search in Elasticsearch
   args:
-    - name: query
-      type: VARCHAR
-      description: "Search query text"
-    - name: source_table
-      type: VARCHAR
-      optional: true
-      description: "Filter by source table"
-    - name: limit_
-      type: INTEGER
-      optional: true
-      default: 10
-      description: "Max results"
-    - name: threshold
-      type: DOUBLE
-      optional: true
-      description: "Min similarity threshold 0-1"
-    - name: semantic_weight
-      type: DOUBLE
-      optional: true
-      default: 0.7
-      description: "Vector similarity weight"
-    - name: keyword_weight
-      type: DOUBLE
-      optional: true
-      default: 0.3
-      description: "BM25 keyword weight"
-    - name: index_name
-      type: VARCHAR
-      optional: true
-      default: "rvbbit_embeddings"
-      description: "Elasticsearch index name"
+  - name: query
+    type: VARCHAR
+    description: Search query text
+  - name: source_table
+    type: VARCHAR
+    optional: true
+    description: Filter by source table
+  - name: limit_
+    type: INTEGER
+    optional: true
+    default: 10
+    description: Max results
+  - name: threshold
+    type: DOUBLE
+    optional: true
+    description: Min similarity threshold 0-1
+  - name: semantic_weight
+    type: DOUBLE
+    optional: true
+    default: 0.7
+    description: Vector similarity weight
+  - name: keyword_weight
+    type: DOUBLE
+    optional: true
+    default: 0.3
+    description: BM25 keyword weight
+  - name: index_name
+    type: VARCHAR
+    optional: true
+    default: rvbbit_embeddings
+    description: Elasticsearch index name
   returns: TABLE
   shape: AGGREGATE
   cache: true
   context_arg: query
-
+  test_cases:
+  - sql: -- Requires Elasticsearch
+    skip: true
+    description: ES search needs ES
 cells:
-  - name: hybrid_search
-    tool: python_data
-    inputs:
-      code: |
-        import logging
-        from rvbbit.traits.embedding_storage import (
-            agent_embed,
-            elasticsearch_vector_search
-        )
-
-        logger = logging.getLogger(__name__)
-
-        # Get injected context for SQL Trail correlation
-        _session_id = input.get('_session_id')
-        _caller_id = input.get('_caller_id')
-        _cascade_id = input.get('_cascade_id')
-        _cell_name = input.get('_cell_name')
-
-        query = input.get('query', '')
-        source_table = input.get('source_table')
-        limit = input.get('limit_') or 10
-        threshold = input.get('threshold')
-        semantic_weight = input.get('semantic_weight') or 0.7
-        keyword_weight = input.get('keyword_weight') or 0.3
-        index_name = input.get('index_name') or 'rvbbit_embeddings'
-
-        if not query or not query.strip():
-            result = []
-        else:
-            try:
-                # Generate query embedding (cost-tracked via Agent)
-                embed_result = agent_embed(
-                    text=query,
-                    _session_id=_session_id,
-                    _caller_id=_caller_id,
-                    _cascade_id=_cascade_id,
-                    _cell_name=_cell_name,
-                )
-                query_embedding = embed_result['embedding']
-
-                # Perform hybrid search in Elasticsearch
-                search_result = elasticsearch_vector_search(
-                    query=query,
-                    query_embedding=query_embedding,
-                    source_table=source_table,
-                    limit=limit,
-                    threshold=threshold,
-                    semantic_weight=semantic_weight,
-                    keyword_weight=keyword_weight,
-                    index_name=index_name
-                )
-
-                # Format as table rows (matching ClickHouse vector_search format)
-                results = search_result.get('results', [])
-                result = [
-                    {
-                        'id': row['source_id'],
-                        'text': row['text'][:500],
-                        'similarity': round(row['similarity'], 4),
-                        'score': round(row.get('score', 0), 4)
-                    }
-                    for row in results
-                ]
-
-            except Exception as e:
-                logger.error(f"vector_search_elastic failed: {e}")
-                result = []
-
-        result = result
-    context:
-      enabled: false
+- name: hybrid_search
+  tool: python_data
+  inputs:
+    code: "import logging\nfrom rvbbit.traits.embedding_storage import (\n    agent_embed,\n\
+      \    elasticsearch_vector_search\n)\n\nlogger = logging.getLogger(__name__)\n\
+      \n# Get injected context for SQL Trail correlation\n_session_id = input.get('_session_id')\n\
+      _caller_id = input.get('_caller_id')\n_cascade_id = input.get('_cascade_id')\n\
+      _cell_name = input.get('_cell_name')\n\nquery = input.get('query', '')\nsource_table\
+      \ = input.get('source_table')\nlimit = input.get('limit_') or 10\nthreshold\
+      \ = input.get('threshold')\nsemantic_weight = input.get('semantic_weight') or\
+      \ 0.7\nkeyword_weight = input.get('keyword_weight') or 0.3\nindex_name = input.get('index_name')\
+      \ or 'rvbbit_embeddings'\n\nif not query or not query.strip():\n    result =\
+      \ []\nelse:\n    try:\n        # Generate query embedding (cost-tracked via\
+      \ Agent)\n        embed_result = agent_embed(\n            text=query,\n   \
+      \         _session_id=_session_id,\n            _caller_id=_caller_id,\n   \
+      \         _cascade_id=_cascade_id,\n            _cell_name=_cell_name,\n   \
+      \     )\n        query_embedding = embed_result['embedding']\n\n        # Perform\
+      \ hybrid search in Elasticsearch\n        search_result = elasticsearch_vector_search(\n\
+      \            query=query,\n            query_embedding=query_embedding,\n  \
+      \          source_table=source_table,\n            limit=limit,\n          \
+      \  threshold=threshold,\n            semantic_weight=semantic_weight,\n    \
+      \        keyword_weight=keyword_weight,\n            index_name=index_name\n\
+      \        )\n\n        # Format as table rows (matching ClickHouse vector_search\
+      \ format)\n        results = search_result.get('results', [])\n        result\
+      \ = [\n            {\n                'id': row['source_id'],\n            \
+      \    'text': row['text'][:500],\n                'similarity': round(row['similarity'],\
+      \ 4),\n                'score': round(row.get('score', 0), 4)\n            }\n\
+      \            for row in results\n        ]\n\n    except Exception as e:\n \
+      \       logger.error(f\"vector_search_elastic failed: {e}\")\n        result\
+      \ = []\n\nresult = result\n"
+  context:
+    enabled: false

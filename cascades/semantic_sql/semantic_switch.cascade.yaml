@@ -1,93 +1,99 @@
-# SEMANTIC_SWITCH - Pattern matching with semantic conditions
-# Different syntax from SEMANTIC_CASE to test block operator flexibility
-#
-# SQL Usage:
-#   SELECT
-#     SEMANTIC_SWITCH
-#       ON description
-#       MATCH 'about technology' YIELD 'tech'
-#       MATCH 'about environment' YIELD 'green'
-#       FALLBACK 'other'
-#     END_SWITCH as category
-#   FROM products
-#
-# Rewritten to: semantic_switch(description, '[...]', '[...]', 'other')
-
 cascade_id: semantic_switch
 internal: true
+description: 'Pattern matching with semantic conditions using MATCH/YIELD syntax.
 
-description: |
-  Pattern matching with semantic conditions using MATCH/YIELD syntax.
   Alternative to SEMANTIC_CASE for testing block operators.
 
+  '
 inputs_schema:
   text: The text to match against
   patterns: JSON array of semantic patterns to match
   yields: JSON array of values to yield for each match
   fallback: Default value if no patterns match (optional)
-
 sql_function:
   name: semantic_switch
   description: Semantic pattern matching with MATCH/YIELD syntax
   args:
-    - name: text
-      type: VARCHAR
-    - name: patterns
-      type: VARCHAR  # JSON array
-    - name: yields
-      type: VARCHAR  # JSON array
-    - name: fallback
-      type: VARCHAR
-      optional: true
+  - name: text
+    type: VARCHAR
+  - name: patterns
+    type: VARCHAR
+  - name: yields
+    type: VARCHAR
+  - name: fallback
+    type: VARCHAR
+    optional: true
   returns: VARCHAR
   shape: SCALAR
   cache: true
-
-  # Block operator definition
   block_operator:
     start: SEMANTIC_SWITCH
     end: END_SWITCH
     structure:
-      - keyword: "ON"
-      - capture: text
-        as: expression
-      - repeat:
-          min: 1
-          pattern:
-            - keyword: MATCH
-            - capture: pattern
-              as: string
-            - keyword: YIELD
-            - capture: yield
-              as: string
-      - optional:
-          pattern:
-            - keyword: FALLBACK
-            - capture: fallback
-              as: string
-
+    - keyword: 'ON'
+    - capture: text
+      as: expression
+    - repeat:
+        min: 1
+        pattern:
+        - keyword: MATCH
+        - capture: pattern
+          as: string
+        - keyword: YIELD
+        - capture: yield
+          as: string
+    - optional:
+        pattern:
+        - keyword: FALLBACK
+        - capture: fallback
+          as: string
+  test_cases:
+  - sql: SELECT semantic_switch('apple', '["is a fruit", "is an animal"]', '["fruit", "animal"]', 'unknown')
+    expect:
+      type: one_of
+      values:
+      - fruit
+      - unknown
+    description: Semantic SWITCH matches fruit pattern
 cells:
-  - name: match
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Match this text against the patterns below IN ORDER.
-      Return the yield value for the FIRST matching pattern.
+- name: match
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Match this text against the patterns below IN ORDER.
 
-      TEXT: {{ input.text }}
+    Return the yield value for the FIRST matching pattern.
 
-      PATTERNS AND YIELDS:
-      {% set patterns = input.patterns | from_json if input.patterns is string else input.patterns %}
-      {% set yields = input.yields | from_json if input.yields is string else input.yields %}
-      {% for i in range(patterns | length) %}
-      {{ i + 1 }}. If text matches "{{ patterns[i] }}" → yield: {{ yields[i] }}
-      {% endfor %}
 
-      FALLBACK (if no patterns match): {{ input.fallback or 'none' }}
+    TEXT: {{ input.text }}
 
-      IMPORTANT:
-      - Check patterns in order
-      - Return yield for FIRST matching pattern
-      - Return ONLY the exact yield value, nothing else
-      - If no patterns match, return the fallback value
-    rules:
-      max_turns: 1
+
+    PATTERNS AND YIELDS:
+
+    {% set patterns = input.patterns | from_json if input.patterns is string else
+    input.patterns %}
+
+    {% set yields = input.yields | from_json if input.yields is string else input.yields
+    %}
+
+    {% for i in range(patterns | length) %}
+
+    {{ i + 1 }}. If text matches "{{ patterns[i] }}" → yield: {{ yields[i] }}
+
+    {% endfor %}
+
+
+    FALLBACK (if no patterns match): {{ input.fallback or ''none'' }}
+
+
+    IMPORTANT:
+
+    - Check patterns in order
+
+    - Return yield for FIRST matching pattern
+
+    - Return ONLY the exact yield value, nothing else
+
+    - If no patterns match, return the fallback value
+
+    '
+  rules:
+    max_turns: 1

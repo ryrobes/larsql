@@ -1,0 +1,106 @@
+# QUALITY - Data quality score for a value
+#
+# SQL Usage:
+#   SELECT *, QUALITY(address) as addr_quality FROM contacts
+#   SELECT * FROM leads WHERE QUALITY(email) > 0.8
+#   SELECT AVG(QUALITY(phone, 'phone')) as avg_phone_quality FROM customers
+#
+# Returns: 0.0 (garbage) to 1.0 (perfect)
+
+cascade_id: quality_single
+internal: true
+
+description: |
+  Assess data quality of a value. Returns a score from 0.0 (garbage) to 1.0 (perfect).
+  Considers completeness, validity, consistency, and formatting.
+
+inputs_schema:
+  value: The value to assess
+  expected_type: Optional hint about what type of data this should be
+
+sql_function:
+  name: quality
+  description: Assess data quality (0.0-1.0)
+  args:
+    - name: value
+      type: VARCHAR
+    - name: expected_type
+      type: VARCHAR
+      optional: true
+      description: "Expected type hint: address, name, phone, email, etc."
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+    - "QUALITY({{ value }})"
+    - "QUALITY({{ value }}, '{{ expected_type }}')"
+  cache: true
+  test_cases:
+    - sql: "SELECT quality('john.smith@gmail.com')"
+      expect:
+        type: range
+        min: 0.8
+        max: 1.0
+      description: "Perfect email should score high"
+    - sql: "SELECT quality('j@g')"
+      expect:
+        type: range
+        min: 0.0
+        max: 0.4
+      description: "Malformed email should score low"
+    - sql: "SELECT quality('')"
+      expect:
+        type: range
+        min: 0.0
+        max: 0.1
+      description: "Empty value should score near zero"
+
+cells:
+  - name: assess_quality
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Assess the data quality of this value.
+
+      VALUE: {{ input.value }}
+      {% if input.expected_type %}EXPECTED TYPE: {{ input.expected_type }}{% endif %}
+
+      Score from 0.0 to 1.0 based on:
+
+      **Completeness** (0.0-0.25): Is all expected information present?
+      - Full data with all components: 0.20-0.25
+      - Partial but usable: 0.10-0.20
+      - Minimal/empty: 0.0-0.10
+
+      **Validity** (0.0-0.25): Does it follow expected format/rules?
+      - Perfect format: 0.20-0.25
+      - Minor format issues: 0.10-0.20
+      - Major issues but parseable: 0.05-0.10
+      - Invalid/unparseable: 0.0-0.05
+
+      **Consistency** (0.0-0.25): Is it internally consistent?
+      - Fully consistent: 0.20-0.25
+      - Minor inconsistencies: 0.10-0.20
+      - Contradictory: 0.0-0.10
+
+      **Cleanliness** (0.0-0.25): Is it clean and well-formatted?
+      - Clean, normalized: 0.20-0.25
+      - Minor noise (extra spaces, wrong case): 0.10-0.20
+      - Messy but usable: 0.05-0.10
+      - Garbage: 0.0-0.05
+
+      Examples:
+      - "john.smith@gmail.com" (email) → 0.95 (perfect email)
+      - "john.smith@" (email) → 0.25 (invalid, incomplete)
+      - "JOHN.SMITH@GMAIL.COM" (email) → 0.80 (valid but not normalized)
+      - "123 Main Street, Boston, MA 02101" (address) → 0.95
+      - "123 main st boston" (address) → 0.55 (parseable but messy)
+      - "Boston" (address) → 0.30 (very incomplete)
+      - "asdfghjkl" (any) → 0.05 (garbage)
+      - "" or null → 0.0 (empty)
+      - "John Smith" (name) → 0.85 (good but missing middle name etc)
+      - "SMITH, JOHN Q JR" (name) → 0.70 (valid but messy format)
+
+      Return ONLY a decimal number between 0.0 and 1.0.
+
+    rules:
+      max_turns: 1

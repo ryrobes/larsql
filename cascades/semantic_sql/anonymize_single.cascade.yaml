@@ -1,0 +1,122 @@
+# ANONYMIZE - Remove or mask PII from data
+#
+# SQL Usage:
+#   SELECT ANONYMIZE(notes) FROM customer_feedback
+#   SELECT ANONYMIZE(email, 'mask') FROM contacts
+#   SELECT ANONYMIZE(text, 'redact', 'name,email,phone') FROM logs
+#
+# Critical for data privacy and compliance
+
+cascade_id: anonymize_single
+internal: true
+
+description: |
+  Remove or mask personally identifiable information (PII).
+  Essential for GDPR, HIPAA, and general data privacy.
+
+inputs_schema:
+  value: Text containing potential PII
+  mode: How to handle PII (redact, mask, fake, hash)
+  pii_types: Specific PII types to target (optional)
+
+sql_function:
+  name: anonymize
+  description: Remove or mask PII from data
+  args:
+    - name: value
+      type: VARCHAR
+    - name: mode
+      type: VARCHAR
+      optional: true
+      default: "redact"
+      description: "Mode: redact ([REDACTED]), mask (j***@...), fake (realistic replacement), hash"
+    - name: pii_types
+      type: VARCHAR
+      optional: true
+      description: "PII types: name,email,phone,ssn,address,dob,credit_card,ip (comma-separated or 'all')"
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "ANONYMIZE({{ value }})"
+    - "ANONYMIZE({{ value }}, '{{ mode }}')"
+    - "ANONYMIZE({{ value }}, '{{ mode }}', '{{ pii_types }}')"
+  cache: true
+  test_cases:
+    - sql: "SELECT anonymize('John Smith, john@email.com')"
+      expect:
+        type: contains
+        value: "[NAME]"
+      description: "Name should be redacted"
+    - sql: "SELECT anonymize('Call me at 555-123-4567')"
+      expect:
+        type: contains
+        value: "[PHONE]"
+      description: "Phone should be redacted"
+
+cells:
+  - name: remove_pii
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Anonymize this text by handling PII.
+
+      TEXT: {{ input.value }}
+      MODE: {{ input.mode | default('redact') }}
+      PII TYPES: {{ input.pii_types | default('all') }}
+
+      Return a JSON object:
+      {
+        "anonymized": "The customer [NAME] at [EMAIL] reported...",
+        "pii_found": [
+          {"type": "name", "original": "John Smith", "replacement": "[NAME]"},
+          {"type": "email", "original": "john@email.com", "replacement": "[EMAIL]"}
+        ],
+        "pii_count": 2
+      }
+
+      **PII Types to detect**:
+      - name: Person names
+      - email: Email addresses
+      - phone: Phone numbers
+      - ssn: Social Security Numbers
+      - address: Physical addresses
+      - dob: Dates of birth
+      - credit_card: Credit card numbers
+      - ip: IP addresses
+      - medical_id: Medical record numbers
+      - license: Driver's license numbers
+      - passport: Passport numbers
+      - bank_account: Bank account numbers
+      - username: User IDs and usernames
+
+      **Modes**:
+
+      "redact":
+      - Replace with type label: [NAME], [EMAIL], [PHONE]
+      - "Contact John at john@email.com" → "Contact [NAME] at [EMAIL]"
+
+      "mask":
+      - Partially obscure: J*** S****, j***@***.com, (555) ***-1234
+      - Preserve format but hide content
+
+      "fake":
+      - Replace with realistic fake data
+      - "John Smith" → "Michael Johnson"
+      - "john@gmail.com" → "mjohnson@example.com"
+      - Maintain plausibility
+
+      "hash":
+      - Replace with consistent hash
+      - Same input → same hash (for joining)
+      - "John Smith" → "[NAME_a1b2c3]"
+
+      Preserve non-PII text unchanged.
+      Handle context carefully (don't anonymize company names, public figures, etc. unless specified).
+
+      Return ONLY the JSON object.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object

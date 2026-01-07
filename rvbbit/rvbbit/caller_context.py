@@ -11,7 +11,7 @@ for DuckDB UDFs (which execute in DuckDB's internal thread pool where contextvar
 """
 
 from contextvars import ContextVar
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 import threading
 
 
@@ -34,6 +34,64 @@ _invocation_metadata: ContextVar[Optional[Dict]] = ContextVar('invocation_metada
 _thread_local = threading.local()
 _global_caller_registry: Dict[str, Tuple[str, Dict[str, Any]]] = {}
 _registry_lock = threading.Lock()
+
+# DuckDB attachments for sql_statement execution
+# We store attachment info (not the connection itself) to avoid deadlocks
+# The connection is busy during UDF execution, so we create a sibling connection
+_duckdb_attachments_registry: Dict[str, List[Tuple[str, str]]] = {}  # connection_id -> [(alias, path), ...]
+
+
+# ============================================================================
+# DuckDB Connection Management
+# ============================================================================
+
+def set_duckdb_attachments(connection_id: str, attachments: List[Tuple[str, str]]):
+    """
+    Register DuckDB attachment info for UDF access.
+
+    Instead of storing the connection (which causes deadlocks), we store
+    the attachment info so execute_sql_statement can create a sibling
+    connection with the same attached databases.
+
+    Args:
+        connection_id: Unique identifier (e.g., postgres session_id)
+        attachments: List of (alias, path) tuples for ATTACH commands
+    """
+    with _registry_lock:
+        _duckdb_attachments_registry[connection_id] = attachments
+
+
+def get_duckdb_attachments(connection_id: str = None) -> List[Tuple[str, str]]:
+    """
+    Get DuckDB attachment info for creating a sibling connection.
+
+    Args:
+        connection_id: Optional connection ID to look up
+
+    Returns:
+        List of (alias, path) tuples or empty list
+    """
+    with _registry_lock:
+        # Try specific connection first
+        if connection_id and connection_id in _duckdb_attachments_registry:
+            return _duckdb_attachments_registry[connection_id]
+
+        # Fallback: return any attachments (queries are serialized anyway)
+        if _duckdb_attachments_registry:
+            return next(iter(_duckdb_attachments_registry.values()))
+
+    return []
+
+
+def clear_duckdb_attachments(connection_id: str):
+    """
+    Remove DuckDB attachment info from the registry.
+
+    Args:
+        connection_id: Connection ID to remove
+    """
+    with _registry_lock:
+        _duckdb_attachments_registry.pop(connection_id, None)
 
 
 # ============================================================================

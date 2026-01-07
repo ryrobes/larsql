@@ -1,0 +1,123 @@
+cascade_id: complexity_dimension
+internal: true
+description: 'Dimension operator that buckets text/content by complexity level.
+
+  Useful for workload estimation and routing.
+
+  '
+inputs_schema:
+  text: Text to analyze for complexity
+sql_function:
+  name: complexity
+  description: Assess complexity for grouping
+  args:
+  - name: text
+    type: VARCHAR
+  returns: VARCHAR
+  shape: DIMENSION
+  operators:
+  - COMPLEXITY({{ text }})
+  - '{{ text }} BY COMPLEXITY'
+  cache: true
+  test_cases:
+  - sql: SELECT complexity('E=mc2 explains relativity')
+    expect:
+      type: regex
+      pattern: .+
+    description: Complexity assessed
+cells:
+- name: assess_complexity
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Assess the complexity level of this text/content.
+
+
+    TEXT: {{ input.text }}
+
+
+    Return a complexity bucket for GROUP BY analysis.
+
+
+    **Buckets**:
+
+
+    "trivial":
+
+    - Simple question with obvious answer
+
+    - Single-step request
+
+    - No technical knowledge needed
+
+    - Example: "How do I reset my password?"
+
+
+    "low":
+
+    - Straightforward task
+
+    - Clear requirements
+
+    - Standard process
+
+    - Example: "Update my address to 123 Main St"
+
+
+    "medium":
+
+    - Multiple steps involved
+
+    - Some decision-making required
+
+    - May need clarification
+
+    - Example: "Compare pricing options for my account"
+
+
+    "high":
+
+    - Complex problem
+
+    - Multiple factors to consider
+
+    - Research or investigation needed
+
+    - Technical knowledge required
+
+    - Example: "Debug why my API calls are failing intermittently"
+
+
+    "very_high":
+
+    - Expert-level problem
+
+    - Multi-system involvement
+
+    - No clear solution path
+
+    - Requires deep analysis
+
+    - Example: "Redesign the authentication system to support SSO"
+
+
+    **Complexity indicators**:
+
+    - Multiple questions/topics: higher
+
+    - Technical terms: higher
+
+    - Edge cases mentioned: higher
+
+    - Time pressure: higher
+
+    - Dependencies mentioned: higher
+
+    - "Simple" or "quick" in text: lower
+
+    - Clear yes/no question: lower
+
+
+    Return ONLY the bucket name (e.g., "low", "medium", "high").
+
+    '
+  rules:
+    max_turns: 1

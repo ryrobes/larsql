@@ -157,6 +157,53 @@ def main():
     sql_parser = subparsers.add_parser('sql', help='SQL commands (query or start PostgreSQL server)')
     sql_subparsers = sql_parser.add_subparsers(dest='sql_command', help='SQL subcommands')
 
+    # Top-level ssql command for semantic SQL
+    # Supports both: `rvbbit ssql "SELECT..."` (direct query) and `rvbbit ssql test` (subcommand)
+    ssql_parser = subparsers.add_parser(
+        'ssql',
+        help='Semantic SQL: run queries directly (ssql "SELECT...") or use subcommands (test, list)'
+    )
+    ssql_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
+    ssql_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows')
+    ssql_parser.add_argument('--show-rewritten', action='store_true', help='Show rewritten SQL')
+    ssql_parser.add_argument('--session', default=None, help='Session ID')
+    ssql_parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    ssql_subparsers = ssql_parser.add_subparsers(dest='ssql_command', help='Semantic SQL subcommands')
+
+    # ssql query (or just pass query directly: ssql "SELECT...")
+    ssql_query_parser = ssql_subparsers.add_parser(
+        'query',
+        help='Execute a semantic SQL query (DuckDB with LLM-powered operators)',
+        aliases=['q', 'run']
+    )
+    ssql_query_parser.add_argument('query', help='Semantic SQL query')
+    ssql_query_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
+    ssql_query_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
+    ssql_query_parser.add_argument('--show-rewritten', action='store_true', help='Show rewritten SQL before execution')
+    ssql_query_parser.add_argument('--session', default=None, help='Session ID for DuckDB (default: cli-<random>)')
+    ssql_query_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed execution info')
+    ssql_query_parser.set_defaults(func=cmd_sql_semantic)
+
+    # ssql test (run tests defined in cascade files)
+    ssql_test_parser = ssql_subparsers.add_parser(
+        'test',
+        help='Run tests defined in semantic SQL cascades (test_cases in sql_function)'
+    )
+    ssql_test_parser.add_argument('--filter', default=None, help='Filter by operator name (e.g., "quality", "valid*")')
+    ssql_test_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
+    ssql_test_parser.add_argument('--fail-fast', action='store_true', help='Stop on first failure')
+    ssql_test_parser.set_defaults(func=cmd_sql_test)
+
+    # ssql list (list available operators)
+    ssql_list_parser = ssql_subparsers.add_parser(
+        'list',
+        help='List available semantic SQL operators',
+        aliases=['ls', 'operators']
+    )
+    ssql_list_parser.add_argument('--type', choices=['scalar', 'aggregate', 'dimension', 'all'], default='all', help='Filter by operator type')
+    ssql_list_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed info including descriptions')
+    ssql_list_parser.set_defaults(func=cmd_ssql_list)
+
     # sql query (for querying ClickHouse)
     sql_query_parser = sql_subparsers.add_parser(
         'query',
@@ -204,6 +251,20 @@ def main():
         help='Session ID for discovery (default: auto-generated)'
     )
     sql_crawl_parser.set_defaults(func=cmd_sql_crawl)
+
+    # sql semantic (for semantic SQL with DuckDB + LLM operators)
+    sql_semantic_parser = sql_subparsers.add_parser(
+        'semantic',
+        help='Execute semantic SQL query (DuckDB with LLM-powered operators)',
+        aliases=['sem', 'ssql']  # Allow 'rvbbit sql sem' or 'rvbbit sql ssql'
+    )
+    sql_semantic_parser.add_argument('query', help='Semantic SQL query')
+    sql_semantic_parser.add_argument('--format', choices=['table', 'json', 'csv'], default='table', help='Output format')
+    sql_semantic_parser.add_argument('--limit', type=int, default=None, help='Limit number of rows displayed')
+    sql_semantic_parser.add_argument('--show-rewritten', action='store_true', help='Show rewritten SQL before execution')
+    sql_semantic_parser.add_argument('--session', default=None, help='Session ID for DuckDB (default: cli-<random>)')
+    sql_semantic_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed execution info')
+    sql_semantic_parser.set_defaults(func=cmd_sql_semantic)
 
     # Embedding command group
     embed_parser = subparsers.add_parser('embed', help='Embedding system management')
@@ -815,6 +876,19 @@ def main():
     alice_run_parser.add_argument('--port', type=int, default=None, help='Run as web server on port')
     alice_run_parser.add_argument('--background', '-b', default=None, help='Background image path')
 
+    # Preprocess args: `rvbbit ssql "SELECT..."` → `rvbbit ssql query "SELECT..."`
+    # This allows users to run queries directly without the `query` subcommand
+    if len(sys.argv) >= 3 and sys.argv[1] == 'ssql':
+        second_arg = sys.argv[2]
+        # If second arg looks like SQL (not a subcommand), insert 'query'
+        sql_prefixes = ('SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'EXPLAIN')
+        subcommands = ('query', 'q', 'run', 'test', 'list', 'ls', 'operators', '-h', '--help')
+        if second_arg.upper().startswith(sql_prefixes) or (
+            second_arg not in subcommands and not second_arg.startswith('-')
+        ):
+            # Looks like a direct query - insert 'query' subcommand
+            sys.argv = [sys.argv[0], 'ssql', 'query'] + sys.argv[2:]
+
     args = parser.parse_args()
 
     # Default to 'run' if no command specified and first arg looks like a file
@@ -880,14 +954,38 @@ def main():
         else:
             db_parser.print_help()
             sys.exit(1)
+    elif args.command == 'ssql':
+        # Handle ssql subcommands (query, test, list)
+        # Note: `rvbbit ssql "SELECT..."` is preprocessed to `rvbbit ssql query "SELECT..."`
+        if args.ssql_command in ('query', 'q', 'run'):
+            cmd_sql_semantic(args)
+        elif args.ssql_command == 'test':
+            cmd_sql_test(args)
+        elif args.ssql_command in ('list', 'ls', 'operators'):
+            cmd_ssql_list(args)
+        elif args.ssql_command is None:
+            # No subcommand - show usage
+            print("Usage: rvbbit ssql \"SELECT...\" or rvbbit ssql <subcommand>")
+            print("\nSubcommands: query, test, list")
+            print("\nExamples:")
+            print("  rvbbit ssql \"SELECT normalize('ACME Corp', 'company')\"")
+            print("  rvbbit ssql \"SELECT * FROM data WHERE col MEANS 'tech'\"")
+            print("  rvbbit ssql test --filter 'quality'")
+            print("  rvbbit ssql list --type scalar")
+            sys.exit(1)
+        else:
+            print(f"Unknown ssql subcommand: {args.ssql_command}")
+            sys.exit(1)
     elif args.command == 'sql':
-        # Handle sql subcommands (query, server, or crawl)
+        # Handle sql subcommands (query, server, crawl, or semantic)
         if args.sql_command == 'query' or args.sql_command == 'q':
             cmd_sql(args)
         elif args.sql_command == 'server' or args.sql_command == 'serve':
             cmd_sql_server(args)
         elif args.sql_command in ('crawl', 'discover', 'scan'):
             cmd_sql_crawl(args)
+        elif args.sql_command in ('semantic', 'sem', 'ssql'):
+            cmd_sql_semantic(args)
         elif args.sql_command is None:
             # Backward compatibility: rvbbit sql "SELECT..." (old style)
             # Check if there are remaining args that look like a query
@@ -1591,6 +1689,507 @@ def cmd_sql(args):
         print("  rvbbit sql \"SELECT session_id, SUM(cost) FROM unified_logs GROUP BY session_id\"")
         print("  rvbbit sql \"SELECT * FROM rag WHERE rag_id = 'abc123' LIMIT 5\"")
         sys.exit(1)
+
+
+# ========== SEMANTIC SQL COMMAND ==========
+
+def cmd_sql_semantic(args):
+    """
+    Execute a semantic SQL query using DuckDB with LLM-powered operators.
+
+    This command provides access to the full semantic SQL system including:
+    - Scalar operators: MEANS, SIMILAR_TO, NORMALIZE, PARSE_*, VALID, FIX, etc.
+    - Aggregate operators: SUMMARIZE, THEMES, CLUSTER, GOLDEN_RECORD, etc.
+    - Dimension operators: SENTIMENT, CATEGORY, LANGUAGE, FORMALITY, etc.
+
+    Example usage:
+        rvbbit sql semantic "SELECT NORMALIZE('Acme Corp.', 'company')"
+        rvbbit sql semantic "SELECT QUALITY('john@gmail.com')"
+        rvbbit sql semantic "SELECT PARSE_ADDRESS('123 Main St, Boston MA')"
+    """
+    import uuid
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    # Generate session ID if not provided
+    session_id = args.session or f"cli-{uuid.uuid4().hex[:8]}"
+
+    if args.verbose:
+        console.print(f"[dim]Session:[/dim] {session_id}")
+
+    try:
+        # Import semantic SQL components
+        from rvbbit.sql_tools.session_db import get_session_db, get_session_lock
+        from rvbbit.sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
+        from rvbbit.semantic_sql.registry import initialize_registry, get_sql_function_registry
+
+        # Initialize the cascade registry (discovers operators)
+        if args.verbose:
+            console.print("[dim]Initializing semantic SQL registry...[/dim]")
+        initialize_registry(force=True)
+        registry = get_sql_function_registry()
+
+        if args.verbose:
+            console.print(f"[dim]Loaded {len(registry)} semantic operators[/dim]")
+
+        # Get or create DuckDB session
+        conn = get_session_db(session_id)
+        lock = get_session_lock(session_id)
+
+        # Register UDFs (semantic operators become callable functions)
+        if args.verbose:
+            console.print("[dim]Registering semantic SQL UDFs...[/dim]")
+
+        with lock:
+            register_rvbbit_udf(conn)
+            register_dynamic_sql_functions(conn)
+
+        # Rewrite SQL through full operator stack (same as postgres_server)
+        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+        rewritten_sql = rewrite_rvbbit_syntax(args.query, duckdb_conn=conn)
+
+        # Show rewritten SQL if requested or if it changed
+        if args.show_rewritten or (args.verbose and rewritten_sql != args.query):
+            console.print()
+            console.print("[bold]Original SQL:[/bold]")
+            console.print(f"  {args.query}")
+            console.print()
+            console.print("[bold]Rewritten SQL:[/bold]")
+            console.print(f"  {rewritten_sql}")
+            console.print()
+
+        # Execute query
+        if args.verbose:
+            console.print(f"[dim]Executing query...[/dim]")
+
+        with lock:
+            result = conn.execute(rewritten_sql)
+            df = result.fetchdf()
+
+        # Apply limit if specified
+        if args.limit and len(df) > args.limit:
+            df = df.head(args.limit)
+            console.print(f"[dim](Showing {args.limit} of {len(df)} rows)[/dim]")
+
+        # Output in requested format
+        if df.empty:
+            console.print("[yellow]No results found.[/yellow]")
+            return
+
+        if args.format == 'table':
+            # Pretty table output using Rich
+            table = Table(show_header=True, header_style="bold cyan")
+
+            # Add columns
+            for col in df.columns:
+                table.add_column(str(col))
+
+            # Add rows
+            for _, row in df.iterrows():
+                # Truncate long values for display
+                table.add_row(*[_truncate_value(val, 80) for val in row])
+
+            console.print()
+            console.print(table)
+            console.print()
+            console.print(f"[dim]({len(df)} rows)[/dim]")
+
+        elif args.format == 'json':
+            print(df.to_json(orient='records', indent=2))
+
+        elif args.format == 'csv':
+            print(df.to_csv(index=False))
+
+    except Exception as e:
+        console.print(f"[red]✗ Semantic SQL query failed:[/red] {e}", style="bold")
+        console.print()
+
+        # Show helpful error info
+        console.print("[bold]Usage examples:[/bold]")
+        console.print("  rvbbit sql semantic \"SELECT NORMALIZE('Acme Corp.', 'company')\"")
+        console.print("  rvbbit sql semantic \"SELECT QUALITY('john@gmail.com')\"")
+        console.print("  rvbbit sql semantic \"SELECT * FROM read_csv('data.csv') WHERE VALID(email, 'email')\"")
+        console.print()
+        console.print("[bold]Helpful flags:[/bold]")
+        console.print("  --show-rewritten    Show how semantic operators are rewritten")
+        console.print("  --verbose           Show detailed execution info")
+        console.print("  --format json       Output as JSON")
+        console.print()
+
+        # Show available operators
+        try:
+            from rvbbit.semantic_sql.registry import get_sql_function_registry
+            registry = get_sql_function_registry()
+
+            # Group by shape
+            scalars = [n for n, e in registry.items() if e.shape.upper() == 'SCALAR']
+            aggregates = [n for n, e in registry.items() if e.shape.upper() == 'AGGREGATE']
+            dimensions = [n for n, e in registry.items() if e.shape.upper() == 'DIMENSION']
+
+            console.print(f"[bold]Available operators:[/bold] ({len(registry)} total)")
+            if scalars:
+                console.print(f"  [cyan]Scalar ({len(scalars)}):[/cyan] {', '.join(sorted(scalars)[:10])}...")
+            if aggregates:
+                console.print(f"  [green]Aggregate ({len(aggregates)}):[/green] {', '.join(sorted(aggregates)[:10])}...")
+            if dimensions:
+                console.print(f"  [magenta]Dimension ({len(dimensions)}):[/magenta] {', '.join(sorted(dimensions)[:10])}...")
+        except Exception:
+            pass
+
+        sys.exit(1)
+
+
+def _truncate_value(val, max_len=80):
+    """Truncate a value for display."""
+    s = str(val)
+    if len(s) > max_len:
+        return s[:max_len-3] + "..."
+    return s
+
+
+# ========== SEMANTIC SQL LIST COMMAND ==========
+
+def cmd_ssql_list(args):
+    """List available semantic SQL operators."""
+    import yaml
+    from pathlib import Path
+    from rich.table import Table
+    from rich.console import Console
+    from rvbbit.config import get_config
+
+    console = Console()
+    config = get_config()
+    cascades_dir = Path(config.cascades_dir)
+    semantic_sql_dir = cascades_dir / 'semantic_sql'
+
+    operators = {'scalar': [], 'aggregate': [], 'dimension': []}
+
+    for cascade_file in sorted(semantic_sql_dir.glob('*.yaml')):
+        try:
+            with open(cascade_file) as f:
+                cascade = yaml.safe_load(f)
+        except Exception:
+            continue
+
+        sql_fn = cascade.get('sql_function', {})
+        if not sql_fn.get('name'):
+            continue
+
+        name = sql_fn.get('name')
+        shape = sql_fn.get('shape', 'SCALAR').upper()
+        desc = sql_fn.get('description', '')[:60]
+        has_tests = len(sql_fn.get('test_cases', [])) > 0
+
+        shape_key = shape.lower()
+        if shape_key not in operators:
+            shape_key = 'scalar'
+
+        operators[shape_key].append({
+            'name': name,
+            'description': desc,
+            'has_tests': has_tests,
+            'file': cascade_file.name
+        })
+
+    filter_type = getattr(args, 'type', 'all')
+    verbose = getattr(args, 'verbose', False)
+
+    for shape in ['scalar', 'aggregate', 'dimension']:
+        if filter_type != 'all' and filter_type != shape:
+            continue
+
+        ops = operators[shape]
+        if not ops:
+            continue
+
+        table = Table(title=f"{shape.upper()} Operators ({len(ops)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Tests", style="green", width=6)
+        if verbose:
+            table.add_column("Description", style="dim")
+            table.add_column("File", style="dim")
+
+        for op in sorted(ops, key=lambda x: x['name']):
+            test_status = "✓" if op['has_tests'] else "○"
+            if verbose:
+                table.add_row(op['name'], test_status, op['description'], op['file'])
+            else:
+                table.add_row(op['name'], test_status)
+
+        console.print(table)
+        console.print()
+
+    # Summary
+    total = sum(len(ops) for ops in operators.values())
+    with_tests = sum(1 for ops in operators.values() for op in ops if op['has_tests'])
+    console.print(f"Total: {total} operators, {with_tests} with tests ({100*with_tests//total if total else 0}%)")
+
+
+# ========== SEMANTIC SQL TEST COMMAND ==========
+
+def cmd_sql_test(args):
+    """
+    Run tests defined in semantic SQL cascade files.
+
+    Looks for test_cases in sql_function blocks and executes them.
+    Supports multiple expectation types:
+    - Literal: expect: true, expect: "value", expect: 0.95
+    - Range: expect: {type: range, min: 0.8, max: 1.0}
+    - Contains: expect: {type: contains, value: "substring"}
+    - One of: expect: {type: one_of, values: ["a", "b", "c"]}
+    - Regex: expect: {type: regex, pattern: "\\d+"}
+    """
+    import fnmatch
+    import re
+    import uuid
+    import yaml
+    from pathlib import Path
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+    session_id = f"test-{uuid.uuid4().hex[:8]}"
+
+    # Initialize semantic SQL
+    try:
+        from rvbbit.sql_tools.session_db import get_session_db, get_session_lock
+        from rvbbit.sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
+        from rvbbit.semantic_sql.registry import initialize_registry, get_sql_function_registry
+        from rvbbit.config import get_config
+
+        config = get_config()
+        initialize_registry(force=True)
+        registry = get_sql_function_registry()
+
+        conn = get_session_db(session_id)
+        lock = get_session_lock(session_id)
+
+        with lock:
+            register_rvbbit_udf(conn)
+            register_dynamic_sql_functions(conn)
+
+    except Exception as e:
+        console.print(f"[red]Failed to initialize: {e}[/red]")
+        sys.exit(1)
+
+    # Find cascades with test_cases
+    cascades_dir = Path(config.cascades_dir)
+    semantic_sql_dir = cascades_dir / 'semantic_sql'
+
+    tests_found = 0
+    tests_passed = 0
+    tests_failed = 0
+    failures = []
+
+    console.print()
+    console.print("[bold]Running Semantic SQL Tests[/bold]")
+    console.print()
+
+    for cascade_file in sorted(semantic_sql_dir.glob('*.yaml')):
+        try:
+            with open(cascade_file) as f:
+                cascade = yaml.safe_load(f)
+        except Exception:
+            continue
+
+        sql_fn = cascade.get('sql_function', {})
+        fn_name = sql_fn.get('name')
+        test_cases = sql_fn.get('test_cases', [])
+
+        if not test_cases:
+            continue
+
+        # Apply filter
+        if args.filter:
+            if not fnmatch.fnmatch(fn_name, args.filter):
+                continue
+
+        console.print(f"[cyan]{fn_name}[/cyan] ({len(test_cases)} tests)")
+
+        for i, test in enumerate(test_cases):
+            sql = test.get('sql')
+            expect = test.get('expect')
+            description = test.get('description', f"Test {i+1}")
+
+            # Handle skipped tests
+            if test.get('skip'):
+                if args.verbose:
+                    console.print(f"  [yellow]⊘[/yellow] {description} [dim](skipped)[/dim]")
+                continue
+
+            tests_found += 1
+
+            try:
+                # Rewrite SQL through full operator stack (same as postgres_server)
+                from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+                rewritten_sql = rewrite_rvbbit_syntax(sql, duckdb_conn=conn)
+
+                with lock:
+                    result = conn.execute(rewritten_sql)
+                    df = result.fetchdf()
+
+                if df.empty:
+                    actual = None
+                else:
+                    actual = df.iloc[0, 0]
+
+                # Evaluate expectation
+                passed, reason = _evaluate_expectation(actual, expect)
+
+                if passed:
+                    tests_passed += 1
+                    if args.verbose:
+                        console.print(f"  [green]✓[/green] {description}")
+                else:
+                    tests_failed += 1
+                    failures.append({
+                        'operator': fn_name,
+                        'sql': sql,
+                        'expected': expect,
+                        'actual': actual,
+                        'reason': reason,
+                        'description': description
+                    })
+                    console.print(f"  [red]✗[/red] {description}")
+                    if args.verbose:
+                        console.print(f"    SQL: {sql}")
+                        console.print(f"    Expected: {expect}")
+                        console.print(f"    Actual: {actual}")
+                        console.print(f"    Reason: {reason}")
+
+                    if args.fail_fast:
+                        break
+
+            except Exception as e:
+                tests_failed += 1
+                failures.append({
+                    'operator': fn_name,
+                    'sql': sql,
+                    'expected': expect,
+                    'actual': None,
+                    'reason': f"Error: {e}",
+                    'description': description
+                })
+                console.print(f"  [red]✗[/red] {description} - Error: {e}")
+
+                if args.fail_fast:
+                    break
+
+        if args.fail_fast and tests_failed > 0:
+            break
+
+    # Summary
+    console.print()
+    console.print("[bold]Summary[/bold]")
+    console.print(f"  Total: {tests_found}")
+    console.print(f"  [green]Passed: {tests_passed}[/green]")
+    if tests_failed > 0:
+        console.print(f"  [red]Failed: {tests_failed}[/red]")
+
+    if failures and not args.verbose:
+        console.print()
+        console.print("[bold]Failures:[/bold]")
+        for f in failures[:5]:  # Show first 5
+            console.print(f"  [red]•[/red] {f['operator']}: {f['description']}")
+            console.print(f"    {f['reason']}")
+        if len(failures) > 5:
+            console.print(f"  ... and {len(failures) - 5} more")
+
+    sys.exit(0 if tests_failed == 0 else 1)
+
+
+def _evaluate_expectation(actual, expect):
+    """
+    Evaluate if actual value matches expectation.
+
+    Returns (passed: bool, reason: str)
+    """
+    import re
+
+    # Handle None/empty
+    if actual is None:
+        if expect is None:
+            return True, "Both None"
+        return False, f"Got None, expected {expect}"
+
+    # Convert actual to comparable type
+    actual_str = str(actual).strip()
+    actual_lower = actual_str.lower()
+
+    # Literal expectation
+    if not isinstance(expect, dict):
+        # Boolean check
+        if isinstance(expect, bool):
+            actual_bool = actual_lower in ('true', '1', 'yes')
+            if expect:
+                return actual_bool, "Boolean match" if actual_bool else f"Expected True, got {actual}"
+            else:
+                return not actual_bool, "Boolean match" if not actual_bool else f"Expected False, got {actual}"
+
+        # Numeric check
+        if isinstance(expect, (int, float)):
+            try:
+                actual_num = float(actual)
+                if abs(actual_num - expect) < 0.01:
+                    return True, "Numeric match"
+                return False, f"Expected {expect}, got {actual_num}"
+            except (ValueError, TypeError):
+                return False, f"Expected numeric {expect}, got {actual}"
+
+        # String exact match
+        if str(expect).strip().lower() == actual_lower:
+            return True, "Exact match"
+        return False, f"Expected '{expect}', got '{actual}'"
+
+    # Complex expectation types
+    exp_type = expect.get('type')
+
+    if exp_type == 'range':
+        try:
+            actual_num = float(actual)
+            min_val = expect.get('min', float('-inf'))
+            max_val = expect.get('max', float('inf'))
+            if min_val <= actual_num <= max_val:
+                return True, f"In range [{min_val}, {max_val}]"
+            return False, f"Value {actual_num} not in range [{min_val}, {max_val}]"
+        except (ValueError, TypeError):
+            return False, f"Could not convert '{actual}' to number for range check"
+
+    elif exp_type == 'contains':
+        value = expect.get('value', '')
+        if value.lower() in actual_lower:
+            return True, f"Contains '{value}'"
+        return False, f"'{actual}' does not contain '{value}'"
+
+    elif exp_type == 'one_of':
+        values = [str(v).strip().lower() for v in expect.get('values', [])]
+        if actual_lower in values:
+            return True, f"One of {expect.get('values')}"
+        return False, f"'{actual}' not in {expect.get('values')}"
+
+    elif exp_type == 'regex':
+        pattern = expect.get('pattern', '')
+        if re.search(pattern, actual_str):
+            return True, f"Matches pattern '{pattern}'"
+        return False, f"'{actual}' does not match pattern '{pattern}'"
+
+    elif exp_type == 'json_contains':
+        # Check if JSON output contains expected keys/values
+        import json
+        try:
+            actual_json = json.loads(actual_str)
+            for key, val in expect.get('fields', {}).items():
+                if key not in actual_json:
+                    return False, f"Missing key '{key}' in JSON"
+                if val is not None and actual_json[key] != val:
+                    return False, f"Key '{key}' expected '{val}', got '{actual_json[key]}'"
+            return True, "JSON contains expected fields"
+        except json.JSONDecodeError:
+            return False, f"Could not parse as JSON: {actual_str[:50]}"
+
+    return False, f"Unknown expectation type: {exp_type}"
 
 
 # ========== DATA MANAGEMENT COMMANDS ==========

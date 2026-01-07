@@ -1,57 +1,62 @@
-# CONTRADICTS - Logical contradiction check
-# Returns TRUE if text A contradicts text B
-#
-# SQL Usage:
-#   SELECT * FROM docs WHERE title CONTRADICTS observed
-#   SELECT * FROM docs WHERE title CONTRADICTS 'no creature was seen'
-#
-# Direct Function:
-#   SELECT semantic_contradicts(title, observed) FROM docs
-
 cascade_id: semantic_contradicts
-internal: true 
+internal: true
+description: 'Logical contradiction check - returns TRUE if text A contradicts text
+  B.
 
-description: |
-  Logical contradiction check - returns TRUE if text A contradicts text B.
   Used for finding inconsistent reports or filtering out conflicting information.
 
+  '
 inputs_schema:
   text_a: The first text
   text_b: The second text or criterion
-
 sql_function:
   name: semantic_contradicts
   description: Returns TRUE if text_a contradicts text_b
   args:
-    - name: text_a
-      type: VARCHAR
-    - name: text_b
-      type: VARCHAR
+  - name: text_a
+    type: VARCHAR
+  - name: text_b
+    type: VARCHAR
   returns: BOOLEAN
   shape: SCALAR
   operators:
-    - "{{ text_a }} CONTRADICTS {{ text_b }}"
+  - '{{ text_a }} CONTRADICTS {{ text_b }}'
   cache: true
-
+  test_cases:
+  - sql: SELECT semantic_contradicts('The product is excellent', 'The product is terrible')
+    expect: true
+    description: Contradicting statements detected
+  - sql: SELECT semantic_contradicts('The sky is blue', 'Water is wet')
+    expect: false
+    description: Non-contradicting statements
 cells:
-  - name: check_contradiction
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Do these two texts contradict each other?
+- name: check_contradiction
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Do these two texts contradict each other?
 
-      TEXT A: {{ input.text_a }}
 
-      TEXT B: {{ input.text_b }}
+    TEXT A: {{ input.text_a }}
 
-      A contradiction means: Both texts cannot be true at the same time.
 
-      Consider:
-      - Do they make opposing claims about the same thing?
-      - Are they logically incompatible?
-      - Does one negate or deny what the other asserts?
+    TEXT B: {{ input.text_b }}
 
-      Respond with ONLY "true" or "false" - no explanation.
-    rules:
-      max_turns: 1
-    output_schema:
-      type: boolean
+
+    A contradiction means: Both texts cannot be true at the same time.
+
+
+    Consider:
+
+    - Do they make opposing claims about the same thing?
+
+    - Are they logically incompatible?
+
+    - Does one negate or deny what the other asserts?
+
+
+    Respond with ONLY "true" or "false" - no explanation.
+
+    '
+  rules:
+    max_turns: 1
+  output_schema:
+    type: boolean

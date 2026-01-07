@@ -1,106 +1,67 @@
 cascade_id: semantic_vector_search
-internal: true 
-
-description: |
-  Semantic search using ClickHouse cosineDistance.
-
-  Returns table of (id, text, similarity, distance) tuples.
-  Pre-filters via vector similarity, can be combined with LLM operators.
-
-  SQL Usage:
-    -- Explicit form (DuckDB):
-    SELECT * FROM read_json_auto(vector_search_json_3('eco-friendly products', 'products', 10));
-    SELECT * FROM read_json_auto(vector_search_json_4('query', 'table', 10, 0.7));  -- with threshold
-
-  Performance:
-    - Vector search: ~50ms for 1M vectors (ClickHouse native)
-    - No LLM calls (pure vector similarity)
-    - Results cached by query hash
-
-  Hybrid Pattern (Vector + LLM):
-    WITH candidates AS (
-      SELECT * FROM VECTOR_SEARCH('eco products', 'products', 100)
-    )
-    SELECT *
-    FROM candidates c
-    JOIN products p ON p.id = c.id
-    WHERE p.description MEANS 'eco-friendly AND affordable'
-    ORDER BY c.similarity DESC;
-
+internal: true
+description: "Semantic search using ClickHouse cosineDistance.\n\nReturns table of\
+  \ (id, text, similarity, distance) tuples.\nPre-filters via vector similarity, can\
+  \ be combined with LLM operators.\n\nSQL Usage:\n  -- Explicit form (DuckDB):\n\
+  \  SELECT * FROM read_json_auto(vector_search_json_3('eco-friendly products', 'products',\
+  \ 10));\n  SELECT * FROM read_json_auto(vector_search_json_4('query', 'table', 10,\
+  \ 0.7));  -- with threshold\n\nPerformance:\n  - Vector search: ~50ms for 1M vectors\
+  \ (ClickHouse native)\n  - No LLM calls (pure vector similarity)\n  - Results cached\
+  \ by query hash\n\nHybrid Pattern (Vector + LLM):\n  WITH candidates AS (\n    SELECT\
+  \ * FROM VECTOR_SEARCH('eco products', 'products', 100)\n  )\n  SELECT *\n  FROM\
+  \ candidates c\n  JOIN products p ON p.id = c.id\n  WHERE p.description MEANS 'eco-friendly\
+  \ AND affordable'\n  ORDER BY c.similarity DESC;\n"
 inputs_schema:
-  query: "Search query text (required)"
-  source_table: "Table to search - must have embeddings in rvbbit_embeddings (required)"
-  limit: "Max results (default 10)"
-  threshold: "Min similarity threshold 0-1 (optional, e.g. 0.7)"
-
+  query: Search query text (required)
+  source_table: Table to search - must have embeddings in rvbbit_embeddings (required)
+  limit: Max results (default 10)
+  threshold: Min similarity threshold 0-1 (optional, e.g. 0.7)
 sql_function:
   name: vector_search
   description: Find similar documents via vector search
   args:
-    - name: query
-      type: VARCHAR
-      description: "Search query text"
-    - name: source_table
-      type: VARCHAR
-      description: "Table name to search"
-    - name: limit
-      type: INTEGER
-      optional: true
-      description: "Max results (default 10)"
-    - name: threshold
-      type: DOUBLE
-      optional: true
-      description: "Min similarity threshold (0-1)"
-  returns: TABLE  # Table-valued function
+  - name: query
+    type: VARCHAR
+    description: Search query text
+  - name: source_table
+    type: VARCHAR
+    description: Table name to search
+  - name: limit
+    type: INTEGER
+    optional: true
+    description: Max results (default 10)
+  - name: threshold
+    type: DOUBLE
+    optional: true
+    description: Min similarity threshold (0-1)
+  returns: TABLE
   shape: AGGREGATE
   cache: true
   context_arg: query
-
+  test_cases:
+  - sql: -- Requires vector index
+    skip: true
+    description: Vector search needs index
 cells:
-  - name: vector_search_complete
-    tool: python_data
-    inputs:
-      code: |
-        # Complete vector search in one cell to avoid DataFrame conversion issues
-        from rvbbit.traits.embedding_storage import agent_embed, clickhouse_vector_search
-
-        # Parse source_table - can be 'table' or 'table.column'
-        source_table_input = input.get('source_table', '')
-        if '.' in source_table_input:
-            table_name, column_name = source_table_input.split('.', 1)
-        else:
-            table_name = source_table_input
-            column_name = None
-
-        # Step 1: Embed the query
-        embed_result = agent_embed(text=input.get('query'))
-        query_embedding = embed_result['embedding']
-
-        # Step 2: Build metadata filter for column if specified
-        metadata_filter = None
-        if column_name:
-            # Filter by column name stored in metadata JSON
-            metadata_filter = f"JSONExtractString(metadata, 'column_name') = '{column_name}'"
-
-        # Step 3: Search ClickHouse
-        search_result = clickhouse_vector_search(
-            query_embedding=query_embedding,
-            source_table=table_name,
-            limit=input.get('limit', 10),
-            threshold=input.get('threshold'),
-            metadata_filter=metadata_filter
-        )
-
-        # Step 4: Format results for SQL
-        results = search_result.get('results', [])
-        result = [
-            {
-                'id': row['source_id'],
-                'text': row['text'][:500],
-                'similarity': round(row['similarity'], 4),
-                'distance': round(row['distance'], 4)
-            }
-            for row in results
-        ]
-    context:
-      enabled: false  # No LLM context needed
+- name: vector_search_complete
+  tool: python_data
+  inputs:
+    code: "# Complete vector search in one cell to avoid DataFrame conversion issues\n\
+      from rvbbit.traits.embedding_storage import agent_embed, clickhouse_vector_search\n\
+      \n# Parse source_table - can be 'table' or 'table.column'\nsource_table_input\
+      \ = input.get('source_table', '')\nif '.' in source_table_input:\n    table_name,\
+      \ column_name = source_table_input.split('.', 1)\nelse:\n    table_name = source_table_input\n\
+      \    column_name = None\n\n# Step 1: Embed the query\nembed_result = agent_embed(text=input.get('query'))\n\
+      query_embedding = embed_result['embedding']\n\n# Step 2: Build metadata filter\
+      \ for column if specified\nmetadata_filter = None\nif column_name:\n    # Filter\
+      \ by column name stored in metadata JSON\n    metadata_filter = f\"JSONExtractString(metadata,\
+      \ 'column_name') = '{column_name}'\"\n\n# Step 3: Search ClickHouse\nsearch_result\
+      \ = clickhouse_vector_search(\n    query_embedding=query_embedding,\n    source_table=table_name,\n\
+      \    limit=input.get('limit', 10),\n    threshold=input.get('threshold'),\n\
+      \    metadata_filter=metadata_filter\n)\n\n# Step 4: Format results for SQL\n\
+      results = search_result.get('results', [])\nresult = [\n    {\n        'id':\
+      \ row['source_id'],\n        'text': row['text'][:500],\n        'similarity':\
+      \ round(row['similarity'], 4),\n        'distance': round(row['distance'], 4)\n\
+      \    }\n    for row in results\n]\n"
+  context:
+    enabled: false

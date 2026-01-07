@@ -88,11 +88,12 @@ register_trait("file_info", file_info)
 register_trait("read_image", read_image)
 
 # SQL tools (multi-database discovery and querying)
-from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections
+from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
 register_trait("sql_search", sql_search)  # Elasticsearch hybrid search (default)
 register_trait("sql_rag_search", sql_rag_search)  # ClickHouse RAG fallback (legacy)
 register_trait("sql_query", sql_run_sql)  # Named sql_query to avoid conflict with smart_sql_run
 register_trait("list_sql_connections", list_sql_connections)
+register_trait("validate_sql", validate_sql)  # SQL syntax/schema validator for wards
 
 # Data Cascade tools (SQL notebooks / data pipelines)
 from .traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data

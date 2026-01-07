@@ -80,6 +80,66 @@ class SQLFunctionEntry:
         """Get cache TTL in seconds."""
         return self.sql_function.get("cache_ttl")
 
+    @property
+    def output_mode(self) -> str:
+        """Get output mode: 'value', 'sql_execute', 'sql_raw', or 'sql_statement'.
+
+        - value: (default) Cascade returns final value directly
+        - sql_execute: Cascade returns SQL expression for scalar result
+        - sql_raw: Cascade returns SQL fragment as-is (debugging/composition)
+        - sql_statement: Cascade returns full SQL statement for table results
+        """
+        return self.sql_function.get("output_mode", "value")
+
+    @property
+    def cache_key_config(self) -> Optional[Dict[str, Any]]:
+        """Get cache key configuration."""
+        return self.sql_function.get("cache_key")
+
+    @property
+    def structure_args(self) -> List[str]:
+        """Get list of args that should use structure-based caching."""
+        # Check cache_key.structure_args first
+        cache_key = self.cache_key_config
+        if cache_key and cache_key.get("strategy") == "structure":
+            return cache_key.get("structure_args", [])
+
+        # Fallback: check arg definitions for structure_source=True
+        structure_args = []
+        for arg in self.args:
+            if arg.get("structure_source"):
+                structure_args.append(arg.get("name"))
+        return structure_args
+
+    @property
+    def fingerprint_args(self) -> List[str]:
+        """Get list of args that should use fingerprint-based caching."""
+        cache_key = self.cache_key_config
+        if cache_key and cache_key.get("strategy") == "fingerprint":
+            return cache_key.get("fingerprint_args", [])
+        return []
+
+    @property
+    def fingerprint_config(self) -> Optional[Dict[str, Any]]:
+        """Get fingerprint configuration."""
+        cache_key = self.cache_key_config
+        if cache_key:
+            return cache_key.get("fingerprint_config")
+        return None
+
+    @property
+    def cache_name(self) -> str:
+        """Get the name to use for cache keys.
+
+        Allows multiple functions to share a cache via cache_key.cache_as.
+        For example, ask_data and ask_data_sql can both use cache_as: "ask_data"
+        to share the same cache (since they generate the same SQL).
+        """
+        cache_key = self.cache_key_config
+        if cache_key and cache_key.get("cache_as"):
+            return cache_key.get("cache_as")
+        return self.name
+
     def __repr__(self):
         return f"SQLFunctionEntry(name={self.name}, shape={self.shape}, cascade={self.cascade_id})"
 
@@ -259,6 +319,87 @@ def _make_cache_key(name: str, args: Dict[str, Any]) -> str:
     return SemanticCache.make_cache_key(name, args)
 
 
+def _make_structure_cache_key(
+    fn: SQLFunctionEntry,
+    args: Dict[str, Any]
+) -> str:
+    """
+    Create a cache key using structure hashing for sql_execute mode.
+
+    Args:
+        fn: The SQL function entry
+        args: Function arguments
+
+    Returns:
+        Cache key string
+    """
+    from .sql_macro import make_structure_cache_key
+
+    # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
+    cache_name = fn.cache_name
+
+    structure_args = fn.structure_args
+    if structure_args:
+        return make_structure_cache_key(cache_name, args, structure_args)
+    else:
+        # Fall back to content-based key
+        return _make_cache_key(cache_name, args)
+
+
+def _make_fingerprint_cache_key(
+    fn: SQLFunctionEntry,
+    args: Dict[str, Any]
+) -> str:
+    """
+    Create a cache key using fingerprint hashing for patterned string data.
+
+    Fingerprints capture the FORMAT of a string, not its content.
+    Same format + same task = same parser = cache hit.
+
+    Args:
+        fn: The SQL function entry
+        args: Function arguments
+
+    Returns:
+        Cache key string
+    """
+    from .fingerprint import compute_fingerprint, make_fingerprint_cache_key, FingerprintMethod
+
+    # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
+    cache_name = fn.cache_name
+
+    fingerprint_args = fn.fingerprint_args
+    if not fingerprint_args:
+        # Fall back to content-based key
+        return _make_cache_key(cache_name, args)
+
+    # Get fingerprint config
+    fp_config = fn.fingerprint_config or {}
+    method_str = fp_config.get("method", "hybrid")
+    include_lengths = fp_config.get("include_lengths", False)
+
+    try:
+        method = FingerprintMethod(method_str)
+    except ValueError:
+        method = FingerprintMethod.HYBRID
+
+    # Get the primary fingerprint arg
+    fp_arg_name = fingerprint_args[0]
+    fp_value = args.get(fp_arg_name, "")
+
+    # Compute fingerprint of the value
+    fingerprint = compute_fingerprint(str(fp_value), method, include_lengths)
+
+    # Build task from non-fingerprint args
+    task_parts = []
+    for arg_name, arg_value in sorted(args.items()):
+        if arg_name not in fingerprint_args:
+            task_parts.append(str(arg_value))
+    task = "|".join(task_parts)
+
+    return make_fingerprint_cache_key(cache_name, fingerprint, task)
+
+
 def get_cached_result(name: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
     """
     Get a cached result for a function call.
@@ -324,6 +465,15 @@ async def execute_sql_function(
     """
     Execute a SQL function by running its backing cascade.
 
+    Supports three output modes:
+    - "value": (default) Cascade returns final value directly
+    - "sql_execute": Cascade returns SQL fragment, which is executed to get the value
+    - "sql_raw": Cascade returns SQL fragment as-is (for debugging/composition)
+
+    The "sql_execute" mode enables structure-based caching: JSON with the same
+    structure but different values shares cached SQL fragments. This is powerful
+    for consistent JSON extraction - the LLM generates SQL once per structure.
+
     Supports cascade-level candidates via SQL comment hints:
         -- @ candidates.factor: 3
         -- @ candidates.evaluator: Pick the most accurate response
@@ -374,9 +524,54 @@ async def execute_sql_function(
         log.debug(f"[sql_fn] get_caller_id() failed: {e}")
         caller_id = None
 
+    # Determine output mode
+    output_mode = fn.output_mode  # "value", "sql_execute", or "sql_raw"
+
+    # Determine cache key strategy
+    cache_config = fn.cache_key_config or {}
+    cache_strategy = cache_config.get("strategy", "content")
+
+    # For sql_execute mode with structure caching, use structure-based cache key
+    use_structure_cache = (
+        cache_strategy == "structure" or
+        (output_mode in ("sql_execute", "sql_raw") and fn.structure_args)
+    )
+
+    # For fingerprint strategy, use fingerprint-based cache key
+    use_fingerprint_cache = cache_strategy == "fingerprint" and fn.fingerprint_args
+
+    # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
+    cache_name = fn.cache_name
+
+    # Build cache key based on strategy
+    if use_fingerprint_cache:
+        cache_key = _make_fingerprint_cache_key(fn, cleaned_args)
+        log.debug(f"[sql_fn] Using fingerprint-based cache key: {cache_key[:16]}...")
+    elif use_structure_cache:
+        cache_key = _make_structure_cache_key(fn, cleaned_args)
+        log.debug(f"[sql_fn] Using structure-based cache key: {cache_key[:16]}...")
+    else:
+        cache_key = _make_cache_key(cache_name, cleaned_args)
+
     # Check cache first (skip if candidates - candidates bypass cache for fresh sampling)
-    if not candidates_config:
-        found, cached = get_cached_result(name, cleaned_args)
+    if not candidates_config and fn.cache_enabled:
+        from ..sql_tools.cache_adapter import get_cache
+        cache = get_cache()
+
+        # For fingerprint strategy, check cache using fingerprint-based key
+        if use_fingerprint_cache:
+            found, cached, _ = cache.get(cache_name, {"__fingerprint_key__": cache_key})
+            if found:
+                log.debug(f"[sql_fn] Cache hit (fingerprint key) for {name} (cache_name={cache_name})")
+        # For structure strategy, check cache using structure-based key
+        elif use_structure_cache:
+            found, cached, _ = cache.get(cache_name, {"__structure_key__": cache_key})
+            if found:
+                log.debug(f"[sql_fn] Cache hit (structure key) for {name} (cache_name={cache_name})")
+        else:
+            # Default: content-based cache key
+            found, cached = get_cached_result(cache_name, cleaned_args)
+
         if found:
             log.debug(f"[sql_fn] Cache hit for {name}")
             # Track cache hit for SQL Trail
@@ -385,6 +580,32 @@ async def execute_sql_function(
                     increment_cache_hit(caller_id)
                 except Exception:
                     pass
+
+            # For sql_execute mode, cached value is SQL fragment - execute it
+            if output_mode == "sql_execute" and isinstance(cached, str):
+                from .sql_macro import bind_sql_parameters, execute_sql_fragment
+                sql_fragment = cached
+                bound_sql = bind_sql_parameters(sql_fragment, cleaned_args, fn.args)
+                log.debug(f"[sql_fn] Executing cached SQL: {bound_sql[:100]}...")
+                return execute_sql_fragment(bound_sql, fn.returns)
+
+            # For sql_statement mode, cached value is full SQL - execute it for table results
+            if output_mode == "sql_statement" and isinstance(cached, str):
+                from .sql_macro import bind_sql_parameters, execute_sql_statement
+                sql_statement = cached
+                bound_sql = bind_sql_parameters(sql_statement, cleaned_args, fn.args)
+                log.debug(f"[sql_fn] Executing cached SQL statement: {bound_sql[:100]}...")
+                results = execute_sql_statement(bound_sql)
+
+                # Write results to temp file for read_json_auto() compatibility
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json.dump(results, f)
+                    temp_path = f.name
+
+                log.debug(f"[sql_fn] Wrote {len(results)} rows to {temp_path}")
+                return temp_path
+
             return cached
 
     # Track cache miss for SQL Trail
@@ -415,6 +636,18 @@ async def execute_sql_function(
     # Import here to avoid circular imports
     from ..runner import RVBBITRunner
 
+    # Prepare cascade inputs based on output mode
+    cascade_inputs = cleaned_args
+    if output_mode in ("sql_execute", "sql_raw") and fn.structure_args:
+        # For sql_execute mode, pass structure (schema) instead of content
+        # for args marked as structure_source
+        from .sql_macro import prepare_cascade_inputs_for_structure_mode
+        cascade_inputs = prepare_cascade_inputs_for_structure_mode(
+            cleaned_args,
+            fn.structure_args
+        )
+        log.debug(f"[sql_fn] Prepared structure-mode inputs for {fn.structure_args}")
+
     # Determine what to run: original cascade or modified with candidates
     if candidates_config:
         # Inject candidates into cascade config (in-memory, not modifying file)
@@ -431,20 +664,100 @@ async def execute_sql_function(
         )
     else:
         # Create runner with session_id AND caller_id for proper tracking
-        print(f"[sql_fn] ▶️ Running {name} normally (no candidates)")
+        print(f"[sql_fn] ▶️ Running {name} (mode={output_mode})")
         runner = RVBBITRunner(
             fn.cascade_path,
             session_id=session_id,
             caller_id=caller_id  # Pass caller_id so Echo gets it and propagates to all logs!
         )
 
-    # Execute cascade with cleaned args as input_data
-    result = runner.run(input_data=cleaned_args)
+    # Execute cascade with prepared inputs
+    result = runner.run(input_data=cascade_inputs)
 
     # Extract result from cascade output using proper parsing
     from .executor import _extract_cascade_output
     output = _extract_cascade_output(result)
 
+    # Handle output based on mode
+    if output_mode == "sql_raw":
+        # Return SQL fragment as-is (for debugging/composition)
+        if not candidates_config and fn.cache_enabled:
+            set_cached_result(cache_name, cleaned_args, output)
+        return output
+
+    if output_mode == "sql_execute":
+        # Output is SQL fragment - execute it with bound parameters
+        sql_fragment = str(output).strip()
+        log.debug(f"[sql_fn] Generated SQL fragment: {sql_fragment[:200]}...")
+
+        # Cache the SQL fragment (not the executed result)
+        # This enables structure-based caching - same structure, different values
+        if not candidates_config and fn.cache_enabled:
+            # Use appropriate cache key strategy
+            if use_fingerprint_cache:
+                # Store with fingerprint-based key
+                from ..sql_tools.cache_adapter import get_cache
+                cache = get_cache()
+                result_type = fn.returns if fn else "VARCHAR"
+                ttl_seconds = fn.cache_ttl if fn else None
+                cache.set(cache_name, {"__fingerprint_key__": cache_key}, sql_fragment,
+                          result_type=result_type, ttl_seconds=ttl_seconds)
+                log.debug(f"[sql_fn] Cached SQL fragment with fingerprint key: {cache_key[:16]}...")
+            elif use_structure_cache:
+                # Store with structure-based key
+                from ..sql_tools.cache_adapter import get_cache
+                cache = get_cache()
+                result_type = fn.returns if fn else "VARCHAR"
+                ttl_seconds = fn.cache_ttl if fn else None
+                cache.set(cache_name, {"__structure_key__": cache_key}, sql_fragment,
+                          result_type=result_type, ttl_seconds=ttl_seconds)
+                log.debug(f"[sql_fn] Cached SQL fragment with structure key: {cache_key[:16]}...")
+            else:
+                set_cached_result(cache_name, cleaned_args, sql_fragment)
+
+        # Bind parameters and execute
+        from .sql_macro import bind_sql_parameters, execute_sql_fragment
+        bound_sql = bind_sql_parameters(sql_fragment, cleaned_args, fn.args)
+        log.debug(f"[sql_fn] Bound SQL: {bound_sql[:200]}...")
+
+        return execute_sql_fragment(bound_sql, fn.returns)
+
+    if output_mode == "sql_statement":
+        # Output is full SQL statement - execute and return table results
+        sql_statement = str(output).strip()
+        log.debug(f"[sql_fn] Generated SQL statement: {sql_statement[:200]}...")
+
+        # Cache the SQL statement (exact match caching)
+        if not candidates_config and fn.cache_enabled:
+            # For sql_statement, cache key is based on the question/input
+            # Since user already has sql_search tool, caching is by exact question match
+            from ..sql_tools.cache_adapter import get_cache
+            cache = get_cache()
+            result_type = "JSON"  # Table results are always JSON
+            ttl_seconds = fn.cache_ttl if fn else None
+            cache.set(cache_name, cleaned_args, sql_statement,
+                      result_type=result_type, ttl_seconds=ttl_seconds)
+            log.debug(f"[sql_fn] Cached SQL statement for: {list(cleaned_args.keys())} (cache_name={cache_name})")
+
+        # Bind parameters if any exist in the statement
+        from .sql_macro import bind_sql_parameters, execute_sql_statement
+        bound_sql = bind_sql_parameters(sql_statement, cleaned_args, fn.args)
+        log.debug(f"[sql_fn] Bound SQL statement: {bound_sql[:200]}...")
+
+        # Execute and return table results
+        results = execute_sql_statement(bound_sql)
+
+        # Write results to temp file for read_json_auto() compatibility
+        # This allows TABLE macros to wrap with: SELECT * FROM read_json_auto(_func_file(args))
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(results, f)
+            temp_path = f.name
+
+        log.debug(f"[sql_fn] Wrote {len(results)} rows to {temp_path}")
+        return temp_path
+
+    # Default mode: "value" - cascade returns final value directly
     # Unwrap JSON-wrapped scalar outputs
     # LLMs in JSON mode often return {"value": X} or {"result": X} instead of raw values
     if isinstance(output, str) and fn.returns in ("BOOLEAN", "DOUBLE", "INTEGER"):
@@ -498,8 +811,29 @@ async def execute_sql_function(
                 pass
 
     # Cache result (but not candidates runs - they're for fresh sampling)
-    if not candidates_config:
-        set_cached_result(name, cleaned_args, output)
+    if not candidates_config and fn.cache_enabled:
+        # Use appropriate cache key strategy
+        if use_fingerprint_cache:
+            # Store with fingerprint-based key
+            from ..sql_tools.cache_adapter import get_cache
+            cache = get_cache()
+            result_type = fn.returns if fn else "VARCHAR"
+            ttl_seconds = fn.cache_ttl if fn else None
+            cache.set(cache_name, {"__fingerprint_key__": cache_key}, output,
+                      result_type=result_type, ttl_seconds=ttl_seconds)
+            log.debug(f"[sql_fn] Cached result with fingerprint key: {cache_key[:16]}...")
+        elif use_structure_cache:
+            # Store with structure-based key
+            from ..sql_tools.cache_adapter import get_cache
+            cache = get_cache()
+            result_type = fn.returns if fn else "VARCHAR"
+            ttl_seconds = fn.cache_ttl if fn else None
+            cache.set(cache_name, {"__structure_key__": cache_key}, output,
+                      result_type=result_type, ttl_seconds=ttl_seconds)
+            log.debug(f"[sql_fn] Cached result with structure key: {cache_key[:16]}...")
+        else:
+            # Default: content-based cache key
+            set_cached_result(cache_name, cleaned_args, output)
 
     return output
 

@@ -1,0 +1,80 @@
+# CANONICAL - Get the canonical/official form of a value
+# Simpler than NORMALIZE - auto-detects type
+#
+# SQL Usage:
+#   SELECT CANONICAL(company_name) FROM vendors
+#   SELECT CANONICAL(customer_address) FROM orders
+#
+# Examples:
+#   "Intl Business Machines" → "IBM"
+#   "123 Main St, NYC, NY" → "123 Main Street, New York, NY"
+#   "JOHN SMITH" → "John Smith"
+
+cascade_id: canonical_single
+internal: true
+
+description: |
+  Get the canonical/official form of a value. Auto-detects the type of entity
+  and returns its standard representation.
+
+inputs_schema:
+  value: The value to canonicalize
+
+sql_function:
+  name: canonical
+  description: Get canonical/official form (auto-detects type)
+  args:
+    - name: value
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "CANONICAL({{ value }})"
+    - "{{ value }} CANONICAL"
+  cache: true
+  test_cases:
+    - sql: "SELECT canonical('MICROSOFT CORPORATION')"
+      expect:
+        type: contains
+        value: "Microsoft"
+      description: "Company name canonicalized"
+    - sql: "SELECT canonical('NYC')"
+      expect:
+        type: one_of
+        values: ["New York City", "New York", "NYC"]
+      description: "City abbreviation expanded"
+
+cells:
+  - name: canonicalize
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Return the canonical/official form of this value.
+
+      VALUE: {{ input.value }}
+
+      Steps:
+      1. Detect what type of entity this is (company, person name, address, phone, email, etc.)
+      2. Return the standard/canonical form
+
+      Guidelines:
+      - Companies: Use official name, proper capitalization
+      - Names: Title Case, "First Last" format
+      - Addresses: Expanded abbreviations, proper format
+      - Phones: E.164 format (+1XXXXXXXXXX)
+      - Emails: Lowercase, cleaned
+      - General text: Clean whitespace, fix obvious issues
+
+      Examples:
+      - "MICROSOFT CORP" → "Microsoft"
+      - "john.doe@GMAIL.COM" → "john.doe@gmail.com"
+      - "123 main st" → "123 Main Street"
+      - "(555) 123-4567" → "+15551234567"
+      - "dr john q smith jr" → "John Q. Smith Jr."
+      - "intl business machines" → "IBM"
+
+      Return ONLY the canonical form. No explanation.
+      If input is empty or cannot be processed, return "NULL".
+
+    rules:
+      max_turns: 1

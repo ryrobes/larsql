@@ -1,56 +1,57 @@
 cascade_id: semantic_embed
-internal: true 
-
-description: |
-  Generate text embeddings using Agent.embed().
-
-  Uses RVBBIT_DEFAULT_EMBED_MODEL (qwen/qwen3-embedding-8b, 4096 dims).
-  Results are cached by input hash for performance.
-
-  SQL Usage:
-    SELECT id, text, semantic_embed(text) as embedding FROM documents;
-
-  Performance:
-    - First call: ~100ms per text (API latency)
-    - Cached calls: <1ms (instant return)
-    - Batching: Agent.embed() handles automatically (50 texts/call)
-
+internal: true
+description: "Generate text embeddings using Agent.embed().\n\nUses RVBBIT_DEFAULT_EMBED_MODEL\
+  \ (qwen/qwen3-embedding-8b, 4096 dims).\nResults are cached by input hash for performance.\n\
+  \nSQL Usage:\n  SELECT id, text, semantic_embed(text) as embedding FROM documents;\n\
+  \nPerformance:\n  - First call: ~100ms per text (API latency)\n  - Cached calls:\
+  \ <1ms (instant return)\n  - Batching: Agent.embed() handles automatically (50 texts/call)\n"
 inputs_schema:
-  text: "Text to embed (required)"
-  model: "Optional model override (default qwen/qwen3-embedding-8b)"
-
+  text: Text to embed (required)
+  model: Optional model override (default qwen/qwen3-embedding-8b)
 sql_function:
   name: semantic_embed
   description: Generate 4096-dim embedding vector from text
   args:
-    - name: text
-      type: VARCHAR
-      description: "Text to embed"
-    - name: model
-      type: VARCHAR
-      optional: true
-      description: "Optional embedding model name"
-  returns: DOUBLE[]  # Array of floats (DuckDB type)
+  - name: text
+    type: VARCHAR
+    description: Text to embed
+  - name: model
+    type: VARCHAR
+    optional: true
+    description: Optional embedding model name
+  returns: DOUBLE[]
   shape: SCALAR
-  cache: true  # Cache embeddings by input hash
-  context_arg: text  # Which arg provides context for token counting
-
+  cache: true
+  context_arg: text
+  test_cases:
+  - sql: -- Requires embedding model
+    skip: true
+    description: Embed needs model
 cells:
-  - name: generate_and_store
-    tool: python_data
-    inputs:
-      code: |
-        # Generate embedding (no implicit storage; storage is explicit via semantic_embed_with_storage)
-        from rvbbit.traits.embedding_storage import agent_embed
+- name: generate_and_store
+  tool: python_data
+  inputs:
+    code: '# Generate embedding (no implicit storage; storage is explicit via semantic_embed_with_storage)
 
-        text = input.get('text', '')
-        model = input.get('model')
+      from rvbbit.traits.embedding_storage import agent_embed
 
-        # Generate embedding
-        embed_result = agent_embed(text=text, model=model)
-        embedding = embed_result['embedding']
 
-        # Return embedding for SQL
-        result = embedding
-    context:
-      enabled: false
+      text = input.get(''text'', '''')
+
+      model = input.get(''model'')
+
+
+      # Generate embedding
+
+      embed_result = agent_embed(text=text, model=model)
+
+      embedding = embed_result[''embedding'']
+
+
+      # Return embedding for SQL
+
+      result = embedding
+
+      '
+  context:
+    enabled: false

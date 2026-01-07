@@ -250,19 +250,19 @@ def _transform_message_content(
                 cols = len(parsed[0].keys()) if parsed else 0
                 total_metrics["total_rows"] += rows
                 total_metrics["max_columns"] = max(total_metrics["max_columns"], cols)
-                print(f"[TOON Debug] array_of_objects: {rows} rows × {cols} cols")
+                #print(f"[TOON Debug] array_of_objects: {rows} rows × {cols} cols")
 
             elif structure_type == "array_of_primitives":
                 # Array of primitives: rows = array length, cols = 0
                 rows = len(parsed)
                 total_metrics["total_rows"] += rows
-                print(f"[TOON Debug] array_of_primitives: {rows} rows × 0 cols")
+                #print(f"[TOON Debug] array_of_primitives: {rows} rows × 0 cols")
 
             elif structure_type == "object":
                 # Single object: rows = 0, cols = number of keys
                 cols = len(parsed.keys())
                 total_metrics["max_columns"] = max(total_metrics["max_columns"], cols)
-                print(f"[TOON Debug] object: 0 rows × {cols} cols")
+                #print(f"[TOON Debug] object: 0 rows × {cols} cols")
 
         except (json.JSONDecodeError, AttributeError, IndexError):
             pass
@@ -287,7 +287,8 @@ def _transform_message_content(
             total_metrics["details"].append(metrics)
             print(f"[TOON Debug] ✅ Transformed: {metrics.get('rows')} rows, saved {metrics.get('savings_pct')}%")
         else:
-            print(f"[TOON Debug] ⚪ Not transformed: reason={metrics.get('reason')}")
+            pass
+            #print(f"[TOON Debug] ⚪ Not transformed: reason={metrics.get('reason')}")
 
     # Calculate overall savings percentage
     if total_metrics["total_json_size"] > 0:

@@ -1,0 +1,73 @@
+# VALIDATE - Semantic validation against a rule/description
+#
+# SQL Usage:
+#   SELECT * FROM products WHERE NOT VALIDATE(description, 'contains pricing')
+#   SELECT VALIDATE(bio, 'is professional tone') FROM profiles
+#   SELECT * FROM reviews WHERE VALIDATE(text, 'mentions specific product')
+#
+# More flexible than VALID - uses semantic understanding
+
+cascade_id: validate_single
+internal: true
+
+description: |
+  Semantic validation - check if value satisfies a described rule or condition.
+  More flexible than format-based VALID().
+
+inputs_schema:
+  value: The value to validate
+  rule: Description of the validation rule
+
+sql_function:
+  name: validate
+  description: Semantic validation against a rule
+  args:
+    - name: value
+      type: VARCHAR
+    - name: rule
+      type: VARCHAR
+      description: "Validation rule in natural language"
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "VALIDATE({{ value }}, '{{ rule }}')"
+    - "{{ value }} VALIDATES '{{ rule }}'"
+  cache: true
+  test_cases:
+    - sql: "SELECT validate('This product costs $29.99', 'contains pricing')"
+      expect: true
+      description: "Text with price passes rule"
+    - sql: "SELECT validate('Hello world', 'contains a date')"
+      expect: false
+      description: "Text without date fails rule"
+
+cells:
+  - name: semantic_validate
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Does this value satisfy the validation rule?
+
+      VALUE: {{ input.value }}
+      RULE: {{ input.rule }}
+
+      Examples of rules and how to evaluate:
+      - "contains pricing" → Does it mention a price, cost, or dollar amount?
+      - "is professional tone" → Is the language formal and business-appropriate?
+      - "mentions specific product" → Does it name a specific product/brand?
+      - "has contact information" → Does it include email, phone, or address?
+      - "is complete sentence" → Is it grammatically complete?
+      - "contains date" → Does it reference a date or time?
+      - "is positive sentiment" → Is the overall tone positive?
+      - "has actionable content" → Does it contain action items or next steps?
+
+      Be reasonably strict but not pedantic.
+      Interpret the rule in its common-sense meaning.
+
+      Return ONLY "true" or "false".
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: boolean

@@ -1,88 +1,68 @@
-# EXTRACTS - Semantic information extraction
-# Returns extracted information from unstructured text
-#
-# SQL Usage:
-#   SELECT ticket_id, description EXTRACTS 'customer name' as customer FROM tickets
-#   SELECT review, review EXTRACTS 'product mentioned' as product FROM reviews
-#   SELECT * FROM tickets WHERE description EXTRACTS 'order number' IS NOT NULL
-#
-# Direct Function:
-#   SELECT semantic_extract(description, 'order number') FROM tickets
-
 cascade_id: semantic_extract
-internal: true 
+internal: true
+description: 'Semantic information extraction - pulls specific facts, entities, or
+  details
 
-description: |
-  Semantic information extraction - pulls specific facts, entities, or details
   from unstructured text. Like grep but with semantic understanding.
 
+
   Use cases:
+
   - Extract product names from reviews
+
   - Pull dates/amounts from emails
+
   - Find key entities in support tickets
+
   - Grab specific facts from documents
 
-  Returns NULL if the requested information isn't present in the text.
 
+  Returns NULL if the requested information isn''t present in the text.
+
+  '
 inputs_schema:
   text: The text to extract information from
-  what: Description of what to extract (e.g., 'customer name', 'price mentioned', 'date')
-
+  what: Description of what to extract (e.g., 'customer name', 'price mentioned',
+    'date')
 sql_function:
   name: semantic_extract
   description: Extract specific information from unstructured text
   args:
-    - name: text
-      type: VARCHAR
-    - name: what
-      type: VARCHAR
-      description: What to extract (e.g., 'product name', 'complaint type')
+  - name: text
+    type: VARCHAR
+  - name: what
+    type: VARCHAR
+    description: What to extract (e.g., 'product name', 'complaint type')
   returns: VARCHAR
   shape: SCALAR
   operators:
-    - "{{ text }} EXTRACTS '{{ what }}'"
+  - '{{ text }} EXTRACTS ''{{ what }}'''
   cache: true
-
+  test_cases:
+  - sql: SELECT semantic_extract('The price is $49.99 per unit', 'price')
+    expect:
+      type: contains
+      value: '49.99'
+    description: Price extracted
 cells:
-  - name: extract
-    model: google/gemini-2.5-flash-lite
-
-    instructions: |
-      Extract the requested information from this text.
-
-      TEXT:
-      {{ input.text }}
-
-      EXTRACT: {{ input.what }}
-
-      Instructions:
-      1. Find the specific information requested in the text
-      2. Return ONLY the extracted information, nothing else
-      3. If the information is not present or cannot be determined, return "NULL"
-      4. Be concise - extract just the relevant part, not surrounding context
-      5. If multiple instances exist, extract the most prominent/relevant one
-
-      Examples:
-      - Text: "Customer John Smith called about order #12345"
-        Extract: "customer name" → "John Smith"
-        Extract: "order number" → "12345"
-        Extract: "problem type" → "NULL"
-
-      - Text: "The iPhone 15 costs $999 and has great battery life"
-        Extract: "product name" → "iPhone 15"
-        Extract: "price" → "$999"
-        Extract: "warranty period" → "NULL"
-
-      - Text: "Meeting scheduled for March 15th at 2pm in Conference Room B"
-        Extract: "date" → "March 15th"
-        Extract: "time" → "2pm"
-        Extract: "location" → "Conference Room B"
-        Extract: "attendees" → "NULL"
-
-      Return ONLY the extracted value or "NULL" - no explanations, no quotes around it.
-
-    rules:
-      max_turns: 1
-
-    output_schema:
-      type: string
+- name: extract
+  model: google/gemini-2.5-flash-lite
+  instructions: "Extract the requested information from this text.\n\nTEXT:\n{{ input.text\
+    \ }}\n\nEXTRACT: {{ input.what }}\n\nInstructions:\n1. Find the specific information\
+    \ requested in the text\n2. Return ONLY the extracted information, nothing else\n\
+    3. If the information is not present or cannot be determined, return \"NULL\"\n\
+    4. Be concise - extract just the relevant part, not surrounding context\n5. If\
+    \ multiple instances exist, extract the most prominent/relevant one\n\nExamples:\n\
+    - Text: \"Customer John Smith called about order #12345\"\n  Extract: \"customer\
+    \ name\" → \"John Smith\"\n  Extract: \"order number\" → \"12345\"\n  Extract:\
+    \ \"problem type\" → \"NULL\"\n\n- Text: \"The iPhone 15 costs $999 and has great\
+    \ battery life\"\n  Extract: \"product name\" → \"iPhone 15\"\n  Extract: \"price\"\
+    \ → \"$999\"\n  Extract: \"warranty period\" → \"NULL\"\n\n- Text: \"Meeting scheduled\
+    \ for March 15th at 2pm in Conference Room B\"\n  Extract: \"date\" → \"March\
+    \ 15th\"\n  Extract: \"time\" → \"2pm\"\n  Extract: \"location\" → \"Conference\
+    \ Room B\"\n  Extract: \"attendees\" → \"NULL\"\n\nReturn ONLY the extracted value\
+    \ or \"NULL\" - no explanations, no quotes around it.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: string

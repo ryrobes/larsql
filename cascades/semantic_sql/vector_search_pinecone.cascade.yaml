@@ -1,153 +1,93 @@
 cascade_id: vector_search_pinecone
 internal: true
-
-description: |
-  Semantic vector search using Pinecone.
-
-  Performs pure semantic similarity search using Pinecone's optimized ANN index.
-  Supports namespaces for multi-tenant or versioned embeddings.
-
-  SQL Usage:
-    -- Basic search (default namespace):
-    SELECT * FROM PINECONE_SEARCH('climate change', bird_line.text, 10);
-
-    -- Search specific namespace:
-    SELECT * FROM PINECONE_SEARCH('sustainability', products.description, 20, 0.6, 'products_v2');
-
-  Returns columns: id, text, similarity, score
-
+description: "Semantic vector search using Pinecone.\n\nPerforms pure semantic similarity\
+  \ search using Pinecone's optimized ANN index.\nSupports namespaces for multi-tenant\
+  \ or versioned embeddings.\n\nSQL Usage:\n  -- Basic search (default namespace):\n\
+  \  SELECT * FROM PINECONE_SEARCH('climate change', bird_line.text, 10);\n\n  --\
+  \ Search specific namespace:\n  SELECT * FROM PINECONE_SEARCH('sustainability',\
+  \ products.description, 20, 0.6, 'products_v2');\n\nReturns columns: id, text, similarity,\
+  \ score\n"
 inputs_schema:
-  query: "Search query text"
-  source_table: "Filter by source table (optional)"
-  limit: "Max results (default: 10)"
-  threshold: "Min similarity 0-1 (optional)"
-  namespace: "Pinecone namespace (default: 'default')"
-
+  query: Search query text
+  source_table: Filter by source table (optional)
+  limit: 'Max results (default: 10)'
+  threshold: Min similarity 0-1 (optional)
+  namespace: 'Pinecone namespace (default: ''default'')'
 sql_function:
   name: vector_search_pinecone
-  description: "Pure semantic search in Pinecone"
+  description: Pure semantic search in Pinecone
   args:
-    - name: query
-      type: VARCHAR
-    - name: source_table
-      type: VARCHAR
-      optional: true
-    - name: limit_
-      type: INTEGER
-      optional: true
-      default: 10
-    - name: threshold
-      type: DOUBLE
-      optional: true
-    - name: namespace
-      type: VARCHAR
-      optional: true
-      default: "default"
+  - name: query
+    type: VARCHAR
+  - name: source_table
+    type: VARCHAR
+    optional: true
+  - name: limit_
+    type: INTEGER
+    optional: true
+    default: 10
+  - name: threshold
+    type: DOUBLE
+    optional: true
+  - name: namespace
+    type: VARCHAR
+    optional: true
+    default: default
   returns: TABLE
   shape: AGGREGATE
   cache: true
   context_arg: query
-
+  test_cases:
+  - sql: -- Requires Pinecone
+    skip: true
+    description: Pinecone search needs API
 cells:
-  - name: pinecone_search
-    tool: python_data
-    inputs:
-      code: |
-        import logging
-        import os
-        import json
-        from pathlib import Path
-
-        logger = logging.getLogger(__name__)
-
-        # Load Pinecone config
-        config_path = Path(os.getenv('RVBBIT_ROOT', os.getcwd())) / 'config' / 'pinecone.yaml'
-        if not config_path.exists():
-            result = []
-            logger.error(f"Pinecone config not found at {config_path}")
-        else:
-            import yaml
-            with open(config_path) as f:
-                pinecone_config = yaml.safe_load(f)
-
-            # Get API key
-            api_key_env = pinecone_config['connection']['api_key_env']
-            api_key = os.getenv(api_key_env)
-
-            if not api_key:
-                result = []
-                logger.error(f"Environment variable {api_key_env} not set")
-            else:
-                query = input.get('query', '')
-                source_table = input.get('source_table')
-                limit = input.get('limit_') or 10
-                threshold = input.get('threshold') or 0.0
-                namespace = input.get('namespace') or pinecone_config['defaults']['namespace']
-
-                if not query or not query.strip():
-                    result = []
-                else:
-                    try:
-                        # Step 1: Embed the query
-                        from rvbbit.traits.embedding_storage import agent_embed
-
-                        embed_result = agent_embed(
-                            text=query,
-                            _session_id=input.get('_session_id'),
-                            _caller_id=input.get('_caller_id'),
-                            _cascade_id=input.get('_cascade_id'),
-                            _cell_name=input.get('_cell_name'),
-                        )
-                        query_embedding = embed_result['embedding']
-
-                        # Step 2: Search Pinecone
-                        from pinecone import Pinecone
-
-                        pc = Pinecone(api_key=api_key)
-                        index = pc.Index(
-                            pinecone_config['connection']['index_name'],
-                            host=pinecone_config['connection']['host']
-                        )
-
-                        # Build filter (if source_table specified)
-                        filter_dict = None
-                        if source_table:
-                            filter_dict = {"source_table": {"$eq": source_table}}
-
-                        # Query Pinecone
-                        search_response = index.query(
-                            vector=query_embedding,
-                            top_k=limit,
-                            include_metadata=True,
-                            include_values=False,
-                            namespace=namespace,
-                            filter=filter_dict
-                        )
-
-                        # Step 3: Format results for SQL
-                        results = search_response.get('matches', [])
-
-                        # Filter by threshold if specified
-                        if threshold > 0:
-                            results = [r for r in results if r.get('score', 0) >= threshold]
-
-                        result = [
-                            {
-                                'id': match['id'],
-                                'text': match.get('metadata', {}).get('text', '')[:500],
-                                'similarity': round(match['score'], 4),
-                                'score': round(match['score'], 4),
-                                'metadata': match.get('metadata', {})
-                            }
-                            for match in results
-                        ]
-
-                        logger.info(f"Pinecone search returned {len(result)} results from namespace '{namespace}'")
-
-                    except Exception as e:
-                        logger.error(f"vector_search_pinecone failed: {e}")
-                        result = []
-
-        result = result
-    context:
-      enabled: false
+- name: pinecone_search
+  tool: python_data
+  inputs:
+    code: "import logging\nimport os\nimport json\nfrom pathlib import Path\n\nlogger\
+      \ = logging.getLogger(__name__)\n\n# Load Pinecone config\nconfig_path = Path(os.getenv('RVBBIT_ROOT',\
+      \ os.getcwd())) / 'config' / 'pinecone.yaml'\nif not config_path.exists():\n\
+      \    result = []\n    logger.error(f\"Pinecone config not found at {config_path}\"\
+      )\nelse:\n    import yaml\n    with open(config_path) as f:\n        pinecone_config\
+      \ = yaml.safe_load(f)\n\n    # Get API key\n    api_key_env = pinecone_config['connection']['api_key_env']\n\
+      \    api_key = os.getenv(api_key_env)\n\n    if not api_key:\n        result\
+      \ = []\n        logger.error(f\"Environment variable {api_key_env} not set\"\
+      )\n    else:\n        query = input.get('query', '')\n        source_table =\
+      \ input.get('source_table')\n        limit = input.get('limit_') or 10\n   \
+      \     threshold = input.get('threshold') or 0.0\n        namespace = input.get('namespace')\
+      \ or pinecone_config['defaults']['namespace']\n\n        if not query or not\
+      \ query.strip():\n            result = []\n        else:\n            try:\n\
+      \                # Step 1: Embed the query\n                from rvbbit.traits.embedding_storage\
+      \ import agent_embed\n\n                embed_result = agent_embed(\n      \
+      \              text=query,\n                    _session_id=input.get('_session_id'),\n\
+      \                    _caller_id=input.get('_caller_id'),\n                 \
+      \   _cascade_id=input.get('_cascade_id'),\n                    _cell_name=input.get('_cell_name'),\n\
+      \                )\n                query_embedding = embed_result['embedding']\n\
+      \n                # Step 2: Search Pinecone\n                from pinecone import\
+      \ Pinecone\n\n                pc = Pinecone(api_key=api_key)\n             \
+      \   index = pc.Index(\n                    pinecone_config['connection']['index_name'],\n\
+      \                    host=pinecone_config['connection']['host']\n          \
+      \      )\n\n                # Build filter (if source_table specified)\n   \
+      \             filter_dict = None\n                if source_table:\n       \
+      \             filter_dict = {\"source_table\": {\"$eq\": source_table}}\n\n\
+      \                # Query Pinecone\n                search_response = index.query(\n\
+      \                    vector=query_embedding,\n                    top_k=limit,\n\
+      \                    include_metadata=True,\n                    include_values=False,\n\
+      \                    namespace=namespace,\n                    filter=filter_dict\n\
+      \                )\n\n                # Step 3: Format results for SQL\n   \
+      \             results = search_response.get('matches', [])\n\n             \
+      \   # Filter by threshold if specified\n                if threshold > 0:\n\
+      \                    results = [r for r in results if r.get('score', 0) >= threshold]\n\
+      \n                result = [\n                    {\n                      \
+      \  'id': match['id'],\n                        'text': match.get('metadata',\
+      \ {}).get('text', '')[:500],\n                        'similarity': round(match['score'],\
+      \ 4),\n                        'score': round(match['score'], 4),\n        \
+      \                'metadata': match.get('metadata', {})\n                   \
+      \ }\n                    for match in results\n                ]\n\n       \
+      \         logger.info(f\"Pinecone search returned {len(result)} results from\
+      \ namespace '{namespace}'\")\n\n            except Exception as e:\n       \
+      \         logger.error(f\"vector_search_pinecone failed: {e}\")\n          \
+      \      result = []\n\nresult = result\n"
+  context:
+    enabled: false

@@ -1,0 +1,86 @@
+# PARSE_ADDRESS - Specialized address parsing
+#
+# SQL Usage:
+#   SELECT PARSE_ADDRESS(raw_address) FROM contacts
+#   SELECT json_extract(PARSE_ADDRESS(addr), '$.city') as city FROM leads
+#
+# Returns: JSON with street, unit, city, state, zip, country
+
+cascade_id: parse_address_single
+internal: true
+
+description: |
+  Parse address string into structured components.
+  Handles various formats: US, international, partial addresses.
+
+inputs_schema:
+  address: The address text to parse
+
+sql_function:
+  name: parse_address
+  description: Parse address into structured components
+  args:
+    - name: address
+      type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "PARSE_ADDRESS({{ address }})"
+  cache: true
+  test_cases:
+    - sql: "SELECT parse_address('123 Main St, Boston, MA 02101')"
+      expect:
+        type: json_contains
+        path: "$.city"
+        value: "Boston"
+      description: "City extracted from address"
+    - sql: "SELECT parse_address('456 Oak Ave Apt 2B, New York NY')"
+      expect:
+        type: contains
+        value: "New York"
+      description: "Multi-part address parsed"
+
+cells:
+  - name: parse
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Parse this address into structured components.
+
+      ADDRESS: {{ input.address }}
+
+      Return a JSON object with these fields (use null if not present):
+      {
+        "street_number": "123",
+        "street_name": "Main Street",
+        "street_type": "Street",
+        "unit_type": "Suite",
+        "unit_number": "100",
+        "city": "Boston",
+        "state": "MA",
+        "state_full": "Massachusetts",
+        "zip": "02101",
+        "zip_plus4": "1234",
+        "country": "US",
+        "country_full": "United States",
+        "formatted": "123 Main Street, Suite 100, Boston, MA 02101"
+      }
+
+      Handle various formats:
+      - "123 Main St, Boston MA 02101"
+      - "123 Main Street, Suite 100, Boston, Massachusetts 02101-1234"
+      - "PO Box 123, Anytown, CA 90210"
+      - International: "10 Downing Street, London, SW1A 2AA, UK"
+      - Partial: "Boston, MA" (just city/state)
+
+      Normalize abbreviations in output:
+      - St → Street, Ave → Avenue, Blvd → Boulevard
+      - Apt → Apartment, Ste → Suite
+
+      Return ONLY the JSON object.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object

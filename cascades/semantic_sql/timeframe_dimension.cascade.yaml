@@ -1,123 +1,73 @@
-# TIMEFRAME - Semantic Timeframe Dimension
-# A dimension function that identifies when events occurred (day/night, season, etc).
-#
-# SQL Usage:
-#   SELECT timeframe(observed) as when, COUNT(*)
-#   FROM bigfoot_vw
-#   GROUP BY timeframe(observed)
-#
-#   -- With specific granularity
-#   SELECT timeframe(observed, 'time_of_day') as when, COUNT(*)
-#   FROM bigfoot_vw
-#   GROUP BY timeframe(observed, 'time_of_day')
-#
-#   SELECT timeframe(observed, 'season') as season, COUNT(*)
-#   FROM bigfoot_vw
-#   GROUP BY timeframe(observed, 'season')
-
 cascade_id: timeframe_dimension
-internal: true 
+internal: true
+description: 'Semantic timeframe dimension function. Analyzes text to identify
 
-description: |
-  Semantic timeframe dimension function. Analyzes text to identify
   when events occurred (time of day, season, weather conditions, etc).
+
 
   This is a DIMENSION-shaped function for use in GROUP BY clauses.
 
+  '
 inputs_schema:
   texts: JSON array of all text values to analyze
   granularity: Type of timeframe ('time_of_day', 'season', 'weather', 'duration')
-
 sql_function:
   name: timeframe
-  description: |
-    Identify when events occurred based on text descriptions.
+  description: 'Identify when events occurred based on text descriptions.
+
     First arg is the column, second is optional granularity type.
 
+    '
   shape: DIMENSION
   mode: mapping
-
   args:
-    - name: text
-      type: VARCHAR
-      role: dimension_source
-    - name: granularity
-      type: VARCHAR
-      default: time_of_day
-
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: granularity
+    type: VARCHAR
+    default: time_of_day
   returns: VARCHAR
   cache: true
-
+  test_cases:
+  - sql: SELECT timeframe('Expected to launch next quarter')
+    expect:
+      type: regex
+      pattern: .+
+    description: Timeframe extracted
 cells:
-  - name: identify_timeframe
-    model: google/gemini-2.5-flash-lite
-
-    instructions: |
-      Analyze these {{ input.texts | length }} event descriptions to identify
-      {{ input.granularity | default('time_of_day') }}.
-
-      {% if input.granularity == 'time_of_day' or not input.granularity %}
-      IDENTIFY TIME OF DAY:
-      - "Early Morning" (before sunrise, pre-dawn)
-      - "Morning" (sunrise to noon)
-      - "Afternoon" (noon to sunset)
-      - "Evening" (sunset to dark)
-      - "Night" (dark hours)
-      - "Late Night" (midnight to pre-dawn)
-      - "Unknown/Unspecified" (no time indication)
-
-      {% elif input.granularity == 'season' %}
-      IDENTIFY SEASON:
-      - "Spring" (mentions of spring, blooming, mild weather)
-      - "Summer" (mentions of heat, summer months, vacation)
-      - "Fall/Autumn" (mentions of leaves, harvest, cooling)
-      - "Winter" (mentions of cold, snow, winter months)
-      - "Unknown/Unspecified" (no seasonal indication)
-
-      {% elif input.granularity == 'weather' %}
-      IDENTIFY WEATHER CONDITIONS:
-      - "Clear" (sunny, clear skies)
-      - "Cloudy" (overcast, gray)
-      - "Rainy" (rain, wet, storm)
-      - "Foggy/Misty" (fog, mist, haze)
-      - "Snowy" (snow, blizzard)
-      - "Unknown/Unspecified" (no weather mentioned)
-
-      {% elif input.granularity == 'duration' %}
-      IDENTIFY EVENT DURATION:
-      - "Brief" (seconds, fleeting, glimpse)
-      - "Short" (minutes, quick encounter)
-      - "Extended" (prolonged, hours, ongoing)
-      - "Unknown/Unspecified" (no duration indicated)
-      {% endif %}
-
-      Descriptions to analyze (with index numbers):
-      {% for v in input.texts %}
-      [{{ loop.index0 }}] "{{ v | replace('"', '\\"') }}"
-      {% endfor %}
-
-      Return a JSON object mapping each text's INDEX NUMBER to its timeframe:
-
-      {
-        "mapping": {
-          "0": "Timeframe Label",
-          "1": "Timeframe Label",
-          ...
-        }
-      }
-
-      IMPORTANT:
-      - Use the INDEX NUMBER (0, 1, 2, ...) as keys, NOT the original text
-      - Use consistent timeframe labels from the list above
-      - Return ONLY the JSON object
-
-    rules:
-      max_turns: 1
-
-    output_schema:
-      type: object
-      properties:
-        mapping:
-          type: object
-      required:
-        - mapping
+- name: identify_timeframe
+  model: google/gemini-2.5-flash-lite
+  instructions: "Analyze these {{ input.texts | length }} event descriptions to identify\n\
+    {{ input.granularity | default('time_of_day') }}.\n\n{% if input.granularity ==\
+    \ 'time_of_day' or not input.granularity %}\nIDENTIFY TIME OF DAY:\n- \"Early\
+    \ Morning\" (before sunrise, pre-dawn)\n- \"Morning\" (sunrise to noon)\n- \"\
+    Afternoon\" (noon to sunset)\n- \"Evening\" (sunset to dark)\n- \"Night\" (dark\
+    \ hours)\n- \"Late Night\" (midnight to pre-dawn)\n- \"Unknown/Unspecified\" (no\
+    \ time indication)\n\n{% elif input.granularity == 'season' %}\nIDENTIFY SEASON:\n\
+    - \"Spring\" (mentions of spring, blooming, mild weather)\n- \"Summer\" (mentions\
+    \ of heat, summer months, vacation)\n- \"Fall/Autumn\" (mentions of leaves, harvest,\
+    \ cooling)\n- \"Winter\" (mentions of cold, snow, winter months)\n- \"Unknown/Unspecified\"\
+    \ (no seasonal indication)\n\n{% elif input.granularity == 'weather' %}\nIDENTIFY\
+    \ WEATHER CONDITIONS:\n- \"Clear\" (sunny, clear skies)\n- \"Cloudy\" (overcast,\
+    \ gray)\n- \"Rainy\" (rain, wet, storm)\n- \"Foggy/Misty\" (fog, mist, haze)\n\
+    - \"Snowy\" (snow, blizzard)\n- \"Unknown/Unspecified\" (no weather mentioned)\n\
+    \n{% elif input.granularity == 'duration' %}\nIDENTIFY EVENT DURATION:\n- \"Brief\"\
+    \ (seconds, fleeting, glimpse)\n- \"Short\" (minutes, quick encounter)\n- \"Extended\"\
+    \ (prolonged, hours, ongoing)\n- \"Unknown/Unspecified\" (no duration indicated)\n\
+    {% endif %}\n\nDescriptions to analyze (with index numbers):\n{% for v in input.texts\
+    \ %}\n[{{ loop.index0 }}] \"{{ v | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\
+    \nReturn a JSON object mapping each text's INDEX NUMBER to its timeframe:\n\n\
+    {\n  \"mapping\": {\n    \"0\": \"Timeframe Label\",\n    \"1\": \"Timeframe Label\"\
+    ,\n    ...\n  }\n}\n\nIMPORTANT:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys,\
+    \ NOT the original text\n- Use consistent timeframe labels from the list above\n\
+    - Return ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

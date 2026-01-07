@@ -1,93 +1,100 @@
-# SEMANTIC_CASE - Multi-branch semantic classification
-# Evaluates text against multiple conditions, returns first match.
-# Makes ONE LLM call for all conditions (efficient).
-#
-# SQL Usage:
-#   SELECT
-#     SEMANTIC_CASE description
-#       WHEN SEMANTIC 'mentions sustainability' THEN 'eco'
-#       WHEN SEMANTIC 'mentions performance' THEN 'perf'
-#       ELSE 'standard'
-#     END as category
-#   FROM products
-#
-# This is rewritten to: semantic_case(description, '["mentions sustainability","mentions performance"]', '["eco","perf"]', 'standard')
-
 cascade_id: semantic_case
 internal: true
+description: 'Multi-branch semantic classification. Evaluates text against conditions
 
-description: |
-  Multi-branch semantic classification. Evaluates text against conditions
   in order, returns the result for the first matching condition.
+
   Makes a single LLM call for efficiency.
 
+  '
 inputs_schema:
   text: The text to classify
   conditions: JSON array of semantic conditions to check (in order)
   results: JSON array of results corresponding to each condition
   default: Default value if no conditions match (optional)
-
 sql_function:
   name: semantic_case
   description: Multi-branch semantic classification in a single LLM call
   args:
-    - name: text
-      type: VARCHAR
-    - name: conditions
-      type: VARCHAR  # JSON array
-    - name: results
-      type: VARCHAR  # JSON array
-    - name: default
-      type: VARCHAR
-      optional: true
+  - name: text
+    type: VARCHAR
+  - name: conditions
+    type: VARCHAR
+  - name: results
+    type: VARCHAR
+  - name: default
+    type: VARCHAR
+    optional: true
   returns: VARCHAR
   shape: SCALAR
   cache: true
-
-  # Block operator definition - enables SEMANTIC_CASE...END syntax
   block_operator:
     start: SEMANTIC_CASE
     end: END
     structure:
-      - capture: text
-        as: expression
-      - repeat:
-          min: 1
-          pattern:
-            - keyword: WHEN SEMANTIC
-            - capture: condition
-              as: string
-            - keyword: THEN
-            - capture: result
-              as: string
-      - optional:
-          pattern:
-            - keyword: ELSE
-            - capture: default
-              as: string
-
+    - capture: text
+      as: expression
+    - repeat:
+        min: 1
+        pattern:
+        - keyword: WHEN SEMANTIC
+        - capture: condition
+          as: string
+        - keyword: THEN
+        - capture: result
+          as: string
+    - optional:
+        pattern:
+        - keyword: ELSE
+        - capture: default
+          as: string
+  test_cases:
+  - sql: SELECT semantic_case('software bug', '["matches tech topic", "matches food topic"]', '["tech", "food"]', 'unknown')
+    expect:
+      type: one_of
+      values:
+      - tech
+      - unknown
+    description: Semantic CASE classifies tech topic
 cells:
-  - name: classify
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Evaluate this text against the conditions below IN ORDER.
-      Return the result for the FIRST matching condition.
+- name: classify
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Evaluate this text against the conditions below IN ORDER.
 
-      TEXT: {{ input.text }}
+    Return the result for the FIRST matching condition.
 
-      CONDITIONS AND RESULTS:
-      {% set conditions = input.conditions | from_json if input.conditions is string else input.conditions %}
-      {% set results = input.results | from_json if input.results is string else input.results %}
-      {% for i in range(conditions | length) %}
-      {{ i + 1 }}. If text "{{ conditions[i] }}" → return exactly: {{ results[i] }}
-      {% endfor %}
 
-      DEFAULT (if no conditions match): {{ input.default or 'none' }}
+    TEXT: {{ input.text }}
 
-      IMPORTANT:
-      - Check conditions in the order listed above
-      - Return the result for the FIRST condition that matches
-      - Return ONLY the exact result value, nothing else
-      - If no conditions match, return the default value
-    rules:
-      max_turns: 1
+
+    CONDITIONS AND RESULTS:
+
+    {% set conditions = input.conditions | from_json if input.conditions is string
+    else input.conditions %}
+
+    {% set results = input.results | from_json if input.results is string else input.results
+    %}
+
+    {% for i in range(conditions | length) %}
+
+    {{ i + 1 }}. If text "{{ conditions[i] }}" → return exactly: {{ results[i] }}
+
+    {% endfor %}
+
+
+    DEFAULT (if no conditions match): {{ input.default or ''none'' }}
+
+
+    IMPORTANT:
+
+    - Check conditions in the order listed above
+
+    - Return the result for the FIRST condition that matches
+
+    - Return ONLY the exact result value, nothing else
+
+    - If no conditions match, return the default value
+
+    '
+  rules:
+    max_turns: 1

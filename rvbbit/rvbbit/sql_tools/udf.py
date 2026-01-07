@@ -2146,6 +2146,33 @@ def register_dynamic_sql_functions(connection):
                     return_type = 'VARCHAR'
                     print(f"[DynamicUDF]   ℹ️  Registering TABLE function as VARCHAR: {name} (returns JSON for read_json_auto)")
 
+                # Special handling for sql_statement mode: register as TABLE function
+                # sql_statement functions return temp file paths, wrap with read_json_auto()
+                if entry.output_mode == 'sql_statement':
+                    # Register internal scalar function with _file suffix
+                    internal_name = f"_{name}_file"
+                    connection.create_function(
+                        internal_name,
+                        udf_func,
+                        return_type='VARCHAR'  # Returns file path
+                    )
+                    existing_names.add(internal_name.lower())
+
+                    # Build arg list for macro (e.g., "question" for ask_data)
+                    arg_names = [a['name'] for a in entry.args]
+                    macro_args = ', '.join(arg_names)
+                    internal_call_args = ', '.join(arg_names)
+
+                    # Create TABLE macro: SELECT * FROM ask_data('question')
+                    # Uses read_json_auto to parse the temp file and return proper table results
+                    connection.execute(f'''
+                        CREATE OR REPLACE MACRO {name}({macro_args}) AS TABLE
+                        SELECT * FROM read_json_auto({internal_name}({internal_call_args}))
+                    ''')
+                    print(f"[DynamicUDF]   ✓ TABLE: {name}({macro_args}) → read_json_auto({internal_name}(...))")
+                    existing_names.add(str(name).lower())
+                    continue  # Skip normal registration
+
                 connection.create_function(
                     name,
                     udf_func,

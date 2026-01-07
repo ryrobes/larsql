@@ -1,51 +1,55 @@
 cascade_id: semantic_sounds_like
-internal: true 
-
-description: |
-  Phonetic similarity matching (proof-of-concept for dynamic operators).
-
-  This cascade demonstrates that users can create custom SQL operators
-  by simply adding YAML files - no Python code changes needed!
-
-  SQL Usage:
-    SELECT * FROM customers WHERE name SOUNDS_LIKE 'Smith';
-
+internal: true
+description: "Phonetic similarity matching (proof-of-concept for dynamic operators).\n\
+  \nThis cascade demonstrates that users can create custom SQL operators\nby simply\
+  \ adding YAML files - no Python code changes needed!\n\nSQL Usage:\n  SELECT * FROM\
+  \ customers WHERE name SOUNDS_LIKE 'Smith';\n"
 inputs_schema:
-  text: "Text to evaluate"
-  reference: "Reference text for comparison"
-
+  text: Text to evaluate
+  reference: Reference text for comparison
 sql_function:
   name: sounds_like
-  description: "Check if two words sound similar (phonetically)"
+  description: Check if two words sound similar (phonetically)
   args:
-    - name: text
-      type: VARCHAR
-      description: "First text"
-    - name: reference
-      type: VARCHAR
-      description: "Reference text"
+  - name: text
+    type: VARCHAR
+    description: First text
+  - name: reference
+    type: VARCHAR
+    description: Reference text
   returns: BOOLEAN
   shape: SCALAR
   operators:
-    - "{{ text }} SOUNDS_LIKE {{ reference }}"
+  - '{{ text }} SOUNDS_LIKE {{ reference }}'
   cache: true
-
+  test_cases:
+  - sql: SELECT sounds_like('Smith', 'Smyth')
+    expect: true
+    description: Phonetically similar names match
 cells:
-  - name: check_phonetic
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Do these two words sound similar when spoken aloud?
+- name: check_phonetic
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Do these two words sound similar when spoken aloud?
 
-      WORD 1: {{ input.text }}
-      WORD 2: {{ input.reference }}
 
-      Consider:
-      - Phonetic spelling (e.g., "Smith" vs "Smythe")
-      - Sound-alike names (e.g., "Jon" vs "John")
-      - Common variations
+    WORD 1: {{ input.text }}
 
-      Return ONLY "true" or "false" (no other text).
-    rules:
-      max_turns: 1
-    output_schema:
-      type: boolean
+    WORD 2: {{ input.reference }}
+
+
+    Consider:
+
+    - Phonetic spelling (e.g., "Smith" vs "Smythe")
+
+    - Sound-alike names (e.g., "Jon" vs "John")
+
+    - Common variations
+
+
+    Return ONLY "true" or "false" (no other text).
+
+    '
+  rules:
+    max_turns: 1
+  output_schema:
+    type: boolean

@@ -334,6 +334,142 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         })
 
 
+def validate_sql(sql: str = None, connection: Optional[str] = None, *, content: str = None) -> str:
+    """
+    Validate SQL syntax and optionally check schema references.
+
+    Uses DuckDB's EXPLAIN to parse and validate the query without executing it.
+    If connection is provided, validates against that database's schema (tables exist, etc.).
+
+    This tool is designed to be used as:
+    1. A ward validator in cascades that generate SQL
+    2. A loop_until validator: `loop_until: validate_sql`
+    3. Direct function call: `validate_sql("SELECT * FROM users")`
+
+    Returns the standard validator format: {"valid": bool, "reason": str}
+
+    Args:
+        sql: SQL query to validate (positional)
+        connection: Optional connection name for schema validation.
+                   If provided, validates that referenced tables/columns exist.
+                   If omitted, auto-detects from SQL (e.g., csv_files.table → csv_files)
+        content: Alternative to sql (used by loop_until validator interface)
+
+    Returns:
+        JSON with validation result: {"valid": bool, "reason": str}
+
+    Examples:
+        validate_sql("SELECT * FROM users")  # Syntax check only
+        validate_sql("SELECT * FROM csv_files.data", "csv_files")  # With schema validation
+        loop_until: validate_sql  # In cascade YAML
+    """
+    import duckdb
+    import re
+
+    # Support both direct call (sql=) and validator interface (content=)
+    sql = sql or content
+    if not sql:
+        return json.dumps({
+            "valid": False,
+            "reason": "No SQL provided"
+        })
+
+    sql = sql.strip()
+
+    # Remove markdown code blocks if LLM wrapped the SQL
+    if sql.startswith("```sql"):
+        sql = sql[6:]
+    if sql.startswith("```"):
+        sql = sql[3:]
+    if sql.endswith("```"):
+        sql = sql[:-3]
+    sql = sql.strip()
+
+    # Remove trailing semicolon for EXPLAIN (DuckDB doesn't like it)
+    if sql.endswith(';'):
+        sql = sql[:-1]
+
+    # Basic sanity check
+    if not sql:
+        return json.dumps({
+            "valid": False,
+            "reason": "Empty SQL query"
+        })
+
+    # Check it starts with SELECT or WITH (safety)
+    sql_upper = sql.upper().strip()
+    if not (sql_upper.startswith("SELECT") or sql_upper.startswith("WITH")):
+        return json.dumps({
+            "valid": False,
+            "reason": f"Only SELECT/WITH queries allowed, got: {sql[:30]}..."
+        })
+
+    # Auto-detect connection from SQL if not provided (e.g., csv_files.table → csv_files)
+    if not connection:
+        match = re.search(r'(?:FROM|JOIN)\s+["\']?(\w+)["\']?\s*\.', sql, re.IGNORECASE)
+        if match:
+            detected = match.group(1)
+            # Verify it's a valid connection
+            connections = load_sql_connections()
+            if detected in connections:
+                connection = detected
+
+    try:
+        if connection:
+            # Validate with schema context - attach the database
+            connections = load_sql_connections()
+            if connection not in connections:
+                return json.dumps({
+                    "valid": False,
+                    "reason": f"Connection '{connection}' not found. Available: {list(connections.keys())}"
+                })
+
+            conn_config = connections[connection]
+            connector = DatabaseConnector(use_cache=False)
+            connector.attach(conn_config)
+
+            # Run EXPLAIN to validate syntax + schema
+            connector.conn.execute(f"EXPLAIN {sql}")
+            connector.close()
+        else:
+            # Syntax-only validation (no schema context)
+            conn = duckdb.connect(':memory:')
+            conn.execute(f"EXPLAIN {sql}")
+            conn.close()
+
+        return json.dumps({
+            "valid": True,
+            "reason": "SQL is valid"
+        })
+
+    except Exception as e:
+        error_msg = str(e)
+
+        # Categorize the error for better feedback
+        if "Parser Error" in error_msg or "syntax error" in error_msg.lower():
+            return json.dumps({
+                "valid": False,
+                "reason": f"Syntax error: {error_msg}"
+            })
+        elif "Catalog Error" in error_msg:
+            # Table/column doesn't exist
+            return json.dumps({
+                "valid": False,
+                "reason": f"Schema error (table/column not found): {error_msg}"
+            })
+        elif "Binder Error" in error_msg:
+            # Column ambiguity, type mismatch, etc.
+            return json.dumps({
+                "valid": False,
+                "reason": f"Binding error: {error_msg}"
+            })
+        else:
+            return json.dumps({
+                "valid": False,
+                "reason": f"Validation failed: {error_msg}"
+            })
+
+
 def list_sql_connections() -> str:
     """
     List all configured SQL database connections.

@@ -1,0 +1,98 @@
+cascade_id: correct_single
+internal: true
+description: 'Correct factual or logical errors using contextual information.
+
+  More intelligent than FIX - uses real-world knowledge.
+
+  '
+inputs_schema:
+  value: The value to correct
+  context: Context to use for correction
+sql_function:
+  name: correct
+  description: Correct factual errors using context
+  args:
+  - name: value
+    type: VARCHAR
+  - name: context
+    type: VARCHAR
+    description: 'Context for correction: related fields, constraints, hints'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - CORRECT({{ value }}, '{{ context }}')
+  - '{{ value }} CORRECTED BY ''{{ context }}'''
+  cache: true
+  test_cases:
+  - sql: SELECT correct('02101', 'city is San Francisco')
+    expect:
+      type: regex
+      pattern: 9[4-5]\d{3}
+    description: Zip corrected for city
+cells:
+- name: contextual_correct
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Correct this value using the provided context.
+
+
+    VALUE: {{ input.value }}
+
+    CONTEXT: {{ input.context }}
+
+
+    Examples of contextual correction:
+
+
+    **Geographic**:
+
+    - "San Franciso" + "state is CA" → "San Francisco"
+
+    - "02101" + "city is Los Angeles" → "90001" (Boston zip for LA city is wrong)
+
+    - "California" + "should be abbreviation" → "CA"
+
+
+    **Company/Domain**:
+
+    - "Gogle" + "domain is google.com" → "Google"
+
+    - "Microsft Inc" + "ticker is MSFT" → "Microsoft Inc"
+
+
+    **Name/Person**:
+
+    - "John Smithh" + "email is jsmith@..." → "John Smith"
+
+    - "Dr. Jane" + "full name from signature: Dr. Jane Doe" → "Dr. Jane Doe"
+
+
+    **Date/Time**:
+
+    - "2024-02-30" + "must be valid date" → "2024-02-29" (leap year) or "2024-02-28"
+
+    - "March 2023" + "event was after 2024" → "March 2024"
+
+
+    **Numeric**:
+
+    - "1000" + "should be percentage" → "10.00" or keep as "1000" if unclear
+
+    - "$1,00" + "US currency" → "$1.00" or "$100" depending on context
+
+
+    Rules:
+
+    - Only correct if the context makes the correction clear
+
+    - If ambiguous, return the original value
+
+    - Preserve original formatting style where possible
+
+    - Don''t over-correct (small typos are OK if meaning is clear)
+
+
+    Return ONLY the corrected value (or original if no correction warranted).
+
+    '
+  rules:
+    max_turns: 1

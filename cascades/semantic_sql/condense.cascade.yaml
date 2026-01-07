@@ -1,126 +1,164 @@
-# CONDENSE / TLDR - Scalar text summarization
-# Condenses a single text into a brief summary (per-row operation)
-#
-# SQL Usage:
-#   SELECT CONDENSE(article_text) as summary FROM articles
-#   SELECT TLDR(review) as quick_summary FROM reviews
-#   SELECT CONDENSE(description, 'focus on features') as features FROM products
-#
-# Direct Function:
-#   SELECT semantic_condense(article_text) FROM articles
-#   SELECT semantic_condense(review, 'extract main complaint') FROM reviews
-
 cascade_id: semantic_condense
-internal: true 
+internal: true
+description: 'Scalar text summarization - condenses individual texts into brief summaries.
 
-description: |
-  Scalar text summarization - condenses individual texts into brief summaries.
 
   Unlike SUMMARIZE (aggregate that summarizes a collection), CONDENSE operates
+
   per-row on single texts. Perfect for:
 
+
   - Condensing long reviews/articles into short summaries
+
   - Creating executive summaries of documents
+
   - Generating TL;DR for verbose content
+
   - Extracting key points from lengthy text
 
-  Supports optional focus hint to guide summarization (e.g., 'focus on pricing',
-  'highlight technical issues', 'extract action items').
+
+  Supports optional focus hint to guide summarization (e.g., ''focus on pricing'',
+
+  ''highlight technical issues'', ''extract action items'').
+
 
   Returns: Concise summary (typically 1-3 sentences unless text is very long)
 
+  '
 inputs_schema:
   text: The text to condense/summarize
-  focus: Optional hint to guide summarization (e.g., 'focus on pros and cons', 'technical details only')
-
+  focus: Optional hint to guide summarization (e.g., 'focus on pros and cons', 'technical
+    details only')
 sql_function:
   name: semantic_condense
   description: Condense individual text into brief summary (scalar, per-row)
   args:
-    - name: text
-      type: VARCHAR
-      description: Text to condense
-    - name: focus
-      type: VARCHAR
-      optional: true
-      description: Optional focus hint (e.g., 'focus on pricing', 'key takeaways only')
+  - name: text
+    type: VARCHAR
+    description: Text to condense
+  - name: focus
+    type: VARCHAR
+    optional: true
+    description: Optional focus hint (e.g., 'focus on pricing', 'key takeaways only')
   returns: VARCHAR
   shape: SCALAR
   operators:
-    - "CONDENSE({{ text }})"
-    - "TLDR({{ text }})"
-    - "CONDENSE({{ text }}, '{{ focus }}')"
-    - "TLDR({{ text }}, '{{ focus }}')"
+  - CONDENSE({{ text }})
+  - TLDR({{ text }})
+  - CONDENSE({{ text }}, '{{ focus }}')
+  - TLDR({{ text }}, '{{ focus }}')
   cache: true
-
+  test_cases:
+  - sql: SELECT semantic_condense('This is a very long text that goes on and on with
+      many words and sentences that could be summarized into something much shorter
+      and more concise')
+    expect:
+      type: regex
+      pattern: .{10,100}
+    description: Text condensed
 cells:
-  - name: condense
-    model: google/gemini-2.5-flash-lite
+- name: condense
+  model: google/gemini-2.5-flash-lite
+  use_training: true
+  training_limit: 5
+  training_strategy: recent
+  training_min_confidence: 0.8
+  training_format: xml
+  instructions: 'Condense this text into a brief, concise summary.
 
-    # Training: Learn from good summaries
-    use_training: true
-    training_limit: 5
-    training_strategy: recent
-    training_min_confidence: 0.8
-    training_format: xml
 
-    instructions: |
-      Condense this text into a brief, concise summary.
+    TEXT:
 
-      TEXT:
-      {{ input.text }}
+    {{ input.text }}
 
-      {% if input.focus %}
-      FOCUS ON: {{ input.focus }}
-      {% endif %}
 
-      Instructions:
-      1. Create a concise summary (1-3 sentences for short texts, up to 5 sentences for very long texts)
-      2. Capture the essence and key points
-      3. Omit unnecessary details, filler words, and redundancy
-      4. {% if input.focus %}Focus specifically on: {{ input.focus }}{% else %}Cover the main themes and conclusions{% endif %}
-      5. Write in a clear, neutral tone
-      6. Return ONLY the summary - no preamble like "Here's a summary:" or "The text discusses:"
+    {% if input.focus %}
 
-      Examples:
+    FOCUS ON: {{ input.focus }}
 
-      Text: "I bought this laptop three weeks ago and I have to say I'm really impressed.
-      The battery life is incredible - I can work for 10-12 hours without charging.
-      The screen is bright and sharp, perfect for design work. Setup was easy, took
-      about 15 minutes. The only downside is it's a bit heavy, but that's expected
-      for a 17-inch model. Overall highly recommend for professionals."
+    {% endif %}
 
-      Summary: "Excellent laptop with 10-12 hour battery life and bright screen, ideal
-      for professionals. Setup is quick but device is heavy due to 17-inch size."
 
-      Text: "This product is terrible. Broke after one week. Customer service was
-      unhelpful. Save your money."
+    Instructions:
 
-      Summary: "Product failed after one week with poor customer service."
+    1. Create a concise summary (1-3 sentences for short texts, up to 5 sentences
+    for very long texts)
 
-      Text: "Meeting notes from Q4 planning session. Discussed revenue targets ($10M),
-      hiring plans (15 new engineers), and product roadmap (launch mobile app by March).
-      Sarah raised concerns about timeline. Mike suggested phased rollout. Action items:
-      1) Engineering to provide revised estimate, 2) Marketing to draft launch plan,
-      3) Finance to model revenue impact."
+    2. Capture the essence and key points
 
-      Summary: "Q4 planning covered $10M revenue target, 15 engineer hires, and March
-      mobile app launch. Timeline concerns raised; action items assigned to Engineering,
-      Marketing, and Finance."
+    3. Omit unnecessary details, filler words, and redundancy
 
-      Text (with focus='technical details'): "This phone is great! Love the camera and
-      battery life. The A17 Pro chip is blazing fast with 6-core CPU and 16-core Neural
-      Engine. RAM is 8GB which is plenty. Storage options are 128GB, 256GB, 512GB.
-      Supports 5G and WiFi 6E. Also comes in 4 colors which is nice."
+    4. {% if input.focus %}Focus specifically on: {{ input.focus }}{% else %}Cover
+    the main themes and conclusions{% endif %}
 
-      Summary (focus on technical): "A17 Pro chip with 6-core CPU and 16-core Neural
-      Engine, 8GB RAM, storage up to 512GB, 5G and WiFi 6E support."
+    5. Write in a clear, neutral tone
 
-      Return ONLY the condensed summary text.
+    6. Return ONLY the summary - no preamble like "Here''s a summary:" or "The text
+    discusses:"
 
-    rules:
-      max_turns: 1
 
-    # output_schema:
-    #   type: string
-    #   description: "Condensed summary of the input text"
+    Examples:
+
+
+    Text: "I bought this laptop three weeks ago and I have to say I''m really impressed.
+
+    The battery life is incredible - I can work for 10-12 hours without charging.
+
+    The screen is bright and sharp, perfect for design work. Setup was easy, took
+
+    about 15 minutes. The only downside is it''s a bit heavy, but that''s expected
+
+    for a 17-inch model. Overall highly recommend for professionals."
+
+
+    Summary: "Excellent laptop with 10-12 hour battery life and bright screen, ideal
+
+    for professionals. Setup is quick but device is heavy due to 17-inch size."
+
+
+    Text: "This product is terrible. Broke after one week. Customer service was
+
+    unhelpful. Save your money."
+
+
+    Summary: "Product failed after one week with poor customer service."
+
+
+    Text: "Meeting notes from Q4 planning session. Discussed revenue targets ($10M),
+
+    hiring plans (15 new engineers), and product roadmap (launch mobile app by March).
+
+    Sarah raised concerns about timeline. Mike suggested phased rollout. Action items:
+
+    1) Engineering to provide revised estimate, 2) Marketing to draft launch plan,
+
+    3) Finance to model revenue impact."
+
+
+    Summary: "Q4 planning covered $10M revenue target, 15 engineer hires, and March
+
+    mobile app launch. Timeline concerns raised; action items assigned to Engineering,
+
+    Marketing, and Finance."
+
+
+    Text (with focus=''technical details''): "This phone is great! Love the camera
+    and
+
+    battery life. The A17 Pro chip is blazing fast with 6-core CPU and 16-core Neural
+
+    Engine. RAM is 8GB which is plenty. Storage options are 128GB, 256GB, 512GB.
+
+    Supports 5G and WiFi 6E. Also comes in 4 colors which is nice."
+
+
+    Summary (focus on technical): "A17 Pro chip with 6-core CPU and 16-core Neural
+
+    Engine, 8GB RAM, storage up to 512GB, 5G and WiFi 6E support."
+
+
+    Return ONLY the condensed summary text.
+
+    '
+  rules:
+    max_turns: 1

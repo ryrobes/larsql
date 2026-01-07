@@ -1,0 +1,106 @@
+cascade_id: fill_single
+internal: true
+description: 'Fill null or empty values using contextual information.
+
+  Infers the most likely value based on context.
+
+  '
+inputs_schema:
+  value: The value (may be null or empty)
+  context: Context to infer the fill value from
+sql_function:
+  name: fill
+  description: Fill null/empty with contextual inference
+  args:
+  - name: value
+    type: VARCHAR
+  - name: context
+    type: VARCHAR
+    description: 'Context for inference: related data, patterns, defaults'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - FILL({{ value }}, '{{ context }}')
+  - '{{ value }} FILLED BY ''{{ context }}'''
+  cache: true
+  test_cases:
+  - sql: SELECT fill('', 'N/A')
+    expect: N/A
+    description: Empty string filled
+cells:
+- name: contextual_fill
+  model: google/gemini-2.5-flash-lite
+  instructions: 'If the value is null/empty, fill it using the context. Otherwise
+    return as-is.
+
+
+    VALUE: {{ input.value }}
+
+    CONTEXT: {{ input.context }}
+
+
+    Fill logic:
+
+
+    **If value is null, empty, "N/A", "unknown", or similar**:
+
+    - Infer the most likely value from context
+
+    - If context doesn''t provide enough info, return the original value
+
+
+    **If value is present**:
+
+    - Return it unchanged
+
+
+    Examples:
+
+
+    Value: null
+
+    Context: "city is Boston"
+
+    → "MA" (if the field is state)
+
+
+    Value: ""
+
+    Context: "full name is John Q. Smith, this is middle_name field"
+
+    → "Q."
+
+
+    Value: null
+
+    Context: "other phone numbers in group have area code 617"
+
+    → "617" (if this is area_code field)
+
+
+    Value: null
+
+    Context: "company is Apple Inc., this is stock_ticker"
+
+    → "AAPL"
+
+
+    Value: "John"
+
+    Context: "anything"
+
+    → "John" (already has value, return as-is)
+
+
+    Value: "N/A"
+
+    Context: "country is USA, this is state field"
+
+    → Return "N/A" if we can''t infer state, or infer if other clues exist
+
+
+    Return ONLY the filled value (or original if already present/can''t infer).
+
+    '
+  rules:
+    max_turns: 1

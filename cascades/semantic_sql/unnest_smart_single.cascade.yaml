@@ -1,0 +1,60 @@
+cascade_id: unnest_smart_single
+internal: true
+description: 'Intelligently expand arrays or delimited strings into separate values.
+
+  Handles both actual arrays and string representations.
+
+  '
+inputs_schema:
+  value: Array or delimited string
+  mode: How to handle (auto, as_rows, as_columns, detect_delimiter)
+sql_function:
+  name: unnest_smart
+  description: Intelligent array expansion
+  args:
+  - name: value
+    type: VARCHAR
+  - name: mode
+    type: VARCHAR
+    optional: true
+    default: auto
+    description: 'Mode: auto, as_rows, as_columns, detect_delimiter'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - UNNEST_SMART({{ value }})
+  - UNNEST_SMART({{ value }}, '{{ mode }}')
+  cache: true
+  test_cases:
+  - sql: SELECT unnest_smart('[1, 2, 3]')
+    expect:
+      type: contains
+      value: '1'
+    description: JSON array unnested
+cells:
+- name: smart_unnest
+  model: google/gemini-2.5-flash-lite
+  instructions: "Expand this value into separate elements.\n\nVALUE: {{ input.value\
+    \ }}\nMODE: {{ input.mode | default('auto') }}\n\nReturn a JSON object with expansion\
+    \ details.\n\n**Input formats handled**:\n\nActual JSON array:\n[\"a\", \"b\"\
+    , \"c\"] → elements: [\"a\", \"b\", \"c\"]\n\nString that looks like array:\n\"\
+    [a, b, c]\" → elements: [\"a\", \"b\", \"c\"]\n\"['a', 'b', 'c']\" → elements:\
+    \ [\"a\", \"b\", \"c\"]\n\nDelimited string:\n\"a, b, c\" → elements: [\"a\",\
+    \ \"b\", \"c\"]\n\"a; b; c\" → elements: [\"a\", \"b\", \"c\"]\n\"a|b|c\" → elements:\
+    \ [\"a\", \"b\", \"c\"]\n\"a\\nb\\nc\" → elements: [\"a\", \"b\", \"c\"]\n\nNumbered\
+    \ list:\n\"1. First\\n2. Second\\n3. Third\" → elements: [\"First\", \"Second\"\
+    , \"Third\"]\n\nBulleted list:\n\"• Item A\\n• Item B\" → elements: [\"Item A\"\
+    , \"Item B\"]\n\"- Item A\\n- Item B\" → elements: [\"Item A\", \"Item B\"]\n\n\
+    **Modes**:\n\n\"auto\":\n- Detect format and expand\n- Return JSON array of elements\n\
+    \n\"as_rows\":\n- Format for row expansion (for CROSS JOIN LATERAL)\n- {\"rows\"\
+    : [{\"value\": \"a\"}, {\"value\": \"b\"}, {\"value\": \"c\"}]}\n\n\"as_columns\"\
+    :\n- Format for column expansion\n- {\"col_1\": \"a\", \"col_2\": \"b\", \"col_3\"\
+    : \"c\"}\n\n\"detect_delimiter\":\n- Return detected delimiter info\n- {\"elements\"\
+    : [...], \"delimiter\": \",\", \"count\": 3}\n\nOutput:\n{\n  \"elements\": [\"\
+    a\", \"b\", \"c\"],\n  \"count\": 3,\n  \"original_format\": \"comma_delimited\"\
+    ,\n  \"delimiter\": \",\"\n}\n\nTrim whitespace from each element.\nRemove empty\
+    \ elements.\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

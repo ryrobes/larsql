@@ -11701,7 +11701,37 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         raise json.JSONDecodeError("No valid JSON found in response", response_content, 0)
 
                     # Validate against schema
-                    jsonschema.validate(instance=output_data, schema=cell.output_schema)
+                    # LLMs sometimes wrap scalar values in dicts like {"type": false} when
+                    # the schema has "type: boolean". Try unwrapping if direct validation fails.
+                    try:
+                        jsonschema.validate(instance=output_data, schema=cell.output_schema)
+                    except ValidationError as ve:
+                        unwrapped = None
+                        if isinstance(output_data, dict):
+                            # Common wrapper keys LLMs use when confused by schema syntax
+                            wrapper_keys = ("value", "result", "type", "score", "output", "answer", "year")
+                            for key in wrapper_keys:
+                                if key in output_data:
+                                    unwrapped = output_data[key]
+                                    break
+                            else:
+                                # Single-key dict: extract the value
+                                if len(output_data) == 1:
+                                    unwrapped = next(iter(output_data.values()))
+
+                        if unwrapped is not None:
+                            # Try validating the unwrapped value
+                            try:
+                                jsonschema.validate(instance=unwrapped, schema=cell.output_schema)
+                                # Unwrapped value passes - use it instead
+                                output_data = unwrapped
+                                console.print(f"{indent}  [dim]↳ Unwrapped LLM wrapper dict[/dim]")
+                            except ValidationError:
+                                # Unwrapped also fails - raise original error
+                                raise ve
+                        else:
+                            # Not a dict or no wrapper key found - raise original error
+                            raise ve
 
                     console.print(f"{indent}  [bold green]✓ Schema Validation Passed[/bold green]")
                     log_message(self.session_id, "schema_validation", "Schema validation passed",

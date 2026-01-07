@@ -49,6 +49,161 @@ def _to_toon(value):
         return _to_json(value)  # Fallback to JSON
 
 
+def _extract_structure(val, max_depth: int = 5, depth: int = 0):
+    """
+    Recursively extract structure from a value, replacing values with type indicators.
+
+    Used for structure-based caching in sql_execute mode - JSON with the same
+    structure (keys and types) but different values will have the same structure hash.
+
+    Args:
+        val: The value to extract structure from
+        max_depth: Maximum recursion depth (default 5)
+        depth: Current recursion depth
+
+    Returns:
+        Structure representation with type indicators instead of values
+    """
+    if depth >= max_depth:
+        return "..."
+
+    if val is None:
+        return "null"
+    elif isinstance(val, bool):
+        return "boolean"
+    elif isinstance(val, int):
+        return "integer"
+    elif isinstance(val, float):
+        return "number"
+    elif isinstance(val, str):
+        return "string"
+    elif isinstance(val, list):
+        if not val:
+            return []
+        # Use first element as exemplar (assume homogeneous arrays)
+        return [_extract_structure(val[0], max_depth, depth + 1)]
+    elif isinstance(val, dict):
+        # Sort keys for determinism
+        return {k: _extract_structure(v, max_depth, depth + 1)
+                for k, v in sorted(val.items())}
+    else:
+        return str(type(val).__name__)
+
+
+def _structure(value):
+    """
+    Jinja filter to extract JSON structure (schema) from a value.
+
+    This is used in sql_execute mode cascades to show the LLM the structure
+    of JSON data without exposing actual values. The LLM can then generate
+    SQL that works for any JSON with the same structure.
+
+    Usage in cascade instructions:
+        JSON structure: {{ input.data | structure }}
+
+    Input: {"customer": {"name": "Alice", "id": 123}, "items": [{"sku": "A1"}]}
+    Output:
+    {
+      "customer": {"id": "integer", "name": "string"},
+      "items": [{"sku": "string"}]
+    }
+    """
+    if value is None:
+        return 'null'
+
+    # Parse JSON string if needed
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            # Not valid JSON, return type indicator
+            return f"string({len(value)} chars)"
+
+    structure = _extract_structure(value)
+    return json.dumps(structure, indent=2, sort_keys=True)
+
+
+def structure_hash(value) -> str:
+    """
+    Compute a hash of the JSON structure for cache key generation.
+
+    Two JSON values with the same structure but different content will
+    produce the same hash. Used for structure-based caching.
+
+    Args:
+        value: JSON value (string or parsed)
+
+    Returns:
+        MD5 hash of the structure (12 chars)
+    """
+    import hashlib
+
+    if value is None:
+        return "null"
+
+    # Parse JSON string if needed
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            # Not valid JSON, hash as string
+            return hashlib.md5(f"string:{len(value)}".encode()).hexdigest()[:12]
+
+    structure = _extract_structure(value)
+    structure_json = json.dumps(structure, sort_keys=True)
+    return hashlib.md5(structure_json.encode()).hexdigest()[:12]
+
+
+def _fingerprint(value: str, method: str = 'hybrid', include_lengths: bool = False) -> str:
+    """
+    Jinja filter to compute structural fingerprint of a string.
+
+    Fingerprints capture the FORMAT of a string, not its content.
+    Same format + same task = same parser = cache hit.
+
+    This enables efficient caching for patterned string data like:
+    - Phone numbers: "(555) 123-4567" → "known:phone:us_parens" or "(D)_D-D"
+    - Dates: "01/15/2024" → "known:date:us_slash" or "D/D/D"
+    - Names: "John Smith" → "L_L"
+
+    Usage in cascade instructions:
+        Format: {{ input.value | fingerprint }}
+        Format: {{ input.value | fingerprint('with_lengths') }}
+        Format: {{ input.value | fingerprint('pattern_library') }}
+        Format: {{ input.value | fingerprint('normalized') }}
+
+    Methods:
+        - 'hybrid': Try known patterns first, fall back to normalized (default)
+        - 'normalized': Collapse character runs: "(D)_D-D"
+        - 'with_lengths': Include run lengths: "(D3)_D3-D4"
+        - 'pattern_library': Match known formats only
+
+    Args:
+        value: The string to fingerprint
+        method: Fingerprinting strategy ('hybrid', 'normalized', 'with_lengths', 'pattern_library')
+        include_lengths: For normalized/hybrid, include run lengths in fallback
+
+    Returns:
+        Fingerprint string (e.g., "known:phone:us_parens" or "(D)_D-D")
+
+    Examples:
+        "(555) 123-4567" | fingerprint → "known:phone:us_parens"
+        "(555) 123-4567" | fingerprint('normalized') → "(D)_D-D"
+        "123-45-6789" | fingerprint('with_lengths') → "D3-D2-D4"
+    """
+    from .semantic_sql.fingerprint import compute_fingerprint, FingerprintMethod
+
+    if value is None:
+        return "null"
+
+    try:
+        fp_method = FingerprintMethod(method)
+    except ValueError:
+        fp_method = FingerprintMethod.HYBRID
+
+    return compute_fingerprint(str(value), fp_method, include_lengths)
+
+
 class PromptEngine:
     def __init__(self, template_dirs: list[str] = None):
         # Use CWD if not specified, plus standard prompt locations
@@ -75,6 +230,8 @@ class PromptEngine:
         self.env.filters['tojson'] = _to_json  # Alias for convenience
         self.env.filters['to_toon'] = _to_toon  # TOON format encoding
         self.env.filters['totoon'] = _to_toon   # Alias for convenience
+        self.env.filters['structure'] = _structure  # JSON structure extraction for sql_execute mode
+        self.env.filters['fingerprint'] = _fingerprint  # String format fingerprinting for structural caching
         
     def render(self, template_str_or_path: str, context: Dict[str, Any]) -> str:
         """

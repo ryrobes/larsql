@@ -1,0 +1,119 @@
+cascade_id: domain_dimension
+internal: true
+description: 'Dimension operator that buckets text by subject domain/industry.
+
+  Useful for content routing and analysis.
+
+  '
+inputs_schema:
+  text: Text to analyze for domain
+sql_function:
+  name: domain
+  description: Detect subject domain for grouping
+  args:
+  - name: text
+    type: VARCHAR
+  returns: VARCHAR
+  shape: DIMENSION
+  operators:
+  - DOMAIN({{ text }})
+  - '{{ text }} BY DOMAIN'
+  cache: true
+  test_cases:
+  - sql: SELECT domain('SQL query optimization techniques')
+    expect:
+      type: regex
+      pattern: .+
+    description: Domain detected
+cells:
+- name: detect_domain
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Detect the subject domain of this text.
+
+
+    TEXT: {{ input.text }}
+
+
+    Return a domain bucket for GROUP BY analysis.
+
+
+    **Domain buckets**:
+
+
+    **Technology**:
+
+    - software: Programming, development, apps
+
+    - hardware: Computers, devices, electronics
+
+    - networking: Internet, connectivity, infrastructure
+
+    - security: Cybersecurity, privacy, access control
+
+    - data: Databases, analytics, ML/AI
+
+
+    **Business**:
+
+    - finance: Banking, investments, accounting
+
+    - marketing: Advertising, branding, campaigns
+
+    - sales: Revenue, deals, customers
+
+    - operations: Logistics, processes, efficiency
+
+    - hr: Hiring, employees, workplace
+
+
+    **Industries**:
+
+    - healthcare: Medical, health, wellness
+
+    - legal: Law, compliance, contracts
+
+    - education: Learning, training, academic
+
+    - retail: Shopping, e-commerce, products
+
+    - manufacturing: Production, supply chain
+
+    - real_estate: Property, housing, construction
+
+    - entertainment: Media, games, content
+
+    - travel: Tourism, hospitality, transportation
+
+
+    **Other**:
+
+    - personal: Individual matters, lifestyle
+
+    - general: No specific domain
+
+    - mixed: Multiple domains equally present
+
+
+    **Detection signals**:
+
+    - Industry-specific terminology
+
+    - Named entities (companies, products)
+
+    - Process descriptions
+
+    - Regulatory mentions
+
+    - Role/title references
+
+
+    Choose the MOST SPECIFIC applicable domain.
+
+    If genuinely ambiguous, use "general" or "mixed".
+
+
+    Return ONLY the domain name (e.g., "software", "healthcare", "finance").
+
+    '
+  rules:
+    max_turns: 1

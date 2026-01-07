@@ -1,62 +1,66 @@
-# CLASSIFY - Collection classification
-# Classifies a collection into one of given categories
-#
-# SQL Usage:
-#   SELECT state, CLASSIFY(observed, 'credible,questionable,hoax') FROM bigfoot GROUP BY state
-#
-# Direct Function:
-#   SELECT semantic_classify_collection(to_json(list(observed)), 'positive,negative,mixed') FROM reviews
-
 cascade_id: semantic_classify_collection
 internal: true
+description: 'Collection classification - classifies an entire collection of texts
 
-description: |
-  Collection classification - classifies an entire collection of texts
   into one of the provided categories based on overall content.
 
+  '
 inputs_schema:
   texts: JSON array of texts to classify
   categories: Comma-separated list of category names
   prompt: Optional custom classification criteria
-
 sql_function:
   name: semantic_classify_collection
   description: Classifies a text collection into one category
   args:
-    - name: texts
-      type: JSON
-    - name: categories
-      type: VARCHAR
-    - name: prompt
-      type: VARCHAR
-      optional: true
+  - name: texts
+    type: JSON
+  - name: categories
+    type: VARCHAR
+  - name: prompt
+    type: VARCHAR
+    optional: true
   returns: VARCHAR
   shape: AGGREGATE
   context_arg: texts
   operators:
-    - "CLASSIFY({{ texts }}, '{{ categories }}')"
-    - "CLASSIFY({{ texts }}, '{{ categories }}', '{{ prompt }}')"
+  - CLASSIFY({{ texts }}, '{{ categories }}')
+  - CLASSIFY({{ texts }}, '{{ categories }}', '{{ prompt }}')
   cache: true
-
+  test_cases:
+  - sql: '-- Aggregate function: requires numbered UDF testing'
+    skip: true
+    description: Aggregate functions need special test harness
 cells:
-  - name: classify_collection
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Classify this collection of texts into ONE of the provided categories.
+- name: classify_collection
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Classify this collection of texts into ONE of the provided categories.
 
-      TEXTS:
-      {{ input.texts }}
 
-      CATEGORIES: {{ input.categories }}
+    TEXTS:
 
-      {% if input.prompt %}
-      CLASSIFICATION CRITERIA: {{ input.prompt }}
-      {% else %}
-      Consider the overall theme, tone, and content of all texts together.
-      {% endif %}
+    {{ input.texts }}
 
-      Which category best describes this collection as a whole?
 
-      Return ONLY the category name (exactly as provided), nothing else.
-    rules:
-      max_turns: 1
+    CATEGORIES: {{ input.categories }}
+
+
+    {% if input.prompt %}
+
+    CLASSIFICATION CRITERIA: {{ input.prompt }}
+
+    {% else %}
+
+    Consider the overall theme, tone, and content of all texts together.
+
+    {% endif %}
+
+
+    Which category best describes this collection as a whole?
+
+
+    Return ONLY the category name (exactly as provided), nothing else.
+
+    '
+  rules:
+    max_turns: 1

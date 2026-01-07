@@ -956,6 +956,65 @@ class SQLFunctionArg(BaseModel):
     optional: bool = False
     default: Optional[Any] = None  # Default value (int, str, bool, or null)
     role: Optional[str] = None  # Optional role (e.g., "dimension_source" for DIMENSION shape)
+    structure_source: bool = False  # If True, use structure (schema) of this arg for caching instead of content
+
+
+class FingerprintConfig(BaseModel):
+    """
+    Configuration for fingerprint-based cache keys on string values.
+
+    Fingerprints capture the FORMAT of a string, not its content.
+    Same format + same task = same parser = cache hit.
+
+    Methods:
+    - "hybrid": Try known patterns first, fall back to normalized (default)
+    - "normalized": Collapse character class runs: "(D)_D-D"
+    - "with_lengths": Include run lengths: "(D3)_D3-D4"
+    - "pattern_library": Match known formats only
+
+    Usage:
+        cache_key:
+          strategy: fingerprint
+          fingerprint_args: [phone_value]
+          fingerprint_config:
+            method: hybrid
+            include_lengths: false
+    """
+    method: Literal["normalized", "with_lengths", "pattern_library", "hybrid"] = "hybrid"
+    include_lengths: bool = False  # Include run lengths in fingerprint
+
+
+class CacheKeyConfig(BaseModel):
+    """
+    Configuration for how cache keys are computed for a SQL function.
+
+    Strategies:
+    - "content": Hash all args by their literal content (default, current behavior)
+    - "structure": Hash specified args by their JSON structure (schema), others by content
+    - "fingerprint": Hash specified args by their string format pattern (for patterned strings)
+    - "custom": Use a Jinja2 template to build the cache key
+
+    Usage:
+        cache_key:
+          strategy: structure
+          structure_args: [data]  # These args: hash JSON structure, not content
+
+        cache_key:
+          strategy: fingerprint
+          fingerprint_args: [phone_value]  # These args: hash format pattern, not content
+          fingerprint_config:
+            method: hybrid
+            include_lengths: false
+
+        cache_key:
+          strategy: custom
+          template: "{{ input.path_description }}"  # Only cache by description
+    """
+    strategy: Literal["content", "structure", "fingerprint", "custom"] = "content"
+    structure_args: List[str] = Field(default_factory=list)  # Args to hash by structure (for strategy="structure")
+    fingerprint_args: List[str] = Field(default_factory=list)  # Args to hash by fingerprint (for strategy="fingerprint")
+    fingerprint_config: Optional[FingerprintConfig] = None  # Configuration for fingerprint strategy
+    template: Optional[str] = None  # Jinja2 template for cache key (for strategy="custom")
 
 
 class SQLFunctionConfig(BaseModel):
@@ -970,6 +1029,19 @@ class SQLFunctionConfig(BaseModel):
     - ROW: Multi-column per-row (multiple values → single output)
     - AGGREGATE: Collection function (table context → single output)
     - DIMENSION: Semantic bucketing for GROUP BY (collection → per-row bucket assignment)
+
+    Output modes:
+    - "value": (default) Cascade returns final value directly
+    - "sql_execute": Cascade returns SQL fragment, which is executed to get the value
+    - "sql_raw": Cascade returns SQL fragment as-is (for debugging/composition)
+
+    The "sql_execute" mode enables "macro" style functions where the LLM generates
+    SQL that gets executed, rather than computing the value directly. Combined with
+    structure-based caching, this allows efficient processing of consistent JSON:
+    - First call: LLM analyzes JSON structure, generates SQL extraction expression
+    - Cache stores the SQL fragment keyed by structure (not content)
+    - Subsequent calls with same structure: Cached SQL is executed directly (no LLM)
+    - Different structure: New SQL generated (self-healing)
 
     Usage (SCALAR - simple classifier):
         cascade_id: product_classifier
@@ -989,6 +1061,28 @@ class SQLFunctionConfig(BaseModel):
               Categories: Electronics, Clothing, Home, Other
               Product: {{ input.input }}
               Return only the category name.
+
+    Usage (SQL-returning macro with structure caching):
+        cascade_id: smart_json_extract
+        sql_function:
+          args:
+            - name: data
+              type: JSON
+              structure_source: true  # Use structure for caching
+            - name: path_description
+              type: VARCHAR
+          returns: VARCHAR
+          output_mode: sql_execute  # Execute returned SQL
+          cache_key:
+            strategy: structure
+            structure_args: [data]  # Cache by structure, not content
+
+        cells:
+          - name: generate_sql
+            instructions: |
+              JSON structure: {{ input.data | structure }}
+              Generate SQL to extract: {{ input.path_description }}
+              Use :data as placeholder. Return ONLY the SQL expression.
 
     Usage (AGGREGATE - summarizer):
         cascade_id: summarize_texts
@@ -1018,6 +1112,10 @@ class SQLFunctionConfig(BaseModel):
         - {{ criterion }}: Second argument (for binary operators)
         - {{ threshold }}: Third argument (for score operators)
         - {{ context }}: For aggregates, the JSON array of values
+
+    For sql_execute mode, the cascade can use:
+        - {{ input.arg_name | structure }}: JSON structure (schema) for structure-aware prompts
+        - Output should contain SQL with :arg_name placeholders for parameter binding
     """
     enabled: bool = True
     name: Optional[str] = None  # Function name (defaults to cascade_id)
@@ -1047,6 +1145,17 @@ class SQLFunctionConfig(BaseModel):
     # Caching
     cache: bool = True
     cache_ttl: Optional[int] = None  # Seconds, None = forever
+
+    # Output mode - controls what the cascade returns and how it's used
+    # - "value": (default) Cascade returns final value, which is returned to caller
+    # - "sql_execute": Cascade returns SQL expression, which is executed to get a scalar value
+    # - "sql_raw": Cascade returns SQL fragment, which is returned as-is (for debugging/composition)
+    # - "sql_statement": Cascade returns full SQL statement, which is executed to get table results
+    output_mode: Literal["value", "sql_execute", "sql_raw", "sql_statement"] = "value"
+
+    # Cache key strategy - controls how cache keys are computed
+    # Only used when cache=True
+    cache_key: Optional[CacheKeyConfig] = None
 
     # Execution
     timeout: Optional[int] = None  # Seconds

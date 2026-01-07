@@ -1,67 +1,74 @@
-# OUTLIERS - Find unusual items in a collection
-# Identifies texts that stand out or don't fit the pattern
-#
-# SQL Usage:
-#   SELECT OUTLIERS(observed, 3) FROM bigfoot
-#   SELECT state, OUTLIERS(observed, 5, 'scientifically implausible') FROM bigfoot GROUP BY state
-#
-# Direct Function:
-#   SELECT semantic_outliers(to_json(list(observed)), 3) FROM bigfoot
-
 cascade_id: semantic_outliers
 internal: true
+description: 'Find outliers or unusual items in a collection of texts.
 
-description: |
-  Find outliers or unusual items in a collection of texts.
   Returns a JSON array of unusual items with explanations.
 
+  '
 inputs_schema:
   texts: JSON array of texts to analyze
   num_outliers: Maximum number of outliers to return (default 5)
   criteria: Description of what makes something unusual
-
 sql_function:
   name: semantic_outliers
   description: Finds unusual or atypical items in a collection
   args:
-    - name: texts
-      type: JSON
-    - name: num_outliers
-      type: INTEGER
-      default: "5"
-    - name: criteria
-      type: VARCHAR
-      optional: true
+  - name: texts
+    type: JSON
+  - name: num_outliers
+    type: INTEGER
+    default: '5'
+  - name: criteria
+    type: VARCHAR
+    optional: true
   returns: VARCHAR
   shape: AGGREGATE
   context_arg: texts
   operators:
-    - "OUTLIERS({{ texts }})"
-    - "OUTLIERS({{ texts }}, {{ num_outliers }})"
-    - "OUTLIERS({{ texts }}, {{ num_outliers }}, '{{ criteria }}')"
+  - OUTLIERS({{ texts }})
+  - OUTLIERS({{ texts }}, {{ num_outliers }})
+  - OUTLIERS({{ texts }}, {{ num_outliers }}, '{{ criteria }}')
   cache: true
-
+  test_cases:
+  - sql: '-- Aggregate function: requires numbered UDF testing'
+    skip: true
+    description: Aggregate functions need special test harness
 cells:
-  - name: find_outliers
-    model: google/gemini-2.5-flash-lite
-    instructions: |
-      Find the {{ input.num_outliers | default(5) }} most unusual or atypical items in this list.
+- name: find_outliers
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Find the {{ input.num_outliers | default(5) }} most unusual or atypical
+    items in this list.
 
-      TEXTS:
-      {{ input.texts }}
 
-      {% if input.criteria %}
-      CRITERIA FOR UNUSUAL: {{ input.criteria }}
-      {% else %}
-      Look for items that:
-      - Don't fit the common pattern
-      - Are surprisingly different from the majority
-      - Contain unexpected or rare characteristics
-      {% endif %}
+    TEXTS:
 
-      Return a JSON array of the unusual items (just the text, not explanations):
-      ["unusual item 1", "unusual item 2", ...]
+    {{ input.texts }}
 
-      Return ONLY the JSON array, no explanation or markdown.
-    rules:
-      max_turns: 1
+
+    {% if input.criteria %}
+
+    CRITERIA FOR UNUSUAL: {{ input.criteria }}
+
+    {% else %}
+
+    Look for items that:
+
+    - Don''t fit the common pattern
+
+    - Are surprisingly different from the majority
+
+    - Contain unexpected or rare characteristics
+
+    {% endif %}
+
+
+    Return a JSON array of the unusual items (just the text, not explanations):
+
+    ["unusual item 1", "unusual item 2", ...]
+
+
+    Return ONLY the JSON array, no explanation or markdown.
+
+    '
+  rules:
+    max_turns: 1

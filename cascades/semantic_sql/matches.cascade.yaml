@@ -1,66 +1,67 @@
-# MEANS / MATCHES - Semantic boolean filter
-# Returns TRUE if text semantically matches the criterion
-#
-# SQL Usage:
-#   SELECT * FROM docs WHERE title MEANS 'happened at night'
-#   SELECT * FROM docs WHERE NOT (description MEANS 'hoax or prank')
-#
-# Direct Function:
-#   SELECT semantic_matches(title, 'nighttime event') FROM docs
-
 cascade_id: semantic_matches
-internal: true 
+internal: true
+description: 'Semantic boolean filter - returns TRUE if text semantically matches
+  the criterion.
 
-description: |
-  Semantic boolean filter - returns TRUE if text semantically matches the criterion.
   Used for WHERE clauses with natural language conditions.
 
+  '
 inputs_schema:
   text: The text to evaluate
   criterion: The semantic criterion to match against
-
 sql_function:
   name: semantic_matches
   description: Returns TRUE if text semantically matches the criterion
   args:
-    - name: text
-      type: VARCHAR
-    - name: criterion
-      type: VARCHAR
+  - name: text
+    type: VARCHAR
+  - name: criterion
+    type: VARCHAR
   returns: BOOLEAN
   shape: SCALAR
   operators:
-    - "{{ text }} MEANS {{ criterion }}"
-    - "{{ text }} MATCHES {{ criterion }}"
-    - "{{ text }} ~ {{ criterion }}"
+  - '{{ text }} MEANS {{ criterion }}'
+  - '{{ text }} MATCHES {{ criterion }}'
+  - '{{ text }} ~ {{ criterion }}'
   cache: true
-
+  test_cases:
+  - sql: WITH t AS (SELECT 'apple pie recipe' AS text) SELECT * FROM t WHERE text MEANS 'dessert recipes'
+    expect:
+      type: contains
+      value: apple pie
+    description: MEANS operator matches related content
+  - sql: WITH t AS (SELECT 'quantum physics' AS topic) SELECT * FROM t WHERE topic ~ 'science'
+    expect:
+      type: contains
+      value: quantum
+    description: Tilde operator matches semantic content
 cells:
-  - name: evaluate
-    model: google/gemini-2.5-flash-lite
+- name: evaluate
+  model: google/gemini-2.5-flash-lite
+  use_training: true
+  training_limit: 5
+  training_strategy: recent
+  training_min_confidence: 0.8
+  training_format: xml
+  instructions: 'Does this text match the semantic criterion?
 
-    # ===== UNIVERSAL TRAINING SYSTEM =====
-    # Automatically learns from past successful executions!
-    # Mark good results as trainable in Studio UI → future queries use them as examples
-    use_training: true
-    training_limit: 5
-    training_strategy: recent
-    training_min_confidence: 0.8
-    training_format: xml
 
-    instructions: |
-      Does this text match the semantic criterion?
+    TEXT: {{ input.text }}
 
-      TEXT: {{ input.text }}
 
-      CRITERION: {{ input.criterion }}
+    CRITERION: {{ input.criterion }}
 
-      Respond with ONLY "true" or "false" - no explanation, no other text.
 
-      Think about whether the text's meaning, topic, or sentiment aligns with the criterion.
-      Be generous in interpretation - if there's a reasonable semantic connection, answer "true".
+    Respond with ONLY "true" or "false" - no explanation, no other text.
 
-    rules:
-      max_turns: 1
-    output_schema:
-      type: boolean
+
+    Think about whether the text''s meaning, topic, or sentiment aligns with the criterion.
+
+    Be generous in interpretation - if there''s a reasonable semantic connection,
+    answer "true".
+
+    '
+  rules:
+    max_turns: 1
+  output_schema:
+    type: boolean

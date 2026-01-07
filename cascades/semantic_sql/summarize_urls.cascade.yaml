@@ -1,57 +1,46 @@
-# SUMMARIZE_URLS - Extract and summarize URLs from text
-# Fetches URLs using Playwright (handles JavaScript), returns summary
-
 cascade_id: semantic_summarize_urls
-internal: true 
+internal: true
+description: 'Extracts URLs from text, fetches web content using headless browser,
 
-description: |
-  Extracts URLs from text, fetches web content using headless browser,
   and returns concise summary. Uses Playwright for JavaScript-heavy sites.
+
   Browser instance is created and destroyed for each fetch (no orphaned processes).
 
+  '
 inputs_schema:
   text: Text that may contain URLs
-
 sql_function:
   name: semantic_summarize_urls
   description: Extracts URLs from text, fetches with browser, returns summary
   args:
-    - name: text
-      type: VARCHAR
+  - name: text
+    type: VARCHAR
   returns: VARCHAR
   shape: SCALAR
   operators:
-    - "SUMMARIZE_URLS({{ text }})"
-    - "URL_SUMMARY({{ text }})"
+  - SUMMARIZE_URLS({{ text }})
+  - URL_SUMMARY({{ text }})
   cache: false
-
+  test_cases:
+  - sql: -- Requires network access
+    skip: true
+    description: URL summary needs network
 cells:
-  - name: process
-    model: google/gemini-3-flash-preview
-    traits: [fetch_url_with_browser]
-
-    instructions: |
-      Extract URL from text, fetch it using Playwright browser, and summarize.
-
-      TEXT:
-      {{ input.text }}
-
-      STEPS:
-      1. Check if text contains a URL (http://, https://, t.co)
-      2. If NO URL: return empty string ""
-      3. If URL found:
-         - Extract the URL
-         - Call fetch_url_with_browser("<url>") to get rendered content
-         - If fetch returns ERROR: return empty string ""
-         - Otherwise: summarize the content in 2-3 sentences
-         - Return ONLY the summary (no preamble like "Summary:" or "The article discusses...")
-
-      The browser tool handles JavaScript and waits for content to load.
-      Browser is automatically cleaned up after each call.
-
-      If there is NO URL - return "No Links"
-      If you are seeing the page return data please clean out the json fences and preface and JUST return the page summarization text.
-      If the return is a timeout - retrun "Timed Out ({THE_URL})".
-
-    rules:
-      max_turns: 3
+- name: process
+  model: google/gemini-3-flash-preview
+  traits:
+  - fetch_url_with_browser
+  instructions: "Extract URL from text, fetch it using Playwright browser, and summarize.\n\
+    \nTEXT:\n{{ input.text }}\n\nSTEPS:\n1. Check if text contains a URL (http://,\
+    \ https://, t.co)\n2. If NO URL: return empty string \"\"\n3. If URL found:\n\
+    \   - Extract the URL\n   - Call fetch_url_with_browser(\"<url>\") to get rendered\
+    \ content\n   - If fetch returns ERROR: return empty string \"\"\n   - Otherwise:\
+    \ summarize the content in 2-3 sentences\n   - Return ONLY the summary (no preamble\
+    \ like \"Summary:\" or \"The article discusses...\")\n\nThe browser tool handles\
+    \ JavaScript and waits for content to load.\nBrowser is automatically cleaned\
+    \ up after each call.\n\nIf there is NO URL - return \"No Links\"\nIf you are\
+    \ seeing the page return data please clean out the json fences and preface and\
+    \ JUST return the page summarization text.\nIf the return is a timeout - retrun\
+    \ \"Timed Out ({THE_URL})\".\n"
+  rules:
+    max_turns: 3

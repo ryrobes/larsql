@@ -1,0 +1,129 @@
+# VALID - Check if value matches expected format/type
+#
+# SQL Usage:
+#   SELECT * FROM imports WHERE NOT VALID(email, 'email')
+#   SELECT id, VALID(phone, 'phone') as phone_ok FROM contacts
+#   SELECT * FROM leads WHERE VALID(zip, 'zip')
+#
+# Types: email, phone, url, date, ssn, ein, credit_card, ip, uuid, zip
+
+cascade_id: valid_single
+internal: true
+
+description: |
+  Check if a value matches the expected format for a given type.
+  Returns boolean - useful for data quality filtering.
+
+inputs_schema:
+  value: The value to validate
+  type: Expected type/format
+
+sql_function:
+  name: valid
+  description: Check if value matches expected format
+  args:
+    - name: value
+      type: VARCHAR
+    - name: type
+      type: VARCHAR
+      description: "Format type: email, phone, url, date, ssn, zip, uuid, ip, credit_card, etc."
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "VALID({{ value }}, '{{ type }}')"
+    - "{{ value }} IS VALID '{{ type }}'"
+    - "{{ value }} VALID AS '{{ type }}'"
+  cache: true
+  test_cases:
+    - sql: "SELECT valid('john@gmail.com', 'email')"
+      expect: true
+      description: "Valid email returns true"
+    - sql: "SELECT valid('not-an-email', 'email')"
+      expect: false
+      description: "Invalid email returns false"
+    - sql: "SELECT valid('(555) 123-4567', 'phone')"
+      expect: true
+      description: "Valid US phone returns true"
+    - sql: "SELECT valid('02101', 'zip')"
+      expect: true
+      description: "Valid US zip returns true"
+
+cells:
+  - name: check_valid
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Is this a valid {{ input.type }}?
+
+      VALUE: {{ input.value }}
+      TYPE: {{ input.type }}
+
+      Validation rules:
+
+      {% if input.type == 'email' %}
+      EMAIL: Must have @ symbol, valid domain structure, no spaces
+      Valid: john@example.com, user.name+tag@domain.co.uk
+      Invalid: john@, @example.com, john smith@example.com, john@@example.com
+
+      {% elif input.type == 'phone' %}
+      PHONE: Must be recognizable phone number format (any country)
+      Valid: (555) 123-4567, +1-555-123-4567, +44 20 7946 0958, 5551234567
+      Invalid: 123, abc-def-ghij, 555-123-456789012345, phone123
+
+      {% elif input.type == 'url' %}
+      URL: Must be valid URL structure with protocol
+      Valid: https://example.com, http://test.org/path?q=1, ftp://files.example.com
+      Invalid: example.com (no protocol), http:/example.com, ://bad.com
+
+      {% elif input.type == 'date' %}
+      DATE: Must be recognizable as a date
+      Valid: 2024-03-15, March 15 2024, 3/15/24, 15-Mar-2024
+      Invalid: 13/32/2024, not-a-date, 2024-15-45, 00/00/0000
+
+      {% elif input.type == 'ssn' %}
+      SSN (US): XXX-XX-XXXX format, valid area numbers
+      Valid: 123-45-6789, 001-01-0001
+      Invalid: 000-00-0000, 123-456-789, 123456789 (missing dashes), 999-99-9999
+
+      {% elif input.type == 'ein' %}
+      EIN (US): XX-XXXXXXX format
+      Valid: 12-3456789
+      Invalid: 123456789, 12-345678
+
+      {% elif input.type == 'zip' %}
+      ZIP (US): 5 digits or 5+4 format
+      Valid: 02101, 02101-1234, 90210
+      Invalid: 1234, 123456, ABCDE, 0210
+
+      {% elif input.type == 'uuid' %}
+      UUID: Standard UUID format (8-4-4-4-12 hex)
+      Valid: 550e8400-e29b-41d4-a716-446655440000
+      Invalid: 550e8400-e29b-41d4-a716, not-a-uuid, 550e8400e29b41d4a716446655440000
+
+      {% elif input.type == 'ip' or input.type == 'ip_address' %}
+      IP ADDRESS: IPv4 or IPv6
+      Valid: 192.168.1.1, 10.0.0.1, 2001:0db8:85a3::8a2e:0370:7334, ::1
+      Invalid: 256.256.256.256, 192.168.1, 192.168.1.1.1
+
+      {% elif input.type == 'credit_card' %}
+      CREDIT CARD: Valid card number format (Luhn check)
+      Valid: 4111111111111111, 4111-1111-1111-1111
+      Invalid: 1234567890, 4111111111111112 (fails Luhn)
+
+      {% elif input.type == 'iban' %}
+      IBAN: International Bank Account Number
+      Valid: GB82 WEST 1234 5698 7654 32, DE89370400440532013000
+      Invalid: 1234567890, INVALID
+
+      {% else %}
+      Check if the value appears to be a valid {{ input.type }}.
+      Use reasonable validation criteria for the type.
+      {% endif %}
+
+      Return ONLY "true" or "false".
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: boolean

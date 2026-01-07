@@ -1,0 +1,51 @@
+cascade_id: parse_phone_single
+internal: true
+description: 'Parse phone number into structured components and normalized formats.
+
+  '
+inputs_schema:
+  phone: The phone number to parse
+  default_country: 'Default country code if not specified (default: US)'
+sql_function:
+  name: parse_phone_llm
+  description: Parse phone number into components and formats
+  args:
+  - name: phone
+    type: VARCHAR
+  - name: default_country
+    type: VARCHAR
+    optional: true
+    default: US
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - PARSE_PHONE({{ phone }})
+  - PARSE_PHONE({{ phone }}, '{{ default_country }}')
+  cache: true
+  test_cases:
+  - sql: SELECT parse_phone_llm('Call me at (555) 123-4567')
+    expect:
+      type: contains
+      value: '5551234567'
+    description: Phone extracted from text
+cells:
+- name: parse
+  model: google/gemini-2.5-flash-lite
+  instructions: "Parse this phone number into structured format.\n\nPHONE: {{ input.phone\
+    \ }}\nDEFAULT COUNTRY: {{ input.default_country | default('US') }}\n\nReturn a\
+    \ JSON object:\n{\n  \"country_code\": \"1\",\n  \"area_code\": \"555\",\n  \"\
+    exchange\": \"123\",\n  \"subscriber\": \"4567\",\n  \"extension\": \"890\",\n\
+    \  \"e164\": \"+15551234567\",\n  \"national\": \"(555) 123-4567\",\n  \"international\"\
+    : \"+1 555-123-4567\",\n  \"is_valid\": true,\n  \"type\": \"landline\"\n}\n\n\
+    Handle various formats:\n- \"(555) 123-4567\" → standard US\n- \"555-123-4567\"\
+    \ → US without parens\n- \"5551234567\" → US digits only\n- \"+1 555 123 4567\"\
+    \ → international format\n- \"555.123.4567 ext. 890\" → with extension\n- \"+44\
+    \ 20 7946 0958\" → UK format\n- \"1-800-555-1234\" → toll-free\n\nType detection:\n\
+    - \"mobile\" if recognizable mobile pattern\n- \"landline\" for standard numbers\n\
+    - \"tollfree\" for 800/888/877/866/855 numbers\n- \"unknown\" if cannot determine\n\
+    \nIf no country code provided, assume {{ input.default_country | default('US')\
+    \ }}.\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

@@ -1810,7 +1810,7 @@ class ClientConnection:
 
             if _is_rvbbit_statement(query):
                 from rvbbit.session_naming import generate_woodland_id
-                from rvbbit.caller_context import set_caller_context, build_sql_metadata
+                from rvbbit.caller_context import set_caller_context, build_sql_metadata, set_duckdb_attachments
 
                 caller_id = f"sql-{generate_woodland_id()}"
                 metadata = build_sql_metadata(
@@ -1820,7 +1820,33 @@ class ClientConnection:
                 )
                 # Set caller context with connection_id for global registry lookup
                 set_caller_context(caller_id, metadata, connection_id=self.session_id)
-                print(f"[{self.session_id}] 🔗 Set caller_context: {caller_id} → registry[{self.session_id}]")
+
+                # Extract attachment info for sql_statement mode
+                # (We can't pass the connection itself - it causes deadlocks during UDF execution)
+                attachments = []
+                try:
+                    # Get from _rvbbit_attachments table if it exists
+                    rows = self.duckdb_conn.execute("""
+                        SELECT database_alias, database_path
+                        FROM _rvbbit_attachments
+                        ORDER BY id
+                    """).fetchall()
+                    attachments = [(alias, path) for alias, path in rows]
+                except Exception:
+                    # Table doesn't exist yet - try duckdb_databases()
+                    try:
+                        rows = self.duckdb_conn.execute("""
+                            SELECT database_name, path
+                            FROM duckdb_databases()
+                            WHERE database_name NOT IN ('memory', 'system', 'temp')
+                              AND path IS NOT NULL AND path != ''
+                        """).fetchall()
+                        attachments = [(name, path) for name, path in rows]
+                    except Exception:
+                        pass
+
+                set_duckdb_attachments(self.session_id, attachments)
+                print(f"[{self.session_id}] 🔗 Set caller_context: {caller_id} → registry[{self.session_id}] ({len(attachments)} attachments)")
 
                 # Log query start for SQL Trail analytics
                 # fingerprint_query() will detect semantic operators before sqlglot parsing

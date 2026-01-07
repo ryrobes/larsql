@@ -1,0 +1,88 @@
+# LANGUAGE dimension - Group by detected language
+#
+# SQL Usage:
+#   SELECT LANGUAGE(text), COUNT(*) FROM content GROUP BY LANGUAGE(text)
+#   SELECT * FROM reviews ORDER BY LANGUAGE(review_text)
+#   SELECT LANGUAGE(description) as lang, AVG(rating) FROM products GROUP BY 1
+#
+# For multilingual data analysis
+
+cascade_id: language_dimension
+internal: true
+
+description: |
+  Dimension operator that buckets text by detected language.
+  Useful for multilingual data analysis.
+
+inputs_schema:
+  text: Text to analyze for language
+
+sql_function:
+  name: language
+  description: Detect language for grouping
+  args:
+    - name: text
+      type: VARCHAR
+  returns: VARCHAR
+  shape: DIMENSION
+  operators:
+    - "LANGUAGE({{ text }})"
+    - "{{ text }} BY LANGUAGE"
+  cache: true
+  test_cases:
+    - sql: "SELECT language('Hello, how are you today?')"
+      expect: "en"
+      description: "English detected"
+    - sql: "SELECT language('Bonjour, comment allez-vous?')"
+      expect: "fr"
+      description: "French detected"
+    - sql: "SELECT language('Hola, como estas?')"
+      expect: "es"
+      description: "Spanish detected"
+
+cells:
+  - name: detect_language
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Detect the language of this text.
+
+      TEXT: {{ input.text }}
+
+      Return a language bucket for GROUP BY analysis.
+
+      **Return format**: Language code (ISO 639-1) or name
+
+      Common languages:
+      - en: English
+      - es: Spanish
+      - fr: French
+      - de: German
+      - it: Italian
+      - pt: Portuguese
+      - zh: Chinese
+      - ja: Japanese
+      - ko: Korean
+      - ru: Russian
+      - ar: Arabic
+      - hi: Hindi
+      - nl: Dutch
+      - pl: Polish
+      - sv: Swedish
+      - tr: Turkish
+      - vi: Vietnamese
+      - th: Thai
+      - id: Indonesian
+
+      Special cases:
+      - "mixed": Multiple languages present
+      - "unknown": Cannot determine
+      - "code": Programming code, not natural language
+      - "numeric": Primarily numbers
+
+      For short text (< 10 words), if confident return language, otherwise "unknown".
+
+      Return ONLY the language code (e.g., "en", "es", "mixed").
+
+    rules:
+      max_turns: 1

@@ -1,0 +1,54 @@
+cascade_id: parse_date_single
+internal: true
+description: 'Parse date from virtually any format into structured components.
+
+  '
+inputs_schema:
+  date_text: The date text to parse
+  prefer_format: Hint for ambiguous dates (mdy, dmy, ymd)
+sql_function:
+  name: parse_date_llm
+  description: Parse date from any format
+  args:
+  - name: date_text
+    type: VARCHAR
+  - name: prefer_format
+    type: VARCHAR
+    optional: true
+    default: mdy
+    description: 'For ambiguous dates: mdy (US), dmy (EU), ymd (ISO)'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - PARSE_DATE({{ date_text }})
+  - PARSE_DATE({{ date_text }}, '{{ prefer_format }}')
+  cache: true
+  test_cases:
+  - sql: SELECT parse_date_llm('March 15th, 2024')
+    expect:
+      type: contains
+      value: '2024-03-15'
+    description: Date parsed from text
+cells:
+- name: parse
+  model: google/gemini-2.5-flash-lite
+  instructions: "Parse this date into structured format.\n\nDATE TEXT: {{ input.date_text\
+    \ }}\nPREFER FORMAT: {{ input.prefer_format | default('mdy') }} (for ambiguous\
+    \ dates like 01/02/03)\n\nReturn a JSON object:\n{\n  \"year\": 2024,\n  \"month\"\
+    : 3,\n  \"day\": 15,\n  \"hour\": 14,\n  \"minute\": 30,\n  \"second\": 0,\n \
+    \ \"timezone\": \"EST\",\n  \"iso\": \"2024-03-15\",\n  \"iso_datetime\": \"2024-03-15T14:30:00-05:00\"\
+    ,\n  \"formatted\": \"March 15, 2024\",\n  \"day_of_week\": \"Friday\",\n  \"\
+    quarter\": 1,\n  \"is_approximate\": false,\n  \"is_valid\": true\n}\n\nHandle\
+    \ ANY format:\n- \"March 15, 2024\"\n- \"15 Mar 2024\"\n- \"3/15/24\" or \"3/15/2024\"\
+    \n- \"2024-03-15\" (ISO)\n- \"15/03/2024\" (European)\n- \"Mar 15th, 2024\"\n\
+    - \"15-Mar-2024\"\n- \"20240315\" (compact)\n- \"March 2024\" → day: 1, is_approximate:\
+    \ true\n- \"Q1 2024\" → month: 1, day: 1, is_approximate: true\n- \"circa 1995\"\
+    \ → year: 1995, is_approximate: true\n- \"the 90s\" → year: 1990, is_approximate:\
+    \ true\n\nFor ambiguous dates like \"01/02/03\":\n- mdy: January 2, 2003\n- dmy:\
+    \ February 1, 2003\n- ymd: 2001 February 3\n\nTwo-digit year rules:\n- 00-30 →\
+    \ 2000-2030\n- 31-99 → 1931-1999\n\nReturn ONLY the JSON object. Use null for\
+    \ unknown components.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

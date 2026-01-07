@@ -210,10 +210,10 @@ class Config(BaseModel):
         default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_DATABASE", "rvbbit")
     )
     clickhouse_user: str = Field(
-        default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_USER", "default")
+        default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_USER", "rvbbit")
     )
     clickhouse_password: str = Field(
-        default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_PASSWORD", "")
+        default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_PASSWORD", "rvbbit")
     )
 
     # =========================================================================

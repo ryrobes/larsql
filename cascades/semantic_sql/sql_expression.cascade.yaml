@@ -1,0 +1,74 @@
+cascade_id: sql_expression_generator
+internal: true
+sql_function:
+  name: sql_expression
+  description: 'Generate a DuckDB SQL expression from a natural language description.
+
+    Returns the SQL expression as a string (does not execute it).
+
+    '
+  args:
+  - name: description
+    type: VARCHAR
+    description: Natural language description of the SQL expression to generate
+  - name: column_context
+    type: VARCHAR
+    description: Optional column names available for reference
+    optional: true
+    default: ''
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_raw
+  cache: true
+  test_cases:
+  - sql: SELECT sql_expression('count of users')
+    expect:
+      type: regex
+      pattern: .+
+    description: Natural language to SQL
+cells:
+- name: generate_expression
+  model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'Generate a DuckDB SQL expression for the following request.
+
+
+    ## Request:
+
+    {{ input.description }}
+
+
+    {% if input.column_context %}
+
+    ## Available Columns:
+
+    {{ input.column_context }}
+
+    {% endif %}
+
+
+    ## Rules:
+
+    - Return ONLY the SQL expression, no explanation
+
+    - Use DuckDB syntax (PostgreSQL-like)
+
+    - Common functions: EXTRACT, DATE_TRUNC, COALESCE, NULLIF, CASE WHEN, etc.
+
+    - String functions: CONCAT, LOWER, UPPER, TRIM, SUBSTRING, REGEXP_EXTRACT
+
+    - Date functions: CURRENT_DATE, AGE, DATE_PART, STRFTIME
+
+    - Aggregates: SUM, AVG, COUNT, MIN, MAX, LIST, ARRAY_AGG
+
+
+    ## Examples:
+
+    - "calculate age from birth_date" -> EXTRACT(YEAR FROM age(current_date, birth_date))
+
+    - "concatenate first and last name" -> CONCAT(first_name, '' '', last_name)
+
+    - "percentage of total" -> ROUND(100.0 * value / SUM(value) OVER (), 2)
+
+    '

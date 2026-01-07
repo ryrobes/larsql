@@ -12,7 +12,7 @@ dependencies = [
     "litellm",
     "chdb",
     "pypdf",
-    "duckdb",  # Still used by smart_sql_run tool for agent queries
+    "duckdb",
     "pandas",
     "pyarrow",
     "python-dotenv",
@@ -32,8 +32,12 @@ dependencies = [
     "requests",  # For ElevenLabs API calls and Rabbitize REST API
     "ruamel.yaml",  # For YAML cascade/tool definition support
     "sqlglot",  # For SQL fingerprinting and UDF type extraction in SQL Trail
-    "toon-format>=0.9.0",  # Token-efficient data encoding for LLM contexts
+    ##"toon-format",  # Token-efficient data encoding for LLM contexts
+    "toon-format @ git+https://github.com/toon-format/toon-python.git" # tool-python not fully released yet
 ]
+
+[tool.hatch.metadata]
+    allow-direct-references = true
 
 [project.optional-dependencies]
 # Extra dependencies for specific features

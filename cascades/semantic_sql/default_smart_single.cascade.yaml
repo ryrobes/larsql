@@ -1,0 +1,136 @@
+cascade_id: default_smart_single
+internal: true
+description: 'Provide intelligent defaults based on field type and context.
+
+  Smarter than hardcoded COALESCE defaults.
+
+  '
+inputs_schema:
+  value: The value (may be null)
+  context: Context for choosing appropriate default
+sql_function:
+  name: default_smart
+  description: Intelligent context-aware defaults
+  args:
+  - name: value
+    type: VARCHAR
+  - name: context
+    type: VARCHAR
+    description: 'Context: field type, related values, business rules'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - DEFAULT_SMART({{ value }}, '{{ context }}')
+  - '{{ value }} DEFAULT ''{{ context }}'''
+  cache: true
+  test_cases:
+  - sql: SELECT default_smart('missing', 'country field')
+    expect:
+      type: regex
+      pattern: .+
+    description: Default value suggested
+cells:
+- name: smart_default
+  model: google/gemini-2.5-flash-lite
+  instructions: 'If value is null/empty, provide an intelligent default based on context.
+
+
+    VALUE: {{ input.value }}
+
+    CONTEXT: {{ input.context }}
+
+
+    Default selection logic:
+
+
+    **Geographic**:
+
+    - Country: "US" for US companies/addresses, infer from context
+
+    - State: Infer from city if known
+
+    - Timezone: Infer from location
+
+
+    **Business**:
+
+    - Currency: USD for US, EUR for EU, infer from price format
+
+    - Language: English for US/UK, infer from country
+
+    - Status: "active" for most entities
+
+
+    **Personal**:
+
+    - Salutation: "Dear" for formal, first name for casual
+
+    - Title: Omit if unknown (don''t guess)
+
+
+    **Dates**:
+
+    - Created date: Current date if insertion context
+
+    - Start date: Beginning of relevant period
+
+    - End date: Null (don''t assume)
+
+
+    **Counts/Numbers**:
+
+    - Quantity: 1 for orders
+
+    - Rating: Don''t default (would bias data)
+
+    - Score: Don''t default
+
+
+    Examples:
+
+
+    Value: null
+
+    Context: "country field, company address is 123 Main St, Boston, MA"
+
+    → "US"
+
+
+    Value: null
+
+    Context: "currency field, prices are $X.XX format"
+
+    → "USD"
+
+
+    Value: null
+
+    Context: "timezone field, office in London"
+
+    → "Europe/London"
+
+
+    Value: null
+
+    Context: "language field, website is .de domain"
+
+    → "German"
+
+
+    Value: "existing"
+
+    Context: "anything"
+
+    → "existing"
+
+
+    If the default would be misleading or there''s not enough context,
+
+    return null rather than guessing wrong.
+
+
+    Return ONLY the default value (or original/null).
+
+    '
+  rules:
+    max_turns: 1

@@ -1,140 +1,83 @@
-# AUDIENCE - Target Audience Dimension
-# A dimension function that identifies the intended audience of social media posts.
-#
-# SQL Usage:
-#   SELECT audience(tweet_text) as target, COUNT(*)
-#   FROM tweets
-#   GROUP BY audience(tweet_text)
-#
-#   -- With domain focus
-#   SELECT audience(tweet_text, 'tech') as who, COUNT(*)
-#   FROM tech_tweets
-#   GROUP BY audience(tweet_text, 'tech')
-
 cascade_id: audience_dimension
 internal: true
+description: 'Target audience identifier for social media posts. Determines who the
 
-description: |
-  Target audience identifier for social media posts. Determines who the
   author is trying to reach with their message.
 
+
   Can be focused on a specific domain (tech, finance, health, etc.) for
+
   more relevant audience categories.
+
 
   This is a DIMENSION-shaped function for use in GROUP BY clauses.
 
+  '
 inputs_schema:
   texts: JSON array of all text values to analyze
   domain: Optional domain focus for more relevant audience categories
-
 sql_function:
   name: audience
-  description: |
-    Identify the target audience of text. Who is this message meant for?
+  description: 'Identify the target audience of text. Who is this message meant for?
+
     Optional domain parameter focuses the audience categories.
 
+    '
   shape: DIMENSION
   mode: mapping
-
   args:
-    - name: text
-      type: VARCHAR
-      role: dimension_source
-    - name: domain
-      type: VARCHAR
-      default: null
-      description: Optional domain focus (e.g., 'tech', 'finance', 'health')
-
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: domain
+    type: VARCHAR
+    default: null
+    description: Optional domain focus (e.g., 'tech', 'finance', 'health')
   returns: VARCHAR
   cache: true
-
+  test_cases:
+  - sql: SELECT audience('Scientific paper on quantum mechanics')
+    expect:
+      type: regex
+      pattern: .+
+    description: Audience dimension returned
 cells:
-  - name: identify_audience
-    model: google/gemini-2.5-flash-lite
-
-    instructions: |
-      Identify the TARGET AUDIENCE for these {{ input.texts | length }} social media posts.
-      Who is each author trying to reach?
-
-      {% if input.domain == 'tech' %}
-      USE THESE AUDIENCE CATEGORIES (Tech Domain):
-      - Developers (software engineers, programmers)
-      - IT Professionals (sysadmins, DevOps, security)
-      - Tech Executives (CTOs, VPs of Engineering)
-      - Product Managers
-      - Designers (UX/UI)
-      - Startup Founders
-      - Tech Enthusiasts (hobbyists, learners)
-      - General Public
-      {% elif input.domain == 'finance' %}
-      USE THESE AUDIENCE CATEGORIES (Finance Domain):
-      - Retail Investors
-      - Professional Traders
-      - Financial Advisors
-      - Crypto Enthusiasts
-      - Institutional Investors
-      - Finance Professionals
-      - General Public
-      {% elif input.domain == 'marketing' %}
-      USE THESE AUDIENCE CATEGORIES (Marketing Domain):
-      - Marketers
-      - Brand Managers
-      - Social Media Managers
-      - Content Creators
-      - Small Business Owners
-      - Agency Professionals
-      - General Public
-      {% elif input.domain == 'health' %}
-      USE THESE AUDIENCE CATEGORIES (Health Domain):
-      - Healthcare Professionals
-      - Patients
-      - Caregivers
-      - Fitness Enthusiasts
-      - Mental Health Community
-      - Health Tech Professionals
-      - General Public
-      {% else %}
-      USE THESE AUDIENCE CATEGORIES (General):
-      - General Public (broad appeal, anyone)
-      - Niche Community (specific interest group)
-      - Professionals (work-related audience)
-      - Followers/Fans (existing audience)
-      - Influencers/Media (seeking amplification)
-      - Brands/Companies (B2B communication)
-      - Self (journaling, thinking out loud)
-      - No Clear Audience (unclear or internal)
-      {% endif %}
-
-      Posts to analyze (with index numbers):
-      {% for v in input.texts %}
-      [{{ loop.index0 }}] "{{ v[:500] | replace('"', '\\"') }}"
-      {% endfor %}
-
-      Return a JSON object mapping each post's INDEX NUMBER to its target audience:
-
-      {
-        "mapping": {
-          "0": "Audience Category",
-          "1": "Audience Category",
-          ...
-        }
-      }
-
-      RULES:
-      - Use the INDEX NUMBER (0, 1, 2, ...) as keys
-      - Identify the PRIMARY intended audience
-      - Consider language, jargon, context clues
-      - Use exact category names from the list above
-      - Return ONLY the JSON object
-
-    rules:
-      max_turns: 1
-      max_attempts: 3
-
-    output_schema:
-      type: object
-      properties:
-        mapping:
-          type: object
-      required:
-        - mapping
+- name: identify_audience
+  model: google/gemini-2.5-flash-lite
+  instructions: "Identify the TARGET AUDIENCE for these {{ input.texts | length }}\
+    \ social media posts.\nWho is each author trying to reach?\n\n{% if input.domain\
+    \ == 'tech' %}\nUSE THESE AUDIENCE CATEGORIES (Tech Domain):\n- Developers (software\
+    \ engineers, programmers)\n- IT Professionals (sysadmins, DevOps, security)\n\
+    - Tech Executives (CTOs, VPs of Engineering)\n- Product Managers\n- Designers\
+    \ (UX/UI)\n- Startup Founders\n- Tech Enthusiasts (hobbyists, learners)\n- General\
+    \ Public\n{% elif input.domain == 'finance' %}\nUSE THESE AUDIENCE CATEGORIES\
+    \ (Finance Domain):\n- Retail Investors\n- Professional Traders\n- Financial Advisors\n\
+    - Crypto Enthusiasts\n- Institutional Investors\n- Finance Professionals\n- General\
+    \ Public\n{% elif input.domain == 'marketing' %}\nUSE THESE AUDIENCE CATEGORIES\
+    \ (Marketing Domain):\n- Marketers\n- Brand Managers\n- Social Media Managers\n\
+    - Content Creators\n- Small Business Owners\n- Agency Professionals\n- General\
+    \ Public\n{% elif input.domain == 'health' %}\nUSE THESE AUDIENCE CATEGORIES (Health\
+    \ Domain):\n- Healthcare Professionals\n- Patients\n- Caregivers\n- Fitness Enthusiasts\n\
+    - Mental Health Community\n- Health Tech Professionals\n- General Public\n{% else\
+    \ %}\nUSE THESE AUDIENCE CATEGORIES (General):\n- General Public (broad appeal,\
+    \ anyone)\n- Niche Community (specific interest group)\n- Professionals (work-related\
+    \ audience)\n- Followers/Fans (existing audience)\n- Influencers/Media (seeking\
+    \ amplification)\n- Brands/Companies (B2B communication)\n- Self (journaling,\
+    \ thinking out loud)\n- No Clear Audience (unclear or internal)\n{% endif %}\n\
+    \nPosts to analyze (with index numbers):\n{% for v in input.texts %}\n[{{ loop.index0\
+    \ }}] \"{{ v[:500] | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\nReturn a JSON\
+    \ object mapping each post's INDEX NUMBER to its target audience:\n\n{\n  \"mapping\"\
+    : {\n    \"0\": \"Audience Category\",\n    \"1\": \"Audience Category\",\n  \
+    \  ...\n  }\n}\n\nRULES:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys\n- Identify\
+    \ the PRIMARY intended audience\n- Consider language, jargon, context clues\n\
+    - Use exact category names from the list above\n- Return ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

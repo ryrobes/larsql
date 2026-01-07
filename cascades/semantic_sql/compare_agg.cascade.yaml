@@ -1,0 +1,58 @@
+cascade_id: compare_agg
+internal: true
+description: 'Compare multiple values to find similarities, differences, and patterns.
+
+  Useful for data reconciliation and change detection.
+
+  '
+inputs_schema:
+  values: Array of values to compare
+  focus: What to focus on (differences, similarities, changes, all)
+sql_function:
+  name: compare
+  description: Compare values semantically
+  args:
+  - name: values
+    type: VARCHAR
+    description: Values to compare
+  - name: focus
+    type: VARCHAR
+    optional: true
+    default: all
+    description: 'Focus: differences, similarities, changes, all'
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - COMPARE({{ values }})
+  - COMPARE({{ values }}, '{{ focus }}')
+  cache: true
+  test_cases:
+  - sql: '-- Aggregate function: requires numbered UDF testing'
+    skip: true
+    description: Aggregate functions need special test harness
+cells:
+- name: analyze_comparison
+  model: google/gemini-2.5-flash-lite
+  instructions: "Compare these values and identify patterns.\n\nVALUES:\n{{ input.values\
+    \ }}\n\nFOCUS: {{ input.focus | default('all') }}\n\nReturn a JSON object:\n{\n\
+    \  \"value_count\": 3,\n  \"similarities\": [\n    \"All mention 'wireless connectivity'\"\
+    ,\n    \"Price range is consistent ($99-$129)\"\n  ],\n  \"differences\": [\n\
+    \    \"Battery life varies (8h vs 12h vs 10h)\",\n    \"Color options differ\"\
+    \n  ],\n  \"unique_to_each\": {\n    \"value_1\": [\"Feature X\"],\n    \"value_2\"\
+    : [\"Feature Y\"],\n    \"value_3\": [\"Feature Z\"]\n  },\n  \"changes_over_time\"\
+    : [\n    \"Price decreased from $129 to $99\",\n    \"Battery improved from 8h\
+    \ to 12h\"\n  ],\n  \"consensus\": \"Premium wireless earbuds with good battery\"\
+    ,\n  \"outliers\": [\"value_2 has significantly lower specs\"],\n  \"recommendation\"\
+    : \"value_3 appears to be the latest/best version\"\n}\n\n**Focus modes**:\n\n\
+    \"differences\":\n- Emphasize what's different between values\n- Useful for version\
+    \ comparison, A/B testing\n\n\"similarities\":\n- Find common themes and patterns\n\
+    - Useful for finding duplicates, common issues\n\n\"changes\":\n- Assume values\
+    \ are chronological\n- Track evolution over time\n- Useful for audit trails, version\
+    \ history\n\n\"all\":\n- Comprehensive comparison\n- Include all aspects\n\n**Analysis\
+    \ to perform**:\n- Semantic similarity (not just string matching)\n- Key attribute\
+    \ extraction\n- Pattern recognition\n- Outlier detection\n- Trend identification\
+    \ (if temporal)\n\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

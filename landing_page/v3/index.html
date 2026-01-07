@@ -3882,6 +3882,187 @@
         }
       }
 
+      /* ========== SEMANTIC MACROS SECTION ========== */
+      .macros-section {
+        padding: 80px 0;
+        background: linear-gradient(180deg, transparent, rgba(0, 255, 136, 0.03), transparent);
+      }
+
+      .macros-header {
+        text-align: center;
+        margin-bottom: 48px;
+      }
+
+      .macros-header h2 {
+        font-size: clamp(1.8rem, 3vw, 2.4rem);
+        margin: 0 0 12px;
+      }
+
+      .macros-header p {
+        color: var(--muted);
+        font-size: 1.1rem;
+        margin: 0;
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .macros-concept {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        margin-bottom: 48px;
+      }
+
+      .macro-card {
+        background: #0a0d14;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 255, 136, 0.25);
+        overflow: hidden;
+      }
+
+      .macro-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        background: rgba(0, 255, 136, 0.08);
+        border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+      }
+
+      .macro-card-type {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--green);
+      }
+
+      .macro-card-badge {
+        font-size: 0.7rem;
+        padding: 3px 8px;
+        background: rgba(0, 255, 136, 0.15);
+        border-radius: 4px;
+        color: var(--green);
+      }
+
+      .macro-card-content {
+        padding: 20px;
+      }
+
+      .macro-card pre {
+        margin: 0 0 16px;
+        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+        font-size: 0.82rem;
+        line-height: 1.7;
+        color: #cde7ff;
+      }
+
+      .macro-flow {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(0, 255, 136, 0.15);
+      }
+
+      .macro-flow-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.8rem;
+      }
+
+      .macro-flow-input {
+        /* flex: 1; */
+        color: var(--muted);
+        width: 50%;
+        font-family: "Cascadia Code", monospace;
+        font-size: 0.75rem;
+      }
+
+      .macro-flow-arrow {
+        color: rgba(0, 255, 136, 0.6);
+      }
+
+      .macro-flow-fp {
+        flex: 1;
+        color: var(--green);
+        font-family: "Cascadia Code", monospace;
+        font-size: 0.75rem;
+      }
+
+      .macro-flow-result {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+
+      .macro-flow-result.llm {
+        background: rgba(255, 189, 46, 0.15);
+        color: var(--orange);
+      }
+
+      .macro-flow-result.cache {
+        background: rgba(0, 255, 136, 0.15);
+        color: var(--green);
+      }
+
+      .macros-insight {
+        background: linear-gradient(150deg, rgba(8, 12, 20, 0.98), rgba(12, 16, 28, 0.95));
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(0, 255, 136, 0.25);
+        padding: 32px;
+        text-align: center;
+      }
+
+      .macros-insight h3 {
+        font-size: 1.2rem;
+        margin: 0 0 12px;
+        color: var(--ink);
+      }
+
+      .macros-insight p {
+        color: var(--muted);
+        margin: 0 0 24px;
+        font-size: 0.95rem;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .macros-stats {
+        display: flex;
+        justify-content: center;
+        gap: 48px;
+      }
+
+      .macro-stat {
+        text-align: center;
+      }
+
+      .macro-stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--green);
+        display: block;
+      }
+
+      .macro-stat-label {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      @media (max-width: 800px) {
+        .macros-concept {
+          grid-template-columns: 1fr;
+        }
+        .macros-stats {
+          flex-direction: column;
+          gap: 24px;
+        }
+      }
+
       /* ========== TRAINING SECTION ========== */
       .training-section {
         padding: 80px 0;
@@ -4313,6 +4494,198 @@
         }
       }
 
+      /* ========== ASK DATA SECTION ========== */
+      .askdata-section {
+        padding: 80px 0;
+        background: linear-gradient(135deg, rgba(0, 255, 136, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(0, 255, 136, 0.1);
+        border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+      }
+
+      .askdata-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.3fr;
+        gap: 60px;
+        align-items: start;
+      }
+
+      .askdata-content h2 {
+        font-size: 2.2rem;
+        margin-bottom: 16px;
+      }
+
+      .askdata-content p {
+        font-size: 1.1rem;
+        color: var(--muted);
+        line-height: 1.7;
+        margin-bottom: 20px;
+      }
+
+      .askdata-how {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .askdata-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .askdata-step-num {
+        background: rgba(0, 255, 136, 0.15);
+        color: var(--green);
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+
+      .askdata-code {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(0, 255, 136, 0.2);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .askdata-code .code-header {
+        padding: 12px 20px;
+        background: rgba(0, 255, 136, 0.08);
+        border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .askdata-code .code-content {
+        padding: 24px;
+      }
+
+      .askdata-code pre {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.7;
+      }
+
+      .askdata-keyword {
+        color: var(--green);
+        font-weight: 600;
+      }
+
+      .askdata-question {
+        color: var(--cyan);
+      }
+
+      .askdata-result {
+        margin-top: 20px;
+        padding: 16px 20px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        border-left: 3px solid var(--green);
+      }
+
+      .askdata-result-label {
+        font-size: 0.75rem;
+        color: var(--green);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .askdata-result-table {
+        font-size: 0.8rem;
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .askdata-result-table th {
+        text-align: left;
+        color: var(--muted);
+        font-weight: 500;
+        padding: 6px 12px 6px 0;
+        border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+      }
+
+      .askdata-result-table td {
+        color: var(--ink);
+        padding: 6px 12px 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .askdata-alt {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px dashed rgba(0, 255, 136, 0.2);
+      }
+
+      .askdata-alt-label {
+        font-size: 0.7rem;
+        color: var(--magenta);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+      }
+
+      .askdata-alt pre {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: rgba(255, 47, 168, 0.03);
+        padding: 12px 16px;
+        border-radius: 6px;
+        border-left: 2px solid var(--magenta);
+      }
+
+      .askdata-sql-output {
+        margin-top: 12px;
+        padding: 12px 16px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 6px;
+        font-size: 0.8rem;
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .askdata-sql-output code {
+        color: var(--ink);
+        font-style: normal;
+      }
+
+      .askdata-safety {
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: var(--muted);
+        font-style: italic;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .askdata-safety iconify-icon {
+        color: var(--green);
+        font-size: 1rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      @media (max-width: 900px) {
+        .askdata-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+
       /* ========== INLINE CANDIDATES ========== */
       .inline-candidates {
         margin-top: 40px;
@@ -4470,6 +4843,8 @@
           <a href="#federated" class="toc-link">Data Stays Home</a>
           <a href="#pgwire" class="toc-link">Your SQL Client</a>
           <a href="#vector" class="toc-link">Vector Search</a>
+          <a href="#macros" class="toc-link">Semantic Macros</a>
+          <a href="#askdata" class="toc-link">ASK_DATA</a>
           <a href="#analyze" class="toc-link">ANALYZE</a>
         </div>
 
@@ -5190,6 +5565,183 @@
               <div class="vector-stat">
                 <span class="vector-stat-icon"><iconify-icon icon="lucide:brain"></iconify-icon></span>
                 <span class="vector-stat-text"><strong>LLM evaluation:</strong> 100 &rarr; 10 winners (smart, still cheap)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SEMANTIC MACROS ========== -->
+      <section id="macros" class="macros-section">
+        <div class="container">
+          <div class="macros-header reveal">
+            <h2>LLM once, <span class="gradient-text">SQL forever.</span></h2>
+            <p>
+              Semantic Macros generate SQL expressions cached by data <em>shape</em>, not content.
+              Same format? Instant cache hit. Process millions of rows with a handful of LLM calls.
+            </p>
+          </div>
+
+          <div class="macros-concept">
+            <div class="macro-card reveal delay-1">
+              <div class="macro-card-header">
+                <span class="macro-card-type">String Fingerprinting</span>
+                <span class="macro-card-badge">parse_phone</span>
+              </div>
+              <div class="macro-card-content">
+<pre><span class="sql-keyword">SELECT</span> <span class="sql-function">parse_phone</span>(phone, <span class="sql-string">'area code'</span>)
+<span class="sql-keyword">FROM</span> contacts</pre>
+                <div class="macro-flow">
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">"(555) 123-4567"</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">us_parens</span>
+                    <span class="macro-flow-result llm">LLM</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">"(800) 999-1234"</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">us_parens</span>
+                    <span class="macro-flow-result cache">cache</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">"555-123-4567"</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">us_dashes</span>
+                    <span class="macro-flow-result llm">LLM</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">"800-999-1234"</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">us_dashes</span>
+                    <span class="macro-flow-result cache">cache</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="macro-card reveal delay-2">
+              <div class="macro-card-header">
+                <span class="macro-card-type">JSON Schema</span>
+                <span class="macro-card-badge">smart_json</span>
+              </div>
+              <div class="macro-card-content">
+<pre><span class="sql-keyword">SELECT</span> <span class="sql-function">smart_json</span>(data, <span class="sql-string">'customer name'</span>)
+<span class="sql-keyword">FROM</span> orders</pre>
+                <div class="macro-flow">
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">{customer: {name: "Alice"}, total: 99}</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">schema_a</span>
+                    <span class="macro-flow-result llm">LLM</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">{customer: {name: "Bob"}, total: 150}</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">schema_a</span>
+                    <span class="macro-flow-result cache">cache</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">{sku: "ABC", price: 29.99, customerName: "Jessica"}</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">schema_b</span>
+                    <span class="macro-flow-result llm">LLM</span>
+                  </div>
+                  <div class="macro-flow-row">
+                    <span class="macro-flow-input">{sku: "XYZ", price: 49.99, customerName: "Angelina"}</span>
+                    <span class="macro-flow-arrow">&rarr;</span>
+                    <span class="macro-flow-fp">schema_b</span>
+                    <span class="macro-flow-result cache">cache</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="macros-insight reveal delay-3">
+            <h3>Code that writes code, cached by shape</h3>
+            <p>
+              The LLM generates a SQL expression (like a Lisp macro). That expression is cached by the data's structural fingerprint.
+              Different values, same shape? The cached SQL runs directly. No LLM call needed.
+            </p>
+            <div class="macros-stats">
+              <div class="macro-stat">
+                <span class="macro-stat-value">~10</span>
+                <span class="macro-stat-label">phone formats in the wild</span>
+              </div>
+              <div class="macro-stat">
+                <span class="macro-stat-value">~10</span>
+                <span class="macro-stat-label">LLM calls to parse them all</span>
+              </div>
+              <div class="macro-stat">
+                <span class="macro-stat-value">&infin;</span>
+                <span class="macro-stat-label">rows processed instantly after</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ASK DATA ========== -->
+      <section id="askdata" class="askdata-section">
+        <div class="container">
+          <div class="askdata-grid">
+            <div class="askdata-content reveal">
+              <h2>The query you <span style="color: var(--green)">don't have to write.</span></h2>
+              <p>
+                You know what you want. You just don't know which tables, columns, or JOINs to use.
+                Ask in plain English—RVBBIT already introspected your entire schema.
+              </p>
+              <div class="askdata-how">
+                <div class="askdata-step">
+                  <span class="askdata-step-num">1</span>
+                  <span>RVBBIT discovers all connected databases, tables, and files</span>
+                </div>
+                <div class="askdata-step">
+                  <span class="askdata-step-num">2</span>
+                  <span>Your question goes to an agent that sees the full schema</span>
+                </div>
+                <div class="askdata-step">
+                  <span class="askdata-step-num">3</span>
+                  <span>Agent writes the SQL, executes it, returns results</span>
+                </div>
+                <div class="askdata-step">
+                  <span class="askdata-step-num">4</span>
+                  <span>Want to see the SQL? Use <code style="background: rgba(255,47,168,0.15); padding: 2px 6px; border-radius: 4px;">ask_data_sql()</code> instead</span>
+                </div>
+              </div>
+            </div>
+            <div class="askdata-code reveal delay-1">
+              <div class="code-header">
+                <span class="code-type-badge sql">SQL</span>
+                <span class="code-title">Describe what you want</span>
+              </div>
+              <div class="code-content">
+<pre><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="askdata-keyword">ask_data</span>(<span class="askdata-question">'metallica shows by country plus the most played song in each country'</span>);
+
+<span class="sql-comment">-- or statement syntax:</span>
+<span class="askdata-keyword">ASK_DATA</span> <span class="askdata-question">'metallica shows by country plus the most played song in each country'</span>;</pre>
+                <div class="askdata-result">
+                  <div class="askdata-result-label"><iconify-icon icon="lucide:table"></iconify-icon> Results</div>
+                  <table class="askdata-result-table">
+                    <tr><th>country</th><th>shows</th><th>top_song</th><th>times_played</th></tr>
+                    <tr><td>United States</td><td>847</td><td>Enter Sandman</td><td>831</td></tr>
+                    <tr><td>Germany</td><td>156</td><td>Master of Puppets</td><td>152</td></tr>
+                    <tr><td>United Kingdom</td><td>134</td><td>One</td><td>128</td></tr>
+                    <tr><td style="color: var(--muted);">...</td><td></td><td></td><td></td></tr>
+                  </table>
+                </div>
+                <div class="askdata-alt">
+                  <div class="askdata-alt-label">Want to see (or edit) the SQL?</div>
+<pre><span class="sql-keyword">SELECT</span> <span class="askdata-keyword">ask_data_sql</span>(<span class="askdata-question">'top 10 customers by revenue this quarter'</span>);</pre>
+                  <div class="askdata-sql-output">
+                    Returns: <code>SELECT c.name, SUM(o.total) as revenue FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.date >= '2024-10-01' GROUP BY c.name ORDER BY revenue DESC LIMIT 10</code>
+                  </div>
+                </div>
+                <div class="askdata-safety">
+                  <iconify-icon icon="lucide:shield-check"></iconify-icon>
+                  <span><code>ask_data</code> is read-only—no accidental mutations. Need DDL or writes? <code>ask_data_sql</code> generates them (just won't execute).</span>
+                </div>
               </div>
             </div>
           </div>

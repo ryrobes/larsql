@@ -1,0 +1,141 @@
+# NORMALIZE - Standardize entity names to canonical form
+# The #1 pain point for ETL developers
+#
+# SQL Usage:
+#   SELECT NORMALIZE(company_name, 'company') FROM vendors
+#   SELECT NORMALIZE(address, 'address') FROM contacts
+#   SELECT NORMALIZE(phone, 'phone') FROM customers
+#
+# Supported types: company, address, name, phone, email, country, state
+#
+# Examples:
+#   "IBM Corp" → "IBM"
+#   "International Business Machines" → "IBM"
+#   "123 Main St." → "123 Main Street"
+#   "Microsft" → "Microsoft" (fixes typos too!)
+
+cascade_id: normalize_single
+internal: true
+
+description: |
+  Standardize values to canonical form. Handles variations, abbreviations,
+  typos, and different formats of the same entity.
+
+inputs_schema:
+  value: The value to normalize
+  type: Type of entity (company, address, name, phone, email, country, state)
+  context: Optional context for disambiguation
+
+sql_function:
+  name: normalize
+  description: Standardize entity to canonical form
+  args:
+    - name: value
+      type: VARCHAR
+    - name: type
+      type: VARCHAR
+      description: "Entity type: company, address, name, phone, email, country, state"
+    - name: context
+      type: VARCHAR
+      optional: true
+      description: "Optional context for disambiguation"
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "NORMALIZE({{ value }}, '{{ type }}')"
+    - "NORMALIZE({{ value }}, '{{ type }}', '{{ context }}')"
+    - "{{ value }} NORMALIZE AS '{{ type }}'"
+  cache: true
+  test_cases:
+    - sql: "SELECT normalize('MICROSOFT CORPORATION', 'company')"
+      expect:
+        type: contains
+        value: "Microsoft"
+      description: "Company name normalized"
+    - sql: "SELECT normalize('john.smith@GMAIL.COM', 'email')"
+      expect: "john.smith@gmail.com"
+      description: "Email lowercased"
+    - sql: "SELECT normalize('CA', 'state')"
+      expect:
+        type: one_of
+        values: ["California", "CA"]
+      description: "State abbreviation expanded or kept"
+
+cells:
+  - name: standardize
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Normalize this {{ input.type }} to its canonical/standard form.
+
+      VALUE: {{ input.value }}
+      TYPE: {{ input.type }}
+      {% if input.context %}CONTEXT: {{ input.context }}{% endif %}
+
+      Normalization rules by type:
+
+      {% if input.type == 'company' %}
+      COMPANY NORMALIZATION:
+      - Use official company name (not abbreviations unless that IS the name)
+      - "IBM Corp", "I.B.M.", "International Business Machines" → "IBM"
+      - "Microsoft Corporation", "MSFT", "MS" → "Microsoft"
+      - "Apple Inc.", "Apple Computer" → "Apple"
+      - Fix common typos: "Gooogle" → "Google", "Amazn" → "Amazon"
+      - Remove legal suffixes for matching: Inc, Corp, LLC, Ltd, GmbH, etc.
+      - Preserve case as commonly written
+
+      {% elif input.type == 'address' %}
+      ADDRESS NORMALIZATION:
+      - Expand abbreviations: St → Street, Ave → Avenue, Blvd → Boulevard
+      - Standardize directionals: N → North, S → South, E → East, W → West
+      - Standardize unit designators: Apt → Apartment, Ste → Suite
+      - Use proper capitalization (Title Case)
+      - Format: "123 Main Street, Suite 100"
+
+      {% elif input.type == 'name' %}
+      NAME NORMALIZATION:
+      - Title Case for names
+      - Expand common abbreviations: Wm → William, Robt → Robert
+      - Handle "Last, First" → "First Last"
+      - Remove titles (Dr., Mr., Mrs.) unless specifically needed
+      - Normalize spacing and punctuation
+
+      {% elif input.type == 'phone' %}
+      PHONE NORMALIZATION:
+      - Return E.164 format: +1XXXXXXXXXX for US
+      - Remove all formatting: parentheses, dashes, spaces
+      - Add country code if missing (assume US +1 if 10 digits)
+      - "555-123-4567" → "+15551234567"
+      - "(555) 123-4567" → "+15551234567"
+
+      {% elif input.type == 'email' %}
+      EMAIL NORMALIZATION:
+      - Lowercase everything
+      - Remove dots from gmail local part (g.mail → gmail)
+      - Remove plus addressing (user+tag@domain → user@domain)
+      - Fix common typos in domains: gmial → gmail, outlok → outlook
+
+      {% elif input.type == 'country' %}
+      COUNTRY NORMALIZATION:
+      - Return ISO 3166-1 alpha-2 code (US, GB, DE, etc.)
+      - "United States", "USA", "U.S.A.", "America" → "US"
+      - "United Kingdom", "UK", "Great Britain", "England" → "GB"
+
+      {% elif input.type == 'state' %}
+      STATE NORMALIZATION:
+      - Return standard abbreviation (CA, NY, TX)
+      - "California", "Calif.", "Cal." → "CA"
+      - "New York", "N.Y." → "NY"
+
+      {% else %}
+      GENERAL NORMALIZATION:
+      - Clean whitespace, fix obvious typos
+      - Standardize capitalization
+      - Remove redundant punctuation
+      {% endif %}
+
+      Return ONLY the normalized value. No explanation, no quotes unless part of the value.
+      If the value cannot be normalized or is empty/null, return "NULL".
+
+    rules:
+      max_turns: 1

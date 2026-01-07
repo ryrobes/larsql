@@ -1,0 +1,123 @@
+cascade_id: best_agg
+internal: true
+description: 'Select the single best value from a group based on quality criteria.
+
+  Unlike GOLDEN_RECORD, returns one value not a merged record.
+
+  '
+inputs_schema:
+  values: Array of values to choose from
+  criteria: Optional selection criteria
+sql_function:
+  name: best
+  description: Select best single value from group
+  args:
+  - name: values
+    type: VARCHAR
+    description: Values to choose from
+  - name: criteria
+    type: VARCHAR
+    optional: true
+    default: highest quality
+    description: 'Selection criteria: ''most complete'', ''most recent'', ''shortest'',
+      etc.'
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - BEST({{ values }})
+  - BEST({{ values }}, '{{ criteria }}')
+  cache: true
+  test_cases:
+  - sql: '-- Aggregate function: requires numbered UDF testing'
+    skip: true
+    description: Aggregate functions need special test harness
+cells:
+- name: select_best
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Select the single best value from this group.
+
+
+    VALUES:
+
+    {{ input.values }}
+
+
+    CRITERIA: {{ input.criteria | default(''highest quality'') }}
+
+
+    Selection guidelines by criteria:
+
+
+    **"highest quality" (default)**:
+
+    - Properly formatted
+
+    - Complete (no truncation)
+
+    - Valid (real email, valid phone, etc.)
+
+    - Clean (no extra whitespace, good casing)
+
+
+    **"most complete"**:
+
+    - Longest meaningful content
+
+    - All components present
+
+    - Most detail
+
+
+    **"most recent"**:
+
+    - If dates visible, pick newest
+
+    - Otherwise, pick most "modern" format
+
+
+    **"shortest"**:
+
+    - Most concise while still valid
+
+    - Abbreviations OK
+
+
+    **"most common"**:
+
+    - The value (or near-value) that appears most often
+
+
+    **"US format" / "international format"**:
+
+    - Prefer values matching that format convention
+
+
+    Examples:
+
+
+    Values: ["john@gmail.com", "JOHN@GMAIL.COM", "j@gmail.com", null]
+
+    Criteria: "highest quality"
+
+    → "john@gmail.com" (proper case, most complete)
+
+
+    Values: ["(555) 123-4567", "555-123-4567", "+1 555 123 4567"]
+
+    Criteria: "US format"
+
+    → "(555) 123-4567"
+
+
+    Values: ["NYC", "New York City", "New York, NY"]
+
+    Criteria: "most complete"
+
+    → "New York City" or "New York, NY"
+
+
+    Return ONLY the selected value (not quoted, just the raw value).
+
+    '
+  rules:
+    max_turns: 1
