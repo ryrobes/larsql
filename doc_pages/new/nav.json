@@ -78,6 +78,21 @@
       "items": [
         { "id": "semantic-sql", "title": "Semantic SQL" },
         {
+          "id": "operators",
+          "title": "Built-in Operators",
+          "sections": [
+            { "anchor": "semantic-filtering", "title": "Semantic Filtering" },
+            { "anchor": "logic-operators", "title": "Logic Operators" },
+            { "anchor": "text-transformation", "title": "Text Transformation" },
+            { "anchor": "aggregation", "title": "Aggregation" },
+            { "anchor": "dimension-functions", "title": "Dimension Functions" },
+            { "anchor": "data-quality", "title": "Data Quality" },
+            { "anchor": "parsing", "title": "Parsing" },
+            { "anchor": "mdm", "title": "MDM & Matching" },
+            { "anchor": "vector", "title": "Vector & Embedding" }
+          ]
+        },
+        {
           "id": "embedding",
           "title": "Vector Search & Embedding",
           "sections": [

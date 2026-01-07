@@ -1,0 +1,936 @@
+<h1>Built-in Operators</h1>
+<p class="lead">
+  RVBBIT ships with 50+ semantic SQL operators out of the box. From semantic filtering
+  to logic checking, text aggregation to data quality scoring - all callable as SQL functions.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#semantic-filtering">Semantic Filtering</a></li>
+    <li><a href="#logic-operators">Logic Operators</a></li>
+    <li><a href="#text-transformation">Text Transformation</a></li>
+    <li><a href="#aggregation">Aggregation Functions</a></li>
+    <li><a href="#dimension-functions">Dimension Functions</a></li>
+    <li><a href="#data-quality">Data Quality</a></li>
+    <li><a href="#parsing">Parsing Functions</a></li>
+    <li><a href="#mdm">MDM &amp; Record Matching</a></li>
+    <li><a href="#vector">Vector &amp; Embedding</a></li>
+  </ul>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Operator Shapes</div>
+  <p>
+    Operators come in three shapes: <strong>SCALAR</strong> (per-row),
+    <strong>AGGREGATE</strong> (per-group), and <strong>DIMENSION</strong>
+    (semantic GROUP BY). Dimension functions are unique to RVBBIT - they process
+    all values in a single LLM call for efficient batch classification.
+  </p>
+</div>
+
+<!-- ==================== SEMANTIC FILTERING ==================== -->
+<h2 id="semantic-filtering">Semantic Filtering</h2>
+<p>
+  Replace brittle regex and LIKE patterns with natural language understanding.
+</p>
+
+<h3>MEANS / MATCHES</h3>
+<p>
+  Semantic boolean filter. Returns true if the text semantically matches the criterion.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">MEANS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Filter by semantic meaning</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> tickets
+<span class="kw">WHERE</span> description <span class="fn">MEANS</span> <span class="str">'urgent customer issue'</span>;
+
+<span class="cmt">-- Alternative syntax</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> feedback
+<span class="kw">WHERE</span> comment <span class="fn">MATCHES</span> <span class="str">'positive experience'</span>;
+
+<span class="cmt">-- Tilde shorthand</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs
+<span class="kw">WHERE</span> title <span class="fn">~</span> <span class="str">'financial report'</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>BOOLEAN</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, criterion VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>SCORE / ABOUT</h3>
+<p>
+  Returns a relevance score from 0.0 to 1.0. Use for ranking or threshold filtering.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SCORE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Score relevance</span>
+<span class="kw">SELECT</span> title, <span class="fn">SCORE</span>(description, <span class="str">'sustainability'</span>) <span class="kw">AS</span> relevance
+<span class="kw">FROM</span> reports
+<span class="kw">ORDER BY</span> relevance <span class="kw">DESC</span>;
+
+<span class="cmt">-- Filter by threshold</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> content <span class="fn">ABOUT</span> <span class="str">'machine learning'</span> > <span class="num">0.7</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>DOUBLE (0.0 - 1.0)</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, criterion VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>SIMILAR_TO</h3>
+<p>
+  Vector similarity using embeddings. Fast cosine similarity without full LLM calls.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SIMILAR_TO Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find similar documents</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> docs
+<span class="kw">WHERE</span> title <span class="fn">SIMILAR_TO</span> <span class="str">'quarterly earnings report'</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cmt">-- Similarity score</span>
+<span class="kw">SELECT</span> title, <span class="fn">SIMILAR_TO</span>(abstract, <span class="str">'climate change'</span>) <span class="kw">AS</span> sim
+<span class="kw">FROM</span> papers
+<span class="kw">WHERE</span> sim > <span class="num">0.8</span>;</pre>
+  </div>
+</div>
+
+<!-- ==================== LOGIC OPERATORS ==================== -->
+<h2 id="logic-operators">Logic Operators</h2>
+<p>
+  Semantic logic checking - unique to RVBBIT. Find contradictions, implications, and alignments.
+</p>
+
+<h3>CONTRADICTS</h3>
+<p>
+  Check if text contradicts a reference claim. Essential for fact-checking, compliance, and due diligence.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">CONTRADICTS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find conflicting statements</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> analyst_reports
+<span class="kw">WHERE</span> analysis <span class="fn">CONTRADICTS</span> <span class="str">'company expects 20% growth'</span>;
+
+<span class="cmt">-- Compliance checking</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> disclosures
+<span class="kw">WHERE</span> statement <span class="fn">CONTRADICTS</span> <span class="str">'no material changes'</span>;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>BOOLEAN</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, reference VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<h3>IMPLIES</h3>
+<p>
+  Check if text logically implies a conclusion. Useful for reasoning chains and policy enforcement.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">IMPLIES Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Check logical implication</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> policies
+<span class="kw">WHERE</span> rule_text <span class="fn">IMPLIES</span> <span class="str">'requires manager approval'</span>;
+
+<span class="cmt">-- Reasoning validation</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> arguments
+<span class="kw">WHERE</span> premise <span class="fn">IMPLIES</span> conclusion;</pre>
+  </div>
+</div>
+
+<h3>ALIGNS</h3>
+<p>
+  Check narrative/thematic alignment. Goes beyond topic matching to assess if texts support the same message.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">ALIGNS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Check brand alignment</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> marketing_copy
+<span class="kw">WHERE</span> message <span class="fn">ALIGNS</span> <span class="str">'innovation and customer focus'</span>;
+
+<span class="cmt">-- Alignment score</span>
+<span class="kw">SELECT</span> headline, <span class="fn">ALIGNS</span>(body, <span class="str">'sustainability commitment'</span>) <span class="kw">AS</span> alignment
+<span class="kw">FROM</span> press_releases;</pre>
+  </div>
+</div>
+
+<!-- ==================== TEXT TRANSFORMATION ==================== -->
+<h2 id="text-transformation">Text Transformation</h2>
+<p>
+  Transform, extract, and rewrite text using natural language instructions.
+</p>
+
+<h3>ASK</h3>
+<p>
+  The swiss army knife. Apply any arbitrary prompt to text. Maximum flexibility.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">ASK Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Custom transformation</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(description, <span class="str">'Extract the main product features as a bullet list'</span>)
+<span class="kw">FROM</span> products;
+
+<span class="cmt">-- Complex analysis</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(review, <span class="str">'What specific improvements does the customer suggest?'</span>)
+<span class="kw">FROM</span> feedback;</pre>
+  </div>
+</div>
+
+<h3>EXTRACTS</h3>
+<p>
+  Extract specific information from text. Like grep with understanding.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">EXTRACTS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract specific data</span>
+<span class="kw">SELECT</span> <span class="fn">EXTRACTS</span>(email_body, <span class="str">'deadline date'</span>) <span class="kw">AS</span> deadline
+<span class="kw">FROM</span> emails;
+
+<span class="cmt">-- Extract multiple fields</span>
+<span class="kw">SELECT</span>
+  <span class="fn">EXTRACTS</span>(contract, <span class="str">'payment terms'</span>) <span class="kw">AS</span> terms,
+  <span class="fn">EXTRACTS</span>(contract, <span class="str">'termination clause'</span>) <span class="kw">AS</span> termination
+<span class="kw">FROM</span> contracts;</pre>
+  </div>
+</div>
+
+<h3>CONDENSE / TLDR</h3>
+<p>
+  Per-row text summarization. Condense long text to key points.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">CONDENSE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Summarize each row</span>
+<span class="kw">SELECT</span> title, <span class="fn">CONDENSE</span>(body) <span class="kw">AS</span> summary
+<span class="kw">FROM</span> articles;
+
+<span class="cmt">-- TLDR alias</span>
+<span class="kw">SELECT</span> <span class="fn">TLDR</span>(meeting_notes) <span class="kw">AS</span> summary
+<span class="kw">FROM</span> meetings;</pre>
+  </div>
+</div>
+
+<h3>NORMALIZE</h3>
+<p>
+  Standardize entities to canonical forms. Handles company names, addresses, phones, and more.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">NORMALIZE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Normalize company names</span>
+<span class="kw">SELECT</span> <span class="fn">NORMALIZE</span>(company_name, <span class="str">'company'</span>) <span class="kw">AS</span> canonical_name
+<span class="kw">FROM</span> vendors;
+<span class="cmt">-- "IBM Corp.", "I.B.M.", "International Business Machines" → "IBM"</span>
+
+<span class="cmt">-- Normalize addresses</span>
+<span class="kw">SELECT</span> <span class="fn">NORMALIZE</span>(address, <span class="str">'address'</span>) <span class="kw">AS</span> std_address
+<span class="kw">FROM</span> customers;</pre>
+  </div>
+</div>
+
+<!-- ==================== AGGREGATION ==================== -->
+<h2 id="aggregation">Aggregation Functions</h2>
+<p>
+  LLM-powered aggregates that work with GROUP BY, just like SUM or AVG.
+</p>
+
+<h3>SUMMARIZE</h3>
+<p>
+  Aggregate text summarization. Combines multiple rows into a coherent summary.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SUMMARIZE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Summarize reviews per product</span>
+<span class="kw">SELECT</span>
+  product_id,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> review_count,
+  <span class="fn">SUMMARIZE</span>(review_text) <span class="kw">AS</span> summary
+<span class="kw">FROM</span> reviews
+<span class="kw">GROUP BY</span> product_id;
+
+<span class="cmt">-- Summarize with focus</span>
+<span class="kw">SELECT</span> <span class="fn">SUMMARIZE</span>(feedback, <span class="str">'complaints only'</span>)
+<span class="kw">FROM</span> customer_feedback;</pre>
+  </div>
+</div>
+
+<h3>THEMES / TOPICS</h3>
+<p>
+  Extract N topics from a collection. Returns JSON array of discovered themes.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">THEMES Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract top 5 themes</span>
+<span class="kw">SELECT</span> <span class="fn">THEMES</span>(comment, <span class="num">5</span>) <span class="kw">AS</span> top_themes
+<span class="kw">FROM</span> feedback;
+
+<span class="cmt">-- Themes per category</span>
+<span class="kw">SELECT</span>
+  category,
+  <span class="fn">THEMES</span>(description, <span class="num">3</span>) <span class="kw">AS</span> main_topics
+<span class="kw">FROM</span> articles
+<span class="kw">GROUP BY</span> category;</pre>
+  </div>
+</div>
+
+<h3>CONSENSUS</h3>
+<p>
+  Find common ground across multiple texts. What do they agree on?
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">CONSENSUS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find analyst consensus</span>
+<span class="kw">SELECT</span>
+  ticker,
+  <span class="fn">CONSENSUS</span>(recommendation) <span class="kw">AS</span> consensus_view
+<span class="kw">FROM</span> analyst_reports
+<span class="kw">GROUP BY</span> ticker;
+
+<span class="cmt">-- What do reviewers agree on?</span>
+<span class="kw">SELECT</span> <span class="fn">CONSENSUS</span>(review_text) <span class="kw">AS</span> common_feedback
+<span class="kw">FROM</span> reviews
+<span class="kw">WHERE</span> product_id = <span class="num">123</span>;</pre>
+  </div>
+</div>
+
+<h3>OUTLIERS</h3>
+<p>
+  Find semantically unusual items in a collection. Anomaly detection for text.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">OUTLIERS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find unusual responses</span>
+<span class="kw">SELECT</span> <span class="fn">OUTLIERS</span>(survey_response, <span class="num">5</span>) <span class="kw">AS</span> unusual_responses
+<span class="kw">FROM</span> survey_data;
+
+<span class="cmt">-- Detect anomalies per category</span>
+<span class="kw">SELECT</span>
+  category,
+  <span class="fn">OUTLIERS</span>(description, <span class="num">3</span>) <span class="kw">AS</span> anomalies
+<span class="kw">FROM</span> logs
+<span class="kw">GROUP BY</span> category;</pre>
+  </div>
+</div>
+
+<h3>DEDUPE</h3>
+<p>
+  Semantic deduplication. Identifies and returns representatives for duplicate clusters.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">DEDUPE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Deduplicate records</span>
+<span class="kw">SELECT</span> <span class="fn">DEDUPE</span>(company_name) <span class="kw">AS</span> unique_companies
+<span class="kw">FROM</span> leads;
+
+<span class="cmt">-- With similarity threshold</span>
+<span class="kw">SELECT</span> <span class="fn">DEDUPE</span>(description, <span class="num">0.85</span>) <span class="kw">AS</span> unique_items
+<span class="kw">FROM</span> products;</pre>
+  </div>
+</div>
+
+<!-- ==================== DIMENSION FUNCTIONS ==================== -->
+<h2 id="dimension-functions">Dimension Functions</h2>
+<p>
+  <strong>Unique to RVBBIT.</strong> Semantic GROUP BY - one LLM call processes all values and assigns
+  each to a bucket. Much more efficient than per-row classification.
+</p>
+
+<div class="info-box">
+  <div class="info-box-title">How Dimension Functions Work</div>
+  <p>
+    Instead of calling the LLM once per row, dimension functions collect all unique values,
+    send them to the LLM in a single batch, and receive back a mapping. This enables
+    semantic grouping at scale with minimal API costs.
+  </p>
+</div>
+
+<h3>TOPICS()</h3>
+<p>
+  Group by auto-discovered topics. LLM determines meaningful categories.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">TOPICS() Dimension</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Semantic GROUP BY on topics</span>
+<span class="kw">SELECT</span>
+  <span class="fn">TOPICS</span>(title, <span class="num">8</span>) <span class="kw">AS</span> topic,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> count,
+  <span class="fn">SUMMARIZE</span>(description) <span class="kw">AS</span> summary
+<span class="kw">FROM</span> articles
+<span class="kw">GROUP BY</span> topic
+<span class="kw">ORDER BY</span> count <span class="kw">DESC</span>;</pre>
+  </div>
+</div>
+
+<h3>SENTIMENT()</h3>
+<p>
+  Group by sentiment level. Configurable focus (general, fear, excitement, etc.).
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SENTIMENT() Dimension</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Group by sentiment</span>
+<span class="kw">SELECT</span>
+  <span class="fn">SENTIMENT</span>(comment) <span class="kw">AS</span> sentiment_level,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> count
+<span class="kw">FROM</span> reviews
+<span class="kw">GROUP BY</span> sentiment_level;
+
+<span class="cmt">-- Focus on specific emotion</span>
+<span class="kw">SELECT</span>
+  <span class="fn">SENTIMENT</span>(feedback, <span class="str">'frustration'</span>) <span class="kw">AS</span> frustration_level,
+  <span class="kw">COUNT</span>(*)
+<span class="kw">FROM</span> support_tickets
+<span class="kw">GROUP BY</span> frustration_level;</pre>
+  </div>
+</div>
+
+<h3>NARRATIVE()</h3>
+<p>
+  Group by narrative framing. Identifies the story angle: Bullish/Bearish, David vs Goliath,
+  Crisis, Progress, etc.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">NARRATIVE() Dimension</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Group by narrative frame</span>
+<span class="kw">SELECT</span>
+  <span class="fn">NARRATIVE</span>(analysis) <span class="kw">AS</span> frame,
+  <span class="kw">COUNT</span>(*) <span class="kw">AS</span> reports,
+  <span class="fn">SUMMARIZE</span>(analysis) <span class="kw">AS</span> key_points
+<span class="kw">FROM</span> media_coverage
+<span class="kw">GROUP BY</span> frame;</pre>
+  </div>
+</div>
+
+<h3>Other Dimension Functions</h3>
+
+<table>
+  <thead>
+    <tr><th>Function</th><th>Description</th><th>Example Buckets</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>TOXICITY()</code></td>
+      <td>Content moderation levels</td>
+      <td>Clean, Mild, Moderate, Severe</td>
+    </tr>
+    <tr>
+      <td><code>INTENT()</code></td>
+      <td>Communicative intent</td>
+      <td>Question, Statement, Complaint, Request</td>
+    </tr>
+    <tr>
+      <td><code>CREDIBILITY()</code></td>
+      <td>Source reliability</td>
+      <td>Very Low, Low, Moderate, High, Very High</td>
+    </tr>
+    <tr>
+      <td><code>COMPLEXITY()</code></td>
+      <td>Task/content complexity</td>
+      <td>Trivial, Low, Medium, High, Very High</td>
+    </tr>
+    <tr>
+      <td><code>CATEGORY()</code></td>
+      <td>Auto or custom categories</td>
+      <td>User-defined or auto-detected</td>
+    </tr>
+    <tr>
+      <td><code>AUDIENCE()</code></td>
+      <td>Target audience</td>
+      <td>Technical, Executive, Consumer, etc.</td>
+    </tr>
+    <tr>
+      <td><code>FORMALITY()</code></td>
+      <td>Formality level</td>
+      <td>Casual, Neutral, Formal, Legal</td>
+    </tr>
+    <tr>
+      <td><code>STANCE()</code></td>
+      <td>Position on topic</td>
+      <td>Supportive, Neutral, Opposed</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ==================== DATA QUALITY ==================== -->
+<h2 id="data-quality">Data Quality</h2>
+<p>
+  Assess, validate, and clean data quality issues.
+</p>
+
+<h3>QUALITY</h3>
+<p>
+  Data quality score from 0.0 to 1.0. Assesses completeness, validity, and consistency.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">QUALITY Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Score data quality</span>
+<span class="kw">SELECT</span>
+  id,
+  <span class="fn">QUALITY</span>(address) <span class="kw">AS</span> address_quality,
+  <span class="fn">QUALITY</span>(phone) <span class="kw">AS</span> phone_quality
+<span class="kw">FROM</span> contacts
+<span class="kw">WHERE</span> <span class="fn">QUALITY</span>(address) < <span class="num">0.5</span>;</pre>
+  </div>
+</div>
+
+<h3>VALID</h3>
+<p>
+  Format validation. Returns boolean for email, phone, URL, date, SSN, zip, etc.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">VALID Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Validate email format</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> contacts
+<span class="kw">WHERE</span> <span class="kw">NOT</span> <span class="fn">VALID</span>(email, <span class="str">'email'</span>);
+
+<span class="cmt">-- Multiple validations</span>
+<span class="kw">SELECT</span>
+  id,
+  <span class="fn">VALID</span>(phone, <span class="str">'phone'</span>) <span class="kw">AS</span> phone_ok,
+  <span class="fn">VALID</span>(zip, <span class="str">'zip'</span>) <span class="kw">AS</span> zip_ok
+<span class="kw">FROM</span> leads;
+
+<span class="cmt">-- Supported types: email, phone, url, date, ssn, zip, uuid, ip, credit_card, iban</span></pre>
+  </div>
+</div>
+
+<h3>ANONYMIZE</h3>
+<p>
+  Remove or mask PII. Essential for GDPR/HIPAA compliance.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">ANONYMIZE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Anonymize text</span>
+<span class="kw">SELECT</span> <span class="fn">ANONYMIZE</span>(notes) <span class="kw">AS</span> safe_notes
+<span class="kw">FROM</span> medical_records;
+
+<span class="cmt">-- Specify what to remove</span>
+<span class="kw">SELECT</span> <span class="fn">ANONYMIZE</span>(transcript, <span class="str">'names, phone numbers, addresses'</span>)
+<span class="kw">FROM</span> call_logs;</pre>
+  </div>
+</div>
+
+<!-- ==================== PARSING ==================== -->
+<h2 id="parsing">Parsing Functions</h2>
+<p>
+  Parse unstructured text into structured data. All parsing functions use
+  <strong>structural caching</strong> for massive efficiency gains.
+</p>
+
+<div class="info-box">
+  <div class="info-box-title">Structural Caching: Code That Writes Code</div>
+  <p>
+    Parsing functions don't call the LLM for every row. Instead, they work like macros:
+  </p>
+  <ol>
+    <li>The LLM analyzes the <strong>shape</strong> of the input (not the content)</li>
+    <li>It generates a SQL expression to parse that shape</li>
+    <li>The SQL expression is <strong>cached by shape fingerprint</strong></li>
+    <li>Future rows with the same shape use the cached SQL instantly</li>
+  </ol>
+  <p>
+    For example, phone numbers <code>(555) 123-4567</code> and <code>(800) 999-1234</code>
+    have the same shape <code>(DDD) DDD-DDDD</code>. The first call generates a regex,
+    all subsequent calls with that format execute instantly with zero LLM cost.
+  </p>
+  <p>
+    This means you only pay for <strong>new shapes</strong>, not new values. Parse a million
+    phone numbers in 3 formats? That's 3 LLM calls, not a million.
+  </p>
+</div>
+
+<h3>PARSE</h3>
+<p>
+  The universal parser. Extract anything from text using plain English instructions.
+  Unlike specialized parsers, this handles any extraction task.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">PARSE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract dates</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE</span>(email_body, <span class="str">'the deadline date'</span>) <span class="kw">AS</span> deadline
+<span class="kw">FROM</span> emails;
+
+<span class="cmt">-- Extract specific facts</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE</span>(notes, <span class="str">'reason for rejection'</span>) <span class="kw">AS</span> reason
+<span class="kw">FROM</span> applications;
+
+<span class="cmt">-- Extract lists (returns JSON array)</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE</span>(meeting_notes, <span class="str">'action items'</span>) <span class="kw">AS</span> todos
+<span class="kw">FROM</span> meetings;
+
+<span class="cmt">-- Extract amounts</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE</span>(contract, <span class="str">'total contract value'</span>) <span class="kw">AS</span> value
+<span class="kw">FROM</span> agreements;
+
+<span class="cmt">-- Infix syntax</span>
+<span class="kw">SELECT</span> bio <span class="fn">PARSE</span> <span class="str">'years of experience'</span> <span class="kw">AS</span> experience
+<span class="kw">FROM</span> candidates;</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Property</th><th>Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Shape</td><td>SCALAR</td></tr>
+    <tr><td>Returns</td><td>VARCHAR (single value or JSON for lists/objects)</td></tr>
+    <tr><td>Args</td><td><code>(text VARCHAR, instruction VARCHAR)</code></td></tr>
+  </tbody>
+</table>
+
+<div class="info-box tip">
+  <div class="info-box-title">When to Use PARSE vs Specialized Parsers</div>
+  <p>
+    Use <code>PARSE()</code> for ad-hoc extraction or when you need flexibility.
+    Use specialized parsers (<code>PARSE_NAME</code>, <code>PARSE_ADDRESS</code>)
+    when you need consistent structured output schemas.
+  </p>
+</div>
+
+<h3>PARSE_NAME</h3>
+<p>
+  Parse person names into components: prefix, first, middle, last, suffix.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">PARSE_NAME Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Parse names</span>
+<span class="kw">SELECT</span>
+  <span class="fn">json_extract</span>(<span class="fn">PARSE_NAME</span>(full_name), <span class="str">'$.first'</span>) <span class="kw">AS</span> first_name,
+  <span class="fn">json_extract</span>(<span class="fn">PARSE_NAME</span>(full_name), <span class="str">'$.last'</span>) <span class="kw">AS</span> last_name
+<span class="kw">FROM</span> contacts;
+
+<span class="cmt">-- Returns: {"prefix": "Dr.", "first": "John", "middle": "Q", "last": "Smith", "suffix": "Jr."}</span></pre>
+  </div>
+</div>
+
+<h3>PARSE_ADDRESS</h3>
+<p>
+  Parse addresses into street, city, state, zip, country components.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">PARSE_ADDRESS Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Parse addresses</span>
+<span class="kw">SELECT</span>
+  <span class="fn">json_extract</span>(<span class="fn">PARSE_ADDRESS</span>(addr), <span class="str">'$.city'</span>) <span class="kw">AS</span> city,
+  <span class="fn">json_extract</span>(<span class="fn">PARSE_ADDRESS</span>(addr), <span class="str">'$.state'</span>) <span class="kw">AS</span> state
+<span class="kw">FROM</span> customers;</pre>
+  </div>
+</div>
+
+<h3>PARSE_DATE</h3>
+<p>
+  Parse any date format. Handles "January 15, 2024", "01/15/24", "2024-01-15", etc.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">PARSE_DATE Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Parse various date formats</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE_DATE</span>(date_text, <span class="str">'iso'</span>) <span class="kw">AS</span> iso_date
+<span class="kw">FROM</span> events;
+
+<span class="cmt">-- Extract specific component</span>
+<span class="kw">SELECT</span> <span class="fn">PARSE_DATE</span>(created_at, <span class="str">'year'</span>) <span class="kw">AS</span> year
+<span class="kw">FROM</span> records;</pre>
+  </div>
+</div>
+
+<h3>SMART_JSON / -></h3>
+<p>
+  Natural language JSON extraction. Uses <strong>schema-based caching</strong> - the LLM
+  sees the JSON structure (field names and types), not the values. Same schema = cached SQL.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SMART_JSON Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract with natural language</span>
+<span class="kw">SELECT</span> <span class="fn">SMART_JSON</span>(payload, <span class="str">'customer email'</span>)
+<span class="kw">FROM</span> orders;
+
+<span class="cmt">-- Arrow syntax</span>
+<span class="kw">SELECT</span> metadata <span class="fn">-></span> <span class="str">'order total'</span>
+<span class="kw">FROM</span> transactions;
+
+<span class="cmt">-- All orders have the same JSON schema, so this is 1 LLM call</span>
+<span class="cmt">-- for the first row, then cached SQL for the rest</span></pre>
+  </div>
+</div>
+
+<!-- ==================== MDM ==================== -->
+<h2 id="mdm">MDM &amp; Record Matching</h2>
+<p>
+  Master Data Management primitives. Merge duplicates, match records, create golden records.
+</p>
+
+<h3>GOLDEN_RECORD</h3>
+<p>
+  Create best composite record from duplicate candidates. Picks the best value for each field.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">GOLDEN_RECORD Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Merge duplicate customer records</span>
+<span class="kw">SELECT</span>
+  customer_cluster_id,
+  <span class="fn">GOLDEN_RECORD</span>(name, email, phone, address) <span class="kw">AS</span> master_record
+<span class="kw">FROM</span> customer_matches
+<span class="kw">GROUP BY</span> customer_cluster_id;</pre>
+  </div>
+</div>
+
+<h3>MATCH_PAIR / SAME_AS</h3>
+<p>
+  Check if two values represent the same entity. For fuzzy JOINs and deduplication.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">MATCH_PAIR Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Fuzzy join</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> vendors a, leads b
+<span class="kw">WHERE</span> <span class="fn">MATCH_PAIR</span>(a.company_name, b.company_name);
+
+<span class="cmt">-- With relationship context</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> records
+<span class="kw">WHERE</span> <span class="fn">MATCH_PAIR</span>(name1, name2, <span class="str">'same person'</span>);</pre>
+  </div>
+</div>
+
+<h3>COALESCE_SMART</h3>
+<p>
+  Smart COALESCE - picks the best non-null value, not just the first. Quality-aware.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">COALESCE_SMART Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Pick best email (not just first non-null)</span>
+<span class="kw">SELECT</span> <span class="fn">COALESCE_SMART</span>(email1, email2, email3) <span class="kw">AS</span> best_email
+<span class="kw">FROM</span> contact_sources;
+
+<span class="cmt">-- With preference</span>
+<span class="kw">SELECT</span> <span class="fn">COALESCE_SMART</span>(phone1, phone2, phone3, <span class="str">'prefer mobile'</span>)
+<span class="kw">FROM</span> contacts;</pre>
+  </div>
+</div>
+
+<!-- ==================== VECTOR ==================== -->
+<h2 id="vector">Vector &amp; Embedding</h2>
+<p>
+  Create embeddings and perform vector search.
+</p>
+
+<h3>EMBED</h3>
+<p>
+  Generate embedding vector for text. Used to power SIMILAR_TO and VECTOR_SEARCH.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">EMBED Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Generate embedding</span>
+<span class="kw">SELECT</span> <span class="fn">EMBED</span>(description) <span class="kw">AS</span> embedding
+<span class="kw">FROM</span> products;
+
+<span class="cmt">-- Index a column for vector search</span>
+<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">FROM</span> articles;</pre>
+  </div>
+</div>
+
+<h3>VECTOR_SEARCH</h3>
+<p>
+  Semantic search using pre-computed embeddings.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">VECTOR_SEARCH Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Search by semantic similarity</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">VECTOR_SEARCH</span>(
+  <span class="str">'machine learning applications'</span>,
+  docs.content,
+  <span class="num">20</span>,    <span class="cmt">-- limit</span>
+  <span class="num">0.7</span>   <span class="cmt">-- min_score</span>
+);</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Creating Custom Operators</h2>
+<p>
+  Any cascade with <code>sql_function</code> configuration becomes a SQL operator automatically.
+  See <a href="#semantic-sql" data-link>Semantic SQL</a> for details on creating your own.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">cascades/my_operator.cascade.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: my_custom_operator
+
+<span class="key">sql_function</span>:
+  <span class="key">name</span>: MY_OP
+  <span class="key">operators</span>:
+    - <span class="str">"{{ text }} MY_OP {{ criterion }}"</span>
+    - <span class="str">"MY_OP({{ text }}, {{ criterion }})"</span>
+  <span class="key">args</span>:
+    - <span class="key">name</span>: text
+      <span class="key">type</span>: VARCHAR
+    - <span class="key">name</span>: criterion
+      <span class="key">type</span>: VARCHAR
+  <span class="key">returns</span>: BOOLEAN
+  <span class="key">shape</span>: SCALAR
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: evaluate
+    <span class="key">instructions</span>: <span class="str">|
+      Your prompt here using {{ input.text }} and {{ input.criterion }}
+    </span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next Steps</h2>
+<ul>
+  <li><a href="#semantic-sql" data-link>Semantic SQL</a> - Architecture and custom operators</li>
+  <li><a href="#tools" data-link>Tools Reference</a> - Built-in tools for cascades</li>
+  <li><a href="#embedding" data-link>Vector Search</a> - Embedding and search details</li>
+</ul>

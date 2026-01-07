@@ -1,0 +1,100 @@
+# PARSE - General-purpose text extraction with natural language
+#
+# The universal parser. Extract anything from text using plain English.
+#
+# SQL Usage:
+#   SELECT PARSE(email_body, 'the deadline date') FROM emails
+#   SELECT PARSE(notes, 'all company names mentioned') FROM meetings
+#   SELECT PARSE(contract, 'payment terms') FROM documents
+#   SELECT PARSE(bio, 'years of experience') FROM candidates
+#   SELECT PARSE(review, 'specific product complaints') FROM feedback
+#
+# Returns: VARCHAR - the extracted value(s)
+
+cascade_id: parse_general
+
+description: |
+  General-purpose text parser. Extract any information from text using
+  natural language instructions. Unlike specialized parsers (PARSE_NAME,
+  PARSE_ADDRESS), this function handles arbitrary extraction tasks.
+
+inputs_schema:
+  text: The text to parse
+  instruction: What to extract (free-form natural language)
+
+sql_function:
+  name: parse
+  description: |
+    Extract information from text using natural language instructions.
+
+    Unlike specialized parsers, PARSE() handles any extraction task:
+    - Dates and deadlines: PARSE(text, 'deadline date')
+    - Names and entities: PARSE(text, 'all person names')
+    - Numbers and amounts: PARSE(text, 'total cost')
+    - Lists: PARSE(text, 'action items')
+    - Specific facts: PARSE(text, 'reason for rejection')
+
+    Returns the extracted value as text. For structured data, returns JSON.
+  args:
+    - name: text
+      type: VARCHAR
+      description: The text to parse
+    - name: instruction
+      type: VARCHAR
+      description: What to extract (natural language)
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "PARSE({{ text }}, {{ instruction }})"
+    - "{{ text }} PARSE {{ instruction }}"
+  cache: true
+  test_cases:
+    - sql: "SELECT parse('Meeting scheduled for March 15, 2024 at 2pm', 'the date')"
+      expect:
+        type: contains
+        value: "March 15"
+      description: "Date extracted from text"
+    - sql: "SELECT parse('Contact John Smith at john@acme.com for details', 'email address')"
+      expect:
+        type: contains
+        value: "john@acme.com"
+      description: "Email extracted from text"
+    - sql: "SELECT parse('The project budget is $50,000', 'budget amount')"
+      expect:
+        type: contains
+        value: "50"
+      description: "Amount extracted from text"
+
+cells:
+  - name: extract
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Extract the requested information from the text.
+
+      TEXT:
+      {{ input.text }}
+
+      EXTRACT: {{ input.instruction }}
+
+      RULES:
+      1. Extract ONLY what is requested - be precise
+      2. If extracting a single value, return just that value (no JSON)
+      3. If extracting multiple items, return as JSON array: ["item1", "item2"]
+      4. If extracting structured data with multiple fields, return as JSON object
+      5. If the requested information is not found, return "NOT_FOUND"
+      6. Do not add explanations - return only the extracted value(s)
+      7. Preserve original formatting/spelling of extracted content
+
+      EXAMPLES:
+      - "the date" from "Meeting on Jan 5th" → "Jan 5th"
+      - "email" from "Contact me at bob@test.com" → "bob@test.com"
+      - "all names" from "John and Mary attended" → ["John", "Mary"]
+      - "price" from "Costs $99.99" → "$99.99"
+      - "reason" from "Rejected due to budget constraints" → "budget constraints"
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: string

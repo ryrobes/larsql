@@ -6201,26 +6201,27 @@
           <div class="semantic-header reveal">
             <h2>50+ AI operators. Still just SQL.</h2>
             <p>
-              Natural language filters. LLM-powered aggregations. AI-generated groupings.
-              Hover over the highlighted operators to see the magic.
+              Semantic filtering. Logic checking. Text aggregation. Data quality scoring.
+              Deduplication. PII removal. MDM. All as SQL functions.
             </p>
           </div>
 
           <div class="semantic-demo reveal delay-1">
             <div class="code-header">
               <span class="code-type-badge">SQL</span>
-              <span class="code-title">my_query.sql</span>
+              <span class="code-title">analyst_research.sql</span>
             </div>
             <div class="semantic-demo-grid">
               <div class="code-content">
 <pre><span class="sql-keyword">SELECT</span>
-    encounter_type,
-    <span class="sql-function">COUNT</span>(*) <span class="sql-keyword">AS</span> <span class="sql-column">incidents</span>,
-    <span class="semantic-hint fn-hint" data-hint="summarize"><span class="sql-function">SUMMARIZE</span>(observed)</span> <span class="sql-keyword">AS</span> <span class="sql-column">typical_description</span>
-<span class="sql-keyword">FROM</span> bigfoot_sightings
-<span class="sql-keyword">WHERE</span> <span class="semantic-hint" data-hint="means">title <span class="sql-function">MEANS</span> <span class="sql-string">'visual sighting'</span></span>
-<span class="sql-keyword">GROUP BY</span> <span class="semantic-hint fn-hint" data-hint="topics"><span class="sql-function">TOPICS</span>(title, <span class="sql-string">8</span>)</span>
-<span class="sql-keyword">ORDER BY</span> incidents <span class="sql-keyword">DESC</span></pre>
+    outlook,
+    <span class="sql-function">COUNT</span>(*) <span class="sql-keyword">AS</span> <span class="sql-column">reports</span>,
+    <span class="semantic-hint fn-hint" data-hint="consensus"><span class="sql-function">CONSENSUS</span>(recommendation)</span> <span class="sql-keyword">AS</span> <span class="sql-column">analyst_view</span>,
+    <span class="semantic-hint fn-hint" data-hint="summarize"><span class="sql-function">SUMMARIZE</span>(analysis)</span> <span class="sql-keyword">AS</span> <span class="sql-column">key_themes</span>
+<span class="sql-keyword">FROM</span> analyst_reports
+<span class="sql-keyword">WHERE</span> <span class="semantic-hint" data-hint="contradicts">analysis <span class="sql-function">CONTRADICTS</span> <span class="sql-string">'management guidance'</span></span>
+<span class="sql-keyword">GROUP BY</span> <span class="semantic-hint fn-hint" data-hint="narrative"><span class="sql-function">NARRATIVE</span>(analysis)</span> <span class="sql-keyword">AS</span> outlook
+<span class="sql-keyword">ORDER BY</span> reports <span class="sql-keyword">DESC</span></pre>
               </div>
 
               <div class="semantic-hint-panel" id="semanticHintPanel">
@@ -6228,75 +6229,104 @@
                   <p>Hover over a highlighted operator to see what it does</p>
                 </div>
 
-                <div class="semantic-hint-content fn-type" data-for="summarize">
-                  <h4>SUMMARIZE()</h4>
-                  <p class="prompt-style">"Combine these into a coherent summary"</p>
-                  <p>Aggregate function that condenses multiple text rows into a single summary.</p>
+                <div class="semantic-hint-content" data-for="contradicts">
+                  <h4>CONTRADICTS</h4>
+                  <p class="prompt-style">"Does this contradict the management guidance?"</p>
+                  <p>Semantic logic check. Finds conflicts between text and a reference claim. Unique to RVBBIT.</p>
+                  <div class="transform-viz">
+                    <div class="transform-flow">
+                      <div class="transform-in">
+                        <div class="transform-label">analysis</div>
+                        <div class="transform-data">
+                          <span class="val">"Revenue declined 8% despite..."</span>
+                        </div>
+                        <div class="transform-label" style="margin-top: 8px;">vs guidance</div>
+                        <div class="transform-data">
+                          <span class="val">"Strong growth trajectory"</span>
+                        </div>
+                      </div>
+                      <div class="transform-arrow">&rarr;</div>
+                      <div class="transform-out">
+                        <div class="transform-label">conflict?</div>
+                        <div class="transform-data">
+                          <span class="bool-true">true</span> <span class="confidence">(0.91)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="semantic-hint-content fn-type" data-for="narrative">
+                  <h4>NARRATIVE()</h4>
+                  <p class="prompt-style">"What market outlook is the author conveying?"</p>
+                  <p>Semantic GROUP BY on narrative framing. One LLM call categorizes all rows by the story they're telling.</p>
+                  <div class="transform-viz">
+                    <div class="transform-flow">
+                      <div class="transform-in">
+                        <div class="transform-label">in</div>
+                        <div class="transform-data">
+                          <span class="val">"Poised for breakout..."</span>
+                          <span class="val">"Warning signs mount..."</span>
+                          <span class="val">"Steady execution..."</span>
+                        </div>
+                      </div>
+                      <div class="transform-arrow">&rarr;</div>
+                      <div class="transform-out">
+                        <div class="transform-label">frames</div>
+                        <div class="transform-data">
+                          <span class="val out-val">Bullish</span>
+                          <span class="val out-val">Bearish</span>
+                          <span class="val out-val">Neutral</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="semantic-hint-content fn-type" data-for="consensus">
+                  <h4>CONSENSUS()</h4>
+                  <p class="prompt-style">"What do these analysts agree on?"</p>
+                  <p>Aggregate function that finds common ground across multiple texts. Synthesizes agreement, notes disagreement.</p>
                   <div class="transform-viz">
                     <div class="transform-flow">
                       <div class="transform-in">
                         <div class="transform-label">in (n rows)</div>
                         <div class="transform-data">
-                          <span class="val">"Saw tall figure..."</span>
-                          <span class="val">"Dark shape near..."</span>
-                          <span class="val">"Bipedal, 8 feet..."</span>
+                          <span class="val">"Buy - strong moat"</span>
+                          <span class="val">"Hold - valuation risk"</span>
+                          <span class="val">"Buy - market leader"</span>
                         </div>
                       </div>
                       <div class="transform-arrow">&rarr;</div>
                       <div class="transform-out">
                         <div class="transform-label">out (1 row)</div>
                         <div class="transform-data">
-                          <span class="val out-val">"Tall, dark bipedal figures..."</span>
+                          <span class="val out-val">"Strong fundamentals, valuation concerns"</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div class="semantic-hint-content" data-for="means">
-                  <h4>MEANS</h4>
-                  <p class="prompt-style">"Does this describe a visual sighting?"</p>
-                  <p>Semantic boolean filter. Returns true if the text semantically matches the description.</p>
+                <div class="semantic-hint-content fn-type" data-for="summarize">
+                  <h4>SUMMARIZE()</h4>
+                  <p class="prompt-style">"Combine these analyses into key themes"</p>
+                  <p>Aggregate function that condenses multiple text rows into a single coherent summary.</p>
                   <div class="transform-viz">
                     <div class="transform-flow">
                       <div class="transform-in">
-                        <div class="transform-label">in</div>
+                        <div class="transform-label">in (n rows)</div>
                         <div class="transform-data">
-                          <span class="val">"Large figure near treeline"</span>
+                          <span class="val">"Margin pressure from..."</span>
+                          <span class="val">"Supply chain issues..."</span>
+                          <span class="val">"Competition in core..."</span>
                         </div>
                       </div>
                       <div class="transform-arrow">&rarr;</div>
                       <div class="transform-out">
-                        <div class="transform-label">out</div>
+                        <div class="transform-label">out (1 row)</div>
                         <div class="transform-data">
-                          <span class="bool-true">true</span> <span class="confidence">(0.94)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="semantic-hint-content fn-type" data-for="topics">
-                  <h4>TOPICS()</h4>
-                  <p class="prompt-style">"Categorize these into 8 topics"</p>
-                  <p>Semantic GROUP BY. LLM sees all values, creates meaningful buckets.</p>
-                  <div class="transform-viz">
-                    <div class="transform-flow">
-                      <div class="transform-in">
-                        <div class="transform-label">in</div>
-                        <div class="transform-data">
-                          <span class="val">"Saw tall figure..."</span>
-                          <span class="val">"Heard knocking..."</span>
-                          <span class="val">"Found prints..."</span>
-                        </div>
-                      </div>
-                      <div class="transform-arrow">&rarr;</div>
-                      <div class="transform-out">
-                        <div class="transform-label">buckets</div>
-                        <div class="transform-data">
-                          <span class="val out-val">Visual Sighting</span>
-                          <span class="val out-val">Auditory</span>
-                          <span class="val out-val">Physical Evidence</span>
+                          <span class="val out-val">"Margin and supply chain headwinds amid rising competition"</span>
                         </div>
                       </div>
                     </div>
@@ -6307,22 +6337,25 @@
           </div>
 
           <div class="operators-grid reveal delay-2">
+            <!-- Row 1: Semantic Filtering -->
             <div class="operator-chip">
               <span class="op-name">MEANS</span>
               <span class="op-desc">semantic filter</span>
             </div>
             <div class="operator-chip">
+              <span class="op-name">SIMILAR_TO</span>
+              <span class="op-desc">vector similarity</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">CONTRADICTS</span>
+              <span class="op-desc">finds conflicts</span>
+            </div>
+            <div class="operator-chip">
               <span class="op-name">IMPLIES</span>
               <span class="op-desc">logical inference</span>
             </div>
-            <div class="operator-chip">
-              <span class="op-name">EXTRACTS</span>
-              <span class="op-desc">structured data</span>
-            </div>
-            <div class="operator-chip">
-              <span class="op-name">ASK</span>
-              <span class="op-desc">any prompt</span>
-            </div>
+
+            <!-- Row 2: Analysis & Aggregation -->
             <div class="operator-chip">
               <span class="op-name">SUMMARIZE</span>
               <span class="op-desc">text aggregation</span>
@@ -6336,8 +6369,44 @@
               <span class="op-desc">mood analysis</span>
             </div>
             <div class="operator-chip">
-              <span class="op-name">TLDR()</span>
-              <span class="op-desc">multi-model</span>
+              <span class="op-name">CONSENSUS</span>
+              <span class="op-desc">common ground</span>
+            </div>
+
+            <!-- Row 3: Data Quality -->
+            <div class="operator-chip">
+              <span class="op-name">NORMALIZE</span>
+              <span class="op-desc">standardization</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">DEDUPE</span>
+              <span class="op-desc">semantic dedup</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">QUALITY</span>
+              <span class="op-desc">data quality score</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">ANONYMIZE</span>
+              <span class="op-desc">PII removal</span>
+            </div>
+
+            <!-- Row 4: Power Features -->
+            <div class="operator-chip">
+              <span class="op-name">ASK</span>
+              <span class="op-desc">any prompt</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">EXTRACTS</span>
+              <span class="op-desc">structured data</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">TOXICITY</span>
+              <span class="op-desc">content moderation</span>
+            </div>
+            <div class="operator-chip">
+              <span class="op-name">GOLDEN_RECORD</span>
+              <span class="op-desc">MDM merge</span>
             </div>
           </div>
         </div>
@@ -6652,7 +6721,7 @@
               </div>
               <div class="result-card">
                 <h3>Auto-discovered at startup</h3>
-                <code>Loaded 52 AI operators<br>&bull; 15 infix: MEANS, IMPLIES, SOUNDS_LIKE...<br>&bull; 37 functions: TLDR, SUMMARIZE, TOPICS...</code>
+                <code>Loaded 52 AI operators<br>&bull; 18 infix: MEANS, CONTRADICTS, SIMILAR_TO...<br>&bull; 34 functions: SUMMARIZE, DEDUPE, GOLDEN_RECORD...</code>
               </div>
             </div>
           </div>
