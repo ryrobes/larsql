@@ -797,7 +797,7 @@ def send_startup_response(sock):
     # 2. Parameter status messages (tell client about server config)
     sock.sendall(ParameterStatus.encode('client_encoding', 'UTF8'))
     sock.sendall(ParameterStatus.encode('server_encoding', 'UTF8'))
-    sock.sendall(ParameterStatus.encode('server_version', '14.0 (RVBBIT/DuckDB)'))
+    sock.sendall(ParameterStatus.encode('server_version', '14.0'))
     sock.sendall(ParameterStatus.encode('DateStyle', 'ISO, MDY'))
     sock.sendall(ParameterStatus.encode('TimeZone', 'UTC'))
     sock.sendall(ParameterStatus.encode('integer_datetimes', 'on'))
@@ -810,6 +810,59 @@ def send_startup_response(sock):
 
     # 4. Ready for queries!
     sock.sendall(ReadyForQuery.encode('I'))
+
+
+def _convert_pg_booleans(result_df):
+    """
+    Convert PostgreSQL-style boolean values to integers (1/0).
+
+    DuckDB's pg_catalog returns boolean columns as 't'/'f' text values or
+    Python bool values, but JDBC expects integer values. This function converts them.
+    """
+    import pandas as pd
+    import numpy as np
+
+    # Make a copy to avoid modifying the original
+    df = result_df.copy()
+
+    for col in df.columns:
+        dtype_str = str(df[col].dtype).lower()
+
+        # Convert boolean dtype columns to integers
+        if 'bool' in dtype_str:
+            df[col] = df[col].astype(int)
+            continue
+
+        # Only convert object (string) columns
+        if df[col].dtype == 'object':
+            try:
+                # Get non-null values and check if they're all simple strings
+                non_null = df[col].dropna()
+                if len(non_null) == 0:
+                    continue
+
+                # Check first value type
+                first_val = non_null.iloc[0]
+
+                # Handle Python bool values in object columns
+                if isinstance(first_val, (bool, np.bool_)):
+                    df[col] = df[col].map(lambda x: 1 if x is True else (0 if x is False else x))
+                    continue
+
+                # Check if values are simple strings (not arrays or other complex types)
+                if not isinstance(first_val, str):
+                    continue
+
+                # Check if the column only contains 't', 'f', or None
+                unique_vals = set(non_null.unique())
+                if unique_vals <= {'t', 'f'}:
+                    # Convert 't' -> 1, 'f' -> 0, None -> None
+                    df[col] = df[col].map(lambda x: 1 if x == 't' else (0 if x == 'f' else x))
+            except (TypeError, ValueError):
+                # Skip columns with unhashable types (arrays, etc.)
+                continue
+
+    return df
 
 
 def send_query_results(sock, result_df, transaction_status='I'):
@@ -828,6 +881,9 @@ def send_query_results(sock, result_df, transaction_status='I'):
         transaction_status: 'I' = idle, 'T' = in transaction, 'E' = error (default: 'I')
     """
     import pandas as pd
+
+    # Convert PostgreSQL-style boolean text values ('t'/'f') to integers (1/0)
+    result_df = _convert_pg_booleans(result_df)
 
     # 1. Send RowDescription (column metadata)
     columns = []
@@ -908,6 +964,9 @@ def send_execute_results(sock, result_df, send_row_description=True):
         send_row_description: If True, send RowDescription (default)
     """
     import pandas as pd
+
+    # Convert PostgreSQL-style boolean text values ('t'/'f') to integers (1/0)
+    result_df = _convert_pg_booleans(result_df)
 
     # 1. Optionally send RowDescription (if Describe didn't send it)
     if send_row_description:

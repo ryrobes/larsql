@@ -49,7 +49,8 @@ from .postgres_protocol import (
     BindComplete,
     CloseComplete,
     ParameterDescription,
-    NoData
+    NoData,
+    RowDescription,
 )
 
 
@@ -180,6 +181,9 @@ class ClientConnection:
             # DuckDB v1.4.2+ has built-in pg_catalog support
             print(f"[{self.session_id}]   ℹ️  Using DuckDB's built-in pg_catalog (v1.4.2+)")
 
+            # Create PostgreSQL compatibility stubs (functions and macros)
+            self._create_pg_compat_stubs()
+
             # Create metadata table for tracking ATTACH commands (persistent DBs only)
             self._create_attachments_metadata_table()
 
@@ -237,20 +241,301 @@ class ClientConnection:
 
         DuckDB's pg_class also does not include `relforcerowsecurity` (present in newer
         PostgreSQL versions), which can appear in DataGrip introspection queries.
+
+        PostgreSQL system columns we need to handle:
+        - xmin, xmax: Transaction IDs (MVCC versioning)
+        - cmin, cmax: Command identifiers within transaction
+        - ctid: Tuple identifier (physical row location)
+        - tableoid: OID of the table containing the row
+        - relforcerowsecurity, relrowsecurity: Row-level security columns
+        - relrewrite: Table rewrite temp relation OID
+        - relpartbound: Partition bound expression
         """
         import re
 
-        # Replace tablealias.xmin with a stable constant
-        query = re.sub(r'(?i)\b[a-zA-Z_][a-zA-Z0-9_]*\.xmin\b', '0', query)
+        # =================================================================
+        # PostgreSQL MVCC system columns (all rows have these)
+        # =================================================================
 
-        # Replace missing pg_class column (Postgres-only) with a stable constant
-        query = re.sub(r'(?i)\b[a-zA-Z_][a-zA-Z0-9_]*\.relforcerowsecurity\b', 'false', query)
+        # xmin: Transaction ID that inserted this row version
+        # DataGrip uses this as "state_number" to detect catalog changes
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.xmin\b', '0::int4', query)
+
+        # xmax: Transaction ID of deleting transaction, or 0 if not deleted
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.xmax\b', '0::int4', query)
+
+        # cmin, cmax: Command identifiers within the inserting/deleting transaction
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.cmin\b', '0::int4', query)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.cmax\b', '0::int4', query)
+
+        # ctid: Physical location of the row (block, offset)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.ctid\b', "'(0,0)'::text", query)
+
+        # tableoid: OID of the table containing this row
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.tableoid\b', '0::int4', query)
+
+        # =================================================================
+        # pg_class columns not in DuckDB's implementation
+        # =================================================================
+
+        # relforcerowsecurity: Force row security even for table owner (PostgreSQL 9.5+)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.relforcerowsecurity\b', 'false', query)
+
+        # relrowsecurity: Row-level security is enabled (PostgreSQL 9.5+)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.relrowsecurity\b', 'false', query)
+
+        # relrewrite: For tables being rewritten, OID of new temp relation
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.relrewrite\b', '0::int4', query)
+
+        # relpartbound: Partition bound expression (PostgreSQL 10+)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.relpartbound\b', 'NULL::text', query)
+
+        # relispartition: Whether the table is a partition (PostgreSQL 10+)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.relispartition\b', 'false', query)
+
+        # =================================================================
+        # pg_attribute columns not in DuckDB's implementation
+        # =================================================================
+
+        # attidentity: Identity column type ('a' = always, 'd' = by default, '' = not identity)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.attidentity\b', "''::text", query)
+
+        # attgenerated: Generated column type ('s' = stored, '' = not generated)
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.attgenerated\b', "''::text", query)
+
+        # attcompression: Compression method for the column
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.attcompression\b', "''::text", query)
+
+        # =================================================================
+        # pg_namespace columns not in DuckDB's implementation
+        # =================================================================
+
+        # nspacl: Access privileges for the namespace
+        query = re.sub(r'(?i)\b([a-zA-Z_][a-zA-Z0-9_]*)\.nspacl\b', 'NULL::text[]', query)
+
+        # =================================================================
+        # PostgreSQL functions that don't work with rewritten values
+        # =================================================================
+
+        # age(xmin) - After xmin is rewritten to 0::int4, age() fails because
+        # DuckDB's built-in age() requires timestamps. DataGrip uses age(c.xmin)
+        # as a "state_number" to detect catalog changes. Return 0 for any
+        # age() call on integer-like values.
+        # Patterns: age(0::int4), age(0), age(123), age(c.xmin) before xmin rewrite
+        query = re.sub(r'(?i)\bage\s*\(\s*0::int4\s*\)', '0', query)
+        query = re.sub(r'(?i)\bage\s*\(\s*0\s*\)', '0', query)
+        query = re.sub(r'(?i)\bage\s*\(\s*\d+\s*\)', '0', query)
 
         return query
 
     @staticmethod
     def _quote_ident(name: str) -> str:
         return f'"{name.replace(chr(34), chr(34) * 2)}"'
+
+    def _handle_missing_pg_catalog_tables(self, query_upper: str, query: str):
+        """
+        Handle queries where the PRIMARY table is a missing pg_catalog table.
+
+        Only intercepts if the main FROM table is missing (not JOINs).
+        For JOINs to missing tables, use _rewrite_missing_table_joins instead.
+
+        Returns:
+            DataFrame if query was handled (missing primary table), None otherwise
+        """
+        import pandas as pd
+        import re
+
+        # Tables that DuckDB's pg_catalog doesn't have - only intercept if PRIMARY table
+        MISSING_PRIMARY_TABLES = {
+            'PG_LOCKS': ['locktype', 'database', 'relation', 'page', 'tuple',
+                        'virtualxid', 'transactionid', 'classid', 'objid',
+                        'objsubid', 'virtualtransaction', 'pid', 'mode',
+                        'granted', 'fastpath', 'waitstart'],
+            'PG_STAT_STATEMENTS': ['userid', 'dbid', 'queryid', 'query', 'calls',
+                                   'total_time', 'rows', 'shared_blks_hit'],
+            'PG_STAT_USER_TABLES': ['relid', 'schemaname', 'relname', 'seq_scan',
+                                    'idx_scan', 'n_tup_ins', 'n_tup_upd', 'n_tup_del'],
+            'PG_STAT_USER_INDEXES': ['relid', 'indexrelid', 'schemaname', 'relname',
+                                     'indexrelname', 'idx_scan', 'idx_tup_read'],
+            'PG_STATIO_USER_TABLES': ['relid', 'schemaname', 'relname', 'heap_blks_read',
+                                      'heap_blks_hit', 'idx_blks_read', 'idx_blks_hit'],
+            'PG_REPLICATION_SLOTS': ['slot_name', 'plugin', 'slot_type', 'datoid',
+                                     'database', 'temporary', 'active', 'restart_lsn'],
+            'PG_PUBLICATION': ['oid', 'pubname', 'pubowner', 'puballtables',
+                              'pubinsert', 'pubupdate', 'pubdelete'],
+            'PG_SUBSCRIPTION': ['oid', 'subdbid', 'subname', 'subowner',
+                               'subenabled', 'subconninfo', 'subslotname'],
+            'PG_STATISTIC': ['starelid', 'staattnum', 'stainherit', 'stanullfrac',
+                            'stawidth', 'stadistinct'],
+            'PG_STATISTIC_EXT': ['oid', 'stxrelid', 'stxname', 'stxnamespace',
+                                'stxowner', 'stxkeys'],
+            'PG_POLICIES': ['oid', 'polname', 'polrelid', 'polcmd',
+                           'polpermissive', 'polroles', 'polqual', 'polwithcheck'],
+            'PG_RULES': ['schemaname', 'tablename', 'rulename', 'definition'],
+            'PG_HBA_FILE_RULES': ['line_number', 'type', 'database', 'user_name',
+                                  'address', 'netmask', 'auth_method'],
+            'PG_FILE_SETTINGS': ['sourcefile', 'sourceline', 'seqno', 'name',
+                                'setting', 'applied', 'error'],
+            'PG_AUTH_MEMBERS': ['member', 'roleid', 'admin_option', 'grantor'],
+            'PG_ROLES': ['oid', 'rolname', 'rolsuper', 'rolinherit', 'rolcreaterole',
+                        'rolcreatedb', 'rolcanlogin', 'rolreplication', 'rolconnlimit',
+                        'rolpassword', 'rolvaliduntil', 'rolbypassrls', 'rolconfig'],
+            'PG_EVENT_TRIGGER': ['oid', 'evtname', 'evtevent', 'evtowner', 'evtfoid',
+                                'evtenabled', 'evttags'],
+            'PG_FOREIGN_DATA_WRAPPER': ['oid', 'fdwname', 'fdwowner', 'fdwhandler',
+                                        'fdwvalidator', 'fdwacl', 'fdwoptions'],
+            'PG_FOREIGN_SERVER': ['oid', 'srvname', 'srvowner', 'srvfdw', 'srvtype',
+                                  'srvversion', 'srvacl', 'srvoptions'],
+            'PG_FOREIGN_TABLE': ['ftrelid', 'ftserver', 'ftoptions'],
+            'PG_EXTENSION': ['oid', 'extname', 'extowner', 'extnamespace', 'extrelocatable',
+                            'extversion', 'extconfig', 'extcondition'],
+            'PG_LANGUAGE': ['oid', 'lanname', 'lanowner', 'lanispl', 'lanpltrusted',
+                           'lanplcallfoid', 'laninline', 'lanvalidator', 'lanacl'],
+            'PG_CAST': ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext',
+                       'castmethod'],
+            'PG_COLLATION': ['oid', 'collname', 'collnamespace', 'collowner', 'collprovider',
+                            'collisdeterministic', 'collencoding', 'collcollate', 'collctype',
+                            'colliculocale', 'collversion'],
+            'PG_INHERITS': ['inhrelid', 'inhparent', 'inhseqno'],
+            'PG_PARTITIONED_TABLE': ['partrelid', 'partstrat', 'partnatts', 'partdefid',
+                                     'partattrs', 'partclass', 'partcollation', 'partexprs'],
+            'PG_RANGE': ['rngtypid', 'rngsubtype', 'rngmultitypid', 'rngcollation',
+                        'rngsubopc', 'rngcanonical', 'rngsubdiff'],
+            'PG_OPERATOR': ['oid', 'oprname', 'oprnamespace', 'oprowner', 'oprkind',
+                           'oprcanmerge', 'oprcanhash', 'oprleft', 'oprright', 'oprresult',
+                           'oprcom', 'oprnegate', 'oprcode', 'oprrest', 'oprjoin'],
+            'PG_OPCLASS': ['oid', 'opcmethod', 'opcname', 'opcnamespace', 'opcowner',
+                          'opcfamily', 'opcintype', 'opcdefault', 'opckeytype'],
+            'PG_OPFAMILY': ['oid', 'opfmethod', 'opfname', 'opfnamespace', 'opfowner'],
+            'PG_AM': ['oid', 'amname', 'amhandler', 'amtype'],
+            'PG_AMOP': ['oid', 'amopfamily', 'amoplefttype', 'amoprighttype', 'amopstrategy',
+                       'amoppurpose', 'amopopr', 'amopmethod', 'amopsortfamily'],
+            'PG_AMPROC': ['oid', 'amprocfamily', 'amproclefttype', 'amprocrighttype',
+                        'amprocnum', 'amproc'],
+            'PG_AGGREGATE': ['aggfnoid', 'aggkind', 'aggnumdirectargs', 'aggtransfn',
+                            'aggfinalfn', 'aggcombinefn', 'aggserialfn', 'aggdeserialfn',
+                            'aggmtransfn', 'aggminvtransfn', 'aggmfinalfn', 'aggfinalextra',
+                            'aggmfinalextra', 'aggfinalmodify', 'aggmfinalmodify',
+                            'aggsortop', 'aggtranstype', 'aggtransspace', 'aggmtranstype',
+                            'aggmtransspace', 'agginitval', 'aggminitval'],
+            'PG_CONVERSION': ['oid', 'conname', 'connamespace', 'conowner', 'conforencoding',
+                             'contoencoding', 'conproc', 'condefault'],
+            'PG_ENUM': ['oid', 'enumtypid', 'enumsortorder', 'enumlabel'],
+            'PG_TRIGGER': ['oid', 'tgrelid', 'tgparentid', 'tgname', 'tgfoid', 'tgtype',
+                          'tgenabled', 'tgisinternal', 'tgconstrrelid', 'tgconstrindid',
+                          'tgconstraint', 'tgdeferrable', 'tginitdeferred', 'tgnargs',
+                          'tgattr', 'tgargs', 'tgqual', 'tgoldtable', 'tgnewtable'],
+            'PG_REWRITE': ['oid', 'rulename', 'ev_class', 'ev_type', 'ev_enabled',
+                          'is_instead', 'ev_qual', 'ev_action'],
+            'PG_POLICY': ['oid', 'polname', 'polrelid', 'polcmd', 'polpermissive',
+                         'polroles', 'polqual', 'polwithcheck'],
+            'PG_SECLABEL': ['objoid', 'classoid', 'objsubid', 'provider', 'label'],
+            'PG_SHSECLABEL': ['objoid', 'classoid', 'provider', 'label'],
+            'PG_TS_CONFIG': ['oid', 'cfgname', 'cfgnamespace', 'cfgowner', 'cfgparser'],
+            'PG_TS_DICT': ['oid', 'dictname', 'dictnamespace', 'dictowner', 'dicttemplate', 'dictinitoption'],
+            'PG_TS_PARSER': ['oid', 'prsname', 'prsnamespace', 'prsstart', 'prstoken', 'prsend', 'prsheadline', 'prslextype'],
+            'PG_TS_TEMPLATE': ['oid', 'tmplname', 'tmplnamespace', 'tmplinit', 'tmpllexize'],
+        }
+
+        # Check if query's PRIMARY table (after FROM, before JOIN) is a missing table
+        # Pattern: FROM [pg_catalog.]table_name [alias]
+        # Use re.IGNORECASE since query_upper is uppercase but pattern has lowercase
+        from_match = re.search(
+            r'\bFROM\s+(?:PG_CATALOG\.)?(\w+)',
+            query_upper
+        )
+
+        if from_match:
+            primary_table = from_match.group(1).upper()  # Normalize to uppercase
+            if primary_table in MISSING_PRIMARY_TABLES:
+                # This is a query with a missing primary table - return empty
+                columns = MISSING_PRIMARY_TABLES[primary_table]
+                extracted = self._expected_result_columns(query)
+                if extracted:
+                    columns = extracted
+                return pd.DataFrame(columns=columns)
+
+        return None
+
+    def _rewrite_missing_table_joins(self, query: str) -> str:
+        """
+        Rewrite queries to handle LEFT JOINs to missing pg_catalog tables.
+
+        When a query has a LEFT JOIN to a table that doesn't exist in DuckDB
+        (like pg_shdescription), we remove the JOIN and replace column references
+        with NULL values.
+        """
+        import re
+
+        # Tables that might appear in JOINs but don't exist in DuckDB
+        # pg_description: object descriptions (tables, columns, etc)
+        # pg_shdescription: shared descriptions (databases, roles)
+        # pg_stat_activity: process/session info
+        MISSING_JOIN_TABLES = [
+            'pg_description',
+            'pg_shdescription',
+            'pg_stat_activity',
+        ]
+
+        result = query
+        for table in MISSING_JOIN_TABLES:
+            # Pattern to match LEFT JOIN to this table with an alias
+            # Example: LEFT JOIN pg_catalog.pg_description d ON (c.oid = d.objoid AND d.objsubid = 0)
+            # Match the JOIN clause until the next major keyword or another JOIN
+            pattern = rf'''(?ix)
+                \s+LEFT\s+(?:OUTER\s+)?JOIN\s+
+                (?:pg_catalog\.)?{table}\s+
+                (\w+)                         # Capture alias
+                \s+ON\s+
+                (?:                           # Match ON condition - handle parens
+                    \([^)]+\)                 # Parenthesized condition
+                    |                         # OR
+                    [^)\s]+\s*=\s*[^)\s]+     # Simple condition
+                    (?:\s+AND\s+[^)\s]+\s*=\s*[^)\s]+)*  # Additional AND clauses
+                )
+            '''
+            match = re.search(pattern, result)
+            if match:
+                alias = match.group(1)
+                # Remove the entire LEFT JOIN clause (use the full match)
+                result = re.sub(pattern, ' ', result)
+                # Replace column references like D.description with NULL
+                # Be careful to only replace the alias, not table names
+                result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result)
+
+        return result
+
+    def _rewrite_missing_pg_database_columns(self, query: str) -> str:
+        """
+        Rewrite queries that reference pg_database columns not in DuckDB.
+
+        DuckDB's pg_database only has: oid, datname
+        PostgreSQL has many more columns that clients query.
+        """
+        import re
+
+        # Map of missing pg_database columns to their default values
+        MISSING_COLUMNS = {
+            'datistemplate': 'false',
+            'datallowconn': 'true',
+            'datconnlimit': '-1',
+            'datlastsysoid': '0',
+            'datfrozenxid': '0',
+            'datminmxid': '0',
+            'dattablespace': '0',
+            'datacl': 'NULL',
+            'datcollate': "'en_US.UTF-8'",
+            'datctype': "'en_US.UTF-8'",
+            'datdba': '1',  # OID of owner
+        }
+
+        result = query
+        for col, default in MISSING_COLUMNS.items():
+            # Replace column reference with default value (preserve alias if any)
+            # Pattern: N.datistemplate or datistemplate (standalone)
+            result = re.sub(rf'(?i)\b(\w+\.)?{col}\b', default, result)
+
+        return result
 
     def _rewrite_information_schema_catalog_filters(self, query: str) -> str:
         """
@@ -559,6 +844,22 @@ class ClientConnection:
             return 'object'
 
         return pd.DataFrame({c: pd.Series([], dtype=dtype_for(c)) for c in columns})
+
+    def _validate_custom_handler_columns(self, portal_name: str, actual_col_count: int, handler_name: str) -> bool:
+        """
+        Validate that a custom Execute handler returns the same column count as Describe.
+        Returns True if columns match or if validation cannot be performed, False if mismatch.
+        """
+        if portal_name not in self.portals:
+            return True
+        portal = self.portals[portal_name]
+        described_col_count = portal.get('described_columns')
+        if described_col_count is None:
+            return True
+        if described_col_count != actual_col_count:
+            print(f"[{self.session_id}]      ⚠️  {handler_name}: Column count mismatch! described {described_col_count}, returning {actual_col_count}")
+            return False
+        return True
 
     def _create_attachments_metadata_table(self):
         """
@@ -1638,6 +1939,938 @@ class ClientConnection:
             except Exception as e:
                 pass
 
+            # =========================================================
+            # DataGrip introspection functions
+            # =========================================================
+
+            # pg_get_userbyid(oid) - Get username by OID
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_userbyid(user_oid) AS
+                        CASE WHEN user_oid = 0 THEN 'postgres'
+                             WHEN user_oid = 10 THEN 'rvbbit'
+                             ELSE 'user_' || COALESCE(user_oid::VARCHAR, '0')
+                        END
+                """)
+                stubs_created.append("pg_get_userbyid()")
+            except Exception as e:
+                pass
+
+            # pg_get_expr(expr_text, relid) - Get expression text (return as-is)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_expr(expr_text, relid) AS
+                        COALESCE(expr_text::VARCHAR, '')
+                """)
+                stubs_created.append("pg_get_expr()")
+            except Exception as e:
+                pass
+
+            # pg_get_expr with 3 args (expr_text, relid, pretty_bool)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_expr(expr_text, relid, pretty) AS
+                        COALESCE(expr_text::VARCHAR, '')
+                """)
+            except Exception as e:
+                pass
+
+            # pg_encoding_to_char(encoding_int) - Get encoding name
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_encoding_to_char(enc) AS
+                        CASE WHEN enc = 6 THEN 'UTF8'
+                             WHEN enc = 0 THEN 'SQL_ASCII'
+                             ELSE 'UTF8'
+                        END
+                """)
+                stubs_created.append("pg_encoding_to_char()")
+            except Exception as e:
+                pass
+
+            # pg_tablespace_location(oid) - Get tablespace location
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_tablespace_location(ts_oid) AS ''
+                """)
+                stubs_created.append("pg_tablespace_location()")
+            except Exception as e:
+                pass
+
+            # format_type(type_oid, typemod) - Format type for display
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.format_type(type_oid, typemod) AS
+                        CASE
+                            WHEN type_oid = 16 THEN 'boolean'
+                            WHEN type_oid = 17 THEN 'bytea'
+                            WHEN type_oid = 18 THEN 'char'
+                            WHEN type_oid = 19 THEN 'name'
+                            WHEN type_oid = 20 THEN 'bigint'
+                            WHEN type_oid = 21 THEN 'smallint'
+                            WHEN type_oid = 23 THEN 'integer'
+                            WHEN type_oid = 25 THEN 'text'
+                            WHEN type_oid = 26 THEN 'oid'
+                            WHEN type_oid = 114 THEN 'json'
+                            WHEN type_oid = 700 THEN 'real'
+                            WHEN type_oid = 701 THEN 'double precision'
+                            WHEN type_oid = 1043 THEN 'character varying'
+                            WHEN type_oid = 1082 THEN 'date'
+                            WHEN type_oid = 1083 THEN 'time'
+                            WHEN type_oid = 1114 THEN 'timestamp'
+                            WHEN type_oid = 1184 THEN 'timestamp with time zone'
+                            WHEN type_oid = 2950 THEN 'uuid'
+                            WHEN type_oid = 3802 THEN 'jsonb'
+                            ELSE 'unknown'
+                        END
+                """)
+                stubs_created.append("format_type()")
+            except Exception as e:
+                pass
+
+            # pg_get_constraintdef(constraint_oid) - Get constraint definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_constraintdef(con_oid) AS ''
+                """)
+                stubs_created.append("pg_get_constraintdef()")
+            except Exception as e:
+                pass
+
+            # pg_get_constraintdef with pretty flag
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_constraintdef(con_oid, pretty) AS ''
+                """)
+            except Exception as e:
+                pass
+
+            # pg_get_indexdef(index_oid) - Get index definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_indexdef(idx_oid) AS ''
+                """)
+                stubs_created.append("pg_get_indexdef()")
+            except Exception as e:
+                pass
+
+            # pg_get_indexdef with column number
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_indexdef(idx_oid, col_num, pretty) AS ''
+                """)
+            except Exception as e:
+                pass
+
+            # pg_relation_size(oid) - Get relation size in bytes
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_relation_size(rel_oid) AS 0::BIGINT
+                """)
+                stubs_created.append("pg_relation_size()")
+            except Exception as e:
+                pass
+
+            # pg_table_size(oid) - Get table size including indexes
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_table_size(rel_oid) AS 0::BIGINT
+                """)
+                stubs_created.append("pg_table_size()")
+            except Exception as e:
+                pass
+
+            # pg_total_relation_size(oid) - Get total relation size
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_total_relation_size(rel_oid) AS 0::BIGINT
+                """)
+                stubs_created.append("pg_total_relation_size()")
+            except Exception as e:
+                pass
+
+            # pg_size_pretty(size) - Format size as human-readable
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_size_pretty(size_bytes) AS
+                        CASE
+                            WHEN size_bytes >= 1099511627776 THEN ROUND(size_bytes / 1099511627776.0, 1)::VARCHAR || ' TB'
+                            WHEN size_bytes >= 1073741824 THEN ROUND(size_bytes / 1073741824.0, 1)::VARCHAR || ' GB'
+                            WHEN size_bytes >= 1048576 THEN ROUND(size_bytes / 1048576.0, 1)::VARCHAR || ' MB'
+                            WHEN size_bytes >= 1024 THEN ROUND(size_bytes / 1024.0, 1)::VARCHAR || ' kB'
+                            ELSE size_bytes::VARCHAR || ' bytes'
+                        END
+                """)
+                stubs_created.append("pg_size_pretty()")
+            except Exception as e:
+                pass
+
+            # pg_get_partkeydef(oid) - Get partition key definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_partkeydef(rel_oid) AS ''
+                """)
+                stubs_created.append("pg_get_partkeydef()")
+            except Exception as e:
+                pass
+
+            # obj_description(oid, catalog) - Get object description
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.obj_description(obj_oid, catalog_name) AS NULL::VARCHAR
+                """)
+                stubs_created.append("obj_description()")
+            except Exception as e:
+                pass
+
+            # col_description(table_oid, column_num) - Get column description
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.col_description(rel_oid, col_num) AS NULL::VARCHAR
+                """)
+                stubs_created.append("col_description()")
+            except Exception as e:
+                pass
+
+            # shobj_description(oid, catalog) - Get shared object description
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.shobj_description(obj_oid, catalog_name) AS NULL::VARCHAR
+                """)
+                stubs_created.append("shobj_description()")
+            except Exception as e:
+                pass
+
+            # pg_has_role(user, role, privilege) - Check role membership
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_has_role(user_oid, role_oid, priv) AS true
+                """)
+                stubs_created.append("pg_has_role()")
+            except Exception as e:
+                pass
+
+            # has_table_privilege variants
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.has_table_privilege(table_oid, priv) AS true
+                """)
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.has_table_privilege(user_name, table_oid, priv) AS true
+                """)
+                stubs_created.append("has_table_privilege()")
+            except Exception as e:
+                pass
+
+            # has_schema_privilege variants
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.has_schema_privilege(schema_oid, priv) AS true
+                """)
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.has_schema_privilege(user_name, schema_oid, priv) AS true
+                """)
+                stubs_created.append("has_schema_privilege()")
+            except Exception as e:
+                pass
+
+            # pg_get_serial_sequence(table, column) - Get sequence for serial column
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_serial_sequence(tab_name, col_name) AS NULL::VARCHAR
+                """)
+                stubs_created.append("pg_get_serial_sequence()")
+            except Exception as e:
+                pass
+
+            # current_setting(name) - Get configuration setting
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.current_setting(setting_name) AS
+                        CASE
+                            WHEN setting_name = 'server_version' THEN '14.0'
+                            WHEN setting_name = 'server_version_num' THEN '140000'
+                            WHEN setting_name = 'standard_conforming_strings' THEN 'on'
+                            WHEN setting_name = 'client_encoding' THEN 'UTF8'
+                            WHEN setting_name = 'DateStyle' THEN 'ISO, MDY'
+                            WHEN setting_name = 'TimeZone' THEN 'UTC'
+                            WHEN setting_name = 'search_path' THEN 'main, pg_catalog'
+                            ELSE ''
+                        END
+                """)
+                stubs_created.append("current_setting()")
+            except Exception as e:
+                pass
+
+            # current_setting with missing_ok flag
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.current_setting(setting_name, missing_ok) AS
+                        CASE
+                            WHEN setting_name = 'server_version' THEN '14.0'
+                            WHEN setting_name = 'server_version_num' THEN '140000'
+                            WHEN setting_name = 'standard_conforming_strings' THEN 'on'
+                            WHEN setting_name = 'client_encoding' THEN 'UTF8'
+                            ELSE ''
+                        END
+                """)
+            except Exception as e:
+                pass
+
+            # pg_postmaster_start_time() - Get server start time
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_postmaster_start_time() AS NOW()
+                """)
+                stubs_created.append("pg_postmaster_start_time()")
+            except Exception as e:
+                pass
+
+            # version() - Get PostgreSQL version string (avoid mentioning DuckDB to prevent IDE mode switching)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.version() AS
+                        'PostgreSQL 14.0 on x86_64-pc-linux-gnu, compiled by gcc'
+                """)
+                stubs_created.append("version()")
+            except Exception as e:
+                pass
+
+            # pg_get_viewdef(oid) - Get view definition (return empty string)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_viewdef(view_oid) AS ''
+                """)
+                stubs_created.append("pg_get_viewdef()")
+            except Exception as e:
+                pass
+
+            # pg_get_viewdef with pretty flag
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_viewdef(view_oid, pretty) AS ''
+                """)
+            except Exception as e:
+                pass
+
+            # pg_get_functiondef(oid) - Get function definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_functiondef(func_oid) AS ''
+                """)
+                stubs_created.append("pg_get_functiondef()")
+            except Exception as e:
+                pass
+
+            # pg_get_triggerdef(oid) - Get trigger definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_triggerdef(trig_oid) AS ''
+                """)
+                stubs_created.append("pg_get_triggerdef()")
+            except Exception as e:
+                pass
+
+            # pg_get_triggerdef with pretty flag
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_triggerdef(trig_oid, pretty) AS ''
+                """)
+            except Exception as e:
+                pass
+
+            # pg_get_ruledef(oid) - Get rule definition
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_ruledef(rule_oid) AS ''
+                """)
+                stubs_created.append("pg_get_ruledef()")
+            except Exception as e:
+                pass
+
+            # pg_get_ruledef with pretty flag
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.pg_get_ruledef(rule_oid, pretty) AS ''
+                """)
+            except Exception as e:
+                pass
+
+            # age(timestamp) - Calculate age from timestamp (return interval-like string)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.age(ts) AS
+                        CASE
+                            WHEN ts IS NULL THEN NULL
+                            ELSE (NOW() - ts::TIMESTAMP)::VARCHAR
+                        END
+                """)
+                stubs_created.append("age()")
+            except Exception as e:
+                pass
+
+            # age(timestamp, timestamp) - Calculate age between two timestamps
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO pg_catalog.age(ts1, ts2) AS
+                        CASE
+                            WHEN ts1 IS NULL OR ts2 IS NULL THEN NULL
+                            ELSE (ts1::TIMESTAMP - ts2::TIMESTAMP)::VARCHAR
+                        END
+                """)
+            except Exception as e:
+                pass
+
+            # age(integer) - For xmin/oid values, return 0 (used by DataGrip for state tracking)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO age(xmin_val) AS 0::INTEGER
+                """)
+            except Exception as e:
+                pass
+
+            # quote_ident(text) - Quote an identifier (DataGrip uses this extensively)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO quote_ident(ident) AS
+                        '"' || REPLACE(ident::VARCHAR, '"', '""') || '"'
+                """)
+                stubs_created.append("quote_ident()")
+            except Exception as e:
+                pass
+
+            # quote_literal(text) - Quote a literal string
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO quote_literal(lit) AS
+                        '''' || REPLACE(lit::VARCHAR, '''', '''''') || ''''
+                """)
+                stubs_created.append("quote_literal()")
+            except Exception as e:
+                pass
+
+            # translate(text, from, to) - Translate characters (like tr command)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO translate(str, from_chars, to_chars) AS
+                        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(str::VARCHAR,
+                            substr(from_chars, 1, 1), substr(to_chars || '', 1, 1)),
+                            substr(from_chars, 2, 1), substr(to_chars || '', 2, 1)),
+                            substr(from_chars, 3, 1), substr(to_chars || '', 3, 1)),
+                            substr(from_chars, 4, 1), substr(to_chars || '', 4, 1)),
+                            substr(from_chars, 5, 1), substr(to_chars || '', 5, 1)),
+                            substr(from_chars, 6, 1), substr(to_chars || '', 6, 1))
+                """)
+                stubs_created.append("translate()")
+            except Exception as e:
+                pass
+
+            # array_length(array, dimension) - Get array length
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE MACRO array_length(arr, dim) AS
+                        len(arr)
+                """)
+                stubs_created.append("array_length()")
+            except Exception as e:
+                pass
+
+            # =========================================================
+            # Stub views for pg_catalog tables DataGrip needs
+            # =========================================================
+
+            # pg_tablespace - tablespace info
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_tablespace AS
+                    SELECT
+                        0::INTEGER as oid,
+                        'pg_default'::VARCHAR as spcname,
+                        10::INTEGER as spcowner,
+                        NULL::VARCHAR[] as spcacl,
+                        NULL::VARCHAR[] as spcoptions
+                """)
+                stubs_created.append("pg_tablespace")
+            except Exception as e:
+                pass
+
+            # pg_am - access methods (index types)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_am AS
+                    SELECT 403::INTEGER as oid, 'btree'::VARCHAR as amname, 'i'::CHAR as amtype, 5::INTEGER as amstrategies, 0::INTEGER as amsupport
+                    UNION ALL SELECT 405, 'hash', 'i', 1, 0
+                    UNION ALL SELECT 783, 'gist', 'i', 0, 0
+                    UNION ALL SELECT 2742, 'gin', 'i', 0, 0
+                """)
+                stubs_created.append("pg_am")
+            except Exception as e:
+                pass
+
+            # pg_constraint - constraints (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_constraint AS
+                    SELECT
+                        0::INTEGER as oid,
+                        ''::VARCHAR as conname,
+                        0::INTEGER as connamespace,
+                        ''::CHAR as contype,
+                        false::BOOLEAN as condeferrable,
+                        false::BOOLEAN as condeferred,
+                        true::BOOLEAN as convalidated,
+                        0::INTEGER as conrelid,
+                        0::INTEGER as contypid,
+                        0::INTEGER as conindid,
+                        0::INTEGER as conparentid,
+                        0::INTEGER as confrelid,
+                        ''::CHAR as confupdtype,
+                        ''::CHAR as confdeltype,
+                        ''::CHAR as confmatchtype,
+                        true::BOOLEAN as conislocal,
+                        0::INTEGER as coninhcount,
+                        false::BOOLEAN as connoinherit,
+                        NULL::INTEGER[] as conkey,
+                        NULL::INTEGER[] as confkey,
+                        NULL::INTEGER[] as conpfeqop,
+                        NULL::INTEGER[] as conppeqop,
+                        NULL::INTEGER[] as conffeqop,
+                        NULL::INTEGER[] as conexclop,
+                        NULL::VARCHAR as conbin
+                    WHERE false
+                """)
+                stubs_created.append("pg_constraint")
+            except Exception as e:
+                pass
+
+            # pg_index - index info (empty stub, DuckDB has its own)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_index AS
+                    SELECT
+                        0::INTEGER as indexrelid,
+                        0::INTEGER as indrelid,
+                        0::SMALLINT as indnatts,
+                        0::SMALLINT as indnkeyatts,
+                        false::BOOLEAN as indisunique,
+                        false::BOOLEAN as indisprimary,
+                        false::BOOLEAN as indisexclusion,
+                        true::BOOLEAN as indimmediate,
+                        false::BOOLEAN as indisclustered,
+                        true::BOOLEAN as indisvalid,
+                        false::BOOLEAN as indcheckxmin,
+                        true::BOOLEAN as indisready,
+                        true::BOOLEAN as indislive,
+                        false::BOOLEAN as indisreplident,
+                        NULL::INTEGER[] as indkey,
+                        NULL::INTEGER[] as indcollation,
+                        NULL::INTEGER[] as indclass,
+                        NULL::INTEGER[] as indoption,
+                        NULL::VARCHAR as indexprs,
+                        NULL::VARCHAR as indpred
+                    WHERE false
+                """)
+                stubs_created.append("pg_index")
+            except Exception as e:
+                pass
+
+            # pg_depend - object dependencies (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_depend AS
+                    SELECT
+                        0::INTEGER as classid,
+                        0::INTEGER as objid,
+                        0::INTEGER as objsubid,
+                        0::INTEGER as refclassid,
+                        0::INTEGER as refobjid,
+                        0::INTEGER as refobjsubid,
+                        'n'::CHAR as deptype
+                    WHERE false
+                """)
+                stubs_created.append("pg_depend")
+            except Exception as e:
+                pass
+
+            # pg_description - object descriptions/comments (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_description AS
+                    SELECT
+                        0::INTEGER as objoid,
+                        0::INTEGER as classoid,
+                        0::INTEGER as objsubid,
+                        ''::VARCHAR as description
+                    WHERE false
+                """)
+                stubs_created.append("pg_description")
+            except Exception as e:
+                pass
+
+            # pg_shdescription - shared object descriptions (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_shdescription AS
+                    SELECT
+                        0::INTEGER as objoid,
+                        0::INTEGER as classoid,
+                        ''::VARCHAR as description
+                    WHERE false
+                """)
+                stubs_created.append("pg_shdescription")
+            except Exception as e:
+                pass
+
+            # pg_extension - extensions (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_extension AS
+                    SELECT
+                        0::INTEGER as oid,
+                        'plpgsql'::VARCHAR as extname,
+                        10::INTEGER as extowner,
+                        11::INTEGER as extnamespace,
+                        false::BOOLEAN as extrelocatable,
+                        '1.0'::VARCHAR as extversion,
+                        NULL::INTEGER[] as extconfig,
+                        NULL::VARCHAR[] as extcondition
+                """)
+                stubs_created.append("pg_extension")
+            except Exception as e:
+                pass
+
+            # pg_trigger - triggers (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_trigger AS
+                    SELECT
+                        0::INTEGER as oid,
+                        0::INTEGER as tgrelid,
+                        0::INTEGER as tgparentid,
+                        ''::VARCHAR as tgname,
+                        0::INTEGER as tgfoid,
+                        0::SMALLINT as tgtype,
+                        ''::CHAR as tgenabled,
+                        false::BOOLEAN as tgisinternal,
+                        0::INTEGER as tgconstrrelid,
+                        0::INTEGER as tgconstrindid,
+                        0::INTEGER as tgconstraint,
+                        false::BOOLEAN as tgdeferrable,
+                        false::BOOLEAN as tginitdeferred,
+                        0::SMALLINT as tgnargs,
+                        NULL::INTEGER[] as tgattr,
+                        NULL::BYTEA as tgargs,
+                        NULL::VARCHAR as tgqual,
+                        NULL::VARCHAR as tgoldtable,
+                        NULL::VARCHAR as tgnewtable
+                    WHERE false
+                """)
+                stubs_created.append("pg_trigger")
+            except Exception as e:
+                pass
+
+            # pg_policy - row-level security policies (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_policy AS
+                    SELECT
+                        0::INTEGER as oid,
+                        ''::VARCHAR as polname,
+                        0::INTEGER as polrelid,
+                        ''::CHAR as polcmd,
+                        false::BOOLEAN as polpermissive,
+                        NULL::INTEGER[] as polroles,
+                        NULL::VARCHAR as polqual,
+                        NULL::VARCHAR as polwithcheck
+                    WHERE false
+                """)
+                stubs_created.append("pg_policy")
+            except Exception as e:
+                pass
+
+            # pg_inherits - table inheritance (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_inherits AS
+                    SELECT
+                        0::INTEGER as inhrelid,
+                        0::INTEGER as inhparent,
+                        0::INTEGER as inhseqno,
+                        false::BOOLEAN as inhdetachpending
+                    WHERE false
+                """)
+                stubs_created.append("pg_inherits")
+            except Exception as e:
+                pass
+
+            # pg_rewrite - query rewrite rules (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_rewrite AS
+                    SELECT
+                        0::INTEGER as oid,
+                        ''::VARCHAR as rulename,
+                        0::INTEGER as ev_class,
+                        ''::CHAR as ev_type,
+                        ''::CHAR as ev_enabled,
+                        false::BOOLEAN as is_instead,
+                        NULL::VARCHAR as ev_qual,
+                        NULL::VARCHAR as ev_action
+                    WHERE false
+                """)
+                stubs_created.append("pg_rewrite")
+            except Exception as e:
+                pass
+
+            # pg_collation - collation info
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_collation AS
+                    SELECT
+                        100::INTEGER as oid,
+                        'default'::VARCHAR as collname,
+                        11::INTEGER as collnamespace,
+                        10::INTEGER as collowner,
+                        'd'::CHAR as collprovider,
+                        true::BOOLEAN as collisdeterministic,
+                        -1::INTEGER as collencoding,
+                        'en_US.UTF-8'::VARCHAR as collcollate,
+                        'en_US.UTF-8'::VARCHAR as collctype,
+                        NULL::VARCHAR as collversion
+                """)
+                stubs_created.append("pg_collation")
+            except Exception as e:
+                pass
+
+            # pg_enum - enum types (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_enum AS
+                    SELECT
+                        0::INTEGER as oid,
+                        0::INTEGER as enumtypid,
+                        0::REAL as enumsortorder,
+                        ''::VARCHAR as enumlabel
+                    WHERE false
+                """)
+                stubs_created.append("pg_enum")
+            except Exception as e:
+                pass
+
+            # pg_cast - type casts (minimal stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_cast AS
+                    SELECT
+                        0::INTEGER as oid,
+                        0::INTEGER as castsource,
+                        0::INTEGER as casttarget,
+                        0::INTEGER as castfunc,
+                        'e'::CHAR as castcontext,
+                        'f'::CHAR as castmethod
+                    WHERE false
+                """)
+                stubs_created.append("pg_cast")
+            except Exception as e:
+                pass
+
+            # pg_foreign_server - foreign servers (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_foreign_server AS
+                    SELECT
+                        0::INTEGER as oid,
+                        ''::VARCHAR as srvname,
+                        10::INTEGER as srvowner,
+                        0::INTEGER as srvfdw,
+                        ''::VARCHAR as srvtype,
+                        ''::VARCHAR as srvversion,
+                        NULL::VARCHAR[] as srvacl,
+                        NULL::VARCHAR[] as srvoptions
+                    WHERE false
+                """)
+                stubs_created.append("pg_foreign_server")
+            except Exception as e:
+                pass
+
+            # pg_foreign_table - foreign tables (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_foreign_table AS
+                    SELECT
+                        0::INTEGER as ftrelid,
+                        0::INTEGER as ftserver,
+                        NULL::VARCHAR[] as ftoptions
+                    WHERE false
+                """)
+                stubs_created.append("pg_foreign_table")
+            except Exception as e:
+                pass
+
+            # pg_matviews - materialized views (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_matviews AS
+                    SELECT
+                        ''::VARCHAR as schemaname,
+                        ''::VARCHAR as matviewname,
+                        ''::VARCHAR as matviewowner,
+                        ''::VARCHAR as tablespace,
+                        false::BOOLEAN as hasindexes,
+                        false::BOOLEAN as ispopulated,
+                        ''::VARCHAR as definition
+                    WHERE false
+                """)
+                stubs_created.append("pg_matviews")
+            except Exception as e:
+                pass
+
+            # pg_sequences - sequences (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_sequences AS
+                    SELECT
+                        ''::VARCHAR as schemaname,
+                        ''::VARCHAR as sequencename,
+                        ''::VARCHAR as sequenceowner,
+                        0::INTEGER as data_type,
+                        1::BIGINT as start_value,
+                        1::BIGINT as min_value,
+                        9223372036854775807::BIGINT as max_value,
+                        1::BIGINT as increment_by,
+                        false::BOOLEAN as cycle,
+                        50::BIGINT as cache_size,
+                        NULL::BIGINT as last_value
+                    WHERE false
+                """)
+                stubs_created.append("pg_sequences")
+            except Exception as e:
+                pass
+
+            # pg_statio_user_tables - table I/O stats (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_statio_user_tables AS
+                    SELECT
+                        0::INTEGER as relid,
+                        ''::VARCHAR as schemaname,
+                        ''::VARCHAR as relname,
+                        0::BIGINT as heap_blks_read,
+                        0::BIGINT as heap_blks_hit,
+                        0::BIGINT as idx_blks_read,
+                        0::BIGINT as idx_blks_hit,
+                        0::BIGINT as toast_blks_read,
+                        0::BIGINT as toast_blks_hit,
+                        0::BIGINT as tidx_blks_read,
+                        0::BIGINT as tidx_blks_hit
+                    WHERE false
+                """)
+                stubs_created.append("pg_statio_user_tables")
+            except Exception as e:
+                pass
+
+            # pg_stat_user_tables - table stats (empty stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_stat_user_tables AS
+                    SELECT
+                        0::INTEGER as relid,
+                        ''::VARCHAR as schemaname,
+                        ''::VARCHAR as relname,
+                        0::BIGINT as seq_scan,
+                        0::BIGINT as seq_tup_read,
+                        0::BIGINT as idx_scan,
+                        0::BIGINT as idx_tup_fetch,
+                        0::BIGINT as n_tup_ins,
+                        0::BIGINT as n_tup_upd,
+                        0::BIGINT as n_tup_del,
+                        0::BIGINT as n_tup_hot_upd,
+                        0::BIGINT as n_live_tup,
+                        0::BIGINT as n_dead_tup,
+                        0::BIGINT as n_mod_since_analyze,
+                        0::BIGINT as n_ins_since_vacuum,
+                        NULL::TIMESTAMP as last_vacuum,
+                        NULL::TIMESTAMP as last_autovacuum,
+                        NULL::TIMESTAMP as last_analyze,
+                        NULL::TIMESTAMP as last_autoanalyze,
+                        0::BIGINT as vacuum_count,
+                        0::BIGINT as autovacuum_count,
+                        0::BIGINT as analyze_count,
+                        0::BIGINT as autoanalyze_count
+                    WHERE false
+                """)
+                stubs_created.append("pg_stat_user_tables")
+            except Exception as e:
+                pass
+
+            # pg_language - procedural languages (stub with common languages)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_language AS
+                    SELECT
+                        oid::INTEGER as oid,
+                        lanname::VARCHAR as lanname,
+                        lanowner::INTEGER as lanowner,
+                        lanispl::BOOLEAN as lanispl,
+                        lanpltrusted::BOOLEAN as lanpltrusted,
+                        lanplcallfoid::INTEGER as lanplcallfoid,
+                        laninline::INTEGER as laninline,
+                        lanvalidator::INTEGER as lanvalidator,
+                        lanacl::VARCHAR as lanacl
+                    FROM (
+                        SELECT 12 as oid, 'internal' as lanname, 10 as lanowner, false as lanispl, false as lanpltrusted, 0 as lanplcallfoid, 0 as laninline, 0 as lanvalidator, NULL as lanacl
+                        UNION ALL
+                        SELECT 13 as oid, 'c' as lanname, 10 as lanowner, false as lanispl, false as lanpltrusted, 0 as lanplcallfoid, 0 as laninline, 0 as lanvalidator, NULL as lanacl
+                        UNION ALL
+                        SELECT 14 as oid, 'sql' as lanname, 10 as lanowner, false as lanispl, true as lanpltrusted, 0 as lanplcallfoid, 0 as laninline, 0 as lanvalidator, NULL as lanacl
+                        UNION ALL
+                        SELECT 13346 as oid, 'plpgsql' as lanname, 10 as lanowner, true as lanispl, true as lanpltrusted, 0 as lanplcallfoid, 0 as laninline, 0 as lanvalidator, NULL as lanacl
+                    ) _pg_language_data
+                """)
+                stubs_created.append("pg_language")
+            except Exception as e:
+                pass
+
+            # pg_proc - procedures/functions (minimal stub)
+            try:
+                self.duckdb_conn.execute("""
+                    CREATE OR REPLACE VIEW pg_catalog.pg_proc AS
+                    SELECT
+                        0::INTEGER as oid,
+                        ''::VARCHAR as proname,
+                        0::INTEGER as pronamespace,
+                        0::INTEGER as proowner,
+                        0::INTEGER as prolang,
+                        0::DOUBLE as procost,
+                        0::DOUBLE as prorows,
+                        0::INTEGER as provariadic,
+                        ''::VARCHAR as prosupport,
+                        ''::VARCHAR as prokind,
+                        false::BOOLEAN as prosecdef,
+                        false::BOOLEAN as proleakproof,
+                        false::BOOLEAN as proisstrict,
+                        false::BOOLEAN as proretset,
+                        ''::VARCHAR as provolatile,
+                        ''::VARCHAR as proparallel,
+                        0::INTEGER as pronargs,
+                        0::INTEGER as pronargdefaults,
+                        0::INTEGER as prorettype,
+                        NULL::INTEGER[] as proargtypes,
+                        NULL::INTEGER[] as proallargtypes,
+                        NULL::VARCHAR[] as proargmodes,
+                        NULL::VARCHAR[] as proargnames,
+                        NULL::VARCHAR as proargdefaults,
+                        NULL::INTEGER[] as protrftypes,
+                        ''::VARCHAR as prosrc,
+                        ''::VARCHAR as probin,
+                        NULL::VARCHAR[] as proconfig,
+                        NULL::VARCHAR as proacl
+                    WHERE false
+                """)
+                stubs_created.append("pg_proc")
+            except Exception as e:
+                pass
+
             if stubs_created:
                 print(f"[{self.session_id}]   ✅ Created PG compat stubs: {', '.join(stubs_created)}")
 
@@ -2356,64 +3589,74 @@ class ClientConnection:
 
             # PRIORITY: pg_namespace queries FIRST (before CURRENT_SCHEMA which they may contain)
             # DataGrip schema listing queries contain current_schema() but need full schema list
-            if 'PG_NAMESPACE' in query_upper and 'FROM' in query_upper:
+            # BUT: Don't handle if pg_class is the main table (pg_namespace might just be in a JOIN)
+            is_pg_class_main = 'FROM PG_CATALOG.PG_CLASS' in query_upper or 'FROM PG_CLASS' in query_upper
+            is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
+
+            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_namespace query for schema browser...")
                 try:
-                    # Prefer DuckDB's built-in pg_catalog when possible (keeps types and OIDs consistent)
-                    try:
-                        direct_df = self.duckdb_conn.execute(self._rewrite_pg_catalog_function_calls(query)).fetchdf()
-                        send_query_results(self.sock, direct_df, self.transaction_status)
-                        print(f"[{self.session_id}]   ✅ pg_namespace executed natively ({len(direct_df)} rows)")
-                        return
-                    except Exception:
-                        pass
+                    # Get expected columns from the query
+                    expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+                    print(f"[{self.session_id}]      Expected columns: {expected_cols}")
 
-                    # DataGrip's schema browser query references columns DuckDB doesn't expose
-                    # on pg_namespace (e.g., xmin). Provide a compatible projection while
-                    # preserving DuckDB's *real* schema OIDs so joins against pg_class work.
+                    # Get schema data from DuckDB's pg_catalog
                     schema_rows = self.duckdb_conn.execute(
                         "SELECT oid, nspname, nspowner FROM pg_catalog.pg_namespace"
                     ).fetchdf()
 
-                    # Shape to match common DataGrip query:
-                    #   N.oid::bigint as id,
-                    #   N.xmin as state_number,
-                    #   nspname as name,
-                    #   D.description,
-                    #   pg_get_userbyid(N.nspowner) as owner
-                    result_df = pd.DataFrame({
-                        'id': schema_rows['oid'].astype('int64'),
-                        'state_number': 0,
-                        'name': schema_rows['nspname'].astype(str),
-                        'description': None,
-                        'owner': self.user_name,
-                    })
+                    # Build result with columns matching what the query asked for
+                    result_data = []
+                    for _, row in schema_rows.iterrows():
+                        row_dict = {}
+                        for col in expected_cols:
+                            col_lower = col.lower()
+                            if col_lower in ('id', 'oid'):
+                                row_dict[col] = int(row['oid'])
+                            elif col_lower in ('state_number', 'xmin'):
+                                row_dict[col] = 0
+                            elif col_lower in ('name', 'nspname', 'schema_name'):
+                                row_dict[col] = str(row['nspname'])
+                            elif col_lower == 'description':
+                                row_dict[col] = None
+                            elif col_lower in ('owner', 'nspowner'):
+                                row_dict[col] = self.user_name
+                            else:
+                                row_dict[col] = None
+                        result_data.append(row_dict)
 
-                    # Ensure pg_catalog + information_schema appear (some clients expect them)
-                    existing = set(result_df['name'].tolist())
-                    if 'pg_catalog' not in existing:
-                        result_df = pd.concat([result_df, pd.DataFrame([{
-                            'id': 11,
-                            'state_number': 0,
-                            'name': 'pg_catalog',
-                            'description': 'System catalog',
-                            'owner': self.user_name,
-                        }])], ignore_index=True)
-                    if 'information_schema' not in existing:
-                        result_df = pd.concat([result_df, pd.DataFrame([{
-                            'id': 12,
-                            'state_number': 0,
-                            'name': 'information_schema',
-                            'description': 'Information schema',
-                            'owner': self.user_name,
-                        }])], ignore_index=True)
+                    result_df = pd.DataFrame(result_data, columns=expected_cols)
 
-                    result_df = result_df.sort_values('name').reset_index(drop=True)
+                    # Find the name column for sorting and deduplication
+                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), expected_cols[0])
+
+                    # Ensure pg_catalog + information_schema appear
+                    existing = set(result_df[name_col].tolist()) if len(result_df) > 0 else set()
+                    for schema_name, schema_id, desc in [('pg_catalog', 11, 'System catalog'), ('information_schema', 12, 'Information schema')]:
+                        if schema_name not in existing:
+                            new_row = {}
+                            for col in expected_cols:
+                                col_lower = col.lower()
+                                if col_lower in ('id', 'oid'):
+                                    new_row[col] = schema_id
+                                elif col_lower in ('state_number', 'xmin'):
+                                    new_row[col] = 0
+                                elif col_lower in ('name', 'nspname', 'schema_name'):
+                                    new_row[col] = schema_name
+                                elif col_lower == 'description':
+                                    new_row[col] = desc
+                                elif col_lower in ('owner', 'nspowner'):
+                                    new_row[col] = self.user_name
+                                else:
+                                    new_row[col] = None
+                            result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
+
+                    result_df = result_df.sort_values(name_col).reset_index(drop=True)
 
                     # Debug: show what schemas we found
-                    print(f"[{self.session_id}]   📋 Schemas found:")
+                    print(f"[{self.session_id}]   📋 Schemas found ({len(result_df)}):")
                     for _, row in result_df.head(10).iterrows():
-                        print(f"[{self.session_id}]      - {row['name']} (id={row['id']})")
+                        print(f"[{self.session_id}]      - {row.get(name_col, row.iloc[0])}")
 
                     send_query_results(self.sock, result_df, self.transaction_status)
                     print(f"[{self.session_id}]   ✅ pg_namespace handled ({len(result_df)} schemas)")
@@ -2453,14 +3696,8 @@ class ClientConnection:
                 return
 
             if 'VERSION()' in query_upper:
-                # Get DuckDB version
-                try:
-                    import duckdb
-                    duckdb_version = duckdb.__version__
-                except Exception:
-                    duckdb_version = "unknown"
-
-                version_str = f"RVBBIT 0.1 PGwire (DuckDB {duckdb_version} engine, PG 14.0 compat)"
+                # Return PostgreSQL-compatible version string (avoid mentioning DuckDB to prevent IDE mode switching)
+                version_str = "PostgreSQL 14.0 on x86_64-pc-linux-gnu, compiled by gcc"
                 result_df = pd.DataFrame({'version': [version_str]})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ VERSION() → {version_str}")
@@ -2565,24 +3802,25 @@ class ClientConnection:
             if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_roles query...")
                 cols = self._expected_result_columns(query) or ['role_id', 'role_name']
+                # Use 1/0 for booleans - JDBC expects integers for these fields
                 base = {
                     'role_id': 1,
                     'id': 1,
                     'oid': 1,
                     'rolname': self.user_name,
                     'role_name': self.user_name,
-                    'is_super': True,
-                    'rolsuper': True,
-                    'is_inherit': True,
-                    'rolinherit': True,
-                    'can_createrole': True,
-                    'rolcreaterole': True,
-                    'can_createdb': True,
-                    'rolcreatedb': True,
-                    'can_login': True,
-                    'rolcanlogin': True,
-                    'rolreplication': False,
-                    'rolbypassrls': False,
+                    'is_super': 1,
+                    'rolsuper': 1,
+                    'is_inherit': 1,
+                    'rolinherit': 1,
+                    'can_createrole': 1,
+                    'rolcreaterole': 1,
+                    'can_createdb': 1,
+                    'rolcreatedb': 1,
+                    'can_login': 1,
+                    'rolcanlogin': 1,
+                    'rolreplication': 0,
+                    'rolbypassrls': 0,
                     'rolconnlimit': -1,
                 }
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
@@ -2590,18 +3828,30 @@ class ClientConnection:
                 print(f"[{self.session_id}]   ✓ pg_roles handled")
                 return
 
+            # Handle pg_user_mappings (DataGrip queries for FDW user mappings)
+            # Must check before pg_user to avoid false match
+            if 'PG_USER_MAPPINGS' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_user_mappings query...")
+                cols = self._expected_result_columns(query) or ['id', 'server_id', 'user', 'options']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_user_mappings handled (empty)")
+                return
+
             # Handle pg_user (DataGrip queries this for user permissions)
-            if 'PG_USER' in query_upper and 'FROM' in query_upper:
+            # Exclude pg_user_mappings which contains 'PG_USER'
+            if 'PG_USER' in query_upper and 'FROM' in query_upper and 'PG_USER_MAPPINGS' not in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_user query...")
                 cols = self._expected_result_columns(query) or ['usename', 'usesuper']
+                # Use 1/0 for booleans - JDBC expects integers for these fields
                 base = {
                     'usename': self.user_name,
                     'usesysid': 1,
-                    'usecreatedb': True,
-                    'usesuper': True,
-                    'userepl': False,
-                    'usebypassrls': False,
-                    'passwd': '********',
+                    'usecreatedb': 1,
+                    'usesuper': 1,
+                    'userepl': 1,
+                    'usebypassrls': 0,
+                    'passwd': None,
                     'valuntil': None,
                     'useconfig': None,
                 }
@@ -2617,6 +3867,92 @@ class ClientConnection:
                 result_df = self._empty_df_for_columns(cols)
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_auth_members handled (empty)")
+                return
+
+            # Handle pg_language (DataGrip queries for procedural languages)
+            if 'PG_LANGUAGE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_language query...")
+                cols = self._expected_result_columns(query) or ['oid', 'lanname']
+                # Provide standard PostgreSQL languages
+                languages = [
+                    {'oid': 12, 'lanname': 'internal', 'lanowner': 10, 'lanispl': False, 'lanpltrusted': False,
+                     'lanplcallfoid': 0, 'laninline': 0, 'lanvalidator': 0, 'lanacl': None},
+                    {'oid': 13, 'lanname': 'c', 'lanowner': 10, 'lanispl': False, 'lanpltrusted': False,
+                     'lanplcallfoid': 0, 'laninline': 0, 'lanvalidator': 0, 'lanacl': None},
+                    {'oid': 14, 'lanname': 'sql', 'lanowner': 10, 'lanispl': False, 'lanpltrusted': True,
+                     'lanplcallfoid': 0, 'laninline': 0, 'lanvalidator': 0, 'lanacl': None},
+                    {'oid': 13346, 'lanname': 'plpgsql', 'lanowner': 10, 'lanispl': True, 'lanpltrusted': True,
+                     'lanplcallfoid': 0, 'laninline': 0, 'lanvalidator': 0, 'lanacl': None},
+                ]
+                result_df = pd.DataFrame([{c: lang.get(c, lang.get(c.lower(), None)) for c in cols} for lang in languages])
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_language handled ({len(languages)} languages)")
+                return
+
+            # Handle pg_cast queries (DataGrip queries for type casting information)
+            if 'PG_CAST' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_cast query...")
+                cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext', 'castmethod']
+                # Return empty - DuckDB doesn't have pg_cast
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_cast handled (empty)")
+                return
+
+            # Handle pg_collation queries (DataGrip queries for collation information)
+            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_collation query...")
+                cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
+                # Return empty - DuckDB doesn't have pg_collation
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_collation handled (empty)")
+                return
+
+            # Handle pg_inherits queries (including subqueries) - DuckDB doesn't have inheritance
+            if 'PG_INHERITS' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_inherits query...")
+                cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_inherits handled (empty)")
+                return
+
+            # Handle pg_partitioned_table queries - DuckDB doesn't have table partitioning metadata
+            if 'PG_PARTITIONED_TABLE' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_partitioned_table query...")
+                cols = self._expected_result_columns(query) or ['partrelid', 'partstrat', 'partnatts']
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_partitioned_table handled (empty)")
+                return
+
+            # Handle pg_operator queries - DuckDB doesn't have pg_operator
+            if 'PG_OPERATOR' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_operator query...")
+                cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_operator handled (empty)")
+                return
+
+            # Handle pg_aggregate queries - DuckDB doesn't have pg_aggregate
+            if 'PG_AGGREGATE' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_aggregate query...")
+                cols = self._expected_result_columns(query) or ['aggfnoid', 'aggkind', 'aggnumdirectargs']
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_aggregate handled (empty)")
+                return
+
+            # Handle complex pg_constraint queries with PostgreSQL-specific array functions
+            # These use UNNEST, regoper::varchar etc. that don't work in DuckDB
+            if 'PG_CONSTRAINT' in query_upper and ('CONEXCLOP' in query_upper or 'UNNEST' in query_upper or 'REGOPER' in query_upper):
+                print(f"[{self.session_id}]   🔧 Handling complex pg_constraint query...")
+                cols = self._expected_result_columns(query) or ['oid', 'conname', 'connamespace', 'contype']
+                result_df = pd.DataFrame(columns=cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_constraint (complex) handled (empty)")
                 return
 
             # Handle pg_tablespace queries (DataGrip queries this)
@@ -2637,6 +3973,87 @@ class ClientConnection:
                 result_df = pd.DataFrame({c: [base.get(c, base.get(c.lower(), None))] for c in cols})
                 send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}]   ✓ pg_tablespace handled")
+                return
+
+            # Handle pg_extension (DataGrip queries for extensions)
+            if 'PG_EXTENSION' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_extension query...")
+                cols = self._expected_result_columns(query) or ['oid', 'extname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_extension handled (empty)")
+                return
+
+            # Handle pg_cast (DataGrip queries for type casts)
+            if 'PG_CAST' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_cast query...")
+                cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_cast handled (empty)")
+                return
+
+            # Handle pg_collation (DataGrip queries for collations)
+            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_collation query...")
+                cols = self._expected_result_columns(query) or ['oid', 'collname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_collation handled (empty)")
+                return
+
+            # Handle pg_inherits (DataGrip queries for table inheritance)
+            if 'PG_INHERITS' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_inherits query...")
+                cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_inherits handled (empty)")
+                return
+
+            # Handle pg_foreign_table (DataGrip queries for foreign tables)
+            if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_foreign_table query...")
+                cols = self._expected_result_columns(query) or ['ftrelid', 'ftserver', 'ftoptions']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_foreign_table handled (empty)")
+                return
+
+            # Handle pg_foreign_data_wrapper (DataGrip queries for FDW)
+            if 'PG_FOREIGN_DATA_WRAPPER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_foreign_data_wrapper query...")
+                cols = self._expected_result_columns(query) or ['oid', 'fdwname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_foreign_data_wrapper handled (empty)")
+                return
+
+            # Handle pg_operator (DataGrip queries for operators)
+            if 'PG_OPERATOR' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_operator query...")
+                cols = self._expected_result_columns(query) or ['oid', 'oprname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_operator handled (empty)")
+                return
+
+            # Handle pg_foreign_server (DataGrip queries for FDW servers)
+            if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_foreign_server query...")
+                cols = self._expected_result_columns(query) or ['oid', 'srvname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_foreign_server handled (empty)")
+                return
+
+            # Handle pg_event_trigger (DataGrip queries for event triggers)
+            if 'PG_EVENT_TRIGGER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]   🔧 Handling pg_event_trigger query...")
+                cols = self._expected_result_columns(query) or ['oid', 'evtname']
+                result_df = self._empty_df_for_columns(cols)
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}]   ✓ pg_event_trigger handled (empty)")
                 return
 
             # Special case 4: pg_class queries with regclass type columns
@@ -2864,14 +4281,13 @@ class ClientConnection:
 
         return rewritten
 
-    def _execute_show_and_send_extended(self, query: str):
+    def _execute_show_and_send_extended(self, query: str, send_row_description: bool = True):
         """
         Execute SHOW command and send results via Extended Query Protocol.
 
-        Sends only DataRows + CommandComplete (RowDescription sent by Describe Portal).
-
         Args:
             query: SHOW command
+            send_row_description: Whether to send RowDescription (False if Describe already sent it)
         """
         import pandas as pd
         query_upper = query.upper()
@@ -2895,7 +4311,8 @@ class ClientConnection:
             except:
                 result_df = pd.DataFrame({'setting': ['']})
 
-        send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
+        send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+        print(f"[{self.session_id}]      ✓ SHOW handled, returned {len(result_df)} rows (row_desc={'sent' if send_row_description else 'skipped'})")
 
     def _execute_set_command(self, query: str):
         """
@@ -3867,11 +5284,326 @@ class ClientConnection:
                 if name not in self.portals:
                     raise Exception(f"Portal '{name}' does not exist")
 
-                # For all portals: Return NoData
-                # Column metadata will come from Execute's RowDescription
-                # This avoids double-execution and keeps protocol simple
-                self.sock.sendall(NoData.encode())
-                print(f"[{self.session_id}]      ✓ Portal described (NoData - Execute will send columns)")
+                portal = self.portals[name]
+                query = portal['query']
+                params = portal['params']
+                query_upper = query.upper().strip()
+
+                # For non-SELECT queries (SET, BEGIN, COMMIT, etc.), return NoData
+                is_non_select = (
+                    query_upper.startswith('SET ') or
+                    query_upper.startswith('RESET ') or
+                    query_upper.startswith('BEGIN') or
+                    query_upper.startswith('COMMIT') or
+                    query_upper.startswith('ROLLBACK') or
+                    query_upper.startswith('START TRANSACTION') or
+                    query_upper.startswith('END') or
+                    query_upper.startswith('DISCARD') or
+                    query_upper.startswith('DEALLOCATE') or
+                    query_upper.startswith('CLOSE') or
+                    query_upper.startswith('LISTEN') or
+                    query_upper.startswith('UNLISTEN') or
+                    query_upper.startswith('NOTIFY')
+                )
+
+                if is_non_select:
+                    self.sock.sendall(NoData.encode())
+                    portal['row_description_sent'] = False
+                    print(f"[{self.session_id}]      ✓ Portal described (NoData - non-SELECT command)")
+                elif query_upper.startswith('SHOW '):
+                    # SHOW commands return a single column - provide the correct RowDescription
+                    # This prevents the wrapping logic from failing
+                    if 'SEARCH_PATH' in query_upper:
+                        columns = [('search_path', 'VARCHAR')]
+                    elif 'TIMEZONE' in query_upper or 'TIME ZONE' in query_upper:
+                        columns = [('TimeZone', 'VARCHAR')]
+                    elif 'SERVER_VERSION' in query_upper:
+                        columns = [('server_version', 'VARCHAR')]
+                    elif 'TRANSACTION' in query_upper and 'ISOLATION' in query_upper:
+                        columns = [('transaction_isolation', 'VARCHAR')]
+                    else:
+                        # Generic fallback for other SHOW commands
+                        columns = [('setting', 'VARCHAR')]
+
+                    self.sock.sendall(RowDescription.encode(columns))
+                    portal['row_description_sent'] = True
+                    portal['described_columns'] = len(columns)
+                    print(f"[{self.session_id}]      ✓ Portal described (SHOW command - {len(columns)} columns)")
+                else:
+                    # For SELECT queries, try to get column metadata
+                    try:
+                        # Convert PostgreSQL placeholders to DuckDB format
+                        desc_query = query
+                        for i in range(len(params), 0, -1):
+                            desc_query = desc_query.replace(f'${i}', '?')
+
+                        # Apply standard query rewrites
+                        desc_query = self._rewrite_pg_catalog_function_calls(desc_query)
+                        desc_query = self._rewrite_information_schema_catalog_filters(desc_query)
+                        desc_query = self._rewrite_pg_system_column_refs(desc_query)
+                        desc_query = self._rewrite_missing_table_joins(desc_query)
+                        desc_query = self._rewrite_missing_pg_database_columns(desc_query)
+
+                        # Check for empty query after rewrites (e.g., just comments or whitespace)
+                        query_stripped = desc_query.strip()
+                        if not query_stripped or query_stripped.startswith('--'):
+                            self.sock.sendall(NoData.encode())
+                            portal['row_description_sent'] = False
+                            print(f"[{self.session_id}]      ✓ Portal described (NoData - empty query)")
+                            return
+
+                        # Handle special catalog tables that need specific column info
+                        # pg_timezone_names / pg_timezone_abbrevs
+                        if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
+                            cols = self._expected_result_columns(query) or ['name', 'is_dst']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (timezone catalog - {len(columns)} columns)")
+                            return
+
+                        # pg_roles
+                        if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'rolname', 'rolsuper']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_roles - {len(columns)} columns)")
+                            return
+
+                        # pg_user - DataGrip checks superuser status
+                        if 'PG_USER' in query_upper and 'FROM' in query_upper and 'PG_USER_MAPPINGS' not in query_upper:
+                            cols = self._expected_result_columns(query) or ['usename', 'usesuper']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_user - {len(columns)} columns)")
+                            return
+
+                        # pg_namespace (schema browser) - provide expected columns
+                        is_pg_class_main = 'FROM PG_CATALOG.PG_CLASS' in query_upper or 'FROM PG_CLASS' in query_upper
+                        is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
+                        if is_pg_namespace_main and not is_pg_class_main:
+                            cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_namespace - {len(columns)} columns)")
+                            return
+
+                        # pg_event_trigger - DuckDB doesn't have event triggers
+                        if 'PG_EVENT_TRIGGER' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'evtname', 'evtevent', 'evtowner', 'evtfoid', 'evtenabled', 'evttags']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_event_trigger - {len(columns)} columns)")
+                            return
+
+                        # Foreign data wrapper tables - DuckDB doesn't have FDW
+                        if 'PG_FOREIGN_DATA_WRAPPER' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'fdwname', 'fdwowner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_foreign_data_wrapper - {len(columns)} columns)")
+                            return
+
+                        if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'srvname', 'srvowner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_foreign_server - {len(columns)} columns)")
+                            return
+
+                        if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['ftrelid', 'ftserver', 'ftoptions']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_foreign_table - {len(columns)} columns)")
+                            return
+
+                        # pg_extension - DuckDB doesn't have extensions
+                        if 'PG_EXTENSION' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'extname', 'extowner', 'extnamespace']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_extension - {len(columns)} columns)")
+                            return
+
+                        # pg_language - DuckDB doesn't have procedural languages
+                        if 'PG_LANGUAGE' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'lanname', 'lanowner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_language - {len(columns)} columns)")
+                            return
+
+                        # pg_cast - DuckDB doesn't have pg_cast
+                        if 'PG_CAST' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext', 'castmethod']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_cast - {len(columns)} columns)")
+                            return
+
+                        # pg_collation - DuckDB doesn't have pg_collation
+                        if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_collation - {len(columns)} columns)")
+                            return
+
+                        # pg_inherits - DuckDB doesn't have table inheritance
+                        if 'PG_INHERITS' in query_upper:
+                            cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_inherits - {len(columns)} columns)")
+                            return
+
+                        # pg_partitioned_table - DuckDB doesn't have partition metadata
+                        if 'PG_PARTITIONED_TABLE' in query_upper:
+                            cols = self._expected_result_columns(query) or ['partrelid', 'partstrat', 'partnatts']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_partitioned_table - {len(columns)} columns)")
+                            return
+
+                        # pg_operator - DuckDB doesn't have pg_operator
+                        if 'PG_OPERATOR' in query_upper:
+                            cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_operator - {len(columns)} columns)")
+                            return
+
+                        # pg_aggregate - DuckDB doesn't have pg_aggregate
+                        if 'PG_AGGREGATE' in query_upper:
+                            cols = self._expected_result_columns(query) or ['aggfnoid', 'aggkind', 'aggnumdirectargs']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_aggregate - {len(columns)} columns)")
+                            return
+
+                        # Complex pg_constraint queries with PostgreSQL-specific array functions
+                        if 'PG_CONSTRAINT' in query_upper and ('CONEXCLOP' in query_upper or 'UNNEST' in query_upper or 'REGOPER' in query_upper):
+                            cols = self._expected_result_columns(query) or ['oid', 'conname', 'connamespace', 'contype']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_constraint complex - {len(columns)} columns)")
+                            return
+
+                        # pg_depend queries with regclass casts - return empty result
+                        if 'PG_DEPEND' in query_upper and ('REGCLASS' in query_upper or 'REFOBJID' in query_upper):
+                            cols = self._expected_result_columns(query) or ['dependent_id', 'owner_id', 'refobjsubid']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_depend - {len(columns)} columns)")
+                            return
+
+                        # Any query with regclass type casts that DuckDB doesn't support
+                        if '::REGCLASS' in query_upper or 'REGCLASS' in query_upper:
+                            cols = self._expected_result_columns(query) or ['result']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (regclass query - {len(columns)} columns)")
+                            return
+
+                        # Check for missing pg_catalog tables before trying to wrap
+                        # This prevents errors like "pg_locks does not exist"
+                        missing_result = self._handle_missing_pg_catalog_tables(query_upper, desc_query)
+                        if missing_result is not None:
+                            # Send RowDescription with the expected columns
+                            columns = [(col, 'VARCHAR') for col in missing_result.columns]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            portal['missing_table_result'] = missing_result  # Cache for Execute
+                            print(f"[{self.session_id}]      ✓ Portal described (missing pg_catalog table - {len(columns)} columns)")
+                            return
+
+                        # Wrap query to get schema without returning data
+                        # Use a subquery to handle complex queries
+                        wrapped_query = f"SELECT * FROM ({desc_query}) _rvbbit_desc_sub LIMIT 0"
+
+                        result = self.duckdb_conn.execute(wrapped_query, params)
+
+                        # Build column list from result.description
+                        # DuckDB result.description: [(name, type, None, None, None, None, None), ...]
+                        columns = []
+                        if result.description:
+                            for col_info in result.description:
+                                col_name = col_info[0]
+                                # col_info[1] is the DuckDB type object, convert to string
+                                col_type = str(col_info[1]) if col_info[1] else 'VARCHAR'
+                                columns.append((col_name, col_type))
+
+                        # Send RowDescription with column metadata
+                        self.sock.sendall(RowDescription.encode(columns))
+                        portal['row_description_sent'] = True
+                        portal['described_columns'] = len(columns)  # Track for Execute validation
+                        print(f"[{self.session_id}]      ✓ Portal described ({len(columns)} columns)")
+
+                    except Exception as desc_err:
+                        # If DuckDB can't parse the query, try to extract columns from the SQL text
+                        # This prevents "Received resultset tuples, but no field structure" errors
+                        print(f"[{self.session_id}]      ⚠️  Could not describe portal via DuckDB: {str(desc_err)[:100]}")
+
+                        # For SELECT queries, try to infer columns from the query text
+                        if query_upper.strip().startswith('SELECT'):
+                            extracted_cols = self._expected_result_columns(query)
+                            if extracted_cols:
+                                # Send RowDescription with inferred columns (all as VARCHAR)
+                                columns = [(c, 'VARCHAR') for c in extracted_cols]
+                                self.sock.sendall(RowDescription.encode(columns))
+                                portal['row_description_sent'] = True
+                                portal['described_columns'] = len(columns)  # Track for Execute validation
+                                print(f"[{self.session_id}]      ✓ Portal described (inferred {len(columns)} columns from query)")
+                            else:
+                                # Can't infer columns - send NoData as last resort
+                                # This may cause issues but is better than crashing
+                                self.sock.sendall(NoData.encode())
+                                portal['row_description_sent'] = False
+                                print(f"[{self.session_id}]      ✓ Portal described (NoData - couldn't infer columns)")
+                        else:
+                            # Non-SELECT queries don't return rows
+                            self.sock.sendall(NoData.encode())
+                            portal['row_description_sent'] = False
+                            print(f"[{self.session_id}]      ✓ Portal described (NoData - non-SELECT)")
 
         except Exception as e:
             print(f"[{self.session_id}]      ✗ Describe error: {e}")
@@ -3898,22 +5630,131 @@ class ClientConnection:
             query = portal['query']
             params = portal['params']
 
+            # Check if Describe already sent RowDescription
+            # If so, Execute should NOT send RowDescription again
+            row_desc_already_sent = portal.get('row_description_sent', False)
+            send_row_desc = not row_desc_already_sent
+
+            # Check if Describe cached a result for a missing pg_catalog table
+            if 'missing_table_result' in portal:
+                result_df = portal['missing_table_result']
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ Missing pg_catalog table - returning cached empty result")
+                return
+
             # Check for special PostgreSQL functions and commands
             query_upper = query.upper().strip()
+
+            # Empty query - send EmptyQueryResponse
+            if not query_upper or query_upper.startswith('--'):
+                print(f"[{self.session_id}]      Empty query detected - sending EmptyQueryResponse")
+                self.sock.sendall(EmptyQueryResponse.encode())
+                return
 
             # SHOW commands - Handle via Extended Query
             if query_upper.startswith('SHOW '):
                 print(f"[{self.session_id}]      Detected SHOW command via Extended Query")
-                # Handle SHOW and send results via Extended Query (no RowDescription!)
-                self._execute_show_and_send_extended(query)
+                # Handle SHOW and send results - skip RowDescription if Describe already sent it
+                self._execute_show_and_send_extended(query, send_row_description=send_row_desc)
                 return
 
             # pg_get_keywords() - Return empty result
             if 'PG_GET_KEYWORDS' in query_upper:
                 print(f"[{self.session_id}]      Detected pg_get_keywords() - returning empty")
                 import pandas as pd
-                send_execute_results(self.sock, pd.DataFrame(columns=['word']), send_row_description=True)  # Describe sent NoData
+                send_execute_results(self.sock, pd.DataFrame(columns=['word']), send_row_description=send_row_desc)
                 return
+
+            # pg_namespace queries for schema browser (Extended Query mode)
+            # IMPORTANT: Must return consistent columns with Describe Portal handler
+            # DataGrip expects: id, state_number, name, description, owner
+            is_pg_class_main = 'FROM PG_CATALOG.PG_CLASS' in query_upper or 'FROM PG_CLASS' in query_upper
+            is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
+
+            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      🔧 Handling pg_namespace query for schema browser (Extended)...")
+                import pandas as pd
+                try:
+                    # Get the columns that Describe promised (or use defaults)
+                    expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+                    print(f"[{self.session_id}]      Expected columns: {expected_cols}")
+
+                    # Get schema data from DuckDB's pg_catalog
+                    schema_rows = self.duckdb_conn.execute(
+                        "SELECT oid, nspname, nspowner FROM pg_catalog.pg_namespace"
+                    ).fetchdf()
+
+                    # Build result with columns matching what Describe sent
+                    # Map our data to the expected column names
+                    result_data = []
+                    for _, row in schema_rows.iterrows():
+                        row_dict = {}
+                        for col in expected_cols:
+                            col_lower = col.lower()
+                            if col_lower in ('id', 'oid'):
+                                row_dict[col] = int(row['oid'])
+                            elif col_lower in ('state_number', 'xmin'):
+                                row_dict[col] = 0
+                            elif col_lower in ('name', 'nspname', 'schema_name'):
+                                row_dict[col] = str(row['nspname'])
+                            elif col_lower == 'description':
+                                row_dict[col] = None
+                            elif col_lower in ('owner', 'nspowner'):
+                                row_dict[col] = self.user_name
+                            else:
+                                row_dict[col] = None
+                        result_data.append(row_dict)
+
+                    result_df = pd.DataFrame(result_data, columns=expected_cols)
+
+                    # Ensure pg_catalog + information_schema appear
+                    existing = set(result_df[expected_cols[2] if len(expected_cols) > 2 else 'name'].tolist()) if len(result_df) > 0 else set()
+                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), expected_cols[0])
+
+                    for schema_name, schema_id, desc in [('pg_catalog', 11, 'System catalog'), ('information_schema', 12, 'Information schema')]:
+                        if schema_name not in existing:
+                            new_row = {}
+                            for col in expected_cols:
+                                col_lower = col.lower()
+                                if col_lower in ('id', 'oid'):
+                                    new_row[col] = schema_id
+                                elif col_lower in ('state_number', 'xmin'):
+                                    new_row[col] = 0
+                                elif col_lower in ('name', 'nspname', 'schema_name'):
+                                    new_row[col] = schema_name
+                                elif col_lower == 'description':
+                                    new_row[col] = desc
+                                elif col_lower in ('owner', 'nspowner'):
+                                    new_row[col] = self.user_name
+                                else:
+                                    new_row[col] = None
+                            result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
+
+                    result_df = result_df.sort_values(name_col).reset_index(drop=True)
+
+                    # Debug: show what schemas we found
+                    print(f"[{self.session_id}]      📋 Schemas found ({len(result_df)}):")
+                    for _, row in result_df.head(10).iterrows():
+                        print(f"[{self.session_id}]         - {row.get(name_col, row.iloc[0])}")
+
+                    # Validate column count before sending
+                    actual_send_row_desc = send_row_desc
+                    if not send_row_desc and portal_name in self.portals:
+                        described_col_count = self.portals[portal_name].get('described_columns')
+                        if described_col_count is not None and described_col_count != len(expected_cols):
+                            print(f"[{self.session_id}]      ⚠️  pg_namespace column mismatch: described {described_col_count}, returning {len(expected_cols)}")
+                            actual_send_row_desc = True
+                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                    print(f"[{self.session_id}]      ✅ pg_namespace handled ({len(result_df)} schemas)")
+                    return
+                except Exception as e:
+                    print(f"[{self.session_id}]      ⚠️  Could not handle pg_namespace: {e}")
+                    # Don't fall through - return empty result with expected columns to prevent mismatch
+                    expected_cols = self._expected_result_columns(query) or ['id', 'state_number', 'name', 'description', 'owner']
+                    result_df = pd.DataFrame(columns=expected_cols)
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                    print(f"[{self.session_id}]      ✓ pg_namespace fallback (empty with {len(expected_cols)} cols)")
+                    return
 
             # pg_class queries with c.* - Use the bypass logic
             if 'FROM PG_CATALOG.PG_CLASS' in query_upper and 'C.*' in query_upper:
@@ -3960,14 +5801,24 @@ class ClientConnection:
                         LIMIT 1000
                     """
                     result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
-                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
-                    print(f"[{self.session_id}]      ✓ pg_class bypass executed ({len(result_df)} rows)")
+                    # Validate column count
+                    actual_send_row_desc = send_row_desc
+                    if not send_row_desc and portal_name in self.portals:
+                        described_col_count = self.portals[portal_name].get('described_columns')
+                        if described_col_count is not None and described_col_count != len(result_df.columns):
+                            print(f"[{self.session_id}]      ⚠️  pg_class bypass column mismatch: described {described_col_count}, returning {len(result_df.columns)}")
+                            actual_send_row_desc = True
+                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                    print(f"[{self.session_id}]      ✓ pg_class bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ Bypass failed: {str(e)[:200]}")
-                    import traceback
-                    traceback.print_exc()
-                    # Fall through
+                    # Don't fall through - return empty result with expected columns
+                    expected_cols = self._expected_result_columns(query) or ['relkind', 'relname', 'oid']
+                    result_df = pd.DataFrame(columns=expected_cols)
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                    print(f"[{self.session_id}]      ✓ pg_class bypass fallback (empty with {len(expected_cols)} cols)")
+                    return
 
             # pg_attribute queries with a.* - Use safe column subset
             if 'FROM PG_CATALOG.PG_ATTRIBUTE' in query_upper and 'A.*' in query_upper:
@@ -4006,14 +5857,24 @@ class ClientConnection:
                         LIMIT 1000
                     """
                     result_df = self.duckdb_conn.execute(safe_query, params).fetchdf()
-                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
-                    print(f"[{self.session_id}]      ✓ pg_attribute bypass executed ({len(result_df)} rows)")
+                    # Validate column count
+                    actual_send_row_desc = send_row_desc
+                    if not send_row_desc and portal_name in self.portals:
+                        described_col_count = self.portals[portal_name].get('described_columns')
+                        if described_col_count is not None and described_col_count != len(result_df.columns):
+                            print(f"[{self.session_id}]      ⚠️  pg_attribute bypass column mismatch: described {described_col_count}, returning {len(result_df.columns)}")
+                            actual_send_row_desc = True
+                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                    print(f"[{self.session_id}]      ✓ pg_attribute bypass executed ({len(result_df)} rows × {len(result_df.columns)} cols)")
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ pg_attribute bypass failed: {str(e)[:200]}")
-                    import traceback
-                    traceback.print_exc()
-                    # Fall through
+                    # Don't fall through - return empty result with expected columns
+                    expected_cols = self._expected_result_columns(query) or ['relname', 'attname', 'attnum']
+                    result_df = pd.DataFrame(columns=expected_cols)
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                    print(f"[{self.session_id}]      ✓ pg_attribute bypass fallback (empty with {len(expected_cols)} cols)")
+                    return
 
             # Strip regclass/regtype/regproc casts from ANY other pg_catalog query
             if 'PG_CATALOG' in query_upper and ('::REGCLASS' in query_upper or '::REGTYPE' in query_upper or '::REGPROC' in query_upper or '::OID' in query_upper):
@@ -4030,15 +5891,35 @@ class ClientConnection:
                 duckdb_query = self._rewrite_pg_catalog_function_calls(duckdb_query)
                 duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
                 duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
+                duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+                duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
 
                 try:
                     result_df = self.duckdb_conn.execute(duckdb_query, params).fetchdf()
-                    send_execute_results(self.sock, result_df, send_row_description=True)  # Describe sent NoData
-                    print(f"[{self.session_id}]      ✓ Catalog query executed after stripping type casts ({len(result_df)} rows)")
+                    # Column count validation - critical for preventing ArrayIndexOutOfBoundsException
+                    actual_send_row_desc = send_row_desc
+                    if not send_row_desc and portal_name in self.portals:
+                        described_col_count = self.portals[portal_name].get('described_columns')
+                        actual_col_count = len(result_df.columns)
+                        if described_col_count is not None and described_col_count != actual_col_count:
+                            print(f"[{self.session_id}]      ⚠️  COLUMN MISMATCH (type cast stripping)!")
+                            print(f"[{self.session_id}]         Described: {described_col_count}, Actual: {actual_col_count}")
+                            print(f"[{self.session_id}]         Columns: {list(result_df.columns)}")
+                            actual_send_row_desc = True  # Resend RowDescription to fix mismatch
+                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                    print(f"[{self.session_id}]      ✓ Catalog query executed after stripping type casts ({len(result_df)} rows × {len(result_df.columns)} cols)")
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ Even after stripping, query failed: {str(e)[:100]}")
-                    # Fall through to error handling
+                    # Don't fall through - return empty result with described columns to prevent mismatch
+                    expected_cols = self._expected_result_columns(query)
+                    if expected_cols:
+                        import pandas as pd
+                        result_df = pd.DataFrame(columns=expected_cols)
+                        send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                        print(f"[{self.session_id}]      ✓ Type cast query fallback (empty with {len(expected_cols)} cols)")
+                        return
+                    # If we can't infer columns, continue to other handlers
 
             # Check if this is a SET or RESET command
             if query_upper.startswith('SET ') or query_upper.startswith('RESET '):
@@ -4074,9 +5955,218 @@ class ClientConnection:
             duckdb_query = self._rewrite_pg_catalog_function_calls(duckdb_query)
             duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
             duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
+            duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+            duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
 
             print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
             print(f"[{self.session_id}]      Parameters: {params}")
+
+            # Handle special catalog queries that need actual data (not just empty results)
+            import pandas as pd
+
+            # pg_timezone_names / pg_timezone_abbrevs - return common timezones
+            if 'PG_TIMEZONE_NAMES' in query_upper or 'PG_TIMEZONE_ABBREVS' in query_upper:
+                print(f"[{self.session_id}]      Handling timezone catalog query...")
+                cols = self._expected_result_columns(query) or ['name', 'is_dst']
+                rows = [
+                    {'name': 'UTC', 'is_dst': False, 'abbrev': 'UTC', 'utc_offset': '00:00:00'},
+                    {'name': 'America/New_York', 'is_dst': False, 'abbrev': 'EST', 'utc_offset': '-05:00:00'},
+                    {'name': 'America/Los_Angeles', 'is_dst': False, 'abbrev': 'PST', 'utc_offset': '-08:00:00'},
+                    {'name': 'Europe/London', 'is_dst': False, 'abbrev': 'GMT', 'utc_offset': '00:00:00'},
+                    {'name': 'Europe/Paris', 'is_dst': False, 'abbrev': 'CET', 'utc_offset': '01:00:00'},
+                    {'name': 'Asia/Tokyo', 'is_dst': False, 'abbrev': 'JST', 'utc_offset': '09:00:00'},
+                ]
+                result_df = pd.DataFrame([{c: r.get(c, None) for c in cols} for r in rows])
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ Timezone catalog handled ({len(result_df)} rows)")
+                return
+
+            # pg_roles - return current user as a role
+            if 'PG_ROLES' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_roles query...")
+                cols = self._expected_result_columns(query) or ['oid', 'rolname', 'rolsuper']
+                # Validate column count matches Describe
+                self._validate_custom_handler_columns(portal_name, len(cols), 'pg_roles')
+                # Use 1/0 for booleans - JDBC expects integers for these fields
+                base = {
+                    'oid': 1, 'role_id': 1, 'id': 1,
+                    'rolname': self.user_name, 'role_name': self.user_name,
+                    'rolsuper': 1, 'is_super': 1,
+                    'rolinherit': 1, 'is_inherit': 1,
+                    'rolcreaterole': 1, 'can_createrole': 1,
+                    'rolcreatedb': 1, 'can_createdb': 1,
+                    'rolcanlogin': 1, 'can_login': 1,
+                    'rolreplication': 0, 'rolbypassrls': 0,
+                    'rolconnlimit': -1, 'rolpassword': None, 'rolvaliduntil': None,
+                    'rolconfig': None, 'description': None,
+                }
+                result_df = pd.DataFrame([{c: base.get(c, None) for c in cols}])
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_roles handled ({len(result_df)} rows, {len(cols)} cols)")
+                return
+
+            # pg_user - return current user info (DataGrip checks superuser status)
+            if 'PG_USER' in query_upper and 'FROM' in query_upper and 'PG_USER_MAPPINGS' not in query_upper:
+                print(f"[{self.session_id}]      Handling pg_user query...")
+                cols = self._expected_result_columns(query) or ['usename', 'usesuper']
+                # Validate column count matches Describe
+                self._validate_custom_handler_columns(portal_name, len(cols), 'pg_user')
+                # Use 1/0 for booleans - JDBC expects integers for these fields
+                base = {
+                    'usename': self.user_name,
+                    'usesysid': 1,
+                    'usecreatedb': 1,
+                    'usesuper': 1,
+                    'userepl': 1,
+                    'usebypassrls': 0,
+                    'passwd': None,
+                    'valuntil': None,
+                    'useconfig': None,
+                }
+                result_df = pd.DataFrame([{c: base.get(c, None) for c in cols}])
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_user handled ({len(result_df)} rows, {len(cols)} cols)")
+                return
+
+            # pg_event_trigger - return empty result (DuckDB doesn't have event triggers)
+            if 'PG_EVENT_TRIGGER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_event_trigger query...")
+                cols = self._expected_result_columns(query) or ['oid', 'evtname', 'evtevent', 'evtowner', 'evtfoid', 'evtenabled', 'evttags']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_event_trigger handled (empty)")
+                return
+
+            # Foreign data wrapper tables - return empty results (DuckDB doesn't have FDW)
+            if 'PG_FOREIGN_DATA_WRAPPER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_foreign_data_wrapper query...")
+                cols = self._expected_result_columns(query) or ['oid', 'fdwname', 'fdwowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_foreign_data_wrapper handled (empty)")
+                return
+
+            if 'PG_FOREIGN_SERVER' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_foreign_server query...")
+                cols = self._expected_result_columns(query) or ['oid', 'srvname', 'srvowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_foreign_server handled (empty)")
+                return
+
+            if 'PG_FOREIGN_TABLE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_foreign_table query...")
+                cols = self._expected_result_columns(query) or ['ftrelid', 'ftserver', 'ftoptions']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_foreign_table handled (empty)")
+                return
+
+            # pg_extension - return empty result (DuckDB doesn't have extensions)
+            if 'PG_EXTENSION' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_extension query...")
+                cols = self._expected_result_columns(query) or ['oid', 'extname', 'extowner', 'extnamespace']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_extension handled (empty)")
+                return
+
+            # pg_language - return empty result (DuckDB doesn't have procedural languages)
+            if 'PG_LANGUAGE' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_language query...")
+                cols = self._expected_result_columns(query) or ['oid', 'lanname', 'lanowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_language handled (empty)")
+                return
+
+            # pg_cast - return empty result (DuckDB doesn't have pg_cast)
+            if 'PG_CAST' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_cast query...")
+                cols = self._expected_result_columns(query) or ['oid', 'castsource', 'casttarget', 'castfunc', 'castcontext', 'castmethod']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_cast handled (empty)")
+                return
+
+            # pg_collation - return empty result (DuckDB doesn't have pg_collation)
+            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_collation query...")
+                cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_collation handled (empty)")
+                return
+
+            # pg_inherits - return empty result (DuckDB doesn't have table inheritance)
+            if 'PG_INHERITS' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_inherits query...")
+                cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_inherits handled (empty)")
+                return
+
+            # pg_partitioned_table - return empty result (DuckDB doesn't have partition metadata)
+            if 'PG_PARTITIONED_TABLE' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_partitioned_table query...")
+                cols = self._expected_result_columns(query) or ['partrelid', 'partstrat', 'partnatts']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_partitioned_table handled (empty)")
+                return
+
+            # pg_operator - return empty result (DuckDB doesn't have pg_operator)
+            if 'PG_OPERATOR' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_operator query...")
+                cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_operator handled (empty)")
+                return
+
+            # pg_aggregate - return empty result (DuckDB doesn't have pg_aggregate)
+            if 'PG_AGGREGATE' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_aggregate query...")
+                cols = self._expected_result_columns(query) or ['aggfnoid', 'aggkind', 'aggnumdirectargs']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_aggregate handled (empty)")
+                return
+
+            # Complex pg_constraint queries with PostgreSQL-specific array functions
+            if 'PG_CONSTRAINT' in query_upper and ('CONEXCLOP' in query_upper or 'UNNEST' in query_upper or 'REGOPER' in query_upper):
+                print(f"[{self.session_id}]      Handling complex pg_constraint query...")
+                cols = self._expected_result_columns(query) or ['oid', 'conname', 'connamespace', 'contype']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_constraint (complex) handled (empty)")
+                return
+
+            # pg_depend queries with regclass casts - return empty result
+            if 'PG_DEPEND' in query_upper and ('REGCLASS' in query_upper or 'REFOBJID' in query_upper):
+                print(f"[{self.session_id}]      Handling pg_depend query (regclass)...")
+                cols = self._expected_result_columns(query) or ['dependent_id', 'owner_id', 'refobjsubid']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_depend handled (empty)")
+                return
+
+            # Any query with regclass type casts that DuckDB doesn't support
+            if '::REGCLASS' in query_upper or 'REGCLASS' in query_upper:
+                print(f"[{self.session_id}]      Handling regclass query...")
+                cols = self._expected_result_columns(query) or ['result']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ regclass query handled (empty)")
+                return
+
+            # Handle queries with missing pg_catalog tables (DataGrip introspection)
+            missing_table_result = self._handle_missing_pg_catalog_tables(query_upper, duckdb_query)
+            if missing_table_result is not None:
+                send_execute_results(self.sock, missing_table_result, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ Missing pg_catalog table handled (empty result)")
+                return
 
             # Lazy attach configured sources for Extended Query Protocol too
             if self._lazy_attach is not None:
@@ -4093,10 +6183,31 @@ class ClientConnection:
             if max_rows > 0:
                 result_df = result_df.head(max_rows)
 
-            # Send results (WITH RowDescription since Describe sent NoData for regular queries)
-            send_execute_results(self.sock, result_df, send_row_description=True)
+            # Safety check: if Describe already sent column info, verify column count matches
+            # If mismatch, force re-sending RowDescription to prevent ArrayIndexOutOfBoundsException
+            actual_send_row_desc = send_row_desc
+            described_col_count = None
+            actual_col_count = len(result_df.columns)
+            if not send_row_desc and portal_name in self.portals:
+                portal = self.portals[portal_name]
+                described_col_count = portal.get('described_columns')
+                if described_col_count is not None and described_col_count != actual_col_count:
+                    # Log the query that caused the mismatch for debugging
+                    print(f"[{self.session_id}]      ⚠️  COLUMN MISMATCH DETECTED!")
+                    print(f"[{self.session_id}]         Query: {query[:200]}...")
+                    print(f"[{self.session_id}]         Described: {described_col_count} cols, Actual: {actual_col_count} cols")
+                    print(f"[{self.session_id}]         Actual columns: {list(result_df.columns)}")
+                    actual_send_row_desc = True
 
-            print(f"[{self.session_id}]      ✓ Executed, returned {len(result_df)} rows")
+            # Send results - only include RowDescription if Describe didn't already send it
+            send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+
+            # Debug: log column counts for tracking ArrayIndexOutOfBounds issues
+            desc_count = described_col_count if described_col_count is not None else '?'
+            if not actual_send_row_desc:
+                print(f"[{self.session_id}]      ✓ Executed, {len(result_df)} rows × {actual_col_count} cols (desc: {desc_count}, row_desc=skip)")
+            else:
+                print(f"[{self.session_id}]      ✓ Executed, {len(result_df)} rows × {actual_col_count} cols (row_desc=sent)")
 
         except Exception as e:
             print(f"[{self.session_id}]      ✗ Execute error: {e}")
