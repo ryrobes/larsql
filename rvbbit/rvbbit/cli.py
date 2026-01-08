@@ -839,6 +839,24 @@ def main():
         help='Prefix for DuckDB session IDs (default: pg_client)'
     )
 
+    # serve watcher - Watch daemon for reactive SQL subscriptions
+    serve_watcher_parser = serve_subparsers.add_parser(
+        'watcher',
+        help='Start the WATCH daemon for reactive SQL subscriptions'
+    )
+    serve_watcher_parser.add_argument(
+        '--poll-interval',
+        type=float,
+        default=10.0,
+        help='Daemon poll interval in seconds (default: 10.0)'
+    )
+    serve_watcher_parser.add_argument(
+        '--max-concurrent',
+        type=int,
+        default=5,
+        help='Maximum concurrent watch evaluations (default: 5)'
+    )
+
     # TUI command - Launch Alice-powered terminal dashboard
     tui_parser = subparsers.add_parser('tui', help='Launch interactive TUI dashboard for cascade monitoring')
     tui_parser.add_argument('--cascade', '-c', default=None,
@@ -1179,6 +1197,8 @@ def main():
             cmd_serve_studio(args)
         elif args.serve_command == 'sql':
             cmd_serve_sql(args)
+        elif args.serve_command == 'watcher':
+            cmd_serve_watcher(args)
         else:
             serve_parser.print_help()
             sys.exit(1)
@@ -4793,6 +4813,52 @@ def cmd_serve_sql(args):
         host=args.host,
         port=args.port,
         session_prefix=args.session_prefix
+    )
+
+
+def cmd_serve_watcher(args):
+    """Start the RVBBIT WATCH daemon for reactive SQL subscriptions."""
+    from rvbbit.watcher import run_daemon
+    from rvbbit.db_adapter import ensure_housekeeping
+
+    # Initialize database (create tables if needed)
+    print("🔧 Initializing database...")
+    ensure_housekeeping()
+
+    print()
+    print("=" * 60)
+    print("  RVBBIT WATCH DAEMON")
+    print("=" * 60)
+    print()
+    print(f"  Poll interval: {args.poll_interval}s")
+    print(f"  Max concurrent: {args.max_concurrent}")
+    print()
+    print("  The daemon evaluates watches and fires actions on change.")
+    print("  Create watches via SQL:")
+    print()
+    print("    CREATE WATCH my_alert")
+    print("    POLL EVERY '5m'")
+    print("    AS SELECT count(*) as errors FROM logs WHERE level='ERROR'")
+    print("       AND ts > now() - interval 1 hour")
+    print("       HAVING errors > 50")
+    print("    ON TRIGGER CASCADE 'cascades/alert.yaml';")
+    print()
+    print("  Management commands:")
+    print("    SHOW WATCHES;")
+    print("    DESCRIBE WATCH my_alert;")
+    print("    ALTER WATCH my_alert SET enabled = false;")
+    print("    DROP WATCH my_alert;")
+    print("    TRIGGER WATCH my_alert;  -- force evaluation")
+    print()
+    print("  Press Ctrl+C to stop the daemon.")
+    print()
+    print("=" * 60)
+    print()
+
+    # Start daemon (blocking call)
+    run_daemon(
+        poll_interval=args.poll_interval,
+        max_concurrent=args.max_concurrent,
     )
 
 

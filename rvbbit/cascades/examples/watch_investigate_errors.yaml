@@ -1,0 +1,118 @@
+# Watch Demo: Investigate Error Spike
+#
+# This cascade is designed to be triggered by a WATCH subscription.
+# When error counts exceed a threshold, it investigates and summarizes.
+#
+# Example WATCH creation:
+#
+#   CREATE WATCH error_spike
+#   POLL EVERY '5m'
+#   AS SELECT
+#     toStartOfHour(timestamp) as hour,
+#     count(*) as error_count,
+#     groupArray(message)[1:10] as sample_messages,
+#     groupUniqArray(error_code) as error_types
+#   FROM application_logs
+#   WHERE level = 'ERROR'
+#     AND timestamp > now() - interval 2 hour
+#   GROUP BY hour
+#   HAVING error_count > 50
+#   ON TRIGGER CASCADE 'cascades/examples/watch_investigate_errors.yaml';
+#
+# The cascade receives {{ input.trigger_rows }} with the matched data.
+
+cascade_id: watch_investigate_errors
+description: Investigate error spikes detected by WATCH subscription
+
+inputs_schema:
+  trigger_rows: Array of rows that triggered the watch (error aggregates)
+  watch_name: Name of the watch that triggered this cascade
+
+cells:
+  # Analyze the error patterns
+  - name: analyze_errors
+    instructions: |
+      An error spike has been detected by the watch "{{ input.watch_name }}".
+
+      Here is the data that triggered the alert:
+      {{ input.trigger_rows | totoon }}
+
+      Analyze these errors and provide:
+      1. **Summary**: What types of errors are occurring?
+      2. **Patterns**: Are there any common patterns in the error messages?
+      3. **Severity Assessment**: How serious is this spike (low/medium/high/critical)?
+      4. **Possible Causes**: What might be causing these errors?
+      5. **Recommended Actions**: What should be done to address this?
+
+      Be concise but thorough.
+    output_schema:
+      type: object
+      properties:
+        summary:
+          type: string
+          description: Brief summary of the error types
+        patterns:
+          type: array
+          items:
+            type: string
+          description: Common patterns identified
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Severity assessment
+        possible_causes:
+          type: array
+          items:
+            type: string
+          description: Potential root causes
+        recommended_actions:
+          type: array
+          items:
+            type: string
+          description: Actions to take
+        needs_immediate_attention:
+          type: boolean
+          description: Whether this requires immediate attention
+      required:
+        - summary
+        - severity
+        - recommended_actions
+        - needs_immediate_attention
+
+  # Store the analysis results
+  - name: store_analysis
+    tool: sql_data
+    inputs:
+      query: |
+        INSERT INTO error_investigations
+        SELECT
+          '{{ outputs.analyze_errors.summary }}' as summary,
+          '{{ outputs.analyze_errors.severity }}' as severity,
+          {{ outputs.analyze_errors.needs_immediate_attention }} as urgent,
+          now() as investigated_at,
+          '{{ input.watch_name }}' as watch_name,
+          '{{ outputs.analyze_errors | tojson | replace("'", "''") }}' as full_analysis
+    on_error:
+      auto_fix:
+        max_attempts: 2
+        prompt: |
+          The INSERT failed. The error_investigations table may not exist.
+          Create it first if needed, then retry the INSERT.
+          Error: {{ error }}
+
+  # Optionally fire a signal if critical
+  - name: notify_if_critical
+    tool: fire_signal
+    inputs:
+      signal_name: "error_spike_critical"
+      payload: |
+        {
+          "watch_name": "{{ input.watch_name }}",
+          "severity": "{{ outputs.analyze_errors.severity }}",
+          "summary": "{{ outputs.analyze_errors.summary }}",
+          "needs_immediate_attention": {{ outputs.analyze_errors.needs_immediate_attention }}
+        }
+    rules:
+      # Only fire signal if severity is critical
+      loop_until: "{{ outputs.analyze_errors.severity == 'critical' }}"
+      max_turns: 1

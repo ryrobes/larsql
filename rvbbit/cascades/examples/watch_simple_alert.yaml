@@ -1,0 +1,47 @@
+# Watch Demo: Simple Alert
+#
+# A minimal cascade that receives watch trigger data and logs it.
+# Useful for testing watch functionality.
+#
+# Example WATCH creation:
+#
+#   CREATE WATCH test_watch
+#   POLL EVERY '1m'
+#   AS SELECT count(*) as row_count FROM my_table WHERE created_at > now() - interval 5 minute
+#   HAVING row_count > 0
+#   ON TRIGGER CASCADE 'cascades/examples/watch_simple_alert.yaml';
+
+cascade_id: watch_simple_alert
+description: Simple alert cascade for watch testing
+
+inputs_schema:
+  trigger_rows: Rows that matched the watch query
+  watch_name: Name of the triggering watch
+
+cells:
+  - name: log_alert
+    instructions: |
+      A watch has been triggered!
+
+      Watch Name: {{ input.watch_name }}
+      Trigger Data:
+      {{ input.trigger_rows | totoon }}
+
+      Acknowledge this alert by responding with a brief confirmation message
+      including the watch name and how many rows triggered it.
+    output_schema:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Confirmation message
+        watch_name:
+          type: string
+        row_count:
+          type: integer
+        timestamp:
+          type: string
+      required:
+        - message
+        - watch_name
+        - row_count

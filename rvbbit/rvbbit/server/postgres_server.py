@@ -3893,6 +3893,18 @@ class ClientConnection:
                     self._handle_analyze_query(reconstructed)
                     return
 
+            # Handle WATCH commands (reactive SQL subscriptions)
+            # Syntax: CREATE WATCH name POLL EVERY 'interval' AS query ON TRIGGER CASCADE 'path'
+            #         DROP WATCH name
+            #         SHOW WATCHES
+            #         DESCRIBE WATCH name
+            #         TRIGGER WATCH name
+            #         ALTER WATCH name SET ...
+            from ..sql_tools.sql_directives import is_watch_command
+            if is_watch_command(query):
+                self._handle_watch_command(query)
+                return
+
             # Handle transaction commands (BEGIN, COMMIT, ROLLBACK)
             if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
                 self._handle_begin()
@@ -5902,6 +5914,281 @@ class ClientConnection:
 
         send_query_results(self.sock, job_df, self.transaction_status)
         print(f"[{self.session_id}] 🔬 Analysis job {job_id} submitted: {prompt[:50]}...")
+
+    def _handle_watch_command(self, query: str):
+        """
+        Handle WATCH SQL commands for reactive subscriptions.
+
+        Commands:
+            CREATE WATCH name POLL EVERY 'interval' AS query ON TRIGGER CASCADE 'path'
+            DROP WATCH name
+            SHOW WATCHES
+            DESCRIBE WATCH name
+            TRIGGER WATCH name
+            ALTER WATCH name SET enabled = true|false
+            ALTER WATCH name SET POLL EVERY 'interval'
+
+        Watches are polling-based subscriptions that trigger cascades when query
+        results change. The daemon (`rvbbit serve watcher`) evaluates watches.
+        """
+        import pandas as pd
+        from datetime import datetime
+
+        from ..sql_tools.sql_directives import parse_watch_command
+
+        directive = parse_watch_command(query)
+
+        if not directive:
+            send_error(self.sock, f"Failed to parse WATCH command: {query[:100]}")
+            return
+
+        try:
+            if directive.command == 'CREATE':
+                self._create_watch(directive)
+
+            elif directive.command == 'DROP':
+                self._drop_watch(directive.name)
+
+            elif directive.command == 'SHOW':
+                self._show_watches()
+
+            elif directive.command == 'DESCRIBE':
+                self._describe_watch(directive.name)
+
+            elif directive.command == 'TRIGGER':
+                self._trigger_watch(directive.name)
+
+            elif directive.command == 'ALTER':
+                self._alter_watch(directive)
+
+            else:
+                send_error(self.sock, f"Unknown WATCH command: {directive.command}")
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            send_error(self.sock, f"WATCH command failed: {e}")
+
+    def _create_watch(self, directive):
+        """Create a new watch subscription."""
+        import pandas as pd
+        from ..watcher import create_watch
+
+        try:
+            watch = create_watch(
+                name=directive.name,
+                query=directive.query,
+                action_type=directive.action_type,
+                action_spec=directive.action_spec,
+                poll_interval=directive.poll_interval or '5m',
+                description=directive.description or '',
+            )
+
+            result_df = pd.DataFrame([{
+                'status': 'created',
+                'watch_name': watch.name,
+                'watch_id': watch.watch_id,
+                'poll_interval': f"{watch.poll_interval_seconds}s",
+                'action_type': watch.action_type.value,
+                'action_spec': watch.action_spec,
+                'message': f"Watch '{watch.name}' created. Run `rvbbit serve watcher` to start the daemon.",
+            }])
+
+            send_query_results(self.sock, result_df, self.transaction_status)
+            print(f"[{self.session_id}] ✅ Created watch '{watch.name}'")
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to create watch '{directive.name}': {e}")
+
+    def _drop_watch(self, name: str):
+        """Drop a watch subscription."""
+        import pandas as pd
+        from ..watcher import drop_watch, get_watch
+
+        watch = get_watch(name)
+        if not watch:
+            send_error(self.sock, f"Watch '{name}' not found")
+            return
+
+        if drop_watch(name):
+            result_df = pd.DataFrame([{
+                'status': 'dropped',
+                'watch_name': name,
+                'message': f"Watch '{name}' deleted successfully.",
+            }])
+            send_query_results(self.sock, result_df, self.transaction_status)
+            print(f"[{self.session_id}] ✅ Dropped watch '{name}'")
+        else:
+            send_error(self.sock, f"Failed to drop watch '{name}'")
+
+    def _show_watches(self):
+        """List all watches."""
+        import pandas as pd
+        from ..watcher import list_watches
+
+        watches = list_watches(enabled_only=False)
+
+        if not watches:
+            result_df = pd.DataFrame([{
+                'message': 'No watches defined. Use CREATE WATCH to create one.',
+            }])
+        else:
+            rows = []
+            for w in watches:
+                interval = f"{w.poll_interval_seconds}s"
+                if w.poll_interval_seconds >= 60:
+                    interval = f"{w.poll_interval_seconds // 60}m"
+
+                rows.append({
+                    'name': w.name,
+                    'enabled': w.enabled,
+                    'poll_interval': interval,
+                    'action_type': w.action_type.value,
+                    'action_spec': w.action_spec[:50] + ('...' if len(w.action_spec) > 50 else ''),
+                    'trigger_count': w.trigger_count,
+                    'last_triggered': w.last_triggered_at.isoformat() if w.last_triggered_at else None,
+                    'last_checked': w.last_checked_at.isoformat() if w.last_checked_at else None,
+                    'errors': w.consecutive_errors,
+                })
+            result_df = pd.DataFrame(rows)
+
+        send_query_results(self.sock, result_df, self.transaction_status)
+        print(f"[{self.session_id}] 📋 Listed {len(watches)} watches")
+
+    def _describe_watch(self, name: str):
+        """Show detailed info about a watch."""
+        import pandas as pd
+        from ..watcher import get_watch
+
+        watch = get_watch(name)
+        if not watch:
+            send_error(self.sock, f"Watch '{name}' not found")
+            return
+
+        interval = f"{watch.poll_interval_seconds}s"
+        if watch.poll_interval_seconds >= 60:
+            interval = f"{watch.poll_interval_seconds // 60}m"
+
+        result_df = pd.DataFrame([{
+            'watch_id': watch.watch_id,
+            'name': watch.name,
+            'enabled': watch.enabled,
+            'poll_interval': interval,
+            'action_type': watch.action_type.value,
+            'action_spec': watch.action_spec,
+            'query': watch.query,
+            'trigger_count': watch.trigger_count,
+            'consecutive_errors': watch.consecutive_errors,
+            'last_error': watch.last_error,
+            'last_triggered': watch.last_triggered_at.isoformat() if watch.last_triggered_at else None,
+            'last_checked': watch.last_checked_at.isoformat() if watch.last_checked_at else None,
+            'last_result_hash': watch.last_result_hash,
+            'created_at': watch.created_at.isoformat() if watch.created_at else None,
+            'description': watch.description,
+        }])
+
+        send_query_results(self.sock, result_df, self.transaction_status)
+        print(f"[{self.session_id}] 📄 Described watch '{name}'")
+
+    def _trigger_watch(self, name: str):
+        """Force immediate evaluation of a watch."""
+        import pandas as pd
+        from ..watcher import trigger_watch, get_watch
+
+        watch = get_watch(name)
+        if not watch:
+            send_error(self.sock, f"Watch '{name}' not found")
+            return
+
+        print(f"[{self.session_id}] ⚡ Triggering watch '{name}'...")
+
+        # Run the evaluation synchronously
+        from ..watcher import WatchDaemon
+        daemon = WatchDaemon()
+
+        try:
+            daemon._evaluate_watch(watch)
+
+            # Get the most recent execution
+            from ..db_adapter import get_db
+            db = get_db()
+            rows = []
+            if db:
+                exec_rows = db.query(
+                    """SELECT * FROM rvbbit.watch_executions
+                       WHERE watch_name = %(name)s
+                       ORDER BY triggered_at DESC LIMIT 1""",
+                    {'name': name}
+                )
+                if exec_rows:
+                    row = exec_rows[0]
+                    rows.append({
+                        'status': 'triggered',
+                        'watch_name': name,
+                        'execution_id': row.get('execution_id'),
+                        'execution_status': row.get('status'),
+                        'row_count': row.get('row_count'),
+                        'cascade_session_id': row.get('cascade_session_id'),
+                        'triggered_at': row.get('triggered_at'),
+                    })
+
+            if not rows:
+                rows.append({
+                    'status': 'evaluated',
+                    'watch_name': name,
+                    'message': 'Watch evaluated. No trigger condition met or results unchanged.',
+                })
+
+            result_df = pd.DataFrame(rows)
+            send_query_results(self.sock, result_df, self.transaction_status)
+            print(f"[{self.session_id}] ✅ Triggered watch '{name}'")
+
+        except Exception as e:
+            send_error(self.sock, f"Failed to trigger watch '{name}': {e}")
+
+    def _alter_watch(self, directive):
+        """Modify watch settings."""
+        import pandas as pd
+        from ..watcher import get_watch, save_watch, set_watch_enabled, _parse_duration
+
+        watch = get_watch(directive.name)
+        if not watch:
+            send_error(self.sock, f"Watch '{directive.name}' not found")
+            return
+
+        if directive.set_field == 'enabled':
+            enabled = directive.set_value in ('true', '1', 'yes')
+            if set_watch_enabled(directive.name, enabled):
+                status = "enabled" if enabled else "disabled"
+                result_df = pd.DataFrame([{
+                    'status': 'altered',
+                    'watch_name': directive.name,
+                    'field': 'enabled',
+                    'value': enabled,
+                    'message': f"Watch '{directive.name}' {status}.",
+                }])
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}] ✅ Watch '{directive.name}' {status}")
+            else:
+                send_error(self.sock, f"Failed to alter watch '{directive.name}'")
+
+        elif directive.set_field == 'poll_interval':
+            watch.poll_interval_seconds = _parse_duration(directive.set_value)
+            if save_watch(watch):
+                result_df = pd.DataFrame([{
+                    'status': 'altered',
+                    'watch_name': directive.name,
+                    'field': 'poll_interval',
+                    'value': directive.set_value,
+                    'message': f"Watch '{directive.name}' poll interval set to {directive.set_value}.",
+                }])
+                send_query_results(self.sock, result_df, self.transaction_status)
+                print(f"[{self.session_id}] ✅ Watch '{directive.name}' poll interval set to {directive.set_value}")
+            else:
+                send_error(self.sock, f"Failed to alter watch '{directive.name}'")
+
+        else:
+            send_error(self.sock, f"Unknown field to alter: {directive.set_field}")
 
     def _handle_parse(self, msg: dict):
         """
