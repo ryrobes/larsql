@@ -42,6 +42,9 @@ sql_function:
     - ask_data('list customers who have not ordered in 90 days')
 
     Safety: Only SELECT queries are allowed. DDL and DML are blocked.
+  operators:
+    - ASK_DATA({{ question }}')
+    - 'ASK_DATA ''{{ question }}'''    
   args:
     - name: question
       type: VARCHAR

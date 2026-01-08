@@ -467,8 +467,14 @@ def _fix_double_where(query: str) -> str:
     if re.search(r'^\s*WITH\s+', query, re.IGNORECASE):
         return query
 
-    # Skip fix if query has subqueries (different scopes)
-    if query.count('SELECT') > 1:
+    # Skip fix if query has subqueries or UNION (different scopes)
+    # Use case-insensitive check!
+    query_upper = query.upper()
+    if query_upper.count('SELECT') > 1:
+        return query
+
+    # Also skip if query has UNION (each UNION part is its own scope)
+    if 'UNION' in query_upper:
         return query
 
     # Count WHERE occurrences in simple queries only

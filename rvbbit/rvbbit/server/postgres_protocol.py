@@ -254,6 +254,20 @@ class RowDescription:
         'BYTEA': 17
     }
 
+    # Type sizes in bytes (fixed-length types)
+    TYPE_SIZES = {
+        20: 8,    # BIGINT
+        21: 2,    # SMALLINT
+        23: 4,    # INTEGER
+        16: 1,    # BOOLEAN
+        700: 4,   # FLOAT/REAL
+        701: 8,   # DOUBLE
+        1082: 4,  # DATE
+        1083: 8,  # TIME
+        1114: 8,  # TIMESTAMP
+        2950: 16, # UUID
+    }
+
     @staticmethod
     def encode(columns: List[Tuple[str, str]]) -> bytes:
         """
@@ -287,8 +301,9 @@ class RowDescription:
             type_oid = RowDescription._get_pg_type_oid(duckdb_type)
             payload += struct.pack('!I', type_oid)
 
-            # Type size (2 bytes) - -1 for variable-length types
-            payload += struct.pack('!h', -1)  # Signed -1
+            # Type size (2 bytes) - use actual size for fixed-length types, -1 for variable
+            type_size = RowDescription.TYPE_SIZES.get(type_oid, -1)
+            payload += struct.pack('!h', type_size)  # Signed
 
             # Type modifier (4 bytes) - -1 = no modifier
             payload += struct.pack('!i', -1)  # Signed -1
@@ -358,6 +373,32 @@ class DataRow:
     """DataRow message - one row of query results."""
 
     @staticmethod
+    def _to_pg_array(value) -> str:
+        """Convert a Python list/tuple to PostgreSQL array format {a,b,c}."""
+        if not value:
+            return '{}'
+        # Convert each element, handling nested arrays and special characters
+        elements = []
+        for item in value:
+            if item is None:
+                elements.append('NULL')
+            elif isinstance(item, (list, tuple)):
+                elements.append(DataRow._to_pg_array(item))
+            elif isinstance(item, bool):
+                elements.append('t' if item else 'f')
+            elif isinstance(item, str):
+                # Escape special characters in strings
+                escaped = item.replace('\\', '\\\\').replace('"', '\\"')
+                # Quote if contains special chars
+                if any(c in item for c in [',', '{', '}', '"', '\\', ' ']):
+                    elements.append(f'"{escaped}"')
+                else:
+                    elements.append(escaped)
+            else:
+                elements.append(str(item))
+        return '{' + ','.join(elements) + '}'
+
+    @staticmethod
     def encode(values: List[Any]) -> bytes:
         """
         Build DataRow message.
@@ -392,8 +433,27 @@ class DataRow:
                     value_str = str(value)
                 elif isinstance(value, bytes):
                     value_str = value.decode('utf-8', errors='replace')
+                elif isinstance(value, (list, tuple)):
+                    # Convert Python list/tuple to PostgreSQL array format
+                    value_str = DataRow._to_pg_array(value)
                 else:
-                    value_str = str(value)
+                    # Check for numpy array (DuckDB returns numpy.ndarray for array columns)
+                    value_type = type(value).__name__
+                    if value_type == 'ndarray':
+                        # Convert numpy array to list, then to PostgreSQL array format
+                        value_str = DataRow._to_pg_array(value.tolist())
+                    else:
+                        # Check if string looks like a Python list representation
+                        value_str = str(value)
+                        if value_str.startswith('[') and value_str.endswith(']'):
+                            # Try to convert Python list string to PostgreSQL array format
+                            try:
+                                import ast
+                                parsed = ast.literal_eval(value_str)
+                                if isinstance(parsed, (list, tuple)):
+                                    value_str = DataRow._to_pg_array(parsed)
+                            except (ValueError, SyntaxError):
+                                pass  # Keep original string if parsing fails
 
                 value_bytes = value_str.encode('utf-8')
                 payload += struct.pack('!I', len(value_bytes))

@@ -8,7 +8,7 @@ export function renderSidebar(navData, currentPage) {
   return `
     <aside class="toc-sidebar">
       <!-- Brand/Logo -->
-      <a href="../landing_page/v3/index.html" class="toc-brand">
+      <a href="index.html" class="toc-brand">
         <img src="assets/rvbbit-logo-square.png" alt="RVBBIT" class="toc-logo">
         <span>RVBBIT</span>
       </a>

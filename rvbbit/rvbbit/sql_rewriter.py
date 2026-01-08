@@ -204,7 +204,23 @@ def rewrite_rvbbit_syntax(query: str, duckdb_conn=None) -> str:
     # - Infix operators (MEANS, ABOUT, ~)
     # - Aggregate functions (SUMMARIZE, CLASSIFY)
     # All patterns loaded from cascades - no hardcoded lists!
+    before_unified = result
     result = _rewrite_all_operators_unified(result)
+
+    # Debug: check if WHERE was changed during unified rewriting
+    if 'pg_class' in before_unified.lower() and 'relkind' in before_unified.lower():
+        if result != before_unified:
+            # Find what changed
+            import difflib
+            diff = list(difflib.unified_diff(
+                before_unified.split('\n'),
+                result.split('\n'),
+                lineterm='', n=0
+            ))
+            if diff:
+                print(f"[DEBUG] sql_rewriter: Unified rewriter changed pg_class query:")
+                for line in diff[:20]:
+                    print(f"[DEBUG]   {line}")
 
     # === ARROW ALIAS: Inject hint comment if arrow was present ===
     # The hint travels with the query and gets extracted before execution

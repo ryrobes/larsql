@@ -326,6 +326,15 @@ class ClientConnection:
         query = re.sub(r'(?i)\bage\s*\(\s*0\s*\)', '0', query)
         query = re.sub(r'(?i)\bage\s*\(\s*\d+\s*\)', '0', query)
 
+        # =================================================================
+        # DataGrip placeholders
+        # =================================================================
+
+        # #TXAGE - DataGrip uses this as a placeholder for transaction age
+        # It gets used in WHERE clauses like "WHERE 0 <= #TXAGE"
+        # Replace with 0 since DuckDB doesn't track transaction ages
+        query = re.sub(r'#TXAGE\b', '0', query)
+
         return query
 
     @staticmethod
@@ -447,6 +456,12 @@ class ClientConnection:
 
         if from_match:
             primary_table = from_match.group(1).upper()  # Normalize to uppercase
+
+            # Special case: if query contains pg_class, don't intercept for pg_inherits
+            # This handles table queries that JOIN to pg_inherits
+            if primary_table == 'PG_INHERITS' and 'PG_CLASS' in query_upper:
+                return None
+
             if primary_table in MISSING_PRIMARY_TABLES:
                 # This is a query with a missing primary table - return empty
                 columns = MISSING_PRIMARY_TABLES[primary_table]
@@ -471,37 +486,203 @@ class ClientConnection:
         # pg_description: object descriptions (tables, columns, etc)
         # pg_shdescription: shared descriptions (databases, roles)
         # pg_stat_activity: process/session info
+        # pg_inherits: inheritance relationships (partitions)
         MISSING_JOIN_TABLES = [
             'pg_description',
             'pg_shdescription',
             'pg_stat_activity',
+            'pg_inherits',
         ]
 
         result = query
+
+        # Debug: Check if this is the pg_class table query
+        if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
+            print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query BEFORE rewrite:")
+            for i, line in enumerate(query.split('\n'), 1):
+                if line.strip():
+                    print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+            print(f"[DEBUG]   WHERE in original: {'WHERE' in query.upper()}")
+
         for table in MISSING_JOIN_TABLES:
-            # Pattern to match LEFT JOIN to this table with an alias
-            # Example: LEFT JOIN pg_catalog.pg_description d ON (c.oid = d.objoid AND d.objsubid = 0)
-            # Match the JOIN clause until the next major keyword or another JOIN
-            pattern = rf'''(?ix)
+            # Two-phase approach: first find the LEFT JOIN start, then find ON condition end
+            # This handles nested parentheses correctly
+            join_pattern = rf'''(?ix)
                 \s+LEFT\s+(?:OUTER\s+)?JOIN\s+
                 (?:pg_catalog\.)?{table}\s+
-                (\w+)                         # Capture alias
+                (?:AS\s+)?                    # Optional AS keyword
+                ([a-zA-Z_][a-zA-Z0-9_]*)      # Capture alias
                 \s+ON\s+
-                (?:                           # Match ON condition - handle parens
-                    \([^)]+\)                 # Parenthesized condition
-                    |                         # OR
-                    [^)\s]+\s*=\s*[^)\s]+     # Simple condition
-                    (?:\s+AND\s+[^)\s]+\s*=\s*[^)\s]+)*  # Additional AND clauses
-                )
             '''
-            match = re.search(pattern, result)
-            if match:
-                alias = match.group(1)
-                # Remove the entire LEFT JOIN clause (use the full match)
-                result = re.sub(pattern, ' ', result)
-                # Replace column references like D.description with NULL
-                # Be careful to only replace the alias, not table names
-                result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result)
+            match = re.search(join_pattern, result)
+            if not match:
+                continue
+
+            alias = match.group(1)
+            join_start = match.start()
+            on_start = match.end()  # Position right after "ON "
+
+            # Now find where the ON condition ends
+            # It ends at: WHERE, ORDER BY, GROUP BY, LIMIT, another JOIN, or end of query
+            # But we need to handle nested parentheses in the ON condition
+
+            # If ON condition starts with (, find matching )
+            if on_start < len(result) and result[on_start] == '(':
+                # Find matching closing paren with proper nesting
+                paren_count = 1
+                pos = on_start + 1
+                while pos < len(result) and paren_count > 0:
+                    if result[pos] == '(':
+                        paren_count += 1
+                    elif result[pos] == ')':
+                        paren_count -= 1
+                    pos += 1
+                on_end = pos  # Position after the closing )
+            else:
+                # ON condition without parens - find end by looking for keywords
+                # Match until WHERE, ORDER, GROUP, HAVING, LIMIT, another JOIN, or end
+                rest = result[on_start:]
+                end_match = re.search(
+                    r'(?i)\s+(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET|'
+                    r'LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|'
+                    r'INNER\s+JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN)\b',
+                    rest
+                )
+                if end_match:
+                    on_end = on_start + end_match.start()
+                else:
+                    on_end = len(result)
+
+            # Extract what we're removing for debugging
+            matched_text = result[join_start:on_end]
+            print(f"[DEBUG] _rewrite_missing_table_joins: Removing LEFT JOIN to {table}")
+            print(f"[DEBUG]   Alias: {alias}")
+            print(f"[DEBUG]   Matched ({len(matched_text)} chars): {matched_text[:200]}{'...' if len(matched_text) > 200 else ''}")
+
+            # Remove the entire LEFT JOIN clause
+            result = result[:join_start] + ' ' + result[on_end:]
+
+            # Replace column references like D.description with NULL
+            # Be careful to only replace the alias, not table names
+            result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result, flags=re.IGNORECASE)
+            print(f"[DEBUG]   Alias '{alias}' column refs replaced with NULL")
+
+        # Debug: Check if this is the pg_class table query
+        if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
+            print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query AFTER rewrite:")
+            for i, line in enumerate(result.split('\n'), 1):
+                if line.strip():
+                    print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+            print(f"[DEBUG]   WHERE in result: {'WHERE' in result.upper()}")
+
+        # Debug: show if WHERE clause is present
+        if 'WHERE' in query.upper() and 'WHERE' not in result.upper():
+            print(f"[DEBUG] WARNING: WHERE clause was lost during JOIN rewriting!")
+            print(f"[DEBUG]   Original had WHERE at position: {query.upper().find('WHERE')}")
+            # Show what was around the WHERE
+            where_pos = query.upper().find('WHERE')
+            print(f"[DEBUG]   Context around WHERE: ...{query[max(0,where_pos-50):where_pos+50]}...")
+
+        return result
+
+    def _rewrite_pg_inherits_subqueries(self, query: str) -> str:
+        """
+        Replace correlated subqueries to pg_inherits with NULL.
+
+        DataGrip's table introspection queries include subqueries like:
+        (SELECT string_agg(inhparent::regclass::varchar, ', ' ORDER BY inhrelid)
+         FROM pg_catalog.pg_inherits WHERE inhrelid = T.oid)
+
+        DuckDB doesn't support ORDER BY inside string_agg, and pg_inherits
+        is empty anyway, so we replace the entire subquery with NULL.
+        """
+        import re
+
+        # Find all occurrences of "FROM pg_catalog.pg_inherits" or "FROM pg_inherits"
+        # and replace the enclosing parenthesized subquery with NULL
+        result = query
+        search_patterns = [
+            r'from\s+pg_catalog\.pg_inherits\b',
+            r'from\s+pg_inherits\b'
+        ]
+
+        has_pg_inherits = 'pg_inherits' in query.lower()
+        if has_pg_inherits:
+            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Found pg_inherits in query")
+
+        for search_pattern in search_patterns:
+            while True:
+                match = re.search(search_pattern, result, re.IGNORECASE)
+                if not match:
+                    break
+
+                # Find the opening paren of this subquery by scanning backwards
+                pos = match.start()
+                paren_count = 0
+                start_pos = None
+
+                # Scan backwards to find the opening paren with SELECT
+                for i in range(pos - 1, -1, -1):
+                    if result[i] == ')':
+                        paren_count += 1
+                    elif result[i] == '(':
+                        if paren_count == 0:
+                            # Check if this is a SELECT subquery
+                            after_paren = result[i+1:pos].strip().upper()
+                            if after_paren.startswith('SELECT'):
+                                start_pos = i
+                                break
+                        else:
+                            paren_count -= 1
+
+                if start_pos is None:
+                    # Couldn't find opening paren, skip this match
+                    break
+
+                # Find the closing paren by scanning forwards
+                paren_count = 1
+                end_pos = None
+                for i in range(start_pos + 1, len(result)):
+                    if result[i] == '(':
+                        paren_count += 1
+                    elif result[i] == ')':
+                        paren_count -= 1
+                        if paren_count == 0:
+                            end_pos = i
+                            break
+
+                if end_pos is None:
+                    # Couldn't find closing paren, skip
+                    print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Could not find closing paren")
+                    break
+
+                # Replace the subquery with NULL or empty subquery depending on context
+                old_subquery = result[start_pos:end_pos + 1]
+                print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Replacing subquery: {old_subquery[:80]}...")
+
+                # Check if this subquery is used with IN/NOT IN/EXISTS (need valid subquery, not scalar)
+                # Look at the 30 chars before the subquery
+                prefix = result[max(0, start_pos - 30):start_pos].upper()
+                if ' IN' in prefix or 'IN(' in prefix.replace(' ', '') or 'EXISTS' in prefix:
+                    # Replace with empty subquery for IN/NOT IN/EXISTS clauses
+                    replacement = "(SELECT NULL WHERE FALSE)"
+                    print(f"[DEBUG] Using empty subquery replacement (context: ...{prefix[-20:]})")
+                else:
+                    # Replace with NULL scalar for SELECT list columns
+                    replacement = "NULL::VARCHAR"
+                    print(f"[DEBUG] Using NULL::VARCHAR replacement (context: ...{prefix[-20:]})")
+
+                result = result[:start_pos] + replacement + result[end_pos + 1:]
+
+        if has_pg_inherits and 'pg_inherits' not in result.lower():
+            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Successfully removed all pg_inherits references")
+            # Print full query to see the structure - split into lines for analysis
+            lines = result.split('\n')
+            print(f"[DEBUG] Rewritten query has {len(lines)} lines:")
+            for i, line in enumerate(lines, 1):
+                print(f"[DEBUG]   Line {i}: {line[:120]}{'...' if len(line) > 120 else ''}")
+        elif has_pg_inherits:
+            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: WARNING - pg_inherits still in result!")
 
         return result
 
@@ -534,6 +715,52 @@ class ClientConnection:
             # Replace column reference with default value (preserve alias if any)
             # Pattern: N.datistemplate or datistemplate (standalone)
             result = re.sub(rf'(?i)\b(\w+\.)?{col}\b', default, result)
+
+        return result
+
+    @staticmethod
+    def _rewrite_pg_get_expr_calls(query: str) -> str:
+        """
+        Replace pg_get_expr(...) calls with NULL::VARCHAR.
+
+        DuckDB's macro system doesn't support overloading, and pg_get_expr is used
+        to decompile partition expressions which DuckDB doesn't have anyway.
+        Replace all pg_get_expr calls (2 or 3 args) with NULL.
+        """
+        import re
+
+        # Match pg_get_expr(arg1, arg2) or pg_get_expr(arg1, arg2, arg3)
+        # Also match pg_catalog.pg_get_expr(...)
+        # Use a recursive approach to handle nested parentheses
+        pattern = r'(?i)(?:pg_catalog\.)?pg_get_expr\s*\('
+
+        result = query
+        while True:
+            match = re.search(pattern, result)
+            if not match:
+                break
+
+            start_pos = match.start()
+            paren_start = match.end() - 1  # Position of opening paren
+
+            # Find the matching closing paren
+            paren_count = 1
+            end_pos = None
+            for i in range(paren_start + 1, len(result)):
+                if result[i] == '(':
+                    paren_count += 1
+                elif result[i] == ')':
+                    paren_count -= 1
+                    if paren_count == 0:
+                        end_pos = i
+                        break
+
+            if end_pos is None:
+                # Couldn't find closing paren, abort
+                break
+
+            # Replace the entire pg_get_expr(...) call with NULL::VARCHAR
+            result = result[:start_pos] + 'NULL::VARCHAR' + result[end_pos + 1:]
 
         return result
 
@@ -1900,7 +2127,7 @@ class ClientConnection:
             # pg_is_in_recovery() - Are we a replica? No.
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_is_in_recovery() AS false
+                    CREATE OR REPLACE MACRO pg_is_in_recovery() AS false
                 """)
                 stubs_created.append("pg_is_in_recovery()")
             except Exception as e:
@@ -1910,7 +2137,7 @@ class ClientConnection:
             # txid_current() - Current transaction ID (use timestamp-based fake)
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.txid_current() AS
+                    CREATE OR REPLACE MACRO txid_current() AS
                         (epoch_ms(now())::BIGINT % 4294967296)
                 """)
                 stubs_created.append("txid_current()")
@@ -1923,7 +2150,7 @@ class ClientConnection:
                 import os
                 pid = os.getpid()
                 self.duckdb_conn.execute(f"""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_backend_pid() AS {pid}
+                    CREATE OR REPLACE MACRO pg_backend_pid() AS {pid}
                 """)
                 stubs_created.append("pg_backend_pid()")
             except Exception as e:
@@ -1932,7 +2159,7 @@ class ClientConnection:
             # pg_current_xact_id() - Alias for txid_current (newer PG versions)
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_current_xact_id() AS
+                    CREATE OR REPLACE MACRO pg_current_xact_id() AS
                         (epoch_ms(now())::BIGINT % 4294967296)
                 """)
                 stubs_created.append("pg_current_xact_id()")
@@ -1946,7 +2173,7 @@ class ClientConnection:
             # pg_get_userbyid(oid) - Get username by OID
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_userbyid(user_oid) AS
+                    CREATE OR REPLACE MACRO pg_get_userbyid(user_oid) AS
                         CASE WHEN user_oid = 0 THEN 'postgres'
                              WHEN user_oid = 10 THEN 'rvbbit'
                              ELSE 'user_' || COALESCE(user_oid::VARCHAR, '0')
@@ -1956,29 +2183,22 @@ class ClientConnection:
             except Exception as e:
                 pass
 
-            # pg_get_expr(expr_text, relid) - Get expression text (return as-is)
+            # pg_get_expr(expr_text, relid) - Get expression text
+            # Note: DuckDB doesn't support macro overloading, so we only create the 2-arg version.
+            # The query rewriter will handle pg_get_expr calls by replacing them with NULL.
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_expr(expr_text, relid) AS
-                        COALESCE(expr_text::VARCHAR, '')
+                    CREATE OR REPLACE MACRO pg_get_expr(expr_text, relid) AS
+                        NULL::VARCHAR
                 """)
                 stubs_created.append("pg_get_expr()")
-            except Exception as e:
-                pass
-
-            # pg_get_expr with 3 args (expr_text, relid, pretty_bool)
-            try:
-                self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_expr(expr_text, relid, pretty) AS
-                        COALESCE(expr_text::VARCHAR, '')
-                """)
             except Exception as e:
                 pass
 
             # pg_encoding_to_char(encoding_int) - Get encoding name
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_encoding_to_char(enc) AS
+                    CREATE OR REPLACE MACRO pg_encoding_to_char(enc) AS
                         CASE WHEN enc = 6 THEN 'UTF8'
                              WHEN enc = 0 THEN 'SQL_ASCII'
                              ELSE 'UTF8'
@@ -1991,7 +2211,7 @@ class ClientConnection:
             # pg_tablespace_location(oid) - Get tablespace location
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_tablespace_location(ts_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_tablespace_location(ts_oid) AS ''
                 """)
                 stubs_created.append("pg_tablespace_location()")
             except Exception as e:
@@ -2000,7 +2220,7 @@ class ClientConnection:
             # format_type(type_oid, typemod) - Format type for display
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.format_type(type_oid, typemod) AS
+                    CREATE OR REPLACE MACRO format_type(type_oid, typemod) AS
                         CASE
                             WHEN type_oid = 16 THEN 'boolean'
                             WHEN type_oid = 17 THEN 'bytea'
@@ -2031,7 +2251,7 @@ class ClientConnection:
             # pg_get_constraintdef(constraint_oid) - Get constraint definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_constraintdef(con_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_constraintdef(con_oid) AS ''
                 """)
                 stubs_created.append("pg_get_constraintdef()")
             except Exception as e:
@@ -2040,7 +2260,7 @@ class ClientConnection:
             # pg_get_constraintdef with pretty flag
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_constraintdef(con_oid, pretty) AS ''
+                    CREATE OR REPLACE MACRO pg_get_constraintdef(con_oid, pretty) AS ''
                 """)
             except Exception as e:
                 pass
@@ -2048,7 +2268,7 @@ class ClientConnection:
             # pg_get_indexdef(index_oid) - Get index definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_indexdef(idx_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_indexdef(idx_oid) AS ''
                 """)
                 stubs_created.append("pg_get_indexdef()")
             except Exception as e:
@@ -2057,7 +2277,7 @@ class ClientConnection:
             # pg_get_indexdef with column number
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_indexdef(idx_oid, col_num, pretty) AS ''
+                    CREATE OR REPLACE MACRO pg_get_indexdef(idx_oid, col_num, pretty) AS ''
                 """)
             except Exception as e:
                 pass
@@ -2065,7 +2285,7 @@ class ClientConnection:
             # pg_relation_size(oid) - Get relation size in bytes
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_relation_size(rel_oid) AS 0::BIGINT
+                    CREATE OR REPLACE MACRO pg_relation_size(rel_oid) AS 0::BIGINT
                 """)
                 stubs_created.append("pg_relation_size()")
             except Exception as e:
@@ -2074,7 +2294,7 @@ class ClientConnection:
             # pg_table_size(oid) - Get table size including indexes
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_table_size(rel_oid) AS 0::BIGINT
+                    CREATE OR REPLACE MACRO pg_table_size(rel_oid) AS 0::BIGINT
                 """)
                 stubs_created.append("pg_table_size()")
             except Exception as e:
@@ -2083,7 +2303,7 @@ class ClientConnection:
             # pg_total_relation_size(oid) - Get total relation size
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_total_relation_size(rel_oid) AS 0::BIGINT
+                    CREATE OR REPLACE MACRO pg_total_relation_size(rel_oid) AS 0::BIGINT
                 """)
                 stubs_created.append("pg_total_relation_size()")
             except Exception as e:
@@ -2092,7 +2312,7 @@ class ClientConnection:
             # pg_size_pretty(size) - Format size as human-readable
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_size_pretty(size_bytes) AS
+                    CREATE OR REPLACE MACRO pg_size_pretty(size_bytes) AS
                         CASE
                             WHEN size_bytes >= 1099511627776 THEN ROUND(size_bytes / 1099511627776.0, 1)::VARCHAR || ' TB'
                             WHEN size_bytes >= 1073741824 THEN ROUND(size_bytes / 1073741824.0, 1)::VARCHAR || ' GB'
@@ -2108,7 +2328,7 @@ class ClientConnection:
             # pg_get_partkeydef(oid) - Get partition key definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_partkeydef(rel_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_partkeydef(rel_oid) AS ''
                 """)
                 stubs_created.append("pg_get_partkeydef()")
             except Exception as e:
@@ -2117,7 +2337,7 @@ class ClientConnection:
             # obj_description(oid, catalog) - Get object description
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.obj_description(obj_oid, catalog_name) AS NULL::VARCHAR
+                    CREATE OR REPLACE MACRO obj_description(obj_oid, catalog_name) AS NULL::VARCHAR
                 """)
                 stubs_created.append("obj_description()")
             except Exception as e:
@@ -2126,7 +2346,7 @@ class ClientConnection:
             # col_description(table_oid, column_num) - Get column description
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.col_description(rel_oid, col_num) AS NULL::VARCHAR
+                    CREATE OR REPLACE MACRO col_description(rel_oid, col_num) AS NULL::VARCHAR
                 """)
                 stubs_created.append("col_description()")
             except Exception as e:
@@ -2135,7 +2355,7 @@ class ClientConnection:
             # shobj_description(oid, catalog) - Get shared object description
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.shobj_description(obj_oid, catalog_name) AS NULL::VARCHAR
+                    CREATE OR REPLACE MACRO shobj_description(obj_oid, catalog_name) AS NULL::VARCHAR
                 """)
                 stubs_created.append("shobj_description()")
             except Exception as e:
@@ -2144,7 +2364,7 @@ class ClientConnection:
             # pg_has_role(user, role, privilege) - Check role membership
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_has_role(user_oid, role_oid, priv) AS true
+                    CREATE OR REPLACE MACRO pg_has_role(user_oid, role_oid, priv) AS true
                 """)
                 stubs_created.append("pg_has_role()")
             except Exception as e:
@@ -2153,10 +2373,10 @@ class ClientConnection:
             # has_table_privilege variants
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.has_table_privilege(table_oid, priv) AS true
+                    CREATE OR REPLACE MACRO has_table_privilege(table_oid, priv) AS true
                 """)
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.has_table_privilege(user_name, table_oid, priv) AS true
+                    CREATE OR REPLACE MACRO has_table_privilege(user_name, table_oid, priv) AS true
                 """)
                 stubs_created.append("has_table_privilege()")
             except Exception as e:
@@ -2165,10 +2385,10 @@ class ClientConnection:
             # has_schema_privilege variants
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.has_schema_privilege(schema_oid, priv) AS true
+                    CREATE OR REPLACE MACRO has_schema_privilege(schema_oid, priv) AS true
                 """)
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.has_schema_privilege(user_name, schema_oid, priv) AS true
+                    CREATE OR REPLACE MACRO has_schema_privilege(user_name, schema_oid, priv) AS true
                 """)
                 stubs_created.append("has_schema_privilege()")
             except Exception as e:
@@ -2177,7 +2397,7 @@ class ClientConnection:
             # pg_get_serial_sequence(table, column) - Get sequence for serial column
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_serial_sequence(tab_name, col_name) AS NULL::VARCHAR
+                    CREATE OR REPLACE MACRO pg_get_serial_sequence(tab_name, col_name) AS NULL::VARCHAR
                 """)
                 stubs_created.append("pg_get_serial_sequence()")
             except Exception as e:
@@ -2186,7 +2406,7 @@ class ClientConnection:
             # current_setting(name) - Get configuration setting
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.current_setting(setting_name) AS
+                    CREATE OR REPLACE MACRO current_setting(setting_name) AS
                         CASE
                             WHEN setting_name = 'server_version' THEN '14.0'
                             WHEN setting_name = 'server_version_num' THEN '140000'
@@ -2205,7 +2425,7 @@ class ClientConnection:
             # current_setting with missing_ok flag
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.current_setting(setting_name, missing_ok) AS
+                    CREATE OR REPLACE MACRO current_setting(setting_name, missing_ok) AS
                         CASE
                             WHEN setting_name = 'server_version' THEN '14.0'
                             WHEN setting_name = 'server_version_num' THEN '140000'
@@ -2220,7 +2440,7 @@ class ClientConnection:
             # pg_postmaster_start_time() - Get server start time
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_postmaster_start_time() AS NOW()
+                    CREATE OR REPLACE MACRO pg_postmaster_start_time() AS NOW()
                 """)
                 stubs_created.append("pg_postmaster_start_time()")
             except Exception as e:
@@ -2229,7 +2449,7 @@ class ClientConnection:
             # version() - Get PostgreSQL version string (avoid mentioning DuckDB to prevent IDE mode switching)
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.version() AS
+                    CREATE OR REPLACE MACRO version() AS
                         'PostgreSQL 14.0 on x86_64-pc-linux-gnu, compiled by gcc'
                 """)
                 stubs_created.append("version()")
@@ -2239,7 +2459,7 @@ class ClientConnection:
             # pg_get_viewdef(oid) - Get view definition (return empty string)
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_viewdef(view_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_viewdef(view_oid) AS ''
                 """)
                 stubs_created.append("pg_get_viewdef()")
             except Exception as e:
@@ -2248,7 +2468,7 @@ class ClientConnection:
             # pg_get_viewdef with pretty flag
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_viewdef(view_oid, pretty) AS ''
+                    CREATE OR REPLACE MACRO pg_get_viewdef(view_oid, pretty) AS ''
                 """)
             except Exception as e:
                 pass
@@ -2256,7 +2476,7 @@ class ClientConnection:
             # pg_get_functiondef(oid) - Get function definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_functiondef(func_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_functiondef(func_oid) AS ''
                 """)
                 stubs_created.append("pg_get_functiondef()")
             except Exception as e:
@@ -2265,7 +2485,7 @@ class ClientConnection:
             # pg_get_triggerdef(oid) - Get trigger definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_triggerdef(trig_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_triggerdef(trig_oid) AS ''
                 """)
                 stubs_created.append("pg_get_triggerdef()")
             except Exception as e:
@@ -2274,7 +2494,7 @@ class ClientConnection:
             # pg_get_triggerdef with pretty flag
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_triggerdef(trig_oid, pretty) AS ''
+                    CREATE OR REPLACE MACRO pg_get_triggerdef(trig_oid, pretty) AS ''
                 """)
             except Exception as e:
                 pass
@@ -2282,7 +2502,7 @@ class ClientConnection:
             # pg_get_ruledef(oid) - Get rule definition
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_ruledef(rule_oid) AS ''
+                    CREATE OR REPLACE MACRO pg_get_ruledef(rule_oid) AS ''
                 """)
                 stubs_created.append("pg_get_ruledef()")
             except Exception as e:
@@ -2291,7 +2511,7 @@ class ClientConnection:
             # pg_get_ruledef with pretty flag
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.pg_get_ruledef(rule_oid, pretty) AS ''
+                    CREATE OR REPLACE MACRO pg_get_ruledef(rule_oid, pretty) AS ''
                 """)
             except Exception as e:
                 pass
@@ -2299,7 +2519,7 @@ class ClientConnection:
             # age(timestamp) - Calculate age from timestamp (return interval-like string)
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.age(ts) AS
+                    CREATE OR REPLACE MACRO age(ts) AS
                         CASE
                             WHEN ts IS NULL THEN NULL
                             ELSE (NOW() - ts::TIMESTAMP)::VARCHAR
@@ -2312,7 +2532,7 @@ class ClientConnection:
             # age(timestamp, timestamp) - Calculate age between two timestamps
             try:
                 self.duckdb_conn.execute("""
-                    CREATE OR REPLACE MACRO pg_catalog.age(ts1, ts2) AS
+                    CREATE OR REPLACE MACRO age(ts1, ts2) AS
                         CASE
                             WHEN ts1 IS NULL OR ts2 IS NULL THEN NULL
                             ELSE (ts1::TIMESTAMP - ts2::TIMESTAMP)::VARCHAR
@@ -3590,10 +3810,15 @@ class ClientConnection:
             # PRIORITY: pg_namespace queries FIRST (before CURRENT_SCHEMA which they may contain)
             # DataGrip schema listing queries contain current_schema() but need full schema list
             # BUT: Don't handle if pg_class is the main table (pg_namespace might just be in a JOIN)
+            # AND: Don't handle ACL queries (they just need nspacl, not full schema browser handling)
             is_pg_class_main = 'FROM PG_CATALOG.PG_CLASS' in query_upper or 'FROM PG_CLASS' in query_upper
             is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
+            # ACL queries select acl/nspacl columns - should NOT use schema browser handler
+            # Check SELECT clause for ACL columns (before FROM to avoid matching 'PG_NAMESPACE')
+            select_clause = query_upper.split('FROM')[0] if 'FROM' in query_upper else ''
+            is_acl_query = 'NSPACL' in select_clause or ' ACL' in select_clause or ',ACL' in select_clause or '.ACL' in select_clause
 
-            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper:
+            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper and not is_acl_query:
                 print(f"[{self.session_id}]   🔧 Handling pg_namespace query for schema browser...")
                 try:
                     # Get expected columns from the query
@@ -3628,10 +3853,13 @@ class ClientConnection:
                     result_df = pd.DataFrame(result_data, columns=expected_cols)
 
                     # Find the name column for sorting and deduplication
-                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), expected_cols[0])
+                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), None)
 
-                    # Ensure pg_catalog + information_schema appear
-                    existing = set(result_df[name_col].tolist()) if len(result_df) > 0 else set()
+                    # Ensure pg_catalog + information_schema appear (only if we have a name column)
+                    if name_col:
+                        existing = set(result_df[name_col].tolist()) if len(result_df) > 0 else set()
+                    else:
+                        existing = set()  # No name column - skip deduplication
                     for schema_name, schema_id, desc in [('pg_catalog', 11, 'System catalog'), ('information_schema', 12, 'Information schema')]:
                         if schema_name not in existing:
                             new_row = {}
@@ -3651,12 +3879,15 @@ class ClientConnection:
                                     new_row[col] = None
                             result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
 
-                    result_df = result_df.sort_values(name_col).reset_index(drop=True)
+                    # Sort by name column if available
+                    if name_col and name_col in result_df.columns:
+                        result_df = result_df.sort_values(name_col).reset_index(drop=True)
 
                     # Debug: show what schemas we found
                     print(f"[{self.session_id}]   📋 Schemas found ({len(result_df)}):")
                     for _, row in result_df.head(10).iterrows():
-                        print(f"[{self.session_id}]      - {row.get(name_col, row.iloc[0])}")
+                        display_val = row.get(name_col, row.iloc[0]) if name_col else row.iloc[0]
+                        print(f"[{self.session_id}]      - {display_val}")
 
                     send_query_results(self.sock, result_df, self.transaction_status)
                     print(f"[{self.session_id}]   ✅ pg_namespace handled ({len(result_df)} schemas)")
@@ -3672,10 +3903,13 @@ class ClientConnection:
                 row = {}
                 for c in cols:
                     key = c.strip('"').lower()
-                    if key in {'current_database', 'current_database()'}:
+                    if key in {'current_database', 'current_database()', 'a'}:  # 'a' is common alias
                         row[c] = self.database_name
                     elif key in {'current_schema', 'current_schema()'}:
                         row[c] = 'main'
+                    elif key in {'current_schemas', 'current_schemas(false)', 'current_schemas(true)', 'b'}:  # 'b' is common alias
+                        # PostgreSQL returns arrays like {main} or {main,pg_catalog}
+                        row[c] = '{main}'
                     elif key in {'current_user', 'session_user'}:
                         row[c] = self.user_name
                     else:
@@ -3687,12 +3921,29 @@ class ClientConnection:
 
             # Skip if this is a pg_namespace query (which may use current_schema() in WHERE)
             if ('CURRENT_SCHEMA()' in query_upper or 'CURRENT_SCHEMAS(' in query_upper) and 'PG_NAMESPACE' not in query_upper:
-                if 'SESSION_USER' in query_upper:
-                    result_df = pd.DataFrame({'current_schema': ['main'], 'session_user': ['rvbbit']})
+                cols = self._expected_result_columns(query)
+                if cols:
+                    row = {}
+                    for c in cols:
+                        key = c.strip('"').lower()
+                        if key in {'current_schema', 'current_schema()'}:
+                            row[c] = 'main'
+                        elif key in {'current_schemas', 'b'}:  # 'b' is common alias in DataGrip queries
+                            # PostgreSQL returns arrays like {main} or {main,pg_catalog}
+                            row[c] = '{main}'  # PostgreSQL array format
+                        elif key in {'current_database', 'current_database()', 'a'}:  # 'a' is common alias
+                            row[c] = self.database_name
+                        elif key in {'session_user'}:
+                            row[c] = self.user_name
+                        else:
+                            row[c] = None
+                    result_df = pd.DataFrame({c: [row[c]] for c in cols})
+                elif 'SESSION_USER' in query_upper:
+                    result_df = pd.DataFrame({'current_schema': ['main'], 'session_user': [self.user_name]})
                 else:
                     result_df = pd.DataFrame({'current_schema': ['main']})
                 send_query_results(self.sock, result_df, self.transaction_status)
-                print(f"[{self.session_id}]   ✓ CURRENT_SCHEMA() handled")
+                print(f"[{self.session_id}]   ✓ CURRENT_SCHEMA(S) handled")
                 return
 
             if 'VERSION()' in query_upper:
@@ -3910,7 +4161,8 @@ class ClientConnection:
                 return
 
             # Handle pg_inherits queries (including subqueries) - DuckDB doesn't have inheritance
-            if 'PG_INHERITS' in query_upper:
+            # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
+            if 'PG_INHERITS' in query_upper and 'PG_CLASS' not in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_inherits query...")
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = pd.DataFrame(columns=cols)
@@ -4003,7 +4255,8 @@ class ClientConnection:
                 return
 
             # Handle pg_inherits (DataGrip queries for table inheritance)
-            if 'PG_INHERITS' in query_upper and 'FROM' in query_upper:
+            # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
+            if 'PG_INHERITS' in query_upper and 'FROM' in query_upper and 'PG_CLASS' not in query_upper:
                 print(f"[{self.session_id}]   🔧 Handling pg_inherits query...")
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = self._empty_df_for_columns(cols)
@@ -4172,6 +4425,9 @@ class ClientConnection:
                 clean_query = query.replace('::regclass', '').replace('::oid', '').replace('::regproc', '').replace('::regtype', '')
                 clean_query = clean_query.replace('::REGCLASS', '').replace('::OID', '').replace('::REGPROC', '').replace('::REGTYPE', '')
                 try:
+                    # Rewrite pg_inherits subqueries FIRST (DuckDB doesn't have pg_inherits)
+                    clean_query = self._rewrite_pg_inherits_subqueries(clean_query)
+                    clean_query = self._rewrite_pg_get_expr_calls(clean_query)
                     clean_query = self._rewrite_pg_catalog_function_calls(clean_query)
                     clean_query = self._rewrite_information_schema_catalog_filters(clean_query)
                     clean_query = self._rewrite_pg_system_column_refs(clean_query)
@@ -4186,9 +4442,14 @@ class ClientConnection:
             # Default: Try to execute the query as-is
             # With pg_catalog views created, most queries should work!
             try:
-                rewritten_query = self._rewrite_pg_catalog_function_calls(query)
+                # Rewrite pg_inherits subqueries FIRST (DuckDB doesn't have pg_inherits)
+                rewritten_query = self._rewrite_pg_inherits_subqueries(query)
+                rewritten_query = self._rewrite_pg_get_expr_calls(rewritten_query)
+                rewritten_query = self._rewrite_pg_catalog_function_calls(rewritten_query)
                 rewritten_query = self._rewrite_information_schema_catalog_filters(rewritten_query)
                 rewritten_query = self._rewrite_pg_system_column_refs(rewritten_query)
+                # Remove LEFT JOINs to missing pg_catalog tables (pg_description, pg_inherits, etc.)
+                rewritten_query = self._rewrite_missing_table_joins(rewritten_query)
                 result_df = self.duckdb_conn.execute(rewritten_query).fetchdf()
 
                 # Normalize catalog names for Postgres clients (DuckDB uses 'memory' for in-memory)
@@ -5133,6 +5394,13 @@ class ClientConnection:
 
             if query != original_query:
                 print(f"[{self.session_id}]      🔄 Rewrote RVBBIT syntax ({len(original_query)} → {len(query)} chars)")
+                # Debug: for pg_class queries, show the FROM/WHERE/AND structure
+                if 'PG_CLASS' in original_query.upper() and 'RELKIND' in original_query.upper():
+                    print(f"[{self.session_id}]      [DEBUG] ORIGINAL query FROM/WHERE structure:")
+                    for i, line in enumerate(original_query.split('\n'), 1):
+                        line_upper = line.upper().strip()
+                        if any(kw in line_upper for kw in ['FROM PG_', 'WHERE ', 'AND RELNAMESPACE', 'LEFT JOIN', 'LEFT OUTER']):
+                            print(f"[{self.session_id}]        Line {i}: {line.strip()[:100]}")
 
             # Store prepared statement
             # We don't actually use DuckDB PREPARE yet - just store the query
@@ -5337,12 +5605,39 @@ class ClientConnection:
                         for i in range(len(params), 0, -1):
                             desc_query = desc_query.replace(f'${i}', '?')
 
+                        # Debug: show original query before ANY rewriters for pg_class
+                        if 'PG_CLASS' in query_upper and 'RELKIND' in query_upper:
+                            print(f"[DEBUG] pg_class: ORIGINAL QUERY STRUCTURE:")
+                            for i, line in enumerate(desc_query.split('\n'), 1):
+                                if line.strip():
+                                    print(f"[DEBUG]   Line {i}: {line.strip()[:100]}")
+
                         # Apply standard query rewrites
                         desc_query = self._rewrite_pg_catalog_function_calls(desc_query)
                         desc_query = self._rewrite_information_schema_catalog_filters(desc_query)
+                        # Debug: track WHERE through rewriters for pg_class table queries
+                        is_pg_class_table_query = 'PG_CLASS' in query_upper and 'RELKIND' in query_upper
+                        if is_pg_class_table_query:
+                            print(f"[DEBUG] pg_class: ORIGINAL QUERY (first 500 chars):")
+                            print(f"[DEBUG]   {desc_query[:500]}...")
+                            print(f"[DEBUG] pg_class: BEFORE rewriters - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_system_column_refs(desc_query)
+                        if is_pg_class_table_query:
+                            print(f"[DEBUG] pg_class: AFTER system_refs - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_missing_table_joins(desc_query)
+                        if is_pg_class_table_query:
+                            print(f"[DEBUG] pg_class: AFTER missing_joins - WHERE: {'WHERE' in desc_query.upper()}")
+                        desc_query = self._rewrite_pg_inherits_subqueries(desc_query)
+                        if is_pg_class_table_query:
+                            print(f"[DEBUG] pg_class: AFTER pg_inherits - WHERE: {'WHERE' in desc_query.upper()}")
+                        desc_query = self._rewrite_pg_get_expr_calls(desc_query)
                         desc_query = self._rewrite_missing_pg_database_columns(desc_query)
+
+                        # Strip PostgreSQL type casts that DuckDB doesn't support
+                        for cast in ['::regclass', '::regtype', '::regproc', '::oid', '::bigint',
+                                     '::REGCLASS', '::REGTYPE', '::REGPROC', '::OID', '::BIGINT',
+                                     '::integer', '::INTEGER', '::text', '::TEXT', '::varchar', '::VARCHAR']:
+                            desc_query = desc_query.replace(cast, '')
 
                         # Check for empty query after rewrites (e.g., just comments or whitespace)
                         query_stripped = desc_query.strip()
@@ -5393,6 +5688,22 @@ class ClientConnection:
                             portal['row_description_sent'] = True
                             portal['described_columns'] = len(columns)
                             print(f"[{self.session_id}]      ✓ Portal described (pg_namespace - {len(columns)} columns)")
+                            return
+
+                        # pg_class (table browser) - provide expected columns without executing
+                        # Complex pg_class queries with pg_inherits subqueries often fail during Describe
+                        # due to DuckDB incompatibilities. Bypass execution and infer columns from query.
+                        if is_pg_class_main:
+                            cols = self._expected_result_columns(query) or [
+                                'oid', 'relname', 'relnamespace', 'relkind', 'relowner',
+                                'relhasindex', 'relrowsecurity', 'relforcerowsecurity',
+                                'relispartition', 'description', 'partition_expr', 'partition_key'
+                            ]
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_class table browser - {len(columns)} columns)")
                             return
 
                         # pg_event_trigger - DuckDB doesn't have event triggers
@@ -5474,7 +5785,8 @@ class ClientConnection:
                             return
 
                         # pg_inherits - DuckDB doesn't have table inheritance
-                        if 'PG_INHERITS' in query_upper:
+                        # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
+                        if 'PG_INHERITS' in query_upper and 'PG_CLASS' not in query_upper:
                             cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                             columns = [(c, 'VARCHAR') for c in cols]
                             self.sock.sendall(RowDescription.encode(columns))
@@ -5665,13 +5977,45 @@ class ClientConnection:
                 send_execute_results(self.sock, pd.DataFrame(columns=['word']), send_row_description=send_row_desc)
                 return
 
+            # current_schemas() - Return PostgreSQL array format (DuckDB returns scalar)
+            # This is critical for DataGrip which parses the array to build search path
+            if 'CURRENT_SCHEMAS(' in query_upper and 'PG_NAMESPACE' not in query_upper:
+                print(f"[{self.session_id}]      Detected current_schemas() - returning PostgreSQL array format")
+                import pandas as pd
+                cols = self._expected_result_columns(query)
+                if cols:
+                    row = {}
+                    for c in cols:
+                        key = c.strip('"').lower()
+                        if key in {'current_database', 'current_database()', 'a'}:
+                            row[c] = self.database_name
+                        elif key in {'current_schemas', 'b'}:  # 'b' is common alias in DataGrip queries
+                            row[c] = '{main}'  # PostgreSQL array format
+                        elif key in {'current_schema', 'current_schema()'}:
+                            row[c] = 'main'
+                        elif key in {'current_user', 'session_user'}:
+                            row[c] = self.user_name
+                        else:
+                            row[c] = None
+                    result_df = pd.DataFrame({c: [row[c]] for c in cols})
+                else:
+                    result_df = pd.DataFrame({'current_schemas': ['{main}']})
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ current_schemas() → {{main}}")
+                return
+
             # pg_namespace queries for schema browser (Extended Query mode)
             # IMPORTANT: Must return consistent columns with Describe Portal handler
             # DataGrip expects: id, state_number, name, description, owner
+            # BUT: ACL queries like 'SELECT object_id, acl FROM pg_namespace' should not use this handler
             is_pg_class_main = 'FROM PG_CATALOG.PG_CLASS' in query_upper or 'FROM PG_CLASS' in query_upper
             is_pg_namespace_main = ('FROM PG_CATALOG.PG_NAMESPACE' in query_upper or 'FROM PG_NAMESPACE' in query_upper)
+            # ACL queries select acl/nspacl columns - should NOT use schema browser handler
+            # Check SELECT clause for ACL columns (before FROM to avoid matching 'PG_NAMESPACE')
+            select_clause = query_upper.split('FROM')[0] if 'FROM' in query_upper else ''
+            is_acl_query = 'NSPACL' in select_clause or ' ACL' in select_clause or ',ACL' in select_clause or '.ACL' in select_clause
 
-            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper:
+            if is_pg_namespace_main and not is_pg_class_main and 'FROM' in query_upper and not is_acl_query:
                 print(f"[{self.session_id}]      🔧 Handling pg_namespace query for schema browser (Extended)...")
                 import pandas as pd
                 try:
@@ -5707,9 +6051,14 @@ class ClientConnection:
 
                     result_df = pd.DataFrame(result_data, columns=expected_cols)
 
-                    # Ensure pg_catalog + information_schema appear
-                    existing = set(result_df[expected_cols[2] if len(expected_cols) > 2 else 'name'].tolist()) if len(result_df) > 0 else set()
-                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), expected_cols[0])
+                    # Find the name column for deduplication and sorting
+                    name_col = next((c for c in expected_cols if c.lower() in ('name', 'nspname', 'schema_name')), None)
+
+                    # Ensure pg_catalog + information_schema appear (only if we have a name column)
+                    if name_col:
+                        existing = set(result_df[name_col].tolist()) if len(result_df) > 0 else set()
+                    else:
+                        existing = set()  # No name column - skip deduplication
 
                     for schema_name, schema_id, desc in [('pg_catalog', 11, 'System catalog'), ('information_schema', 12, 'Information schema')]:
                         if schema_name not in existing:
@@ -5730,12 +6079,15 @@ class ClientConnection:
                                     new_row[col] = None
                             result_df = pd.concat([result_df, pd.DataFrame([new_row])], ignore_index=True)
 
-                    result_df = result_df.sort_values(name_col).reset_index(drop=True)
+                    # Sort by name column if available
+                    if name_col and name_col in result_df.columns:
+                        result_df = result_df.sort_values(name_col).reset_index(drop=True)
 
                     # Debug: show what schemas we found
                     print(f"[{self.session_id}]      📋 Schemas found ({len(result_df)}):")
                     for _, row in result_df.head(10).iterrows():
-                        print(f"[{self.session_id}]         - {row.get(name_col, row.iloc[0])}")
+                        display_val = row.get(name_col, row.iloc[0]) if name_col else row.iloc[0]
+                        print(f"[{self.session_id}]         - {display_val}")
 
                     # Validate column count before sending
                     actual_send_row_desc = send_row_desc
@@ -5879,8 +6231,11 @@ class ClientConnection:
             # Strip regclass/regtype/regproc casts from ANY other pg_catalog query
             if 'PG_CATALOG' in query_upper and ('::REGCLASS' in query_upper or '::REGTYPE' in query_upper or '::REGPROC' in query_upper or '::OID' in query_upper):
                 print(f"[{self.session_id}]      Detected pg_catalog query with type casts - stripping")
+                # FIRST: Rewrite pg_inherits subqueries BEFORE stripping type casts
+                # This prevents malformed queries when type casts are removed from complex subqueries
+                clean_query = self._rewrite_pg_inherits_subqueries(query)
+                clean_query = self._rewrite_pg_get_expr_calls(clean_query)
                 # Strip all PostgreSQL type casts
-                clean_query = query
                 for cast in ['::regclass', '::regtype', '::regproc', '::oid', '::REGCLASS', '::REGTYPE', '::REGPROC', '::OID']:
                     clean_query = clean_query.replace(cast, '')
 
@@ -5892,6 +6247,8 @@ class ClientConnection:
                 duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
                 duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
                 duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+                duckdb_query = self._rewrite_pg_inherits_subqueries(duckdb_query)
+                duckdb_query = self._rewrite_pg_get_expr_calls(duckdb_query)
                 duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
 
                 try:
@@ -5915,8 +6272,24 @@ class ClientConnection:
                     expected_cols = self._expected_result_columns(query)
                     if expected_cols:
                         import pandas as pd
+                        # Critical: validate column count matches what Describe sent
+                        actual_send_row_desc = send_row_desc
+                        if not send_row_desc and portal_name in self.portals:
+                            described_col_count = self.portals[portal_name].get('described_columns')
+                            if described_col_count is not None and described_col_count != len(expected_cols):
+                                print(f"[{self.session_id}]      ⚠️  COLUMN MISMATCH in fallback!")
+                                print(f"[{self.session_id}]         Described: {described_col_count}, Inferred: {len(expected_cols)}")
+                                # Adjust columns to match described count
+                                if described_col_count > len(expected_cols):
+                                    # Add placeholder columns
+                                    for i in range(len(expected_cols), described_col_count):
+                                        expected_cols.append(f'col_{i+1}')
+                                else:
+                                    # Truncate to described count
+                                    expected_cols = expected_cols[:described_col_count]
+                                print(f"[{self.session_id}]         Adjusted to: {len(expected_cols)} cols")
                         result_df = pd.DataFrame(columns=expected_cols)
-                        send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                        send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
                         print(f"[{self.session_id}]      ✓ Type cast query fallback (empty with {len(expected_cols)} cols)")
                         return
                     # If we can't infer columns, continue to other handlers
@@ -5956,6 +6329,8 @@ class ClientConnection:
             duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
             duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
             duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+            duckdb_query = self._rewrite_pg_inherits_subqueries(duckdb_query)
+            duckdb_query = self._rewrite_pg_get_expr_calls(duckdb_query)
             duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
 
             print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
@@ -6099,7 +6474,8 @@ class ClientConnection:
                 return
 
             # pg_inherits - return empty result (DuckDB doesn't have table inheritance)
-            if 'PG_INHERITS' in query_upper:
+            # Only match if pg_inherits is the main table, not just a LEFT JOIN in a pg_class query
+            if 'PG_INHERITS' in query_upper and 'PG_CLASS' not in query_upper:
                 print(f"[{self.session_id}]      Handling pg_inherits query...")
                 cols = self._expected_result_columns(query) or ['inhrelid', 'inhparent', 'inhseqno']
                 result_df = pd.DataFrame(columns=cols)
@@ -6573,3 +6949,14 @@ def start_postgres_server(host='0.0.0.0', port=5432, session_prefix='pg_client')
     """
     server = RVBBITPostgresServer(host, port, session_prefix)
     server.start()
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='RVBBIT PostgreSQL Wire Protocol Server')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to listen on')
+    parser.add_argument('--port', type=int, default=15432, help='Port to listen on')
+    parser.add_argument('--session-prefix', default='pg_client', help='Session ID prefix')
+    args = parser.parse_args()
+
+    start_postgres_server(host=args.host, port=args.port, session_prefix=args.session_prefix)
