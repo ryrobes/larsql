@@ -470,7 +470,16 @@ def _fix_double_where(query: str) -> str:
     # Skip fix if query has subqueries or UNION (different scopes)
     # Use case-insensitive check!
     query_upper = query.upper()
-    if query_upper.count('SELECT') > 1:
+    select_count = query_upper.count('SELECT')
+    where_count_check = len(re.findall(r'\bWHERE\b', query, re.IGNORECASE))
+
+    # Debug: log for pg_class queries
+    if 'PG_CLASS' in query_upper and 'RELNAMESPACE' in query_upper:
+        print(f"[DEBUG] _fix_double_where: SELECT count={select_count}, WHERE count={where_count_check}")
+        if select_count > 1:
+            print(f"[DEBUG] _fix_double_where: SKIPPING (multiple SELECTs)")
+
+    if select_count > 1:
         return query
 
     # Also skip if query has UNION (each UNION part is its own scope)

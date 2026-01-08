@@ -483,15 +483,71 @@ class ClientConnection:
         import re
 
         # Tables that might appear in JOINs but don't exist in DuckDB
-        # pg_description: object descriptions (tables, columns, etc)
-        # pg_shdescription: shared descriptions (databases, roles)
-        # pg_stat_activity: process/session info
-        # pg_inherits: inheritance relationships (partitions)
+        # This list should match MISSING_PRIMARY_TABLES keys (lowercased)
         MISSING_JOIN_TABLES = [
+            # Core missing tables
             'pg_description',
             'pg_shdescription',
             'pg_stat_activity',
             'pg_inherits',
+            # Monitoring/stats tables
+            'pg_locks',
+            'pg_stat_statements',
+            'pg_stat_user_tables',
+            'pg_stat_user_indexes',
+            'pg_statio_user_tables',
+            # Replication tables
+            'pg_replication_slots',
+            'pg_publication',
+            'pg_subscription',
+            # Statistics tables
+            'pg_statistic',
+            'pg_statistic_ext',
+            # Policy/rules tables
+            'pg_policies',
+            'pg_policy',
+            'pg_rules',
+            # Config tables
+            'pg_hba_file_rules',
+            'pg_file_settings',
+            # Auth tables
+            'pg_auth_members',
+            'pg_roles',
+            # Event/trigger tables
+            'pg_event_trigger',
+            'pg_trigger',
+            'pg_rewrite',
+            # Foreign data tables
+            'pg_foreign_data_wrapper',
+            'pg_foreign_server',
+            'pg_foreign_table',
+            # Extension/language tables
+            'pg_extension',
+            'pg_language',
+            # Type/operator tables
+            'pg_cast',
+            'pg_collation',
+            'pg_operator',
+            'pg_opclass',
+            'pg_opfamily',
+            'pg_aggregate',
+            'pg_conversion',
+            'pg_enum',
+            'pg_range',
+            # Access method tables
+            'pg_am',
+            'pg_amop',
+            'pg_amproc',
+            # Partitioning
+            'pg_partitioned_table',
+            # Security labels
+            'pg_seclabel',
+            'pg_shseclabel',
+            # Text search tables
+            'pg_ts_config',
+            'pg_ts_dict',
+            'pg_ts_parser',
+            'pg_ts_template',
         ]
 
         result = query
@@ -583,6 +639,117 @@ class ClientConnection:
             where_pos = query.upper().find('WHERE')
             print(f"[DEBUG]   Context around WHERE: ...{query[max(0,where_pos-50):where_pos+50]}...")
 
+        return result
+
+    def _strip_union_parts_with_missing_tables(self, query: str) -> str:
+        """
+        Remove UNION/UNION ALL parts that reference missing pg_catalog tables.
+
+        For queries like:
+            SELECT ... FROM pg_description JOIN pg_class ...
+            UNION ALL
+            SELECT ... FROM pg_description JOIN pg_trigger ...  -- missing!
+            UNION ALL
+            SELECT ... FROM pg_description JOIN pg_proc ...
+
+        This removes the pg_trigger part entirely.
+        """
+        import re
+
+        # Tables that DuckDB doesn't have (used in regular JOINs)
+        MISSING_TABLES = {
+            'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
+            'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
+            'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+            'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
+            'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
+            'pg_publication', 'pg_subscription', 'pg_replication_slots',
+            'pg_locks', 'pg_stat_statements', 'pg_stat_user_tables',
+            'pg_stat_user_indexes', 'pg_statio_user_tables',
+            'pg_statistic', 'pg_statistic_ext', 'pg_inherits',
+            'pg_partitioned_table', 'pg_seclabel', 'pg_shseclabel',
+            'pg_ts_config', 'pg_ts_dict', 'pg_ts_parser', 'pg_ts_template',
+            'pg_am', 'pg_amop', 'pg_amproc', 'pg_roles', 'pg_auth_members',
+            'pg_hba_file_rules', 'pg_file_settings', 'pg_description',
+            'pg_shdescription', 'pg_stat_activity',
+        }
+
+        # Only process if query has UNION
+        if 'UNION' not in query.upper():
+            return query
+
+        # Split by UNION ALL or UNION (case-insensitive)
+        # We need to be careful not to split inside subqueries
+        parts = []
+        current_part = []
+        paren_depth = 0
+        tokens = re.split(r'(\bUNION\s+ALL\b|\bUNION\b)', query, flags=re.IGNORECASE)
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            token_upper = token.upper().strip()
+
+            if token_upper in ('UNION ALL', 'UNION'):
+                # Check if we're inside parentheses
+                current_text = ''.join(current_part)
+                paren_depth = current_text.count('(') - current_text.count(')')
+                if paren_depth == 0:
+                    # Not inside parens, this is a real UNION
+                    parts.append(''.join(current_part))
+                    current_part = []
+                else:
+                    # Inside parens, keep it
+                    current_part.append(token)
+            else:
+                current_part.append(token)
+            i += 1
+
+        # Add the last part
+        if current_part:
+            parts.append(''.join(current_part))
+
+        if len(parts) <= 1:
+            # No UNION splitting happened
+            return query
+
+        # Filter out parts that reference missing tables
+        filtered_parts = []
+        removed_count = 0
+        for part in parts:
+            part_lower = part.lower()
+            has_missing = False
+            for table in MISSING_TABLES:
+                # Check for JOIN to this table (not just any reference)
+                # Pattern: JOIN [pg_catalog.]table_name
+                if re.search(rf'\bjoin\s+(?:pg_catalog\.)?{table}\b', part_lower):
+                    has_missing = True
+                    removed_count += 1
+                    break
+            if not has_missing:
+                filtered_parts.append(part)
+
+        if removed_count > 0:
+            print(f"[DEBUG] _strip_union_parts: Removed {removed_count} UNION parts with missing tables")
+
+        if not filtered_parts:
+            # All parts had missing tables - return a minimal valid query
+            # that matches the structure but returns no rows
+            print(f"[DEBUG] _strip_union_parts: All UNION parts had missing tables, returning first part with FALSE condition")
+            # Take first part and add WHERE FALSE
+            first_part = parts[0].strip()
+            if 'WHERE' in first_part.upper():
+                return re.sub(r'\bWHERE\b', 'WHERE FALSE AND', first_part, count=1, flags=re.IGNORECASE)
+            else:
+                # Add WHERE FALSE before ORDER BY, GROUP BY, or at end
+                for keyword in ['ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT']:
+                    if keyword in first_part.upper():
+                        pos = first_part.upper().find(keyword)
+                        return first_part[:pos] + ' WHERE FALSE ' + first_part[pos:]
+                return first_part + ' WHERE FALSE'
+
+        # Reconstruct with UNION ALL
+        result = ' UNION ALL '.join(p.strip() for p in filtered_parts)
         return result
 
     def _rewrite_pg_inherits_subqueries(self, query: str) -> str:
@@ -4450,6 +4617,8 @@ class ClientConnection:
                 rewritten_query = self._rewrite_pg_system_column_refs(rewritten_query)
                 # Remove LEFT JOINs to missing pg_catalog tables (pg_description, pg_inherits, etc.)
                 rewritten_query = self._rewrite_missing_table_joins(rewritten_query)
+                # NOTE: UNION stripping disabled - causes parameter count mismatches
+                # rewritten_query = self._strip_union_parts_with_missing_tables(rewritten_query)
                 result_df = self.duckdb_conn.execute(rewritten_query).fetchdf()
 
                 # Normalize catalog names for Postgres clients (DuckDB uses 'memory' for in-memory)
@@ -5625,6 +5794,8 @@ class ClientConnection:
                         if is_pg_class_table_query:
                             print(f"[DEBUG] pg_class: AFTER system_refs - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_missing_table_joins(desc_query)
+                        # NOTE: UNION stripping disabled - causes parameter count mismatches
+                        # desc_query = self._strip_union_parts_with_missing_tables(desc_query)
                         if is_pg_class_table_query:
                             print(f"[DEBUG] pg_class: AFTER missing_joins - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_inherits_subqueries(desc_query)
@@ -5805,6 +5976,17 @@ class ClientConnection:
                             print(f"[{self.session_id}]      ✓ Portal described (pg_partitioned_table - {len(columns)} columns)")
                             return
 
+                        # pg_description - DuckDB doesn't have pg_description
+                        # Catches UNION queries where pg_description is the main FROM table
+                        if 'FROM PG_CATALOG.PG_DESCRIPTION' in query_upper or 'FROM PG_DESCRIPTION' in query_upper:
+                            cols = self._expected_result_columns(query) or ['id', 'sub_ids', 'kind', 'description']
+                            columns = [(c, 'VARCHAR') for c in cols]
+                            self.sock.sendall(RowDescription.encode(columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(columns)
+                            print(f"[{self.session_id}]      ✓ Portal described (pg_description - {len(columns)} columns)")
+                            return
+
                         # pg_operator - DuckDB doesn't have pg_operator
                         if 'PG_OPERATOR' in query_upper:
                             cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
@@ -5918,7 +6100,36 @@ class ClientConnection:
                             print(f"[{self.session_id}]      ✓ Portal described (NoData - non-SELECT)")
 
         except Exception as e:
-            print(f"[{self.session_id}]      ✗ Describe error: {e}")
+            error_str = str(e)
+            print(f"[{self.session_id}]      ✗ Describe error: {error_str[:200]}")
+
+            # Check if this is a "Table does not exist" error for a pg_catalog table
+            import re
+            missing_table_match = re.search(r"Table with name (\w+) does not exist", error_str, re.IGNORECASE)
+            if missing_table_match:
+                missing_table = missing_table_match.group(1).lower()
+                known_missing = {
+                    'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
+                    'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
+                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+                    'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
+                    'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
+                    'pg_publication', 'pg_subscription', 'pg_replication_slots',
+                    'pg_locks', 'pg_stat_statements', 'pg_stat_user_tables',
+                    'pg_stat_user_indexes', 'pg_statio_user_tables',
+                    'pg_statistic', 'pg_statistic_ext', 'pg_inherits',
+                    'pg_partitioned_table', 'pg_seclabel', 'pg_shseclabel',
+                    'pg_ts_config', 'pg_ts_dict', 'pg_ts_parser', 'pg_ts_template',
+                    'pg_am', 'pg_amop', 'pg_amproc', 'pg_roles', 'pg_auth_members',
+                    'pg_hba_file_rules', 'pg_file_settings', 'pg_description',
+                    'pg_shdescription', 'pg_stat_activity',
+                }
+                if missing_table in known_missing:
+                    print(f"[{self.session_id}]      → Missing pg_catalog table '{missing_table}' in Describe - sending NoData")
+                    # For Describe, we can just send NoData to indicate no columns
+                    self.sock.sendall(NoData.encode())
+                    return
+
             send_error(self.sock, f"Describe error: {str(e)}", transaction_status=self.transaction_status)
 
     def _handle_execute(self, msg: dict):
@@ -6231,6 +6442,7 @@ class ClientConnection:
             # Strip regclass/regtype/regproc casts from ANY other pg_catalog query
             if 'PG_CATALOG' in query_upper and ('::REGCLASS' in query_upper or '::REGTYPE' in query_upper or '::REGPROC' in query_upper or '::OID' in query_upper):
                 print(f"[{self.session_id}]      Detected pg_catalog query with type casts - stripping")
+
                 # FIRST: Rewrite pg_inherits subqueries BEFORE stripping type casts
                 # This prevents malformed queries when type casts are removed from complex subqueries
                 clean_query = self._rewrite_pg_inherits_subqueries(query)
@@ -6247,6 +6459,9 @@ class ClientConnection:
                 duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
                 duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
                 duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+                # NOTE: UNION stripping disabled - causes parameter count mismatches
+                # Rely on catch-all error handlers instead
+                # duckdb_query = self._strip_union_parts_with_missing_tables(duckdb_query)
                 duckdb_query = self._rewrite_pg_inherits_subqueries(duckdb_query)
                 duckdb_query = self._rewrite_pg_get_expr_calls(duckdb_query)
                 duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
@@ -6268,31 +6483,33 @@ class ClientConnection:
                     return
                 except Exception as e:
                     print(f"[{self.session_id}]      ✗ Even after stripping, query failed: {str(e)[:100]}")
-                    # Don't fall through - return empty result with described columns to prevent mismatch
+                    # ALWAYS return empty result - don't fall through to avoid cascading errors
                     expected_cols = self._expected_result_columns(query)
-                    if expected_cols:
-                        import pandas as pd
-                        # Critical: validate column count matches what Describe sent
-                        actual_send_row_desc = send_row_desc
-                        if not send_row_desc and portal_name in self.portals:
-                            described_col_count = self.portals[portal_name].get('described_columns')
-                            if described_col_count is not None and described_col_count != len(expected_cols):
-                                print(f"[{self.session_id}]      ⚠️  COLUMN MISMATCH in fallback!")
-                                print(f"[{self.session_id}]         Described: {described_col_count}, Inferred: {len(expected_cols)}")
-                                # Adjust columns to match described count
-                                if described_col_count > len(expected_cols):
-                                    # Add placeholder columns
-                                    for i in range(len(expected_cols), described_col_count):
-                                        expected_cols.append(f'col_{i+1}')
-                                else:
-                                    # Truncate to described count
-                                    expected_cols = expected_cols[:described_col_count]
-                                print(f"[{self.session_id}]         Adjusted to: {len(expected_cols)} cols")
-                        result_df = pd.DataFrame(columns=expected_cols)
-                        send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
-                        print(f"[{self.session_id}]      ✓ Type cast query fallback (empty with {len(expected_cols)} cols)")
-                        return
-                    # If we can't infer columns, continue to other handlers
+                    if not expected_cols:
+                        # Default columns if we can't infer
+                        expected_cols = ['result']
+                    import pandas as pd
+                    # Critical: validate column count matches what Describe sent
+                    actual_send_row_desc = send_row_desc
+                    if not send_row_desc and portal_name in self.portals:
+                        described_col_count = self.portals[portal_name].get('described_columns')
+                        if described_col_count is not None and described_col_count != len(expected_cols):
+                            print(f"[{self.session_id}]      ⚠️  COLUMN MISMATCH in fallback!")
+                            print(f"[{self.session_id}]         Described: {described_col_count}, Inferred: {len(expected_cols)}")
+                            # Adjust columns to match described count
+                            if described_col_count > len(expected_cols):
+                                # Add placeholder columns
+                                for i in range(len(expected_cols), described_col_count):
+                                    expected_cols.append(f'col_{i+1}')
+                            else:
+                                # Truncate to described count
+                                expected_cols = expected_cols[:described_col_count]
+                            print(f"[{self.session_id}]         Adjusted to: {len(expected_cols)} cols")
+                    result_df = pd.DataFrame(columns=expected_cols)
+                    send_execute_results(self.sock, result_df, send_row_description=actual_send_row_desc)
+                    print(f"[{self.session_id}]      ✓ Type cast query fallback (empty with {len(expected_cols)} cols)")
+                    print(f"[{self.session_id}]      ⚠️  ZERO ROWS (fallback) for: {query[:200]}...")
+                    return
 
             # Check if this is a SET or RESET command
             if query_upper.startswith('SET ') or query_upper.startswith('RESET '):
@@ -6329,6 +6546,8 @@ class ClientConnection:
             duckdb_query = self._rewrite_information_schema_catalog_filters(duckdb_query)
             duckdb_query = self._rewrite_pg_system_column_refs(duckdb_query)
             duckdb_query = self._rewrite_missing_table_joins(duckdb_query)
+            # NOTE: UNION stripping disabled - causes parameter count mismatches
+            # duckdb_query = self._strip_union_parts_with_missing_tables(duckdb_query)
             duckdb_query = self._rewrite_pg_inherits_subqueries(duckdb_query)
             duckdb_query = self._rewrite_pg_get_expr_calls(duckdb_query)
             duckdb_query = self._rewrite_missing_pg_database_columns(duckdb_query)
@@ -6492,6 +6711,16 @@ class ClientConnection:
                 print(f"[{self.session_id}]      ✓ pg_partitioned_table handled (empty)")
                 return
 
+            # pg_description - return empty result (DuckDB doesn't have pg_description)
+            # This catches UNION queries where pg_description is the main FROM table
+            if 'FROM PG_CATALOG.PG_DESCRIPTION' in query_upper or 'FROM PG_DESCRIPTION' in query_upper:
+                print(f"[{self.session_id}]      Handling pg_description query (main FROM table)...")
+                cols = self._expected_result_columns(query) or ['id', 'sub_ids', 'kind', 'description']
+                result_df = pd.DataFrame(columns=cols)
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_description handled (empty)")
+                return
+
             # pg_operator - return empty result (DuckDB doesn't have pg_operator)
             if 'PG_OPERATOR' in query_upper:
                 print(f"[{self.session_id}]      Handling pg_operator query...")
@@ -6542,6 +6771,8 @@ class ClientConnection:
             if missing_table_result is not None:
                 send_execute_results(self.sock, missing_table_result, send_row_description=send_row_desc)
                 print(f"[{self.session_id}]      ✓ Missing pg_catalog table handled (empty result)")
+                if len(missing_table_result) == 0:
+                    print(f"[{self.session_id}]      ⚠️  ZERO ROWS (missing pg_catalog handler) for: {query[:200]}...")
                 return
 
             # Lazy attach configured sources for Extended Query Protocol too
@@ -6585,8 +6816,54 @@ class ClientConnection:
             else:
                 print(f"[{self.session_id}]      ✓ Executed, {len(result_df)} rows × {actual_col_count} cols (row_desc=sent)")
 
+            # CRITICAL DEBUG: Log 0-row results - DataGrip may expect data from these queries
+            if len(result_df) == 0:
+                print(f"[{self.session_id}]      ⚠️  ZERO ROWS returned for query (first 300 chars):")
+                print(f"[{self.session_id}]         {query[:300]}...")
+                # Also log the rewritten query
+                print(f"[{self.session_id}]         Rewritten (first 200 chars): {duckdb_query[:200]}...")
+
         except Exception as e:
-            print(f"[{self.session_id}]      ✗ Execute error: {e}")
+            error_str = str(e)
+            print(f"[{self.session_id}]      ✗ Execute error: {error_str[:200]}")
+
+            # Check if this is a "Table does not exist" error for a pg_catalog table
+            # These are common during introspection and should return empty results, not errors
+            import re
+            missing_table_match = re.search(r"Table with name (\w+) does not exist", error_str, re.IGNORECASE)
+            if missing_table_match:
+                missing_table = missing_table_match.group(1).lower()
+                # List of pg_catalog tables that DuckDB doesn't have
+                known_missing = {
+                    'pg_trigger', 'pg_rewrite', 'pg_policy', 'pg_policies', 'pg_rules',
+                    'pg_operator', 'pg_opclass', 'pg_opfamily', 'pg_aggregate',
+                    'pg_cast', 'pg_collation', 'pg_conversion', 'pg_enum', 'pg_range',
+                    'pg_extension', 'pg_language', 'pg_foreign_data_wrapper',
+                    'pg_foreign_server', 'pg_foreign_table', 'pg_event_trigger',
+                    'pg_publication', 'pg_subscription', 'pg_replication_slots',
+                    'pg_locks', 'pg_stat_statements', 'pg_stat_user_tables',
+                    'pg_stat_user_indexes', 'pg_statio_user_tables',
+                    'pg_statistic', 'pg_statistic_ext', 'pg_inherits',
+                    'pg_partitioned_table', 'pg_seclabel', 'pg_shseclabel',
+                    'pg_ts_config', 'pg_ts_dict', 'pg_ts_parser', 'pg_ts_template',
+                    'pg_am', 'pg_amop', 'pg_amproc', 'pg_roles', 'pg_auth_members',
+                    'pg_hba_file_rules', 'pg_file_settings', 'pg_description',
+                    'pg_shdescription', 'pg_stat_activity',
+                }
+                if missing_table in known_missing:
+                    print(f"[{self.session_id}]      → Missing pg_catalog table '{missing_table}' - returning empty result")
+                    # Try to infer expected columns from the query
+                    expected_cols = self._expected_result_columns(query)
+                    if not expected_cols:
+                        # Default columns for common introspection queries
+                        expected_cols = ['oid', 'name']
+                    import pandas as pd
+                    result_df = pd.DataFrame(columns=expected_cols)
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                    print(f"[{self.session_id}]      ✓ Missing table fallback (empty with {len(expected_cols)} cols)")
+                    print(f"[{self.session_id}]      ⚠️  ZERO ROWS (missing table: {missing_table}) for: {query[:200]}...")
+                    return
+
             # Mark transaction as errored
             if self.transaction_status == 'T':
                 self.transaction_status = 'E'
