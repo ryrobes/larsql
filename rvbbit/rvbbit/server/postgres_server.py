@@ -3642,6 +3642,193 @@ class ClientConnection:
 
         # Note: send_startup_response is called AFTER setup_session in handle()
 
+    # =========================================================================
+    # SQL Trail Query Tracking Helpers
+    # =========================================================================
+    # These methods provide unified logging for both Simple Query Protocol
+    # (handle_query) and Extended Query Protocol (_handle_execute).
+
+    def _get_duckdb_attachments(self):
+        """
+        Get list of DuckDB attachments for caller context.
+
+        Returns:
+            List of (alias, path) tuples for attached databases.
+        """
+        attachments = []
+        try:
+            rows = self.duckdb_conn.execute("""
+                SELECT database_alias, database_path
+                FROM _rvbbit_attachments
+                ORDER BY id
+            """).fetchall()
+            attachments = [(alias, path) for alias, path in rows]
+        except Exception:
+            try:
+                rows = self.duckdb_conn.execute("""
+                    SELECT database_name, path
+                    FROM duckdb_databases()
+                    WHERE database_name NOT IN ('memory', 'system', 'temp')
+                      AND path IS NOT NULL AND path != ''
+                """).fetchall()
+                attachments = [(name, path) for name, path in rows]
+            except Exception:
+                pass
+        return attachments
+
+    def _setup_query_tracking(self, query: str, original_query: str = None):
+        """
+        Set up query tracking for SQL Trail if this is an RVBBIT statement.
+
+        This method checks if the query contains RVBBIT syntax, semantic operators,
+        or UDF calls, and if so, sets up caller context and starts tracking.
+
+        Args:
+            query: The query to execute (may be rewritten)
+            original_query: The original query before rewriting (for detection/logging).
+                           If None, uses `query` for both.
+
+        Returns:
+            Tuple of (query_id, start_time, caller_id) if tracking was set up,
+            or (None, None, None) if this is not an RVBBIT statement.
+        """
+        from rvbbit.sql_rewriter import _is_rvbbit_statement
+
+        # Use original_query for detection if available, otherwise use query
+        detection_query = original_query if original_query else query
+
+        if not _is_rvbbit_statement(detection_query):
+            return None, None, None
+
+        import time
+        from rvbbit.session_naming import generate_woodland_id
+        from rvbbit.caller_context import set_caller_context, build_sql_metadata, set_duckdb_attachments
+        from rvbbit.sql_trail import log_query_start
+
+        caller_id = f"sql-{generate_woodland_id()}"
+        metadata = build_sql_metadata(
+            sql_query=detection_query,
+            protocol="postgresql_wire",
+            triggered_by="postgres_server"
+        )
+        set_caller_context(caller_id, metadata, connection_id=self.session_id)
+
+        # Set up DuckDB attachments for sql_statement mode
+        attachments = self._get_duckdb_attachments()
+        set_duckdb_attachments(self.session_id, attachments)
+
+        print(f"[{self.session_id}] 🔗 Set caller_context: {caller_id} → registry[{self.session_id}] ({len(attachments)} attachments)")
+
+        query_start_time = time.time()
+        log_query = original_query if original_query else query
+        query_id = log_query_start(
+            caller_id=caller_id,
+            query_raw=log_query,
+            protocol='postgresql_wire'
+        )
+
+        return query_id, query_start_time, caller_id
+
+    def _complete_query_tracking(
+        self,
+        query_id,
+        query_start_time,
+        caller_id,
+        result_df,
+        result_location=None
+    ):
+        """
+        Log query completion for SQL Trail.
+
+        Called after successful query execution to record duration, row count,
+        cascade execution info, and result location.
+
+        Args:
+            query_id: The query_id returned from _setup_query_tracking
+            query_start_time: The start time returned from _setup_query_tracking
+            caller_id: The caller_id returned from _setup_query_tracking
+            result_df: The result DataFrame (for row count)
+            result_location: Optional dict with {db_name, db_path, schema_name, table_name}
+        """
+        if not query_id or not query_start_time:
+            return
+
+        try:
+            import time
+            from rvbbit.sql_trail import (
+                log_query_complete,
+                get_cascade_paths, get_cascade_summary, clear_cascade_executions
+            )
+            from rvbbit.caller_context import clear_caller_context
+
+            duration_ms = (time.time() - query_start_time) * 1000
+
+            cascade_paths = get_cascade_paths(caller_id) if caller_id else []
+            cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
+
+            result_kwargs = {}
+            if result_location:
+                result_kwargs = {
+                    'result_db_name': result_location.get('db_name'),
+                    'result_db_path': result_location.get('db_path'),
+                    'result_schema': result_location.get('schema_name'),
+                    'result_table': result_location.get('table_name'),
+                }
+                print(f"[{self.session_id}]   📝 Logging result location to SQL Trail: {result_kwargs}")
+
+            log_query_complete(
+                query_id=query_id,
+                status='completed',
+                rows_output=len(result_df) if result_df is not None else 0,
+                duration_ms=duration_ms,
+                cascade_paths=cascade_paths,
+                cascade_count=cascade_summary.get('cascade_count', 0),
+                **result_kwargs
+            )
+
+            if caller_id:
+                clear_cascade_executions(caller_id)
+            clear_caller_context(connection_id=self.session_id)
+
+        except Exception as e:
+            print(f"[{self.session_id}]   ⚠️  SQL Trail completion log failed: {e}")
+
+    def _error_query_tracking(
+        self,
+        query_id,
+        query_start_time,
+        error
+    ):
+        """
+        Log query error for SQL Trail.
+
+        Called when query execution fails to record the error and duration.
+
+        Args:
+            query_id: The query_id returned from _setup_query_tracking
+            query_start_time: The start time returned from _setup_query_tracking
+            error: The exception that occurred
+        """
+        if not query_id or not query_start_time:
+            return
+
+        try:
+            import time
+            from rvbbit.sql_trail import log_query_error
+            from rvbbit.caller_context import clear_caller_context
+
+            duration_ms = (time.time() - query_start_time) * 1000
+            log_query_error(
+                query_id=query_id,
+                error_message=str(error),
+                error_type=type(error).__name__,
+                duration_ms=duration_ms,
+            )
+            clear_caller_context(connection_id=self.session_id)
+
+        except Exception as e:
+            print(f"[{self.session_id}]   ⚠️  SQL Trail error log failed: {e}")
+
     def handle_query(self, query: str):
         """
         Execute query on DuckDB and send results to client.
@@ -3742,61 +3929,11 @@ class ClientConnection:
                     pass
 
             # Set caller context for RVBBIT queries (enables cost tracking and debugging)
-            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement, _is_map_run_statement
-            _current_query_id = None
-            _query_start_time = None
+            # Uses unified helper for both Simple Query and Extended Query protocols
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_map_run_statement
+            _current_query_id, _query_start_time, _caller_id = self._setup_query_tracking(query)
 
-            if _is_rvbbit_statement(query):
-                from rvbbit.session_naming import generate_woodland_id
-                from rvbbit.caller_context import set_caller_context, build_sql_metadata, set_duckdb_attachments
-
-                caller_id = f"sql-{generate_woodland_id()}"
-                metadata = build_sql_metadata(
-                    sql_query=query,
-                    protocol="postgresql_wire",
-                    triggered_by="postgres_server"
-                )
-                # Set caller context with connection_id for global registry lookup
-                set_caller_context(caller_id, metadata, connection_id=self.session_id)
-
-                # Extract attachment info for sql_statement mode
-                # (We can't pass the connection itself - it causes deadlocks during UDF execution)
-                attachments = []
-                try:
-                    # Get from _rvbbit_attachments table if it exists
-                    rows = self.duckdb_conn.execute("""
-                        SELECT database_alias, database_path
-                        FROM _rvbbit_attachments
-                        ORDER BY id
-                    """).fetchall()
-                    attachments = [(alias, path) for alias, path in rows]
-                except Exception:
-                    # Table doesn't exist yet - try duckdb_databases()
-                    try:
-                        rows = self.duckdb_conn.execute("""
-                            SELECT database_name, path
-                            FROM duckdb_databases()
-                            WHERE database_name NOT IN ('memory', 'system', 'temp')
-                              AND path IS NOT NULL AND path != ''
-                        """).fetchall()
-                        attachments = [(name, path) for name, path in rows]
-                    except Exception:
-                        pass
-
-                set_duckdb_attachments(self.session_id, attachments)
-                print(f"[{self.session_id}] 🔗 Set caller_context: {caller_id} → registry[{self.session_id}] ({len(attachments)} attachments)")
-
-                # Log query start for SQL Trail analytics
-                # fingerprint_query() will detect semantic operators before sqlglot parsing
-                import time
-                from rvbbit.sql_trail import log_query_start
-                _query_start_time = time.time()
-                _current_query_id = log_query_start(
-                    caller_id=caller_id,
-                    query_raw=query,
-                    protocol='postgresql_wire'
-                )
-
+            if _current_query_id:
                 # SPECIAL PATH: MAP PARALLEL with true concurrency
                 # Only attempt to parse if this is MAP/RUN syntax (not just UDF calls)
                 from rvbbit.sql_rewriter import _parse_rvbbit_statement
@@ -3957,50 +4094,11 @@ class ClientConnection:
                             print(f"[{self.session_id}]   ✅ Materialized to table: {stmt.with_options['as_table']} ({len(result_df)} rows)")
 
                         # Log query completion for SQL Trail (special path)
-                        # NOTE: Cost/token data is NOT aggregated here - it arrives async via
-                        # the cost worker (~3-5s later). The API joins with unified_logs/MV
-                        # to get live cost data at query time.
-                        if _current_query_id and _query_start_time:
-                            try:
-                                from rvbbit.sql_trail import (
-                                    log_query_complete,
-                                    get_cascade_paths, get_cascade_summary, clear_cascade_executions
-                                )
-                                from rvbbit.caller_context import get_caller_id, clear_caller_context
-
-                                duration_ms = (time.time() - _query_start_time) * 1000
-                                caller_id = get_caller_id()
-
-                                # Get cascade execution info
-                                cascade_paths = get_cascade_paths(caller_id) if caller_id else []
-                                cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
-
-                                # Build result location args if auto-materialized
-                                result_kwargs = {}
-                                if '_result_location' in dir() and _result_location:
-                                    result_kwargs = {
-                                        'result_db_name': _result_location.get('db_name'),
-                                        'result_db_path': _result_location.get('db_path'),
-                                        'result_schema': _result_location.get('schema_name'),
-                                        'result_table': _result_location.get('table_name'),
-                                    }
-
-                                log_query_complete(
-                                    query_id=_current_query_id,
-                                    status='completed',
-                                    rows_output=len(result_df),
-                                    duration_ms=duration_ms,
-                                    cascade_paths=cascade_paths,
-                                    cascade_count=cascade_summary.get('cascade_count', 0),
-                                    **result_kwargs
-                                )
-
-                                # Clear cascade tracking and caller context
-                                if caller_id:
-                                    clear_cascade_executions(caller_id)
-                                clear_caller_context(connection_id=self.session_id)
-                            except Exception as trail_e:
-                                print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
+                        # Uses unified helper for consistent logging
+                        self._complete_query_tracking(
+                            _current_query_id, _query_start_time, _caller_id, result_df,
+                            result_location=_result_location if '_result_location' in dir() else None
+                        )
 
                         return  # Skip normal execution path
 
@@ -4081,53 +4179,11 @@ class ClientConnection:
             print(f"[{self.session_id}]   ✓ Returned {len(result_df)} rows")
 
             # Log query completion for SQL Trail (if we started tracking)
-            # NOTE: Cost/token data is NOT aggregated here - it arrives async via
-            # the cost worker (~3-5s later). The API joins with unified_logs/MV
-            # to get live cost data at query time.
-            if _current_query_id and _query_start_time:
-                try:
-                    from rvbbit.sql_trail import (
-                        log_query_complete,
-                        get_cascade_paths, get_cascade_summary, clear_cascade_executions
-                    )
-                    from rvbbit.caller_context import get_caller_id, clear_caller_context
-
-                    duration_ms = (time.time() - _query_start_time) * 1000
-                    caller_id = get_caller_id()
-
-                    # Get cascade execution info
-                    cascade_paths = get_cascade_paths(caller_id) if caller_id else []
-                    cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
-
-                    # Build result location args if auto-materialized
-                    result_kwargs = {}
-                    if _result_location:
-                        result_kwargs = {
-                            'result_db_name': _result_location.get('db_name'),
-                            'result_db_path': _result_location.get('db_path'),
-                            'result_schema': _result_location.get('schema_name'),
-                            'result_table': _result_location.get('table_name'),
-                        }
-                        print(f"[{self.session_id}]   📝 Logging result location to SQL Trail: {result_kwargs}")
-
-                    log_query_complete(
-                        query_id=_current_query_id,
-                        status='completed',
-                        rows_output=len(result_df),
-                        duration_ms=duration_ms,
-                        cascade_paths=cascade_paths,
-                        cascade_count=cascade_summary.get('cascade_count', 0),
-                        **result_kwargs
-                    )
-
-                    # Clear cascade tracking and caller context
-                    if caller_id:
-                        clear_cascade_executions(caller_id)
-                    clear_caller_context(connection_id=self.session_id)
-                except Exception as trail_e:
-                    # Note: traceback is imported at module level
-                    print(f"[{self.session_id}]   ⚠️  SQL Trail log failed: {trail_e}")
-                    traceback.print_exc()
+            # Uses unified helper for consistent logging
+            self._complete_query_tracking(
+                _current_query_id, _query_start_time, _caller_id, result_df,
+                result_location=_result_location
+            )
 
         except Exception as e:
             # Send error to client
@@ -4135,21 +4191,8 @@ class ClientConnection:
             error_detail = traceback.format_exc()
 
             # Log query error for SQL Trail
-            if _current_query_id and _query_start_time:
-                try:
-                    from rvbbit.sql_trail import log_query_error
-                    from rvbbit.caller_context import clear_caller_context
-                    duration_ms = (time.time() - _query_start_time) * 1000
-                    log_query_error(
-                        query_id=_current_query_id,
-                        error_message=error_message,
-                        error_type=type(e).__name__,
-                        duration_ms=duration_ms,
-                    )
-                    # Clear caller context to avoid leaking to next query
-                    clear_caller_context(connection_id=self.session_id)
-                except Exception as trail_e:
-                    print(f"[{self.session_id}]   ⚠️  SQL Trail error log failed: {trail_e}")
+            # Uses unified helper for consistent logging
+            self._error_query_tracking(_current_query_id, _query_start_time, e)
 
             # Mark transaction as errored if we were in one
             if self.transaction_status == 'T':
@@ -5892,8 +5935,10 @@ class ClientConnection:
             # Store prepared statement
             # We don't actually use DuckDB PREPARE yet - just store the query
             # DuckDB PREPARE has different syntax ($1 vs ?)
+            # NOTE: We store original_query for SQL Trail logging in _handle_execute
             self.prepared_statements[stmt_name] = {
                 'query': query,
+                'original_query': original_query,  # For SQL Trail detection/logging
                 'param_types': param_types,
                 'param_count': len(param_types)
             }
@@ -5992,11 +6037,13 @@ class ClientConnection:
                                 params.append(value_bytes)
 
             # Store portal
+            # NOTE: original_query is used for SQL Trail detection/logging in _handle_execute
             self.portals[portal_name] = {
                 'statement_name': stmt_name,
                 'params': params,
                 'result_formats': result_formats,
                 'query': stmt['query'],
+                'original_query': stmt.get('original_query'),  # For SQL Trail
                 'row_description_sent': False  # Track if Describe sent RowDescription
             }
 
@@ -6465,6 +6512,9 @@ class ClientConnection:
 
         print(f"[{self.session_id}]   ▶️  Execute portal '{portal_name or '(unnamed)'}' (max_rows={max_rows})")
 
+        # Initialize tracking variables (set properly once we have the portal)
+        _query_id, _query_start_time, _caller_id = None, None, None
+
         try:
             # Get portal
             if portal_name not in self.portals:
@@ -6473,6 +6523,13 @@ class ClientConnection:
             portal = self.portals[portal_name]
             query = portal['query']
             params = portal['params']
+            original_query = portal.get('original_query')  # For SQL Trail detection
+
+            # Set up SQL Trail tracking if this is an RVBBIT statement
+            # Uses original_query (before rewriting) for accurate detection
+            _query_id, _query_start_time, _caller_id = self._setup_query_tracking(
+                query, original_query=original_query
+            )
 
             # Check if Describe already sent RowDescription
             # If so, Execute should NOT send RowDescription again
@@ -7155,6 +7212,11 @@ class ClientConnection:
                 # Also log the rewritten query
                 print(f"[{self.session_id}]         Rewritten (first 200 chars): {duckdb_query[:200]}...")
 
+            # Log query completion for SQL Trail (Extended Query Protocol)
+            self._complete_query_tracking(
+                _query_id, _query_start_time, _caller_id, result_df
+            )
+
         except Exception as e:
             error_str = str(e)
             print(f"[{self.session_id}]      ✗ Execute error: {error_str[:200]}")
@@ -7200,6 +7262,9 @@ class ClientConnection:
             if self.transaction_status == 'T':
                 self.transaction_status = 'E'
             send_error(self.sock, f"Execute error: {str(e)}", transaction_status=self.transaction_status)
+
+            # Log query error for SQL Trail (Extended Query Protocol)
+            self._error_query_tracking(_query_id, _query_start_time, e)
 
     def _handle_close(self, msg: dict):
         """
