@@ -482,6 +482,87 @@ class ClientConnection:
         """
         import re
 
+        def _sql_comment_spans(sql: str):
+            """
+            Return a list of (start, end) spans that are within SQL comments.
+
+            Handles:
+            - Line comments: -- ... \n
+            - Block comments: /* ... */ (best-effort, supports nesting)
+            Skips comment markers that appear inside single/double-quoted strings.
+            """
+            spans = []
+            i = 0
+            in_single = False
+            in_double = False
+            line_start = None
+            block_start = None
+            block_depth = 0
+
+            while i < len(sql):
+                # Line comment
+                if line_start is not None:
+                    if sql[i] == '\n':
+                        spans.append((line_start, i))
+                        line_start = None
+                    i += 1
+                    continue
+
+                # Block comment (supports nesting)
+                if block_depth > 0:
+                    if not in_single and not in_double and sql.startswith('/*', i):
+                        block_depth += 1
+                        i += 2
+                        continue
+                    if not in_single and not in_double and sql.startswith('*/', i):
+                        block_depth -= 1
+                        i += 2
+                        if block_depth == 0 and block_start is not None:
+                            spans.append((block_start, i))
+                            block_start = None
+                        continue
+                    i += 1
+                    continue
+
+                # Not in comment: detect comment starts (only when not in quotes)
+                if not in_single and not in_double:
+                    if sql.startswith('--', i):
+                        line_start = i
+                        i += 2
+                        continue
+                    if sql.startswith('/*', i):
+                        block_start = i
+                        block_depth = 1
+                        i += 2
+                        continue
+
+                # Quotes
+                ch = sql[i]
+                if ch == "'" and not in_double:
+                    # Postgres-style escaping for single quotes: ''
+                    if in_single and i + 1 < len(sql) and sql[i + 1] == "'":
+                        i += 2
+                        continue
+                    in_single = not in_single
+                    i += 1
+                    continue
+                if ch == '"' and not in_single:
+                    in_double = not in_double
+                    i += 1
+                    continue
+
+                i += 1
+
+            if line_start is not None:
+                spans.append((line_start, len(sql)))
+            if block_depth > 0 and block_start is not None:
+                spans.append((block_start, len(sql)))
+
+            return spans
+
+        def _pos_in_spans(pos: int, spans) -> bool:
+            return any(start <= pos < end for start, end in spans)
+
         # Tables that might appear in JOINs but don't exist in DuckDB
         # This list should match MISSING_PRIMARY_TABLES keys (lowercased)
         MISSING_JOIN_TABLES = [
@@ -570,58 +651,73 @@ class ClientConnection:
                 ([a-zA-Z_][a-zA-Z0-9_]*)      # Capture alias
                 \s+ON\s+
             '''
-            match = re.search(join_pattern, result)
-            if not match:
-                continue
+            join_re = re.compile(join_pattern, flags=re.IGNORECASE | re.VERBOSE)
+            search_from = 0
 
-            alias = match.group(1)
-            join_start = match.start()
-            on_start = match.end()  # Position right after "ON "
+            while True:
+                match = join_re.search(result, search_from)
+                if not match:
+                    break
 
-            # Now find where the ON condition ends
-            # It ends at: WHERE, ORDER BY, GROUP BY, LIMIT, another JOIN, or end of query
-            # But we need to handle nested parentheses in the ON condition
+                # DataGrip often includes commented-out JOINs like:
+                #   ... amcanorder /* left join pg_catalog.pg_am am on ... */ ...
+                # The old rewriter could match inside the block comment and remove the closing "*/",
+                # leaving an unterminated comment and causing DuckDB parse errors.
+                comment_spans = _sql_comment_spans(result)
+                if _pos_in_spans(match.start(), comment_spans):
+                    search_from = match.end()
+                    continue
 
-            # If ON condition starts with (, find matching )
-            if on_start < len(result) and result[on_start] == '(':
-                # Find matching closing paren with proper nesting
-                paren_count = 1
-                pos = on_start + 1
-                while pos < len(result) and paren_count > 0:
-                    if result[pos] == '(':
-                        paren_count += 1
-                    elif result[pos] == ')':
-                        paren_count -= 1
-                    pos += 1
-                on_end = pos  # Position after the closing )
-            else:
-                # ON condition without parens - find end by looking for keywords
-                # Match until WHERE, ORDER, GROUP, HAVING, LIMIT, another JOIN, or end
-                rest = result[on_start:]
-                end_match = re.search(
-                    r'(?i)\s+(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET|'
-                    r'LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|'
-                    r'INNER\s+JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN)\b',
-                    rest
-                )
-                if end_match:
-                    on_end = on_start + end_match.start()
+                alias = match.group(1)
+                join_start = match.start()
+                on_start = match.end()  # Position right after "ON "
+
+                # Now find where the ON condition ends
+                # It ends at: WHERE, ORDER BY, GROUP BY, LIMIT, another JOIN, or end of query
+                # But we need to handle nested parentheses in the ON condition
+
+                # If ON condition starts with (, find matching )
+                if on_start < len(result) and result[on_start] == '(':
+                    # Find matching closing paren with proper nesting
+                    paren_count = 1
+                    pos = on_start + 1
+                    while pos < len(result) and paren_count > 0:
+                        if result[pos] == '(':
+                            paren_count += 1
+                        elif result[pos] == ')':
+                            paren_count -= 1
+                        pos += 1
+                    on_end = pos  # Position after the closing )
                 else:
-                    on_end = len(result)
+                    # ON condition without parens - find end by looking for keywords
+                    # Match until WHERE, ORDER, GROUP, HAVING, LIMIT, another JOIN, or end
+                    rest = result[on_start:]
+                    end_match = re.search(
+                        r'(?i)\s+(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT|OFFSET|'
+                        r'LEFT\s+(?:OUTER\s+)?JOIN|RIGHT\s+(?:OUTER\s+)?JOIN|'
+                        r'INNER\s+JOIN|FULL\s+(?:OUTER\s+)?JOIN|CROSS\s+JOIN|JOIN)\b',
+                        rest
+                    )
+                    if end_match:
+                        on_end = on_start + end_match.start()
+                    else:
+                        on_end = len(result)
 
-            # Extract what we're removing for debugging
-            matched_text = result[join_start:on_end]
-            print(f"[DEBUG] _rewrite_missing_table_joins: Removing LEFT JOIN to {table}")
-            print(f"[DEBUG]   Alias: {alias}")
-            print(f"[DEBUG]   Matched ({len(matched_text)} chars): {matched_text[:200]}{'...' if len(matched_text) > 200 else ''}")
+                # Extract what we're removing for debugging
+                matched_text = result[join_start:on_end]
+                print(f"[DEBUG] _rewrite_missing_table_joins: Removing LEFT JOIN to {table}")
+                print(f"[DEBUG]   Alias: {alias}")
+                print(f"[DEBUG]   Matched ({len(matched_text)} chars): {matched_text[:200]}{'...' if len(matched_text) > 200 else ''}")
 
-            # Remove the entire LEFT JOIN clause
-            result = result[:join_start] + ' ' + result[on_end:]
+                # Remove the entire LEFT JOIN clause
+                result = result[:join_start] + ' ' + result[on_end:]
 
-            # Replace column references like D.description with NULL
-            # Be careful to only replace the alias, not table names
-            result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result, flags=re.IGNORECASE)
-            print(f"[DEBUG]   Alias '{alias}' column refs replaced with NULL")
+                # Replace column references like D.description with NULL
+                # Be careful to only replace the alias, not table names
+                result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result, flags=re.IGNORECASE)
+                print(f"[DEBUG]   Alias '{alias}' column refs replaced with NULL")
+                # Continue scanning for additional JOINs to the same missing table (if any)
+                search_from = 0
 
         # Debug: Check if this is the pg_class table query
         if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
@@ -1254,6 +1350,228 @@ class ClientConnection:
             print(f"[{self.session_id}]      ⚠️  {handler_name}: Column count mismatch! described {described_col_count}, returning {actual_col_count}")
             return False
         return True
+
+    @staticmethod
+    def _is_datagrip_pg_class_table_browser_union(query_upper: str) -> bool:
+        """
+        Detect DataGrip's "pg_class table browser" UNION ALL query used to enumerate objects.
+
+        DataGrip runs a single UNION ALL query across multiple pg_catalog tables (pg_class,
+        pg_type, pg_collation, pg_operator, pg_opclass, pg_opfamily, pg_proc) filtered by a
+        list of schema OIDs. DuckDB lacks some of these tables, so the UNION needs special
+        handling to avoid failing (or being short-circuited to empty).
+        """
+        if 'UNION ALL' not in query_upper:
+            return False
+        if 'FROM PG_CATALOG.PG_CLASS' not in query_upper and 'FROM PG_CLASS' not in query_upper:
+            return False
+        # Ensure it's the object browser union (includes pg_type + pg_proc branches).
+        if 'PG_CATALOG.PG_TYPE' not in query_upper and 'FROM PG_TYPE' not in query_upper:
+            return False
+        if 'PG_CATALOG.PG_PROC' not in query_upper and 'FROM PG_PROC' not in query_upper:
+            return False
+        # DataGrip aliases the namespace as schemaId and emits a kind discriminator.
+        return ('SCHEMAID' in query_upper) and (' KIND' in query_upper or '\nKIND' in query_upper)
+
+    @staticmethod
+    def _primary_from_table(query_upper: str) -> Optional[str]:
+        import re
+
+        from_match = re.search(r'\bFROM\s+(?:PG_CATALOG\.)?(\w+)', query_upper)
+        if not from_match:
+            return None
+        return from_match.group(1).upper()
+
+    def _build_datagrip_pg_class_table_browser_union_result(self, query: str, params: list):
+        import pandas as pd
+        import re
+
+        expected_cols = self._expected_result_columns(query) or ['oid', 'schemaId', 'kind']
+        if not params:
+            return pd.DataFrame(columns=expected_cols)
+
+        query_upper = query.upper()
+        namespace_groups = re.findall(
+            r'\b(?:RELNAMESPACE|TYPNAMESPACE|COLLNAMESPACE|OPRNAMESPACE|OPCNAMESPACE|OPFNAMESPACE|PRONAMESPACE)\b\s+IN\s*\(',
+            query_upper,
+        )
+        group_count = len(namespace_groups)
+        if group_count > 0 and len(params) % group_count == 0:
+            group_size = len(params) // group_count
+            schema_params = params[:group_size]
+        else:
+            schema_params = params
+
+        schema_ids: list[int] = []
+        seen: set[int] = set()
+        for v in schema_params:
+            if v is None:
+                continue
+            try:
+                i = int(v)
+            except Exception:
+                continue
+            if i not in seen:
+                seen.add(i)
+                schema_ids.append(i)
+
+        if not schema_ids:
+            return pd.DataFrame(columns=expected_cols)
+
+        placeholders = ','.join(['?'] * len(schema_ids))
+
+        def _norm(col: str) -> str:
+            return col.strip().strip('"').lower()
+
+        def _make_row(oid, schema_id, kind, name):
+            row = {}
+            for col in expected_cols:
+                key = _norm(col)
+                if key in {'oid', 'id'}:
+                    row[col] = oid
+                elif key in {
+                    'schemaid',
+                    'schema_id',
+                    'namespace',
+                    'relnamespace',
+                    'typnamespace',
+                    'pronamespace',
+                    'collnamespace',
+                    'oprnamespace',
+                    'opcnamespace',
+                    'opfnamespace',
+                }:
+                    row[col] = schema_id
+                elif key == 'kind':
+                    row[col] = kind
+                elif key == 'name':
+                    row[col] = name
+                else:
+                    row[col] = None
+            return row
+
+        rows = []
+
+        # Relations (pg_class) - includes tables/views/sequences, with DataGrip's translate() mapping.
+        try:
+            rel_df = self.duckdb_conn.execute(
+                f"""
+                SELECT oid, relnamespace, relkind, relname
+                FROM pg_catalog.pg_class
+                WHERE relnamespace IN ({placeholders})
+                  AND relkind IN ('r','m','v','p','f','S')
+                """,
+                schema_ids,
+            ).fetchdf()
+        except Exception:
+            rel_df = pd.DataFrame(columns=['oid', 'relnamespace', 'relkind', 'relname'])
+
+        relkind_map = {'r': 'r', 'm': 'm', 'v': 'v', 'p': 'r', 'f': 'f', 'S': 'S', 's': 's'}
+        for _, r in rel_df.iterrows():
+            if pd.isna(r.get('oid')) or pd.isna(r.get('relnamespace')):
+                continue
+            oid = int(r['oid'])
+            schema_id = int(r['relnamespace'])
+            relkind = None if pd.isna(r.get('relkind')) else str(r.get('relkind'))
+            kind = relkind_map.get(relkind, relkind)
+            name = None if pd.isna(r.get('relname')) else str(r.get('relname'))
+            rows.append(_make_row(oid, schema_id, kind, name))
+
+        # Types (pg_type) - approximate DataGrip's filtering, avoiding PostgreSQL-only casts.
+        try:
+            type_df = self.duckdb_conn.execute(
+                f"""
+                SELECT
+                    t.oid,
+                    t.typnamespace,
+                    t.typname,
+                    t.typtype,
+                    t.typcategory,
+                    t.typelem,
+                    t.typisdefined,
+                    c.relkind AS relkind
+                FROM pg_catalog.pg_type t
+                LEFT JOIN pg_catalog.pg_class c ON t.typrelid = c.oid
+                WHERE t.typnamespace IN ({placeholders})
+                """,
+                schema_ids,
+            ).fetchdf()
+        except Exception:
+            type_df = pd.DataFrame(
+                columns=['oid', 'typnamespace', 'typname', 'typtype', 'typcategory', 'typelem', 'typisdefined', 'relkind']
+            )
+
+        for _, r in type_df.iterrows():
+            if pd.isna(r.get('oid')) or pd.isna(r.get('typnamespace')):
+                continue
+            oid = int(r['oid'])
+            schema_id = int(r['typnamespace'])
+            typtype = '' if pd.isna(r.get('typtype')) else str(r.get('typtype')).strip()
+            typcategory = '' if pd.isna(r.get('typcategory')) else str(r.get('typcategory')).strip()
+            relkind = '' if pd.isna(r.get('relkind')) else str(r.get('relkind')).strip()
+            typelem_raw = r.get('typelem')
+            typisdefined_raw = r.get('typisdefined')
+
+            include = False
+            if typtype in {'d', 'e'}:
+                include = True
+            elif relkind == 'c':
+                include = True
+            elif typtype == 'b':
+                try:
+                    typelem = 0 if pd.isna(typelem_raw) else int(typelem_raw)
+                except Exception:
+                    typelem = 0
+                if typelem == 0 or typcategory != 'A':
+                    include = True
+            elif typtype == 'p':
+                # Match DataGrip: include pseudo-types that are not defined.
+                if pd.isna(typisdefined_raw) or (typisdefined_raw is False):
+                    include = True
+
+            if not include:
+                continue
+
+            name = None if pd.isna(r.get('typname')) else str(r.get('typname'))
+            rows.append(_make_row(oid, schema_id, 'T', name))
+
+        # Routines/Aggregates (pg_proc) - 'R' for routines, 'a' for aggregates.
+        try:
+            proc_df = self.duckdb_conn.execute(
+                f"""
+                SELECT oid, pronamespace, proname, prokind
+                FROM pg_catalog.pg_proc
+                WHERE pronamespace IN ({placeholders})
+                """,
+                schema_ids,
+            ).fetchdf()
+        except Exception:
+            proc_df = pd.DataFrame(columns=['oid', 'pronamespace', 'proname', 'prokind'])
+
+        for _, r in proc_df.iterrows():
+            if pd.isna(r.get('oid')) or pd.isna(r.get('pronamespace')):
+                continue
+            oid = int(r['oid'])
+            schema_id = int(r['pronamespace'])
+            prokind = None if pd.isna(r.get('prokind')) else str(r.get('prokind')).strip()
+            kind = 'a' if prokind == 'a' else 'R'
+            name = None if pd.isna(r.get('proname')) else str(r.get('proname'))
+            rows.append(_make_row(oid, schema_id, kind, name))
+
+        result_df = pd.DataFrame(rows, columns=expected_cols)
+
+        schema_col = next(
+            (c for c in expected_cols if _norm(c) in {'schemaid', 'schema_id', 'namespace', 'relnamespace', 'typnamespace', 'pronamespace'}),
+            None,
+        )
+        if schema_col and schema_col in result_df.columns:
+            sort_cols = [schema_col]
+            name_col = next((c for c in expected_cols if _norm(c) == 'name'), None)
+            if name_col and name_col in result_df.columns:
+                sort_cols.append(name_col)
+            result_df = result_df.sort_values(sort_cols).reset_index(drop=True)
+
+        return result_df
 
     def _create_attachments_metadata_table(self):
         """
@@ -4318,7 +4636,7 @@ class ClientConnection:
                 return
 
             # Handle pg_collation queries (DataGrip queries for collation information)
-            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_COLLATION':
                 print(f"[{self.session_id}]   🔧 Handling pg_collation query...")
                 cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
                 # Return empty - DuckDB doesn't have pg_collation
@@ -4347,7 +4665,7 @@ class ClientConnection:
                 return
 
             # Handle pg_operator queries - DuckDB doesn't have pg_operator
-            if 'PG_OPERATOR' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_OPERATOR':
                 print(f"[{self.session_id}]   🔧 Handling pg_operator query...")
                 cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
                 result_df = pd.DataFrame(columns=cols)
@@ -4413,7 +4731,7 @@ class ClientConnection:
                 return
 
             # Handle pg_collation (DataGrip queries for collations)
-            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_COLLATION':
                 print(f"[{self.session_id}]   🔧 Handling pg_collation query...")
                 cols = self._expected_result_columns(query) or ['oid', 'collname']
                 result_df = self._empty_df_for_columns(cols)
@@ -4450,7 +4768,7 @@ class ClientConnection:
                 return
 
             # Handle pg_operator (DataGrip queries for operators)
-            if 'PG_OPERATOR' in query_upper and 'FROM' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_OPERATOR':
                 print(f"[{self.session_id}]   🔧 Handling pg_operator query...")
                 cols = self._expected_result_columns(query) or ['oid', 'oprname']
                 result_df = self._empty_df_for_columns(cols)
@@ -5946,7 +6264,7 @@ class ClientConnection:
                             return
 
                         # pg_collation - DuckDB doesn't have pg_collation
-                        if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+                        if self._primary_from_table(query_upper) == 'PG_COLLATION':
                             cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
                             columns = [(c, 'VARCHAR') for c in cols]
                             self.sock.sendall(RowDescription.encode(columns))
@@ -5988,7 +6306,7 @@ class ClientConnection:
                             return
 
                         # pg_operator - DuckDB doesn't have pg_operator
-                        if 'PG_OPERATOR' in query_upper:
+                        if self._primary_from_table(query_upper) == 'PG_OPERATOR':
                             cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
                             columns = [(c, 'VARCHAR') for c in cols]
                             self.sock.sendall(RowDescription.encode(columns))
@@ -6052,7 +6370,10 @@ class ClientConnection:
 
                         # Wrap query to get schema without returning data
                         # Use a subquery to handle complex queries
-                        wrapped_query = f"SELECT * FROM ({desc_query}) _rvbbit_desc_sub LIMIT 0"
+                        safe_desc_query = desc_query.strip().rstrip(';')
+                        # Put the closing paren on its own line so trailing "-- ..." comments in the
+                        # described SQL don't comment out the wrapper's closing paren.
+                        wrapped_query = f"SELECT * FROM (\n{safe_desc_query}\n) _rvbbit_desc_sub LIMIT 0"
 
                         result = self.duckdb_conn.execute(wrapped_query, params)
 
@@ -6535,6 +6856,17 @@ class ClientConnection:
                 self._handle_rollback(send_ready=False)  # Extended Query - wait for Sync
                 return
 
+            # DataGrip: pg_class "table browser" UNION query (object listing across schemas)
+            # This UNION includes branches over tables DuckDB doesn't implement (pg_collation, pg_operator, etc.),
+            # but DataGrip still expects rows from pg_class/pg_type/pg_proc. Build those parts explicitly.
+            if self._is_datagrip_pg_class_table_browser_union(query_upper):
+                print(f"[{self.session_id}]      Handling pg_class table browser UNION (DataGrip)...")
+                result_df = self._build_datagrip_pg_class_table_browser_union_result(query, params)
+                self._validate_custom_handler_columns(portal_name, len(result_df.columns), 'pg_class table browser UNION')
+                send_execute_results(self.sock, result_df, send_row_description=send_row_desc)
+                print(f"[{self.session_id}]      ✓ pg_class table browser UNION handled ({len(result_df)} rows × {len(result_df.columns)} cols)")
+                return
+
             # Convert PostgreSQL placeholders ($1, $2, ...) to DuckDB placeholders (?)
             # Must replace in reverse order to avoid conflicts ($10 before $1)
             duckdb_query = query
@@ -6684,7 +7016,7 @@ class ClientConnection:
                 return
 
             # pg_collation - return empty result (DuckDB doesn't have pg_collation)
-            if 'PG_COLLATION' in query_upper and 'FROM' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_COLLATION':
                 print(f"[{self.session_id}]      Handling pg_collation query...")
                 cols = self._expected_result_columns(query) or ['oid', 'collname', 'collnamespace', 'collowner']
                 result_df = pd.DataFrame(columns=cols)
@@ -6722,7 +7054,7 @@ class ClientConnection:
                 return
 
             # pg_operator - return empty result (DuckDB doesn't have pg_operator)
-            if 'PG_OPERATOR' in query_upper:
+            if self._primary_from_table(query_upper) == 'PG_OPERATOR':
                 print(f"[{self.session_id}]      Handling pg_operator query...")
                 cols = self._expected_result_columns(query) or ['oid', 'oprname', 'oprnamespace', 'oprowner']
                 result_df = pd.DataFrame(columns=cols)
