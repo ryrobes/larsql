@@ -32,6 +32,7 @@ const InterruptsView = lazy(() => import('./views/interrupts/InterruptsView'));
 const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
 const WarrenView = lazy(() => import('./views/warren/WarrenView'));
 const AppsView = lazy(() => import('./views/apps/AppsView'));
+const CatalogView = lazy(() => import('./views/catalog/CatalogView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -159,6 +160,12 @@ export const router = createBrowserRouter([
       {
         path: 'apps',
         element: withSuspense(AppsView),
+      },
+
+      // Catalog - System Components Browser
+      {
+        path: 'catalog',
+        element: withSuspense(CatalogView),
       },
 
       // Catch-all - redirect to home

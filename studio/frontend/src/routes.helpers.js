@@ -59,6 +59,9 @@ export const ROUTES = {
   // Apps - RVBBIT Apps (cascade-powered interfaces)
   APPS: '/apps',
 
+  // Catalog - System Components Browser
+  CATALOG: '/catalog',
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -108,6 +111,7 @@ export function getViewFromPath(pathname) {
     'calliope': 'calliope',
     'warren': 'warren',
     'apps': 'apps',
+    'catalog': 'catalog',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -145,6 +149,7 @@ export function getRouteForView(viewId) {
     'calliope': ROUTES.CALLIOPE,
     'warren': ROUTES.WARREN,
     'apps': ROUTES.APPS,
+    'catalog': ROUTES.CATALOG,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,

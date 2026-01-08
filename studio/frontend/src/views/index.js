@@ -122,6 +122,14 @@ export const views = {
     enabled: true,
   },
 
+  catalog: {
+    component: lazy(() => import('./catalog/CatalogView')),
+    icon: 'mdi:package-variant-closed',
+    label: 'Catalog',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',
