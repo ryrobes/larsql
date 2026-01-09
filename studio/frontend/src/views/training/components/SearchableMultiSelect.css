@@ -1,0 +1,256 @@
+/* SearchableMultiSelect.css - Multi-select dropdown with search */
+
+.sms-container {
+  position: relative;
+  min-width: 180px;
+}
+
+/* Trigger Button */
+.sms-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 32px;
+}
+
+.sms-trigger:hover {
+  border-color: rgba(0, 229, 255, 0.4);
+}
+
+.sms-trigger--open {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.sms-trigger-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-trigger-text--all {
+  color: #64748b;
+}
+
+.sms-trigger-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sms-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sms-clear-btn:hover {
+  background: rgba(255, 0, 110, 0.2);
+  color: #ff006e;
+}
+
+.sms-chevron {
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.sms-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown */
+.sms-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 220px;
+  background: #0a0a0a;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+/* Search */
+.sms-search-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.sms-search-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.sms-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.sms-search-input::placeholder {
+  color: #475569;
+}
+
+.sms-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.sms-search-clear:hover {
+  color: #f1f5f9;
+}
+
+/* Options List */
+.sms-options {
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.3) transparent;
+}
+
+.sms-options::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sms-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sms-options::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.3);
+  border-radius: 2px;
+}
+
+.sms-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.sms-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sms-option--selected {
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.sms-option--selected:hover {
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.sms-option--all {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.sms-checkbox {
+  flex-shrink: 0;
+  color: #475569;
+}
+
+.sms-option--selected .sms-checkbox {
+  color: #00e5ff;
+}
+
+.sms-option-label {
+  flex: 1;
+  font-size: 12px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-option--selected .sms-option-label {
+  color: #f1f5f9;
+}
+
+.sms-option-count {
+  font-size: 10px;
+  color: #475569;
+  margin-left: auto;
+}
+
+.sms-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 0;
+}
+
+.sms-no-results {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #475569;
+  font-style: italic;
+}
+
+/* Footer */
+.sms-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  color: #64748b;
+}
+
+.sms-footer-clear {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 0, 110, 0.3);
+  border-radius: 4px;
+  color: #ff006e;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sms-footer-clear:hover {
+  background: rgba(255, 0, 110, 0.1);
+  border-color: rgba(255, 0, 110, 0.5);
+}

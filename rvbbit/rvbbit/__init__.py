@@ -15,6 +15,8 @@ from .trait_registry import register_trait, register_cascade_as_tool
 _LAZY_IMPORTS = {
     # Core functionality
     "run_cascade": (".runner", "run_cascade"),
+    # Database
+    "SchemaNotInitializedError": (".db_adapter", "SchemaNotInitializedError"),
     "set_provider": (".config", "set_provider"),
     "get_checkpoint_manager": (".checkpoints", "get_checkpoint_manager"),
     "CheckpointStatus": (".checkpoints", "CheckpointStatus"),

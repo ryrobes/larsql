@@ -145,6 +145,84 @@
 }
 
 /* ========================================
+   Global Search
+   ======================================== */
+
+.training-search-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 6px;
+  min-width: 280px;
+  transition: all 0.15s ease;
+}
+
+.training-search-container:focus-within {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.05);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.1);
+}
+
+.training-search-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.training-search-container:focus-within .training-search-icon {
+  color: #00e5ff;
+}
+
+.training-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.training-search-input::placeholder {
+  color: #475569;
+}
+
+.training-search-spinner {
+  color: #00e5ff;
+  animation: training-spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes training-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Generic spin class for loading indicators */
+.spin {
+  animation: training-spin 1s linear infinite;
+}
+
+.training-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.training-search-clear:hover {
+  color: #ff006e;
+}
+
+/* ========================================
    KPI Cards Row
    ======================================== */
 
@@ -228,6 +306,36 @@
 .training-action-btn--danger:hover:not(:disabled) {
   background: rgba(255, 0, 110, 0.15);
   border-color: rgba(255, 0, 110, 0.4);
+}
+
+.training-action-btn--accent {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.15), rgba(255, 0, 110, 0.1));
+  border-color: rgba(255, 107, 53, 0.4);
+  color: #ff6b35;
+}
+
+.training-action-btn--accent:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(255, 107, 53, 0.25), rgba(255, 0, 110, 0.15));
+  border-color: rgba(255, 107, 53, 0.6);
+  box-shadow: 0 0 12px rgba(255, 107, 53, 0.2);
+}
+
+.training-action-btn--secondary {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.training-action-btn--secondary:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.training-actions-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(100, 116, 139, 0.2);
+  margin: 0 4px;
 }
 
 /* ========================================

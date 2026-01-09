@@ -17,11 +17,181 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Control via environment variable
-CONFIDENCE_ASSESSMENT_ENABLED = False #os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "true").lower() == "true"
+CONFIDENCE_ASSESSMENT_ENABLED = os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "true").lower() == "true"
 
 # Note: Internal cascades are now marked with `internal: true` in their YAML config
 # instead of using a hardcoded blocklist. The is_internal_cascade_by_id() function
 # from analytics_worker checks this flag.
+
+
+def assess_trace_ids_confidence(trace_ids: list, force: bool = False) -> dict:
+    """
+    Assess confidence for specific trace_ids (on-demand, from UI).
+
+    Unlike session-based assessment, this:
+    - Does NOT skip internal cascades (user explicitly requested)
+    - Does NOT wait for cost data (already populated)
+    - Skips already-assessed traces by default (unless force=True)
+
+    Args:
+        trace_ids: List of trace_ids to assess
+        force: If True, re-assess even if already has confidence score (default: False)
+
+    Returns:
+        Dict with counts and results
+    """
+    if not trace_ids:
+        return {'success': False, 'error': 'No trace_ids provided', 'assessed_count': 0}
+
+    try:
+        from .db_adapter import get_db
+        from .runner import RVBBITRunner
+        import uuid
+
+        db = get_db()
+        original_count = len(trace_ids)
+        skipped_count = 0
+
+        # If not forcing, filter out already-assessed trace_ids
+        if not force:
+            escaped_ids = [tid.replace("'", "''") for tid in trace_ids]
+            id_list = ", ".join(f"'{tid}'" for tid in escaped_ids)
+            existing_query = f"""
+                SELECT trace_id FROM training_annotations
+                WHERE trace_id IN ({id_list})
+                  AND confidence IS NOT NULL
+            """
+            existing = db.query(existing_query)
+            existing_ids = {row['trace_id'] for row in existing}
+            trace_ids = [tid for tid in trace_ids if tid not in existing_ids]
+            skipped_count = original_count - len(trace_ids)
+
+            if skipped_count > 0:
+                logger.info(f"[confidence_worker] Skipping {skipped_count} already-assessed traces")
+
+            if not trace_ids:
+                logger.info(f"[confidence_worker] All {original_count} traces already have confidence scores")
+                return {
+                    'success': True,
+                    'assessed_count': 0,
+                    'skipped_count': skipped_count,
+                    'total_requested': original_count,
+                    'message': 'All traces already have confidence scores'
+                }
+
+        # Get message details for each trace_id
+        escaped_ids = [tid.replace("'", "''") for tid in trace_ids]
+        id_list = ", ".join(f"'{tid}'" for tid in escaped_ids)
+
+        messages_query = f"""
+            SELECT
+                trace_id,
+                session_id,
+                cascade_id,
+                cell_name,
+                full_request_json,
+                content_json,
+                model
+            FROM unified_logs
+            WHERE trace_id IN ({id_list})
+              AND role = 'assistant'
+              AND content_json IS NOT NULL
+              AND content_json != ''
+        """
+
+        messages = db.query(messages_query)
+
+        if not messages:
+            logger.debug(f"[confidence_worker] No messages found for {len(trace_ids)} trace_ids")
+            return {'success': True, 'assessed_count': 0, 'error': 'No valid messages found'}
+
+        logger.info(f"[confidence_worker] On-demand: assessing {len(messages)} messages")
+
+        assessed_count = 0
+        total_confidence = 0.0
+        errors = []
+
+        for msg in messages:
+            try:
+                # Extract prompt from full_request_json
+                user_prompt = ""
+                if msg.get('full_request_json'):
+                    user_prompt = msg['full_request_json'][:1000]
+
+                assistant_response = msg.get('content_json', '')
+
+                if not user_prompt or not assistant_response:
+                    continue
+
+                # Run confidence assessment cascade
+                # NOTE: We intentionally do NOT skip internal cascades here
+                runner = RVBBITRunner(
+                    'cascades/semantic_sql/assess_confidence.cascade.yaml',
+                    session_id=f"confidence_ondemand_{uuid.uuid4().hex[:8]}",
+                    parent_session_id=msg.get('session_id'),
+                )
+
+                result = runner.run(input_data={
+                    'user_prompt': user_prompt,
+                    'assistant_response': assistant_response,
+                    'cascade_id': msg['cascade_id'],
+                    'cell_name': msg['cell_name']
+                })
+
+                # Extract confidence score
+                confidence = None
+                if result and 'lineage' in result and len(result['lineage']) > 0:
+                    output = result['lineage'][-1].get('output', '')
+                    try:
+                        confidence = float(output)
+                        confidence = max(0.0, min(1.0, confidence))
+                    except (ValueError, TypeError):
+                        logger.warning(f"[confidence_worker] Invalid confidence: {output}")
+                        confidence = None
+
+                if confidence is not None:
+                    from datetime import datetime, timezone
+
+                    db.insert_rows(
+                        'training_annotations',
+                        [{
+                            'trace_id': msg['trace_id'],
+                            'trainable': False,
+                            'verified': False,
+                            'confidence': confidence,
+                            'notes': 'On-demand assessment',
+                            'tags': [],
+                            'annotated_at': datetime.now(timezone.utc),
+                            'annotated_by': 'confidence_worker_ondemand'
+                        }],
+                        columns=['trace_id', 'trainable', 'verified', 'confidence', 'notes', 'tags', 'annotated_at', 'annotated_by']
+                    )
+
+                    assessed_count += 1
+                    total_confidence += confidence
+                    logger.debug(f"[confidence_worker] {msg['trace_id']}: {confidence:.2f}")
+
+            except Exception as e:
+                logger.warning(f"[confidence_worker] Failed to assess {msg.get('trace_id')}: {e}")
+                errors.append(str(e))
+                continue
+
+        avg_confidence = total_confidence / assessed_count if assessed_count > 0 else 0.0
+
+        logger.info(f"[confidence_worker] On-demand: assessed {assessed_count}/{len(messages)}, skipped {skipped_count}, avg={avg_confidence:.2f}")
+
+        return {
+            'success': True,
+            'assessed_count': assessed_count,
+            'skipped_count': skipped_count,
+            'total_requested': original_count,
+            'avg_confidence': avg_confidence,
+            'errors': errors if errors else None
+        }
+
+    except Exception as e:
+        logger.error(f"[confidence_worker] On-demand assessment failed: {e}")
+        return {'success': False, 'error': str(e), 'assessed_count': 0}
 
 
 def assess_training_confidence(session_id: str) -> Optional[dict]:

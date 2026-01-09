@@ -26,6 +26,89 @@ import pandas as pd
 
 
 # =============================================================================
+# Schema Not Initialized Error
+# =============================================================================
+
+class SchemaNotInitializedError(Exception):
+    """
+    Raised when ClickHouse tables don't exist or can't be accessed.
+
+    This typically means the user needs to run `rvbbit db init` to create
+    the database schema before using RVBBIT.
+    """
+
+    def __init__(self, original_error: Exception, table_name: str | None = None):
+        self.original_error = original_error
+        self.table_name = table_name
+
+        if table_name:
+            message = (
+                f"\n\n"
+                f"╔══════════════════════════════════════════════════════════════════╗\n"
+                f"║  Database table '{table_name}' does not exist.                   \n"
+                f"║                                                                  \n"
+                f"║  Please initialize the database schema by running:               \n"
+                f"║                                                                  \n"
+                f"║      rvbbit db init                                              \n"
+                f"║                                                                  \n"
+                f"║  This creates all required tables and runs migrations.           \n"
+                f"╚══════════════════════════════════════════════════════════════════╝\n"
+            )
+        else:
+            message = (
+                f"\n\n"
+                f"╔══════════════════════════════════════════════════════════════════╗\n"
+                f"║  Database schema not initialized or connection failed.           \n"
+                f"║                                                                  \n"
+                f"║  Please initialize the database schema by running:               \n"
+                f"║                                                                  \n"
+                f"║      rvbbit db init                                              \n"
+                f"║                                                                  \n"
+                f"║  Make sure ClickHouse is running and accessible.                 \n"
+                f"╚══════════════════════════════════════════════════════════════════╝\n"
+            )
+
+        super().__init__(message)
+
+
+def _is_missing_table_error(error: Exception) -> tuple[bool, str | None]:
+    """
+    Check if an exception is due to a missing table.
+
+    Returns:
+        Tuple of (is_missing_table, table_name_or_none)
+    """
+    import re
+    err_str = str(error).lower()
+
+    # ClickHouse error patterns for missing tables
+    # "Code: 60. DB::Exception: Table rvbbit.unified_logs doesn't exist"
+    # "Table rvbbit.unified_logs doesn't exist"
+    # "Unknown table expression identifier 'unified_logs'"
+
+    if "doesn't exist" in err_str or "does not exist" in err_str:
+        # Try to extract table name - pattern: "table database.tablename doesn't"
+        # or just "table tablename doesn't"
+        match = re.search(r"table\s+(?:\w+\.)?(\w+)\s+doesn", err_str)
+        if match:
+            return True, match.group(1)
+        return True, None
+
+    if "unknown table" in err_str:
+        # Pattern: "Unknown table expression identifier 'tablename'"
+        match = re.search(r"['\"](\w+)['\"]", err_str)
+        if match:
+            return True, match.group(1)
+        return True, None
+
+    # Database doesn't exist
+    if "database" in err_str and ("doesn't exist" in err_str or "does not exist" in err_str):
+        return True, None
+
+    return False, None
+
+
+# =============================================================================
 # Query Logging System - Async fire-and-forget logging to ClickHouse
 # =============================================================================
 
@@ -567,6 +650,10 @@ class ClickHouseAdapter:
             except Exception as e:
                 success = False
                 error_msg = str(e)
+                # Check if this is a missing table error
+                is_missing, table_name = _is_missing_table_error(e)
+                if is_missing:
+                    raise SchemaNotInitializedError(e, table_name) from e
                 print(f"[ClickHouse Error] Query failed: {e}")
                 print(f"[ClickHouse Error] SQL: {sql[:500]}...")
                 raise
@@ -609,6 +696,10 @@ class ClickHouseAdapter:
             except Exception as e:
                 success = False
                 error_msg = str(e)
+                # Check if this is a missing table error
+                is_missing, table_name = _is_missing_table_error(e)
+                if is_missing:
+                    raise SchemaNotInitializedError(e, table_name) from e
                 print(f"[ClickHouse Error] Execute failed: {e}")
                 print(f"[ClickHouse Error] SQL: {sql[:500]}...")
                 raise
@@ -716,6 +807,10 @@ class ClickHouseAdapter:
             except Exception as e:
                 success = False
                 error_msg = str(e)
+                # Check if this is a missing table error
+                is_missing, table_name = _is_missing_table_error(e)
+                if is_missing:
+                    raise SchemaNotInitializedError(e, table_name or table) from e
                 print(f"[ClickHouse Error] Insert failed: {e}")
                 print(f"[ClickHouse Error] Table: {table}, Columns: {columns}")
                 raise
@@ -765,6 +860,10 @@ class ClickHouseAdapter:
             except Exception as e:
                 success = False
                 error_msg = str(e)
+                # Check if this is a missing table error
+                is_missing, table_name = _is_missing_table_error(e)
+                if is_missing:
+                    raise SchemaNotInitializedError(e, table_name or table) from e
                 print(f"[ClickHouse Error] Insert DataFrame failed: {e}")
                 print(f"[ClickHouse Error] Table: {table}")
                 raise
@@ -861,6 +960,10 @@ class ClickHouseAdapter:
             except Exception as e:
                 success = False
                 error_msg = str(e)
+                # Check if this is a missing table error
+                is_missing, table_name = _is_missing_table_error(e)
+                if is_missing:
+                    raise SchemaNotInitializedError(e, table_name or table) from e
                 print(f"[ClickHouse Error] Update failed: {e}")
                 print(f"[ClickHouse Error] SQL: {sql[:500]}...")
                 raise

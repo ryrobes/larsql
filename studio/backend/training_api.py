@@ -20,28 +20,37 @@ def get_training_examples():
     Get training examples with filtering.
 
     Query params:
-        cascade_id: Filter by cascade (optional)
-        cell_name: Filter by cell (optional)
+        cascade_id: Filter by cascade (optional, can be repeated for multiple)
+        cell_name: Filter by cell (optional, can be repeated for multiple)
         trainable: Filter by trainable flag (optional, default: all)
         verified: Filter by verified flag (optional)
         session_id: Filter by session (optional)
+        search: Global text search across inputs and outputs (optional)
         limit: Max results (default: 100)
         offset: Pagination offset (default: 0)
     """
-    cascade_id = request.args.get('cascade_id')
-    cell_name = request.args.get('cell_name')
+    # Support multiple values for cascade_id and cell_name
+    cascade_ids = request.args.getlist('cascade_id')
+    cell_names = request.args.getlist('cell_name')
     trainable = request.args.get('trainable')
     verified = request.args.get('verified')
     session_id = request.args.get('session_id')
+    search = request.args.get('search', '').strip()
     limit = int(request.args.get('limit', 100))
     offset = int(request.args.get('offset', 0))
 
     # Build WHERE clauses
     where_clauses = []
-    if cascade_id:
-        where_clauses.append(f"cascade_id = '{cascade_id}'")
-    if cell_name:
-        where_clauses.append(f"cell_name = '{cell_name}'")
+    if cascade_ids:
+        # Multiple cascade_ids - use IN clause
+        escaped = [c.replace("'", "''") for c in cascade_ids]
+        values = ", ".join(f"'{c}'" for c in escaped)
+        where_clauses.append(f"cascade_id IN ({values})")
+    if cell_names:
+        # Multiple cell_names - use IN clause
+        escaped = [c.replace("'", "''") for c in cell_names]
+        values = ", ".join(f"'{c}'" for c in escaped)
+        where_clauses.append(f"cell_name IN ({values})")
     if session_id:
         where_clauses.append(f"session_id = '{session_id}'")
     if trainable is not None:
@@ -50,6 +59,14 @@ def get_training_examples():
     if verified is not None:
         verified_val = verified.lower() == 'true'
         where_clauses.append(f"verified = {verified_val}")
+    if search:
+        # Global search across user_input and assistant_output
+        # Escape single quotes and use case-insensitive position search
+        escaped_search = search.replace("'", "''")
+        where_clauses.append(f"""(
+            positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
+            OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+        )""")
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -208,6 +225,205 @@ def get_stats():
         })
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@training_bp.route('/api/training/assess-confidence', methods=['POST'])
+def run_confidence_assessment():
+    """
+    Run confidence assessment on filtered traces (on-demand).
+
+    Body:
+        {
+            "trace_ids": ["uuid1", "uuid2", ...],  # Option 1: explicit trace_ids
+            "filters": {                            # Option 2: use UI filters (preferred)
+                "cascade_id": ["id1", "id2"],
+                "cell_name": ["name1"],
+                "trainable": true,
+                "search": "query text",
+                "limit": 500,
+                "offset": 0
+            },
+            "force": false  # Re-assess even if already scored
+        }
+
+    If filters provided, queries database with exact same logic as /examples endpoint.
+    Max 500 traces per request.
+    Returns immediately. Assessment runs in background thread.
+    """
+    import threading
+
+    data = request.json or {}
+    trace_ids = data.get('trace_ids', [])
+    filters = data.get('filters', {})
+    force = data.get('force', False)
+
+    # If filters provided, query for trace_ids using same logic as /examples
+    if filters:
+        try:
+            db = get_db()
+
+            # Build WHERE clauses (same logic as get_training_examples)
+            where_clauses = []
+
+            cascade_ids = filters.get('cascade_id', [])
+            if cascade_ids:
+                escaped = [c.replace("'", "''") for c in cascade_ids]
+                values = ", ".join(f"'{c}'" for c in escaped)
+                where_clauses.append(f"cascade_id IN ({values})")
+
+            cell_names = filters.get('cell_name', [])
+            if cell_names:
+                escaped = [c.replace("'", "''") for c in cell_names]
+                values = ", ".join(f"'{c}'" for c in escaped)
+                where_clauses.append(f"cell_name IN ({values})")
+
+            if filters.get('trainable') is not None:
+                trainable_val = filters['trainable']
+                if isinstance(trainable_val, str):
+                    trainable_val = trainable_val.lower() == 'true'
+                where_clauses.append(f"trainable = {trainable_val}")
+
+            if filters.get('verified') is not None:
+                verified_val = filters['verified']
+                if isinstance(verified_val, str):
+                    verified_val = verified_val.lower() == 'true'
+                where_clauses.append(f"verified = {verified_val}")
+
+            search = filters.get('search', '').strip()
+            if search:
+                escaped_search = search.replace("'", "''")
+                where_clauses.append(f"""(
+                    positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
+                    OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+                )""")
+
+            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+            limit = min(int(filters.get('limit', 500)), 500)
+            offset = int(filters.get('offset', 0))
+
+            # Query for trace_ids with exact same ordering as /examples
+            query = f"""
+                SELECT trace_id
+                FROM training_examples_with_annotations
+                WHERE {where_sql}
+                  AND LENGTH(assistant_output) > 0
+                ORDER BY timestamp DESC
+                LIMIT {limit} OFFSET {offset}
+            """
+
+            logger.info(f"[Training API] Assess-confidence query: {where_sql}, limit={limit}, offset={offset}")
+            result = db.query(query)
+            trace_ids = [row['trace_id'] for row in result if row.get('trace_id')]
+            logger.info(f"[Training API] Found {len(trace_ids)} trace_ids from filters")
+
+        except Exception as e:
+            logger.error(f"[Training API] Failed to query trace_ids from filters: {e}")
+            return jsonify({'error': f'Failed to query traces: {str(e)}'}), 500
+
+    if not trace_ids:
+        return jsonify({'error': 'No traces found matching filters'}), 400
+
+    if len(trace_ids) > 500:
+        trace_ids = trace_ids[:500]  # Cap at 500
+
+    logger.info(f"[Training API] Queuing confidence assessment for {len(trace_ids)} trace_ids (force={force})")
+
+    def assess_in_background():
+        try:
+            from rvbbit.confidence_worker import assess_trace_ids_confidence
+            result = assess_trace_ids_confidence(trace_ids, force=force)
+            logger.info(f"[Training API] Confidence assessment complete: {result}")
+        except Exception as e:
+            logger.error(f"[Training API] Confidence assessment failed: {e}")
+
+    thread = threading.Thread(target=assess_in_background, daemon=True)
+    thread.start()
+
+    return jsonify({
+        'success': True,
+        'queued_count': len(trace_ids),
+        'message': f'Confidence assessment started for {len(trace_ids)} traces'
+    })
+
+
+@training_bp.route('/api/training/filter-options', methods=['GET'])
+def get_filter_options():
+    """
+    Get available filter options with cascading logic.
+
+    Query params:
+        cascade_id: Currently selected cascades (optional, can be repeated)
+        cell_name: Currently selected cells (optional, can be repeated)
+        trainable: Filter by trainable flag (optional)
+        search: Global text search (optional)
+
+    Returns cascading options:
+        - If cascades selected: cells filtered to those in selected cascades
+        - If cells selected: cascades filtered to those containing selected cells
+        - Cross-filtering: both constrain each other
+    """
+    cascade_ids = request.args.getlist('cascade_id')
+    cell_names = request.args.getlist('cell_name')
+    trainable = request.args.get('trainable')
+    search = request.args.get('search', '').strip()
+
+    try:
+        db = get_db()
+
+        # Build base WHERE clause for global filters
+        base_where = ["LENGTH(assistant_output) > 0"]
+        if trainable is not None:
+            trainable_val = trainable.lower() == 'true'
+            base_where.append(f"trainable = {trainable_val}")
+        if search:
+            escaped_search = search.replace("'", "''")
+            base_where.append(f"""(
+                positionCaseInsensitiveUTF8(user_input, '{escaped_search}') > 0
+                OR positionCaseInsensitiveUTF8(assistant_output, '{escaped_search}') > 0
+            )""")
+
+        base_where_sql = " AND ".join(base_where)
+
+        # Get available cascades (filtered by selected cells if any)
+        cascade_where = [base_where_sql]
+        if cell_names:
+            escaped = [c.replace("'", "''") for c in cell_names]
+            values = ", ".join(f"'{c}'" for c in escaped)
+            cascade_where.append(f"cell_name IN ({values})")
+
+        cascade_query = f"""
+            SELECT DISTINCT cascade_id
+            FROM training_examples_with_annotations
+            WHERE {" AND ".join(cascade_where)}
+            ORDER BY cascade_id
+        """
+        cascade_result = db.query(cascade_query)
+        available_cascades = [row['cascade_id'] for row in cascade_result if row.get('cascade_id')]
+
+        # Get available cells (filtered by selected cascades if any)
+        cell_where = [base_where_sql]
+        if cascade_ids:
+            escaped = [c.replace("'", "''") for c in cascade_ids]
+            values = ", ".join(f"'{c}'" for c in escaped)
+            cell_where.append(f"cascade_id IN ({values})")
+
+        cell_query = f"""
+            SELECT DISTINCT cell_name
+            FROM training_examples_with_annotations
+            WHERE {" AND ".join(cell_where)}
+            ORDER BY cell_name
+        """
+        cell_result = db.query(cell_query)
+        available_cells = [row['cell_name'] for row in cell_result if row.get('cell_name')]
+
+        return jsonify({
+            'cascades': available_cascades,
+            'cells': available_cells
+        })
+
+    except Exception as e:
+        logger.error(f"[Training API] filter-options error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

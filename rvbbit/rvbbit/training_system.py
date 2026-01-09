@@ -284,27 +284,44 @@ def mark_as_trainable(
     try:
         db = get_db()
 
-        # Prepare rows for insertion
+        # Prepare rows for insertion as dicts (required by insert_rows)
+        # Use ISO format string for datetime to avoid numpy serialization issues
+        now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         rows = []
         for trace_id in trace_ids:
-            row = (
-                trace_id,
-                trainable,
-                verified,
-                confidence if confidence is not None else 1.0,
-                notes,
-                tags or [],
-                datetime.now(timezone.utc),
-                'human'
-            )
+            row = {
+                'trace_id': str(trace_id),
+                'trainable': bool(trainable),
+                'verified': bool(verified),
+                'confidence': float(confidence if confidence is not None else 1.0),
+                'notes': str(notes) if notes else '',
+                'tags': list(tags) if tags else [],
+                'annotated_at': now_str,
+                'annotated_by': 'human'
+            }
             rows.append(row)
 
-        # Insert (ReplacingMergeTree will handle updates)
-        db.execute("""
-            INSERT INTO training_annotations
-            (trace_id, trainable, verified, confidence, notes, tags, annotated_at, annotated_by)
-            VALUES
-        """, rows)
+        # Insert using raw execute with proper value formatting
+        # Build parameterized insert to avoid numpy issues
+        for row in rows:
+            db.execute(f"""
+                INSERT INTO training_annotations
+                (trace_id, trainable, verified, confidence, notes, tags, annotated_at, annotated_by)
+                VALUES (
+                    %(trace_id)s,
+                    %(trainable)s,
+                    %(verified)s,
+                    %(confidence)s,
+                    %(notes)s,
+                    %(tags)s,
+                    %(annotated_at)s,
+                    %(annotated_by)s
+                )
+            """, row)
+
+        # Force merge to ensure new annotations are immediately visible in queries
+        # ReplacingMergeTree doesn't dedupe until background merge otherwise
+        db.execute("OPTIMIZE TABLE training_annotations FINAL")
 
         log.info(f"[training] Marked {len(rows)} traces as trainable={trainable}")
         return len(rows)
