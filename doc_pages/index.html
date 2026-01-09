@@ -5463,7 +5463,7 @@
         <div class="container">
           <div class="simplest-header reveal">
             <h2>One line. That's all it takes.</h2>
-            <p>Turn a regular SQL query into an AI-powered one.</p>
+            <p>Same query. Now it gets what you <i>mean</i>.</p>
           </div>
 
           <div class="before-after">
@@ -5502,7 +5502,7 @@
         <div class="container">
           <div class="topics-header reveal">
             <h2>Wait, it gets weirder.</h2>
-            <p>What if you don't know what categories exist? Let the AI create them.</p>
+            <p>You describe the dimensions. AI discovers what fits.</p>
           </div>
 
           <div class="topics-demo">
@@ -5596,10 +5596,9 @@
         <div class="container">
           <div class="federated-grid">
             <div class="federated-content reveal">
-              <h2>Your data stays where it is.</h2>
+              <h2>Your data never moves. The intelligence comes to it.</h2>
               <p>
-                RVBBIT doesn't store your data. It's a query layer that sits on top of your existing databases,
-                adding AI capabilities without moving a single row.
+                Add AI to any database without copying a single row. RVBBIT is a query layer, not a data store.
               </p>
               <div class="federated-points">
                 <div class="federated-point">
@@ -5815,8 +5814,7 @@
           <div class="macros-header reveal">
             <h2>LLM once, <span class="gradient-text">SQL forever.</span></h2>
             <p>
-              Semantic Macros generate SQL expressions cached by data <em>shape</em>, not content.
-              Same format? Instant cache hit. Process millions of rows with a handful of LLM calls.
+              The LLM figures out the pattern once. Every row with the same <em>shape</em> after that? Pure SQL. Millions of rows, ~10 LLM calls.
             </p>
           </div>
 
@@ -5927,8 +5925,7 @@
             <div class="askdata-content reveal">
               <h2>The query you <span style="color: var(--green)">don't have to write.</span></h2>
               <p>
-                You know what you want. You just don't know which tables, columns, or JOINs to use.
-                Ask in plain English—RVBBIT already introspected your entire schema.
+                You know what you want. Just not which tables. Ask in English—RVBBIT already mapped your schema.
               </p>
               <div class="askdata-how">
                 <div class="askdata-step">
@@ -6071,11 +6068,11 @@
         <div class="container">
           <div class="analyze-grid">
             <div class="analyze-content reveal">
-              <h2>Ask questions, <span style="color: var(--orange)">not just queries.</span></h2>
+              <!-- <h2>Ask questions, <span style="color: var(--orange)">not just queries.</span></h2> -->
+              <h2>The question <span style="color: var(--orange)">after the query.</span></h2>
               <p>
-                You ran a query. Now you want to know <em>why</em>.
-                ANALYZE hands your results to an agent with SQL, Python, and your whole tool catalog (and it already KNOWS your data) - 
-                then writes its findings to a table you can query later. Async, all without leaving your SQL IDE.
+                You ran a query. Now you want to know <em>why</em>. 
+                ANALYZE spawns an agent to investigate—it can run more SQL, write Python, use your tools—then saves findings to a table. Check back later. Fire and forget.
               </p>
               <div class="analyze-how">
                 <div class="analyze-step">
@@ -6130,7 +6127,7 @@
       <section id="candidates" class="candidates-section">
         <div class="container">
           <div class="candidates-header reveal">
-            <h2>LLMs are unpredictable. <span class="gradient-text">So run them all.</span></h2>
+            <h2>LLMs are unpredictable. <span class="gradient-text">So run them all.</span> Bad outputs don't need handling - they just don't win.</h2>
             <p>
               Same prompt, wildly different results. Instead of hoping for the best, run 5 variations
               in parallel—different prompts, different models—and let an evaluator pick the winner.
@@ -6278,11 +6275,12 @@
         <div class="container">
           <div class="champion-grid">
             <div class="champion-content reveal">
-              <h2>Prompts that <span class="gradient-text">evolve themselves.</span></h2>
+              <!-- <h2>Prompts that <span class="gradient-text">evolve themselves.</span></h2> -->
+              <h2>Your prompts compete. <span class="gradient-text">Winners breed.</span></h2>
               <p>
-                Run a generation of prompt mutations. Winners feed back as training data for the next generation.
-                Repeat until convergence. Promote the winner to production—where it runs cloned 3x per request,
-                best execution wins. The cycle continues: production data trains the next evolution.
+                Five prompt variations compete. Winner moves to production. 
+                There, it runs 3x per request—random failures just don't win. 
+                Production data feeds the next generation. Your prompts literally evolve.
               </p>
               <div class="champion-stats">
                 <div class="stat-box">
@@ -6373,7 +6371,7 @@
       <section id="self-properties" class="self-section">
         <div class="container">
           <div class="self-header reveal">
-            <h2>A system that improves itself.</h2>
+            <h2>Code that writes code. Tests that write tests.</h2>
             <p>Five properties that make RVBBIT fundamentally different.</p>
           </div>
 
@@ -7421,17 +7419,13 @@
 
         if (!terminal) return;
 
-        // Example queries - mix of data sources and use cases
+        // Example queries - showcasing the full breadth of semantic SQL
         const examples = [
+          // --- SEMANTIC FILTERING: MEANS & IMPLIES ---
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">pg.support_tickets</span>\n<span class="kw">WHERE</span> description <span class="fn">MEANS</span> <span class="str">\'billing dispute\'</span>',
-            result: '23 tickets flagged',
+            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">pg.support_tickets</span>\n<span class="kw">WHERE</span> description <span class="fn">MEANS</span> <span class="str">\'frustrated customer threatening to leave\'</span>',
+            result: '23 churn-risk tickets flagged',
             meta: '0.8s · $0.003'
-          },
-          {
-            query: '<span class="kw">SELECT</span> <span class="fn">SUMMARIZE</span>(feedback) <span class="kw">FROM</span> <span class="src">mysql.exit_interviews</span>\n<span class="kw">WHERE</span> feedback <span class="fn">MEANS</span> <span class="str">\'management issues\'</span>',
-            result: '"Lack of growth opportunities and unclear expectations..."',
-            meta: '1.2s · $0.008'
           },
           {
             query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">read_parquet</span>(<span class="str">\'s3://logs/auth/*.parquet\'</span>)\n<span class="kw">WHERE</span> event <span class="fn">IMPLIES</span> <span class="str">\'credential stuffing attack\'</span>',
@@ -7439,123 +7433,134 @@
             meta: '2.1s · $0.012'
           },
           {
-            query: '<span class="kw">SELECT</span> <span class="fn">TOPICS</span>(tweet, 5), <span class="kw">COUNT</span>(*)\n<span class="kw">FROM</span> <span class="src">bq.twitter_archive</span> <span class="kw">GROUP BY</span> 1',
-            result: 'Tech Commentary: 2,341 · Hot Takes: 1,892 · ...',
-            meta: '3.4s · $0.021'
+            query: '<span class="kw">SELECT</span> gene_id, annotation <span class="kw">FROM</span> <span class="src">bq.genome_variants</span>\n<span class="kw">WHERE</span> annotation <span class="fn">MEANS</span> <span class="str">\'loss of function mutation\'</span>',
+            result: '847 LoF variants across 312 genes',
+            meta: '1.4s · $0.008'
+          },
+          // --- LOGIC OPERATORS: CONTRADICTS & SIMILAR_TO ---
+          {
+            query: '<span class="kw">SELECT</span> a.claim, b.claim <span class="kw">FROM</span> <span class="src">pg.witness_statements</span> a, b\n<span class="kw">WHERE</span> a.claim <span class="fn">CONTRADICTS</span> b.claim <span class="kw">AND</span> a.case_id = b.case_id',
+            result: '12 contradictory statement pairs found',
+            meta: '3.2s · $0.024'
           },
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">snowflake.claims</span>\n<span class="kw">WHERE</span> description <span class="fn">IS_FRAUDULENT</span>',
-            result: '12 claims flagged (confidence > 0.85)',
-            meta: '1.8s · $0.018'
-          },
-          {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">mongo.research_papers</span>\n<span class="kw">WHERE</span> abstract <span class="fn">MEANS</span> <span class="str">\'transformer architecture improvements\'</span>',
-            result: '156 relevant papers',
+            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">mongo.research_papers</span>\n<span class="kw">WHERE</span> abstract <span class="fn">SIMILAR_TO</span> <span class="str">\'attention mechanisms in vision transformers\'</span>',
+            result: '89 semantically related papers',
             meta: '0.9s · $0.004'
           },
           {
-            query: '<span class="kw">SELECT</span> product, <span class="fn">SUMMARIZE</span>(reviews)\n<span class="kw">FROM</span> <span class="fn">read_csv</span>(<span class="str">\'s3://data/reviews.csv\'</span>) <span class="kw">GROUP BY</span> 1',
-            result: 'AirPods: "Great sound but battery degrades..."',
-            meta: '2.3s · $0.015'
+            query: '<span class="kw">SELECT</span> doc_a, doc_b <span class="kw">FROM</span> <span class="src">pg.legal_discovery</span>\n<span class="kw">WHERE</span> doc_a.content <span class="fn">CONTRADICTS</span> doc_b.content',
+            result: '7 inconsistent document pairs flagged',
+            meta: '4.1s · $0.031'
+          },
+          // --- AGGREGATIONS: SUMMARIZE, TOPICS, CONSENSUS ---
+          {
+            query: '<span class="kw">SELECT</span> <span class="fn">SUMMARIZE</span>(feedback) <span class="kw">FROM</span> <span class="src">mysql.exit_interviews</span>\n<span class="kw">WHERE</span> department = <span class="str">\'engineering\'</span>',
+            result: '"Engineers cite lack of growth and unclear promotion paths..."',
+            meta: '1.2s · $0.008'
           },
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">pg.customer_feedback</span>\n<span class="kw">WHERE</span> comment <span class="fn">MEANS</span> <span class="str">\'frustrated with shipping\'</span>',
-            result: '47 negative shipping complaints',
-            meta: '0.6s · $0.002'
+            query: '<span class="kw">SELECT</span> <span class="fn">TOPICS</span>(complaint, 5), <span class="kw">COUNT</span>(*)\n<span class="kw">FROM</span> <span class="src">bq.customer_complaints</span> <span class="kw">GROUP BY</span> 1',
+            result: 'Shipping: 2,341 · Billing: 1,892 · Returns: 1,204...',
+            meta: '3.4s · $0.021'
           },
           {
-            query: '<span class="kw">SELECT</span> clause <span class="kw">FROM</span> <span class="fn">read_parquet</span>(<span class="str">\'s3://legal/contracts/*.parquet\'</span>)\n<span class="kw">WHERE</span> clause <span class="fn">IMPLIES</span> <span class="str">\'unlimited liability\'</span>',
-            result: '34 risky clauses across 12 contracts',
-            meta: '1.5s · $0.009'
+            query: '<span class="kw">SELECT</span> <span class="fn">CONSENSUS</span>(review, <span class="str">\'what do buyers love most?\'</span>)\n<span class="kw">FROM</span> <span class="src">pg.product_reviews</span> <span class="kw">WHERE</span> product_id = 42',
+            result: '"Battery life and seamless ecosystem integration"',
+            meta: '1.8s · $0.012'
+          },
+          // --- CLASSIFICATION: CLASSIFY & NARRATIVE ---
+          {
+            query: '<span class="kw">SELECT</span> <span class="fn">CLASSIFY</span>(email, <span class="str">\'[spam, promotional, transactional, personal]\'</span>)\n<span class="kw">FROM</span> <span class="src">pg.inbox</span> <span class="kw">WHERE</span> unread = <span class="kw">true</span>',
+            result: 'spam: 12 · promotional: 47 · transactional: 8 · personal: 3',
+            meta: '0.6s · $0.004'
           },
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">ch.sensor_readings</span>\n<span class="kw">WHERE</span> notes <span class="fn">MEANS</span> <span class="str">\'unusual vibration pattern\'</span>',
-            result: '8 anomalies detected in motor-7',
-            meta: '0.4s · $0.001'
+            query: '<span class="kw">SELECT</span> <span class="fn">NARRATIVE</span>(article) <span class="kw">AS</span> spin <span class="kw">FROM</span> <span class="src">bq.news_articles</span>\n<span class="kw">WHERE</span> topic = <span class="str">\'climate\'</span> <span class="kw">AND</span> date = <span class="str">\'today\'</span>',
+            result: 'alarmist: 23 · balanced: 41 · skeptical: 8',
+            meta: '2.4s · $0.018'
+          },
+          // --- DATA QUALITY: DEDUPE, ANONYMIZE, GOLDEN_RECORD ---
+          {
+            query: '<span class="kw">SELECT</span> <span class="fn">DEDUPE</span>(name, email, phone) <span class="kw">AS</span> canonical\n<span class="kw">FROM</span> <span class="src">pg.contacts</span> <span class="kw">GROUP BY</span> 1',
+            result: '12,847 contacts → 9,234 unique (28% dupes)',
+            meta: '5.2s · $0.034'
           },
           {
-            query: '<span class="kw">SELECT</span> <span class="fn">TLDR</span>(article) <span class="kw">AS</span> summary\n<span class="kw">FROM</span> <span class="src">pg.news_articles</span> <span class="kw">WHERE</span> category = <span class="str">\'tech\'</span>',
-            result: '"Apple announced new AI features for iOS 19..."',
-            meta: '1.1s · $0.007'
+            query: '<span class="kw">SELECT</span> <span class="fn">ANONYMIZE</span>(notes) <span class="kw">AS</span> safe_notes\n<span class="kw">FROM</span> <span class="src">pg.patient_records</span> <span class="kw">LIMIT</span> 100',
+            result: 'PII removed: 847 names, 312 SSNs, 156 addresses',
+            meta: '1.1s · $0.009'
           },
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">redis.session_logs</span>\n<span class="kw">WHERE</span> error_msg <span class="fn">IMPLIES</span> <span class="str">\'memory leak\'</span>',
-            result: '5 sessions with potential memory issues',
-            meta: '0.3s · $0.001'
+            query: '<span class="kw">SELECT</span> <span class="fn">GOLDEN_RECORD</span>(c1.*, c2.*, c3.*)\n<span class="kw">FROM</span> <span class="src">pg.crm</span> c1 <span class="kw">JOIN</span> <span class="src">mysql.sales</span> c2 <span class="kw">JOIN</span> <span class="src">mongo.support</span> c3',
+            result: '3 sources merged → 1 canonical customer record',
+            meta: '2.8s · $0.022'
+          },
+          // --- VECTOR SEARCH ---
+          {
+            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="fn">VECTOR_SEARCH</span>(\n  <span class="src">pg.knowledge_base</span>,\n  <span class="str">\'how to reset MFA for enterprise accounts\'</span>, 5)',
+            result: '5 relevant docs (top: "Enterprise SSO Guide" 0.94)',
+            meta: '0.3s · $0.002'
+          },
+          // --- CROSS-DATABASE JOINS + SEMANTIC ---
+          {
+            query: '<span class="kw">SELECT</span> c.name, <span class="fn">SUMMARIZE</span>(t.notes)\n<span class="kw">FROM</span> <span class="src">pg.tickets</span> t <span class="kw">JOIN</span> <span class="src">mysql.customers</span> c <span class="kw">ON</span> t.cid = c.id\n<span class="kw">WHERE</span> t.notes <span class="fn">MEANS</span> <span class="str">\'escalation risk\'</span> <span class="kw">GROUP BY</span> 1',
+            result: 'pg↔mysql: 34 at-risk customers with issue summaries',
+            meta: '2.1s · $0.016'
           },
           {
-            query: '<span class="kw">SELECT</span> patient_id, <span class="fn">SUMMARIZE</span>(notes)\n<span class="kw">FROM</span> <span class="src">pg.medical_records</span> <span class="kw">WHERE</span> notes <span class="fn">MEANS</span> <span class="str">\'chronic pain management\'</span>',
-            result: '89 patients · treatment patterns identified',
-            meta: '1.4s · $0.011'
+            query: '<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'fraud pattern?\'</span>, t.*, f.*, l.*)\n<span class="kw">FROM</span> <span class="src">snowflake.txns</span> t <span class="kw">JOIN</span> <span class="src">bq.fraud</span> f <span class="kw">JOIN</span> <span class="src">mongo.logs</span> l',
+            result: '3 sources: "Velocity + geo mismatch pattern detected"',
+            meta: '3.4s · $0.028'
+          },
+          // --- WATCH: SEMANTIC SUBSCRIPTIONS ---
+          {
+            query: '<span class="kw">CREATE WATCH</span> churn_detector <span class="kw">POLL EVERY</span> <span class="str">\'5m\'</span>\n<span class="kw">AS SELECT</span> * <span class="kw">FROM</span> <span class="src">pg.tickets</span>\n<span class="kw">WHERE</span> content <span class="fn">MEANS</span> <span class="str">\'want to cancel\'</span>\n<span class="kw">ON TRIGGER CASCADE</span> <span class="str">\'retention.yaml\'</span>',
+            result: 'Watch created · polling every 5m · triggers LLM workflow',
+            meta: '0.1s · $0.000'
           },
           {
-            query: '<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">sqlite.local_inventory</span>\n<span class="kw">WHERE</span> description <span class="fn">MEANS</span> <span class="str">\'needs reorder soon\'</span>',
-            result: '23 SKUs below threshold',
-            meta: '0.2s · $0.001'
+            query: '<span class="kw">SHOW WATCHES</span>',
+            result: 'churn_detector: enabled · 23 triggers · last: 2m ago',
+            meta: '0.02s · $0.000'
           },
-          // Advanced: ASK() operator - open-ended LLM calls
+          // --- MODEL ROUTING ---
           {
-            query: '<span class="kw">SELECT</span> id, <span class="fn">ASK</span>(<span class="str">\'What is the sentiment and main complaint?\'</span>, review)\n<span class="kw">FROM</span> <span class="src">pg.product_reviews</span> <span class="kw">WHERE</span> rating < 3',
-            result: '{"sentiment": "frustrated", "complaint": "shipping delay"}',
-            meta: '0.9s · $0.006'
-          },
-          {
-            query: '<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'Summarize the key risks in bullet points\'</span>, filing)\n<span class="kw">FROM</span> <span class="src">bq.sec_filings</span> <span class="kw">WHERE</span> ticker = <span class="str">\'TSLA\'</span>',
-            result: '• Supply chain concentration\\n• Regulatory uncertainty...',
-            meta: '2.1s · $0.024'
-          },
-          // Advanced: Comment-based model routing (explicit)
-          {
-            query: '<span class="cmt">-- <span class="directive">@ model:claude-opus-4</span></span>\n<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'Write a detailed legal analysis\'</span>, contract)\n<span class="kw">FROM</span> <span class="src">pg.contracts</span> <span class="kw">WHERE</span> id = 42',
-            result: 'Detailed 3-page analysis with citations...',
+            query: '<span class="cmt">-- <span class="directive">@ model:claude-opus-4</span></span>\n<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'Detailed legal analysis of liability\'</span>, clause)\n<span class="kw">FROM</span> <span class="src">pg.contracts</span> <span class="kw">WHERE</span> id = 42',
+            result: '3-page analysis with case law citations...',
             meta: '8.2s · $0.18 · opus'
           },
           {
-            query: '<span class="cmt">-- <span class="directive">@ model:gpt-4.1-nano</span></span>\n<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">pg.logs</span>\n<span class="kw">WHERE</span> message <span class="fn">MEANS</span> <span class="str">\'auth failure\'</span>',
+            query: '<span class="cmt">-- <span class="directive">@ use the cheapest model that works</span></span>\n<span class="kw">SELECT</span> * <span class="kw">FROM</span> <span class="src">ch.logs</span>\n<span class="kw">WHERE</span> message <span class="fn">MEANS</span> <span class="str">\'auth failure\'</span>',
             result: '89 auth failures in last hour',
             meta: '0.1s · $0.0002 · nano'
           },
-          // Advanced: Natural language model routing
           {
-            query: '<span class="cmt">-- <span class="directive">@ use the smartest model available</span></span>\n<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'Is this claim fraudulent? Explain reasoning.\'</span>, claim)\n<span class="kw">FROM</span> <span class="src">snowflake.claims</span> <span class="kw">WHERE</span> amount > 50000',
-            result: 'High confidence fraud: inconsistent dates + prior claims',
-            meta: '4.1s · $0.09 · routed→opus'
+            query: '<span class="cmt">-- <span class="directive">@ use Anthropic, this needs reasoning</span></span>\n<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">\'Is this claim fraudulent? Show your reasoning.\'</span>, claim)\n<span class="kw">FROM</span> <span class="src">snowflake.claims</span> <span class="kw">WHERE</span> amount > 50000',
+            result: 'Fraud likely: date inconsistencies + velocity pattern',
+            meta: '4.1s · $0.09 · sonnet'
+          },
+          // --- ESOTERIC DOMAINS ---
+          {
+            query: '<span class="kw">SELECT</span> supplier, part, <span class="fn">ASK</span>(<span class="str">\'single-source risk?\'</span>, supply_chain)\n<span class="kw">FROM</span> <span class="src">pg.bom</span> <span class="kw">WHERE</span> critical = <span class="kw">true</span>',
+            result: '4 single-source risks in display assembly',
+            meta: '2.3s · $0.019'
           },
           {
-            query: '<span class="cmt">-- <span class="directive">@ use a fast cheap model</span></span>\n<span class="kw">SELECT</span> <span class="fn">SENTIMENT</span>(tweet) <span class="kw">FROM</span> <span class="src">bq.tweets</span>\n<span class="kw">WHERE</span> mention = <span class="str">\'@acmecorp\'</span>',
-            result: 'positive: 847 · neutral: 234 · negative: 91',
-            meta: '0.3s · $0.001 · routed→haiku'
+            query: '<span class="kw">SELECT</span> doc_id, <span class="fn">SUMMARIZE</span>(content)\n<span class="kw">FROM</span> <span class="src">s3.discovery_docs</span>\n<span class="kw">WHERE</span> content <span class="fn">MEANS</span> <span class="str">\'awareness of defect before recall\'</span>',
+            result: '14 potentially privileged documents flagged',
+            meta: '6.7s · $0.048'
+          },
+          // --- SEMANTIC MACROS ---
+          {
+            query: '<span class="kw">SELECT</span> <span class="fn">parse</span>(resume, <span class="str">\'{ name, skills[], years_exp }\'</span>)\n<span class="kw">FROM</span> <span class="fn">read_pdf</span>(<span class="str">\'s3://hr/resumes/*.pdf\'</span>)',
+            result: '{"name": "Jane Doe", "skills": ["Python", "ML"], "years_exp": 7}',
+            meta: '1.4s · $0.011'
           },
           {
-            query: '<span class="cmt">-- <span class="directive">@ use Anthropic for this one</span></span>\n<span class="kw">SELECT</span> code, <span class="fn">ASK</span>(<span class="str">\'Find security vulnerabilities\'</span>, source)\n<span class="kw">FROM</span> <span class="src">pg.code_repos</span> <span class="kw">WHERE</span> lang = <span class="str">\'python\'</span>',
-            result: 'SQL injection risk at line 47, XSS at line 112',
-            meta: '3.2s · $0.04 · routed→sonnet'
-          },
-          // Advanced: Aggregate queries with GROUP BY
-          {
-            query: '<span class="kw">SELECT</span> <span class="fn">TOPICS</span>(feedback, 4) <span class="kw">AS</span> theme,\n       <span class="fn">CONSENSUS</span>(feedback, <span class="str">\'common complaint?\'</span>),\n       <span class="kw">COUNT</span>(*)\n<span class="kw">FROM</span> <span class="src">pg.nps_responses</span> <span class="kw">GROUP BY</span> 1',
-            result: '4 themes · "Slow support response" tops complaints',
-            meta: '4.8s · $0.032'
-          },
-          {
-            query: '<span class="kw">SELECT</span> state,\n       <span class="fn">SENTIMENT</span>(report, <span class="str">\'fear\'</span>) <span class="kw">AS</span> fear_level,\n       <span class="fn">CREDIBILITY</span>(report) <span class="kw">AS</span> cred,\n       <span class="kw">COUNT</span>(*)\n<span class="kw">FROM</span> <span class="src">pg.incident_reports</span> <span class="kw">GROUP BY</span> 1, 2, 3',
-            result: 'CA: high fear, 0.82 cred · TX: medium, 0.91 cred...',
-            meta: '3.1s · $0.028'
-          },
-          {
-            query: '<span class="kw">SELECT</span> <span class="fn">MEANING</span>(title, 5, <span class="str">\'issue category\'</span>) <span class="kw">AS</span> category,\n       <span class="fn">SUMMARIZE</span>(body) <span class="kw">AS</span> summary,\n       <span class="kw">COUNT</span>(*)\n<span class="kw">FROM</span> <span class="src">gh.issues</span> <span class="kw">GROUP BY</span> 1 <span class="kw">ORDER BY</span> 3 <span class="kw">DESC</span>',
-            result: 'Auth bugs: 47 · "Token refresh fails silently..."',
-            meta: '5.2s · $0.041'
-          },
-          {
-            query: '<span class="kw">SELECT</span> product_id,\n       <span class="fn">TOPICS</span>(review, 3),\n       <span class="fn">CONSENSUS</span>(review, <span class="str">\'what do customers love?\'</span>)\n<span class="kw">FROM</span> <span class="src">mysql.reviews</span> <span class="kw">WHERE</span> stars >= 4 <span class="kw">GROUP BY</span> 1, 2',
-            result: 'AirPods: "Seamless pairing" · Kindle: "Battery life"',
-            meta: '3.9s · $0.029'
-          },
-          {
-            query: '<span class="kw">SELECT</span> <span class="fn">MEANING</span>(headline, 6, <span class="str">\'news category\'</span>),\n       <span class="fn">CREDIBILITY</span>(source) <span class="kw">AS</span> trust_score,\n       <span class="fn">SENTIMENT</span>(body, <span class="str">\'urgency\'</span>)\n<span class="kw">FROM</span> <span class="src">bq.news_feed</span> <span class="kw">WHERE</span> date = <span class="str">\'today\'</span>',
-            result: 'Tech: 0.89 trust, high urgency · Politics: 0.67...',
-            meta: '2.8s · $0.019'
+            query: '<span class="kw">SELECT</span> <span class="fn">smart_json</span>(<span class="str">\'extract all mentioned companies and their roles\'</span>, article)\n<span class="kw">FROM</span> <span class="src">pg.news</span> <span class="kw">WHERE</span> id = 123',
+            result: '[{"company": "OpenAI", "role": "partner"}, {"company": "Microsoft"...}]',
+            meta: '0.9s · $0.007'
           }
         ];
 
@@ -7654,22 +7659,24 @@
           const example = examples[currentIndex];
 
           typeQuery(example.query, () => {
+            // Typing finished - show result after brief pause
             setTimeout(() => {
               if (!isPaused) {
                 showResult(example.result, example.meta);
               }
+
+              // Start the read timer AFTER typing completes
+              cycleTimeout = setTimeout(() => {
+                if (!isPaused && !isClosed) {
+                  resultEl.classList.remove('visible');
+                  setTimeout(() => {
+                    currentIndex = (currentIndex + 1) % examples.length;
+                    showNextExample();
+                  }, 400);
+                }
+              }, 4000); // 4 seconds to read the result
             }, 300);
           });
-
-          cycleTimeout = setTimeout(() => {
-            if (!isPaused && !isClosed) {
-              resultEl.classList.remove('visible');
-              setTimeout(() => {
-                currentIndex = (currentIndex + 1) % examples.length;
-                showNextExample();
-              }, 400);
-            }
-          }, 7000);
         }
 
         terminal.addEventListener('mouseenter', () => {
