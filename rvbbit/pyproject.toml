@@ -37,7 +37,19 @@ dependencies = [
 ]
 
 [tool.hatch.metadata]
-    allow-direct-references = true
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["rvbbit"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "rvbbit/**/*",
+]
+
+# Include starter files in the package
+[tool.hatch.build.targets.wheel.force-include]
+"rvbbit/starter" = "rvbbit/starter"
 
 [project.optional-dependencies]
 # Extra dependencies for specific features

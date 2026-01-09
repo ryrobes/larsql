@@ -1,0 +1,31 @@
+# =============================================================================
+# MCP (Model Context Protocol) Server Configuration
+# =============================================================================
+# Copy this file to mcp_servers.yaml to enable MCP servers.
+# MCP allows external tools to be exposed to RVBBIT cascades.
+#
+# Documentation: https://modelcontextprotocol.io/
+
+# Example: Filesystem server (read/write files)
+# - name: filesystem
+#   transport: stdio
+#   command: npx
+#   args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+#   enabled: true
+
+# Example: Brave Search server
+# - name: brave-search
+#   transport: stdio
+#   command: npx
+#   args: ["-y", "@modelcontextprotocol/server-brave-search"]
+#   env:
+#     BRAVE_API_KEY: ${BRAVE_SEARCH_API_KEY}
+#   enabled: true
+
+# Example: HTTP server
+# - name: my-api
+#   transport: http
+#   url: http://localhost:3000/mcp
+#   headers:
+#     Authorization: Bearer ${MY_API_TOKEN}
+#   enabled: false

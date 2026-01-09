@@ -895,6 +895,43 @@ def main():
     alice_run_parser.add_argument('--port', type=int, default=None, help='Run as web server on port')
     alice_run_parser.add_argument('--background', '-b', default=None, help='Background image path')
 
+    # ==========================================================================
+    # Workspace Management Commands
+    # ==========================================================================
+
+    # Init command - Initialize a new RVBBIT workspace
+    init_parser = subparsers.add_parser(
+        'init',
+        help='Initialize a new RVBBIT workspace with starter files'
+    )
+    init_parser.add_argument(
+        'path',
+        nargs='?',
+        default='.',
+        help='Directory to initialize (default: current directory)'
+    )
+    init_parser.add_argument(
+        '--minimal',
+        action='store_true',
+        help='Create minimal structure without example cascades'
+    )
+    init_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Overwrite existing files'
+    )
+
+    # Doctor command - Check workspace health and configuration
+    doctor_parser = subparsers.add_parser(
+        'doctor',
+        help='Check workspace health, environment, and database connectivity'
+    )
+    doctor_parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Show detailed information'
+    )
+
     # Preprocess args: `rvbbit ssql "SELECT..."` → `rvbbit ssql query "SELECT..."`
     # This allows users to run queries directly without the `query` subcommand
     if len(sys.argv) >= 3 and sys.argv[1] == 'ssql':
@@ -1215,6 +1252,10 @@ def main():
         else:
             alice_parser.print_help()
             sys.exit(1)
+    elif args.command == 'init':
+        cmd_init(args)
+    elif args.command == 'doctor':
+        cmd_doctor(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -4953,6 +4994,355 @@ def cmd_mcp_test(args):
     """Test an MCP tool."""
     from .mcp_cli import cmd_mcp_test as impl
     impl(args)
+
+
+# =============================================================================
+# Workspace Management Commands
+# =============================================================================
+
+def cmd_init(args):
+    """Initialize a new RVBBIT workspace with starter files."""
+    import shutil
+    from pathlib import Path
+
+    workspace = Path(args.path).resolve()
+    starter_dir = Path(__file__).parent / 'starter'
+
+    # Check if starter directory exists
+    if not starter_dir.exists():
+        print(f"Error: Starter files not found at {starter_dir}")
+        print("This may indicate a broken installation. Try reinstalling rvbbit.")
+        sys.exit(1)
+
+    # Create workspace directory if needed
+    if args.path != '.':
+        workspace.mkdir(parents=True, exist_ok=True)
+
+    # Check if workspace already has content
+    marker_file = workspace / '.rvbbit'
+    if marker_file.exists() and not args.force:
+        print(f"Workspace already initialized at {workspace}")
+        print("Use --force to reinitialize.")
+        sys.exit(1)
+
+    print(f"Initializing RVBBIT workspace at {workspace}")
+    print()
+
+    # Create directory structure
+    dirs = [
+        'cascades/examples',
+        'traits',
+        'config',
+        'data',
+        'logs',
+        'states',
+        'graphs',
+        'images',
+        'audio',
+        'videos',
+        'session_dbs',
+        'research_dbs',
+    ]
+    for d in dirs:
+        dir_path = workspace / d
+        dir_path.mkdir(parents=True, exist_ok=True)
+        print(f"  Created: {d}/")
+
+    print()
+
+    # Copy starter files
+    def copy_file(src_rel: str, dst_rel: str | None = None, overwrite: bool = False):
+        """Copy a file from starter to workspace."""
+        src = starter_dir / src_rel
+        dst = workspace / (dst_rel or src_rel)
+
+        if not src.exists():
+            return False
+
+        if dst.exists() and not overwrite and not args.force:
+            print(f"  Skipped: {dst_rel or src_rel} (exists)")
+            return False
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        print(f"  Copied:  {dst_rel or src_rel}")
+        return True
+
+    # Copy configuration files
+    copy_file('.env.example')
+    copy_file('.gitignore')
+    copy_file('README.md')
+    copy_file('config/mcp_servers.example.yaml')
+
+    # Copy example cascades (unless --minimal)
+    if not args.minimal:
+        for example in (starter_dir / 'cascades' / 'examples').glob('*.yaml'):
+            copy_file(f'cascades/examples/{example.name}')
+
+    # Create .rvbbit marker file
+    try:
+        from importlib.metadata import version as get_version
+        rvbbit_version = get_version("rvbbit")
+    except Exception:
+        rvbbit_version = "unknown"
+    marker_file.write_text(f"version: {rvbbit_version}\n")
+    print(f"  Created: .rvbbit")
+
+    # Create .env from .env.example if it doesn't exist
+    env_example = workspace / '.env.example'
+    env_file = workspace / '.env'
+    if env_example.exists() and not env_file.exists():
+        shutil.copy2(env_example, env_file)
+        # Update RVBBIT_ROOT to absolute path
+        content = env_file.read_text()
+        content = content.replace('RVBBIT_ROOT=.', f'RVBBIT_ROOT={workspace}')
+        env_file.write_text(content)
+        print(f"  Created: .env (from .env.example)")
+
+    print()
+    print("=" * 60)
+    print("Workspace initialized successfully!")
+    print("=" * 60)
+    print()
+    print("Next steps:")
+    print()
+    print("  1. Configure your environment:")
+    print(f"     cd {workspace}")
+    print("     # Edit .env with your OPENROUTER_API_KEY")
+    print()
+    print("  2. Start ClickHouse (if not already running):")
+    print("     docker run -d --name rvbbit-clickhouse \\")
+    print("       -p 9000:9000 -p 8123:8123 \\")
+    print("       -e CLICKHOUSE_USER=rvbbit \\")
+    print("       -e CLICKHOUSE_PASSWORD=rvbbit \\")
+    print("       -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
+    print("       -v rvbbit-clickhouse-data:/var/lib/clickhouse \\")
+    print("       clickhouse/clickhouse-server:latest")
+    print()
+    print("  3. Initialize the database:")
+    print("     rvbbit db init")
+    print()
+    print("  4. Verify your setup:")
+    print("     rvbbit doctor")
+    print()
+    print("  5. Run your first cascade:")
+    print("     rvbbit run cascades/examples/hello_world.yaml")
+    print()
+
+
+def cmd_doctor(args):
+    """Check workspace health, environment, and database connectivity."""
+    import os
+    from pathlib import Path
+
+    verbose = args.verbose
+
+    print()
+    print("RVBBIT Doctor - Workspace Health Check")
+    print("=" * 50)
+    print()
+
+    issues = []
+    warnings = []
+
+    # -------------------------------------------------------------------------
+    # 1. Check RVBBIT_ROOT / Workspace
+    # -------------------------------------------------------------------------
+    print("Workspace:")
+    print("-" * 50)
+
+    rvbbit_root = os.environ.get('RVBBIT_ROOT', os.getcwd())
+    root_path = Path(rvbbit_root).resolve()
+
+    marker_file = root_path / '.rvbbit'
+    if marker_file.exists():
+        print(f"  RVBBIT_ROOT:     {root_path}")
+        marker_content = marker_file.read_text().strip()
+        if verbose:
+            print(f"  Marker:          {marker_content}")
+    else:
+        print(f"  RVBBIT_ROOT:     {root_path}")
+        warnings.append("No .rvbbit marker file found. Run 'rvbbit init' to initialize workspace.")
+
+    # Check directory structure
+    expected_dirs = ['cascades', 'traits', 'config', 'logs', 'states']
+    missing_dirs = [d for d in expected_dirs if not (root_path / d).exists()]
+    if missing_dirs:
+        warnings.append(f"Missing directories: {', '.join(missing_dirs)}")
+    else:
+        print(f"  Structure:       OK (all expected directories present)")
+
+    # Count cascades and traits
+    cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
+    traits_count = len(list((root_path / 'traits').rglob('*.yaml'))) + len(list((root_path / 'traits').rglob('*.json'))) + len(list((root_path / 'traits').rglob('*.py')))
+    print(f"  Cascades:        {cascade_count} files")
+    print(f"  Traits:          {traits_count} files")
+
+    print()
+
+    # -------------------------------------------------------------------------
+    # 2. Check Environment Variables
+    # -------------------------------------------------------------------------
+    print("Environment:")
+    print("-" * 50)
+
+    # Required
+    openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+    if openrouter_key:
+        masked = openrouter_key[:10] + '...' + openrouter_key[-4:] if len(openrouter_key) > 14 else '***'
+        print(f"  OPENROUTER_API_KEY:    Set ({masked})")
+    else:
+        print(f"  OPENROUTER_API_KEY:    NOT SET")
+        issues.append("OPENROUTER_API_KEY is not set. LLM calls will fail.")
+
+    # ClickHouse settings
+    ch_host = os.environ.get('RVBBIT_CLICKHOUSE_HOST', 'localhost')
+    ch_port = os.environ.get('RVBBIT_CLICKHOUSE_PORT', '9000')
+    ch_db = os.environ.get('RVBBIT_CLICKHOUSE_DATABASE', 'rvbbit')
+    ch_user = os.environ.get('RVBBIT_CLICKHOUSE_USER', 'rvbbit')
+    ch_pass = os.environ.get('RVBBIT_CLICKHOUSE_PASSWORD', 'rvbbit')
+
+    print(f"  CLICKHOUSE_HOST:       {ch_host}")
+    print(f"  CLICKHOUSE_PORT:       {ch_port}")
+    print(f"  CLICKHOUSE_DATABASE:   {ch_db}")
+    print(f"  CLICKHOUSE_USER:       {ch_user}")
+    print(f"  CLICKHOUSE_PASSWORD:   {'*' * len(ch_pass) if ch_pass else '(empty)'}")
+
+    # Optional
+    hf_token = os.environ.get('HF_TOKEN')
+    elevenlabs_key = os.environ.get('ELEVENLABS_API_KEY')
+    brave_key = os.environ.get('BRAVE_SEARCH_API_KEY')
+
+    if verbose:
+        print()
+        print("  Optional:")
+        print(f"    HF_TOKEN:              {'Set' if hf_token else 'Not set'}")
+        print(f"    ELEVENLABS_API_KEY:    {'Set' if elevenlabs_key else 'Not set'}")
+        print(f"    BRAVE_SEARCH_API_KEY:  {'Set' if brave_key else 'Not set'}")
+
+    print()
+
+    # -------------------------------------------------------------------------
+    # 3. Check ClickHouse Connectivity
+    # -------------------------------------------------------------------------
+    print("Database (ClickHouse):")
+    print("-" * 50)
+
+    try:
+        from .db_adapter import get_db_adapter, SchemaNotInitializedError
+
+        db = get_db_adapter()
+
+        # Test basic connectivity
+        result = db.query("SELECT 1 as test", output_format="dict")
+        if result and result[0].get('test') == 1:
+            print(f"  Connection:      OK ({ch_host}:{ch_port})")
+        else:
+            print(f"  Connection:      FAILED")
+            issues.append("ClickHouse query test failed.")
+
+        # Check if tables exist
+        try:
+            tables_result = db.query(
+                f"SELECT name FROM system.tables WHERE database = '{ch_db}'",
+                output_format="dict"
+            )
+            table_count = len(tables_result)
+            if table_count > 0:
+                print(f"  Database:        {ch_db} ({table_count} tables)")
+
+                # Check for key tables
+                table_names = {t['name'] for t in tables_result}
+                key_tables = ['unified_logs', 'checkpoints', 'signals', 'context_cards']
+                missing_tables = [t for t in key_tables if t not in table_names]
+
+                if missing_tables:
+                    print(f"  Schema:          INCOMPLETE (missing: {', '.join(missing_tables)})")
+                    warnings.append(f"Missing tables: {', '.join(missing_tables)}. Run 'rvbbit db init'.")
+                else:
+                    print(f"  Schema:          OK (key tables present)")
+
+                # Get row count from unified_logs
+                try:
+                    log_count = db.query(
+                        "SELECT count() as cnt FROM unified_logs",
+                        output_format="dict"
+                    )
+                    if log_count:
+                        print(f"  Log entries:     {log_count[0]['cnt']:,}")
+                except Exception:
+                    pass
+            else:
+                print(f"  Database:        {ch_db} (empty - no tables)")
+                warnings.append("Database has no tables. Run 'rvbbit db init' to create schema.")
+
+        except SchemaNotInitializedError:
+            print(f"  Database:        NOT INITIALIZED")
+            issues.append("Database schema not initialized. Run 'rvbbit db init'.")
+        except Exception as e:
+            if "doesn't exist" in str(e).lower():
+                print(f"  Database:        NOT FOUND ({ch_db})")
+                issues.append(f"Database '{ch_db}' does not exist. Run 'rvbbit db init'.")
+            else:
+                raise
+
+    except ImportError as e:
+        print(f"  Connection:      FAILED (missing dependency: {e})")
+        issues.append(f"ClickHouse driver not installed: {e}")
+    except Exception as e:
+        err_str = str(e).lower()
+        if "connection refused" in err_str or "couldn't connect" in err_str:
+            print(f"  Connection:      FAILED (connection refused)")
+            issues.append(f"Cannot connect to ClickHouse at {ch_host}:{ch_port}. Is it running?")
+        else:
+            print(f"  Connection:      ERROR ({e})")
+            issues.append(f"ClickHouse error: {e}")
+
+    print()
+
+    # -------------------------------------------------------------------------
+    # 4. Summary
+    # -------------------------------------------------------------------------
+    print("=" * 50)
+
+    if issues:
+        print(f"ISSUES ({len(issues)}):")
+        for issue in issues:
+            print(f"  - {issue}")
+        print()
+
+    if warnings:
+        print(f"WARNINGS ({len(warnings)}):")
+        for warning in warnings:
+            print(f"  - {warning}")
+        print()
+
+    if not issues and not warnings:
+        print("All checks passed! Your RVBBIT workspace is ready.")
+        print()
+        print("Try running:")
+        print("  rvbbit run cascades/examples/hello_world.yaml")
+    elif not issues:
+        print("No critical issues found, but there are warnings above.")
+    else:
+        print()
+        print("To fix ClickHouse issues, start a container:")
+        print()
+        print("  docker run -d --name rvbbit-clickhouse \\")
+        print("    -p 9000:9000 -p 8123:8123 \\")
+        print("    -e CLICKHOUSE_USER=rvbbit \\")
+        print("    -e CLICKHOUSE_PASSWORD=rvbbit \\")
+        print("    -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
+        print("    -v rvbbit-clickhouse-data:/var/lib/clickhouse \\")
+        print("    clickhouse/clickhouse-server:latest")
+        print()
+        print("Then run: rvbbit db init")
+
+    print()
+
+    # Exit with error code if there are issues
+    if issues:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
