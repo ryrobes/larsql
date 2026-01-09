@@ -159,14 +159,14 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
 
   const displayColumns = columnInfo.length > 0 ? columnInfo : dictKeys;
 
-  // Check if this is a rabbitize cell - extract artifacts
+  // Check if this is a rabbitize/browser batch cell - extract artifacts
+  const command = cell.inputs?.command || '';
   const isRabbitize = (cell.tool === 'linux_shell' || cell.tool === 'linux_shell_dangerous') &&
-                      cell.inputs?.command?.includes('rabbitize');
+                      (command.includes('rabbitize') || command.includes('rvbbit browser batch'));
   const rabbitizeArtifacts = React.useMemo(() => {
     if (!isRabbitize) return null;
 
     const artifacts = {};
-    const command = cell.inputs?.command || '';
 
     // Strategy 1: Get from cellState if executed
     if (cellState?.status === 'success') {
@@ -177,13 +177,13 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
         if (result.screenshots) artifacts.images = Array.isArray(result.screenshots) ? result.screenshots.length : result.screenshots;
         if (result.dom_snapshots) artifacts.dom_snapshots = Array.isArray(result.dom_snapshots) ? result.dom_snapshots.length : result.dom_snapshots;
         if (result.dom_coords) artifacts.dom_coords = Array.isArray(result.dom_coords) ? result.dom_coords.length : result.dom_coords;
-        if (result.video || result.has_video) artifacts.video = 1;
+        if (result.video || result.video_path || result.has_video) artifacts.video = 1;
       }
     }
 
-    // Strategy 2: Infer from batch commands
+    // Strategy 2: Infer from batch commands (support both old --batch-commands and new --commands)
     if (Object.keys(artifacts).length === 0) {
-      const batchMatch = command.match(/--batch-commands='(\[[\s\S]*?\])'/);
+      const batchMatch = command.match(/--commands='(\[[\s\S]*?\])'/) || command.match(/--batch-commands='(\[[\s\S]*?\])'/);
       if (batchMatch) {
         try {
           const commands = JSON.parse(batchMatch[1]);
@@ -208,7 +208,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     }
 
     return Object.keys(artifacts).length > 0 ? artifacts : null;
-  }, [isRabbitize, cell.inputs?.command, cellState]);
+  }, [isRabbitize, command, cellState]);
 
   const hasColumns = displayColumns.length > 0;
   const hasArtifacts = rabbitizeArtifacts !== null;
@@ -328,7 +328,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
       )}
 
       {isExpanded && hasArtifacts && (
-        <RabbitizeArtifactsTree cellName={cell.name} artifacts={rabbitizeArtifacts} />
+        <RabbitizeArtifactsTree cellName={cell.name} artifacts={rabbitizeArtifacts} cellState={cellState} />
       )}
     </div>
   );
@@ -342,8 +342,8 @@ const ARTIFACT_TYPES = {
   video: { icon: 'mdi:video', color: '#f87171', label: 'Video' },
 };
 
-// Draggable artifact pill
-function ArtifactPill({ cellName, artifactType, index, label }) {
+// Draggable artifact pill with optional thumbnail
+function ArtifactPill({ cellName, artifactType, index, label, thumbnailUrl }) {
   const config = ARTIFACT_TYPES[artifactType];
 
   // Artifacts are accessed via outputs.cell_name.artifact_type[index]
@@ -357,16 +357,42 @@ function ArtifactPill({ cellName, artifactType, index, label }) {
     data: { type: 'variable', variablePath: jinjaPath },
   });
 
+  // Show thumbnail for images/screenshots if URL is available
+  const showThumbnail = thumbnailUrl && (artifactType === 'images' || artifactType === 'screenshots');
+
+  // Build proper thumbnail URL
+  const getThumbnailSrc = () => {
+    if (!thumbnailUrl) return null;
+    // If it starts with http, use as-is
+    if (thumbnailUrl.startsWith('http')) return thumbnailUrl;
+    // If it starts with /api, prepend localhost
+    if (thumbnailUrl.startsWith('/api')) return `http://localhost:5050${thumbnailUrl}`;
+    // Otherwise assume it needs the media endpoint (note: endpoint is browser-media, not rabbitize/media)
+    return `http://localhost:5050/api/browser-media/${thumbnailUrl}`;
+  };
+
   return (
     <Tooltip label={`{{ ${jinjaPath} }}`}>
       <div
         ref={setNodeRef}
         {...listeners}
         {...attributes}
-        className={`var-pill ${isDragging ? 'dragging' : ''}`}
+        className={`var-pill artifact-pill ${isDragging ? 'dragging' : ''} ${showThumbnail ? 'has-thumbnail' : ''}`}
         style={{ borderColor: config.color + '34' }}
       >
-        <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+        {showThumbnail ? (
+          <img
+            src={getThumbnailSrc()}
+            alt={`Screenshot ${label}`}
+            className="artifact-pill-thumbnail"
+            onError={(e) => {
+              // Hide broken image, show icon instead
+              e.target.style.display = 'none';
+            }}
+          />
+        ) : (
+          <Icon icon={config.icon} width="12" style={{ color: config.color }} />
+        )}
         <span style={{ color: config.color }}>{label}</span>
       </div>
     </Tooltip>
@@ -374,7 +400,7 @@ function ArtifactPill({ cellName, artifactType, index, label }) {
 }
 
 // Artifact type group (Screenshots, DOM Snapshots, etc.)
-function ArtifactTypeGroup({ cellName, artifactType, count }) {
+function ArtifactTypeGroup({ cellName, artifactType, count, urls }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const config = ARTIFACT_TYPES[artifactType];
 
@@ -420,6 +446,7 @@ function ArtifactTypeGroup({ cellName, artifactType, count }) {
               artifactType={artifactType}
               index={idx}
               label={`${idx}`}
+              thumbnailUrl={urls?.[idx]}
             />
           ))}
         </div>
@@ -429,7 +456,48 @@ function ArtifactTypeGroup({ cellName, artifactType, count }) {
 }
 
 // Rabbitize artifacts tree
-function RabbitizeArtifactsTree({ cellName, artifacts }) {
+function RabbitizeArtifactsTree({ cellName, artifacts, cellState }) {
+  // Extract actual URLs from cell state for thumbnails
+  const getUrlsForType = (type) => {
+    if (!cellState?.result) return null;
+
+    // The result might be a JSON string (from shell command stdout) - try to parse it
+    let result = cellState.result;
+    if (typeof result === 'string') {
+      // Try to find JSON in the output (skip any prefix like "Exit code: 0\n\n")
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          result = JSON.parse(jsonMatch[0]);
+        } catch (e) {
+          // Not valid JSON, keep as string
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    if (type === 'images' || type === 'screenshots') {
+      // Try different locations for screenshot URLs
+      if (Array.isArray(result.screenshots)) {
+        // Screenshots are objects like { path: "...", name: "..." }
+        return result.screenshots.map(s => {
+          if (typeof s === 'string') return s;
+          // Build full URL for the media endpoint (note: endpoint is browser-media, not rabbitize/media)
+          if (s?.path) return `http://localhost:5050/api/browser-media/${s.path}`;
+          if (s?.full_path) return s.full_path;
+          if (s?.url) return s.url;
+          return null;
+        }).filter(Boolean);
+      }
+      if (Array.isArray(cellState.images)) {
+        return cellState.images;
+      }
+    }
+    return null;
+  };
+
   return (
     <div className="nav-cell-artifacts">
       {Object.entries(artifacts).map(([type, count]) => (
@@ -438,6 +506,7 @@ function RabbitizeArtifactsTree({ cellName, artifacts }) {
           cellName={cellName}
           artifactType={type}
           count={count}
+          urls={getUrlsForType(type)}
         />
       ))}
     </div>

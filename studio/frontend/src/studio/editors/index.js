@@ -14,14 +14,14 @@ registerCellEditor({
   label: 'Browser Recorder',
   icon: 'mdi:record-circle',
   match: (cell) => {
-    // Match cells that are linux_shell or linux_shell_dangerous running npx rabbitize
+    // Match cells that are linux_shell or linux_shell_dangerous running browser batch
     if (cell?.tool !== 'linux_shell' && cell?.tool !== 'linux_shell_dangerous') return false;
 
     const command = cell?.inputs?.command || '';
-    return (
-      command.includes('npx rabbitize') &&
-      command.includes('--batch-commands')
-    );
+    // Match new format (rvbbit browser batch) or legacy (npx rabbitize)
+    const isRvbbitBatch = command.includes('rvbbit browser batch') && command.includes('--commands');
+    const isLegacyRabbitize = command.includes('npx rabbitize') && command.includes('--batch-commands');
+    return isRvbbitBatch || isLegacyRabbitize;
   },
   component: RabbitizeRecorderEditor
 });

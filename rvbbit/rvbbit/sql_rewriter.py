@@ -970,13 +970,16 @@ def _rewrite_map(stmt: RVBBITStatement) -> str:
         # For now, execute sequentially (same as non-PARALLEL MAP)
         # Future: Could use DuckDB's parallel execution hints or custom extension
 
+        # NOTE: _rvbbit_source_row is included in to_json(i) for source lineage tracking
+        # It gets extracted in udf.py:rvbbit_cascade_udf_impl and passed to invocation_metadata
         rewritten = f"""
 WITH rvbbit_input AS (
-  {using_query}
+  SELECT *, (ROW_NUMBER() OVER () - 1) AS _rvbbit_source_row
+  FROM ({using_query}) AS _rvbbit_subq
 ),
 rvbbit_raw AS (
   SELECT
-    i.*,
+    i.* EXCLUDE (_rvbbit_source_row),
     rvbbit_run('{stmt.cascade_path}', to_json(i)) AS _raw_result
   FROM rvbbit_input i
 )
@@ -991,13 +994,15 @@ FROM rvbbit_raw r
         """.strip()
     else:
         # Sequential execution (existing logic)
+        # NOTE: _rvbbit_source_row is included in to_json(i) for source lineage tracking
         rewritten = f"""
 WITH rvbbit_input AS (
-  {using_query}
+  SELECT *, (ROW_NUMBER() OVER () - 1) AS _rvbbit_source_row
+  FROM ({using_query}) AS _rvbbit_subq
 ),
 rvbbit_raw AS (
   SELECT
-    i.*,
+    i.* EXCLUDE (_rvbbit_source_row),
     rvbbit_run('{stmt.cascade_path}', to_json(i)) AS _raw_result
   FROM rvbbit_input i
 )

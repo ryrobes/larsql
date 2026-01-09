@@ -1,0 +1,17 @@
+# Map Cascade Cell - Fan out over items
+type_id: map_cascade
+display_name: Map Cascade
+icon: mdi:transit-connection-variant
+color: "#a3e635"
+name_prefix: map
+description: "Execute a cascade for each item in a collection (parallel fan-out)"
+category: orchestration
+tags:
+  - orchestration
+  - advanced
+template:
+  tool: map_cascade
+  inputs:
+    cascade_path: "cascades/process_item.yaml"
+    items: "{{ outputs.prior_cell }}"
+    parallel: 3

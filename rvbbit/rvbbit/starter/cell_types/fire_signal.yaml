@@ -1,0 +1,16 @@
+# Fire Signal Cell - Send cross-cascade signal
+type_id: fire_signal
+display_name: Fire Signal
+icon: mdi:broadcast
+color: "#4ade80"
+name_prefix: signal
+description: "Send a signal to other cascades (cross-cascade coordination)"
+category: orchestration
+tags:
+  - orchestration
+  - advanced
+template:
+  tool: fire_signal
+  inputs:
+    signal_name: "processing_complete"
+    payload: "{{ {'status': 'success', 'result': outputs.prior_cell} | tojson }}"

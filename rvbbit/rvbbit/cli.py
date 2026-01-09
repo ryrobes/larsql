@@ -858,6 +858,98 @@ def main():
         help='Maximum concurrent watch evaluations (default: 5)'
     )
 
+    # serve browser - Browser automation server with MJPEG streaming
+    serve_browser_parser = serve_subparsers.add_parser(
+        'browser',
+        help='Start browser automation server (Playwright + MJPEG streaming)'
+    )
+    serve_browser_parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0 = all interfaces)'
+    )
+    serve_browser_parser.add_argument(
+        '--port',
+        type=int,
+        default=3037,
+        help='Port to listen on (default: 3037)'
+    )
+
+    # Browser command group - Browser automation utilities
+    browser_parser = subparsers.add_parser('browser', help='Browser automation commands')
+    browser_subparsers = browser_parser.add_subparsers(dest='browser_command', help='Browser subcommands')
+
+    # browser serve (same as serve browser)
+    browser_serve_parser = browser_subparsers.add_parser(
+        'serve',
+        help='Start browser automation server (Playwright + MJPEG streaming)'
+    )
+    browser_serve_parser.add_argument(
+        '--host',
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0)'
+    )
+    browser_serve_parser.add_argument(
+        '--port',
+        type=int,
+        default=3037,
+        help='Port to listen on (default: 3037)'
+    )
+
+    # browser sessions - List browser sessions
+    browser_sessions_parser = browser_subparsers.add_parser(
+        'sessions',
+        help='List browser sessions'
+    )
+    browser_sessions_parser.add_argument(
+        '--client-id',
+        default=None,
+        help='Filter by client ID'
+    )
+
+    # browser commands - List available commands
+    browser_commands_parser = browser_subparsers.add_parser(
+        'commands',
+        help='List available browser commands'
+    )
+
+    # browser batch - Run batch browser automation
+    browser_batch_parser = browser_subparsers.add_parser(
+        'batch',
+        help='Run batch browser automation (replaces npx rabbitize)'
+    )
+    browser_batch_parser.add_argument(
+        '--url',
+        required=True,
+        help='URL to navigate to'
+    )
+    browser_batch_parser.add_argument(
+        '--commands',
+        required=True,
+        help='JSON array of commands to execute'
+    )
+    browser_batch_parser.add_argument(
+        '--client-id',
+        default='rvbbit',
+        help='Client ID for session (default: rvbbit)'
+    )
+    browser_batch_parser.add_argument(
+        '--test-id',
+        default='batch',
+        help='Test ID for session (default: batch)'
+    )
+    browser_batch_parser.add_argument(
+        '--output-dir',
+        default=None,
+        help='Output directory for artifacts (default: rabbitize-runs/)'
+    )
+    browser_batch_parser.add_argument(
+        '--headless',
+        action='store_true',
+        default=True,
+        help='Run in headless mode (default: True)'
+    )
+
     # TUI command - Launch Alice-powered terminal dashboard
     tui_parser = subparsers.add_parser('tui', help='Launch interactive TUI dashboard for cascade monitoring')
     tui_parser.add_argument('--cascade', '-c', default=None,
@@ -1237,8 +1329,22 @@ def main():
             cmd_serve_sql(args)
         elif args.serve_command == 'watcher':
             cmd_serve_watcher(args)
+        elif args.serve_command == 'browser':
+            cmd_serve_browser(args)
         else:
             serve_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'browser':
+        if args.browser_command == 'serve':
+            cmd_serve_browser(args)
+        elif args.browser_command == 'sessions':
+            cmd_browser_sessions(args)
+        elif args.browser_command == 'commands':
+            cmd_browser_commands(args)
+        elif args.browser_command == 'batch':
+            cmd_browser_batch(args)
+        else:
+            browser_parser.print_help()
             sys.exit(1)
     elif args.command == 'tui':
         # Launch Alice TUI dashboard
@@ -4903,6 +5009,242 @@ def cmd_serve_watcher(args):
     )
 
 
+def cmd_serve_browser(args):
+    """Start the RVBBIT browser automation server."""
+    try:
+        from rvbbit.browser import start_server
+    except ImportError as e:
+        print("✗ Browser module not available.")
+        print()
+        print("Install browser dependencies:")
+        print("  pip install rvbbit[browser]")
+        print("  playwright install chromium")
+        print()
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    print()
+    print("=" * 60)
+    print("  RVBBIT BROWSER SERVER")
+    print("=" * 60)
+    print()
+    print(f"  Host: {args.host}")
+    print(f"  Port: {args.port}")
+    print()
+    print("  Endpoints:")
+    print(f"    POST /start        - Start browser session")
+    print(f"    POST /execute      - Execute command")
+    print(f"    POST /end          - Close session")
+    print(f"    GET  /stream/<id>  - MJPEG live stream")
+    print()
+    print("  Quick start:")
+    print(f'    curl -X POST http://{args.host}:{args.port}/start \\')
+    print(f'      -H "Content-Type: application/json" \\')
+    print(f'      -d \'{{"url": "https://example.com"}}\'')
+    print()
+    print("  Press Ctrl+C to stop.")
+    print()
+    print("=" * 60)
+    print()
+
+    start_server(host=args.host, port=args.port)
+
+
+def cmd_browser_sessions(args):
+    """List browser sessions."""
+    try:
+        from rvbbit.browser import list_sessions
+    except ImportError as e:
+        print("✗ Browser module not available.")
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    sessions = list_sessions(client_id=args.client_id)
+
+    if not sessions:
+        print("No browser sessions found.")
+        print()
+        print("Session artifacts are stored in: rabbitize-runs/")
+        return
+
+    print(f"Found {len(sessions)} session(s):")
+    print()
+    for s in sessions:
+        print(f"  {s['client_id']}/{s['test_id']}/{s['session_id']}")
+        print(f"    Screenshots: {s.get('screenshot_count', 0)}")
+        if s.get('metadata'):
+            meta = s['metadata']
+            if meta.get('command_count'):
+                print(f"    Commands: {meta['command_count']}")
+            if meta.get('initial_url'):
+                print(f"    URL: {meta['initial_url']}")
+        print()
+
+
+def cmd_browser_commands(args):
+    """List available browser commands."""
+    try:
+        from rvbbit.browser.commands import get_available_commands, get_command_help
+    except ImportError as e:
+        print("✗ Browser module not available.")
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    commands = get_available_commands()
+
+    print("Available browser commands:")
+    print()
+    print("  Mouse:")
+    mouse_cmds = [c for c in commands if any(x in c for x in ['move', 'click', 'drag'])]
+    for cmd in mouse_cmds:
+        print(f"    {cmd}")
+
+    print()
+    print("  Keyboard:")
+    kb_cmds = [c for c in commands if any(x in c for x in ['type', 'key', 'press', 'hotkey', 'clear'])]
+    for cmd in kb_cmds:
+        print(f"    {cmd}")
+
+    print()
+    print("  Scrolling:")
+    scroll_cmds = [c for c in commands if 'scroll' in c]
+    for cmd in scroll_cmds:
+        print(f"    {cmd}")
+
+    print()
+    print("  Navigation:")
+    nav_cmds = [c for c in commands if any(x in c for x in ['url', 'navigate', 'back', 'forward', 'reload'])]
+    for cmd in nav_cmds:
+        print(f"    {cmd}")
+
+    print()
+    print("  Utilities:")
+    util_cmds = [c for c in commands if c not in mouse_cmds + kb_cmds + scroll_cmds + nav_cmds]
+    for cmd in util_cmds:
+        print(f"    {cmd}")
+
+    print()
+    print("Example usage:")
+    print('  control_browser(\'[":move-mouse", ":to", 400, 300]\')')
+    print('  control_browser(\'[":click"]\')')
+    print('  control_browser(\'[":type", "hello world"]\')')
+
+
+def cmd_browser_batch(args):
+    """Run batch browser automation (replaces npx rabbitize)."""
+    import asyncio
+    import json
+    from pathlib import Path
+
+    try:
+        from rvbbit.browser.session import BrowserSession
+    except ImportError as e:
+        print("✗ Browser module not available.")
+        print(f"  Install with: pip install rvbbit[browser]")
+        print(f"  Then run: playwright install chromium")
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    # Parse commands
+    try:
+        commands = json.loads(args.commands)
+    except json.JSONDecodeError as e:
+        print(f"✗ Invalid JSON in --commands: {e}")
+        sys.exit(1)
+
+    print(f"🌐 Starting batch browser session...", file=sys.stderr)
+    print(f"   URL: {args.url}", file=sys.stderr)
+    print(f"   Commands: {len(commands)}", file=sys.stderr)
+    print(f"   Client ID: {args.client_id}", file=sys.stderr)
+    print(f"   Test ID: {args.test_id}", file=sys.stderr)
+    print(file=sys.stderr)
+
+    async def run_batch():
+        session = BrowserSession(
+            client_id=args.client_id,
+            test_id=args.test_id,
+        )
+
+        artifacts_result = {
+            "success": True,
+            "session_id": None,
+            "client_id": args.client_id,
+            "test_id": args.test_id,
+            "url": args.url,
+            "command_count": len(commands),
+            "artifacts": {},
+            "screenshots": [],
+            "dom_snapshots": [],
+            "video_path": None,
+        }
+
+        try:
+            # Initialize and navigate
+            result = await session.initialize(args.url)
+            print(f"✓ Browser initialized", file=sys.stderr)
+            print(f"  Session ID: {session.session_id}", file=sys.stderr)
+
+            artifacts_result["session_id"] = session.session_id
+
+            if result.get("artifacts"):
+                artifacts_result["artifacts"] = result["artifacts"]
+                print(f"  Artifacts: {result['artifacts'].get('basePath', 'N/A')}", file=sys.stderr)
+
+            # Execute commands
+            for i, cmd in enumerate(commands):
+                print(f"  [{i+1}/{len(commands)}] Executing: {cmd[0] if cmd else 'empty'}", file=sys.stderr)
+                try:
+                    cmd_result = await session.execute(cmd)
+                    if not cmd_result.get("success", True):
+                        print(f"    ⚠ Warning: {cmd_result.get('error', 'unknown error')}", file=sys.stderr)
+                except Exception as e:
+                    print(f"    ✗ Error: {e}", file=sys.stderr)
+
+            print(file=sys.stderr)
+            print(f"✓ Completed {len(commands)} commands", file=sys.stderr)
+
+            # Collect artifact files
+            if session.artifacts:
+                base_path = session.artifacts.base_path
+
+                # List screenshots
+                if session.artifacts.screenshots.exists():
+                    for img in sorted(session.artifacts.screenshots.glob("*.jpg")):
+                        artifacts_result["screenshots"].append({
+                            "name": img.name,
+                            "path": str(img.relative_to(base_path.parent.parent.parent)),
+                            "full_path": str(img),
+                        })
+
+                # List DOM snapshots
+                if session.artifacts.dom_snapshots.exists():
+                    for md in sorted(session.artifacts.dom_snapshots.glob("*.md")):
+                        artifacts_result["dom_snapshots"].append({
+                            "name": md.name,
+                            "path": str(md.relative_to(base_path.parent.parent.parent)),
+                            "full_path": str(md),
+                        })
+
+        except Exception as e:
+            artifacts_result["success"] = False
+            artifacts_result["error"] = str(e)
+            print(f"✗ Error: {e}", file=sys.stderr)
+
+        finally:
+            # Close session
+            metadata = await session.close()
+            print(f"✓ Session closed", file=sys.stderr)
+            if metadata.get("video_path"):
+                artifacts_result["video_path"] = metadata["video_path"]
+                print(f"  Video: {metadata['video_path']}", file=sys.stderr)
+
+        # Output JSON to stdout for the UI to parse
+        print(json.dumps(artifacts_result, indent=2))
+
+    # Run the async function
+    asyncio.run(run_batch())
+
+
 def cmd_sql_server(args):
     """Start RVBBIT PostgreSQL wire protocol server."""
     from rvbbit.server import start_postgres_server
@@ -5032,6 +5374,7 @@ def cmd_init(args):
     dirs = [
         'cascades/examples',
         'traits',
+        'cell_types',
         'config',
         'data',
         'logs',
@@ -5078,6 +5421,13 @@ def cmd_init(args):
     if not args.minimal:
         for example in (starter_dir / 'cascades' / 'examples').glob('*.yaml'):
             copy_file(f'cascades/examples/{example.name}')
+
+    # Copy cell type templates (unless --minimal)
+    if not args.minimal:
+        cell_types_starter = starter_dir / 'cell_types'
+        if cell_types_starter.exists():
+            for cell_type in cell_types_starter.glob('*.yaml'):
+                copy_file(f'cell_types/{cell_type.name}')
 
     # Create .rvbbit marker file
     try:

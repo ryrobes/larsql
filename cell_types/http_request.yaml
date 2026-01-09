@@ -1,0 +1,24 @@
+# HTTP Request Cell - API calls
+type_id: http_request
+display_name: HTTP Request
+icon: mdi:web
+color: "#06b6d4"
+name_prefix: http
+description: "Make HTTP API requests (GET, POST, PUT, DELETE)"
+category: integration
+tags:
+  - integration
+  - popular
+template:
+  tool: python_data
+  inputs:
+    code: |
+      import requests
+
+      # Make HTTP request
+      response = requests.get("https://api.example.com/data")
+
+      # Access prior cell data if needed:
+      # params = data.prior_cell
+
+      result = response.json()

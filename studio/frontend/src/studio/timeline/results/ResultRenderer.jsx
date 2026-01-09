@@ -376,6 +376,127 @@ const ResultRenderer = ({ result, error, images }) => {
   }
 
 
+  // Browser batch result (rabbitize/rvbbit browser batch)
+  if (result?.screenshots || result?.dom_snapshots || result?.artifacts?.basePath) {
+    const screenshots = result.screenshots || [];
+    const domSnapshots = result.dom_snapshots || [];
+    const videoPath = result.video_path;
+    const sessionId = result.session_id;
+    const clientId = result.client_id;
+    const testId = result.test_id;
+
+    return (
+      <div className="cell-detail-browser-result">
+        {/* Header with session info */}
+        <div className="browser-result-header">
+          <div className="browser-result-info">
+            <span className="browser-result-label">Session:</span>
+            <span className="browser-result-value">{sessionId}</span>
+          </div>
+          {result.url && (
+            <div className="browser-result-info">
+              <span className="browser-result-label">URL:</span>
+              <a href={result.url} target="_blank" rel="noopener noreferrer" className="browser-result-link">
+                {result.url}
+              </a>
+            </div>
+          )}
+          <div className="browser-result-info">
+            <span className="browser-result-label">Commands:</span>
+            <span className="browser-result-value">{result.command_count || 0}</span>
+          </div>
+        </div>
+
+        {/* Screenshots Grid */}
+        {screenshots.length > 0 && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">Screenshots ({screenshots.length})</h4>
+            <div className="browser-result-thumbnails">
+              {screenshots.map((screenshot, idx) => {
+                const imageUrl = screenshot.path
+                  ? `http://localhost:5050/api/browser-media/${screenshot.path}`
+                  : screenshot.full_path;
+                return (
+                  <div
+                    key={idx}
+                    className="browser-result-thumbnail"
+                    onClick={() => setModalImage({ url: imageUrl, path: screenshot.name })}
+                    title={screenshot.name}
+                  >
+                    <img src={imageUrl} alt={screenshot.name} />
+                    <span className="browser-result-thumbnail-label">{screenshot.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* DOM Snapshots */}
+        {domSnapshots.length > 0 && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">DOM Snapshots ({domSnapshots.length})</h4>
+            <div className="browser-result-pills">
+              {domSnapshots.map((snapshot, idx) => (
+                <a
+                  key={idx}
+                  href={`http://localhost:5050/api/browser-media/${snapshot.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="browser-result-pill"
+                  title={snapshot.name}
+                >
+                  {snapshot.name}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Video */}
+        {videoPath && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">Video Recording</h4>
+            <a
+              href={`http://localhost:5050/api/browser-media/${videoPath}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="browser-result-video-link"
+            >
+              Download Video
+            </a>
+          </div>
+        )}
+
+        {/* Image Modal */}
+        <Modal
+          isOpen={!!modalImage}
+          onClose={() => setModalImage(null)}
+          size="full"
+          closeOnBackdrop={true}
+          closeOnEscape={true}
+          className="result-image-modal"
+        >
+          {modalImage && (
+            <div className="result-modal-image-container">
+              <div className="result-modal-image-header">
+                <span className="result-modal-image-title">{modalImage.path}</span>
+              </div>
+              <div className="result-modal-image-body">
+                <img
+                  src={modalImage.url}
+                  alt="Full size"
+                  className="result-modal-image"
+                  onClick={() => setModalImage(null)}
+                />
+              </div>
+            </div>
+          )}
+        </Modal>
+      </div>
+    );
+  }
+
   // LLM output from lineage (legacy API)
   if (result?.result?.lineage?.[0]?.output) {
     const llmOutput = result.result.lineage[0].output;

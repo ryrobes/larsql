@@ -54,9 +54,14 @@ include = [
 [project.optional-dependencies]
 # Extra dependencies for specific features
 browser = [
-    # Rabbitize is npm-based, so we can't install it here
-    # But we list it for documentation purposes
-    # Install with: npm install -g rabbitize
+    # Pure Python browser automation (replaces Node.js rabbitize)
+    "playwright>=1.40.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "httpx>=0.25.0",  # For HTTP client in tools
+    # Note: numpy is already a transitive dependency
+    # Note: pillow is already in main dependencies
+    # After install, run: playwright install chromium
 ]
 docker = [
     "docker",  # For linux_shell and run_code tools
@@ -71,6 +76,10 @@ all = [
     "transformers>=4.30.0",
     "torch>=2.0.0",
     "accelerate>=0.20.0",
+    "playwright>=1.40.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "httpx>=0.25.0",
 ]
 
 [project.scripts]

@@ -14,16 +14,16 @@ import './RabbitizeRecorderEditor.css';
  * - cellName: string - Cell name (for session ID)
  */
 function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
-  // Extract initial state from cell (parse npx rabbitize command)
+  // Extract initial state from cell (parse rvbbit browser batch or legacy npx rabbitize command)
   const extractFromCell = (cell) => {
     const command = cell?.inputs?.command || '';
 
-    // Parse --batch-url "..."
-    const urlMatch = command.match(/--batch-url\s+"([^"]+)"/);
+    // Parse --url "..." (new format) or --batch-url "..." (legacy)
+    const urlMatch = command.match(/--url\s+"([^"]+)"/) || command.match(/--batch-url\s+"([^"]+)"/);
     const initialUrl = urlMatch ? urlMatch[1] : 'https://example.com';
 
-    // Parse --batch-commands='[...]'
-    const batchMatch = command.match(/--batch-commands='(\[[\s\S]*?\])'/);
+    // Parse --commands='[...]' (new format) or --batch-commands='[...]' (legacy)
+    const batchMatch = command.match(/--commands='(\[[\s\S]*?\])'/) || command.match(/--batch-commands='(\[[\s\S]*?\])'/);
     let commands = [];
 
     if (batchMatch) {
@@ -107,13 +107,11 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
       tool: 'linux_shell_dangerous', // Run on host, not in Docker
       inputs: {
         ...cell.inputs,
-        command: `npx rabbitize \\
+        command: `rvbbit browser batch \\
   --client-id "${clientId}" \\
   --test-id "${testId}" \\
-  --exit-on-end true \\
-  --process-video true \\
-  --batch-url "${newUrl || currentUrl}" \\
-  --batch-commands='${JSON.stringify(newCommands, null, 0)}'`
+  --url "${newUrl || currentUrl}" \\
+  --commands='${JSON.stringify(newCommands, null, 0)}'`
       }
     };
 
@@ -190,18 +188,13 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
     try {
       const commandArray = buildCommandArray(commandType, args);
 
-      const url = port
-        ? `http://localhost:${port}/execute`
-        : `${apiUrl}/api/rabbitize/session/execute`;
-
-      const response = await fetch(url, {
+      const response = await fetch(`${apiUrl}/api/rabbitize/session/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          port
-            ? { command: commandArray }
-            : { command: commandArray, dashboard_session_id: dashboardSessionId }
-        )
+        body: JSON.stringify({
+          command: commandArray,
+          dashboard_session_id: dashboardSessionId
+        })
       });
 
       const data = await response.json();
@@ -455,9 +448,7 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
               <div className="stream-container">
                 <img
                   ref={streamRef}
-                  src={port
-                    ? `http://localhost:${port}/stream/${streamPath}`
-                    : `${apiUrl}/api/rabbitize/stream/${dashboardSessionId}/${streamPath}`}
+                  src={`${apiUrl}/api/rabbitize/stream/${dashboardSessionId}/${streamPath}`}
                   alt="Browser Stream"
                   className="browser-stream"
                 />

@@ -85,11 +85,10 @@ def linux_shell_dangerous(command: str, timeout: int = 300) -> str:
     Execute a shell command directly on the host system (NO DOCKER SANDBOX).
 
     WARNING: This runs commands directly on your machine from RVBBIT_ROOT.
-    Use this for local tools that need access to the host environment
-    (like rabbitize, which needs node_modules and localhost ports).
+    Use this for local tools that need access to the host environment.
 
     Examples:
-    - npx rabbitize --batch-url "..." --batch-commands='[...]'
+    - rvbbit browser batch --url "..." --commands='[...]'
     - npm install
     - Local scripts that need filesystem access
 

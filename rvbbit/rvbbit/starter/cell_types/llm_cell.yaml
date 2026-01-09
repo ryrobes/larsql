@@ -1,0 +1,22 @@
+# LLM Cell - Core AI cell type
+type_id: llm_cell
+display_name: LLM Cell
+icon: mdi:brain
+color: "#a78bfa"
+name_prefix: llm
+description: "AI-powered cell using LLM for reasoning, analysis, and generation"
+category: ai
+tags:
+  - quick-start
+  - popular
+  - ai-ml
+template:
+  instructions: |
+    You are a helpful assistant.
+
+    Use Jinja2 templates to reference data:
+    - Inputs: {{ input.param_name }}
+    - Prior cells: {{ outputs.cell_name }}
+    - State: {{ state.var_name }}
+
+    Provide your analysis or response below:

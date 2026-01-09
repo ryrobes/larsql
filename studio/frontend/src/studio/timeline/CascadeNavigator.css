@@ -854,6 +854,28 @@
   opacity: 0.85;
 }
 
+/* Artifact pills with thumbnails */
+.artifact-pill.has-thumbnail {
+  padding: 2px 4px;
+  min-width: 48px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artifact-pill-thumbnail {
+  width: 40px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  background-color: #1a1628;
+}
+
+.artifact-pill.has-thumbnail:hover .artifact-pill-thumbnail {
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.2);
+}
+
 /* Variable Groups - match nav-section style */
 .var-group {
   display: flex;
@@ -976,7 +998,7 @@
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 3px;
+  gap: 6px;
   padding: 4px 8px 6px 24px;
 }
 

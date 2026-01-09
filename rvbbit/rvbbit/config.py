@@ -186,6 +186,7 @@ class Config(BaseModel):
     examples_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cascades", "examples"))
     traits_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "traits"))
     cascades_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cascades"))
+    cell_types_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cell_types"))
 
     # Traits search paths (for manifest/quartermaster)
     traits_dirs: List[str] = Field(

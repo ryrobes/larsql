@@ -1,9 +1,10 @@
+# Browser Cell - Browser automation using Python Playwright
 type_id: rabbitize_batch
 display_name: Browser
 icon: mdi:web
 color: "#f87171"
 name_prefix: browser
-description: "Browser automation with Rabbitize"
+description: "Visual browser automation with screenshots and video recording"
 category: "tools"
 tags:
   - "advanced"
@@ -15,11 +16,9 @@ template:
   tool: linux_shell_dangerous
   inputs:
     command: |
-      npx rabbitize \
-        --client-id "studio" \
-        --test-id "{{PHASE_NAME}}.studio" \
-        --exit-on-end true \
-        --process-video true \
-        --batch-url "https://example.com" \
-        --batch-commands='[]'
+      rvbbit browser batch \
+        --client-id "{{CASCADE_ID}}" \
+        --test-id "{{PHASE_NAME}}" \
+        --url "https://example.com" \
+        --commands='[[":wait", 1], [":screenshot"]]'
   timeout: 5m

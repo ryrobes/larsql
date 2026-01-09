@@ -158,6 +158,7 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
         rhs_text_injected = rhs_text
         consumed_annotation = False
         consumed_candidates = False
+        consumed_source_context = False
 
         if _is_string_literal_span(tokens[rhs_start:rhs_end]):
             # Inject candidates config as special prefix (if present)
@@ -179,6 +180,20 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                 )
                 consumed_annotation = True
 
+            # Inject source column context for lineage tracking
+            # Format: __RVBBIT_SOURCE:{"column":"description"}__
+            # This allows downstream cascades to know which column they're processing
+            column_name = lhs_text.strip()
+            if column_name:
+                import json as json_module
+                source_prefix = f"__RVBBIT_SOURCE:{json_module.dumps({'column': column_name})}__"
+                rhs_text_injected = _inject_prefix_into_string_literal(
+                    rhs_text_injected if (consumed_candidates or consumed_annotation) else rhs_text,
+                    source_prefix
+                )
+                consumed_source_context = True
+                _log.debug(f"[semantic_rewriter_v2] Injected source context: column={column_name}")
+
         call_expr = f"{spec.function_name}({lhs_text.strip()}, {rhs_text_injected.strip()})"
         rewritten = f"NOT {call_expr}" if not_present else call_expr
 
@@ -195,6 +210,18 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
         i = rhs_end
 
     sql_out = "".join(t.text for t in out_tokens)
+
+    # Phase 2: Rewrite function-style calls to inject source context
+    # e.g., condense(observed, 'focus') → condense(observed, '__RVBBIT_SOURCE:{"column":"observed"}__ focus')
+    try:
+        sql_out, fn_changed, fn_applied = _rewrite_function_calls_with_source_context(sql_out)
+        if fn_changed:
+            changed = True
+            applied.extend(fn_applied)
+    except Exception as e:
+        _log.warning(f"[semantic_rewriter_v2] Function call rewrite failed: {e}")
+        # Continue with what we have - don't fail the whole rewrite
+
     return RewriteResult(sql_out=sql_out, changed=changed, applied=applied, errors=[])
 
 
@@ -859,3 +886,255 @@ def _inject_prefix_into_string_literal(literal: str, prefix: str) -> str:
         injected = injected.replace('"', '""')
 
     return f"{quote}{injected}{quote}"
+
+
+def _rewrite_function_calls_with_source_context(sql: str) -> Tuple[str, bool, List[str]]:
+    """
+    Rewrite function-style semantic SQL calls to inject source column context.
+
+    For calls like:
+        condense(observed, 'focus on key points')
+        tldr(observed)
+        semantic_matches(title, 'eco-friendly')
+
+    Injects __RVBBIT_SOURCE:{"column":"observed"}__ into string arguments.
+
+    For functions with a string argument, the prefix is injected into it.
+    For functions with only column references, a synthetic source arg is added.
+
+    Returns:
+        (rewritten_sql, changed, applied_list)
+    """
+    import json as json_module
+    import logging
+    _log = logging.getLogger(__name__)
+
+    # Get registered function names from the cascade registry
+    try:
+        from ..semantic_sql.registry import get_sql_function_registry, initialize_registry
+        initialize_registry()
+        registry = get_sql_function_registry()
+        # Get all scalar function names (not aggregates)
+        scalar_fn_names = {
+            name.lower() for name, entry in registry.items()
+            if entry.shape.upper() == 'SCALAR'
+        }
+        # Also add common aliases/variants
+        for name, entry in registry.items():
+            for op in entry.operators:
+                # Extract function name from patterns like "CONDENSE({{ text }})"
+                import re
+                fn_match = re.match(r'^(\w+)\s*\(', op.strip())
+                if fn_match:
+                    scalar_fn_names.add(fn_match.group(1).lower())
+    except Exception as e:
+        _log.warning(f"[semantic_rewriter_v2] Failed to load function registry: {e}")
+        return sql, False, []
+
+    if not scalar_fn_names:
+        return sql, False, []
+
+    # Tokenize the SQL
+    tokens = _tokenize(sql)
+    out_tokens: List[_Token] = []
+    applied: List[str] = []
+    changed = False
+
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+
+        # Look for function calls: identifier followed by (
+        if tok.typ == "ident" and tok.text.lower() in scalar_fn_names:
+            # Check if next non-ws token is (
+            j = i + 1
+            while j < len(tokens) and tokens[j].typ == "ws":
+                j += 1
+
+            if j < len(tokens) and tokens[j].typ == "punct" and tokens[j].text == "(":
+                # Found function call! Parse arguments
+                fn_name = tok.text
+                fn_start = i
+                paren_start = j
+
+                # Find matching closing paren and extract arguments
+                args, paren_end = _parse_function_args(tokens, paren_start)
+
+                if args is not None and paren_end is not None:
+                    # Extract the first argument as the source column
+                    # (in most semantic functions, arg[0] is the text/column being processed)
+                    source_column = None
+                    if len(args) >= 1:
+                        first_arg = args[0].strip()
+                        # If first arg is an identifier (column reference), use it as source
+                        if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', first_arg):
+                            source_column = first_arg
+                        elif '.' in first_arg:
+                            # table.column format - extract column name
+                            source_column = first_arg.split('.')[-1]
+
+                    if source_column:
+                        # Check if source context already injected (by infix rewriter)
+                        already_has_source = any('__RVBBIT_SOURCE:' in arg for arg in args)
+                        if already_has_source:
+                            # Skip - already has source context
+                            out_tokens.append(tok)
+                            i += 1
+                            continue
+
+                        # Look ahead for AS alias to get the OUTPUT column name
+                        output_alias = _find_as_alias(tokens, paren_end + 1)
+                        # Use alias if found, otherwise fall back to function name
+                        target_column = output_alias if output_alias else fn_name
+
+                        # Build source context with dynamic row index injection
+                        # Uses SQL string concatenation to embed ROW_NUMBER() at runtime
+                        # Result: '__RVBBIT_SOURCE:{"column":"fear","row":' || CAST(ROW_NUMBER() - 1 AS VARCHAR) || '}__ criterion'
+                        # Note: ROW_NUMBER() is 1-based, subtract 1 for 0-based index
+                        row_expr = "CAST((ROW_NUMBER() OVER () - 1) AS VARCHAR)"
+                        source_json_start = f'{{"column": "{target_column}", "row": '
+                        source_json_end = "}"
+
+                        # Now inject source context into string arguments
+                        new_args = []
+                        injected = False
+
+                        for idx, arg in enumerate(args):
+                            arg_stripped = arg.strip()
+                            # Check if this is a string literal
+                            if (arg_stripped.startswith("'") and arg_stripped.endswith("'")) or \
+                               (arg_stripped.startswith('"') and arg_stripped.endswith('"')):
+                                # Inject source context with dynamic row number
+                                # Build: '__RVBBIT_SOURCE:{"column":"x","row":' || ROW_NUMBER() || '}__ ' || 'original'
+                                quote = arg_stripped[0]
+                                inner = arg_stripped[1:-1]
+                                # Escape the inner content for SQL concatenation
+                                if quote == "'":
+                                    inner_escaped = inner.replace("'", "''")
+                                else:
+                                    inner_escaped = inner.replace('"', '""')
+
+                                # Build SQL expression with concatenation
+                                new_arg = (
+                                    f"'__RVBBIT_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__ {inner_escaped}'"
+                                )
+                                new_args.append(new_arg)
+                                injected = True
+                                _log.debug(f"[semantic_rewriter_v2] Injected source with row into {fn_name} arg {idx}: {target_column}")
+                            else:
+                                new_args.append(arg_stripped)
+
+                        # For single-arg functions (no string arg), add synthetic source arg
+                        if not injected and len(args) == 1:
+                            # Add source context as second argument with dynamic row
+                            new_arg = (
+                                f"'__RVBBIT_SOURCE:{source_json_start}' || {row_expr} || '{source_json_end}__'"
+                            )
+                            new_args.append(new_arg)
+                            injected = True
+                            _log.debug(f"[semantic_rewriter_v2] Injected synthetic source arg with row for {fn_name}: {target_column}")
+
+                        if injected:
+                            # Reconstruct the function call
+                            new_call = f"{fn_name}({', '.join(new_args)})"
+                            out_tokens.append(_Token("other", new_call))
+                            applied.append(f"fn_source:{fn_name}")
+                            changed = True
+                            i = paren_end + 1
+                            continue
+
+        # Default: keep token as-is
+        out_tokens.append(tok)
+        i += 1
+
+    sql_out = "".join(t.text for t in out_tokens)
+    return sql_out, changed, applied
+
+
+def _find_as_alias(tokens: List[_Token], start: int) -> Optional[str]:
+    """
+    Look ahead from start position to find AS alias pattern.
+
+    Handles:
+        ) AS alias_name
+        ) as alias_name
+        ) alias_name  (implicit AS)
+
+    Returns the alias name if found, None otherwise.
+    """
+    i = start
+
+    # Skip whitespace
+    while i < len(tokens) and tokens[i].typ == "ws":
+        i += 1
+
+    if i >= len(tokens):
+        return None
+
+    # Check for explicit AS keyword
+    if tokens[i].typ == "ident" and tokens[i].text.upper() == "AS":
+        i += 1
+        # Skip whitespace after AS
+        while i < len(tokens) and tokens[i].typ == "ws":
+            i += 1
+
+        if i < len(tokens) and tokens[i].typ == "ident":
+            return tokens[i].text
+
+    # Check for implicit alias (identifier directly after closing paren)
+    # But NOT if it's a keyword like FROM, WHERE, GROUP, ORDER, etc.
+    elif tokens[i].typ == "ident":
+        keyword_check = tokens[i].text.upper()
+        sql_keywords = {'FROM', 'WHERE', 'GROUP', 'ORDER', 'HAVING', 'LIMIT',
+                       'UNION', 'EXCEPT', 'INTERSECT', 'JOIN', 'LEFT', 'RIGHT',
+                       'INNER', 'OUTER', 'CROSS', 'ON', 'AND', 'OR', 'NOT',
+                       'SELECT', 'AS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END'}
+        if keyword_check not in sql_keywords:
+            return tokens[i].text
+
+    return None
+
+
+def _parse_function_args(tokens: List[_Token], paren_start: int) -> Tuple[Optional[List[str]], Optional[int]]:
+    """
+    Parse function arguments from tokens starting at the opening paren.
+
+    Returns:
+        (list_of_arg_strings, index_of_closing_paren) or (None, None) if parsing fails
+    """
+    if paren_start >= len(tokens) or tokens[paren_start].text != "(":
+        return None, None
+
+    args = []
+    current_arg = []
+    depth = 1  # We're inside the first (
+    i = paren_start + 1
+
+    while i < len(tokens) and depth > 0:
+        tok = tokens[i]
+
+        if tok.typ == "punct":
+            if tok.text == "(":
+                depth += 1
+                current_arg.append(tok.text)
+            elif tok.text == ")":
+                depth -= 1
+                if depth == 0:
+                    # End of function call
+                    if current_arg:
+                        args.append("".join(current_arg))
+                    return args, i
+                else:
+                    current_arg.append(tok.text)
+            elif tok.text == "," and depth == 1:
+                # Argument separator at top level
+                args.append("".join(current_arg))
+                current_arg = []
+            else:
+                current_arg.append(tok.text)
+        else:
+            current_arg.append(tok.text)
+
+        i += 1
+
+    return None, None  # Unbalanced parens

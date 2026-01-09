@@ -65,6 +65,73 @@ def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, A
     return cleaned_inputs, candidates_config
 
 
+# Pattern for source column embedded in inputs
+# Format: __RVBBIT_SOURCE:{"column":"name","row":0,"table":"tablename"}__
+_SOURCE_CONTEXT_PATTERN = re.compile(r'^__RVBBIT_SOURCE:(\{.*?\})__\s*')
+
+
+def _extract_source_context_from_inputs(
+    inputs: Dict[str, Any]
+) -> Tuple[Dict[str, Any], Optional[str], Optional[int], Optional[str]]:
+    """
+    Extract source lineage context from input strings and return cleaned inputs.
+
+    The source context can be embedded in criterion/query strings as a special prefix:
+        __RVBBIT_SOURCE:{"column":"description","row":0}__ actual criterion here
+
+    Or passed as special keys that are extracted and removed:
+        _rvbbit_source_column, _rvbbit_source_row, _rvbbit_source_table
+
+    Returns:
+        (cleaned_inputs, source_column, source_row_index, source_table)
+    """
+    source_column = None
+    source_row_index = None
+    source_table = None
+    cleaned_inputs = {}
+
+    for key, value in inputs.items():
+        # Check for special source context keys
+        if key == '_rvbbit_source_column':
+            source_column = str(value) if value is not None else None
+            continue  # Don't include in cleaned inputs
+        elif key == '_rvbbit_source_row':
+            try:
+                source_row_index = int(value) if value is not None else None
+            except (ValueError, TypeError):
+                pass
+            continue
+        elif key == '_rvbbit_source_table':
+            source_table = str(value) if value is not None else None
+            continue
+
+        # Check for embedded source context prefix in string values
+        if isinstance(value, str):
+            match = _SOURCE_CONTEXT_PATTERN.match(value)
+            if match:
+                try:
+                    source_data = json.loads(match.group(1))
+                    source_column = source_column or source_data.get('column')
+                    if 'row' in source_data:
+                        try:
+                            source_row_index = int(source_data['row'])
+                        except (ValueError, TypeError):
+                            pass
+                    source_table = source_table or source_data.get('table')
+                    # Strip the prefix from the value
+                    cleaned_inputs[key] = value[match.end():].lstrip()
+                    log.debug(f"[cascade_udf] Extracted source context: column={source_column}, row={source_row_index}, table={source_table}")
+                except json.JSONDecodeError as e:
+                    log.warning(f"[cascade_udf] Failed to parse source context: {e}")
+                    cleaned_inputs[key] = value
+            else:
+                cleaned_inputs[key] = value
+        else:
+            cleaned_inputs[key] = value
+
+    return cleaned_inputs, source_column, source_row_index, source_table
+
+
 def _auto_format_inputs_as_toon(inputs: Dict[str, Any]) -> Dict[str, Any]:
     """
     Auto-format large arrays in inputs as TOON for token efficiency.
@@ -173,7 +240,11 @@ def _run_cascade_sync(
     cascade_path_or_config: Union[str, Dict[str, Any]],
     session_id: str,
     inputs: Dict[str, Any],
-    caller_id: str | None = None
+    caller_id: str | None = None,
+    invocation_metadata: Dict[str, Any] | None = None,
+    source_column: str | None = None,
+    source_row_index: int | None = None,
+    source_table: str | None = None,
 ) -> Dict[str, Any]:
     """Run a cascade synchronously (blocking).
 
@@ -182,11 +253,32 @@ def _run_cascade_sync(
         session_id: Session ID for execution
         inputs: Input data for the cascade
         caller_id: Caller ID for cost tracking
+        invocation_metadata: Additional metadata about the invocation
+        source_column: Column name being processed (for SQL lineage tracking)
+        source_row_index: Row index in source query (for SQL lineage tracking)
+        source_table: Table name if known (for SQL lineage tracking)
     """
     from ..runner import RVBBITRunner
 
+    # Enrich invocation_metadata with source context if provided
+    enriched_metadata = invocation_metadata.copy() if invocation_metadata else {}
+    if source_column is not None or source_row_index is not None or source_table is not None:
+        if 'source' not in enriched_metadata:
+            enriched_metadata['source'] = {}
+        if source_column is not None:
+            enriched_metadata['source']['column'] = source_column
+        if source_row_index is not None:
+            enriched_metadata['source']['row_index'] = source_row_index
+        if source_table is not None:
+            enriched_metadata['source']['table'] = source_table
+
     # RVBBITRunner takes session_id AND caller_id for proper tracking
-    runner = RVBBITRunner(cascade_path_or_config, session_id=session_id, caller_id=caller_id)
+    runner = RVBBITRunner(
+        cascade_path_or_config,
+        session_id=session_id,
+        caller_id=caller_id,
+        invocation_metadata=enriched_metadata if enriched_metadata else None
+    )
     return runner.run(input_data=inputs)
 
 
@@ -331,6 +423,9 @@ def execute_cascade_udf(
         # Extract candidates config from inputs (embedded as special prefix)
         cleaned_inputs, candidates_config = _extract_candidates_from_inputs(inputs)
 
+        # Extract source lineage context from inputs (for row/column tracking)
+        cleaned_inputs, source_column, source_row_index, source_table = _extract_source_context_from_inputs(cleaned_inputs)
+
         # Auto-format large arrays as TOON for token efficiency
         cleaned_inputs = _auto_format_inputs_as_toon(cleaned_inputs)
 
@@ -398,11 +493,17 @@ def execute_cascade_udf(
             log.info(f"[cascade_udf] Running {cascade_id} with candidates: factor={candidates_config.get('factor', 'N/A')}")
             print(f"[cascade_udf] 🚀 Running {cascade_id} WITH CANDIDATES: {candidates_config}")
             print(f"[cascade_udf] 🚀 Injected cascade config has candidates: {cascade_config.get('candidates', 'NONE')}")
-            result = _run_cascade_sync(cascade_config, session_id, cleaned_inputs, caller_id=caller_id)
+            result = _run_cascade_sync(
+                cascade_config, session_id, cleaned_inputs, caller_id=caller_id,
+                source_column=source_column, source_row_index=source_row_index, source_table=source_table
+            )
         else:
             # Execute the cascade normally (pass caller_id so it propagates to unified_logs!)
             #print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no candidates)")
-            result = _run_cascade_sync(fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id)
+            result = _run_cascade_sync(
+                fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id,
+                source_column=source_column, source_row_index=source_row_index, source_table=source_table
+            )
 
         # Extract the output using proper cascade result parsing
         output = _extract_cascade_output(result)

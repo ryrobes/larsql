@@ -1,0 +1,18 @@
+# Research Query Cell - Search research database
+type_id: research_query
+display_name: Research Query
+icon: mdi:book-search
+color: "#14b8a6"
+name_prefix: research
+description: "Query the research database for persisted data"
+category: ai
+tags:
+  - ai-ml
+  - data-processing
+template:
+  instructions: |
+    Search the research database for relevant information.
+
+    Query: {{ input.query }}
+  traits:
+    - research_query

@@ -1,0 +1,19 @@
+# Image Generation Cell
+type_id: image_gen
+display_name: Image Gen
+icon: mdi:image-auto-adjust
+color: "#ff006e"
+name_prefix: image
+description: "Generate images using AI models (DALL-E, Stable Diffusion, etc.)"
+category: ai
+tags:
+  - quick-start
+  - ai-ml
+  - visualization
+template:
+  instructions: |
+    Generate an image based on the following description.
+
+    Description: {{ input.prompt }}
+  traits:
+    - create_image

@@ -1,0 +1,24 @@
+# Candidates Cell - Best-of-N selection
+type_id: candidates
+display_name: Candidates
+icon: mdi:source-branch
+color: "#ec4899"
+name_prefix: candidates
+description: "Run multiple LLM attempts and select the best result"
+category: ai
+tags:
+  - ai-ml
+  - advanced
+  - powerful
+template:
+  instructions: |
+    Complete the following task with high quality:
+
+    {{ input.task }}
+
+    Be thorough and accurate in your response.
+  candidates:
+    factor: 3
+    evaluator_instructions: |
+      Select the candidate that best completes the task.
+      Consider accuracy, completeness, and clarity.

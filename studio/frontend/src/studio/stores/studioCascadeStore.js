@@ -679,13 +679,11 @@ output_schema:
 #   factor: 3
 #   evaluator_instructions: Pick the most accurate result
 `,
-            rabbitize_batch: `npx rabbitize \\
-  --client-id "studio" \\
-  --test-id "browser_task_${cellCount}" \\
-  --exit-on-end true \\
-  --process-video true \\
-  --batch-url "https://example.com" \\
-  --batch-commands='[]'`
+            rabbitize_batch: `rvbbit browser batch \\
+  --client-id "{{CASCADE_ID}}" \\
+  --test-id "{{CELL_NAME}}" \\
+  --url "https://example.com" \\
+  --commands='[]'`
           };
 
           // Get cell type definition (declarative from YAML)

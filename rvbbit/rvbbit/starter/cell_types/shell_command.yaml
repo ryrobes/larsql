@@ -1,0 +1,15 @@
+# Shell Command Cell
+type_id: shell_command
+display_name: Shell
+icon: mdi:console
+color: "#64748b"
+name_prefix: shell
+description: "Execute shell commands and scripts"
+category: system
+tags:
+  - quick-start
+  - integration
+template:
+  tool: linux_shell
+  inputs:
+    command: "echo 'Hello from shell'"

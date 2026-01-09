@@ -404,6 +404,28 @@ def rvbbit_cascade_udf_impl(
         else:
             inputs = inputs_json
 
+        # Extract source lineage context from inputs (special _rvbbit_* keys)
+        source_column = None
+        source_row_index = None
+        source_table = None
+        cleaned_inputs = {}
+
+        for key, value in inputs.items():
+            if key == '_rvbbit_source_column':
+                source_column = str(value) if value is not None else None
+            elif key == '_rvbbit_source_row':
+                try:
+                    source_row_index = int(value) if value is not None else None
+                except (ValueError, TypeError):
+                    pass
+            elif key == '_rvbbit_source_table':
+                source_table = str(value) if value is not None else None
+            else:
+                cleaned_inputs[key] = value
+
+        # Use cleaned inputs (without _rvbbit_* keys) for cascade and caching
+        inputs = cleaned_inputs
+
         # Create cache key
         cache_key = _make_cascade_cache_key(cascade_path, inputs)
 
@@ -458,6 +480,18 @@ def rvbbit_cascade_udf_impl(
         from ..caller_context import get_caller_context
         caller_id, invocation_metadata = get_caller_context()
 
+        # Enrich invocation_metadata with source lineage context
+        enriched_metadata = invocation_metadata.copy() if invocation_metadata else {}
+        if source_column is not None or source_row_index is not None or source_table is not None:
+            if 'source' not in enriched_metadata:
+                enriched_metadata['source'] = {}
+            if source_column is not None:
+                enriched_metadata['source']['column'] = source_column
+            if source_row_index is not None:
+                enriched_metadata['source']['row_index'] = source_row_index
+            if source_table is not None:
+                enriched_metadata['source']['table'] = source_table
+
         # Run cascade with caller tracking
         from ..runner import run_cascade
 
@@ -466,7 +500,7 @@ def rvbbit_cascade_udf_impl(
             inputs,
             session_id=session_id,
             caller_id=caller_id,
-            invocation_metadata=invocation_metadata
+            invocation_metadata=enriched_metadata if enriched_metadata else None
         )
 
         # Serialize relevant outputs as JSON

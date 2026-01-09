@@ -242,7 +242,10 @@ def build_sql_metadata(
     protocol: str,
     triggered_by: str,
     row_count: Optional[int] = None,
-    parallel_workers: Optional[int] = None
+    parallel_workers: Optional[int] = None,
+    source_column: Optional[str] = None,
+    source_row_index: Optional[int] = None,
+    source_table: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Build invocation metadata for SQL origin.
@@ -253,6 +256,9 @@ def build_sql_metadata(
         triggered_by: 'postgres_server' or 'http_api'
         row_count: Expected rows to process (if known)
         parallel_workers: PARALLEL count (if specified)
+        source_column: Column name being processed (for semantic operators)
+        source_row_index: Row index in source query (for RVBBIT MAP)
+        source_table: Table name if extractable from query
 
     Returns:
         Metadata dict
@@ -276,6 +282,16 @@ def build_sql_metadata(
 
     if parallel_workers is not None:
         metadata['sql']['parallel_workers'] = parallel_workers
+
+    # SQL source lineage (for row/column tracking)
+    if source_column is not None or source_row_index is not None or source_table is not None:
+        metadata['source'] = {}
+        if source_column is not None:
+            metadata['source']['column'] = source_column
+        if source_row_index is not None:
+            metadata['source']['row_index'] = source_row_index
+        if source_table is not None:
+            metadata['source']['table'] = source_table
 
     return metadata
 

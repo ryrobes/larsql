@@ -1,0 +1,20 @@
+# Clojure Data Cell
+type_id: clojure_data
+display_name: Clojure
+icon: simple-icons:clojure
+color: "#63b132"
+name_prefix: clj
+description: "Execute Clojure code for functional data processing"
+category: data
+tags:
+  - data-processing
+  - advanced
+template:
+  tool: clojure_data
+  inputs:
+    code: |
+      ; Access prior cell outputs:
+      ; (:cell-name data)
+      ;
+      ; Return a vector of maps or value:
+      [{:message "Hello from Clojure"}]

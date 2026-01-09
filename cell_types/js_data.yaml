@@ -1,0 +1,20 @@
+# JavaScript Data Cell
+type_id: js_data
+display_name: JavaScript
+icon: mdi:language-javascript
+color: "#f7df1e"
+name_prefix: js
+description: "Execute JavaScript code for data transformation"
+category: data
+tags:
+  - quick-start
+  - data-processing
+template:
+  tool: js_data
+  inputs:
+    code: |
+      // Access prior cell outputs:
+      // const rows = data.cell_name;
+      //
+      // Set result to an array of objects or value:
+      result = [{ message: "Hello from JavaScript" }];

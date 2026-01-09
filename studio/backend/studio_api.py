@@ -61,6 +61,7 @@ HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
 TRAITS_DIR = os.path.join(RVBBIT_ROOT, "traits")
 CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
 EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "cascades", "examples")
+CELL_TYPES_DIR = os.path.join(RVBBIT_ROOT, "cell_types")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -1899,17 +1900,17 @@ def get_tools():
 
 
 @studio_bp.route('/cell-types', methods=['GET'])
-@studio_bp.route('/cell-types', methods=['GET'])  # Legacy alias
 def get_cell_types():
     """
-    Load declarative cell type definitions from cell_types/ directory
-    Returns list of cell types with metadata and templates
+    Load declarative cell type definitions from $RVBBIT_ROOT/cell_types/ directory.
+    Cell types are user-space files - run `rvbbit init` to create defaults.
+    Returns list of cell types with metadata and templates.
     """
     try:
-        cell_types_dir = Path(__file__).parent.parent / 'cell_types'
+        cell_types_dir = Path(CELL_TYPES_DIR)
 
         if not cell_types_dir.exists():
-            return jsonify([])
+            return jsonify([])  # Empty is fine - user needs to run `rvbbit init`
 
         cell_types = []
 

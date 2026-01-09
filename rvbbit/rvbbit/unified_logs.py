@@ -379,6 +379,11 @@ class UnifiedLogger:
         # Data shape telemetry (for debugging and analytics)
         data_rows: int | None = None,
         data_columns: int | None = None,
+
+        # SQL source lineage (for row/column tracking in semantic SQL)
+        source_column_name: str | None = None,
+        source_row_index: int | None = None,
+        source_table_name: str | None = None,
     ):
         """
         Log a single message/event to ClickHouse.
@@ -559,6 +564,11 @@ class UnifiedLogger:
             # Data shape telemetry
             "data_rows": data_rows,
             "data_columns": data_columns,
+
+            # SQL source lineage
+            "source_column_name": source_column_name,
+            "source_row_index": source_row_index,
+            "source_table_name": source_table_name,
         }
 
         # INSERT immediately to ClickHouse (no buffering for snappy UI)
@@ -717,6 +727,9 @@ def log_unified(
     toon_decode_success: bool | None = None,
     data_rows: int | None = None,
     data_columns: int | None = None,
+    source_column_name: str | None = None,
+    source_row_index: int | None = None,
+    source_table_name: str | None = None,
 ):
     """
     Global function to log unified mega-table entries.
@@ -757,6 +770,26 @@ def log_unified(
     # DEBUG: Log what caller_id we're about to write
     # if session_id.startswith('sql_fn_') or session_id.startswith('dim_'):
     #     print(f"[unified_logs] DEBUG: Logging {role} for {session_id[:40]}, caller_id={caller_id!r}")
+
+    # Extract source lineage from invocation_metadata if not passed directly
+    # This allows the source context set in executor.py to flow through automatically
+    extracted_source_column = source_column_name
+    extracted_source_row = source_row_index
+    extracted_source_table = source_table_name
+    if invocation_metadata and isinstance(invocation_metadata, dict):
+        source_data = invocation_metadata.get('source')
+        if source_data and isinstance(source_data, dict):
+            if extracted_source_column is None:
+                extracted_source_column = source_data.get('column')
+            if extracted_source_row is None:
+                row_val = source_data.get('row_index')
+                if row_val is not None:
+                    try:
+                        extracted_source_row = int(row_val)
+                    except (ValueError, TypeError):
+                        pass
+            if extracted_source_table is None:
+                extracted_source_table = source_data.get('table')
 
     _get_logger().log(
         session_id=session_id,
@@ -826,6 +859,9 @@ def log_unified(
         toon_decode_success=toon_decode_success,
         data_rows=data_rows,
         data_columns=data_columns,
+        source_column_name=extracted_source_column,
+        source_row_index=extracted_source_row,
+        source_table_name=extracted_source_table,
     )
 
 

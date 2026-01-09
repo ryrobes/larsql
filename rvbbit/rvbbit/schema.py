@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     cache_hit Bool DEFAULT false,
     input_hash Nullable(String),  -- Hash of UDF input for cache correlation
 
+    -- SQL Source Lineage (for row/column tracking in semantic SQL)
+    source_column_name Nullable(String),        -- Column name being processed (e.g., 'description')
+    source_row_index Nullable(Int64),           -- Row index in source query (0-based)
+    source_table_name Nullable(String),         -- Table name if extractable from query
+
     -- Classification
     node_type LowCardinality(String),
     role LowCardinality(String),
@@ -148,7 +153,9 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
     INDEX idx_is_sql_udf is_sql_udf TYPE set(2) GRANULARITY 1,
     INDEX idx_udf_type udf_type TYPE set(10) GRANULARITY 1,
-    INDEX idx_cache_hit cache_hit TYPE set(2) GRANULARITY 1
+    INDEX idx_cache_hit cache_hit TYPE set(2) GRANULARITY 1,
+    INDEX idx_source_column source_column_name TYPE bloom_filter GRANULARITY 1,
+    INDEX idx_source_row source_row_index TYPE minmax GRANULARITY 4
 )
 ENGINE = MergeTree()
 ORDER BY (session_id, timestamp, trace_id)

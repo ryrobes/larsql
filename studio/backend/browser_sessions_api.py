@@ -18,9 +18,14 @@ import subprocess
 import threading
 import requests
 import socket
+import logging
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file, Response, stream_with_context
 from datetime import datetime
+
+# Setup logging for this module
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # Add parent directory to path to import rvbbit
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +56,78 @@ RABBITIZE_MAX_SESSIONS = 10  # Maximum concurrent sessions
 # Session registry: session_id -> session_info
 _sessions = {}
 _sessions_lock = threading.Lock()
+
+# =============================================================================
+# Persistent Event Loop for Browser Sessions
+# =============================================================================
+# Browser sessions need a persistent event loop for MJPEG streaming.
+# We run this in a background thread that stays alive.
+
+_browser_loop = None
+_browser_thread = None
+_browser_loop_lock = threading.Lock()
+
+
+def _get_browser_loop():
+    """Get or create the persistent event loop for browser sessions."""
+    global _browser_loop, _browser_thread
+    import asyncio
+
+    with _browser_loop_lock:
+        if _browser_loop is None or not _browser_loop.is_running():
+            # Create a new event loop in a background thread
+            _browser_loop = asyncio.new_event_loop()
+
+            def run_loop():
+                asyncio.set_event_loop(_browser_loop)
+                _browser_loop.run_forever()
+
+            _browser_thread = threading.Thread(target=run_loop, daemon=True)
+            _browser_thread.start()
+
+            # Wait for loop to start
+            import time
+            for _ in range(50):  # Wait up to 5 seconds
+                if _browser_loop.is_running():
+                    break
+                time.sleep(0.1)
+
+        return _browser_loop
+
+
+def _run_in_browser_loop(coro, timeout=120, description="coroutine"):
+    """Run a coroutine in the browser event loop and wait for result."""
+    import asyncio
+    import concurrent.futures
+
+    loop = _get_browser_loop()
+    if not loop.is_running():
+        logger.error(f"[BROWSER API] Event loop not running for {description}")
+        raise RuntimeError("Browser event loop is not running")
+
+    logger.debug(f"[BROWSER API] Submitting {description} to browser loop")
+    start_time = time.time()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+    try:
+        result = future.result(timeout=timeout)
+        elapsed = time.time() - start_time
+        logger.debug(f"[BROWSER API] {description} completed in {elapsed:.2f}s")
+        return result
+    except concurrent.futures.TimeoutError:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"[BROWSER API] {description} TIMEOUT after {elapsed:.2f}s (limit: {timeout}s)"
+        )
+        future.cancel()
+        raise TimeoutError(f"{description} timed out after {timeout}s")
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(
+            f"[BROWSER API] {description} FAILED after {elapsed:.2f}s: {e}",
+            exc_info=True,
+        )
+        raise
 
 
 def _get_rabbitize_dir() -> Path:
@@ -91,16 +168,22 @@ def _get_session_status(port: int) -> dict:
 
 
 def _create_session(session_id: str | None = None) -> dict:
-    """Create a new Rabbitize session on a dynamic port."""
+    """Create a new browser session using the Python Playwright module."""
+    import asyncio
+
+    logger.debug(f"[BROWSER API] _create_session called with session_id={session_id}")
+
     with _sessions_lock:
         # Generate session ID if not provided
         if not session_id:
             session_id = f"session_{int(time.time() * 1000)}"
+            logger.debug(f"[BROWSER API] Generated session_id={session_id}")
 
         # Check if session already exists
         if session_id in _sessions:
             session = _sessions[session_id]
-            if _is_session_healthy(session["port"]):
+            if session.get("python_session") is not None:
+                logger.debug(f"[BROWSER API] Session {session_id} already exists")
                 return {
                     "success": True,
                     "session_id": session_id,
@@ -109,92 +192,107 @@ def _create_session(session_id: str | None = None) -> dict:
                 }
             else:
                 # Session exists but dead, clean it up
+                logger.warning(f"[BROWSER API] Session {session_id} exists but dead, cleaning up")
                 _cleanup_session(session_id)
 
-        # Find available port
+        # Find available port (for tracking purposes)
         port = _find_available_port()
         if not port:
+            logger.error("[BROWSER API] No available ports for new session")
             return {"success": False, "error": "No available ports. Kill some sessions first."}
 
-        rabbitize_dir = _get_rabbitize_dir()
-        if not rabbitize_dir.exists():
-            return {"success": False, "error": f"Rabbitize directory not found: {rabbitize_dir}"}
-
-        if not (rabbitize_dir / "node_modules").exists():
-            return {"success": False, "error": "Rabbitize node_modules not found. Run: cd rabbitize && npm install"}
+        logger.debug(f"[BROWSER API] Allocated port {port} for session {session_id}")
 
         try:
-            # Start Rabbitize server on the allocated port
-            # Use _REPO_ROOT as cwd so rabbitize-runs/ is created at project root
-            # (consistent with browser_manager.py which also uses config.root_dir)
-            process = subprocess.Popen(
-                ["node", "rabbitize/src/index.js", "--port", str(port)],
-                cwd=str(_REPO_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True
+            # Use the pure Python browser module
+            from rvbbit.browser.session import BrowserSession as PythonBrowserSession
+            from rvbbit.browser.streaming import frame_emitter
+
+            # Get the runs directory from rvbbit config
+            runs_dir = _get_rabbitize_runs_dir()
+            logger.debug(f"[BROWSER API] Using runs_dir: {runs_dir}")
+
+            # Create frame callback that emits to the global frame_emitter
+            # We need to capture session_id in closure
+            captured_session_id = session_id
+
+            async def frame_callback(frame_bytes: bytes):
+                await frame_emitter.emit(captured_session_id, frame_bytes)
+
+            # Create the Python browser session with frame callback for streaming
+            python_session = PythonBrowserSession(
+                client_id="rvbbit",
+                test_id="studio",
+                session_id=session_id,
+                runs_dir=runs_dir,
+                frame_callback=frame_callback,
+                screenshot_interval=0.1,  # 10 FPS streaming
             )
 
-            # Wait for server to be ready (up to 30 seconds)
-            for _ in range(60):
-                time.sleep(0.5)
-                if _is_session_healthy(port):
-                    _sessions[session_id] = {
-                        "session_id": session_id,
-                        "port": port,
-                        "process": process,
-                        "pid": process.pid,
-                        "started_at": datetime.now().isoformat(),
-                        "browser_session": None  # Will be set when URL is loaded
-                    }
+            _sessions[session_id] = {
+                "session_id": session_id,
+                "port": port,
+                "process": None,  # No subprocess needed
+                "pid": None,
+                "python_session": python_session,
+                "started_at": datetime.now().isoformat(),
+                "browser_session": None  # Will be set when URL is loaded
+            }
 
-                    # Register with unified session registry
-                    if get_session_registry:
-                        try:
-                            registry = get_session_registry(_REPO_ROOT)
-                            registry.register(
-                                session_id=session_id,
-                                port=port,
-                                pid=process.pid,
-                                source='ui'
-                            )
-                        except Exception as e:
-                            print(f"Warning: Failed to register session with registry: {e}")
+            # Register with unified session registry
+            if get_session_registry:
+                try:
+                    registry = get_session_registry(_REPO_ROOT)
+                    registry.register(
+                        session_id=session_id,
+                        port=port,
+                        pid=0,  # No subprocess
+                        source='ui'
+                    )
+                except Exception as e:
+                    logger.warning(f"[BROWSER API] Failed to register session with registry: {e}")
 
-                    return {
-                        "success": True,
-                        "session_id": session_id,
-                        "port": port,
-                        "pid": process.pid
-                    }
-                # Check if process died
-                if process.poll() is not None:
-                    stderr = process.stderr.read().decode() if process.stderr else ""
-                    return {"success": False, "error": f"Rabbitize process exited: {stderr[:500]}"}
+            logger.info(f"[BROWSER API] Created Python browser session: {session_id}")
+            return {
+                "success": True,
+                "session_id": session_id,
+                "port": port,
+                "pid": None,
+                "message": "Python browser session created"
+            }
 
-            # Timeout - kill the process
-            process.terminate()
-            return {"success": False, "error": "Rabbitize server failed to start within 30 seconds"}
-
+        except ImportError as e:
+            logger.error(f"[BROWSER API] Browser module not available: {e}")
+            return {"success": False, "error": f"Browser module not available. Install with: pip install rvbbit[browser]. Error: {e}"}
         except Exception as e:
-            return {"success": False, "error": f"Failed to start Rabbitize: {str(e)}"}
+            logger.error(f"[BROWSER API] Failed to create browser session: {e}", exc_info=True)
+            return {"success": False, "error": f"Failed to create browser session: {str(e)}"}
 
 
 def _cleanup_session(session_id: str) -> None:
     """Clean up a session (internal, called with lock held)."""
+    logger.debug(f"[BROWSER API] _cleanup_session called for {session_id}")
+
     if session_id in _sessions:
         session = _sessions[session_id]
-        process = session.get("process")
-        if process:
+
+        # Close Python browser session if present
+        python_session = session.get("python_session")
+        if python_session:
             try:
-                process.terminate()
-                process.wait(timeout=5)
-            except:
-                try:
-                    process.kill()
-                except:
-                    pass
+                # Run async close using persistent event loop
+                logger.debug(f"[BROWSER API] Closing Python session {session_id}")
+                _run_in_browser_loop(
+                    python_session.close(),
+                    timeout=30,
+                    description=f"close({session_id})",
+                )
+                logger.debug(f"[BROWSER API] Python session {session_id} closed")
+            except Exception as e:
+                logger.warning(f"[BROWSER API] Error closing Python session {session_id}: {e}")
+
         del _sessions[session_id]
+        logger.info(f"[BROWSER API] Cleaned up session {session_id}")
 
         # Unregister from unified session registry
         if get_session_registry:
@@ -202,7 +300,9 @@ def _cleanup_session(session_id: str) -> None:
                 registry = get_session_registry(_REPO_ROOT)
                 registry.unregister(session_id)
             except Exception as e:
-                print(f"Warning: Failed to unregister session from registry: {e}")
+                logger.warning(f"[BROWSER API] Failed to unregister session from registry: {e}")
+    else:
+        logger.debug(f"[BROWSER API] Session {session_id} not found in _sessions")
 
 
 def _kill_session(session_id: str) -> dict:
@@ -1275,11 +1375,15 @@ def restart_rabbitize():
 @browser_sessions_bp.route('/api/rabbitize/session/start', methods=['POST'])
 def proxy_session_start():
     """
-    Start a browser session via Rabbitize.
-    Creates a new Rabbitize instance if needed.
+    Start a browser session using the Python Playwright module.
     """
     data = request.json or {}
     dashboard_session_id = data.pop("dashboard_session_id", None)
+    url = data.get("url", "about:blank")
+
+    logger.info(
+        f"[BROWSER API] Start session request: session_id={dashboard_session_id}, url={url}"
+    )
 
     # Create or get a session
     if dashboard_session_id:
@@ -1288,55 +1392,113 @@ def proxy_session_start():
         session_result = _ensure_rabbitize_running()
 
     if not session_result.get("success"):
+        logger.error(f"[BROWSER API] Failed to create session: {session_result}")
         return jsonify(session_result), 500
 
     port = session_result.get("port")
     session_id = session_result.get("session_id")
+    logger.debug(f"[BROWSER API] Session created: id={session_id}, port={port}")
 
     try:
-        # Forward the request to the specific Rabbitize instance
-        resp = requests.post(
-            f"http://localhost:{port}/start",
-            json=data,
-            timeout=30
+        # Get the Python session and initialize it
+        with _sessions_lock:
+            session_info = _sessions.get(session_id)
+            if not session_info:
+                logger.error(f"[BROWSER API] Session {session_id} not found after creation")
+                return jsonify({"error": f"Session not found: {session_id}"}), 404
+            python_session = session_info.get("python_session")
+
+        if not python_session:
+            logger.error(f"[BROWSER API] Session {session_id} has no Python session")
+            return jsonify({"error": "No Python session available"}), 500
+
+        # Initialize the browser and navigate to URL using persistent event loop
+        # This keeps the screenshot streaming task alive
+        logger.info(f"[BROWSER API] Initializing browser session {session_id} with URL: {url}")
+        result = _run_in_browser_loop(
+            python_session.initialize(url),
+            timeout=120,
+            description=f"initialize({url})",
         )
-        result = resp.json()
+
         # Add our session info to the response
+        # Include clientId, testId, sessionId that frontend expects for stream path
         result["dashboard_session_id"] = session_id
         result["dashboard_port"] = port
-        return jsonify(result), resp.status_code
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Rabbitize request timed out", "session_id": session_id}), 504
+        result["port"] = port
+        result["clientId"] = python_session.client_id
+        result["testId"] = python_session.test_id
+        result["sessionId"] = python_session.session_id
+        result["success"] = True
+
+        logger.info(
+            f"[BROWSER API] Session {session_id} initialized successfully at {url}"
+        )
+        return jsonify(result), 200
+
+    except TimeoutError as e:
+        logger.error(f"[BROWSER API] Session initialization timeout: {e}")
+        return jsonify({"error": f"Session initialization timed out: {str(e)}", "session_id": session_id}), 504
     except Exception as e:
+        logger.error(f"[BROWSER API] Failed to start session: {e}", exc_info=True)
         return jsonify({"error": f"Failed to start session: {str(e)}", "session_id": session_id}), 500
 
 
 @browser_sessions_bp.route('/api/rabbitize/session/execute', methods=['POST'])
 def proxy_session_execute():
-    """Execute a command in the browser session."""
+    """Execute a command in the browser session using Python Playwright."""
     data = request.json or {}
     dashboard_session_id = data.pop("dashboard_session_id", "default")
+    command = data.get("command", [])
 
-    session = _get_session(dashboard_session_id)
-    if not session:
-        # Try to find any active session
-        sessions = _list_sessions()
-        if not sessions:
-            return jsonify({"error": "No active Rabbitize sessions"}), 503
-        session = sessions[0]
+    logger.info(
+        f"[BROWSER API] Execute request: session={dashboard_session_id}, command={command}"
+    )
 
-    port = session["port"]
+    # Get the session
+    with _sessions_lock:
+        session_info = _sessions.get(dashboard_session_id)
+        if not session_info:
+            # Try to find any active session
+            if _sessions:
+                alt_session_id = list(_sessions.keys())[0]
+                session_info = _sessions[alt_session_id]
+                logger.debug(
+                    f"[BROWSER API] Session {dashboard_session_id} not found, using {alt_session_id}"
+                )
+            else:
+                logger.error("[BROWSER API] No active browser sessions")
+                return jsonify({"error": "No active browser sessions"}), 503
+
+        python_session = session_info.get("python_session")
+        session_id = session_info.get("session_id", dashboard_session_id)
+
+    if not python_session:
+        logger.error(f"[BROWSER API] Session {session_id} has no Python session")
+        return jsonify({"error": "No Python session available"}), 500
+
+    # Check if session is initialized
+    if not python_session._initialized:
+        logger.error(f"[BROWSER API] Session {session_id} is not initialized")
+        return jsonify({"error": "Session not initialized"}), 400
 
     try:
-        resp = requests.post(
-            f"http://localhost:{port}/execute",
-            json=data,
-            timeout=60
+        # Execute the command using persistent event loop with reasonable timeout
+        # Most commands should complete within 30 seconds
+        result = _run_in_browser_loop(
+            python_session.execute(command),
+            timeout=60,
+            description=f"execute({command[0] if command else 'empty'})",
         )
-        return jsonify(resp.json()), resp.status_code
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Command execution timed out"}), 504
+        logger.debug(
+            f"[BROWSER API] Command executed successfully: {result.get('success', False)}"
+        )
+        return jsonify({"success": True, "result": result}), 200
+    except TimeoutError as e:
+        logger.error(f"[BROWSER API] Command timeout: {e}")
+        return jsonify({"error": f"Command timed out: {str(e)}"}), 504
     except Exception as e:
+        logger.error(f"[BROWSER API] Command execution failed: {e}", exc_info=True)
         return jsonify({"error": f"Failed to execute command: {str(e)}"}), 500
 
 
@@ -1346,18 +1508,29 @@ def proxy_session_end():
     data = request.json or {}
     dashboard_session_id = data.get("dashboard_session_id", "default")
 
-    session = _get_session(dashboard_session_id)
-    if not session:
-        sessions = _list_sessions()
-        if not sessions:
-            return jsonify({"error": "No active Rabbitize sessions"}), 503
-        session = sessions[0]
+    # Get the session
+    with _sessions_lock:
+        session_info = _sessions.get(dashboard_session_id)
+        if not session_info:
+            if _sessions:
+                dashboard_session_id = list(_sessions.keys())[0]
+                session_info = _sessions[dashboard_session_id]
+            else:
+                return jsonify({"error": "No active browser sessions"}), 503
 
-    port = session["port"]
+        python_session = session_info.get("python_session")
+
+    if not python_session:
+        return jsonify({"error": "No Python session available"}), 500
 
     try:
-        resp = requests.post(f"http://localhost:{port}/end", timeout=30)
-        return jsonify(resp.json()), resp.status_code
+        # Close the Python session using persistent event loop
+        result = _run_in_browser_loop(python_session.close())
+
+        # Clean up from our tracking
+        _kill_session(dashboard_session_id)
+
+        return jsonify({"success": True, "message": "Session ended", "metadata": result}), 200
     except Exception as e:
         return jsonify({"error": f"Failed to end session: {str(e)}"}), 500
 
@@ -1365,72 +1538,97 @@ def proxy_session_end():
 @browser_sessions_bp.route('/api/rabbitize/stream/<session_id>/<path:stream_path>')
 def proxy_stream(session_id, stream_path):
     """
-    Proxy the MJPEG stream from a specific Rabbitize session.
+    Serve the MJPEG stream from a Python browser session.
     URL format: /api/rabbitize/stream/{dashboard_session_id}/{clientId}/{testId}/{sessionId}
+
+    Note: stream_path is kept for URL compatibility but we use session_id directly
+    with the frame_emitter which is keyed by dashboard session ID.
     """
+    # Get the session - use dashboard_session_id to find the Python session
     session = _get_session(session_id)
     if not session:
         # Try to find any active session
-        sessions = _list_sessions()
-        if not sessions:
-            return jsonify({"error": "No active Rabbitize sessions"}), 503
-        session = sessions[0]
+        with _sessions_lock:
+            if not _sessions:
+                return jsonify({"error": "No active browser sessions"}), 503
+            session_id = list(_sessions.keys())[0]
 
-    port = session["port"]
+    try:
+        from rvbbit.browser.streaming import frame_emitter
+        import asyncio
+        import queue
 
-    def generate():
-        try:
-            with requests.get(
-                f"http://localhost:{port}/stream/{stream_path}",
-                stream=True,
-                timeout=None
-            ) as resp:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-        except Exception as e:
-            print(f"Stream error: {e}")
+        # Create a thread-safe queue to receive frames
+        frame_queue = queue.Queue(maxsize=30)
 
-    return Response(
-        stream_with_context(generate()),
-        mimetype='multipart/x-mixed-replace; boundary=frame',
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    )
+        # Subscribe to frames in the browser event loop
+        loop = _get_browser_loop()
+
+        async def subscribe_and_forward():
+            """Subscribe to frames and put them in the thread-safe queue."""
+            subscriber_queue = frame_emitter.subscribe(session_id, max_queue_size=10)
+            try:
+                while True:
+                    try:
+                        frame = await asyncio.wait_for(subscriber_queue.get(), timeout=5.0)
+                        if frame is None:
+                            break
+                        # Put in thread-safe queue (non-blocking, drop if full)
+                        try:
+                            frame_queue.put_nowait(frame)
+                        except queue.Full:
+                            pass  # Drop frame if consumer is slow
+                    except asyncio.TimeoutError:
+                        # Send keepalive - use a minimal placeholder
+                        pass
+            finally:
+                frame_emitter.unsubscribe(session_id, subscriber_queue)
+
+        # Start the subscription task in the browser loop
+        future = asyncio.run_coroutine_threadsafe(subscribe_and_forward(), loop)
+
+        def generate():
+            """Sync generator that yields frames from the queue."""
+            try:
+                while True:
+                    try:
+                        frame = frame_queue.get(timeout=5.0)
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n"
+                            b"Content-Length: " + str(len(frame)).encode() + b"\r\n"
+                            b"\r\n" + frame + b"\r\n"
+                        )
+                    except queue.Empty:
+                        # Timeout - yield a minimal keepalive
+                        continue
+            except GeneratorExit:
+                # Client disconnected, cancel the subscription task
+                future.cancel()
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype='multipart/x-mixed-replace; boundary=frame',
+            headers={
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        )
+    except ImportError as e:
+        return jsonify({"error": f"Streaming module not available: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Stream error: {e}"}), 500
 
 
 # Legacy stream endpoint (for backwards compatibility)
 @browser_sessions_bp.route('/api/rabbitize/stream-legacy/<path:stream_path>')
 def proxy_stream_legacy(stream_path):
-    """Legacy stream proxy - uses first available session."""
-    sessions = _list_sessions()
-    if not sessions:
-        return jsonify({"error": "No active Rabbitize sessions"}), 503
+    """Legacy stream - uses first available session."""
+    with _sessions_lock:
+        if not _sessions:
+            return jsonify({"error": "No active browser sessions"}), 503
+        session_id = list(_sessions.keys())[0]
 
-    port = sessions[0]["port"]
-
-    def generate():
-        try:
-            with requests.get(
-                f"http://localhost:{port}/stream/{stream_path}",
-                stream=True,
-                timeout=None
-            ) as resp:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        yield chunk
-        except Exception as e:
-            print(f"Stream error: {e}")
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype='multipart/x-mixed-replace; boundary=frame',
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    )
+    # Reuse the main stream endpoint logic
+    return proxy_stream(session_id, stream_path)

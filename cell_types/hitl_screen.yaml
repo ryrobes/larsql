@@ -1,0 +1,26 @@
+# HITL Screen Cell - Human-in-the-loop checkpoint
+type_id: hitl_screen
+display_name: HITL Screen
+icon: mdi:monitor-dashboard
+color: "#f97316"
+name_prefix: hitl
+description: "Human-in-the-loop checkpoint with custom HTML interface"
+category: orchestration
+tags:
+  - orchestration
+  - novel
+template:
+  hitl: |
+    <div style="padding: 20px;">
+      <h2>Review Required</h2>
+      <p>Please review the following and provide your decision:</p>
+      <div id="content">
+        {{ outputs.prior_cell | tojson }}
+      </div>
+      <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond">
+        <button name="response[action]" value="approve" style="margin: 8px;">Approve</button>
+        <button name="response[action]" value="reject" style="margin: 8px;">Reject</button>
+      </form>
+    </div>
+  hitl_title: "Review Checkpoint"
+  hitl_description: "Human approval required before continuing"

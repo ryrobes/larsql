@@ -1,11 +1,11 @@
 """
 Browser session management for RVBBIT.
 
-Manages Rabbitize Node.js subprocesses for headless browser automation.
-Each browser session runs in its own subprocess on a dedicated port.
+Manages browser sessions using the pure-Python Playwright module.
+Supports both direct Python usage and HTTP server mode.
 
 Usage:
-    # Create and use a browser session
+    # Direct Python usage (preferred - no HTTP overhead)
     session = await create_browser_session("my_session_id")
     await session.initialize("https://example.com")
     await session.execute([":click", ":at", 500, 300])
@@ -16,28 +16,29 @@ Usage:
     await session.click(500, 300)
     await session.type_text("hello world")
     await session.scroll_down(3)
+
+    # Server mode (for MJPEG streaming UI)
+    from rvbbit.browser import start_server
+    start_server(port=3037)
 """
 
-import asyncio
-import subprocess
 import socket
-import signal
-import os
 import logging
-from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 
-try:
-    import aiohttp
-    AIOHTTP_AVAILABLE = True
-except ImportError:
-    AIOHTTP_AVAILABLE = False
-
-from .config import get_config
 from .session_registry import get_session_registry
 
 logger = logging.getLogger(__name__)
+
+# Check for browser module availability
+try:
+    from rvbbit.browser.session import BrowserSession as PythonBrowserSession
+    PYTHON_BROWSER_AVAILABLE = True
+except ImportError:
+    PYTHON_BROWSER_AVAILABLE = False
+    PythonBrowserSession = None  # type: ignore
+    logger.debug("Python browser module not available. Install with: pip install rvbbit[browser]")
 
 
 @dataclass
@@ -76,14 +77,14 @@ class BrowserStreams:
 @dataclass
 class BrowserSession:
     """
-    Manages a single Rabbitize browser session.
+    Manages a single browser session using the pure-Python Playwright module.
 
     Lifecycle:
-    1. start_server() - Spawn Node.js subprocess
+    1. start_server() - Initialize Python browser session
     2. initialize(url) - Navigate to starting URL
     3. execute(command) - Run browser commands
     4. end() - Finalize session (save video, etc.)
-    5. close() - Kill subprocess
+    5. close() - Cleanup resources
 
     Example:
         session = BrowserSession(session_id="test", port=13001)
@@ -95,10 +96,10 @@ class BrowserSession:
     """
     session_id: str
     port: int
-    process: Optional[subprocess.Popen] = field(default=None, repr=False)
     artifacts: Optional[BrowserArtifacts] = field(default=None)
     streams: Optional[BrowserStreams] = field(default=None)
-    _http_session: Any = field(default=None, repr=False)  # aiohttp.ClientSession
+    _python_session: Any = field(default=None, repr=False)  # PythonBrowserSession
+    _initialized: bool = field(default=False, repr=False)
 
     @property
     def base_url(self) -> str:
@@ -106,7 +107,8 @@ class BrowserSession:
 
     @property
     def is_alive(self) -> bool:
-        return self.process is not None and self.process.poll() is None
+        """Check if the browser session is active."""
+        return self._python_session is not None and self._initialized
 
     async def start_server(
         self,
@@ -115,91 +117,30 @@ class BrowserSession:
         show_overlay: bool = True
     ) -> None:
         """
-        Spawn the Rabbitize Node.js subprocess.
+        Initialize the browser session.
+
+        Uses the pure-Python Playwright module (preferred) or falls back
+        to Node.js subprocess if Python module is not available.
 
         Args:
             stability_detection: Wait for page idle after commands
             stability_wait: Seconds to wait for stability
             show_overlay: Show command overlay in recordings
         """
-        if not AIOHTTP_AVAILABLE:
-            raise RuntimeError("aiohttp is required for browser sessions. Install with: pip install aiohttp")
-
-        config = get_config()
-        rabbitize_path = Path(config.root_dir) / "rabbitize" / "src" / "index.js"
-
-        if not rabbitize_path.exists():
-            raise FileNotFoundError(
-                f"Rabbitize not found at {rabbitize_path}. "
-                f"Ensure rabbitize is installed in {config.root_dir}/rabbitize/"
+        if PYTHON_BROWSER_AVAILABLE:
+            # Use pure-Python Playwright module (no subprocess needed)
+            logger.info(f"Starting Python browser session for {self.session_id}")
+            self._python_session = PythonBrowserSession(
+                client_id="rvbbit",
+                test_id=self.session_id,
+                session_id=self.session_id,
             )
-
-        cmd = [
-            "node", str(rabbitize_path),
-            "--port", str(self.port),
-            "--client-id", "rvbbit",
-            "--test-id", self.session_id,
-            "--exit-on-end", "false",
-            "--show-overlay", str(show_overlay).lower(),
-        ]
-
-        if stability_detection:
-            cmd.extend([
-                "--stability-detection",
-                "--stability-wait", str(stability_wait)
-            ])
-
-        logger.info(f"Starting Rabbitize server on port {self.port} for session {self.session_id}")
-
-        # Create new process group for clean shutdown
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(config.root_dir),
-                preexec_fn=os.setsid  # Create new process group
+            logger.info(f"Python browser session created for {self.session_id}")
+        else:
+            raise RuntimeError(
+                "Browser module not available. Install with: pip install rvbbit[browser]\n"
+                "Then run: playwright install chromium"
             )
-        except Exception as e:
-            raise RuntimeError(f"Failed to start Rabbitize subprocess: {e}")
-
-        await self._wait_for_health()
-        self._http_session = aiohttp.ClientSession()
-        logger.info(f"Rabbitize server started successfully on port {self.port}")
-
-    async def _wait_for_health(self, timeout: float = 20.0) -> None:
-        """Wait for /health endpoint to respond."""
-        import aiohttp as aio
-
-        start = asyncio.get_event_loop().time()
-        last_error = None
-
-        while asyncio.get_event_loop().time() - start < timeout:
-            try:
-                async with aio.ClientSession() as session:
-                    async with session.get(f"{self.base_url}/health", timeout=aio.ClientTimeout(total=2)) as resp:
-                        if resp.status == 200:
-                            return
-            except Exception as e:
-                last_error = e
-
-            # Check if process died
-            if self.process and self.process.poll() is not None:
-                stderr = self.process.stderr.read().decode() if self.process.stderr else "No stderr"
-                raise RuntimeError(
-                    f"Rabbitize process exited with code {self.process.returncode}. "
-                    f"Stderr: {stderr[:500]}"
-                )
-
-            await asyncio.sleep(0.2)
-
-        # Cleanup on failure
-        if self.process:
-            self.process.kill()
-        raise RuntimeError(
-            f"Rabbitize server failed to start on port {self.port} "
-            f"after {timeout}s. Last error: {last_error}"
-        )
 
     async def initialize(self, url: str) -> Dict[str, Any]:
         """
@@ -211,41 +152,60 @@ class BrowserSession:
         Returns:
             Response with artifact paths and stream URLs
         """
-        if not self._http_session:
+        if not self._python_session:
             raise RuntimeError("Server not started. Call start_server() first.")
 
-        async with self._http_session.post(
-            f"{self.base_url}/start",
-            json={"url": url, "sessionId": self.session_id}
-        ) as resp:
-            result = await resp.json()
+        try:
+            result = await self._python_session.initialize(url)
+            self._initialized = True
 
-            if result.get("success"):
-                if result.get("artifacts"):
-                    self.artifacts = BrowserArtifacts(**result["artifacts"])
-                if result.get("streams"):
-                    self.streams = BrowserStreams(**result["streams"])
+            # Map Python artifacts to our dataclass format
+            if result.get("artifacts"):
+                arts = result["artifacts"]
+                self.artifacts = BrowserArtifacts(
+                    basePath=arts.get("base_path", ""),
+                    screenshots=arts.get("screenshots", ""),
+                    video=arts.get("video", ""),
+                    domSnapshots=arts.get("dom_snapshots", ""),
+                    domCoords=arts.get("dom_coords", ""),
+                    status=arts.get("status", ""),
+                )
 
-            return result
+            # Set up stream URLs (if server is running)
+            self.streams = BrowserStreams(
+                mjpeg=f"/stream/{self.session_id}",
+                viewer=f"/stream-viewer/{self.session_id}",
+            )
+
+            return {
+                "success": True,
+                "session_id": self.session_id,
+                "artifacts": result.get("artifacts", {}),
+                "streams": {"mjpeg": self.streams.mjpeg, "viewer": self.streams.viewer},
+            }
+        except Exception as e:
+            logger.error(f"Failed to initialize browser session: {e}")
+            return {"success": False, "error": str(e)}
 
     async def execute(self, command: List) -> Dict[str, Any]:
         """
         Execute a browser command.
 
         Args:
-            command: Rabbitize command array, e.g. [":click", ":at", 500, 300]
+            command: Command array, e.g. [":click", ":at", 500, 300]
 
         Returns:
             Command result with success status
         """
-        if not self._http_session:
+        if not self._python_session:
             raise RuntimeError("Server not started.")
 
-        async with self._http_session.post(
-            f"{self.base_url}/execute",
-            json={"command": command}
-        ) as resp:
-            return await resp.json()
+        try:
+            result = await self._python_session.execute(command)
+            return result
+        except Exception as e:
+            logger.error(f"Command execution error: {e}")
+            return {"success": False, "error": str(e)}
 
     async def execute_batch(self, commands: List[List]) -> Dict[str, Any]:
         """
@@ -255,16 +215,20 @@ class BrowserSession:
             commands: List of command arrays
 
         Returns:
-            Result with count of queued commands
+            Result with count of executed commands
         """
-        if not self._http_session:
+        if not self._python_session:
             raise RuntimeError("Server not started.")
 
-        async with self._http_session.post(
-            f"{self.base_url}/execute-batch",
-            json={"commands": commands}
-        ) as resp:
-            return await resp.json()
+        results = []
+        for cmd in commands:
+            try:
+                result = await self._python_session.execute(cmd)
+                results.append({"command": cmd, "success": True, "result": result})
+            except Exception as e:
+                results.append({"command": cmd, "success": False, "error": str(e)})
+
+        return {"success": True, "results": results, "executed": len(results)}
 
     async def end(self) -> Dict[str, Any]:
         """
@@ -273,59 +237,49 @@ class BrowserSession:
         Returns:
             Result with session summary
         """
-        if not self._http_session:
+        if not self._python_session:
             return {"success": False, "error": "No session"}
 
         try:
-            async with self._http_session.post(
-                f"{self.base_url}/end",
-                timeout=aiohttp.ClientTimeout(total=60)  # Video processing can take time
-            ) as resp:
-                return await resp.json()
+            metadata = await self._python_session.close()
+            self._python_session = None
+            self._initialized = False
+            return {"success": True, "metadata": metadata}
         except Exception as e:
             logger.warning(f"Error ending session: {e}")
             return {"success": False, "error": str(e)}
 
     async def get_status(self) -> Dict[str, Any]:
         """Get current session status."""
-        if not self._http_session:
+        if not self._python_session:
             return {"error": "No session"}
 
-        async with self._http_session.get(f"{self.base_url}/status") as resp:
-            return await resp.json()
+        return {
+            "session_id": self.session_id,
+            "initialized": self._initialized,
+            "command_count": self._python_session.command_index,
+            "mouse_position": [self._python_session.mouse_x, self._python_session.mouse_y],
+        }
 
     async def health(self) -> Dict[str, Any]:
-        """Check server health."""
-        if not self._http_session:
+        """Check session health."""
+        if not self._python_session:
             return {"status": "not_started"}
 
-        try:
-            async with self._http_session.get(f"{self.base_url}/health") as resp:
-                return await resp.json()
-        except:
-            return {"status": "unreachable"}
+        return {"status": "ok", "session_id": self.session_id}
 
     async def close(self) -> None:
-        """Shutdown the subprocess and cleanup."""
+        """Cleanup browser session resources."""
         logger.info(f"Closing browser session {self.session_id}")
 
-        if self._http_session:
-            await self._http_session.close()
-            self._http_session = None
-
-        if self.process and self.process.poll() is None:
+        if self._python_session:
             try:
-                # Kill the entire process group
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-                try:
-                    self.process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    logger.warning(f"Process didn't terminate gracefully, sending SIGKILL")
-                    os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-            except ProcessLookupError:
-                pass  # Already dead
+                await self._python_session.close()
             except Exception as e:
-                logger.warning(f"Error during process cleanup: {e}")
+                logger.warning(f"Error closing Python session: {e}")
+            self._python_session = None
+
+        self._initialized = False
 
     # ─────────────────────────────────────────────────────────────────────────
     # Convenience methods (generate DSL commands)
@@ -487,7 +441,7 @@ class BrowserSessionManager:
             registry.register(
                 session_id=session_id,
                 port=port,
-                pid=session.process.pid if session.process else 0,
+                pid=0,  # No subprocess - using in-process Python
                 source='cascade' if cascade_id else 'runner',
                 cascade_id=cascade_id,
                 cell_name=cell_name,

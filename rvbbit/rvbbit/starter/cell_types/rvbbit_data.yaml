@@ -1,0 +1,31 @@
+# RVBBIT Data Cell - Nested LLM with full cascade power
+type_id: rvbbit_data
+display_name: RVBBIT Data
+icon: mdi:sail-boat
+color: "#2dd4bf"
+name_prefix: rvbbit
+description: "Embedded LLM cell with full RVBBIT power: candidates, reforge, wards, model selection"
+category: ai
+tags:
+  - ai-ml
+  - advanced
+  - powerful
+template:
+  tool: rvbbit_data
+  inputs:
+    cascade: |
+      instructions: |
+        Analyze the data and return structured results.
+
+        Available data:
+        - {{outputs.cell_name}}
+
+      model: google/gemini-2.5-flash
+
+      output_schema:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: string }
+            result: { type: string }
