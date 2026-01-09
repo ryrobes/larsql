@@ -1,0 +1,46 @@
+# Test Event Handler
+#
+# Triggered by watch on test_events table.
+# Logs the event and provides a simple analysis.
+
+cascade_id: test_event_handler
+description: Handle test events from watch subscription
+
+inputs_schema:
+  trigger_rows: Events that triggered the watch
+  watch_name: Name of the watch
+
+cells:
+  - name: handle_event
+    instructions: |
+      A test event watch has triggered!
+
+      **Watch**: {{ input.watch_name }}
+
+      **Events**:
+      {{ input.trigger_rows | totoon }}
+
+      Acknowledge receipt of these events. For each event:
+      - Note the event_type and severity
+      - If severity is 'error' or 'critical', flag it as needing attention
+      - Provide a brief summary
+
+      Respond in a friendly, concise way.
+    output_schema:
+      type: object
+      properties:
+        acknowledged:
+          type: boolean
+        event_count:
+          type: integer
+        summary:
+          type: string
+        needs_attention:
+          type: boolean
+        attention_reason:
+          type: string
+      required:
+        - acknowledged
+        - event_count
+        - summary
+        - needs_attention

@@ -83,6 +83,7 @@ from apps_api import apps_bp
 from sql_trail_api import sql_trail_bp
 from training_api import training_bp
 from catalog_api import catalog_bp
+from watchers_api import watchers_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -110,6 +111,8 @@ app.register_blueprint(sql_trail_bp)
 app.register_blueprint(training_bp)
 # Catalog API - Unified system components browser
 app.register_blueprint(catalog_bp)
+# Watchers API - SQL watch subscriptions
+app.register_blueprint(watchers_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)

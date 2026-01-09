@@ -130,6 +130,14 @@ export const views = {
     enabled: true,
   },
 
+  watchers: {
+    component: lazy(() => import('./watchers/WatchersView')),
+    icon: 'mdi:eye-circle',
+    label: 'Watchers',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

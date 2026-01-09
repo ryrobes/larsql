@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 class SqlConnectionConfig(BaseModel):
     """Configuration for a SQL database connection."""
     connection_name: str
-    type: Literal["postgres", "mysql", "sqlite", "csv_folder", "duckdb_folder"]
+    type: Literal["postgres", "mysql", "sqlite", "csv_folder", "duckdb_folder", "clickhouse"]
     enabled: bool = True
 
     # Database connection (not used for CSV/DuckDB folders)
@@ -103,6 +103,27 @@ def load_sql_connections() -> Dict[str, SqlConnectionConfig]:
                 sample_row_limit=100,
                 distinct_value_threshold=50
             )
+
+    # Auto-create ClickHouse connection for rvbbit.* tables
+    # This allows queries like SELECT * FROM rvbbit.unified_logs to work in DuckDB
+    clickhouse_host = os.getenv("RVBBIT_CLICKHOUSE_HOST", "localhost")
+    clickhouse_port = int(os.getenv("RVBBIT_CLICKHOUSE_PORT", "9000"))
+    clickhouse_database = os.getenv("RVBBIT_CLICKHOUSE_DATABASE", "rvbbit")
+    clickhouse_user = os.getenv("RVBBIT_CLICKHOUSE_USER", "default")
+    clickhouse_password = os.getenv("RVBBIT_CLICKHOUSE_PASSWORD", "")
+
+    connections["rvbbit"] = SqlConnectionConfig(
+        connection_name="rvbbit",
+        type="clickhouse",
+        host=clickhouse_host,
+        port=clickhouse_port,
+        database=clickhouse_database,
+        user=clickhouse_user,
+        password=clickhouse_password if clickhouse_password else None,
+        enabled=True,
+        sample_row_limit=100,
+        distinct_value_threshold=50
+    )
 
     return connections
 

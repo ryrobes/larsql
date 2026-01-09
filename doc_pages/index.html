@@ -4687,6 +4687,236 @@
         }
       }
 
+      /* ========== WATCH SECTION ========== */
+      .watch-section {
+        padding: 80px 0;
+        background: linear-gradient(135deg, rgba(28, 246, 255, 0.03) 0%, rgba(255, 47, 168, 0.02) 100%);
+        border-top: 1px solid rgba(28, 246, 255, 0.12);
+        border-bottom: 1px solid rgba(28, 246, 255, 0.12);
+      }
+
+      .watch-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 60px;
+        align-items: start;
+      }
+
+      .watch-content h2 {
+        font-size: 2.2rem;
+        margin-bottom: 16px;
+      }
+
+      .watch-content > p {
+        font-size: 1.1rem;
+        color: var(--muted);
+        line-height: 1.7;
+        margin-bottom: 24px;
+      }
+
+      .watch-comparison {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .watch-compare-card {
+        padding: 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+      }
+
+      .watch-compare-card.before {
+        background: rgba(255, 100, 100, 0.08);
+        border: 1px solid rgba(255, 100, 100, 0.2);
+        border-left: 3px solid rgba(255, 100, 100, 0.5);
+      }
+
+      .watch-compare-card.after {
+        background: rgba(28, 246, 255, 0.08);
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        border-left: 3px solid var(--cyan);
+      }
+
+      .watch-compare-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .watch-compare-card.before .watch-compare-label {
+        color: rgba(255, 150, 150, 0.9);
+      }
+
+      .watch-compare-card.after .watch-compare-label {
+        color: var(--cyan);
+      }
+
+      .watch-compare-card code {
+        font-family: "Google Sans Code", "JetBrains Mono", monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+        display: block;
+        line-height: 1.5;
+      }
+
+      .watch-compare-card.after code {
+        color: var(--ink);
+      }
+
+      .watch-points {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .watch-point {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .watch-point iconify-icon {
+        color: var(--cyan);
+        font-size: 1rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+
+      .watch-code {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .watch-code .code-header {
+        padding: 12px 20px;
+        background: rgba(28, 246, 255, 0.08);
+        border-bottom: 1px solid rgba(28, 246, 255, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .watch-code .code-content {
+        padding: 24px;
+      }
+
+      .watch-code pre {
+        margin: 0;
+        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.8;
+        color: #cde7ff;
+      }
+
+      .watch-keyword {
+        color: var(--cyan);
+        font-weight: 600;
+      }
+
+      .watch-interval {
+        color: var(--orange);
+      }
+
+      .watch-action {
+        color: var(--magenta);
+      }
+
+      .watch-result {
+        margin-top: 20px;
+        padding: 16px 20px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        border-left: 3px solid var(--magenta);
+      }
+
+      .watch-result-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .watch-result-label {
+        font-size: 0.7rem;
+        color: var(--magenta);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .watch-result-badge {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+        background: rgba(255, 47, 168, 0.15);
+        border-radius: 4px;
+        color: var(--magenta);
+      }
+
+      .watch-result-flow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.8rem;
+        flex-wrap: wrap;
+      }
+
+      .watch-flow-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+      }
+
+      .watch-flow-item iconify-icon {
+        font-size: 0.9rem;
+      }
+
+      .watch-flow-arrow {
+        color: var(--magenta);
+        opacity: 0.6;
+      }
+
+      .watch-tagline {
+        margin-top: 20px;
+        padding: 14px 18px;
+        background: rgba(28, 246, 255, 0.05);
+        border-radius: 8px;
+        border: 1px dashed rgba(28, 246, 255, 0.2);
+        font-size: 0.85rem;
+        color: var(--muted);
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .watch-tagline iconify-icon {
+        color: var(--cyan);
+        font-size: 1.1rem;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .watch-tagline strong {
+        color: var(--ink);
+      }
+
+      @media (max-width: 900px) {
+        .watch-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+        .watch-comparison {
+          grid-template-columns: 1fr;
+        }
+      }
+
       /* ========== INLINE CANDIDATES ========== */
       .inline-candidates {
         margin-top: 40px;
@@ -4846,6 +5076,7 @@
           <a href="#vector" class="toc-link">Vector Search</a>
           <a href="#macros" class="toc-link">Semantic Macros</a>
           <a href="#askdata" class="toc-link">ASK_DATA</a>
+          <a href="#watch" class="toc-link">WATCH</a>
           <a href="#analyze" class="toc-link">ANALYZE</a>
         </div>
 
@@ -5593,10 +5824,10 @@
             <div class="macro-card reveal delay-1">
               <div class="macro-card-header">
                 <span class="macro-card-type">String Fingerprinting</span>
-                <span class="macro-card-badge">parse_phone</span>
+                <span class="macro-card-badge">parse</span>
               </div>
               <div class="macro-card-content">
-<pre><span class="sql-keyword">SELECT</span> <span class="sql-function">parse_phone</span>(phone, <span class="sql-string">'area code'</span>)
+<pre><span class="sql-keyword">SELECT</span> <span class="sql-function">parse</span>(phone, <span class="sql-string">'area code'</span>)
 <span class="sql-keyword">FROM</span> contacts</pre>
                 <div class="macro-flow">
                   <div class="macro-flow-row">
@@ -5748,6 +5979,86 @@
                 <div class="askdata-safety">
                   <iconify-icon icon="lucide:shield-check"></iconify-icon>
                   <span><code>ask_data</code> is read-only—no accidental mutations. Need DDL or writes? <code>ask_data_sql</code> generates them (just won't execute).</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== WATCH ========== -->
+      <section id="watch" class="watch-section">
+        <div class="container">
+          <div class="watch-grid">
+            <div class="watch-content reveal">
+              <h2>Alerts that understand <span style="color: var(--cyan)">meaning.</span></h2>
+              <p>
+                Traditional triggers fire on exact values. WATCH fires on <em>intent</em>.
+                Subscribe to any query, trigger actions when results change—using the same semantic operators.
+              </p>
+              <div class="watch-comparison">
+                <div class="watch-compare-card before">
+                  <div class="watch-compare-label">Traditional Alert</div>
+                  <code>WHERE error_count > 100<br>AND status = 'critical'</code>
+                </div>
+                <div class="watch-compare-card after">
+                  <div class="watch-compare-label">Semantic Watch</div>
+                  <code>WHERE message SIMILAR_TO<br>'frustrated, want to cancel'</code>
+                </div>
+              </div>
+              <div class="watch-points">
+                <div class="watch-point">
+                  <iconify-icon icon="lucide:check"></iconify-icon>
+                  <span>Queries any source RVBBIT can reach—not just one table</span>
+                </div>
+                <div class="watch-point">
+                  <iconify-icon icon="lucide:check"></iconify-icon>
+                  <span>Triggers LLM workflows, signals, or plain SQL</span>
+                </div>
+                <div class="watch-point">
+                  <iconify-icon icon="lucide:check"></iconify-icon>
+                  <span>Smart change detection—fires on actual differences, not noise</span>
+                </div>
+              </div>
+            </div>
+            <div class="watch-code reveal delay-1">
+              <div class="code-header">
+                <span class="code-type-badge sql">SQL</span>
+                <span class="code-title">Intelligent monitoring</span>
+              </div>
+              <div class="code-content">
+<pre><span class="watch-keyword">CREATE WATCH</span> churn_detector
+<span class="watch-keyword">POLL EVERY</span> <span class="watch-interval">'5m'</span>
+<span class="watch-keyword">AS</span> <span class="sql-keyword">SELECT</span> customer_id, feedback
+   <span class="sql-keyword">FROM</span> customer_feedback
+   <span class="sql-keyword">WHERE</span> created_at > now() - <span class="sql-keyword">INTERVAL</span> <span class="sql-string">'10 minutes'</span>
+     <span class="sql-keyword">AND</span> feedback <span class="sql-function">SIMILAR_TO</span> <span class="sql-string">'frustrated, want to cancel'</span>
+<span class="watch-keyword">ON TRIGGER</span> <span class="watch-action">CASCADE</span> <span class="sql-string">'retention_outreach.yaml'</span>;</pre>
+                <div class="watch-result">
+                  <div class="watch-result-header">
+                    <span class="watch-result-label">When triggered</span>
+                    <span class="watch-result-badge">Automated</span>
+                  </div>
+                  <div class="watch-result-flow">
+                    <div class="watch-flow-item">
+                      <iconify-icon icon="lucide:search"></iconify-icon>
+                      <span>Query runs</span>
+                    </div>
+                    <span class="watch-flow-arrow">→</span>
+                    <div class="watch-flow-item">
+                      <iconify-icon icon="lucide:git-compare"></iconify-icon>
+                      <span>Results changed?</span>
+                    </div>
+                    <span class="watch-flow-arrow">→</span>
+                    <div class="watch-flow-item">
+                      <iconify-icon icon="lucide:zap"></iconify-icon>
+                      <span>Spawn LLM workflow</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="watch-tagline">
+                  <iconify-icon icon="lucide:lightbulb"></iconify-icon>
+                  <span><strong>"I'm done with your service"</strong> matches—even with zero keyword overlap. That's semantic alerting.</span>
                 </div>
               </div>
             </div>

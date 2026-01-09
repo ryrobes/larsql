@@ -127,7 +127,7 @@ def get_all_watches(enabled_only: bool = True) -> List[Watch]:
         return []
 
     where_clause = "WHERE enabled = 1" if enabled_only else ""
-    query = f"SELECT * FROM rvbbit.watches {where_clause} FINAL ORDER BY name"
+    query = f"SELECT * FROM rvbbit.watches FINAL {where_clause} ORDER BY name"
 
     try:
         rows = db.query(query)
@@ -145,7 +145,7 @@ def get_watch_by_name(name: str) -> Optional[Watch]:
     if not db:
         return None
 
-    query = f"SELECT * FROM rvbbit.watches WHERE name = %(name)s FINAL LIMIT 1"
+    query = f"SELECT * FROM rvbbit.watches FINAL WHERE name = %(name)s LIMIT 1"
 
     try:
         rows = db.query(query, {'name': name})
@@ -225,7 +225,7 @@ def update_watch_state(
         return False
 
     # Load current watch, update fields, re-insert
-    query = f"SELECT * FROM rvbbit.watches WHERE watch_id = %(watch_id)s FINAL LIMIT 1"
+    query = f"SELECT * FROM rvbbit.watches FINAL WHERE watch_id = %(watch_id)s LIMIT 1"
     try:
         rows = db.query(query, {'watch_id': watch_id})
         if not rows:
@@ -303,6 +303,7 @@ def execute_watch_query(query: str, session_id: str = "watcher") -> Tuple[Option
     - Aggregate functions (SUMMARIZE, CLASSIFY)
     - UDFs (rvbbit_udf, semantic_embed, etc.)
     - Custom SQL functions from cascades
+    - ClickHouse tables (rvbbit.*) via lazy attach
 
     Returns:
         Tuple of (rows, error_message)
@@ -310,11 +311,20 @@ def execute_watch_query(query: str, session_id: str = "watcher") -> Tuple[Option
         - error_message: Error string if failed, None on success
     """
     from rvbbit.sql_tools.session_db import get_session_db
+    from rvbbit.sql_tools.config import load_sql_connections
+    from rvbbit.sql_tools.lazy_attach import LazyAttachManager
     from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
 
     try:
         # Get session-scoped DuckDB with all UDFs registered
         conn = get_session_db(session_id)
+
+        # Set up lazy attach for rvbbit.* ClickHouse tables
+        sql_connections = load_sql_connections()
+        lazy_attach = LazyAttachManager(conn, sql_connections)
+
+        # Ensure any referenced ClickHouse tables are materialized
+        lazy_attach.ensure_for_query(query, aggressive=True)
 
         # Rewrite query through semantic SQL pipeline
         rewritten_query = rewrite_rvbbit_syntax(query, duckdb_conn=conn)
@@ -348,6 +358,28 @@ def preview_result(rows: List[Dict], max_rows: int = 5) -> str:
 # Action Execution
 # ============================================================================
 
+def _serialize_rows(rows: List[Dict]) -> List[Dict]:
+    """Convert rows to JSON-serializable format (handle Timestamps, etc.)."""
+    def serialize_value(val):
+        if val is None:
+            return None
+        # Handle pandas/numpy Timestamp
+        if hasattr(val, 'isoformat'):
+            return val.isoformat()
+        # Handle numpy types
+        try:
+            import numpy as np
+            if isinstance(val, (np.integer, np.floating)):
+                return val.item()
+            if isinstance(val, np.ndarray):
+                return val.tolist()
+        except ImportError:
+            pass
+        return val
+
+    return [{k: serialize_value(v) for k, v in row.items()} for row in rows]
+
+
 def fire_cascade_action(
     cascade_path: str,
     rows: List[Dict],
@@ -358,31 +390,43 @@ def fire_cascade_action(
     Fire a cascade action with trigger rows as input.
 
     Returns:
-        Tuple of (session_id, error_message)
+        Tuple of (session_id, error_message) - session_id is the actual spawned session ID
     """
     from rvbbit.runner import spawn_cascade
     from rvbbit.session_naming import generate_woodland_id
     import jinja2
 
-    session_id = f"watch-{watch_name}-{generate_woodland_id()}"
+    # Generate a parent session ID for tracking lineage
+    parent_session_id = f"watch-{watch_name}-{generate_woodland_id()}"
 
     try:
+        # Serialize rows to JSON-compatible format
+        serializable_rows = _serialize_rows(rows)
+
         # Render inputs template
         env = jinja2.Environment()
         template = env.from_string(inputs_template)
-        inputs_json = template.render(rows=rows, watch_name=watch_name)
+        inputs_json = template.render(rows=serializable_rows, watch_name=watch_name)
         inputs = json.loads(inputs_json)
 
-        # Spawn cascade asynchronously
-        spawn_cascade(
-            cascade_path=cascade_path,
-            inputs=inputs,
-            session_id=session_id,
-            caller_id=f"watch:{watch_name}",
-            async_execution=True,  # Don't block the daemon
+        # Spawn cascade asynchronously (spawn_cascade is already fire-and-forget)
+        # Returns: "Spawned cascade '...' with Session ID: spawned_123_abc"
+        result = spawn_cascade(
+            cascade_ref=cascade_path,
+            input_data=inputs,
+            parent_session_id=parent_session_id,
         )
 
-        return session_id, None
+        # Extract actual session ID from the result message
+        actual_session_id = None
+        if result and "Session ID:" in result:
+            actual_session_id = result.split("Session ID:")[-1].strip()
+
+        if not actual_session_id:
+            log.warning(f"[watcher] Could not extract session ID from spawn_cascade result: {result}")
+            actual_session_id = parent_session_id  # Fallback to parent ID
+
+        return actual_session_id, None
 
     except Exception as e:
         log.error(f"[watcher] Failed to fire cascade '{cascade_path}': {e}")
@@ -399,8 +443,11 @@ def fire_signal_action(signal_name: str, rows: List[Dict], watch_name: str) -> T
     from rvbbit.signals import fire_signal
 
     try:
+        # Serialize rows to JSON-compatible format
+        serializable_rows = _serialize_rows(rows)
+
         payload = {
-            'rows': rows,
+            'rows': serializable_rows,
             'watch_name': watch_name,
             'triggered_at': datetime.now(timezone.utc).isoformat(),
         }
@@ -475,6 +522,8 @@ class WatchDaemon:
         self.session_prefix = session_prefix
         self.running = False
         self._shutdown_event = threading.Event()
+        # In-memory cache of result hashes to avoid ClickHouse merge timing issues
+        self._result_hash_cache: Dict[str, str] = {}
 
     def start(self):
         """Start the daemon (blocking)."""
@@ -615,13 +664,21 @@ class WatchDaemon:
             return
 
         # Check if results changed (debounce)
+        # Use in-memory cache first (avoids ClickHouse merge timing issues),
+        # fall back to DB value for first run or after daemon restart
         result_hash = hash_result(rows)
-        if result_hash == watch.last_result_hash:
+        cached_hash = self._result_hash_cache.get(watch.watch_id)
+        previous_hash = cached_hash if cached_hash else watch.last_result_hash
+
+        if result_hash == previous_hash:
             log.debug(f"[watcher] Watch '{watch.name}' results unchanged (hash={result_hash})")
+            # Prime the cache if it wasn't set (e.g., after daemon restart)
+            if not cached_hash:
+                self._result_hash_cache[watch.watch_id] = result_hash
             return
 
         # TRIGGER!
-        log.info(f"[watcher] Watch '{watch.name}' TRIGGERED ({len(rows)} rows)")
+        log.info(f"[watcher] Watch '{watch.name}' TRIGGERED ({len(rows)} rows, hash {previous_hash[:8] if previous_hash else 'None'}→{result_hash[:8]})")
 
         execution = WatchExecution(
             execution_id=f"exec-{generate_woodland_id()}",
@@ -662,7 +719,7 @@ class WatchDaemon:
             execution.completed_at = datetime.now(timezone.utc)
             execution.duration_ms = int((time.time() - start_time) * 1000)
 
-            # Update watch state
+            # Update watch state in DB and in-memory cache
             update_watch_state(
                 watch.watch_id,
                 last_result_hash=result_hash,
@@ -671,6 +728,8 @@ class WatchDaemon:
                 consecutive_errors=0,
                 last_error=None,
             )
+            # Update in-memory cache to avoid ClickHouse merge timing issues
+            self._result_hash_cache[watch.watch_id] = result_hash
 
             log.info(f"[watcher] Watch '{watch.name}' action completed successfully")
 

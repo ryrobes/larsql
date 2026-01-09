@@ -1,0 +1,60 @@
+# Watch Alert Cascade
+#
+# Simple cascade triggered by WATCH subscriptions.
+# Analyzes trigger data and provides actionable insights.
+#
+# Example WATCH:
+#   CREATE WATCH my_alert
+#   POLL EVERY '5m'
+#   AS SELECT count(*) as errors FROM logs WHERE level='ERROR'
+#      AND ts > now() - interval 1 hour
+#      HAVING errors > 50
+#   ON TRIGGER CASCADE 'cascades/alert.yaml';
+
+cascade_id: alert
+description: Analyze and respond to watch-triggered alerts
+
+inputs_schema:
+  trigger_rows: Rows that matched the watch query condition
+  watch_name: Name of the watch that fired
+
+cells:
+  - name: analyze
+    instructions: |
+      A watch subscription has triggered an alert.
+
+      **Watch Name**: {{ input.watch_name }}
+
+      **Trigger Data**:
+      {{ input.trigger_rows | totoon }}
+
+      Analyze this alert and provide:
+
+      1. **What happened**: Summarize what condition was met
+      2. **Severity**: Rate as low/medium/high/critical
+      3. **Context**: What might have caused this?
+      4. **Recommendation**: What action should be taken?
+
+      Be concise and actionable.
+    output_schema:
+      type: object
+      properties:
+        summary:
+          type: string
+          description: One-sentence summary of the alert
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        context:
+          type: string
+          description: Likely cause or context
+        recommendation:
+          type: string
+          description: Suggested action to take
+        requires_immediate_action:
+          type: boolean
+      required:
+        - summary
+        - severity
+        - recommendation
+        - requires_immediate_action

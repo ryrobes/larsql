@@ -1,0 +1,358 @@
+/* ========================================
+   WatchersView - SQL Watch Subscriptions
+   Studio-inspired flat design
+   ======================================== */
+
+.watchers-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0a0a0a;
+  color: #94a3b8;
+  overflow: hidden;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+
+.watchers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+}
+
+.watchers-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.watchers-header-left h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.watchers-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.watchers-header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Search Input */
+.watchers-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(100, 116, 139, 0.08);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: all 0.15s ease;
+}
+
+.watchers-search:focus-within {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.05);
+}
+
+.watchers-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 12px;
+  width: 220px;
+  font-family: inherit;
+}
+
+.watchers-search-input::placeholder {
+  color: #64748b;
+}
+
+.watchers-search-clear {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.watchers-search-clear:hover {
+  color: #f1f5f9;
+}
+
+/* Stats */
+.watchers-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.watchers-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ========================================
+   Status Tabs
+   ======================================== */
+
+.watchers-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px;
+  background-color: #050508;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.watchers-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.watchers-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.watchers-tabs::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 2px;
+}
+
+.watchers-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.watchers-tab:hover {
+  background: rgba(100, 116, 139, 0.1);
+  color: #94a3b8;
+}
+
+.watchers-tab.active {
+  background: rgba(0, 229, 255, 0.12);
+  color: #00e5ff;
+}
+
+.watchers-tab-count {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  min-width: 18px;
+  text-align: center;
+}
+
+.watchers-tab.active .watchers-tab-count {
+  background: rgba(0, 229, 255, 0.2);
+  color: #00e5ff;
+}
+
+/* Action type counts */
+.watchers-action-counts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  padding-left: 16px;
+  border-left: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+.watchers-action-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.watchers-action-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* ========================================
+   Content Area
+   ======================================== */
+
+.watchers-content {
+  flex: 1;
+  background-color: #0a0a0a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.watchers-grid-wrapper {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.watchers-grid-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* AG Grid fills the container */
+.watchers-grid-container .ag-root-wrapper {
+  flex: 1;
+}
+
+/* When detail panel is open */
+.watchers-view.with-detail .watchers-grid-container {
+  flex: 0 0 50%;
+  border-right: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+/* Selected row highlight */
+.watchers-row-selected {
+  background: rgba(0, 229, 255, 0.08) !important;
+}
+
+/* Empty State */
+.watchers-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 40px;
+  text-align: center;
+  height: 100%;
+}
+
+.watchers-empty-state p {
+  margin: 0;
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.watchers-empty-state span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Error State */
+.watchers-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  background: rgba(255, 0, 110, 0.05);
+  border-left: 2px solid #ff006e;
+  color: #f1f5f9;
+}
+
+.watchers-error strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.watchers-error p {
+  margin: 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* ========================================
+   Scrollbar
+   ======================================== */
+
+.watchers-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.watchers-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.watchers-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 3px;
+}
+
+.watchers-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
+}
+
+/* ========================================
+   Responsive
+   ======================================== */
+
+@media (max-width: 1024px) {
+  .watchers-view.with-detail .watchers-grid-container {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .watchers-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .watchers-header-right {
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .watchers-search {
+    width: 100%;
+  }
+
+  .watchers-search-input {
+    width: 100%;
+  }
+
+  .watchers-tabs {
+    flex-wrap: nowrap;
+  }
+
+  .watchers-action-counts {
+    display: none;
+  }
+}

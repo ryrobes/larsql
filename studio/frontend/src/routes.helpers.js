@@ -62,6 +62,9 @@ export const ROUTES = {
   // Catalog - System Components Browser
   CATALOG: '/catalog',
 
+  // Watchers - SQL Watch Subscriptions
+  WATCHERS: '/watchers',
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -112,6 +115,7 @@ export function getViewFromPath(pathname) {
     'warren': 'warren',
     'apps': 'apps',
     'catalog': 'catalog',
+    'watchers': 'watchers',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -150,6 +154,7 @@ export function getRouteForView(viewId) {
     'warren': ROUTES.WARREN,
     'apps': ROUTES.APPS,
     'catalog': ROUTES.CATALOG,
+    'watchers': ROUTES.WATCHERS,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,

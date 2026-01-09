@@ -287,6 +287,7 @@ class LazyAttachManager:
         self._failed_configs: Set[str] = set()
         self._duckdb_file_maps: Dict[str, Dict[str, Path]] = {}  # folder_path -> {db_name: file_path}
         self._csv_file_maps: Dict[str, Dict[str, Path]] = {}  # connection_name -> {table_name: file_path}
+        self._clickhouse_tables: Dict[str, Set[str]] = {}  # connection_name -> {table_names already materialized}
 
     def ensure_for_query(self, sql: str, *, aggressive: bool = False) -> None:
         """
@@ -306,6 +307,7 @@ class LazyAttachManager:
 
         needed_catalogs: Set[str] = set()
         needed_csv_tables: Dict[str, Set[str]] = {}
+        needed_clickhouse_tables: Dict[str, Set[str]] = {}
 
         # From relation-qualified names
         for parts in qualified:
@@ -316,6 +318,8 @@ class LazyAttachManager:
                 cfg = self._configs[prefix]
                 if cfg.type == "csv_folder" and len(parts) >= 2:
                     needed_csv_tables.setdefault(prefix, set()).add(parts[1])
+                elif cfg.type == "clickhouse" and len(parts) >= 2:
+                    needed_clickhouse_tables.setdefault(prefix, set()).add(parts[1])
                 else:
                     needed_catalogs.add(prefix)
             else:
@@ -329,6 +333,9 @@ class LazyAttachManager:
                 if cfg.type == "csv_folder":
                     # Not enough info to know which table; skip
                     continue
+                if cfg.type == "clickhouse":
+                    # Not enough info to know which table; skip
+                    continue
                 needed_catalogs.add(prefix)
             else:
                 needed_catalogs.add(prefix)
@@ -340,6 +347,10 @@ class LazyAttachManager:
         # Ensure CSV schema/tables (view/table) exist
         for schema_name, tables in needed_csv_tables.items():
             self._ensure_csv_tables(schema_name, tables)
+
+        # Ensure ClickHouse tables are materialized
+        for schema_name, tables in needed_clickhouse_tables.items():
+            self._ensure_clickhouse_tables(schema_name, tables)
 
     # ---------------------------------------------------------------------
     # Attachment helpers
@@ -546,6 +557,179 @@ class LazyAttachManager:
         for csv_file in folder.glob("*.csv"):
             mapping[sanitize_name(csv_file.name)] = csv_file
         return mapping
+
+    # ---------------------------------------------------------------------
+    # ClickHouse table materialization
+    # ---------------------------------------------------------------------
+
+    def _ensure_clickhouse_tables(self, connection_name: str, tables: Set[str]) -> None:
+        """
+        Materialize ClickHouse tables into DuckDB on demand.
+
+        Since DuckDB doesn't have native ClickHouse support, we fetch
+        the table data via the ClickHouse Python client and register
+        it as a DuckDB table.
+        """
+        cfg = self._configs.get(connection_name)
+        if not cfg or cfg.type != "clickhouse":
+            return
+
+        # Ensure schema exists
+        try:
+            self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(connection_name)};")
+        except Exception as e:
+            log.debug("[lazy_attach] Failed creating schema %s: %s", connection_name, e)
+            return
+
+        # Track which tables we've already materialized
+        if connection_name not in self._clickhouse_tables:
+            self._clickhouse_tables[connection_name] = set()
+
+        already_done = self._clickhouse_tables[connection_name]
+
+        for table_name in sorted(tables):
+            if table_name in already_done:
+                continue
+
+            try:
+                # Check if already exists in DuckDB
+                if self._csv_table_exists(connection_name, table_name):
+                    already_done.add(table_name)
+                    continue
+
+                # Fetch from ClickHouse and materialize
+                self._materialize_clickhouse_table(cfg, connection_name, table_name)
+                already_done.add(table_name)
+
+            except Exception as e:
+                log.warning(
+                    "[lazy_attach] Failed materializing ClickHouse table %s.%s: %s",
+                    connection_name, table_name, e
+                )
+
+    def _materialize_clickhouse_table(
+        self,
+        cfg: SqlConnectionConfig,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        """
+        Fetch a table from ClickHouse and create it in DuckDB.
+        """
+        try:
+            from rvbbit.db_adapter import get_db
+        except ImportError:
+            log.warning("[lazy_attach] ClickHouse db_adapter not available")
+            return
+
+        db = get_db()
+        if not db:
+            log.warning("[lazy_attach] No ClickHouse connection available")
+            return
+
+        # Determine the ClickHouse table name
+        # If cfg.database is set, use it; otherwise use connection_name
+        ch_database = cfg.database or schema_name
+        ch_table = f"{ch_database}.{table_name}"
+
+        log.debug("[lazy_attach] Materializing ClickHouse table %s -> %s.%s", ch_table, schema_name, table_name)
+
+        try:
+            # Fetch data from ClickHouse
+            rows = db.query(f"SELECT * FROM {ch_table}")
+
+            if not rows:
+                # Create empty table - get schema from ClickHouse
+                schema_rows = db.query(f"DESCRIBE TABLE {ch_table}")
+                if schema_rows:
+                    # Create empty table with correct schema
+                    columns = []
+                    for row in schema_rows:
+                        col_name = row.get('name', row.get('column_name', ''))
+                        col_type = row.get('type', 'VARCHAR')
+                        # Map ClickHouse types to DuckDB types
+                        duckdb_type = _clickhouse_type_to_duckdb(col_type)
+                        if col_name:
+                            columns.append(f"{_quote_ident(col_name)} {duckdb_type}")
+
+                    if columns:
+                        full_name = f"{_quote_ident(schema_name)}.{_quote_ident(table_name)}"
+                        create_sql = f"CREATE TABLE {full_name} ({', '.join(columns)})"
+                        self._conn.execute(create_sql)
+                        log.debug("[lazy_attach] Created empty table %s", full_name)
+                return
+
+            # Convert to DataFrame and register
+            import pandas as pd
+            df = pd.DataFrame(rows)
+
+            full_name = f"{_quote_ident(schema_name)}.{_quote_ident(table_name)}"
+
+            # Register DataFrame as a DuckDB table
+            self._conn.register('_ch_temp_df', df)
+            self._conn.execute(f"CREATE TABLE {full_name} AS SELECT * FROM _ch_temp_df")
+            self._conn.unregister('_ch_temp_df')
+
+            log.debug("[lazy_attach] Materialized ClickHouse table %s (%d rows)", full_name, len(df))
+
+        except Exception as e:
+            log.error("[lazy_attach] Error fetching from ClickHouse %s: %s", ch_table, e)
+            raise
+
+
+def _clickhouse_type_to_duckdb(ch_type: str) -> str:
+    """Map ClickHouse types to DuckDB types."""
+    ch_type_upper = ch_type.upper()
+
+    # Handle Nullable wrapper
+    if ch_type_upper.startswith('NULLABLE('):
+        inner = ch_type[9:-1]  # Strip Nullable(...)
+        return _clickhouse_type_to_duckdb(inner)
+
+    # Basic type mappings
+    type_map = {
+        'STRING': 'VARCHAR',
+        'FIXEDSTRING': 'VARCHAR',
+        'UUID': 'VARCHAR',
+        'INT8': 'TINYINT',
+        'INT16': 'SMALLINT',
+        'INT32': 'INTEGER',
+        'INT64': 'BIGINT',
+        'UINT8': 'UTINYINT',
+        'UINT16': 'USMALLINT',
+        'UINT32': 'UINTEGER',
+        'UINT64': 'UBIGINT',
+        'FLOAT32': 'FLOAT',
+        'FLOAT64': 'DOUBLE',
+        'BOOL': 'BOOLEAN',
+        'BOOLEAN': 'BOOLEAN',
+        'DATE': 'DATE',
+        'DATE32': 'DATE',
+        'DATETIME': 'TIMESTAMP',
+        'DATETIME64': 'TIMESTAMP',
+    }
+
+    # Check exact matches
+    for ch, duck in type_map.items():
+        if ch_type_upper == ch or ch_type_upper.startswith(ch + '('):
+            return duck
+
+    # Handle Decimal
+    if ch_type_upper.startswith('DECIMAL'):
+        return ch_type  # DuckDB supports DECIMAL(p,s) syntax
+
+    # Handle Array types
+    if ch_type_upper.startswith('ARRAY('):
+        inner = ch_type[6:-1]
+        inner_duck = _clickhouse_type_to_duckdb(inner)
+        return f"{inner_duck}[]"
+
+    # Handle Enum
+    if ch_type_upper.startswith('ENUM'):
+        return 'VARCHAR'
+
+    # Default fallback
+    return 'VARCHAR'
 
 
 def _lazy_attach_enabled() -> bool:

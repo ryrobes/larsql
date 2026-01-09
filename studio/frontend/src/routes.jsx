@@ -33,6 +33,7 @@ const CalliopeView = lazy(() => import('./views/calliope/CalliopeView'));
 const WarrenView = lazy(() => import('./views/warren/WarrenView'));
 const AppsView = lazy(() => import('./views/apps/AppsView'));
 const CatalogView = lazy(() => import('./views/catalog/CatalogView'));
+const WatchersView = lazy(() => import('./views/watchers/WatchersView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -166,6 +167,12 @@ export const router = createBrowserRouter([
       {
         path: 'catalog',
         element: withSuspense(CatalogView),
+      },
+
+      // Watchers - SQL Watch Subscriptions
+      {
+        path: 'watchers',
+        element: withSuspense(WatchersView),
       },
 
       // Catch-all - redirect to home

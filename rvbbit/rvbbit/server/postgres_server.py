@@ -5915,7 +5915,7 @@ class ClientConnection:
         send_query_results(self.sock, job_df, self.transaction_status)
         print(f"[{self.session_id}] 🔬 Analysis job {job_id} submitted: {prompt[:50]}...")
 
-    def _handle_watch_command(self, query: str):
+    def _handle_watch_command(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
         Handle WATCH SQL commands for reactive subscriptions.
 
@@ -5930,6 +5930,11 @@ class ClientConnection:
 
         Watches are polling-based subscriptions that trigger cascades when query
         results change. The daemon (`rvbbit serve watcher`) evaluates watches.
+
+        Args:
+            query: The WATCH SQL command
+            extended_query_mode: If True, use Extended Query Protocol response format
+            send_row_description: If True (and extended_query_mode), send RowDescription
         """
         import pandas as pd
         from datetime import datetime
@@ -5944,22 +5949,22 @@ class ClientConnection:
 
         try:
             if directive.command == 'CREATE':
-                self._create_watch(directive)
+                self._create_watch(directive, extended_query_mode, send_row_description)
 
             elif directive.command == 'DROP':
-                self._drop_watch(directive.name)
+                self._drop_watch(directive.name, extended_query_mode, send_row_description)
 
             elif directive.command == 'SHOW':
-                self._show_watches()
+                self._show_watches(extended_query_mode, send_row_description)
 
             elif directive.command == 'DESCRIBE':
-                self._describe_watch(directive.name)
+                self._describe_watch(directive.name, extended_query_mode, send_row_description)
 
             elif directive.command == 'TRIGGER':
-                self._trigger_watch(directive.name)
+                self._trigger_watch(directive.name, extended_query_mode, send_row_description)
 
             elif directive.command == 'ALTER':
-                self._alter_watch(directive)
+                self._alter_watch(directive, extended_query_mode, send_row_description)
 
             else:
                 send_error(self.sock, f"Unknown WATCH command: {directive.command}")
@@ -5969,7 +5974,7 @@ class ClientConnection:
             traceback.print_exc()
             send_error(self.sock, f"WATCH command failed: {e}")
 
-    def _create_watch(self, directive):
+    def _create_watch(self, directive, extended_query_mode: bool = False, send_row_description: bool = True):
         """Create a new watch subscription."""
         import pandas as pd
         from ..watcher import create_watch
@@ -5994,13 +5999,16 @@ class ClientConnection:
                 'message': f"Watch '{watch.name}' created. Run `rvbbit serve watcher` to start the daemon.",
             }])
 
-            send_query_results(self.sock, result_df, self.transaction_status)
+            if extended_query_mode:
+                send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+            else:
+                send_query_results(self.sock, result_df, self.transaction_status)
             print(f"[{self.session_id}] ✅ Created watch '{watch.name}'")
 
         except Exception as e:
             raise RuntimeError(f"Failed to create watch '{directive.name}': {e}")
 
-    def _drop_watch(self, name: str):
+    def _drop_watch(self, name: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """Drop a watch subscription."""
         import pandas as pd
         from ..watcher import drop_watch, get_watch
@@ -6016,22 +6024,28 @@ class ClientConnection:
                 'watch_name': name,
                 'message': f"Watch '{name}' deleted successfully.",
             }])
-            send_query_results(self.sock, result_df, self.transaction_status)
+            if extended_query_mode:
+                send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+            else:
+                send_query_results(self.sock, result_df, self.transaction_status)
             print(f"[{self.session_id}] ✅ Dropped watch '{name}'")
         else:
             send_error(self.sock, f"Failed to drop watch '{name}'")
 
-    def _show_watches(self):
+    def _show_watches(self, extended_query_mode: bool = False, send_row_description: bool = True):
         """List all watches."""
         import pandas as pd
         from ..watcher import list_watches
 
         watches = list_watches(enabled_only=False)
 
+        # Define column structure - must match Describe Portal RowDescription
+        columns = ['name', 'enabled', 'poll_interval', 'action_type', 'action_spec',
+                   'trigger_count', 'last_triggered', 'last_checked', 'errors']
+
         if not watches:
-            result_df = pd.DataFrame([{
-                'message': 'No watches defined. Use CREATE WATCH to create one.',
-            }])
+            # Return empty DataFrame with correct column structure
+            result_df = pd.DataFrame(columns=columns)
         else:
             rows = []
             for w in watches:
@@ -6050,12 +6064,15 @@ class ClientConnection:
                     'last_checked': w.last_checked_at.isoformat() if w.last_checked_at else None,
                     'errors': w.consecutive_errors,
                 })
-            result_df = pd.DataFrame(rows)
+            result_df = pd.DataFrame(rows, columns=columns)
 
-        send_query_results(self.sock, result_df, self.transaction_status)
+        if extended_query_mode:
+            send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+        else:
+            send_query_results(self.sock, result_df, self.transaction_status)
         print(f"[{self.session_id}] 📋 Listed {len(watches)} watches")
 
-    def _describe_watch(self, name: str):
+    def _describe_watch(self, name: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """Show detailed info about a watch."""
         import pandas as pd
         from ..watcher import get_watch
@@ -6087,10 +6104,13 @@ class ClientConnection:
             'description': watch.description,
         }])
 
-        send_query_results(self.sock, result_df, self.transaction_status)
+        if extended_query_mode:
+            send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+        else:
+            send_query_results(self.sock, result_df, self.transaction_status)
         print(f"[{self.session_id}] 📄 Described watch '{name}'")
 
-    def _trigger_watch(self, name: str):
+    def _trigger_watch(self, name: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """Force immediate evaluation of a watch."""
         import pandas as pd
         from ..watcher import trigger_watch, get_watch
@@ -6105,6 +6125,10 @@ class ClientConnection:
         # Run the evaluation synchronously
         from ..watcher import WatchDaemon
         daemon = WatchDaemon()
+
+        # Define column structure - must match Describe Portal RowDescription
+        columns = ['status', 'watch_name', 'execution_id', 'execution_status',
+                   'row_count', 'cascade_session_id', 'triggered_at']
 
         try:
             daemon._evaluate_watch(watch)
@@ -6133,20 +6157,28 @@ class ClientConnection:
                     })
 
             if not rows:
+                # Use consistent columns with None/null for missing values
                 rows.append({
                     'status': 'evaluated',
                     'watch_name': name,
-                    'message': 'Watch evaluated. No trigger condition met or results unchanged.',
+                    'execution_id': None,
+                    'execution_status': 'no_change',
+                    'row_count': None,
+                    'cascade_session_id': None,
+                    'triggered_at': None,
                 })
 
-            result_df = pd.DataFrame(rows)
-            send_query_results(self.sock, result_df, self.transaction_status)
+            result_df = pd.DataFrame(rows, columns=columns)
+            if extended_query_mode:
+                send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+            else:
+                send_query_results(self.sock, result_df, self.transaction_status)
             print(f"[{self.session_id}] ✅ Triggered watch '{name}'")
 
         except Exception as e:
             send_error(self.sock, f"Failed to trigger watch '{name}': {e}")
 
-    def _alter_watch(self, directive):
+    def _alter_watch(self, directive, extended_query_mode: bool = False, send_row_description: bool = True):
         """Modify watch settings."""
         import pandas as pd
         from ..watcher import get_watch, save_watch, set_watch_enabled, _parse_duration
@@ -6167,7 +6199,10 @@ class ClientConnection:
                     'value': enabled,
                     'message': f"Watch '{directive.name}' {status}.",
                 }])
-                send_query_results(self.sock, result_df, self.transaction_status)
+                if extended_query_mode:
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+                else:
+                    send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}] ✅ Watch '{directive.name}' {status}")
             else:
                 send_error(self.sock, f"Failed to alter watch '{directive.name}'")
@@ -6182,7 +6217,10 @@ class ClientConnection:
                     'value': directive.set_value,
                     'message': f"Watch '{directive.name}' poll interval set to {directive.set_value}.",
                 }])
-                send_query_results(self.sock, result_df, self.transaction_status)
+                if extended_query_mode:
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+                else:
+                    send_query_results(self.sock, result_df, self.transaction_status)
                 print(f"[{self.session_id}] ✅ Watch '{directive.name}' poll interval set to {directive.set_value}")
             else:
                 send_error(self.sock, f"Failed to alter watch '{directive.name}'")
@@ -6399,6 +6437,88 @@ class ClientConnection:
                     self.sock.sendall(NoData.encode())
                     portal['row_description_sent'] = False
                     print(f"[{self.session_id}]      ✓ Portal described (NoData - non-SELECT command)")
+                    return
+
+                # WATCH commands - Handle reactive SQL subscriptions
+                # Send appropriate RowDescription based on command type
+                from ..sql_tools.sql_directives import is_watch_command, parse_watch_command
+                if is_watch_command(query):
+                    # Determine column structure based on WATCH command type
+                    watch_directive = parse_watch_command(query)
+                    if watch_directive:
+                        if watch_directive.command == 'SHOW':
+                            columns = [
+                                ('name', 'VARCHAR'),
+                                ('enabled', 'BOOLEAN'),
+                                ('poll_interval', 'VARCHAR'),
+                                ('action_type', 'VARCHAR'),
+                                ('action_spec', 'VARCHAR'),
+                                ('trigger_count', 'INTEGER'),
+                                ('last_triggered', 'VARCHAR'),
+                                ('last_checked', 'VARCHAR'),
+                                ('errors', 'INTEGER'),
+                            ]
+                        elif watch_directive.command == 'DESCRIBE':
+                            columns = [
+                                ('watch_id', 'VARCHAR'),
+                                ('name', 'VARCHAR'),
+                                ('enabled', 'BOOLEAN'),
+                                ('poll_interval', 'VARCHAR'),
+                                ('action_type', 'VARCHAR'),
+                                ('action_spec', 'VARCHAR'),
+                                ('query', 'VARCHAR'),
+                                ('trigger_count', 'INTEGER'),
+                                ('consecutive_errors', 'INTEGER'),
+                                ('last_error', 'VARCHAR'),
+                                ('last_triggered', 'VARCHAR'),
+                                ('last_checked', 'VARCHAR'),
+                                ('last_result_hash', 'VARCHAR'),
+                                ('created_at', 'VARCHAR'),
+                                ('description', 'VARCHAR'),
+                            ]
+                        elif watch_directive.command == 'TRIGGER':
+                            columns = [
+                                ('status', 'VARCHAR'),
+                                ('watch_name', 'VARCHAR'),
+                                ('execution_id', 'VARCHAR'),
+                                ('execution_status', 'VARCHAR'),
+                                ('row_count', 'INTEGER'),
+                                ('cascade_session_id', 'VARCHAR'),
+                                ('triggered_at', 'VARCHAR'),
+                            ]
+                        elif watch_directive.command == 'CREATE':
+                            columns = [
+                                ('status', 'VARCHAR'),
+                                ('watch_name', 'VARCHAR'),
+                                ('watch_id', 'VARCHAR'),
+                                ('poll_interval', 'VARCHAR'),
+                                ('action_type', 'VARCHAR'),
+                                ('action_spec', 'VARCHAR'),
+                                ('message', 'VARCHAR'),
+                            ]
+                        elif watch_directive.command in ('DROP', 'ALTER'):
+                            columns = [
+                                ('status', 'VARCHAR'),
+                                ('watch_name', 'VARCHAR'),
+                                ('message', 'VARCHAR'),
+                            ]
+                            if watch_directive.command == 'ALTER':
+                                columns.insert(2, ('field', 'VARCHAR'))
+                                columns.insert(3, ('value', 'VARCHAR'))
+                        else:
+                            columns = [('result', 'VARCHAR')]
+
+                        self.sock.sendall(RowDescription.encode(columns))
+                        portal['row_description_sent'] = True
+                        portal['described_columns'] = len(columns)
+                        print(f"[{self.session_id}]      ✓ Portal described (WATCH {watch_directive.command} - {len(columns)} columns)")
+                    else:
+                        # Couldn't parse - send NoData
+                        self.sock.sendall(NoData.encode())
+                        portal['row_description_sent'] = False
+                        print(f"[{self.session_id}]      ✓ Portal described (WATCH command - NoData)")
+                    return
+
                 elif query_upper.startswith('SHOW '):
                     # SHOW commands return a single column - provide the correct RowDescription
                     # This prevents the wrapping logic from failing
@@ -6844,6 +6964,13 @@ class ClientConnection:
                 print(f"[{self.session_id}]      Detected SHOW command via Extended Query")
                 # Handle SHOW and send results - skip RowDescription if Describe already sent it
                 self._execute_show_and_send_extended(query, send_row_description=send_row_desc)
+                return
+
+            # WATCH commands - Handle reactive SQL subscriptions via Extended Query
+            from ..sql_tools.sql_directives import is_watch_command
+            if is_watch_command(query):
+                print(f"[{self.session_id}]      Detected WATCH command via Extended Query")
+                self._handle_watch_command(query, extended_query_mode=True, send_row_description=send_row_desc)
                 return
 
             # pg_get_keywords() - Return empty result
