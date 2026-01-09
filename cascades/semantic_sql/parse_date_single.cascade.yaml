@@ -38,7 +38,7 @@ sql_function:
     description: Date parsed from text
 cells:
 - name: parse
-  model: google/gemini-2.5-flash-lite
+  #model: google/gemini-2.5-flash-lite
   instructions: |
     Generate a DuckDB SQL expression that parses this date format into a JSON object.
 

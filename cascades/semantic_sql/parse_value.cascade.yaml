@@ -52,7 +52,7 @@ sql_function:
     description: Value parsed from text
 cells:
 - name: generate_parser
-  model: google/gemini-2.5-flash-lite
+  #model: google/gemini-2.5-flash-lite
   rules:
     max_turns: 1
   instructions: 'Generate a DuckDB SQL expression to parse, extract, or transform

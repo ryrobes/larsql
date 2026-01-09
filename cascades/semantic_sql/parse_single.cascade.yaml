@@ -50,7 +50,7 @@ sql_function:
 
 cells:
   - name: extract
-    model: google/gemini-2.5-flash-lite
+    #model: google/gemini-2.5-flash-lite
 
     instructions: |
       Extract {{ input.extract_type }} information from this text and return as JSON.
