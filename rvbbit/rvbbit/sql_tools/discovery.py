@@ -33,7 +33,7 @@ except ImportError:
 console = Console()
 
 
-def discover_all_schemas(session_id: str = None):
+def discover_all_schemas(session_id: str | None = None):
     """
     Chart all SQL schemas:
     1. Connect to each database

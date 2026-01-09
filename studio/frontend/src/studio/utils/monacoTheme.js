@@ -82,9 +82,6 @@ export const studioThemeDefinition = {
   },
 };
 
-// Store monaco reference for remeasureFonts
-let monacoInstance = null;
-
 /**
  * Configure Monaco with Studio theme
  * Use this as the `beforeMount` prop on Monaco Editor components
@@ -93,7 +90,6 @@ let monacoInstance = null;
  * <Editor beforeMount={configureMonacoTheme} theme="studio-dark" ... />
  */
 export function configureMonacoTheme(monaco) {
-  monacoInstance = monaco;
   monaco.editor.defineTheme(STUDIO_THEME_NAME, studioThemeDefinition);
 
   // Set up font loading handler (only once)

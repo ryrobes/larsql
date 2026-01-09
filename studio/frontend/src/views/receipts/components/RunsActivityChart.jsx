@@ -1,6 +1,5 @@
 import React, { useMemo, memo } from 'react';
 import {
-  AreaChart,
   Area,
   XAxis,
   YAxis,

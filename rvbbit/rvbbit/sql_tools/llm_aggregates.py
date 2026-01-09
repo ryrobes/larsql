@@ -83,7 +83,7 @@ def _execute_cascade(
 
 def _call_llm(
     prompt: str,
-    model: str = None,
+    model: str | None = None,
     max_tokens: int = 500
 ) -> str:
     """
@@ -272,7 +272,7 @@ def llm_summarize_impl(
             "semantic_summarize",
             {"texts": values_json, "prompt": prompt},
             fallback=lambda **kw: _llm_summarize_fallback(
-                kw.get("texts"), kw.get("prompt"), max_items, strategy, separator, use_cache
+                kw.get("texts", ""), kw.get("prompt", ""), max_items, strategy, separator, use_cache
             )
         )
         return result if result else "No data to summarize."
@@ -368,7 +368,7 @@ def llm_classify_impl(
             "semantic_classify_collection",
             {"texts": values_json, "categories": categories, "prompt": prompt},
             fallback=lambda **kw: _llm_classify_fallback(
-                kw.get("texts"), kw.get("categories"), kw.get("prompt"), use_cache
+                kw.get("texts", ""), kw.get("categories", ""), kw.get("prompt", ""), use_cache
             )
         )
         return result if result else "unknown"
@@ -549,7 +549,7 @@ def llm_sentiment_impl(
         result = _execute_cascade(
             "semantic_sentiment",
             {"texts": values_json},
-            fallback=lambda **kw: _llm_sentiment_fallback(kw.get("texts"), use_cache)
+            fallback=lambda **kw: _llm_sentiment_fallback(kw.get("texts", ""), use_cache)
         )
         try:
             return float(result) if result else 0.0
@@ -649,7 +649,7 @@ def llm_themes_impl(
             "semantic_themes",
             {"texts": values_json, "num_topics": max_themes, "prompt": prompt},
             fallback=lambda **kw: _llm_themes_fallback(
-                kw.get("texts"), kw.get("num_topics", 5), kw.get("prompt"), use_cache
+                kw.get("texts", ""), kw.get("num_topics", 5), kw.get("prompt", ""), use_cache
             )
         )
         return result if result else "[]"
@@ -803,7 +803,7 @@ Data ({len(values)} items):
 def llm_matches_impl(
     text: str,
     criteria: str,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """
@@ -848,7 +848,7 @@ def llm_matches_impl(
             "semantic_matches",
             {"text": text, "criterion": criteria},
             fallback=lambda **kw: _llm_matches_fallback(
-                kw.get("text"), kw.get("criterion"), model, use_cache
+                kw.get("text", ""), kw.get("criterion", ""), model, use_cache
             )
         )
 
@@ -876,7 +876,7 @@ def llm_matches_impl(
 def _llm_matches_fallback(
     text: str,
     criteria: str,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """Fallback implementation when cascade not available."""
@@ -896,7 +896,7 @@ Answer with ONLY "yes" or "no", nothing else."""
 def llm_score_impl(
     text: str,
     criteria: str,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> float:
     """
@@ -946,7 +946,7 @@ def llm_score_impl(
             "semantic_score",
             {"text": text, "criterion": criteria},
             fallback=lambda **kw: _llm_score_fallback(
-                kw.get("text"), kw.get("criterion"), model, use_cache
+                kw.get("text", ""), kw.get("criterion", ""), model, use_cache
             )
         )
 
@@ -974,7 +974,7 @@ def llm_score_impl(
 def _llm_score_fallback(
     text: str,
     criteria: str,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> float:
     """Fallback implementation when cascade not available."""
@@ -1000,7 +1000,7 @@ def llm_match_pair_impl(
     left: str,
     right: str,
     relationship: str = "same entity",
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """
@@ -1083,8 +1083,8 @@ Answer with ONLY "yes" or "no", nothing else."""
 def llm_implies_impl(
     premise: str,
     conclusion: str,
-    context: str = None,
-    model: str = None,
+    context: str | None = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """
@@ -1134,7 +1134,7 @@ def llm_implies_impl(
             "semantic_implies",
             {"premise": premise, "conclusion": conclusion},
             fallback=lambda **kw: _llm_implies_fallback(
-                kw.get("premise"), kw.get("conclusion"), context, model, use_cache
+                kw.get("premise", ""), kw.get("conclusion", ""), context, model, use_cache
             )
         )
 
@@ -1161,8 +1161,8 @@ def llm_implies_impl(
 def _llm_implies_fallback(
     premise: str,
     conclusion: str,
-    context: str = None,
-    model: str = None,
+    context: str | None = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """Fallback implementation when cascade not available."""
@@ -1185,8 +1185,8 @@ Answer with ONLY "yes" or "no", nothing else."""
 def llm_contradicts_impl(
     statement1: str,
     statement2: str,
-    context: str = None,
-    model: str = None,
+    context: str | None = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """
@@ -1237,7 +1237,7 @@ def llm_contradicts_impl(
             "semantic_contradicts",
             {"text_a": statement1, "text_b": statement2},
             fallback=lambda **kw: _llm_contradicts_fallback(
-                kw.get("text_a"), kw.get("text_b"), context, model, use_cache
+                kw.get("text_a", ""), kw.get("text_b", ""), context, model, use_cache
             )
         )
 
@@ -1264,8 +1264,8 @@ def llm_contradicts_impl(
 def _llm_contradicts_fallback(
     statement1: str,
     statement2: str,
-    context: str = None,
-    model: str = None,
+    context: str | None = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """Fallback implementation when cascade not available."""
@@ -1289,7 +1289,7 @@ Answer with ONLY "yes" or "no", nothing else."""
 def llm_match_template_impl(
     template: str,
     *args,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> bool:
     """
@@ -1372,7 +1372,7 @@ Answer with ONLY "yes" or "no", nothing else."""
 def llm_semantic_case_impl(
     text: str,
     *args,
-    model: str = None,
+    model: str | None = None,
     use_cache: bool = True
 ) -> str:
     """
@@ -1506,7 +1506,7 @@ def llm_dedupe_impl(
         result = _execute_cascade(
             "semantic_dedupe",
             {"texts": values_json, "criteria": criteria or "same entity"},
-            fallback=lambda **kw: _llm_dedupe_fallback(kw.get("texts"), kw.get("criteria"), use_cache)
+            fallback=lambda **kw: _llm_dedupe_fallback(kw.get("texts", ""), kw.get("criteria", ""), use_cache)
         )
         return result if result else "[]"
     except Exception as e:
@@ -1621,7 +1621,7 @@ def llm_cluster_impl(
             "semantic_cluster",
             {"values": values_json, "num_clusters": num_clusters, "criterion": criteria},
             fallback=lambda **kw: _llm_cluster_fallback(
-                kw.get("values"), kw.get("num_clusters"), kw.get("criterion"), use_cache
+                kw.get("values", ""), kw.get("num_clusters"), kw.get("criterion", ""), use_cache
             )
         )
         if result is None:
@@ -1781,7 +1781,7 @@ def llm_consensus_impl(
         result = _execute_cascade(
             "semantic_consensus",
             {"texts": values_json, "prompt": prompt},
-            fallback=lambda **kw: _llm_consensus_fallback(kw.get("texts"), kw.get("prompt"), use_cache)
+            fallback=lambda **kw: _llm_consensus_fallback(kw.get("texts", ""), kw.get("prompt", ""), use_cache)
         )
         return result if result else "No clear consensus found"
     except Exception as e:
@@ -1899,7 +1899,7 @@ def llm_outliers_impl(
             "semantic_outliers",
             {"texts": values_json, "num_outliers": num_outliers or 5, "criteria": criteria},
             fallback=lambda **kw: _llm_outliers_fallback(
-                kw.get("texts"), kw.get("num_outliers"), kw.get("criteria"), use_cache
+                kw.get("texts", ""), kw.get("num_outliers"), kw.get("criteria", ""), use_cache
             )
         )
         return result if result else "[]"
@@ -2064,7 +2064,7 @@ Synthesize these into a single coherent summary:"""
 # UDF Registration
 # ============================================================================
 
-def register_llm_aggregates(connection, config: Dict[str, Any] = None):
+def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
     """
     Register LLM aggregate helper functions as DuckDB UDFs.
 

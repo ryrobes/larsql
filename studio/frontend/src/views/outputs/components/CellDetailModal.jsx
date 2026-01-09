@@ -491,7 +491,6 @@ const CellDetailModal = ({
   const navigate = useNavigate();
   const [tagModalOpen, setTagModalOpen] = useState(false);
   const [outputTags, setOutputTags] = useState([]);
-  const [tagsLoading, setTagsLoading] = useState(false);
 
   // Fetch tags for current output
   const fetchOutputTags = useCallback(async () => {
@@ -500,7 +499,6 @@ const CellDetailModal = ({
       return;
     }
 
-    setTagsLoading(true);
     try {
       const response = await fetch(`http://localhost:5050/api/outputs/tags/for/${cellDetail.message_id}`);
       const data = await response.json();
@@ -509,8 +507,6 @@ const CellDetailModal = ({
       }
     } catch (err) {
       console.error('[CellDetailModal] Error fetching tags:', err);
-    } finally {
-      setTagsLoading(false);
     }
   }, [cellDetail?.message_id]);
 

@@ -17,7 +17,7 @@ from .cascade import load_cascade_config
 from .utils import get_tool_schema
 from .config import get_config
 
-_traits_manifest_cache: Dict[str, Any] = None
+_traits_manifest_cache: Dict[str, Any] | None = None
 _declarative_tools_registered: bool = False
 _mcp_tools_registered: bool = False
 

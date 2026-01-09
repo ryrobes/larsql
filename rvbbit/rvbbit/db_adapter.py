@@ -89,8 +89,8 @@ class QueryLogger:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, host: str = None, port: int = None, database: str = None,
-                 user: str = None, password: str = None):
+    def __init__(self, host: str | None = None, port: int | None = None, database: str | None = None,
+                 user: str | None = None, password: str | None = None):
         """Initialize the query logger (singleton - only runs once)."""
         if self._initialized:
             return
@@ -170,10 +170,10 @@ class QueryLogger:
         query_type: str,
         sql_preview: str,
         duration_ms: float,
-        rows_returned: int = None,
-        rows_affected: int = None,
+        rows_returned: int | None = None,
+        rows_affected: int | None = None,
         success: bool = True,
-        error_message: str = None
+        error_message: str | None = None
     ):
         """
         Log a query asynchronously (fire-and-forget).
@@ -529,7 +529,7 @@ class ClickHouseAdapter:
     # Query Operations
     # =========================================================================
 
-    def query(self, sql: str, params: Dict = None, output_format: str = "dict") -> Any:
+    def query(self, sql: str, params: Dict | None = None, output_format: str = "dict") -> Any:
         """
         Execute a SELECT query and return results.
 
@@ -583,7 +583,7 @@ class ClickHouseAdapter:
                         error_message=error_msg
                     )
 
-    def query_df(self, sql: str, params: Dict = None) -> pd.DataFrame:
+    def query_df(self, sql: str, params: Dict | None = None) -> pd.DataFrame:
         """
         Execute query and return pandas DataFrame.
 
@@ -591,7 +591,7 @@ class ClickHouseAdapter:
         """
         return self.query(sql, params, output_format="dataframe")
 
-    def execute(self, sql: str, params: Dict = None):
+    def execute(self, sql: str, params: Dict | None = None):
         """
         Execute a non-SELECT statement (CREATE, INSERT, ALTER, etc.).
 
@@ -628,7 +628,7 @@ class ClickHouseAdapter:
     # Insert Operations
     # =========================================================================
 
-    def insert_rows(self, table: str, rows: List[Dict], columns: List[str] = None):
+    def insert_rows(self, table: str, rows: List[Dict], columns: List[str] | None = None):
         """
         Batch INSERT rows into a table.
 
@@ -733,7 +733,7 @@ class ClickHouseAdapter:
                             error_message=error_msg
                         )
 
-    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] = None):
+    def insert_dataframe(self, table: str, df: pd.DataFrame, columns: List[str] | None = None):
         """
         Insert a pandas DataFrame into a table.
 
@@ -1000,7 +1000,7 @@ class ClickHouseAdapter:
         embedding_col: str,
         query_vector: List[float],
         limit: int = 10,
-        where: str = None,
+        where: str | None = None,
         select_cols: str = "*"
     ) -> List[Dict]:
         """

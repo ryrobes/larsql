@@ -60,7 +60,7 @@ class Agent:
     This mimics the interface of 'openai-agents-python' or similar libraries,
     allowing us to swap the backend easily.
     """
-    def __init__(self, model: str, system_prompt: str, tools: List[Dict] = None, base_url: str = None, api_key: str = None, use_native_tools: bool = False, modalities: List[str] = None):
+    def __init__(self, model: str, system_prompt: str, tools: List[Dict] | None = None, base_url: str | None = None, api_key: str | None = None, use_native_tools: bool = False, modalities: List[str] | None = None):
         # Parse model string for reasoning config (e.g., "xai/grok-4::high(8000)")
         # This separates the clean model name from reasoning configuration
         clean_model, reasoning_config = parse_model_with_reasoning(model)
@@ -77,7 +77,7 @@ class Agent:
         self.modalities = modalities  # For image generation: ["text", "image"]
         self.history = []
 
-    def run(self, input_message: str = None, context_messages: List[Dict] = None) -> Dict[str, Any]:
+    def run(self, input_message: str | None = None, context_messages: List[Dict] | None = None) -> Dict[str, Any]:
         """
         Executes a turn. Returns the response message dict with full context.
 
@@ -636,13 +636,13 @@ class Agent:
     def embed(
         cls,
         texts: List[str],
-        model: str = None,
-        session_id: str = None,
-        trace_id: str = None,
-        parent_id: str = None,
-        cell_name: str = None,
-        cascade_id: str = None,
-        caller_id: str = None,
+        model: str | None = None,
+        session_id: str | None = None,
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
+        caller_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Generate embeddings using the standard provider config.
@@ -889,14 +889,14 @@ class Agent:
         cls,
         audio_base64: str,
         audio_format: str = "webm",
-        language: str = None,
-        prompt: str = None,
-        model: str = None,
-        session_id: str = None,
-        trace_id: str = None,
-        parent_id: str = None,
-        cell_name: str = None,
-        cascade_id: str = None,
+        language: str | None = None,
+        prompt: str | None = None,
+        model: str | None = None,
+        session_id: str | None = None,
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Transcribe audio using the standard provider config (OpenRouter).
@@ -1149,11 +1149,11 @@ class Agent:
         width: int = 1024,
         height: int = 1024,
         n: int = 1,
-        session_id: str = None,
-        trace_id: str = None,
-        parent_id: str = None,
-        cell_name: str = None,
-        cascade_id: str = None,
+        session_id: str | None = None,
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Generate images using OpenRouter image models (FLUX, SDXL, etc.).

@@ -101,7 +101,7 @@ def get_trigger(cascade: Union[str, CascadeConfig], trigger_name: str) -> Option
 # Export Formatters
 # ============================================================================
 
-def _get_rvbbit_command(cascade_path: str, inputs: Optional[Dict] = None, trigger_name: str = None) -> str:
+def _get_rvbbit_command(cascade_path: str, inputs: Optional[Dict] = None, trigger_name: str | None = None) -> str:
     """Generate the rvbbit CLI command for a trigger."""
     cmd = f"rvbbit run {cascade_path}"
     if inputs:
@@ -111,7 +111,7 @@ def _get_rvbbit_command(cascade_path: str, inputs: Optional[Dict] = None, trigge
     return cmd
 
 
-def export_cron(cascade: Union[str, CascadeConfig], cascade_path: str = None) -> str:
+def export_cron(cascade: Union[str, CascadeConfig], cascade_path: str | None = None) -> str:
     """
     Export triggers to crontab format.
 
@@ -162,10 +162,10 @@ def export_cron(cascade: Union[str, CascadeConfig], cascade_path: str = None) ->
 
 def export_systemd(
     cascade: Union[str, CascadeConfig],
-    cascade_path: str = None,
-    service_name: str = None,
-    user: str = None,
-    working_dir: str = None
+    cascade_path: str | None = None,
+    service_name: str | None = None,
+    user: str | None = None,
+    working_dir: str | None = None
 ) -> Tuple[str, str]:
     """
     Export triggers to systemd timer/service format.
@@ -278,12 +278,12 @@ def _cron_to_systemd_calendar(cron_expr: str) -> str:
 
 def export_kubernetes(
     cascade: Union[str, CascadeConfig],
-    cascade_path: str = None,
+    cascade_path: str | None = None,
     namespace: str = "default",
     image: str = "rvbbit:latest",
     image_pull_policy: str = "IfNotPresent",
-    service_account: str = None,
-    env_from_secret: str = None,
+    service_account: str | None = None,
+    env_from_secret: str | None = None,
 ) -> str:
     """
     Export triggers to Kubernetes CronJob format.
@@ -378,9 +378,9 @@ spec:
 
 def export_airflow(
     cascade: Union[str, CascadeConfig],
-    cascade_path: str = None,
-    dag_id: str = None,
-    default_args: Dict[str, Any] = None,
+    cascade_path: str | None = None,
+    dag_id: str | None = None,
+    default_args: Dict[str, Any] | None = None,
 ) -> str:
     """
     Export triggers to Airflow DAG format.
@@ -511,7 +511,7 @@ def check_sensor(cascade: Union[str, CascadeConfig], trigger_name: str) -> Tuple
 # Built-in Sensors
 # ============================================================================
 
-def sensor_table_freshness(table: str, max_age_minutes: int = 60, connection: str = None) -> Dict[str, Any]:
+def sensor_table_freshness(table: str, max_age_minutes: int = 60, connection: str | None = None) -> Dict[str, Any]:
     """
     Check if a database table was updated within max_age_minutes.
 
@@ -565,7 +565,7 @@ def sensor_table_freshness(table: str, max_age_minutes: int = 60, connection: st
     }
 
 
-def sensor_file_exists(path: str, min_size_bytes: int = 0, max_age_minutes: int = None) -> Dict[str, Any]:
+def sensor_file_exists(path: str, min_size_bytes: int = 0, max_age_minutes: int | None = None) -> Dict[str, Any]:
     """
     Check if a file exists and optionally meets size/age criteria.
 

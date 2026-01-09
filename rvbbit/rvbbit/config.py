@@ -282,9 +282,9 @@ def get_config() -> Config:
 
 
 def set_provider(
-    base_url: str = None,
-    api_key: str = None,
-    model: str = None
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None
 ):
     """
     Override provider settings at runtime.
@@ -304,11 +304,11 @@ def set_provider(
 
 
 def set_clickhouse(
-    host: str = None,
-    port: int = None,
-    database: str = None,
-    user: str = None,
-    password: str = None
+    host: str | None = None,
+    port: int | None = None,
+    database: str | None = None,
+    user: str | None = None,
+    password: str | None = None
 ):
     """
     Override ClickHouse settings at runtime.

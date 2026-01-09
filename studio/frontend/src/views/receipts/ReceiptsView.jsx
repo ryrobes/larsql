@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
-import { Button, VideoLoader } from '../../components';
+import { VideoLoader } from '../../components';
 import OverviewPanel from './components/OverviewPanel';
 import AlertsPanel from './components/AlertsPanel';
 import ContextBreakdownPanel from './components/ContextBreakdownPanel';

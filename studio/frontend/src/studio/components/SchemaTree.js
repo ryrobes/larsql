@@ -44,7 +44,6 @@ function ConnectionNode({ connection }) {
     schemas,
     schemasLoading,
     schemasError,
-    expandedNodes,
     toggleNodeExpanded,
     fetchSchema,
     isNodeExpanded

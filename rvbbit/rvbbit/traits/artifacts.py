@@ -17,8 +17,8 @@ def create_artifact(
     html: str,
     title: str,
     artifact_type: str = "dashboard",
-    description: str = None,
-    tags: list = None
+    description: str | None = None,
+    tags: list | None = None
 ) -> dict:
     """
     Create a persistent artifact (rich interactive UI) for this cascade run.
@@ -353,9 +353,9 @@ def _save_to_parquet(artifact: dict, cfg):
 
 @simple_eddy
 def list_artifacts(
-    cascade_id: str = None,
-    artifact_type: str = None,
-    tags: list = None,
+    cascade_id: str | None = None,
+    artifact_type: str | None = None,
+    tags: list | None = None,
     limit: int = 50
 ) -> dict:
     """

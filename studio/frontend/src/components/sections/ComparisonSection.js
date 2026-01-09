@@ -25,9 +25,12 @@ function ComparisonSection({ spec, value, onChange }) {
   useEffect(() => {
     if (!syncScroll) return;
 
+    // Capture refs array for cleanup (ref.current may change)
+    const refs = scrollRefs.current;
+
     const handleScroll = (sourceIdx) => (e) => {
       const { scrollTop, scrollLeft } = e.target;
-      scrollRefs.current.forEach((ref, idx) => {
+      refs.forEach((ref, idx) => {
         if (idx !== sourceIdx && ref) {
           ref.scrollTop = scrollTop;
           ref.scrollLeft = scrollLeft;
@@ -35,14 +38,14 @@ function ComparisonSection({ spec, value, onChange }) {
       });
     };
 
-    scrollRefs.current.forEach((ref, idx) => {
+    refs.forEach((ref, idx) => {
       if (ref) {
         ref.addEventListener('scroll', handleScroll(idx));
       }
     });
 
     return () => {
-      scrollRefs.current.forEach((ref, idx) => {
+      refs.forEach((ref, idx) => {
         if (ref) {
           ref.removeEventListener('scroll', handleScroll(idx));
         }

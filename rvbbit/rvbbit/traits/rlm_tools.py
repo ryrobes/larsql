@@ -36,11 +36,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 @simple_eddy
 def rlm_exec(
     code: str,
-    context: str = None,
-    task: str = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _session_id: str = None
+    context: str | None = None,
+    task: str | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _session_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Execute Python code with RLM-style tools injected.
@@ -104,7 +104,7 @@ def rlm_exec(
 
     # ---- Define injected functions ----
 
-    def llm_query(prompt: str, model: str = None) -> str:
+    def llm_query(prompt: str, model: str | None = None) -> str:
         """Make a sub-LLM call. Returns the response string."""
         nonlocal total_tokens, llm_calls
 
@@ -124,7 +124,7 @@ def rlm_exec(
         except Exception as e:
             return f"[LLM Error: {e}]"
 
-    def llm_query_batched(prompts: List[str], model: str = None) -> List[str]:
+    def llm_query_batched(prompts: List[str], model: str | None = None) -> List[str]:
         """Make parallel sub-LLM calls. Returns list of response strings."""
         nonlocal total_tokens, llm_calls
 
@@ -286,7 +286,7 @@ def _chunk_text_internal(text: str, strategy: str = "paragraph") -> Dict[str, An
 def llm_analyze(
     text: str,
     instruction: str,
-    model: str = None,
+    model: str | None = None,
     max_tokens: int = 1000
 ) -> Dict[str, Any]:
     """
@@ -390,7 +390,7 @@ Respond concisely. Focus on information directly relevant to the instruction."""
 @simple_eddy
 def llm_batch_analyze(
     items: List[Dict[str, str]],
-    model: str = None,
+    model: str | None = None,
     max_parallel: int = 5
 ) -> Dict[str, Any]:
     """

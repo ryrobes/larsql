@@ -309,7 +309,7 @@ def _transform_message_content(
 def transform_messages_for_transport(
     messages: List[Dict[str, Any]],
     enabled: bool = True,
-    min_rows: int = None
+    min_rows: int | None = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Transform message list for LLM transport, converting JSON to TOON where beneficial.

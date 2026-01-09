@@ -25,7 +25,7 @@ console = Console()
 class DeterministicExecutionError(Exception):
     """Raised when deterministic cell execution fails."""
 
-    def __init__(self, message: str, cell_name: str, tool: str, inputs: Dict = None, original_error: Exception = None):
+    def __init__(self, message: str, cell_name: str, tool: str, inputs: Dict | None = None, original_error: Exception = None):
         super().__init__(message)
         self.cell_name = cell_name
         self.tool = tool
@@ -94,7 +94,7 @@ def import_python_function(module_path: str, function_name: str) -> Callable:
         raise AttributeError(f"Function '{function_name}' not found in module '{module_path}': {e}")
 
 
-def resolve_tool_function(tool_spec: str, config_path: str = None) -> Callable:
+def resolve_tool_function(tool_spec: str, config_path: str | None = None) -> Callable:
     """
     Resolve a tool specification to a callable function.
 
@@ -414,7 +414,7 @@ def execute_deterministic_cell(
     cell: CellConfig,
     input_data: Dict[str, Any],
     echo: Any,  # Echo object
-    config_path: str = None,
+    config_path: str | None = None,
     depth: int = 0
 ) -> Tuple[Any, Optional[str]]:
     """
@@ -590,7 +590,7 @@ def execute_hitl_cell(
         attr_str = ' '.join(f'{k.replace("_", "-")}="{v}"' for k, v in attrs.items())
         return f'<button type="submit" name="_route" value="{target}" {attr_str}>{label}</button>'
 
-    def submit_button(label: str, action: str = None, route: str = None, **attrs) -> str:
+    def submit_button(label: str, action: str | None = None, route: str | None = None, **attrs) -> str:
         """Create a submit button with action or route."""
         attr_str = ' '.join(f'{k.replace("_", "-")}="{v}"' for k, v in attrs.items())
         if route:
@@ -600,7 +600,7 @@ def execute_hitl_cell(
         else:
             return f'<button type="submit" {attr_str}>{label}</button>'
 
-    def tabs(items: list, current: str = None) -> str:
+    def tabs(items: list, current: str | None = None) -> str:
         """Create a tab bar. items: [(label, cell_name), ...]"""
         html = '<div class="app-tabs">'
         for item in items:

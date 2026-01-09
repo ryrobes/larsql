@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
 import { Icon } from '@iconify/react';
-import { Button, useToast, VideoLoader } from '../../components';
+import { VideoLoader } from '../../components';
 import CostTimelineChart from '../../components/CostTimelineChart';
 import KPICard from '../receipts/components/KPICard';
 import { useCredits } from '../../hooks/useCredits';
@@ -74,8 +74,6 @@ const CostRenderer = (props) => {
 const ContextRenderer = (props) => {
   const pct = props.value || 0;
   const contextCost = props.data.total_context_cost_estimated || 0;
-  const totalCost = props.data.total_cost || 0;
-  const newCost = totalCost - contextCost;
 
   const color = pct > 60 ? '#fbbf24' : pct < 30 ? '#34d399' : '#94a3b8';
 
@@ -214,7 +212,6 @@ const ConsoleView = () => {
   const [hideSystemCascades, setHideSystemCascades] = useState(true); // Default ON - hide system cascades
   const gridRef = useRef(null);
   const containerRef = useRef(null);
-  const { showToast } = useToast();
   const navigate = useNavigate();
   const prevDataHashRef = useRef(null);
 

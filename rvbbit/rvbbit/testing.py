@@ -20,7 +20,7 @@ from typing import Dict, Any, List, Optional
 class SnapshotCapture:
     """Captures cascade executions from ClickHouse unified_logs table."""
 
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: str | None = None):
         from rvbbit.config import get_config
         from rvbbit.db_adapter import get_db_adapter
         config = get_config()

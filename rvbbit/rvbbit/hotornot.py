@@ -100,16 +100,16 @@ class EvaluationsLogger:
         self,
         session_id: str,
         is_good: bool,
-        cell_name: str = None,
-        cascade_id: str = None,
-        cascade_file: str = None,
-        prompt_text: str = None,
-        output_text: str = None,
-        mutation_applied: str = None,
-        candidate_index: int = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
+        cascade_file: str | None = None,
+        prompt_text: str | None = None,
+        output_text: str | None = None,
+        mutation_applied: str | None = None,
+        candidate_index: int | None = None,
         notes: str = "",
         evaluator: str = "human",
-        metadata: dict = None
+        metadata: dict | None = None
     ) -> str:
         """Log a binary (good/bad) evaluation."""
         eval_id = str(uuid.uuid4())
@@ -152,12 +152,12 @@ class EvaluationsLogger:
         preferred_index: int,
         system_winner_index: int,
         candidate_outputs: List[Dict],
-        cascade_id: str = None,
-        cascade_file: str = None,
-        prompt_text: str = None,
+        cascade_id: str | None = None,
+        cascade_file: str | None = None,
+        prompt_text: str | None = None,
         notes: str = "",
         evaluator: str = "human",
-        metadata: dict = None
+        metadata: dict | None = None
     ) -> str:
         """Log a preference evaluation (A/B comparison)."""
         eval_id = str(uuid.uuid4())
@@ -199,12 +199,12 @@ class EvaluationsLogger:
         self,
         session_id: str,
         flag_reason: str,
-        cell_name: str = None,
-        cascade_id: str = None,
-        output_text: str = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
+        output_text: str | None = None,
         notes: str = "",
         evaluator: str = "human",
-        metadata: dict = None
+        metadata: dict | None = None
     ) -> str:
         """Flag a session/output for review."""
         eval_id = str(uuid.uuid4())
@@ -275,7 +275,7 @@ def get_evaluations_logger() -> EvaluationsLogger:
 def log_binary_eval(
     session_id: str,
     is_good: bool,
-    cell_name: str = None,
+    cell_name: str | None = None,
     **kwargs
 ) -> str:
     """Convenience function to log a binary evaluation."""
@@ -312,7 +312,7 @@ def flush_evaluations():
 
 
 # Query functions
-def query_evaluations(where_clause: str = None, order_by: str = "timestamp DESC") -> pd.DataFrame:
+def query_evaluations(where_clause: str | None = None, order_by: str = "timestamp DESC") -> pd.DataFrame:
     """
     Query evaluations from ClickHouse.
 

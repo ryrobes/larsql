@@ -22,22 +22,12 @@ Example usage:
 """
 
 from typing import TYPE_CHECKING
+import importlib.util
 
-# Availability check
-_TRANSFORMERS_AVAILABLE = False
-_TORCH_AVAILABLE = False
-
-try:
-    import transformers
-    _TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    import torch
-    _TORCH_AVAILABLE = True
-except ImportError:
-    pass
+# Availability check - use find_spec to avoid actually importing heavy modules
+# This saves ~1 second of startup time when torch/transformers are installed
+_TRANSFORMERS_AVAILABLE = importlib.util.find_spec("transformers") is not None
+_TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 
 
 def is_available() -> bool:

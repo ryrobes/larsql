@@ -13,9 +13,9 @@ from .extras import simple_eddy
 
 @simple_eddy
 def save_research_session(
-    title: str = None,
-    description: str = None,
-    tags: list = None,
+    title: str | None = None,
+    description: str | None = None,
+    tags: list | None = None,
     auto_generate_title: bool = True
 ) -> dict:
     """
@@ -162,8 +162,8 @@ def save_research_session(
 
 @simple_eddy
 def list_research_sessions(
-    cascade_id: str = None,
-    tags: list = None,
+    cascade_id: str | None = None,
+    tags: list | None = None,
     limit: int = 20
 ) -> dict:
     """

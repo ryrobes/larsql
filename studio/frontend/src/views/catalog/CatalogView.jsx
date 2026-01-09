@@ -100,9 +100,8 @@ const TYPE_COLORS = {
   default: '#94a3b8',
 };
 
-// localStorage keys
+// localStorage key
 const STORAGE_KEY_CATEGORY = 'catalog_category';
-const STORAGE_KEY_SEARCH = 'catalog_search';
 
 const getInitialCategory = () => {
   try {

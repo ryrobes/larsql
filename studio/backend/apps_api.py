@@ -862,7 +862,7 @@ class AppRenderer:
             attr_str = ' '.join(f'{k.replace("_", "-")}="{v}"' for k, v in attrs.items())
             return f'<button type="submit" name="_route" value="{target}" class="{btn_class}" {attr_str}>{label}</button>'
 
-        def submit_button(label: str, action: str = None, route: str = None, variant: str = 'default', **attrs) -> str:
+        def submit_button(label: str, action: str | None = None, route: str | None = None, variant: str = 'default', **attrs) -> str:
             """Create a Basecoat-styled submit button with action or route.
 
             Args:
@@ -893,7 +893,7 @@ class AppRenderer:
             else:
                 return f'<button type="submit" class="{btn_class}" {attr_str}>{label}</button>'
 
-        def tabs(items: list, current: str = None) -> str:
+        def tabs(items: list, current: str | None = None) -> str:
             """Create a Basecoat-styled tab bar. items: [(label, cell_name), ...]"""
             html = '<div class="flex gap-1 p-1 bg-muted rounded-lg">'
             for item in items:
@@ -1039,7 +1039,7 @@ class AppRenderer:
         except Exception as e:
             return f'<div class="error">Render error: {e}</div>'
 
-    def render_auto_card(self, cell: Any, session: AppSession, status: str = None) -> str:
+    def render_auto_card(self, cell: Any, session: AppSession, status: str | None = None) -> str:
         """Render auto-generated Basecoat-styled data card for cells without htmx."""
 
         output = session.outputs.get(cell.name)
@@ -2361,10 +2361,11 @@ def status(cascade_id: str, session_id: str):
             </div>
             '''
         elif session.status == 'error':
+            error_json = json.dumps(session.error, indent=2)  # pyright: ignore[reportUnboundVariable]
             return f'''
             <div class="alert-destructive">
                 <h3 class="font-semibold">Error</h3>
-                <pre class="mt-2 text-sm overflow-x-auto">{json.dumps(session.error, indent=2)}</pre>
+                <pre class="mt-2 text-sm overflow-x-auto">{error_json}</pre>
             </div>
             '''
         else:

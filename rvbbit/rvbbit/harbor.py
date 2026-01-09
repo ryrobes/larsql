@@ -167,7 +167,7 @@ def _get_gradio_client(space_id: str):
     return Client(space_id, token=config.hf_token)
 
 
-def list_all_user_spaces(author: str = None) -> List[SpaceInfo]:
+def list_all_user_spaces(author: str | None = None) -> List[SpaceInfo]:
     """
     List ALL HuggingFace Spaces owned by the user (all SDKs, all statuses).
 
@@ -231,7 +231,7 @@ def list_all_user_spaces(author: str = None) -> List[SpaceInfo]:
         return []
 
 
-def list_user_spaces(author: str = None, include_sleeping: bool = False) -> List[SpaceInfo]:
+def list_user_spaces(author: str | None = None, include_sleeping: bool = False) -> List[SpaceInfo]:
     """
     List HuggingFace Gradio Spaces owned by the user (or specified author).
 
@@ -305,7 +305,7 @@ def list_user_spaces(author: str = None, include_sleeping: bool = False) -> List
         return []
 
 
-def get_spaces_summary(author: str = None) -> Dict[str, Any]:
+def get_spaces_summary(author: str | None = None) -> Dict[str, Any]:
     """
     Get a summary of all user's spaces with cost estimates.
 
@@ -394,7 +394,7 @@ def set_space_sleep_time(space_id: str, sleep_time: int) -> bool:
         return False
 
 
-def introspect_space(space_id: str, cache_ttl: int = None) -> Dict[str, Any]:
+def introspect_space(space_id: str, cache_ttl: int | None = None) -> Dict[str, Any]:
     """
     Introspect a Gradio space to get its API endpoints and parameters.
 
@@ -534,7 +534,7 @@ def get_harbor_manifest(refresh: bool = False) -> Dict[str, Any]:
         return {}
 
 
-def format_harbor_manifest(manifest: Dict[str, Any] = None) -> str:
+def format_harbor_manifest(manifest: Dict[str, Any] | None = None) -> str:
     """
     Format harbor manifest as human-readable text.
 
@@ -573,7 +573,7 @@ def format_harbor_manifest(manifest: Dict[str, Any] = None) -> str:
     return "\n".join(lines)
 
 
-def export_tool_definition(space_id: str, api_name: str = None, tool_id: str = None) -> Dict[str, Any]:
+def export_tool_definition(space_id: str, api_name: str | None = None, tool_id: str | None = None) -> Dict[str, Any]:
     """
     Generate a .tool.json definition from a Space's API.
 

@@ -2,7 +2,7 @@ import os
 from .base import simple_eddy
 
 @simple_eddy
-def ask_human(question: str, context: str = None, ui_hint: str = None) -> str:
+def ask_human(question: str, context: str | None = None, ui_hint: str | None = None) -> str:
     """
     Pauses execution to ask the human user a question.
     Useful for clarifications, approvals, or additional data.
@@ -170,12 +170,12 @@ def _store_response(cell_name: str, response: str) -> None:
 @simple_eddy
 def ask_human_custom(
     question: str,
-    context: str = None,
-    images: list = None,
-    data: dict = None,
-    options: list = None,
-    ui_hint: str = None,
-    layout_hint: str = None,
+    context: str | None = None,
+    images: list | None = None,
+    data: dict | None = None,
+    options: list | None = None,
+    ui_hint: str | None = None,
+    layout_hint: str | None = None,
     auto_detect: bool = True
 ) -> str:
     """
@@ -614,10 +614,10 @@ def _cli_prompt_custom(
 def request_decision(
     question: str,
     options: list,
-    context: str = None,
+    context: str | None = None,
     severity: str = "info",
     allow_custom: bool = True,
-    html: str = None,
+    html: str | None = None,
     timeout_seconds: int = 600
 ) -> dict:
     """

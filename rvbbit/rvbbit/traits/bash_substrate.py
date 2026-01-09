@@ -26,13 +26,13 @@ def bash_data(
     timeout: Optional[str] = None,
     env: Optional[Dict[str, str]] = None,
     persist_session: bool = True,
-    _cell_name: str = None,
-    _session_id: str = None,
-    _outputs: Dict[str, Any] = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _caller_id: str = None,
-    _cascade_id: str = None
+    _cell_name: str | None = None,
+    _session_id: str | None = None,
+    _outputs: Dict[str, Any] | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Execute bash script as a data transformation cell.

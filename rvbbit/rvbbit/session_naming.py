@@ -50,7 +50,7 @@ WOODLAND_CREATURES = [
 ]
 
 
-def generate_woodland_id(seed: str = None) -> str:
+def generate_woodland_id(seed: str | None = None) -> str:
     """
     Generate a memorable woodland-themed session ID.
 
@@ -84,7 +84,7 @@ def generate_woodland_id(seed: str = None) -> str:
 
 def generate_session_id(
     style: Literal['woodland', 'uuid', 'coolname'] = 'woodland',
-    seed: str = None
+    seed: str | None = None
 ) -> str:
     """
     Generate a session ID with configurable style.

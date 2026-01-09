@@ -49,7 +49,7 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
 
   // State
   const [sessionActive, setSessionActive] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
+  const [, setSessionId] = useState(null);
   const [dashboardSessionId, setDashboardSessionId] = useState(null);
   const [streamPath, setStreamPath] = useState('');
   const [port, setPort] = useState(null);

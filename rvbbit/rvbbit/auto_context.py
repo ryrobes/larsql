@@ -16,11 +16,15 @@ Key design principle: NEVER drop information - originals always available for
 injection. We compress what the LLM sees, not what we store.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
 import hashlib
 import json
 import logging
+
+if TYPE_CHECKING:
+    from .echo import Echo
+    from .cascade import CellConfig, InterCellContextConfig, AnchorConfig, SelectionConfig
 
 logger = logging.getLogger(__name__)
 

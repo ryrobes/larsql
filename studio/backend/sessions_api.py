@@ -393,7 +393,7 @@ VIRTUAL_CASCADE_DESCRIPTIONS = {
 }
 
 
-def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str = None, limit: int = 100) -> list:
+def _include_virtual_sessions(existing_sessions: list, cascade_id_filter: str | None = None, limit: int = 100) -> list:
     """
     Include sessions from unified_logs that don't have session_state entries.
 

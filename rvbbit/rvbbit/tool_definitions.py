@@ -725,7 +725,7 @@ def get_declarative_tool_executor(tool_id: str):
     return executor
 
 
-def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str, Any] = None) -> str:
+def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str, Any] | None = None) -> str:
     """Execute a declarative tool with the given inputs."""
     context = context or {}
 
@@ -745,7 +745,7 @@ def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str
         return f"[ERROR] Unknown tool type: {tool.type}"
 
 
-def register_declarative_tool(tool: ToolDefinition, source_path: str = None):
+def register_declarative_tool(tool: ToolDefinition, source_path: str | None = None):
     """
     Register a declarative tool in the traits registry.
 
@@ -788,7 +788,7 @@ def register_declarative_tool(tool: ToolDefinition, source_path: str = None):
     register_trait(tool.tool_id, tool_wrapper)
 
 
-def discover_and_register_declarative_tools(directories: List[str] = None):
+def discover_and_register_declarative_tools(directories: List[str] | None = None):
     """
     Discover all .tool.json files in the given directories and register them.
 

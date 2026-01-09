@@ -60,14 +60,14 @@ class CompositeHooks(RVBBITHooks):
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                cell_name: str, message: str = None, cascade_id: str = None) -> dict:
+                                cell_name: str, message: str | None = None, cascade_id: str | None = None) -> dict:
         for hook in self.hooks:
             if hasattr(hook, 'on_checkpoint_suspended'):
                 hook.on_checkpoint_suspended(session_id, checkpoint_id, checkpoint_type, cell_name, message, cascade_id)
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, cell_name: str,
-                              response: Any = None, cascade_id: str = None) -> dict:
+                              response: Any = None, cascade_id: str | None = None) -> dict:
         for hook in self.hooks:
             if hasattr(hook, 'on_checkpoint_resumed'):
                 hook.on_checkpoint_resumed(session_id, checkpoint_id, cell_name, response, cascade_id)
@@ -272,7 +272,7 @@ Return ONLY the title, nothing else."""
         print(f"[ResearchAutoSave] No checkpoints yet, using default title")
         return f"Research Session - {session_id[:12]}"
 
-    def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active", parent_session_id: str = None, branch_checkpoint_id: str = None):
+    def _save_or_update_session(self, session_id: str, cascade_id: str, status: str = "active", parent_session_id: str | None = None, branch_checkpoint_id: str | None = None):
         """Save or update research session in database."""
         if not self._auto_save_enabled:
             return
@@ -434,7 +434,7 @@ Return ONLY the title, nothing else."""
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                cell_name: str, message: str = None, cascade_id: str = None) -> dict:
+                                cell_name: str, message: str | None = None, cascade_id: str | None = None) -> dict:
         """Called when cascade is suspended waiting for checkpoint response."""
         if self._is_research_session(session_id):
             print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint created (cascade_id={cascade_id})")
@@ -450,7 +450,7 @@ Return ONLY the title, nothing else."""
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_resumed(self, session_id: str, checkpoint_id: str, cell_name: str,
-                              response: Any = None, cascade_id: str = None) -> dict:
+                              response: Any = None, cascade_id: str | None = None) -> dict:
         if self._is_research_session(session_id):
             print(f"[ResearchAutoSave] Updating session {session_id} after checkpoint response")
             # Update in background

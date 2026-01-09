@@ -250,7 +250,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
 
               for (let [key, value] of formData.entries()) {
                 // Parse response[field] or response[field} (handle LLM typos with curly braces)
-                const match = key.match(/response\[(.+?)[\]\}]/);  // Match ] or }
+                const match = key.match(/response\[(.+?)[\]}]/);  // Match ] or }
                 if (match) {
                   response[match[1]] = value;
                 } else {

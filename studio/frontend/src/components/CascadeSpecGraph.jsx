@@ -22,7 +22,6 @@ import {
   INPUT_NODE_WIDTH,
   INPUT_NODE_X,
   INPUT_NODE_Y,
-  INPUT_NODE_GAP,
 } from '../utils/cascadeLayout';
 import './CascadeSpecGraph.css';
 

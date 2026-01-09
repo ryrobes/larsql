@@ -696,7 +696,7 @@ _AGG_TO_CASCADE = {
 }
 
 
-def _get_model_for_function(function_name: str, canonical_name: str = None) -> str:
+def _get_model_for_function(function_name: str, canonical_name: str | None = None) -> str:
     """
     Get the actual model for a function by checking the SQL function registry first.
 

@@ -142,8 +142,6 @@ const CostRenderer = (props) => {
 const ContextRenderer = (props) => {
   const pct = props.value || 0;
   const contextCost = props.data.total_context_cost_estimated || 0;
-  const totalCost = props.data.total_cost || 0;
-  const newCost = totalCost - contextCost;
 
   const color = pct > 60 ? '#fbbf24' : pct < 30 ? '#34d399' : '#94a3b8';
 

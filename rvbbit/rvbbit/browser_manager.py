@@ -331,19 +331,19 @@ class BrowserSession:
     # Convenience methods (generate DSL commands)
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def click(self, x: int = None, y: int = None) -> Dict[str, Any]:
+    async def click(self, x: int | None = None, y: int | None = None) -> Dict[str, Any]:
         """Click at coordinates, or at current cursor position."""
         if x is not None and y is not None:
             return await self.execute([":click", ":at", x, y])
         return await self.execute([":click"])
 
-    async def double_click(self, x: int = None, y: int = None) -> Dict[str, Any]:
+    async def double_click(self, x: int | None = None, y: int | None = None) -> Dict[str, Any]:
         """Double-click at coordinates, or at current cursor position."""
         if x is not None and y is not None:
             return await self.execute([":double-click", ":at", x, y])
         return await self.execute([":double-click"])
 
-    async def right_click(self, x: int = None, y: int = None) -> Dict[str, Any]:
+    async def right_click(self, x: int | None = None, y: int | None = None) -> Dict[str, Any]:
         """Right-click at coordinates, or at current cursor position."""
         if x is not None and y is not None:
             return await self.execute([":right-click", ":at", x, y])
@@ -397,7 +397,7 @@ class BrowserSession:
         """Browser forward."""
         return await self.execute([":forward"])
 
-    async def set_viewport(self, width: int = None, height: int = None) -> Dict[str, Any]:
+    async def set_viewport(self, width: int | None = None, height: int | None = None) -> Dict[str, Any]:
         """Set viewport dimensions."""
         results = []
         if width:

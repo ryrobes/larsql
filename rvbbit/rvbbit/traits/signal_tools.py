@@ -13,7 +13,7 @@ from .base import simple_eddy
 def await_signal(
     signal_name: str,
     timeout: str = "1h",
-    description: str = None
+    description: str | None = None
 ) -> Dict[str, Any]:
     """
     Wait for a named signal to be fired by an external source.
@@ -81,8 +81,8 @@ def await_signal(
 @simple_eddy
 def fire_signal(
     signal_name: str,
-    payload: Dict[str, Any] = None,
-    session_id: str = None
+    payload: Dict[str, Any] | None = None,
+    session_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Fire a named signal to wake up waiting cascades.
@@ -138,7 +138,7 @@ def fire_signal(
 
 
 @simple_eddy
-def list_signals(signal_name: str = None) -> Dict[str, Any]:
+def list_signals(signal_name: str | None = None) -> Dict[str, Any]:
     """
     List signals that are currently waiting.
 

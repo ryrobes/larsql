@@ -11,8 +11,8 @@ class Echo:
     - node_type: cascade, cell, turn, tool, candidates, reforge, etc.
     - metadata: Dict with additional context (cell_name, candidate_index, etc.)
     """
-    def __init__(self, session_id: str, initial_state: Dict[str, Any] = None, parent_session_id: str = None,
-                 caller_id: str = None, invocation_metadata: Dict = None):
+    def __init__(self, session_id: str, initial_state: Dict[str, Any] | None = None, parent_session_id: str | None = None,
+                 caller_id: str | None = None, invocation_metadata: Dict | None = None):
         self.session_id = session_id
         self.parent_session_id = parent_session_id
         self.state = initial_state or {}
@@ -81,8 +81,8 @@ class Echo:
     def update_state(self, key: str, value: Any):
         self.state[key] = value
 
-    def add_history(self, entry: Dict[str, Any], trace_id: str = None, parent_id: str = None,
-                   node_type: str = "msg", metadata: Dict[str, Any] = None, skip_unified_log: bool = False):
+    def add_history(self, entry: Dict[str, Any], trace_id: str | None = None, parent_id: str | None = None,
+                   node_type: str = "msg", metadata: Dict[str, Any] | None = None, skip_unified_log: bool = False):
         """
         Add an entry to the history with full metadata for visualization.
 
@@ -256,14 +256,14 @@ class Echo:
                 # Don't fail if callback has issues
                 pass
 
-    def add_lineage(self, cell: str, output: Any, trace_id: str = None):
+    def add_lineage(self, cell: str, output: Any, trace_id: str | None = None):
         self.lineage.append({
             "cell": cell,
             "output": output,
             "trace_id": trace_id
         })
 
-    def add_error(self, cell: str, error_type: str, error_message: str, metadata: Dict[str, Any] = None):
+    def add_error(self, cell: str, error_type: str, error_message: str, metadata: Dict[str, Any] | None = None):
         """Track that an error occurred during execution."""
         self.errors.append({
             "cell": cell,
@@ -298,8 +298,8 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[str, Echo] = {}
 
-    def get_session(self, session_id: str, parent_session_id: str = None,
-                   caller_id: str = None, invocation_metadata: Dict = None) -> Echo:
+    def get_session(self, session_id: str, parent_session_id: str | None = None,
+                   caller_id: str | None = None, invocation_metadata: Dict | None = None) -> Echo:
         if session_id not in self.sessions:
             print(f"[SessionManager] Creating NEW Echo for {session_id}")
             self.sessions[session_id] = Echo(session_id, parent_session_id=parent_session_id,
@@ -320,6 +320,6 @@ class SessionManager:
 
 _session_manager = SessionManager()
 
-def get_echo(session_id: str, parent_session_id: str = None,
-            caller_id: str = None, invocation_metadata: Dict = None) -> Echo:
+def get_echo(session_id: str, parent_session_id: str | None = None,
+            caller_id: str | None = None, invocation_metadata: Dict | None = None) -> Echo:
     return _session_manager.get_session(session_id, parent_session_id, caller_id, invocation_metadata)

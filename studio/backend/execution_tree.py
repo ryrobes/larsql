@@ -1043,6 +1043,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             # Track all node ids for sequential connections
             all_node_ids = []
+            msg_ids = []  # Track message IDs separately
             y_pos = 40
 
             # Add quartermaster decision node first (if present)

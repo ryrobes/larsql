@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import InterCellExplorer from './InterCellExplorer';
@@ -24,7 +24,7 @@ const ContextAssessmentPanel = ({ timeRange }) => {
   const [intraCellData, setIntraCellData] = useState(null);
   const [tableStatus, setTableStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(null); // eslint-disable-line no-unused-vars
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
@@ -650,7 +650,6 @@ const OverviewContent = ({ overview }) => {
  * Inter-cell content with enhanced visualization
  */
 const InterCellContent = ({ data, selectedCell, onCellSelect, selectedMessage, onMessageSelect }) => {
-  const [budgetThreshold, setBudgetThreshold] = useState(100);
   const [strategyFilter, setStrategyFilter] = useState('all');
   const [sortBy, setSortBy] = useState('rank');
 

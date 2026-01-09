@@ -90,7 +90,7 @@ def _get_session_status(port: int) -> dict:
         return None
 
 
-def _create_session(session_id: str = None) -> dict:
+def _create_session(session_id: str | None = None) -> dict:
     """Create a new Rabbitize session on a dynamic port."""
     with _sessions_lock:
         # Generate session ID if not provided

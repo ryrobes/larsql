@@ -68,6 +68,7 @@ function isAnsi(text) {
 
   // ANSI escape sequence patterns
   // Check both actual escape characters AND escaped string representations
+  // eslint-disable-next-line no-control-regex -- intentional ANSI escape sequence parsing
   const ansiPatterns = [
     /\x1b\[[0-9;]*m/,                // Color/format codes: \x1b[31m (actual escape)
     /\u001b\[[0-9;]*m/,              // Unicode variant: \u001b[31m (actual escape)
@@ -178,7 +179,7 @@ const ResultRenderer = ({ result, error, images }) => {
               <div key={idx} className="cell-detail-image">
                 <img
                   src={imageUrl}
-                  alt={`Output image ${idx + 1}`}
+                  alt={`Output ${idx + 1}`}
                   style={{ maxWidth: '100%', height: 'auto', borderRadius: '4px', cursor: 'pointer' }}
                   onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
                   title="Click to view full size"
@@ -305,7 +306,7 @@ const ResultRenderer = ({ result, error, images }) => {
   // Image result (matplotlib, PIL)
   if (result?.type === 'image' && (result?.api_url || result?.base64)) {
     const imageUrl = result.api_url || `data:image/${result.format || 'png'};base64,${result.base64}`;
-    const imageName = result.content || 'Generated Image';
+    const imageName = result.content || 'Generated output';
 
     return (
       <>

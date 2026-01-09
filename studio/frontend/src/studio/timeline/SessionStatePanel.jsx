@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './SessionStatePanel.css';
 
@@ -38,7 +38,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
   }, [isExpanded]);
 
   // Fetch state from API
-  const fetchState = async () => {
+  const fetchState = useCallback(async () => {
     if (!sessionId) return;
 
     try {
@@ -56,7 +56,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
       console.error('[SessionStatePanel] Fetch error:', err);
       setError(err.message);
     }
-  };
+  }, [sessionId]);
 
   // Initial load
   useEffect(() => {
@@ -64,7 +64,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
       setLoading(true);
       fetchState().finally(() => setLoading(false));
     }
-  }, [sessionId]);
+  }, [sessionId, fetchState]);
 
   // Poll while running
   useEffect(() => {
@@ -73,7 +73,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
     const interval = setInterval(fetchState, 1000); // Poll every second while running
 
     return () => clearInterval(interval);
-  }, [isRunning, sessionId]);
+  }, [isRunning, sessionId, fetchState]);
 
   const toggleExpand = (key) => {
     setExpandedKeys(prev => {

@@ -5,8 +5,9 @@ import random
 import shutil
 import sys
 from pathlib import Path
-from rvbbit import run_cascade
 
+# NOTE: Heavy imports (litellm, torch, pandas, etc.) are deferred to command handlers
+# This keeps `rvbbit --help` and other lightweight commands fast (~0.1s vs ~2.5s)
 
 SPLASH_DIR = Path(__file__).resolve().parent.parent / "tui_images"
 
@@ -1202,9 +1203,6 @@ def main():
         else:
             serve_parser.print_help()
             sys.exit(1)
-    elif args.command == 'server':
-        # Start PostgreSQL wire protocol server
-        cmd_server(args)
     elif args.command == 'tui':
         # Launch Alice TUI dashboard
         cmd_tui(args)
@@ -1393,6 +1391,8 @@ def cmd_run(args):
     print(f"Caller ID: {caller_id}")
     print()
 
+    # Lazy import - defers ~2s of litellm/pandas/etc loading until actually needed
+    from rvbbit import run_cascade
     result = run_cascade(args.config, input_data, session_id, overrides=overrides,
                         caller_id=caller_id, invocation_metadata=invocation_metadata)
 

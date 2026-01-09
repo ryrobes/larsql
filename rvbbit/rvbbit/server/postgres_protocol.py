@@ -485,7 +485,7 @@ class ErrorResponse:
     """ErrorResponse message - error occurred during query execution."""
 
     @staticmethod
-    def encode(severity: str, message: str, detail: str = None, sqlstate: str = '42000') -> bytes:
+    def encode(severity: str, message: str, detail: str | None = None, sqlstate: str = '42000') -> bytes:
         """
         Build ErrorResponse message.
 
@@ -984,7 +984,7 @@ def send_query_results(sock, result_df, transaction_status='I'):
     sock.sendall(ReadyForQuery.encode(transaction_status))
 
 
-def send_error(sock, message: str, detail: str = None, severity: str = 'ERROR', transaction_status='E'):
+def send_error(sock, message: str, detail: str | None = None, severity: str = 'ERROR', transaction_status='E'):
     """
     Send error response to client.
 

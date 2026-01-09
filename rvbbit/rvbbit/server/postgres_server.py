@@ -1657,7 +1657,7 @@ class ClientConnection:
             # Non-fatal - just log the error
             print(f"[{self.session_id}]   ⚠️  Could not create results registry table: {e}")
 
-    def _maybe_materialize_result(self, query: str, result_df, query_id: str = None):
+    def _maybe_materialize_result(self, query: str, result_df, query_id: str | None = None):
         """
         Auto-materialize RVBBIT query results for "query insurance".
 
@@ -3676,7 +3676,7 @@ class ClientConnection:
                 pass
         return attachments
 
-    def _setup_query_tracking(self, query: str, original_query: str = None):
+    def _setup_query_tracking(self, query: str, original_query: str | None = None):
         """
         Set up query tracking for SQL Trail if this is an RVBBIT statement.
 

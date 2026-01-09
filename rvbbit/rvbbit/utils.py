@@ -454,7 +454,7 @@ def cull_old_conversation_history(messages: List[Dict], keep_recent_turns: int =
 
     return culled_messages
 
-def get_next_image_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
+def get_next_image_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
     """
     Find the next available image index for a session/cell directory.
     Scans existing files to avoid overwriting.
@@ -487,7 +487,7 @@ def get_next_image_index(session_id: str, cell_name: str, candidate_index: int =
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_image_save_path(session_id: str, cell_name: str, image_index: int, extension: str = "png", candidate_index: int = None) -> str:
+def get_image_save_path(session_id: str, cell_name: str, image_index: int, extension: str = "png", candidate_index: int | None = None) -> str:
     """
     Generate standardized path for saving images.
     Format: images/{session_id}/{cell_name}/image_{index}.{ext}
@@ -507,7 +507,7 @@ def get_image_save_path(session_id: str, cell_name: str, image_index: int, exten
     path = os.path.join(images_dir, session_id, cell_name, filename)
     return path
 
-def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
+def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
     """
     Find the next available audio index for a session/cell directory.
     Scans existing files to avoid overwriting.
@@ -540,7 +540,7 @@ def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int =
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, extension: str = "mp3", candidate_index: int = None) -> str:
+def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, extension: str = "mp3", candidate_index: int | None = None) -> str:
     """
     Generate standardized path for saving audio files.
     Format: audio/{session_id}/{cell_name}/audio_{index}.{ext}
@@ -648,7 +648,7 @@ def get_video_extension_from_data_url(data_url: str) -> str:
     except (IndexError, ValueError):
         return "mp4"
 
-def get_next_video_index(session_id: str, cell_name: str, candidate_index: int = None) -> int:
+def get_next_video_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
     """
     Find the next available video index for a session/cell directory.
     Scans existing files to avoid overwriting.
@@ -681,7 +681,7 @@ def get_next_video_index(session_id: str, cell_name: str, candidate_index: int =
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_video_save_path(session_id: str, cell_name: str, video_index: int, extension: str = "mp4", candidate_index: int = None) -> str:
+def get_video_save_path(session_id: str, cell_name: str, video_index: int, extension: str = "mp4", candidate_index: int | None = None) -> str:
     """
     Generate standardized path for saving videos.
     Format: videos/{session_id}/{cell_name}/video_{index}.{ext}
@@ -761,7 +761,7 @@ def python_type_to_json_type(t: Any) -> str:
         return "object"
     return "string" # default
 
-def get_tool_schema(func: Callable, name: str = None) -> Dict[str, Any]:
+def get_tool_schema(func: Callable, name: str | None = None) -> Dict[str, Any]:
     """
     Generates an OpenAI-compatible tool schema from a Python function.
     """

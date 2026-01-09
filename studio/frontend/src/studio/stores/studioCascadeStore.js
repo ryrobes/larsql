@@ -638,8 +638,9 @@ const useStudioCascadeStore = create(
           const cells = state.cascade.cells;
           const cellCount = cells.length + 1;
 
-          // Default code templates by language
-          const defaultTemplates = {
+          // Default code templates by language (kept for potential future use as fallbacks)
+          // eslint-disable-next-line no-unused-vars
+          const _defaultTemplates = {
             sql_data: '-- Enter SQL here\n-- Reference prior cells with: SELECT * FROM _cell_name\nSELECT 1',
             python_data: '# Access prior cell outputs as DataFrames:\n# df = data.cell_name\n#\n# Set result to a DataFrame or dict:\nresult = {"message": "Hello"}',
             js_data: '// Access prior cell outputs:\n// const rows = data.cell_name;\n//\n// Set result to an array of objects or value:\nresult = [{ message: "Hello" }];',
@@ -686,7 +687,6 @@ output_schema:
   --batch-url "https://example.com" \\
   --batch-commands='[]'`
           };
-          const defaultCode = defaultTemplates[type] || defaultTemplates.python_data;
 
           // Get cell type definition (declarative from YAML)
           const cellTypeDef = state.cellTypes.find(pt => pt.type_id === type);
@@ -700,6 +700,7 @@ output_schema:
           const baseName = cellTypeDef.name_prefix || type.replace(/_data$/, '');
           let cellName = `${baseName}_${cellCount}`;
           let counter = cellCount;
+          // eslint-disable-next-line no-loop-func -- synchronous callback is safe
           while (cells.some(p => p.name === cellName)) {
             counter++;
             cellName = `${baseName}_${counter}`;
@@ -1524,31 +1525,6 @@ output_schema:
           if (state.mode === 'query' || state.mode === 'notebook') {
             console.log('[Migration] Updating mode: query/notebook → timeline');
             state.mode = 'timeline';
-          }
-
-          // Migrate old property names to new ones
-          if (state.selectedCellIndex !== undefined) {
-            console.log('[Migration] Renaming: selectedCellIndex → selectedCellIndex');
-            state.selectedCellIndex = state.selectedCellIndex;
-            delete state.selectedCellIndex;
-          }
-
-          if (state.cellTypes !== undefined) {
-            console.log('[Migration] Renaming: cellTypes → cellTypes');
-            state.cellTypes = state.cellTypes;
-            delete state.cellTypes;
-          }
-
-          if (state.cellTypesLoading !== undefined) {
-            console.log('[Migration] Renaming: cellTypesLoading → cellTypesLoading');
-            state.cellTypesLoading = state.cellTypesLoading;
-            delete state.cellTypesLoading;
-          }
-
-          if (state.parentCell !== undefined) {
-            console.log('[Migration] Renaming: parentCell → parentCell');
-            state.parentCell = state.parentCell;
-            delete state.parentCell;
           }
 
           console.log('[Migration] Migration complete. Final mode:', state.mode);

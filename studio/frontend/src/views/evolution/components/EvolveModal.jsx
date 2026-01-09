@@ -6,10 +6,6 @@ import './EvolveModal.css';
  * DiffView - Shows before/after of prompt evolution
  */
 function DiffView({ before, after }) {
-  // Simple word-level diff visualization
-  const beforeWords = before.split(/\s+/);
-  const afterWords = after.split(/\s+/);
-
   return (
     <div className="diff-view">
       <div className="diff-section before">

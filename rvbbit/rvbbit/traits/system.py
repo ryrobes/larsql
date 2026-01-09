@@ -10,7 +10,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 @simple_eddy
-def spawn_cascade(cascade_ref: str, input_data: dict = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str = None, candidate_index: int = None) -> str:
+def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str | None = None, candidate_index: int | None = None) -> str:
     """
     Spawns a cascade in the background (fire-and-forget).
     Returns the new session ID immediately.

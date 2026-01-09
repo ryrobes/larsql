@@ -61,7 +61,7 @@ def set_duckdb_attachments(connection_id: str, attachments: List[Tuple[str, str]
         _duckdb_attachments_registry[connection_id] = attachments
 
 
-def get_duckdb_attachments(connection_id: str = None) -> List[Tuple[str, str]]:
+def get_duckdb_attachments(connection_id: str | None = None) -> List[Tuple[str, str]]:
     """
     Get DuckDB attachment info for creating a sibling connection.
 
@@ -98,7 +98,7 @@ def clear_duckdb_attachments(connection_id: str):
 # Context Management
 # ============================================================================
 
-def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: str = None):
+def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: str | None = None):
     """
     Set caller context for current thread/async context AND all storage layers.
 
@@ -133,7 +133,7 @@ def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: 
             _global_caller_registry[connection_id] = (caller_id, metadata)
 
 
-def get_caller_id(connection_id: str = None) -> Optional[str]:
+def get_caller_id(connection_id: str | None = None) -> Optional[str]:
     """
     Get current caller_id from any available storage layer.
 
@@ -204,7 +204,7 @@ def get_caller_context() -> tuple[Optional[str], Optional[Dict]]:
     return _caller_id.get(), _invocation_metadata.get()
 
 
-def clear_caller_context(connection_id: str = None):
+def clear_caller_context(connection_id: str | None = None):
     """
     Clear caller context from contextvar AND global registry.
 

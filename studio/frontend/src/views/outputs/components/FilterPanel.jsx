@@ -132,9 +132,6 @@ const FilterPanel = ({
     onSelectedTagsChange([]);
   };
 
-  // Check if any tool_call subtype is selected
-  const hasToolCallSubtypeSelected = selectedContentTypes.some(t => t.startsWith('tool_call:'));
-
   return (
     <div className="outputs-filter-panel">
       {/* Time Filter */}

@@ -221,7 +221,7 @@ def has_block_operators(sql: str) -> bool:
     return result
 
 
-def rewrite_block_operators(sql: str, tokens: List[Any] = None) -> Tuple[str, bool]:
+def rewrite_block_operators(sql: str, tokens: List[Any] | None = None) -> Tuple[str, bool]:
     """
     Rewrite block operators in SQL to function calls.
 

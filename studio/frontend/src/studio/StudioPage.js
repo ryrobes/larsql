@@ -34,16 +34,11 @@ function StudioPage() {
   const {
     mode,
     setMode,
-    cascades,
     fetchCascades,
     loadCascade,
     addCell,
     updateCascade,
     setReplayMode,
-    cascade,
-    viewMode,
-    replaySessionId,
-    cascadeSessionId,
     fetchDefaultModel,
     fetchCellTypes,
     joinLiveSession,
@@ -173,25 +168,9 @@ function StudioPage() {
 
       // Drop on cell card → Create new cell with handoff from that card
       if (dropTarget?.type === 'cell-card') {
-        const sourceCellName = dropTarget.cellName;
         const sourceCellIndex = dropTarget.cellIndex;
 
-        // Get current cell count to predict new name (matches addCell logic)
-        const cascadeStore = useStudioCascadeStore.getState();
-        const cellsBefore = cascadeStore.cascade?.cells || [];
-        const cellCount = cellsBefore.length + 1;
-
-        // Get cell type definition to match naming
-        const cellTypeDef = cascadeStore.cellTypes.find(ct => ct.type_id === cellType);
-        const baseName = cellTypeDef?.name_prefix || cellType.replace(/_data$/, '');
-
-        // Find unique name with counter
-        let predictedName = `${baseName}_${cellCount}`;
-        let counter = cellCount;
-        while (cellsBefore.some(c => c.name === predictedName)) {
-          counter++;
-          predictedName = `${baseName}_${counter}`;
-        }
+        // Note: addCell handles actual naming; validation removed for simplicity
 
         // Add new cell after source
         // Pass autoChain=false to prevent creating linear chain (only set parent handoff)
@@ -252,9 +231,10 @@ function StudioPage() {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
 
-        // Find unique name
+        // Find unique cell name
         let cellName = baseName;
         let counter = 1;
+        // eslint-disable-next-line no-loop-func -- synchronous callback is safe
         while (existingCells.some(c => c.name === cellName)) {
           cellName = `${baseName}_${counter}`;
           counter++;
@@ -306,9 +286,10 @@ function StudioPage() {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
 
-        // Find unique name
+        // Find unique cell name
         let cellName = `use_${toolId}`;
         let counter = 1;
+        // eslint-disable-next-line no-loop-func -- synchronous callback is safe
         while (existingCells.some(c => c.name === cellName)) {
           cellName = `use_${toolId}_${counter}`;
           counter++;
@@ -364,6 +345,7 @@ function StudioPage() {
         // Find unique cell name
         let cellName = 'with_input';
         let counter = 1;
+        // eslint-disable-next-line no-loop-func -- synchronous callback is safe
         while (existingCells.some(c => c.name === cellName)) {
           cellName = `with_input_${counter}`;
           counter++;

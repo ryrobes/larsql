@@ -16,7 +16,7 @@ from datetime import datetime
 class SoundingAnalyzer:
     """Analyzes candidate winners to suggest prompt improvements."""
 
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: str | None = None):
         from rvbbit.config import get_config
         from rvbbit.db_adapter import get_db_adapter
         config = get_config()
@@ -445,7 +445,7 @@ Auto-generated commit
 
 def analyze_and_suggest(
     cascade_file: str,
-    cell_name: str = None,
+    cell_name: str | None = None,
     min_runs: int = 10
 ) -> Dict[str, Any]:
     """

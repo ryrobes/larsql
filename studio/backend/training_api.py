@@ -155,7 +155,7 @@ def mark_trainable():
             "tags": ["semantic_sql", "correct"] (optional)
         }
     """
-    data = request.json
+    data = request.json or {}
     trace_ids = data.get('trace_ids', [])
     trainable = data.get('trainable', True)
     verified = data.get('verified', False)

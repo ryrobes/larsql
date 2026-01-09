@@ -1,3 +1,6 @@
+# pyright: reportArgumentType=false
+# Note: DuckDB's type stubs require enums (DuckDBPyType, FunctionNullHandling)
+# but the runtime API accepts string literals. Suppressing for this file.
 """
 rvbbit_udf() - LLM-powered SQL user-defined function.
 
@@ -18,7 +21,7 @@ The UDF:
 
 import hashlib
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import duckdb
 
 
@@ -36,7 +39,7 @@ _udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 _cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 
 
-def _make_cache_key(instructions: str, input_value: str, model: str = None) -> str:
+def _make_cache_key(instructions: str, input_value: str, model: str | None = None) -> str:
     """Create cache key for UDF result."""
     cache_str = f"{instructions}|{input_value}|{model or 'default'}"
     return hashlib.md5(cache_str.encode()).hexdigest()
@@ -212,7 +215,7 @@ def _parse_duration(duration_str: str) -> float:
 def rvbbit_udf_impl(
     instructions: str,
     input_value: str,
-    model: str = None,
+    model: str | None = None,
     temperature: float = 0.0,
     max_tokens: int = 500,
     use_cache: bool = True,
@@ -1278,7 +1281,7 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
     # Usage: SELECT * FROM read_json_auto(trait('say', json_object('text', 'Hello')))
     # =========================================================================
 
-    def trait_udf(trait_name: str, args_json: str = None) -> str:
+    def trait_udf(trait_name: str, args_json: str | None = None) -> str:
         """
         Call any registered trait and return path to JSON result file.
 
@@ -1350,7 +1353,7 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
     logger.info("Registered 7 embedding/trait UDFs for Semantic SQL")
 
 
-def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] = None):
+def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] | None = None):
     """
     Register rvbbit_udf as a DuckDB user-defined function.
 

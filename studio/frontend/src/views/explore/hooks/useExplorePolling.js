@@ -368,39 +368,6 @@ export default function useExplorePolling(sessionId) {
     }
   }, [sessionId, deriveGhostMessages, updateOrchestrationState]);
 
-  // Fetch cascade ID and check for zombies from sessions API
-  const fetchSessionMetadata = useCallback(async () => {
-    if (!sessionId) return;
-
-    try {
-      const res = await fetch(`http://localhost:5050/api/sessions?limit=100`);
-      const data = await res.json();
-
-      const session = data.sessions?.find(s => s.session_id === sessionId);
-      if (session) {
-        // Only update cascade ID if it changed
-        setCascadeId(prev => {
-          if (session.cascade_id && session.cascade_id !== prev) {
-            console.log('[fetchSessionMetadata] Cascade ID:', session.cascade_id);
-            return session.cascade_id;
-          }
-          return prev;
-        });
-
-        // Treat zombies and cancel_requested as cancelled (use functional setState to avoid dependency)
-        setSessionStatus(prevStatus => {
-          if ((session.is_zombie || session.cancel_requested) && prevStatus !== 'cancelled') {
-            console.log('[fetchSessionMetadata] Session is zombie/cancelled - updating status');
-            return 'cancelled';
-          }
-          return prevStatus;
-        });
-      }
-    } catch (err) {
-      console.error('[fetchSessionMetadata] Error:', err);
-    }
-  }, [sessionId]); // ONLY sessionId dependency!
-
   // Poll checkpoints (separate from logs)
   const pollCheckpoint = useCallback(async () => {
     if (!sessionId) return;
@@ -448,7 +415,6 @@ export default function useExplorePolling(sessionId) {
     console.log('[useExplorePolling] Setting up polling for session:', sessionId);
 
     // Initial fetch
-    // fetchSessionMetadata(); // DISABLED to debug loop
     pollSessionLogs();
     pollCheckpoint();
 
@@ -461,19 +427,12 @@ export default function useExplorePolling(sessionId) {
       pollCheckpoint();
     }, POLL_INTERVAL);
 
-    // Poll metadata less frequently (every 5s to detect zombies)
-    // DISABLED TEMPORARILY to debug infinite loop
-    // const metadataInterval = setInterval(() => {
-    //   fetchSessionMetadata();
-    // }, 5000);
-
     console.log('[useExplorePolling] Intervals set up');
 
     return () => {
       console.log('[useExplorePolling] Cleanup: clearing intervals for session:', sessionId);
       clearInterval(logsInterval);
       clearInterval(checkpointInterval);
-      // clearInterval(metadataInterval); // DISABLED
 
       // Cleanup ghost timeouts
       ghostTimeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));

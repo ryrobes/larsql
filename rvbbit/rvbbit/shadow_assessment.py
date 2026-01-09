@@ -350,7 +350,7 @@ class ShadowAssessor:
         results: List[AssessmentResult],
         task_instructions: str,
         budget: int,
-        target_cell_name: str = None
+        target_cell_name: str | None = None
     ) -> Dict[str, Any]:
         """
         Use LLM to select relevant candidates from summary menu.

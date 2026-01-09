@@ -101,7 +101,8 @@ export const buildFBPLayout = (cells, inputsSchema, linearMode = false, cellCost
     const outputsPattern = /\{\{\s*outputs\.(\w+)/g;
     let match;
     while ((match = outputsPattern.exec(cellYaml)) !== null) {
-      const depIdx = cells.findIndex(c => c.name === match[1]);
+      const matchedName = match[1]; // Capture to avoid loop-func warning
+      const depIdx = cells.findIndex(c => c.name === matchedName);
       if (depIdx !== -1 && depIdx !== idx) outputDeps.add(depIdx);
     }
 

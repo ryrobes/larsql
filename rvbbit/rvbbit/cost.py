@@ -18,8 +18,8 @@ class CostTracker:
         t.start()
 
     def track(self, session_id: str, request_id: str, trace_id: str, parent_id: str,
-              cell_name: str = None, cascade_id: str = None, candidate_index: int = None,
-              pending_message: dict = None):
+              cell_name: str | None = None, cascade_id: str | None = None, candidate_index: int | None = None,
+              pending_message: dict | None = None):
         """
         Track a request and optionally hold a message until cost data is available.
 
@@ -175,8 +175,8 @@ _tracker = CostTracker()
 _tracker.start()
 
 def track_request(session_id: str, request_id: str, trace_id: str, parent_id: str,
-                  cell_name: str = None, cascade_id: str = None, candidate_index: int = None,
-                  pending_message: dict = None):
+                  cell_name: str | None = None, cascade_id: str | None = None, candidate_index: int | None = None,
+                  pending_message: dict | None = None):
     """
     Track an LLM request for cost data.
 

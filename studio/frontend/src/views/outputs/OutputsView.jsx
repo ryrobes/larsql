@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../components';
 import FilterPanel from './components/FilterPanel';
 import CascadeSwimlane from './components/CascadeSwimlane';
 import CellDetailModal from './components/CellDetailModal';
 import TaggedView from './components/TaggedView';
-import { ROUTES } from '../../routes.helpers';
 import './OutputsView.css';
 
 // localStorage key for persisting filters
@@ -43,7 +41,6 @@ const saveFiltersToStorage = (filters) => {
  * 3. Cell modal: Full content detail with actions
  */
 const OutputsView = () => {
-  const navigate = useNavigate();
   const [cascades, setCascades] = useState([]);
   const [allCascadeIds, setAllCascadeIds] = useState([]); // All cascade IDs for filter panel
   const [loading, setLoading] = useState(true);

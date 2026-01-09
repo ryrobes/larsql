@@ -9,21 +9,21 @@ are deprecated and no longer written to.
 """
 
 
-def log_message(session_id: str, role: str, content: str, metadata: dict = None,
-                trace_id: str = None, parent_id: str = None, node_type: str = "log", depth: int = 0,
-                candidate_index: int = None, is_winner: bool = None, reforge_step: int = None,
+def log_message(session_id: str | None, role: str, content: str, metadata: dict | None = None,
+                trace_id: str | None = None, parent_id: str | None = None, node_type: str = "log", depth: int = 0,
+                candidate_index: int | None = None, is_winner: bool | None = None, reforge_step: int | None = None,
                 # Optional enrichment data
-                duration_ms: float = None, tokens_in: int = None, tokens_out: int = None,
-                cost: float = None, request_id: str = None, tool_calls: list = None,
-                images: list = None, has_base64: bool = None, model: str = None,
+                duration_ms: float | None = None, tokens_in: int | None = None, tokens_out: int | None = None,
+                cost: float | None = None, request_id: str | None = None, tool_calls: list | None = None,
+                images: list | None = None, has_base64: bool | None = None, model: str | None = None,
                 # Additional unified fields
-                cascade_id: str = None, cascade_file: str = None, cell_name: str = None,
-                turn_number: int = None, attempt_number: int = None, parent_session_id: str = None,
-                species_hash: str = None, genus_hash: str = None, cell_config: dict = None,
+                cascade_id: str | None = None, cascade_file: str | None = None, cell_name: str | None = None,
+                turn_number: int | None = None, attempt_number: int | None = None, parent_session_id: str | None = None,
+                species_hash: str | None = None, genus_hash: str | None = None, cell_config: dict | None = None,
                 # Caller tracking (NEW)
-                caller_id: str = None, invocation_metadata: dict = None,
+                caller_id: str | None = None, invocation_metadata: dict | None = None,
                 # TOON telemetry (NEW)
-                toon_telemetry: dict = None):
+                toon_telemetry: dict | None = None):
     """
     Log a message to the unified logging system.
 
@@ -109,7 +109,7 @@ def log_message(session_id: str, role: str, content: str, metadata: dict = None,
     )
 
 
-def query_logs(where_clause: str = None):
+def query_logs(where_clause: str | None = None):
     """
     Query logs using DuckDB SQL.
 

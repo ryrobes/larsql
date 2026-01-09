@@ -249,7 +249,7 @@ def convert_to_multimodal_content(text: str, extract_images: bool = True, extrac
         return text
 
     # Build multimodal content: text first, then videos, then images
-    content = [{"type": "text", "text": clean_text}]
+    content: list[dict] = [{"type": "text", "text": clean_text}]
 
     for url in video_urls:
         content.append({

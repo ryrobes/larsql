@@ -9,8 +9,7 @@ import {
   ResponsiveContainer,
   Cell,
   PieChart,
-  Pie,
-  Legend
+  Pie
 } from 'recharts';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';

@@ -218,13 +218,13 @@ def _run_sql_with_connection(sql: str, connection: str, limit: int = 10000) -> D
 @simple_eddy
 def sql_data(
     query: str,
-    connection: str = None,
+    connection: str | None = None,
     limit: int = 10000,
     materialize: bool = True,
-    _cell_name: str = None,
-    _session_id: str = None,
-    _caller_id: str = None,
-    _cascade_id: str = None
+    _cell_name: str | None = None,
+    _session_id: str | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Execute SQL query and return results as DataFrame.
@@ -421,13 +421,13 @@ class DataNamespace:
 @simple_eddy
 def python_data(
     code: str,
-    _outputs: Dict[str, Any] = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _cell_name: str = None,
-    _session_id: str = None,
-    _caller_id: str = None,
-    _cascade_id: str = None
+    _outputs: Dict[str, Any] | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _cell_name: str | None = None,
+    _session_id: str | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Execute inline Python code with access to prior cell DataFrames.
@@ -765,13 +765,13 @@ def _format_polyglot_result(result: Any, cell_name: str, session_id: str) -> Dic
 @simple_eddy
 def js_data(
     code: str,
-    _outputs: Dict[str, Any] = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _cell_name: str = None,
-    _session_id: str = None,
-    _caller_id: str = None,
-    _cascade_id: str = None,
+    _outputs: Dict[str, Any] | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _cell_name: str | None = None,
+    _session_id: str | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
@@ -915,13 +915,13 @@ console.log(JSON.stringify({ result }));
 @simple_eddy
 def clojure_data(
     code: str,
-    _outputs: Dict[str, Any] = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _cell_name: str = None,
-    _session_id: str = None,
-    _caller_id: str = None,
-    _cascade_id: str = None,
+    _outputs: Dict[str, Any] | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _cell_name: str | None = None,
+    _session_id: str | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
     """
@@ -1069,13 +1069,13 @@ def clojure_data(
 @simple_eddy
 def rvbbit_data(
     cell_yaml: str,
-    _cell_name: str = None,
-    _outputs: Dict[str, Any] = None,
-    _session_id: str = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
-    _caller_id: str = None,
-    _cascade_id: str = None,
+    _cell_name: str | None = None,
+    _outputs: Dict[str, Any] | None = None,
+    _session_id: str | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
+    _caller_id: str | None = None,
+    _cascade_id: str | None = None,
 ) -> Dict[str, Any]:
     """
     Execute a full RVBBIT LLM cell within a notebook cell.

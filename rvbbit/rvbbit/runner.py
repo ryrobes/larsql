@@ -4,7 +4,12 @@ import json
 from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 from contextvars import ContextVar
 import logging
-import litellm
+
+# NOTE: litellm is NOT imported here - it's only needed in agent.py
+# Removing this saves nothing directly, but keeps the module cleaner
+
+# Module-level logger for debugging
+logger = logging.getLogger(__name__)
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -171,7 +176,7 @@ class RVBBITHooks:
         return {"action": HookAction.CONTINUE}
 
     def on_checkpoint_suspended(self, session_id: str, checkpoint_id: str, checkpoint_type: str,
-                                cell_name: str, message: str = None, cascade_id: str = None) -> dict:
+                                cell_name: str, message: str | None = None, cascade_id: str | None = None) -> dict:
         """Called when cascade is suspended waiting for human input"""
         return {"action": HookAction.CONTINUE}
 
@@ -181,10 +186,10 @@ class RVBBITHooks:
         return {"action": HookAction.CONTINUE}
 
 class RVBBITRunner:
-    def __init__(self, config_path: str | dict, session_id: str = "default", overrides: dict = None,
-                 depth: int = 0, parent_trace: TraceNode = None, hooks: RVBBITHooks = None,
-                 candidate_index: int = None, parent_session_id: str = None,
-                 caller_id: str = None, invocation_metadata: dict = None):
+    def __init__(self, config_path: str | dict, session_id: str = "default", overrides: dict | None = None,
+                 depth: int = 0, parent_trace: TraceNode | None = None, hooks: RVBBITHooks | None = None,
+                 candidate_index: int | None = None, parent_session_id: str | None = None,
+                 caller_id: str | None = None, invocation_metadata: dict | None = None):
         self.config_path = config_path
         self.config = load_cascade_config(config_path)
         self.session_id = session_id
@@ -677,7 +682,7 @@ class RVBBITRunner:
 
         return self.echo.get_full_echo()
 
-    def _get_metadata(self, extra: dict = None, semantic_actor: str = None, semantic_purpose: str = None) -> dict:
+    def _get_metadata(self, extra: dict | None = None, semantic_actor: str | None = None, semantic_purpose: str | None = None) -> dict:
         """
         Helper to build metadata dict with candidate_index and semantic fields automatically included.
         Use this in all echo.add_history() calls to ensure consistent tagging.
@@ -759,7 +764,7 @@ class RVBBITRunner:
 
         return cell.callouts
 
-    def _should_tag_as_callout(self, cell, message_type: str, turn_number: int = None) -> tuple:
+    def _should_tag_as_callout(self, cell, message_type: str, turn_number: int | None = None) -> tuple:
         """
         Check if a message should be tagged as a callout based on cell config.
 
@@ -791,7 +796,7 @@ class RVBBITRunner:
 
         return False, None
 
-    def _render_callout_name(self, template: str, cell, input_data: dict, turn_number: int = None) -> str:
+    def _render_callout_name(self, template: str, cell, input_data: dict, turn_number: int | None = None) -> str:
         """
         Render a callout name template with Jinja2.
 
@@ -1134,6 +1139,7 @@ class RVBBITRunner:
 
         # Increment budget usage
         audible_config = cell.audibles
+        assert audible_config is not None, "audibles must be configured"
         with self._audible_lock:
             used = self._audible_budget_used.get(cell.name, 0)
             self._audible_budget_used[cell.name] = used + 1
@@ -2193,7 +2199,7 @@ class RVBBITRunner:
         cell: CellConfig,
         cell_output: str,
         trace: TraceNode,
-        input_data: dict = None
+        input_data: dict | None = None
     ) -> Optional[Dict[str, Any]]:
         """
         Handle human-in-the-loop checkpoint if configured for this cell.
@@ -2415,6 +2421,8 @@ class RVBBITRunner:
         """
         decision = decision_data["decision"]
         config = cell.decision_points
+        assert config is not None, "decision_points must be configured"
+        assert config.ui is not None, "decision_points.ui must be configured"
         indent = "  " * self.depth
 
         console.print(f"{indent}[bold magenta]🔀 Decision point detected: {decision['question']}[/bold magenta]")
@@ -3685,12 +3693,13 @@ To call this tool, output a JSON code block:
 
         return auto_calls
 
-    def _run_with_cascade_candidates(self, input_data: dict = None) -> dict:
+    def _run_with_cascade_candidates(self, input_data: dict | None = None) -> dict:
         """
         Execute cascade with candidates (Tree of Thought at cascade level).
         Spawns N complete cascade executions in parallel, evaluates them, and returns only the winner.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        assert self.config.candidates is not None, "candidates must be configured"
         indent = "  " * self.depth
 
         # Resolve candidates factor (may be Jinja2 template string)
@@ -4051,6 +4060,8 @@ To call this tool, output a JSON code block:
         Reforge (refine) the winning cascade execution through iterative candidates.
         Each step runs complete cascade executions with honing prompt to progressively improve quality.
         """
+        assert self.config.candidates is not None, "candidates must be configured"
+        assert self.config.candidates.reforge is not None, "candidates.reforge must be configured"
         indent = "  " * self.depth
         reforge_config = self.config.candidates.reforge
         current_output = winner['result']
@@ -4281,7 +4292,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return winner
 
-    def _run_cascade_internal(self, input_data: dict = None) -> dict:
+    def _run_cascade_internal(self, input_data: dict | None = None) -> dict:
         """Internal cascade execution (separated to allow candidates wrapper)."""
         # Set context for tools
         session_context_token = set_current_session_id(self.session_id)
@@ -4496,7 +4507,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return result
 
-    def run(self, input_data: dict = None) -> dict:
+    def run(self, input_data: dict | None = None) -> dict:
         """
         Main entry point for cascade execution.
         Checks if cascade-level candidates are configured and delegates appropriately.
@@ -4860,7 +4871,7 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Don't fail cascade if cleanup fails
 
-    def _run_quartermaster(self, cell: CellConfig, input_data: dict, trace: TraceNode, cell_model: str = None) -> list[str]:
+    def _run_quartermaster(self, cell: CellConfig, input_data: dict, trace: TraceNode, cell_model: str | None = None) -> list[str]:
         """
         Run the Quartermaster agent to select appropriate traits for this cell.
 
@@ -5084,7 +5095,7 @@ If no tools are needed, return an empty array: []
             logger.debug(f"Failed to fetch winning mutations: {e}")
             return []
 
-    def _rewrite_prompt_with_llm(self, cell: CellConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode, mutation_mode: str = "rewrite", species_hash: str = None) -> str:
+    def _rewrite_prompt_with_llm(self, cell: CellConfig, input_data: dict, mutation_template: str, parent_trace: TraceNode, mutation_mode: str = "rewrite", species_hash: str | None = None) -> str:
         """
         Use an LLM to rewrite the cell prompt based on the mutation template.
 
@@ -5593,6 +5604,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 validator_result = {"valid": False, "reason": f"Ward error: {str(e)}"}
 
         # Parse result
+        if validator_result is None:
+            validator_result = {"valid": False, "reason": "No validator executed"}
         is_valid = validator_result.get("valid", False)
         reason = validator_result.get("reason", "No reason provided")
 
@@ -5735,6 +5748,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 validator_result = {"valid": False, "reason": f"Validator error: {str(e)}"}
 
         # Parse result
+        if validator_result is None:
+            validator_result = {"valid": False, "reason": "No validator executed"}
         is_valid = validator_result.get("valid", False)
         reason = validator_result.get("reason", "No reason provided")
 
@@ -6037,7 +6052,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _assign_models(self, candidates_config, resolved_factor: int = None) -> List[str]:
+    def _assign_models(self, candidates_config, resolved_factor: int | None = None) -> List[str]:
         """
         Assign models to candidate attempts based on configuration.
 
@@ -6749,12 +6764,13 @@ Use only numbers 0-100 for scores."""
 
         console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
 
-    def _execute_cell_with_candidates(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def _execute_cell_with_candidates(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None) -> Any:
         """
         Execute a cell with candidates (Tree of Thought).
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
         from .unified_logs import log_unified
+        assert cell.candidates is not None, "candidates must be configured"
 
         indent = "  " * self.depth
 
@@ -7463,6 +7479,7 @@ Use only numbers 0-100 for scores."""
 
             # Cell 3: Pareto Frontier Analysis
             if use_pareto:
+                assert cell.candidates.pareto_frontier is not None  # Guarded by use_pareto check
                 console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
 
                 # Initialize eval_prompt for metadata logging (Pareto uses quality scoring, not traditional eval)
@@ -7576,6 +7593,7 @@ Use only numbers 0-100 for scores."""
 
             # Cell 2: Cost-Aware Evaluation
             elif use_cost_aware:
+                assert cell.candidates.cost_aware_evaluation is not None  # Guarded by use_cost_aware
                 console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
                 candidate_costs = self._get_candidate_costs(valid_candidate_results)
                 normalized_costs = self._normalize_costs(
@@ -7908,7 +7926,7 @@ Use only numbers 0-100 for scores."""
                 "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
             }
             # Add cost-aware evaluation info (Cell 2: Multi-Model Candidates)
-            if use_cost_aware:
+            if use_cost_aware and cell.candidates.cost_aware_evaluation:
                 evaluator_metadata["cost_aware"] = True
                 evaluator_metadata["quality_weight"] = cell.candidates.cost_aware_evaluation.quality_weight
                 evaluator_metadata["cost_weight"] = cell.candidates.cost_aware_evaluation.cost_weight
@@ -7916,7 +7934,7 @@ Use only numbers 0-100 for scores."""
                     evaluator_metadata["candidate_costs"] = candidate_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
             # Add Pareto frontier info (Cell 3: Pareto Frontier Analysis)
-            if use_pareto:
+            if use_pareto and cell.candidates.pareto_frontier:
                 evaluator_metadata["pareto_enabled"] = True
                 evaluator_metadata["pareto_policy"] = cell.candidates.pareto_frontier.policy
                 evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
@@ -8262,6 +8280,8 @@ Use only numbers 0-100 for scores."""
         Reforge (refine) the winning output through iterative candidates.
         Each step runs mini-candidates with honing prompt to progressively improve quality.
         """
+        assert cell.candidates is not None, "candidates must be configured"
+        assert cell.candidates.reforge is not None, "candidates.reforge must be configured"
         indent = "  " * self.depth
         reforge_config = cell.candidates.reforge
         current_output = winner['result']
@@ -8656,7 +8676,7 @@ Refinement directive: {reforge_config.honing_prompt}
 
         return winner
 
-    def execute_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None) -> Any:
+    def execute_cell(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None) -> Any:
         import asyncio
 
         # ─────────────────────────────────────────────────────────────────────
@@ -8762,6 +8782,7 @@ Refinement directive: {reforge_config.honing_prompt}
         """
         import asyncio
         from .prompts import render_instruction
+        assert cell.browser is not None, "browser config must be present"
 
         indent = "  " * self.depth
         console.print(f"{indent}[bold cyan]🌐 Starting browser session for cell '{cell.name}'[/bold cyan]")
@@ -9394,6 +9415,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         from .prompts import render_instruction
         import time
         import uuid
+        assert cell.for_each_row is not None, "for_each_row must be configured"
 
         indent = "  " * self.depth
         config = cell.for_each_row
@@ -9733,7 +9755,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             input_data=input_data,
                             trace=trace,
                             config=auto_fix_config,
-                            depth=depth
+                            depth=self.depth
                         )
                         # Success - determine routing and return
                         handoffs = cell.handoffs or []
@@ -9974,7 +9996,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             # Re-raise
             raise
 
-    def _execute_cell_internal(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict = None, mutation: str = None, mutation_mode: str = None, pre_built_context: list = None) -> Any:
+    def _execute_cell_internal(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None, mutation: str | None = None, mutation_mode: str | None = None, pre_built_context: list | None = None) -> Any:
         indent = "  " * self.depth
         rag_context = None
         rag_prompt = ""
@@ -12187,9 +12209,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         return chosen_next_cell if chosen_next_cell else response_content
 
-def run_cascade(config_path: str | dict, input_data: dict = None, session_id: str = "default", overrides: dict = None,
-                depth: int = 0, parent_trace: TraceNode = None, hooks: RVBBITHooks = None, parent_session_id: str = None,
-                candidate_index: int = None, caller_id: str = None, invocation_metadata: dict = None) -> dict:
+def run_cascade(config_path: str | dict, input_data: dict | None = None, session_id: str = "default", overrides: dict | None = None,
+                depth: int = 0, parent_trace: TraceNode | None = None, hooks: RVBBITHooks | None = None, parent_session_id: str | None = None,
+                candidate_index: int | None = None, caller_id: str | None = None, invocation_metadata: dict | None = None) -> dict:
 
     # If caller tracking not provided, try to get from context
     if caller_id is None:

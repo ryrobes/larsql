@@ -894,7 +894,7 @@ const SessionMessagesLog = ({
                             <div key={idx} className="sml-detail-image-item">
                               <img
                                 src={imageUrl}
-                                alt={`Image ${idx + 1}`}
+                                alt={`Output ${idx + 1}`}
                                 className="sml-detail-image"
                                 loading="lazy"
                                 onClick={() => setModalImage({ url: imageUrl, path: imagePath })}

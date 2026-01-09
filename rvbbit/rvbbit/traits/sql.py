@@ -26,8 +26,8 @@ def sql_analyze(
     data: str,
     row_count: int = 0,
     columns: Optional[List[str]] = None,
-    _session_id: str = None,
-    _caller_id: str = None,
+    _session_id: str | None = None,
+    _caller_id: str | None = None,
 ) -> dict:
     """
     Analyze SQL query results with an LLM.

@@ -208,7 +208,7 @@ def research_execute(sql: str) -> str:
         return json.dumps({"error": str(e)})
 
 
-def research_db_info(db_name: str = None) -> dict:
+def research_db_info(db_name: str | None = None) -> dict:
     """
     Get information about a research database (for debugging/admin).
     Not exposed as an LLM tool - used internally.

@@ -240,7 +240,7 @@ REFERENCE_TEMPLATES = {
 # DETECTION LOGIC
 # =============================================================================
 
-def is_research_cockpit_mode(cell: CellConfig, env_override: bool = None) -> bool:
+def is_research_cockpit_mode(cell: CellConfig, env_override: bool | None = None) -> bool:
     """
     Detect if a cell should run in Research Cockpit mode.
 

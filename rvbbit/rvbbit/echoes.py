@@ -46,40 +46,40 @@ class EchoLogger:
         self,
         # Core identification
         session_id: str,
-        trace_id: str = None,
-        parent_id: str = None,
-        timestamp: float = None,
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        timestamp: float | None = None,
 
         # Message classification
         node_type: str = "message",  # message, tool_call, tool_result, agent, user, system, etc.
-        role: str = None,
+        role: str | None = None,
         depth: int = 0,
 
         # Candidates/Reforge metadata
-        candidate_index: int = None,
-        is_winner: bool = None,
-        reforge_step: int = None,
+        candidate_index: int | None = None,
+        is_winner: bool | None = None,
+        reforge_step: int | None = None,
 
         # Cell context
-        cell_name: str = None,
-        cascade_id: str = None,
-        cascade_file: str = None,
+        cell_name: str | None = None,
+        cascade_id: str | None = None,
+        cascade_file: str | None = None,
 
         # Performance metrics (enriched later or passed directly)
-        duration_ms: float = None,
-        tokens_in: int = None,
-        tokens_out: int = None,
-        cost: float = None,
-        request_id: str = None,  # OpenRouter/LiteLLM request ID
-        model: str = None,  # Model name used for this LLM call
+        duration_ms: float | None = None,
+        tokens_in: int | None = None,
+        tokens_out: int | None = None,
+        cost: float | None = None,
+        request_id: str | None = None,  # OpenRouter/LiteLLM request ID
+        model: str | None = None,  # Model name used for this LLM call
 
         # Complex nested data (will be stored as native JSON)
         content: Any = None,  # Can be str, list, dict - preserves structure
-        tool_calls: List[Dict] = None,
-        metadata: Dict = None,
+        tool_calls: List[Dict] | None = None,
+        metadata: Dict | None = None,
 
         # Images
-        images: List[str] = None,  # File paths to saved images
+        images: List[str] | None = None,  # File paths to saved images
         has_base64: bool = False,  # Whether content contains base64 image data
     ):
         """
@@ -257,28 +257,28 @@ _echo_logger = EchoLogger()
 
 def log_echo(
     session_id: str,
-    trace_id: str = None,
-    parent_id: str = None,
-    timestamp: float = None,
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+    timestamp: float | None = None,
     node_type: str = "message",
-    role: str = None,
+    role: str | None = None,
     depth: int = 0,
-    candidate_index: int = None,
-    is_winner: bool = None,
-    reforge_step: int = None,
-    cell_name: str = None,
-    cascade_id: str = None,
-    cascade_file: str = None,
-    duration_ms: float = None,
-    tokens_in: int = None,
-    tokens_out: int = None,
-    cost: float = None,
-    request_id: str = None,
-    model: str = None,
+    candidate_index: int | None = None,
+    is_winner: bool | None = None,
+    reforge_step: int | None = None,
+    cell_name: str | None = None,
+    cascade_id: str | None = None,
+    cascade_file: str | None = None,
+    duration_ms: float | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    cost: float | None = None,
+    request_id: str | None = None,
+    model: str | None = None,
     content: Any = None,
-    tool_calls: List[Dict] = None,
-    metadata: Dict = None,
-    images: List[str] = None,
+    tool_calls: List[Dict] | None = None,
+    metadata: Dict | None = None,
+    images: List[str] | None = None,
     has_base64: bool = False,
 ):
     """
@@ -327,7 +327,7 @@ import atexit
 atexit.register(close_echoes)
 
 
-def query_echoes_parquet(where_clause: str = None) -> pd.DataFrame:
+def query_echoes_parquet(where_clause: str | None = None) -> pd.DataFrame:
     """
     Query echo Parquet files using DuckDB.
 
@@ -403,7 +403,7 @@ def query_echoes_jsonl(session_id: str) -> List[Dict]:
     return entries
 
 
-def query_echoes_jsonl_duckdb(where_clause: str = None) -> pd.DataFrame:
+def query_echoes_jsonl_duckdb(where_clause: str | None = None) -> pd.DataFrame:
     """
     Query JSONL files directly with DuckDB (no import needed).
 

@@ -186,7 +186,7 @@ def launch_branch_cascade(
                 try:
                     if checkpoint_ts:
                         if isinstance(checkpoint_ts, str):
-                            dt = datetime.fromisoformat(checkpoint_ts.replace('Z', '+00:00'))
+                            dt = datetime.fromisoformat(checkpoint_ts.replace('Z', '+00:00'))  # pyright: ignore[reportUnboundVariable]
                         else:
                             dt = checkpoint_ts
                         timestamp_str = dt.strftime("%H:%M")

@@ -173,7 +173,7 @@ def _run_cascade_sync(
     cascade_path_or_config: Union[str, Dict[str, Any]],
     session_id: str,
     inputs: Dict[str, Any],
-    caller_id: str = None
+    caller_id: str | None = None
 ) -> Dict[str, Any]:
     """Run a cascade synchronously (blocking).
 
@@ -621,7 +621,7 @@ def semantic_themes_cascade(texts_json: str, num_topics: int = 5) -> str:
     return result
 
 
-def semantic_cluster_cascade(values_json: str, num_clusters: int = 8, criterion: str = None) -> str:
+def semantic_cluster_cascade(values_json: str, num_clusters: int = 8, criterion: str | None = None) -> str:
     """
     MEANING/CLUSTER aggregate via cascade.
 

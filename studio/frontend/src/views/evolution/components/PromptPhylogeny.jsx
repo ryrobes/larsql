@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -274,7 +274,6 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
 
   if (!nodes.length) {
     // Check if we have metadata to provide a better error message
-    const hasMetadata = metadata && Object.keys(metadata).length > 0;
     const errorMessage = error || (metadata && metadata.message);
 
     return (

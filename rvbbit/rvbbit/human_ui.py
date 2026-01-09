@@ -592,7 +592,7 @@ Notes:
 """
 
 
-def _classify_question(question: str, context: str = None, session_id: str = None, cell_name: str = None) -> Dict[str, Any]:
+def _classify_question(question: str, context: str | None = None, session_id: str | None = None, cell_name: str | None = None) -> Dict[str, Any]:
     """
     Use LLM to classify question type and extract UI parameters.
 
@@ -797,7 +797,7 @@ def _extract_options_from_text(text: str) -> List[Dict[str, str]]:
     return options
 
 
-def _extract_options_from_question(question: str, context: str = None) -> List[Dict[str, str]]:
+def _extract_options_from_question(question: str, context: str | None = None) -> List[Dict[str, str]]:
     """
     Extract options from question and/or context text.
 
@@ -824,7 +824,7 @@ def _extract_options_from_question(question: str, context: str = None) -> List[D
 def _build_ui_for_classification(
     classification: Dict[str, Any],
     question: str,
-    context: str = None
+    context: str | None = None
 ) -> Dict[str, Any]:
     """
     Build ui_spec based on classification results.
@@ -970,11 +970,11 @@ def _generate_from_hint(question: str, context: str, ui_hint: str) -> Dict[str, 
 
 def generate_ask_human_ui(
     question: str,
-    context: str = None,
-    ui_hint: str = None,
-    cell_name: str = None,
-    cascade_id: str = None,
-    session_id: str = None
+    context: str | None = None,
+    ui_hint: str | None = None,
+    cell_name: str | None = None,
+    cascade_id: str | None = None,
+    session_id: str | None = None
 ) -> Dict[str, Any]:
     """
     Generate appropriate UI for an ask_human call.

@@ -1,0 +1,26 @@
+{
+  "include": [
+    "rvbbit/rvbbit",
+    "alice/alice",
+    "studio/backend"
+  ],
+  "exclude": [
+    "**/build",
+    "**/venv",
+    "**/.venv",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/dist",
+    "**/*.egg-info",
+    "rvbbit/rvbbit/echo_integration_example.py",
+    "scripts"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.10",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportUnusedImport": "none",
+  "reportUnusedVariable": "none",
+  "reportPrivateImportUsage": "none"
+}

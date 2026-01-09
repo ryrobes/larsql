@@ -15,9 +15,6 @@ import {
   buildFBPLayout,
   CARD_WIDTH,
   CARD_HEIGHT,
-  INPUT_COLORS,
-  getEdgeColor,
-  getEdgeOpacity,
 } from '../../utils/cascadeLayout';
 import './CascadeTimeline.css';
 
@@ -230,27 +227,6 @@ const CellEdgesSVG = React.memo(({ edges, width, height, cellCostMetrics = {} })
 CellEdgesSVG.displayName = 'CellEdgesSVG';
 
 /**
- * DropZone - Visual drop target between cells
- */
-const DropZone = ({ position }) => {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `drop-zone-${position}`,
-    data: { position },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`cascade-drop-zone ${isOver ? 'cascade-drop-zone-active' : ''}`}
-    >
-      <div className="cascade-drop-zone-indicator">
-        {isOver && <Icon icon="mdi:plus-circle" width="20" />}
-      </div>
-    </div>
-  );
-};
-
-/**
  * CanvasDropZone - Background drop target for creating independent cells
  */
 const CanvasDropZone = () => {
@@ -287,8 +263,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const cascadeSessionId = useStudioCascadeStore(state => state.cascadeSessionId);
   const viewMode = useStudioCascadeStore(state => state.viewMode);
   const replaySessionId = useStudioCascadeStore(state => state.replaySessionId);
-  const sessionId = useStudioCascadeStore(state => state.sessionId);
-  const cascades = useStudioCascadeStore(state => state.cascades);
   const selectedCellIndex = useStudioCascadeStore(state => state.selectedCellIndex);
   const defaultModel = useStudioCascadeStore(state => state.defaultModel);
 
@@ -296,12 +270,10 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   const fetchCascades = useStudioCascadeStore(state => state.fetchCascades);
   const loadCascade = useStudioCascadeStore(state => state.loadCascade);
   const newCascade = useStudioCascadeStore(state => state.newCascade);
-  const addCell = useStudioCascadeStore(state => state.addCell);
   const restartSession = useStudioCascadeStore(state => state.restartSession);
   const updateCascade = useStudioCascadeStore(state => state.updateCascade);
   const saveCascade = useStudioCascadeStore(state => state.saveCascade);
   const setSelectedCellIndex = useStudioCascadeStore(state => state.setSelectedCellIndex);
-  const setLiveMode = useStudioCascadeStore(state => state.setLiveMode);
   const updateCellStatesFromPolling = useStudioCascadeStore(state => state.updateCellStatesFromPolling);
   const updateAnalyticsFromPolling = useStudioCascadeStore(state => state.updateAnalyticsFromPolling);
 
@@ -770,8 +742,9 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   }, [layoutMode, cascade?.cascade_id, graphPanelHeight]); // Re-measure when layout, cascade, or height changes
 
   // Build FBP layout (must be before early returns)
-  const cells = cascade?.cells || [];
-  const inputsSchema = cascade?.inputs_schema || {};
+  // Memoize to avoid new array/object references on every render
+  const cells = useMemo(() => cascade?.cells || [], [cascade?.cells]);
+  const inputsSchema = useMemo(() => cascade?.inputs_schema || {}, [cascade?.inputs_schema]);
 
   // DEBUG: Log cascade data
   React.useEffect(() => {
@@ -862,14 +835,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
         setIsWiping(false);
       }, 100);
     }, 500); // Duration of wipe animation
-  };
-
-  const handleLoad = async (path) => {
-    try {
-      await loadCascade(path);
-    } catch (err) {
-      console.error('Load failed:', err);
-    }
   };
 
   // Fetch cascades on mount
@@ -1050,8 +1015,6 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
   }
 
   const selectedCell = selectedCellIndex !== null ? cells[selectedCellIndex] : null;
-  const cellCount = cells.length;
-  const completedCount = Object.values(cellStates).filter(s => s?.status === 'success').length;
 
   if (!cascade) {
     return (

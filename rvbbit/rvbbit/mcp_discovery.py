@@ -393,7 +393,7 @@ def get_mcp_manifest(refresh: bool = False) -> Dict[str, Any]:
     return manifest
 
 
-def format_mcp_manifest(manifest: Dict[str, Any] = None) -> str:
+def format_mcp_manifest(manifest: Dict[str, Any] | None = None) -> str:
     """
     Format MCP manifest as human-readable text.
 

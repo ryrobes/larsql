@@ -334,7 +334,7 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         })
 
 
-def validate_sql(sql: str = None, connection: Optional[str] = None, *, content: str = None) -> str:
+def validate_sql(sql: str | None = None, connection: Optional[str] = None, *, content: str | None = None) -> str:
     """
     Validate SQL syntax and optionally check schema references.
 

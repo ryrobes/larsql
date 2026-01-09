@@ -532,7 +532,7 @@ def _remove_all_annotations(query: str) -> str:
 
 
 def _build_replacement(
-    func_def: LLMAggFunction,
+    func_def: Any,  # LLMAggFunctionCompat from aggregate_registry
     args: List[str],
     annotation: Optional[LLMAnnotation] = None
 ) -> str:

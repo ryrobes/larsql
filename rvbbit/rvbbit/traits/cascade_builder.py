@@ -205,7 +205,7 @@ def cascade_write(
 
 
 @simple_eddy
-def cascade_read(cascade_id: str, session_id: str = None) -> Dict[str, Any]:
+def cascade_read(cascade_id: str, session_id: str | None = None) -> Dict[str, Any]:
     """
     Read an existing cascade and return its structure.
 
@@ -312,7 +312,7 @@ def _create_cascade(cascade_id: str, metadata: dict) -> dict:
     }
 
 
-def _add_cell(cascade_data: dict, cell: dict, position: int = None) -> dict:
+def _add_cell(cascade_data: dict, cell: dict, position: int | None = None) -> dict:
     """Add a cell to the cascade."""
     if not cell:
         raise ValueError("Cell definition required for add_cell action")

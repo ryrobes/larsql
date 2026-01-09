@@ -11,8 +11,8 @@ from .extras import simple_eddy
 @simple_eddy
 def show_ui(
     html: str,
-    title: str = None,
-    description: str = None,
+    title: str | None = None,
+    description: str | None = None,
     collapsible: bool = False
 ) -> dict:
     """
@@ -171,7 +171,7 @@ def show_ui(
         screenshot_service.capture_htmx_render(
             html=complete_html,
             session_id=session_id,
-            cell_name=cell_name or "show_ui",
+            cell_name=trace.name if trace else "show_ui",
             candidate_index=candidate_idx,
             render_type="display"
         )

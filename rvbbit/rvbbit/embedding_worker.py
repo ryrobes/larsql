@@ -45,7 +45,7 @@ class EmbeddingWorker:
         batch_size: int = 20,
         poll_interval: float = 30.0,
         max_content_length: int = 8000,
-        enabled: bool = None,
+        enabled: bool | None = None,
     ):
         """
         Initialize embedding worker.
@@ -295,9 +295,9 @@ def stop_embedding_worker():
 
 def embed_texts_now(
     texts: List[str],
-    session_id: str = None,
-    cascade_id: str = None,
-    cell_name: str = None,
+    session_id: str | None = None,
+    cascade_id: str | None = None,
+    cell_name: str | None = None,
 ) -> Dict[str, Any]:
     """
     Synchronously embed texts with cost tracking.

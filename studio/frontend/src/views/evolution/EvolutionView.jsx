@@ -41,7 +41,7 @@ const EvolutionView = () => {
   const [cascades, setCascades] = useState([]);
   const [species, setSpecies] = useState([]);
   const [loadingCascades, setLoadingCascades] = useState(true);
-  const [loadingSpecies, setLoadingSpecies] = useState(false);
+  const [loadingSpecies, setLoadingSpecies] = useState(false); // eslint-disable-line no-unused-vars
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [analysisTab, setAnalysisTab] = useState('ngrams'); // 'ngrams' or 'models'
   const [evolveModalOpen, setEvolveModalOpen] = useState(false);
@@ -52,7 +52,6 @@ const EvolutionView = () => {
   const [evolutionLoading, setEvolutionLoading] = useState(false);
   const [evolutionError, setEvolutionError] = useState(null);
   const [highlightedNode, setHighlightedNode] = useState(null); // Node to highlight in graph
-  const [showTimeline, setShowTimeline] = useState(true); // Toggle timeline sidebar
   const [splitSizes, setSplitSizes] = useState([70, 30]); // Graph 70%, Timeline 30%
   const [viewMode, setViewMode] = useState('linear'); // 'graph' or 'linear' - default to linear
 

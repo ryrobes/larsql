@@ -884,7 +884,7 @@ def apply_suggestion():
     """
     from rvbbit.analyzer import PromptSuggestionManager
 
-    data = request.json
+    data = request.json or {}
     cascade_id = data.get('cascade_id')
     cell_name = data.get('cell_name')
     new_instruction = data.get('new_instruction')
@@ -2274,7 +2274,7 @@ def embedding_search():
     """
     from rvbbit.agent import Agent
 
-    data = request.json
+    data = request.json or {}
     query_text = data.get('query', '')
     limit = data.get('limit', 10)
     role_filter = data.get('role')

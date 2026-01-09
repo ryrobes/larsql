@@ -20,8 +20,11 @@ import atexit
 import hashlib
 import threading
 import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from .content_classifier import classify_content
 
@@ -30,7 +33,7 @@ from .content_classifier import classify_content
 # Content Identity Functions
 # ============================================================================
 
-def compute_content_hash(role: str, content: Any) -> str:
+def compute_content_hash(role: str | None, content: Any) -> str:
     """
     Compute deterministic hash for message identity based on role + content.
 
@@ -195,7 +198,7 @@ class UnifiedLogger:
                 print(f"[Unified Log] Cost worker error: {e}")
                 time.sleep(1)
 
-    def _fetch_cost_with_retry(self, request_id: str, api_key: str) -> Dict:
+    def _fetch_cost_with_retry(self, request_id: str, api_key: str | None) -> Dict:
         """Fetch cost data from OpenRouter with retries on 404."""
         if not api_key or not request_id:
             return {"cost": None, "tokens_in": 0, "tokens_out": 0, "tokens_reasoning": None, "provider": "unknown", "model": None}
@@ -270,112 +273,112 @@ class UnifiedLogger:
     def log(
         self,
         # Core identification
-        session_id: str,
-        trace_id: str = None,
-        parent_id: str = None,
-        parent_session_id: str = None,
-        parent_message_id: str = None,
+        session_id: str | None,
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        parent_session_id: str | None = None,
+        parent_message_id: str | None = None,
 
         # Caller tracking (NEW)
-        caller_id: str = None,
-        invocation_metadata: Dict = None,
+        caller_id: str | None = None,
+        invocation_metadata: Dict | None = None,
 
         # Message classification
         node_type: str = "message",
-        role: str = None,
+        role: str | None = None,
         depth: int = 0,
 
         # Semantic classification
-        semantic_actor: str = None,
-        semantic_purpose: str = None,
+        semantic_actor: str | None = None,
+        semantic_purpose: str | None = None,
 
         # Execution context
-        candidate_index: int = None,
-        is_winner: bool = None,
-        reforge_step: int = None,
-        winning_candidate_index: int = None,
-        attempt_number: int = None,
-        turn_number: int = None,
-        mutation_applied: str = None,
-        mutation_type: str = None,
-        mutation_template: str = None,
+        candidate_index: int | None = None,
+        is_winner: bool | None = None,
+        reforge_step: int | None = None,
+        winning_candidate_index: int | None = None,
+        attempt_number: int | None = None,
+        turn_number: int | None = None,
+        mutation_applied: str | None = None,
+        mutation_type: str | None = None,
+        mutation_template: str | None = None,
 
         # Cascade context
-        cascade_id: str = None,
-        cascade_file: str = None,
-        cascade_config: dict = None,
-        cell_name: str = None,
-        cell_config: dict = None,
-        species_hash: str = None,  # Hash of cell template DNA for prompt evolution tracking
-        genus_hash: str = None,    # Hash of cascade invocation DNA for trending/analytics
+        cascade_id: str | None = None,
+        cascade_file: str | None = None,
+        cascade_config: dict | None = None,
+        cell_name: str | None = None,
+        cell_config: dict | None = None,
+        species_hash: str | None = None,  # Hash of cell template DNA for prompt evolution tracking
+        genus_hash: str | None = None,    # Hash of cascade invocation DNA for trending/analytics
 
         # LLM provider data
-        model: str = None,              # Resolved model name (from API response)
-        model_requested: str = None,    # Originally requested model (from config)
-        request_id: str = None,
-        provider: str = None,
+        model: str | None = None,              # Resolved model name (from API response)
+        model_requested: str | None = None,    # Originally requested model (from config)
+        request_id: str | None = None,
+        provider: str | None = None,
 
         # Performance metrics
-        duration_ms: float = None,
-        tokens_in: int = None,
-        tokens_out: int = None,
-        cost: float = None,
+        duration_ms: float | None = None,
+        tokens_in: int | None = None,
+        tokens_out: int | None = None,
+        cost: float | None = None,
 
         # Reasoning tokens (OpenRouter extended thinking)
-        reasoning_enabled: bool = None,
-        reasoning_effort: str = None,
-        reasoning_max_tokens: int = None,
-        tokens_reasoning: int = None,
+        reasoning_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+        reasoning_max_tokens: int | None = None,
+        tokens_reasoning: int | None = None,
 
         # Token budget enforcement
-        budget_strategy: str = None,
-        budget_tokens_before: int = None,
-        budget_tokens_after: int = None,
-        budget_tokens_limit: int = None,
-        budget_tokens_pruned: int = None,
-        budget_percentage: float = None,
+        budget_strategy: str | None = None,
+        budget_tokens_before: int | None = None,
+        budget_tokens_after: int | None = None,
+        budget_tokens_limit: int | None = None,
+        budget_tokens_pruned: int | None = None,
+        budget_percentage: float | None = None,
 
         # Content
         content: Any = None,
-        full_request: dict = None,
-        full_response: dict = None,
-        tool_calls: List[Dict] = None,
+        full_request: dict | None = None,
+        full_response: dict | None = None,
+        tool_calls: List[Dict] | None = None,
 
         # Images
-        images: List[str] = None,
+        images: List[str] | None = None,
         has_base64: bool = False,
 
         # Videos
-        videos: List[str] = None,
+        videos: List[str] | None = None,
 
         # Audio
-        audio: List[str] = None,
+        audio: List[str] | None = None,
 
         # Mermaid
-        mermaid_content: str = None,
+        mermaid_content: str | None = None,
 
         # Callouts
         is_callout: bool = False,
-        callout_name: str = None,
+        callout_name: str | None = None,
 
         # Metadata
-        metadata: Dict = None,
+        metadata: Dict | None = None,
 
         # Content type override (optional - normally auto-classified)
-        content_type: str = None,
+        content_type: str | None = None,
 
         # TOON telemetry (NEW - for tracking token savings)
-        data_format: str = None,
-        data_size_json: int = None,
-        data_size_toon: int = None,
-        data_token_savings_pct: float = None,
-        toon_encoding_ms: float = None,
-        toon_decode_attempted: bool = None,
-        toon_decode_success: bool = None,
+        data_format: str | None = None,
+        data_size_json: int | None = None,
+        data_size_toon: int | None = None,
+        data_token_savings_pct: float | None = None,
+        toon_encoding_ms: float | None = None,
+        toon_decode_attempted: bool | None = None,
+        toon_decode_success: bool | None = None,
 
         # Data shape telemetry (for debugging and analytics)
-        data_rows: int = None,
-        data_columns: int = None,
+        data_rows: int | None = None,
+        data_columns: int | None = None,
     ):
         """
         Log a single message/event to ClickHouse.
@@ -647,73 +650,73 @@ def get_unified_logger() -> UnifiedLogger:
 
 
 def log_unified(
-    session_id: str,
-    trace_id: str = None,
-    parent_id: str = None,
-    parent_session_id: str = None,
-    parent_message_id: str = None,
-    caller_id: str = None,
-    invocation_metadata: Dict = None,
+    session_id: str | None,
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+    parent_session_id: str | None = None,
+    parent_message_id: str | None = None,
+    caller_id: str | None = None,
+    invocation_metadata: Dict | None = None,
     node_type: str = "message",
-    role: str = None,
+    role: str | None = None,
     depth: int = 0,
-    semantic_actor: str = None,
-    semantic_purpose: str = None,
-    candidate_index: int = None,
-    is_winner: bool = None,
-    reforge_step: int = None,
-    winning_candidate_index: int = None,
-    attempt_number: int = None,
-    turn_number: int = None,
-    mutation_applied: str = None,
-    mutation_type: str = None,
-    mutation_template: str = None,
-    cascade_id: str = None,
-    cascade_file: str = None,
-    cascade_config: dict = None,
-    cell_name: str = None,
-    cell_config: dict = None,
-    species_hash: str = None,
-    genus_hash: str = None,
-    model: str = None,
-    model_requested: str = None,
-    request_id: str = None,
-    provider: str = None,
-    duration_ms: float = None,
-    tokens_in: int = None,
-    tokens_out: int = None,
-    cost: float = None,
-    reasoning_enabled: bool = None,
-    reasoning_effort: str = None,
-    reasoning_max_tokens: int = None,
-    tokens_reasoning: int = None,
-    budget_strategy: str = None,
-    budget_tokens_before: int = None,
-    budget_tokens_after: int = None,
-    budget_tokens_limit: int = None,
-    budget_tokens_pruned: int = None,
-    budget_percentage: float = None,
+    semantic_actor: str | None = None,
+    semantic_purpose: str | None = None,
+    candidate_index: int | None = None,
+    is_winner: bool | None = None,
+    reforge_step: int | None = None,
+    winning_candidate_index: int | None = None,
+    attempt_number: int | None = None,
+    turn_number: int | None = None,
+    mutation_applied: str | None = None,
+    mutation_type: str | None = None,
+    mutation_template: str | None = None,
+    cascade_id: str | None = None,
+    cascade_file: str | None = None,
+    cascade_config: dict | None = None,
+    cell_name: str | None = None,
+    cell_config: dict | None = None,
+    species_hash: str | None = None,
+    genus_hash: str | None = None,
+    model: str | None = None,
+    model_requested: str | None = None,
+    request_id: str | None = None,
+    provider: str | None = None,
+    duration_ms: float | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    cost: float | None = None,
+    reasoning_enabled: bool | None = None,
+    reasoning_effort: str | None = None,
+    reasoning_max_tokens: int | None = None,
+    tokens_reasoning: int | None = None,
+    budget_strategy: str | None = None,
+    budget_tokens_before: int | None = None,
+    budget_tokens_after: int | None = None,
+    budget_tokens_limit: int | None = None,
+    budget_tokens_pruned: int | None = None,
+    budget_percentage: float | None = None,
     content: Any = None,
-    full_request: dict = None,
-    full_response: dict = None,
-    tool_calls: List[Dict] = None,
-    images: List[str] = None,
+    full_request: dict | None = None,
+    full_response: dict | None = None,
+    tool_calls: List[Dict] | None = None,
+    images: List[str] | None = None,
     has_base64: bool = False,
-    audio: List[str] = None,
-    mermaid_content: str = None,
+    audio: List[str] | None = None,
+    mermaid_content: str | None = None,
     is_callout: bool = False,
-    callout_name: str = None,
-    metadata: Dict = None,
-    content_type: str = None,
-    data_format: str = None,
-    data_size_json: int = None,
-    data_size_toon: int = None,
-    data_token_savings_pct: float = None,
-    toon_encoding_ms: float = None,
-    toon_decode_attempted: bool = None,
-    toon_decode_success: bool = None,
-    data_rows: int = None,
-    data_columns: int = None,
+    callout_name: str | None = None,
+    metadata: Dict | None = None,
+    content_type: str | None = None,
+    data_format: str | None = None,
+    data_size_json: int | None = None,
+    data_size_toon: int | None = None,
+    data_token_savings_pct: float | None = None,
+    toon_encoding_ms: float | None = None,
+    toon_decode_attempted: bool | None = None,
+    toon_decode_success: bool | None = None,
+    data_rows: int | None = None,
+    data_columns: int | None = None,
 ):
     """
     Global function to log unified mega-table entries.
@@ -840,7 +843,7 @@ def force_flush():
 # Query Functions (now using ClickHouse tables directly)
 # ============================================================================
 
-def query_unified(where_clause: str = None, order_by: str = "timestamp") -> 'pd.DataFrame':
+def query_unified(where_clause: str | None = None, order_by: str = "timestamp") -> 'pd.DataFrame':
     """
     Query unified logs from ClickHouse.
 
@@ -871,9 +874,9 @@ def query_unified(where_clause: str = None, order_by: str = "timestamp") -> 'pd.
 
 
 def query_unified_json_parsed(
-    where_clause: str = None,
+    where_clause: str | None = None,
     order_by: str = "timestamp",
-    parse_json_fields: List[str] = None
+    parse_json_fields: List[str] | None = None
 ) -> 'pd.DataFrame':
     """
     Query unified logs and automatically parse JSON fields.
@@ -904,7 +907,7 @@ def query_logs(where_clause: str) -> 'pd.DataFrame':
     return query_unified(where_clause)
 
 
-def query_echoes_parquet(where_clause: str = None) -> 'pd.DataFrame':
+def query_echoes_parquet(where_clause: str | None = None) -> 'pd.DataFrame':
     """Backward compatibility wrapper for old echoes.query_echoes_parquet() calls."""
     return query_unified(where_clause)
 
@@ -965,7 +968,7 @@ def get_candidates_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
     return db.query_df(query)
 
 
-def get_cost_timeline(cascade_id: str = None, group_by: str = "hour") -> 'pd.DataFrame':
+def get_cost_timeline(cascade_id: str | None = None, group_by: str = "hour") -> 'pd.DataFrame':
     """Get cost timeline for analysis."""
     from .db_adapter import get_db
 

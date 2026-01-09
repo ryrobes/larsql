@@ -428,7 +428,7 @@ def _get_latest_screenshot(session_id: str) -> Optional[str]:
     return None
 
 
-def _get_action_screenshots(session_id: str, action_name: str = None) -> List[str]:
+def _get_action_screenshots(session_id: str, action_name: str | None = None) -> List[str]:
     """
     Get before/after screenshots for the most recent action.
     Returns list of paths [after, before] (most recent first).

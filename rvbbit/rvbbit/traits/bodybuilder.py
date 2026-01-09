@@ -56,11 +56,11 @@ DEFAULT_PLANNER_MODEL = "google/gemini-2.5-flash-lite"
 
 def _execute_single_body(
     body: Dict[str, Any],
-    session_id: str = None,
-    cell_name: str = None,
-    cascade_id: str = None,
+    session_id: str | None = None,
+    cell_name: str | None = None,
+    cascade_id: str | None = None,
     trace_prefix: str = "",
-    caller_id: str = None,
+    caller_id: str | None = None,
 ) -> Dict[str, Any]:
     """
     Execute a single OpenRouter-format body.
@@ -278,9 +278,9 @@ def _execute_single_body(
 def _plan_body(
     request: str,
     planner_model: str,
-    session_id: str = None,
-    cell_name: str = None,
-    cascade_id: str = None,
+    session_id: str | None = None,
+    cell_name: str | None = None,
+    cascade_id: str | None = None,
 ) -> Dict[str, Any]:
     """
     Use OpenRouter's bodybuilder-style model to convert natural language to API body.
@@ -455,24 +455,24 @@ def bodybuilder(
     body: Union[str, Dict[str, Any]] = None,
 
     # Planning mode - natural language request
-    request: str = None,
-    planner_model: str = None,
+    request: str | None = None,
+    planner_model: str | None = None,
 
     # Overrides (apply to both modes)
-    model_override: str = None,
-    system_prompt: str = None,
+    model_override: str | None = None,
+    system_prompt: str | None = None,
 
     # Caller tracking (for SQL Trail cost rollup)
-    caller_id: str = None,
+    caller_id: str | None = None,
 
     # Injected by runner
-    _session_id: str = None,
-    _cell_name: str = None,
-    _cascade_id: str = None,
-    _caller_id: str = None,  # Also injected by runner (takes precedence over caller_id if set)
-    _outputs: Dict[str, Any] = None,
-    _state: Dict[str, Any] = None,
-    _input: Dict[str, Any] = None,
+    _session_id: str | None = None,
+    _cell_name: str | None = None,
+    _cascade_id: str | None = None,
+    _caller_id: str | None = None,  # Also injected by runner (takes precedence over caller_id if set)
+    _outputs: Dict[str, Any] | None = None,
+    _state: Dict[str, Any] | None = None,
+    _input: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Execute LLM calls from OpenRouter JSON body format.

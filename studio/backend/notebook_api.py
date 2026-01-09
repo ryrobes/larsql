@@ -132,8 +132,8 @@ def attempt_auto_fix(
     auto_fix_config: dict,
     session_id: str,
     cell_name: str,
-    prior_outputs: dict = None,
-    inputs: dict = None
+    prior_outputs: dict | None = None,
+    inputs: dict | None = None
 ) -> dict:
     """
     Attempt to auto-fix a failed cell using LLM.
@@ -458,7 +458,7 @@ def save_notebook():
         JSON with success status
     """
     try:
-        data = request.json
+        data = request.json or {}
         path = data.get('path')
         notebook = data.get('notebook')
 
@@ -500,7 +500,7 @@ def run_notebook():
         JSON with execution results for each cell
     """
     try:
-        data = request.json
+        data = request.json or {}
         notebook = data.get('notebook')
         inputs = data.get('inputs', {})
 
@@ -573,7 +573,7 @@ def run_cell():
         JSON with cell execution result
     """
     try:
-        data = request.json
+        data = request.json or {}
         cell = data.get('cell')
         inputs = data.get('inputs', {})
         prior_outputs = data.get('prior_outputs', {})
@@ -780,7 +780,7 @@ def cleanup_session():
         JSON with success status
     """
     try:
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
 
         if session_id:

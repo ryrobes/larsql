@@ -13,6 +13,8 @@ import glob
 import math
 import time
 import tempfile
+import yaml
+from uuid import uuid4
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, send_from_directory, send_file, request, Response, stream_with_context
@@ -3357,7 +3359,7 @@ def run_cascade():
     Also accepts 'input' or 'inputs' for the input values.
     """
     try:
-        data = request.json
+        data = request.json or {}
         cascade_path = data.get('cascade_path')
         cascade_yaml = data.get('cascade_yaml')
         # Accept both 'inputs' and 'input' for flexibility
@@ -3557,7 +3559,7 @@ def playground_run_from():
         inputs: Input values
     """
     try:
-        data = request.json
+        data = request.json or {}
         # Accept cell_name or node_id for backwards compatibility
         cell_name = data.get('cell_name') or data.get('node_id')
         cached_session_id = data.get('cached_session_id')
@@ -3668,7 +3670,7 @@ def playground_run_from():
 
                 hooks = ResearchSessionAutoSaveHooks()
 
-                print(f"[Playground RunFrom] Starting cascade from {node_id}")
+                print(f"[Playground RunFrom] Starting cascade from {cell_name}")
                 execute_cascade(cascade_path, inputs, new_session_id, hooks=hooks)
                 print(f"[Playground RunFrom] Cascade completed: {new_session_id}")
 
@@ -3744,8 +3746,8 @@ def playground_run_from():
             'success': True,
             'session_id': new_session_id,
             'cached_from': cached_session_id,
-            'starting_from': node_id,
-            'message': f'Cascade started from {node_id}'
+            'starting_from': cell_name,
+            'message': f'Cascade started from {cell_name}'
         })
 
     except Exception as e:
@@ -4049,7 +4051,7 @@ def save_playground_cascade_as():
     try:
         import yaml as yaml_module
 
-        data = request.json
+        data = request.json or {}
         cascade_id = data.get('cascade_id', '').strip()
         description = data.get('description', '').strip()
         save_to = data.get('save_to', 'traits')
@@ -4553,7 +4555,7 @@ def cancel_cascade():
     For zombie cascades: Force-updates DB status immediately.
     """
     try:
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
         reason = data.get('reason', 'User requested cancellation')
         force = data.get('force', False)
@@ -4748,7 +4750,7 @@ def get_blocked_sessions():
 def freeze_test():
     """Freeze a session as a test snapshot"""
     try:
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
         snapshot_name = data.get('snapshot_name')
         description = data.get('description', '')
@@ -4907,7 +4909,7 @@ def hotornot_rate():
 
         from rvbbit.hotornot import log_binary_eval, flush_evaluations
 
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
         is_good = data.get('is_good')
 
@@ -4952,7 +4954,7 @@ def hotornot_prefer():
 
         from rvbbit.hotornot import log_preference_eval, flush_evaluations
 
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
         cell_name = data.get('cell_name')
         preferred_index = data.get('preferred_index')
@@ -5003,7 +5005,7 @@ def hotornot_flag():
 
         from rvbbit.hotornot import log_flag_eval, flush_evaluations
 
-        data = request.json
+        data = request.json or {}
         session_id = data.get('session_id')
         flag_reason = data.get('flag_reason')
 
@@ -5599,7 +5601,8 @@ def transcribe_voice_file():
         audio_base64 = base64.b64encode(file_data).decode('utf-8')
 
         # Get format from filename
-        ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'webm'
+        filename = file.filename or 'audio.webm'
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'webm'
 
         # Import voice module
         try:

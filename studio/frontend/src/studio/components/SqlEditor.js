@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import useStudioQueryStore from '../stores/studioQueryStore';
 import { configureMonacoTheme, STUDIO_THEME_NAME, handleEditorMount } from '../utils/monacoTheme';
@@ -11,9 +11,7 @@ function SqlEditor() {
   const {
     tabs,
     activeTabId,
-    updateTab,
-    executeQuery,
-    schemas
+    updateTab
   } = useStudioQueryStore();
 
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -52,11 +50,9 @@ function SqlEditor() {
           const state = useStudioQueryStore.getState();
           const tab = state.tabs.find(t => t.id === state.activeTabId);
           if (tab && tab.connection) {
-            // Temporarily update SQL, execute, then restore
-            const originalSql = tab.sql;
+            // Execute selected text as query
             state.updateTab(tab.id, { sql: selectedText });
             state.executeQuery(tab.id);
-            // Note: This will save the selected text as the query
           }
         }
       }

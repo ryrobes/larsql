@@ -894,7 +894,6 @@ function CascadeNavigator() {
   const [yamlParseError, setYamlParseError] = useState(null);
   const [editorFocused, setEditorFocused] = useState(false);
   const lastSyncedYamlRef = useRef('');
-  const editorRef = useRef(null);
 
   // Make YAML editor droppable
   const { setNodeRef: setYamlDropRef, isOver: isYamlOver } = useDroppable({
