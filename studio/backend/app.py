@@ -607,6 +607,7 @@ def get_cascade_definitions():
                                     'tool_caching': config.get('tool_caching'),
                                     'triggers': config.get('triggers'),
                                     'cascade_candidates': config.get('candidates'),  # Cascade-level candidates
+                                    'explorer': config.get('explorer', False),  # Explorer mode flag
                                     'metrics': {
                                         'run_count': 0,
                                         'total_cost': 0.0,

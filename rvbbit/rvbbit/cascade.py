@@ -1697,6 +1697,12 @@ class CascadeConfig(BaseModel):
     # Example: max_parallel: 10 allows up to 10 cells to run simultaneously
     max_parallel: Optional[int] = None
 
+    # Explorer mode flag
+    # When true, this cascade is designed for interactive exploration sessions
+    # and will appear in the Explore view's cascade picker.
+    # Use for: research assistants, coding assistants, data explorers, etc.
+    explorer: bool = False
+
 # Rebuild models to resolve forward references for PolyglotValidatorConfig
 WardConfig.model_rebuild()
 RuleConfig.model_rebuild()

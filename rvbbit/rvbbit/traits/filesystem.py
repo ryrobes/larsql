@@ -403,3 +403,292 @@ def read_image(path: str) -> dict:
         "content": f"Loaded image: {os.path.basename(resolved)} ({size_str})",
         "images": [resolved]
     }
+
+
+@simple_eddy
+def edit_file(path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
+    """
+    Perform surgical edits on a file by replacing specific text.
+
+    This is safer than write_file for making targeted changes - it finds and replaces
+    specific text rather than overwriting the entire file.
+
+    Args:
+        path: Path to the file (absolute or relative). Supports ~ for home directory.
+        old_string: The exact text to find and replace. Must be unique in the file
+                    unless replace_all=True.
+        new_string: The text to replace old_string with. Can be empty to delete text.
+        replace_all: If True, replace ALL occurrences. If False (default), the old_string
+                     must appear exactly once in the file (safety check).
+
+    Returns:
+        Success message with number of replacements, or error message.
+
+    Examples:
+        - Fix a typo: edit_file("doc.md", "teh", "the")
+        - Update version: edit_file("package.json", '"version": "1.0.0"', '"version": "1.1.0"')
+        - Delete a line: edit_file("config.py", "DEBUG = True\\n", "")
+        - Replace all: edit_file("code.py", "old_func", "new_func", replace_all=True)
+    """
+    resolved = _safe_path(path)
+
+    # Safety check
+    safety_error = _check_path_safety(resolved)
+    if safety_error:
+        return safety_error
+
+    if not os.path.exists(resolved):
+        return f"Error: File not found: {resolved}"
+
+    if not os.path.isfile(resolved):
+        return f"Error: Path is not a file: {resolved}"
+
+    log_message(None, "system", f"edit_file: {resolved} (old={len(old_string)} chars, new={len(new_string)} chars, replace_all={replace_all})",
+                metadata={"tool": "edit_file", "path": resolved, "old_len": len(old_string), "new_len": len(new_string), "replace_all": replace_all})
+
+    try:
+        # Read current content
+        with open(resolved, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Count occurrences
+        count = content.count(old_string)
+
+        if count == 0:
+            # Provide helpful context for debugging
+            preview = old_string[:100] + "..." if len(old_string) > 100 else old_string
+            return f"Error: old_string not found in file.\nSearched for: {repr(preview)}\nFile: {resolved}"
+
+        if count > 1 and not replace_all:
+            return f"Error: old_string appears {count} times in file. Use replace_all=True to replace all occurrences, or provide a more specific/unique string."
+
+        # Perform replacement
+        new_content = content.replace(old_string, new_string) if replace_all else content.replace(old_string, new_string, 1)
+
+        # Write back
+        with open(resolved, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        replacements = count if replace_all else 1
+        log_message(None, "system", f"edit_file: success, {replacements} replacement(s)",
+                    metadata={"tool": "edit_file", "path": resolved, "replacements": replacements})
+
+        return f"Successfully edited {resolved}: {replacements} replacement(s) made."
+
+    except UnicodeDecodeError as e:
+        return f"Error: Cannot read file as UTF-8. Details: {e}"
+    except PermissionError:
+        return f"Error: Permission denied editing: {resolved}"
+    except Exception as e:
+        return f"Error editing file: {type(e).__name__}: {e}"
+
+
+@simple_eddy
+def search_files(
+    pattern: str,
+    path: str = ".",
+    file_pattern: str | None = None,
+    context_lines: int = 2,
+    max_results: int = 50,
+    case_sensitive: bool = True
+) -> str:
+    """
+    Search for text patterns in files using ripgrep (rg) or fallback to grep.
+
+    This is the primary tool for exploring codebases - find where functions are defined,
+    where variables are used, grep through logs, etc.
+
+    Args:
+        pattern: Regex pattern to search for. Supports full regex syntax.
+                 Examples: "def main", "import.*json", "TODO|FIXME", "class\\s+\\w+"
+        path: Directory to search in (default: current directory). Supports ~ for home.
+        file_pattern: Optional glob to filter files. Examples: "*.py", "*.{js,ts}", "*.md"
+        context_lines: Number of lines to show before/after each match (default: 2).
+        max_results: Maximum number of matches to return (default: 50).
+        case_sensitive: If False, search case-insensitively (default: True).
+
+    Returns:
+        Formatted search results with file paths, line numbers, and context.
+
+    Examples:
+        - Find function: search_files("def process_data", "src/")
+        - Find imports: search_files("import requests", file_pattern="*.py")
+        - Find TODOs: search_files("TODO|FIXME|HACK", context_lines=0)
+        - Case insensitive: search_files("error", "logs/", case_sensitive=False)
+    """
+    import subprocess
+    import shutil
+
+    resolved = _safe_path(path)
+
+    if not os.path.exists(resolved):
+        return f"Error: Path not found: {resolved}"
+
+    log_message(None, "system", f"search_files: {resolved} pattern={pattern[:50]}",
+                metadata={"tool": "search_files", "path": resolved, "pattern": pattern, "file_pattern": file_pattern})
+
+    # Build command - prefer ripgrep, fallback to grep
+    rg_path = shutil.which("rg")
+    grep_path = shutil.which("grep")
+
+    if rg_path:
+        # Use ripgrep (faster, better defaults)
+        cmd = [
+            rg_path,
+            "--line-number",
+            "--with-filename",
+            f"--context={context_lines}",
+            f"--max-count={max_results}",
+            "--color=never",
+            "--heading",
+            "--no-ignore-vcs",  # Search in .gitignore'd files too
+        ]
+
+        if not case_sensitive:
+            cmd.append("--ignore-case")
+
+        if file_pattern:
+            cmd.extend(["--glob", file_pattern])
+
+        cmd.append(pattern)
+        cmd.append(resolved)
+
+    elif grep_path:
+        # Fallback to grep
+        cmd = [
+            grep_path,
+            "-r",  # Recursive
+            "-n",  # Line numbers
+            "-H",  # Always show filename
+            f"-C{context_lines}",  # Context lines
+        ]
+
+        if not case_sensitive:
+            cmd.append("-i")
+
+        if file_pattern:
+            cmd.extend(["--include", file_pattern])
+
+        cmd.append(pattern)
+        cmd.append(resolved)
+
+    else:
+        return "Error: Neither ripgrep (rg) nor grep found. Install ripgrep for best results: https://github.com/BurntSushi/ripgrep"
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=resolved if os.path.isdir(resolved) else os.path.dirname(resolved)
+        )
+
+        output = result.stdout
+
+        # ripgrep returns exit code 1 for "no matches" which isn't an error
+        if result.returncode == 1 and not output and not result.stderr:
+            return f"No matches found for pattern: {pattern}"
+
+        if result.returncode > 1:
+            return f"Error: Search failed: {result.stderr}"
+
+        if not output:
+            return f"No matches found for pattern: {pattern}"
+
+        # Truncate if too long
+        lines = output.split('\n')
+        if len(lines) > 500:
+            output = '\n'.join(lines[:500]) + f"\n\n... truncated ({len(lines)} total lines)"
+
+        # Add summary header
+        match_count = len([l for l in lines if l.strip() and not l.startswith('--')])
+        header = f"Search: {pattern}\nPath: {resolved}\nMatches: ~{match_count} lines\n{'='*60}\n\n"
+
+        return header + output
+
+    except subprocess.TimeoutExpired:
+        return "Error: Search timed out after 30 seconds. Try a more specific pattern or path."
+    except Exception as e:
+        return f"Error: Search failed: {type(e).__name__}: {e}"
+
+
+@simple_eddy
+def tree(path: str = ".", max_depth: int = 3, show_hidden: bool = False) -> str:
+    """
+    Display directory structure as a tree.
+
+    Useful for understanding project layout before diving into specific files.
+
+    Args:
+        path: Root directory to display (default: current directory).
+        max_depth: Maximum depth to traverse (default: 3). Use -1 for unlimited.
+        show_hidden: If True, include hidden files/directories (default: False).
+
+    Returns:
+        ASCII tree representation of the directory structure.
+
+    Examples:
+        - Project overview: tree("~/myproject")
+        - Deep dive: tree("src/", max_depth=5)
+        - Include hidden: tree(".", show_hidden=True)
+    """
+    resolved = _safe_path(path)
+
+    if not os.path.exists(resolved):
+        return f"Error: Path not found: {resolved}"
+
+    if not os.path.isdir(resolved):
+        return f"Error: Path is not a directory: {resolved}"
+
+    log_message(None, "system", f"tree: {resolved} (max_depth={max_depth})",
+                metadata={"tool": "tree", "path": resolved, "max_depth": max_depth})
+
+    lines = [resolved]
+    _tree_recursive(resolved, "", lines, max_depth, 0, show_hidden)
+
+    # Truncate if too large
+    if len(lines) > 500:
+        lines = lines[:500]
+        lines.append(f"\n... truncated (>500 entries)")
+
+    return '\n'.join(lines)
+
+
+def _tree_recursive(dir_path: str, prefix: str, lines: list, max_depth: int, current_depth: int, show_hidden: bool):
+    """Helper for tree() - recursively build tree representation."""
+    if max_depth != -1 and current_depth >= max_depth:
+        return
+
+    if len(lines) > 500:  # Safety limit
+        return
+
+    try:
+        entries = sorted(os.listdir(dir_path))
+    except PermissionError:
+        lines.append(f"{prefix}[permission denied]")
+        return
+
+    # Filter hidden files if needed
+    if not show_hidden:
+        entries = [e for e in entries if not e.startswith('.')]
+
+    # Separate dirs and files
+    dirs = [e for e in entries if os.path.isdir(os.path.join(dir_path, e))]
+    files = [e for e in entries if os.path.isfile(os.path.join(dir_path, e))]
+
+    # Sort: directories first, then files
+    all_entries = dirs + files
+
+    for i, entry in enumerate(all_entries):
+        is_last = (i == len(all_entries) - 1)
+        connector = "└── " if is_last else "├── "
+        entry_path = os.path.join(dir_path, entry)
+
+        if os.path.isdir(entry_path):
+            lines.append(f"{prefix}{connector}📁 {entry}/")
+            extension = "    " if is_last else "│   "
+            _tree_recursive(entry_path, prefix + extension, lines, max_depth, current_depth + 1, show_hidden)
+        else:
+            size = _format_size(os.path.getsize(entry_path))
+            lines.append(f"{prefix}{connector}📄 {entry} ({size})")

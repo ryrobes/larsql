@@ -50,9 +50,9 @@ const CascadePickerModal = ({ isOpen, onClose, onStart }) => {
         return;
       }
 
-      // Filter out cascades without paths
+      // Filter to explorer-enabled cascades only (cascades with explorer: true)
       const validCascades = (Array.isArray(data) ? data : [])
-        .filter(c => c.cascade_file)
+        .filter(c => c.cascade_file && c.explorer === true)
         .sort((a, b) => (b.latest_run || '').localeCompare(a.latest_run || ''));
 
       setCascades(validCascades);
