@@ -1538,3 +1538,49 @@
   border-color: rgba(248, 113, 113, 0.5);
   color: #fecaca;
 }
+
+/* DOM Snapshots expandable sections */
+.browser-result-dom-snapshots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.browser-result-dom-detail {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.browser-result-dom-detail summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(96, 165, 250, 0.05);
+  border-bottom: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.browser-result-dom-detail summary:hover {
+  background: rgba(96, 165, 250, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.browser-result-dom-detail[open] summary {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.browser-result-dom-content {
+  margin: 0;
+  padding: 12px;
+  font-size: 11px;
+  font-family: 'Google Sans Code', monospace;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.2);
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

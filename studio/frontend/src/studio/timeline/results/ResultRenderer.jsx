@@ -376,7 +376,128 @@ const ResultRenderer = ({ result, error, images }) => {
   }
 
 
-  // Browser batch result (rabbitize/rvbbit browser batch)
+  // Native browser tool result (has images as base64 data URLs)
+  // Detect: success field + images array with base64 or data URL strings
+  if (result?.success !== undefined && Array.isArray(result?.images)) {
+    const browserImages = result.images || [];
+    const domSnapshots = result.dom_snapshots || [];
+    const domCoords = result.dom_coords || [];
+    const sessionId = result.session_id;
+    const url = result.url;
+    const videoPath = result.video;
+    const conversationHistory = result.conversation_history || [];
+
+    return (
+      <div className="cell-detail-browser-result">
+        {/* Header with session info */}
+        <div className="browser-result-header">
+          {sessionId && (
+            <div className="browser-result-info">
+              <span className="browser-result-label">Session:</span>
+              <span className="browser-result-value">{sessionId}</span>
+            </div>
+          )}
+          {url && (
+            <div className="browser-result-info">
+              <span className="browser-result-label">URL:</span>
+              <a href={url} target="_blank" rel="noopener noreferrer" className="browser-result-link">
+                {url}
+              </a>
+            </div>
+          )}
+          <div className="browser-result-info">
+            <span className="browser-result-label">Status:</span>
+            <span className="browser-result-value" style={{ color: result.success ? '#34d399' : '#f87171' }}>
+              {result.success ? 'Success' : 'Failed'}
+            </span>
+          </div>
+        </div>
+
+        {/* Images Grid - base64 data URLs */}
+        {browserImages.length > 0 && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">Screenshots ({browserImages.length})</h4>
+            <div className="browser-result-thumbnails">
+              {browserImages.map((imageData, idx) => {
+                // imageData is a base64 data URL like "data:image/jpeg;base64,..."
+                const isDataUrl = typeof imageData === 'string' && imageData.startsWith('data:');
+                const imageUrl = isDataUrl ? imageData : `http://localhost:5050${imageData}`;
+                return (
+                  <div
+                    key={idx}
+                    className="browser-result-thumbnail"
+                    onClick={() => setModalImage({ url: imageUrl, path: `Screenshot ${idx + 1}` })}
+                    title={`Screenshot ${idx + 1}`}
+                  >
+                    <img src={imageUrl} alt={`Screenshot ${idx + 1}`} />
+                    <span className="browser-result-thumbnail-label">Screenshot {idx + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* DOM Snapshots - shown as expandable sections */}
+        {domSnapshots.length > 0 && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">DOM Snapshots ({domSnapshots.length})</h4>
+            <div className="browser-result-dom-snapshots">
+              {domSnapshots.map((snapshot, idx) => (
+                <details key={idx} className="browser-result-dom-detail">
+                  <summary>DOM Snapshot {idx + 1}</summary>
+                  <pre className="browser-result-dom-content">{snapshot}</pre>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Video */}
+        {videoPath && (
+          <div className="browser-result-section">
+            <h4 className="browser-result-section-title">Video Recording</h4>
+            <a
+              href={`http://localhost:5050/api/browser-media/${videoPath}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="browser-result-video-link"
+            >
+              Download Video
+            </a>
+          </div>
+        )}
+
+        {/* Image Modal */}
+        <Modal
+          isOpen={!!modalImage}
+          onClose={() => setModalImage(null)}
+          size="full"
+          closeOnBackdrop={true}
+          closeOnEscape={true}
+          className="result-image-modal"
+        >
+          {modalImage && (
+            <div className="result-modal-image-container">
+              <div className="result-modal-image-header">
+                <span className="result-modal-image-title">{modalImage.path}</span>
+              </div>
+              <div className="result-modal-image-body">
+                <img
+                  src={modalImage.url}
+                  alt="Full size"
+                  className="result-modal-image"
+                  onClick={() => setModalImage(null)}
+                />
+              </div>
+            </div>
+          )}
+        </Modal>
+      </div>
+    );
+  }
+
+  // Legacy browser batch result (rabbitize/rvbbit browser batch with file paths)
   if (result?.screenshots || result?.dom_snapshots || result?.artifacts?.basePath) {
     const screenshots = result.screenshots || [];
     const domSnapshots = result.dom_snapshots || [];

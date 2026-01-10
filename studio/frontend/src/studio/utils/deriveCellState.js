@@ -113,6 +113,13 @@ export function deriveCellState(logs, cellName) {
       }
     }
 
+    // Also check for images directly in the result (native browser tool returns them there)
+    if (result && typeof result === 'object' && Array.isArray(result.images) && result.images.length > 0) {
+      // Browser tool returns base64 data URLs in result.images
+      //console.log('[deriveCellState]', cellName, 'Found images in result:', result.images.length);
+      images = result.images;
+    }
+
     // Accumulate duration
     if (row.duration_ms !== undefined && row.duration_ms !== null) {
       const ms = parseFloat(row.duration_ms);

@@ -1580,15 +1580,29 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                   {activeOutputTab === 'images' && images && images.length > 0 && (
                     <div className="cell-detail-images-only">
                       {images.map((imagePath, idx) => {
-                        const imageUrl = imagePath.startsWith('/api')
-                          ? `http://localhost:5050${imagePath}`
-                          : imagePath;
+                        // Handle different image path formats:
+                        // 1. Base64 data URLs (from browser tool): data:image/jpeg;base64,...
+                        // 2. API paths: /api/images/...
+                        // 3. Relative paths (legacy): screenshot.png
+                        let imageUrl;
+                        let displayPath;
+                        if (imagePath.startsWith('data:')) {
+                          // Base64 data URL - use directly
+                          imageUrl = imagePath;
+                          displayPath = `Screenshot ${idx + 1}`;
+                        } else if (imagePath.startsWith('/api')) {
+                          imageUrl = `http://localhost:5050${imagePath}`;
+                          displayPath = imagePath;
+                        } else {
+                          imageUrl = imagePath;
+                          displayPath = imagePath;
+                        }
                         return (
                           <div key={idx} className="cell-detail-image-container">
                             <img
                               src={imageUrl}
                               alt={`Output ${idx + 1}`}
-                              onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
+                              onClick={() => setModalImage({ url: imageUrl, path: displayPath })}
                               style={{ cursor: 'pointer' }}
                               title="Click to view full size"
                             />

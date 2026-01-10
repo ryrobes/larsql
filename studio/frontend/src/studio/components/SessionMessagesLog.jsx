@@ -392,6 +392,21 @@ const SessionMessagesLog = ({
       } catch {}
     }
 
+    // ALSO check content_json.images (browser tool returns images as base64 in result)
+    if (data.content_json && !data.has_images) {
+      try {
+        let content = data.content_json;
+        if (typeof content === 'string') {
+          content = JSON.parse(content);
+        }
+        if (content && content.images && Array.isArray(content.images) && content.images.length > 0) {
+          const contentImageCount = content.images.length;
+          mediaCount += contentImageCount;
+          mediaTypes.push(`${contentImageCount} screenshot${contentImageCount > 1 ? 's' : ''}`);
+        }
+      } catch {}
+    }
+
     // Count audio
     if (data.has_audio && data.audio_json) {
       try {
@@ -859,7 +874,7 @@ const SessionMessagesLog = ({
                         ? JSON.parse(selectedMessage.images_json)
                         : selectedMessage.images_json;
                       if (Array.isArray(images)) {
-                        allImages.push(...images);
+                        allImages.push(...images.map(img => ({ path: img, source: 'images_json' })));
                       }
                     } catch {}
                   }
@@ -871,7 +886,24 @@ const SessionMessagesLog = ({
                         ? JSON.parse(selectedMessage.metadata_json)
                         : selectedMessage.metadata_json;
                       if (metadata && metadata.images && Array.isArray(metadata.images)) {
-                        allImages.push(...metadata.images);
+                        allImages.push(...metadata.images.map(img => ({ path: img, source: 'metadata' })));
+                      }
+                    } catch {}
+                  }
+
+                  // ALSO collect from content_json.images (browser tool returns base64 images here)
+                  if (selectedMessage.content_json) {
+                    try {
+                      let content = selectedMessage.content_json;
+                      if (typeof content === 'string') {
+                        content = JSON.parse(content);
+                      }
+                      if (content && content.images && Array.isArray(content.images)) {
+                        allImages.push(...content.images.map((img, i) => ({
+                          path: img,
+                          source: 'content',
+                          label: `Screenshot ${i + 1}`
+                        })));
                       }
                     } catch {}
                   }
@@ -885,11 +917,25 @@ const SessionMessagesLog = ({
                         <span>Images ({allImages.length})</span>
                       </div>
                       <div className="sml-detail-images-grid">
-                        {allImages.map((imagePath, idx) => {
-                          // Handle both full URLs and relative paths
-                          const imageUrl = imagePath.startsWith('/api/')
-                            ? imagePath
-                            : `/api/images/${selectedMessage.session_id}/${imagePath}`;
+                        {allImages.map((imageInfo, idx) => {
+                          const imagePath = imageInfo.path;
+                          // Handle different image path formats:
+                          // 1. Base64 data URLs (from browser tool): data:image/jpeg;base64,...
+                          // 2. API paths: /api/images/...
+                          // 3. Relative paths (legacy): screenshot.png
+                          let imageUrl;
+                          let displayLabel;
+                          if (imagePath.startsWith('data:')) {
+                            // Base64 data URL - use directly
+                            imageUrl = imagePath;
+                            displayLabel = imageInfo.label || `Screenshot ${idx + 1}`;
+                          } else if (imagePath.startsWith('/api/')) {
+                            imageUrl = imagePath;
+                            displayLabel = imagePath;
+                          } else {
+                            imageUrl = `/api/images/${selectedMessage.session_id}/${imagePath}`;
+                            displayLabel = imagePath;
+                          }
                           return (
                             <div key={idx} className="sml-detail-image-item">
                               <img
@@ -897,10 +943,10 @@ const SessionMessagesLog = ({
                                 alt={`Output ${idx + 1}`}
                                 className="sml-detail-image"
                                 loading="lazy"
-                                onClick={() => setModalImage({ url: imageUrl, path: imagePath })}
+                                onClick={() => setModalImage({ url: imageUrl, path: displayLabel })}
                                 title="Click to view full size"
                               />
-                              <div className="sml-detail-image-label">{imagePath}</div>
+                              <div className="sml-detail-image-label">{displayLabel}</div>
                             </div>
                           );
                         })}
