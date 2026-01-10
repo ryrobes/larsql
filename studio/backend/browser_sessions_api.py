@@ -208,9 +208,9 @@ def _create_session(session_id: str | None = None) -> dict:
             from rvbbit.browser.session import BrowserSession as PythonBrowserSession
             from rvbbit.browser.streaming import frame_emitter
 
-            # Get the runs directory from rvbbit config
-            runs_dir = _get_rabbitize_runs_dir()
-            logger.debug(f"[BROWSER API] Using runs_dir: {runs_dir}")
+            # Get the browsers directory from rvbbit config
+            browsers_dir = _get_browsers_dir()
+            logger.debug(f"[BROWSER API] Using browsers_dir: {browsers_dir}")
 
             # Create frame callback that emits to the global frame_emitter
             # We need to capture session_id in closure
@@ -220,11 +220,11 @@ def _create_session(session_id: str | None = None) -> dict:
                 await frame_emitter.emit(captured_session_id, frame_bytes)
 
             # Create the Python browser session with frame callback for streaming
+            # Path structure: browsers/<session_id>/<cell_name>/
             python_session = PythonBrowserSession(
-                client_id="rvbbit",
-                test_id="studio",
                 session_id=session_id,
-                runs_dir=runs_dir,
+                cell_name="studio",
+                browsers_dir=browsers_dir,
                 frame_callback=frame_callback,
                 screenshot_interval=0.1,  # 10 FPS streaming
             )
@@ -423,12 +423,18 @@ def _ensure_rabbitize_running() -> dict:
     return result
 
 
-def _get_rabbitize_runs_dir() -> Path:
-    """Get the rabbitize-runs directory path."""
+def _get_browsers_dir() -> Path:
+    """Get the browsers directory path for browser automation artifacts."""
     if get_config:
         config = get_config()
-        return Path(config.root_dir) / "rabbitize-runs"
-    return Path(_REPO_ROOT) / "rabbitize-runs"
+        return Path(config.root_dir) / "browsers"
+    return Path(_REPO_ROOT) / "browsers"
+
+
+# Legacy alias
+def _get_rabbitize_runs_dir() -> Path:
+    """Deprecated: Use _get_browsers_dir() instead."""
+    return _get_browsers_dir()
 
 
 def _get_flows_dir() -> Path:
@@ -1422,13 +1428,15 @@ def proxy_session_start():
         )
 
         # Add our session info to the response
-        # Include clientId, testId, sessionId that frontend expects for stream path
+        # session_id and cell_name are the new path components: browsers/<session_id>/<cell_name>/
         result["dashboard_session_id"] = session_id
         result["dashboard_port"] = port
         result["port"] = port
-        result["clientId"] = python_session.client_id
-        result["testId"] = python_session.test_id
         result["sessionId"] = python_session.session_id
+        result["cellName"] = python_session.cell_name
+        # Legacy keys for frontend compatibility
+        result["clientId"] = python_session.session_id
+        result["testId"] = python_session.cell_name
         result["success"] = True
 
         logger.info(

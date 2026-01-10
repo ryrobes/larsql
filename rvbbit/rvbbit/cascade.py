@@ -1255,7 +1255,7 @@ class CellConfig(BaseModel):
 
     # Jinja2-templated inputs for the tool call
     # Available variables: {{ input.* }}, {{ state.* }}, {{ outputs.cell_name.* }}, {{ lineage }}
-    tool_inputs: Optional[Dict[str, str]] = Field(default=None, alias="inputs")
+    tool_inputs: Optional[Dict[str, Any]] = Field(default=None, alias="inputs")
 
     # Deterministic routing based on return value
     # Maps result._route or result.status to handoff target

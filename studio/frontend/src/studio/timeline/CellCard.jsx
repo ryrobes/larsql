@@ -211,8 +211,9 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
     rvbbit_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     bodybuilder: { label: 'Bodybuilder', icon: 'mdi:dumbbell', color: '#ff6b35' },
-    linux_shell: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize
-    linux_shell_dangerous: { label: 'Browser', icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize (host)
+    browser: { label: 'Browser', icon: 'mdi:web', color: '#f87171' }, // Native browser automation
+    linux_shell: { label: 'Shell', icon: 'mdi:console', color: '#94a3b8' }, // Generic shell
+    linux_shell_dangerous: { label: 'Shell', icon: 'mdi:console', color: '#94a3b8' }, // Generic shell (host)
     hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
   // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)

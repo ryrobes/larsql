@@ -160,6 +160,14 @@ def _register_all_traits():
     register_trait("rabbitize_extract", rabbitize_extract)
     register_trait("rabbitize_status", rabbitize_status)
 
+    # Native Python browser tools (browser, control_browser, etc.)
+    try:
+        from .browser.tools import register_browser_tools
+        register_browser_tools()
+    except ImportError as e:
+        # Browser dependencies not installed - tools won't be available
+        pass
+
     # Signals
     register_trait("await_signal", await_signal)
     register_trait("fire_signal", fire_signal)

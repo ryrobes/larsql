@@ -92,29 +92,34 @@ def _get_server_url() -> str:
         return managed["base_url"]
     return RABBITIZE_SERVER_URL
 
-# RABBITIZE_RUNS_DIR should be absolute to work from any working directory
+# BROWSERS_DIR should be absolute to work from any working directory
 # Use config.root_dir as primary location (where managed sessions store artifacts)
-def _find_rabbitize_runs_dir():
+def _find_browsers_dir():
     """
-    Find rabbitize-runs directory.
+    Find browsers directory for browser automation artifacts.
+
+    Path structure: browsers/<session_id>/<cell_name>/
+    This follows the same pattern as images/, audio/, videos/ for native artifacts.
 
     Priority:
-    1. RABBITIZE_RUNS_DIR environment variable
-    2. {config.root_dir}/rabbitize-runs (where managed sessions store artifacts)
-    3. Search up from cwd for existing rabbitize-runs (legacy compatibility)
+    1. RVBBIT_BROWSERS_DIR or RABBITIZE_RUNS_DIR environment variable
+    2. {config.root_dir}/browsers (where managed sessions store artifacts)
+    3. Search up from cwd for existing browsers/ directory
     """
+    if "RVBBIT_BROWSERS_DIR" in os.environ:
+        return os.environ["RVBBIT_BROWSERS_DIR"]
     if "RABBITIZE_RUNS_DIR" in os.environ:
         return os.environ["RABBITIZE_RUNS_DIR"]
 
     # Primary: Use rvbbit root_dir (matches where managed browser subprocess runs)
     try:
         config = get_config()
-        root_runs = Path(config.root_dir) / "rabbitize-runs"
-        if root_runs.exists() and root_runs.is_dir():
-            return str(root_runs)
+        browsers_dir = Path(config.root_dir) / "browsers"
+        if browsers_dir.exists() and browsers_dir.is_dir():
+            return str(browsers_dir)
         # Even if it doesn't exist yet, use this as the canonical location
         # (managed sessions will create it here)
-        return str(root_runs)
+        return str(browsers_dir)
     except Exception:
         pass
 
@@ -123,21 +128,23 @@ def _find_rabbitize_runs_dir():
 
     # Search parents first (prefer project root over nested directories)
     for parent in list(current.parents):
-        candidate = parent / "rabbitize-runs"
+        candidate = parent / "browsers"
         if candidate.exists() and candidate.is_dir():
             subdirs = list(candidate.glob("*/*"))
             if subdirs:
                 return str(candidate)
 
     # Then check current directory
-    candidate = current / "rabbitize-runs"
+    candidate = current / "browsers"
     if candidate.exists() and candidate.is_dir():
         return str(candidate)
 
     # Final fallback: use cwd
-    return str(current / "rabbitize-runs")
+    return str(current / "browsers")
 
-RABBITIZE_RUNS_DIR = _find_rabbitize_runs_dir()
+BROWSERS_DIR = _find_browsers_dir()
+# Legacy alias
+RABBITIZE_RUNS_DIR = BROWSERS_DIR
 
 RABBITIZE_EXECUTABLE = os.getenv("RABBITIZE_EXECUTABLE", "npx")
 RABBITIZE_AUTO_START = os.getenv("RABBITIZE_AUTO_START", "false").lower() == "true"  # Default: false for safety

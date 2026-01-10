@@ -679,11 +679,10 @@ output_schema:
 #   factor: 3
 #   evaluator_instructions: Pick the most accurate result
 `,
-            rabbitize_batch: `rvbbit browser batch \\
-  --client-id "{{CASCADE_ID}}" \\
-  --test-id "{{CELL_NAME}}" \\
-  --url "https://example.com" \\
-  --commands='[]'`
+            browser: `url: "https://example.com"
+actions:
+  - wait: 1
+  - screenshot: {}`
           };
 
           // Get cell type definition (declarative from YAML)

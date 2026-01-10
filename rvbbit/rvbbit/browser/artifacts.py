@@ -108,9 +108,18 @@ class SessionArtifacts:
 
     @classmethod
     def create(
-        cls, runs_dir: Path, client_id: str, test_id: str, session_id: str
+        cls, browsers_dir: Path, session_id: str, cell_name: str
     ) -> "SessionArtifacts":
-        base = Path(runs_dir) / client_id / test_id / session_id
+        """
+        Create artifact paths for a browser cell.
+
+        Path structure: browsers/<session_id>/<cell_name>/
+        - session_id: Cascade session ID (unique per run)
+        - cell_name: Cell name (unique within cascade)
+
+        This replaces the old client_id/test_id/timestamp structure.
+        """
+        base = Path(browsers_dir) / session_id / cell_name
         return cls(
             base_path=base,
             screenshots=base / "screenshots",
@@ -137,89 +146,95 @@ class SessionArtifacts:
         }
 
 
-def get_runs_directory() -> Path:
-    """Get the rabbitize-runs directory."""
-    # Check environment variable first
-    runs_dir = os.environ.get("RABBITIZE_RUNS_DIR")
-    if runs_dir:
-        return Path(runs_dir)
+def get_browsers_directory() -> Path:
+    """
+    Get the browsers directory for browser automation artifacts.
+
+    Path structure: browsers/<session_id>/<cell_name>/
+    This follows the same pattern as images/, audio/, videos/ for native artifacts.
+    """
+    # Check environment variable first (legacy support)
+    browsers_dir = os.environ.get("RVBBIT_BROWSERS_DIR") or os.environ.get("RABBITIZE_RUNS_DIR")
+    if browsers_dir:
+        return Path(browsers_dir)
 
     # Check RVBBIT_ROOT
     rvbbit_root = os.environ.get("RVBBIT_ROOT")
     if rvbbit_root:
-        return Path(rvbbit_root) / "rabbitize-runs"
+        return Path(rvbbit_root) / "browsers"
 
     # Default to current directory
-    return Path.cwd() / "rabbitize-runs"
+    return Path.cwd() / "browsers"
+
+
+# Legacy alias for backwards compatibility
+def get_runs_directory() -> Path:
+    """Deprecated: Use get_browsers_directory() instead."""
+    return get_browsers_directory()
 
 
 def list_sessions(
-    client_id: Optional[str] = None, test_id: Optional[str] = None
+    session_id: Optional[str] = None, cell_name: Optional[str] = None
 ) -> List[dict]:
     """
-    List all sessions in the runs directory.
+    List all browser sessions in the browsers directory.
 
     Args:
-        client_id: Filter by client ID
-        test_id: Filter by test ID
+        session_id: Filter by cascade session ID
+        cell_name: Filter by cell name
 
     Returns:
         List of session info dicts
     """
-    runs_dir = get_runs_directory()
-    if not runs_dir.exists():
+    browsers_dir = get_browsers_directory()
+    if not browsers_dir.exists():
         return []
 
     sessions = []
 
-    for client_dir in runs_dir.iterdir():
-        if not client_dir.is_dir():
+    for session_dir in browsers_dir.iterdir():
+        if not session_dir.is_dir():
             continue
-        if client_id and client_dir.name != client_id:
+        if session_id and session_dir.name != session_id:
             continue
 
-        for test_dir in client_dir.iterdir():
-            if not test_dir.is_dir():
+        for cell_dir in session_dir.iterdir():
+            if not cell_dir.is_dir():
                 continue
-            if test_id and test_dir.name != test_id:
+            if cell_name and cell_dir.name != cell_name:
                 continue
 
-            for session_dir in test_dir.iterdir():
-                if not session_dir.is_dir():
-                    continue
-
-                # Read metadata if available
-                metadata_file = session_dir / "session-metadata.json"
-                if metadata_file.exists():
-                    try:
-                        metadata = json.loads(metadata_file.read_text())
-                    except json.JSONDecodeError:
-                        metadata = {}
-                else:
+            # Read metadata if available
+            metadata_file = cell_dir / "session-metadata.json"
+            if metadata_file.exists():
+                try:
+                    metadata = json.loads(metadata_file.read_text())
+                except json.JSONDecodeError:
                     metadata = {}
+            else:
+                metadata = {}
 
-                # Count screenshots
-                screenshots_dir = session_dir / "screenshots"
-                screenshot_count = (
-                    len(list(screenshots_dir.glob("*.jpg")))
-                    if screenshots_dir.exists()
-                    else 0
-                )
+            # Count screenshots
+            screenshots_dir = cell_dir / "screenshots"
+            screenshot_count = (
+                len(list(screenshots_dir.glob("*.jpg")))
+                if screenshots_dir.exists()
+                else 0
+            )
 
-                sessions.append(
-                    {
-                        "client_id": client_dir.name,
-                        "test_id": test_dir.name,
-                        "session_id": session_dir.name,
-                        "path": str(session_dir),
-                        "screenshot_count": screenshot_count,
-                        "metadata": metadata,
-                    }
-                )
+            sessions.append(
+                {
+                    "session_id": session_dir.name,
+                    "cell_name": cell_dir.name,
+                    "path": str(cell_dir),
+                    "screenshot_count": screenshot_count,
+                    "metadata": metadata,
+                }
+            )
 
     return sessions
 
 
-def get_session_path(client_id: str, test_id: str, session_id: str) -> Path:
-    """Get the path to a specific session."""
-    return get_runs_directory() / client_id / test_id / session_id
+def get_session_path(session_id: str, cell_name: str) -> Path:
+    """Get the path to a specific browser cell's artifacts."""
+    return get_browsers_directory() / session_id / cell_name

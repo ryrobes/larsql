@@ -183,7 +183,7 @@ def resolve_tool_function(tool_spec: str, config_path: str | None = None) -> Cal
 
 
 def render_inputs(
-    input_templates: Optional[Dict[str, str]],
+    input_templates: Optional[Dict[str, Any]],
     render_context: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
@@ -192,8 +192,11 @@ def render_inputs(
     Uses NativeEnvironment to properly evaluate Python expressions and return
     native Python objects (lists, dicts, etc.) instead of string representations.
 
+    String values containing {{ }} or {% %} are treated as Jinja2 templates.
+    Non-string values (lists, dicts, numbers, etc.) pass through unchanged.
+
     Args:
-        input_templates: Dict of input_name -> Jinja2 template string
+        input_templates: Dict of input_name -> value (Jinja2 template string or literal)
         render_context: Context for Jinja2 rendering (input, state, outputs, etc.)
 
     Returns:
@@ -480,8 +483,9 @@ def execute_deterministic_cell(
             original_error=e
         )
 
-    # Inject context for ALL data tools (sql_data, python_data, js_data, clojure_data, rvbbit_data, bash_data, bodybuilder)
-    if cell.tool in ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder"):
+    # Inject context for data tools and browser (need session/cell info for artifacts)
+    tools_needing_context = ("sql_data", "python_data", "js_data", "clojure_data", "rvbbit_data", "bash_data", "bodybuilder", "browser")
+    if cell.tool in tools_needing_context:
         rendered_inputs["_cell_name"] = cell.name
         rendered_inputs["_session_id"] = echo.session_id
         rendered_inputs["_caller_id"] = echo.caller_id  # For SQL Trail correlation

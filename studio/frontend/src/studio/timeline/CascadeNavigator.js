@@ -159,12 +159,15 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
 
   const displayColumns = columnInfo.length > 0 ? columnInfo : dictKeys;
 
-  // Check if this is a rabbitize/browser batch cell - extract artifacts
+  // Check if this is a browser cell - extract artifacts
   const command = cell.inputs?.command || '';
-  const isRabbitize = (cell.tool === 'linux_shell' || cell.tool === 'linux_shell_dangerous') &&
-                      (command.includes('rabbitize') || command.includes('rvbbit browser batch'));
-  const rabbitizeArtifacts = React.useMemo(() => {
-    if (!isRabbitize) return null;
+  const isNativeBrowser = cell.tool === 'browser';
+  const isLegacyBrowser = (cell.tool === 'linux_shell' || cell.tool === 'linux_shell_dangerous') &&
+                           (command.includes('rabbitize') || command.includes('rvbbit browser batch'));
+  const isBrowserCell = isNativeBrowser || isLegacyBrowser;
+
+  const browserArtifacts = React.useMemo(() => {
+    if (!isBrowserCell) return null;
 
     const artifacts = {};
 
@@ -174,15 +177,38 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
 
       const result = cellState.result;
       if (result && typeof result === 'object') {
-        if (result.screenshots) artifacts.images = Array.isArray(result.screenshots) ? result.screenshots.length : result.screenshots;
+        // Handle both legacy (screenshots) and native (images) keys
+        if (result.images?.length) artifacts.images = result.images.length;
+        else if (result.screenshots) artifacts.images = Array.isArray(result.screenshots) ? result.screenshots.length : result.screenshots;
         if (result.dom_snapshots) artifacts.dom_snapshots = Array.isArray(result.dom_snapshots) ? result.dom_snapshots.length : result.dom_snapshots;
         if (result.dom_coords) artifacts.dom_coords = Array.isArray(result.dom_coords) ? result.dom_coords.length : result.dom_coords;
         if (result.video || result.video_path || result.has_video) artifacts.video = 1;
       }
     }
 
-    // Strategy 2: Infer from batch commands (support both old --batch-commands and new --commands)
-    if (Object.keys(artifacts).length === 0) {
+    // Strategy 2: Infer from actions (native format)
+    if (Object.keys(artifacts).length === 0 && isNativeBrowser) {
+      const actions = cell.inputs?.actions || [];
+      const artifactSteps = actions.filter(action => {
+        if (typeof action === 'object') {
+          const key = Object.keys(action)[0];
+          return key !== 'wait';
+        }
+        return true;
+      }).length;
+
+      if (artifactSteps > 0) {
+        artifacts.images = artifactSteps;
+        artifacts.dom_snapshots = artifactSteps;
+      }
+
+      if (cell.inputs?.record_video) {
+        artifacts.video = 1;
+      }
+    }
+
+    // Strategy 3: Infer from batch commands (legacy shell format)
+    if (Object.keys(artifacts).length === 0 && isLegacyBrowser) {
       const batchMatch = command.match(/--commands='(\[[\s\S]*?\])'/) || command.match(/--batch-commands='(\[[\s\S]*?\])'/);
       if (batchMatch) {
         try {
@@ -202,16 +228,16 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
             artifacts.video = 1;
           }
         } catch (e) {
-          console.error('Failed to parse rabbitize commands:', e);
+          console.error('Failed to parse browser commands:', e);
         }
       }
     }
 
     return Object.keys(artifacts).length > 0 ? artifacts : null;
-  }, [isRabbitize, command, cellState]);
+  }, [isBrowserCell, isNativeBrowser, isLegacyBrowser, cell.inputs, command, cellState]);
 
   const hasColumns = displayColumns.length > 0;
-  const hasArtifacts = rabbitizeArtifacts !== null;
+  const hasArtifacts = browserArtifacts !== null;
   const hasExpandableContent = hasColumns || hasArtifacts;
 
   const handleToggle = (e) => {
@@ -233,8 +259,9 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     clojure_data: { icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { icon: 'mdi:brain', color: '#a78bfa' },
     rvbbit_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
-    linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches
-    linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // For rabbitize batches (host execution)
+    browser: { icon: 'mdi:web', color: '#f87171' }, // Native browser automation
+    linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // Legacy browser batches
+    linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // Legacy browser batches (host execution)
     hitl_screen: { icon: 'mdi:monitor-dashboard', color: '#f97316' },
   };
   // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)
@@ -328,7 +355,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
       )}
 
       {isExpanded && hasArtifacts && (
-        <RabbitizeArtifactsTree cellName={cell.name} artifacts={rabbitizeArtifacts} cellState={cellState} />
+        <RabbitizeArtifactsTree cellName={cell.name} artifacts={browserArtifacts} cellState={cellState} />
       )}
     </div>
   );

@@ -181,10 +181,10 @@ def register_browser_tools():
             if session_id_holder[0]:
                 await frame_emitter.emit(session_id_holder[0], frame)
 
-        # Create session
+        # Create session - for interactive use, use session_name as cell_name
         session = BrowserSession(
-            client_id="rvbbit",
-            test_id=session_name or "interactive",
+            session_id="interactive",
+            cell_name=session_name or "browser",
             frame_callback=frame_callback,
         )
 
@@ -469,6 +469,319 @@ def register_browser_tools():
             "video_path": metadata.get("video_path"),
             "metrics": metadata,
         }
+
+    @register_trait("browser")
+    async def browser(
+        url: str,
+        commands: Optional[list] = None,
+        actions: Optional[list] = None,
+        viewport: tuple = (1280, 720),
+        headless: bool = True,
+        record_video: bool = False,
+        # Hidden inputs injected by deterministic executor
+        _cell_name: Optional[str] = None,
+        _session_id: Optional[str] = None,
+        **_kwargs,  # Capture any extra inputs
+    ) -> dict:
+        """
+        Native browser automation tool for cascades.
+
+        Execute browser commands and capture artifacts (screenshots, DOM snapshots).
+        This is the preferred way to do browser automation in cascades - it uses
+        the Python API directly (no shell), auto-derives paths from cascade context,
+        and returns artifacts as conversation_history for context flow.
+
+        Args:
+            url: The URL to navigate to (e.g., "https://example.com")
+            commands: List of command arrays in DSL format, e.g.:
+                - [":wait", 1]
+                - [":screenshot"]
+                - [":move-mouse", ":to", 400, 300]
+                - [":click"]
+                - [":type", "hello world"]
+                - [":keypress", "Enter"]
+            actions: Alternative declarative format (auto-converted to commands):
+                - {wait: 1}
+                - {screenshot: true}
+                - {move: {x: 400, y: 300}}
+                - {click: true}
+                - {type: {text: "hello"}}
+            viewport: Browser viewport size as (width, height), default (1280, 720)
+            headless: Run browser in headless mode (default True)
+            record_video: Enable video recording (default False)
+
+        Returns:
+            dict with:
+                - success: bool
+                - session_id: Browser session timestamp
+                - url: URL visited
+                - images: List of screenshot base64 data URLs
+                - dom_snapshots: List of markdown DOM snapshots
+                - dom_coords: List of element coordinate JSON strings
+                - video: Path to video file (if recorded)
+                - conversation_history: Multimodal messages for context system
+                - _route: Next cell routing (always "success" for now)
+
+        Example cascade:
+            - name: scrape_page
+              tool: browser
+              inputs:
+                url: "https://news.ycombinator.com"
+                commands:
+                  - [":wait", 1]
+                  - [":screenshot"]
+                  - [":scroll-wheel-down", 3]
+                  - [":screenshot"]
+
+            - name: analyze
+              instructions: "Analyze these screenshots"
+              context:
+                from: ["scrape_page"]  # Gets multimodal images
+        """
+        from rvbbit.browser.session import BrowserSession
+        from rvbbit.utils import encode_image_base64
+        import glob
+
+        # Use cascade session_id and cell_name directly
+        # Path: browsers/<session_id>/<cell_name>/
+        session_id = _session_id or "rvbbit"
+        cell_name = _cell_name or "browser"
+
+        # Convert actions to commands if provided
+        if actions and not commands:
+            commands = _convert_actions_to_commands(actions)
+
+        # Default to just taking a screenshot if no commands
+        if not commands:
+            commands = [[":screenshot"]]
+
+        # Create session
+        session = BrowserSession(
+            session_id=session_id,
+            cell_name=cell_name,
+            viewport=viewport,
+            headless=headless,
+            record_video=record_video,
+        )
+
+        result = {
+            "success": True,
+            "session_id": session.session_id,
+            "url": url,
+            "images": [],
+            "dom_snapshots": [],
+            "dom_coords": [],
+            "video": None,
+            "conversation_history": [],
+            "_route": "success",
+        }
+
+        try:
+            # Initialize and navigate
+            await session.initialize(url)
+            logger.info(f"[BROWSER] Session {session.session_id} initialized at {url}")
+
+            # Execute commands
+            for i, cmd in enumerate(commands):
+                try:
+                    logger.info(f"[BROWSER] Executing command {i}: {cmd}")
+                    cmd_result = await session.execute(cmd)
+                    logger.info(f"[BROWSER] Command {i} result: {cmd_result}")
+                    if not cmd_result.get("success", True):
+                        logger.warning(f"[BROWSER] Command {i} warning: {cmd_result.get('error', 'unknown')}")
+                except Exception as e:
+                    logger.warning(f"[BROWSER] Command {i} error: {e}")
+
+            logger.info(f"[BROWSER] Completed {len(commands)} commands")
+
+            # Load artifacts from session folder
+            logger.info(f"[BROWSER] Session artifacts: {session.artifacts}")
+            logger.info(f"[BROWSER] Artifacts base_path: {session.artifacts.base_path if session.artifacts else 'None'}")
+            if session.artifacts:
+                # Load screenshots as base64 data URLs
+                screenshots_dir = session.artifacts.screenshots
+                logger.info(f"[BROWSER] Screenshots dir: {screenshots_dir}, exists: {screenshots_dir.exists()}")
+                if screenshots_dir.exists():
+                    # Load all screenshot files (excluding intermediate captures like *-pre-move.jpg)
+                    import re
+                    screenshot_files = []
+                    for ext in ['*.jpg', '*.jpeg', '*.png']:
+                        screenshot_files.extend(glob.glob(str(screenshots_dir / ext)))
+                    logger.info(f"[BROWSER] Found {len(screenshot_files)} screenshot files: {screenshot_files}")
+                    # Filter out intermediate captures (contain hyphens like "0-pre-move.jpg")
+                    # Keep numbered files (0.jpg, 1.jpg) and labeled files (manual.jpg, custom-label.jpg)
+                    screenshot_files = [f for f in screenshot_files if not re.search(r'/\d+-\w+\.(jpg|jpeg|png)$', f)]
+                    logger.info(f"[BROWSER] After filtering: {len(screenshot_files)} files: {screenshot_files}")
+                    screenshot_files.sort()
+
+                    for img_path in screenshot_files:
+                        try:
+                            data_url = encode_image_base64(img_path)
+                            result["images"].append(data_url)
+                        except Exception as e:
+                            logger.warning(f"[BROWSER] Error loading {img_path}: {e}")
+
+                # Load DOM snapshots
+                dom_dir = session.artifacts.dom_snapshots
+                if dom_dir.exists():
+                    for md_path in sorted(glob.glob(str(dom_dir / "*.md"))):
+                        try:
+                            with open(md_path, 'r', encoding='utf-8') as f:
+                                result["dom_snapshots"].append(f.read())
+                        except Exception as e:
+                            logger.warning(f"[BROWSER] Error loading DOM snapshot: {e}")
+
+                # Load DOM coords
+                coords_dir = session.artifacts.dom_coords
+                if coords_dir.exists():
+                    import re
+                    coord_files = glob.glob(str(coords_dir / "*.json"))
+                    # Filter to numbered files only
+                    coord_files = [f for f in coord_files if re.search(r'/dom_coords_\d+\.json$', f)]
+                    coord_files.sort()
+                    for json_path in coord_files:
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as f:
+                                result["dom_coords"].append(f.read())
+                        except Exception as e:
+                            logger.warning(f"[BROWSER] Error loading coords: {e}")
+
+                # Get video path if recorded
+                if record_video and session.artifacts.video.exists():
+                    video_files = list(session.artifacts.video.glob("*.webm"))
+                    if video_files:
+                        result["video"] = str(video_files[0])
+
+            # Build conversation_history for context system
+            # This makes artifacts flow through selective context like regular messages
+            content = []
+            content.append({
+                "type": "text",
+                "text": f"Browser session completed. Visited {url}. Captured {len(result['images'])} screenshots."
+            })
+
+            # Add each image as a multimodal content block
+            for i, img_data_url in enumerate(result["images"]):
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": img_data_url}
+                })
+
+            # Add DOM summaries as text (not full content - that would be too large)
+            if result["dom_snapshots"]:
+                # Just indicate DOM is available - full content in dom_snapshots array
+                content.append({
+                    "type": "text",
+                    "text": f"\n{len(result['dom_snapshots'])} DOM snapshots available in dom_snapshots array."
+                })
+
+            result["conversation_history"] = [{"role": "assistant", "content": content}]
+
+            # Artifacts info for reference
+            result["artifacts"] = {
+                "basePath": str(session.artifacts.base_path) if session.artifacts else None,
+                "screenshots": str(session.artifacts.screenshots) if session.artifacts else None,
+            }
+
+        except Exception as e:
+            logger.error(f"[BROWSER] Session error: {e}")
+            result["success"] = False
+            result["error"] = str(e)
+            result["_route"] = "error"
+
+        finally:
+            # Close session
+            try:
+                await session.close()
+            except Exception as e:
+                logger.warning(f"[BROWSER] Error closing session: {e}")
+
+        return result
+
+
+    def _convert_actions_to_commands(actions: list) -> list:
+        """
+        Convert declarative actions format to command DSL.
+
+        Actions format:
+            - {wait: 1}
+            - {screenshot: true}
+            - {move: {x: 400, y: 300}}
+            - {click: true}
+
+        Commands format:
+            - [":wait", 1]
+            - [":screenshot"]
+            - [":move-mouse", ":to", 400, 300]
+            - [":click"]
+        """
+        commands = []
+
+        for action in actions:
+            if isinstance(action, dict):
+                for key, value in action.items():
+                    if key == "wait":
+                        commands.append([":wait", value])
+                    elif key == "screenshot":
+                        if isinstance(value, str):
+                            commands.append([":screenshot", value])
+                        else:
+                            commands.append([":screenshot"])
+                    elif key in ("move", "move_mouse"):
+                        if isinstance(value, dict):
+                            commands.append([":move-mouse", ":to", value.get("x", 0), value.get("y", 0)])
+                        elif isinstance(value, list) and len(value) >= 2:
+                            commands.append([":move-mouse", ":to", value[0], value[1]])
+                    elif key == "click":
+                        commands.append([":click"])
+                    elif key == "double_click":
+                        commands.append([":double-click"])
+                    elif key == "right_click":
+                        commands.append([":right-click"])
+                    elif key in ("type", "text"):
+                        if isinstance(value, dict):
+                            commands.append([":type", value.get("text", "")])
+                        else:
+                            commands.append([":type", str(value)])
+                    elif key in ("keypress", "key"):
+                        commands.append([":keypress", str(value)])
+                    elif key == "hotkey":
+                        if isinstance(value, list):
+                            commands.append([":hotkey"] + value)
+                    elif key == "scroll_down":
+                        commands.append([":scroll-wheel-down", value if isinstance(value, int) else 3])
+                    elif key == "scroll_up":
+                        commands.append([":scroll-wheel-up", value if isinstance(value, int) else 3])
+                    elif key in ("url", "navigate", "goto"):
+                        commands.append([":url", str(value)])
+                    elif key == "back":
+                        commands.append([":back"])
+                    elif key == "forward":
+                        commands.append([":forward"])
+                    elif key == "reload":
+                        commands.append([":reload"])
+                    elif key == "extract":
+                        commands.append([":extract-page-to-markdown"])
+                    elif key == "evaluate":
+                        commands.append([":evaluate", str(value)])
+                    elif key == "wait_for":
+                        commands.append([":wait-for-selector", str(value)])
+                    elif key == "drag":
+                        if isinstance(value, dict):
+                            commands.append([
+                                ":drag", ":from",
+                                value.get("from_x", 0), value.get("from_y", 0),
+                                ":to",
+                                value.get("to_x", 0), value.get("to_y", 0)
+                            ])
+                    else:
+                        # Unknown action - try to pass through as command
+                        logger.warning(f"[BROWSER] Unknown action: {key}")
+            elif isinstance(action, list):
+                # Already a command, pass through
+                commands.append(action)
+
+        return commands
 
     logger.info("Browser automation tools registered")
 

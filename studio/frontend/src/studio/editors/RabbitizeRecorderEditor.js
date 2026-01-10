@@ -6,7 +6,17 @@ import './RabbitizeRecorderEditor.css';
  * Rabbitize Recorder Editor (Studio-embedded version)
  *
  * Simplified browser automation recorder for embedding in CellDetailPanel.
- * Records user interactions with live MJPEG stream and builds batch command arrays.
+ * Records user interactions with live MJPEG stream and builds action arrays.
+ *
+ * Now uses the native `browser` tool format with declarative actions:
+ *   tool: browser
+ *   inputs:
+ *     url: "https://example.com"
+ *     actions:
+ *       - wait: 1
+ *       - screenshot: {}
+ *       - move: {x: 400, y: 300}
+ *       - click: {}
  *
  * Props:
  * - cell: Current cell object (for reading initial state)
@@ -14,8 +24,25 @@ import './RabbitizeRecorderEditor.css';
  * - cellName: string - Cell name (for session ID)
  */
 function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
-  // Extract initial state from cell (parse rvbbit browser batch or legacy npx rabbitize command)
+  // Extract initial state from cell (supports both native format and legacy shell format)
   const extractFromCell = (cell) => {
+    // Check for native browser tool format first
+    if (cell?.tool === 'browser' && cell?.inputs) {
+      const inputs = cell.inputs;
+      const initialUrl = inputs.url || 'https://example.com';
+
+      // Convert actions to command arrays (internal format for recording)
+      let commands = [];
+      if (inputs.actions && Array.isArray(inputs.actions)) {
+        commands = inputs.actions.map(action => actionsToCommand(action));
+      } else if (inputs.commands && Array.isArray(inputs.commands)) {
+        commands = inputs.commands;
+      }
+
+      return { initialUrl, commands, clientId: null, testId: null };
+    }
+
+    // Legacy: parse rvbbit browser batch shell command
     const command = cell?.inputs?.command || '';
 
     // Parse --url "..." (new format) or --batch-url "..." (legacy)
@@ -34,18 +61,46 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
       }
     }
 
-    // Parse --client-id "..."
+    // Parse --client-id "..." (not used in native format)
     const clientIdMatch = command.match(/--client-id\s+"([^"]+)"/);
-    const clientId = clientIdMatch ? clientIdMatch[1] : 'untitled_cascade';
+    const clientId = clientIdMatch ? clientIdMatch[1] : null;
 
     // Parse --test-id "..."
     const testIdMatch = command.match(/--test-id\s+"([^"]+)"/);
-    const testId = testIdMatch ? testIdMatch[1] : `${cell.name}.studio`;
+    const testId = testIdMatch ? testIdMatch[1] : null;
 
     return { initialUrl, commands, clientId, testId };
   };
 
-  const { initialUrl: extractedUrl, commands: extractedCommands, clientId: extractedClientId, testId: extractedTestId } = extractFromCell(cell);
+  // Convert a single action object to command array (for internal recording)
+  const actionsToCommand = (action) => {
+    if (Array.isArray(action)) return action; // Already a command
+
+    const key = Object.keys(action)[0];
+    const value = action[key];
+
+    switch (key) {
+      case 'wait': return [':wait', value];
+      case 'screenshot': return [':screenshot'];
+      case 'move': case 'move_mouse': return [':move-mouse', ':to', value.x || 0, value.y || 0];
+      case 'click': return [':click'];
+      case 'double_click': return [':double-click'];
+      case 'right_click': return [':right-click'];
+      case 'type': case 'text':
+        return [':type', typeof value === 'object' ? value.text : value];
+      case 'keypress': case 'key': return [':keypress', value];
+      case 'scroll_down': return [':scroll-wheel-down', typeof value === 'number' ? value : 3];
+      case 'scroll_up': return [':scroll-wheel-up', typeof value === 'number' ? value : 3];
+      case 'url': case 'navigate': case 'goto': return [':url', value];
+      default: return [`:${key}`, value];
+    }
+  };
+
+  const { initialUrl: extractedUrl, commands: extractedCommands } = extractFromCell(cell);
+
+  // Generate IDs for the recording session (used for live preview, not final cell output)
+  const recordingClientId = `studio_recorder`;
+  const recordingTestId = cellName || 'browser';
 
   // State
   const [sessionActive, setSessionActive] = useState(false);
@@ -57,8 +112,6 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
   const [url, setUrl] = useState(extractedUrl);
   const [currentUrl, setCurrentUrl] = useState(extractedUrl);
   const [commands, setCommands] = useState(extractedCommands);
-  const [clientId] = useState(extractedClientId); // Preserve from cell
-  const [testId] = useState(extractedTestId); // Preserve from cell
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [clickPos, setClickPos] = useState(null);
@@ -100,23 +153,66 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
     }
   };
 
-  // Update parent cell when commands change
+  // Convert command array to action object (for native format)
+  const commandToAction = (command) => {
+    if (!Array.isArray(command) || command.length === 0) return null;
+
+    const cmd = command[0];
+    switch (cmd) {
+      case ':wait':
+        return { wait: command[1] || 1 };
+      case ':screenshot':
+        return { screenshot: {} };
+      case ':move-mouse':
+        // [':move-mouse', ':to', x, y]
+        return { move: { x: command[2] || 0, y: command[3] || 0 } };
+      case ':click':
+        return { click: {} };
+      case ':double-click':
+        return { double_click: {} };
+      case ':right-click':
+        return { right_click: {} };
+      case ':type':
+        // [':type', text] or [':type', ':text', text]
+        const text = command[1] === ':text' ? command[2] : command[1];
+        return { type: { text: text || '' } };
+      case ':keypress': case ':key':
+        return { keypress: command[1] || '' };
+      case ':scroll-wheel-down':
+        return { scroll_down: command[1] || 3 };
+      case ':scroll-wheel-up':
+        return { scroll_up: command[1] || 3 };
+      case ':url': case ':navigate':
+        return { navigate: command[1] || command[2] || '' };
+      default:
+        // Keep as raw command array for unknown commands
+        return null;
+    }
+  };
+
+  // Update parent cell when commands change - now uses native browser tool format
   const updateCellCommands = useCallback((newCommands, newUrl) => {
+    // Convert command arrays to declarative actions
+    const actions = newCommands
+      .map(cmd => commandToAction(cmd))
+      .filter(action => action !== null);
+
     const updatedCell = {
       ...cell,
-      tool: 'linux_shell_dangerous', // Run on host, not in Docker
+      tool: 'browser',  // Native browser tool
       inputs: {
-        ...cell.inputs,
-        command: `rvbbit browser batch \\
-  --client-id "${clientId}" \\
-  --test-id "${testId}" \\
-  --url "${newUrl || currentUrl}" \\
-  --commands='${JSON.stringify(newCommands, null, 0)}'`
+        url: newUrl || currentUrl,
+        actions: actions.length > 0 ? actions : [{ wait: 1 }, { screenshot: {} }]
       }
     };
 
+    // Remove legacy 'command' field if present
+    if (updatedCell.inputs.command) {
+      delete updatedCell.inputs.command;
+    }
+
     onChange(updatedCell);
-  }, [cell, onChange, clientId, testId, currentUrl]);
+  }, [cell, onChange, currentUrl]);
 
   // Start recording session
   const startSession = useCallback(async (navigateUrl) => {
@@ -133,8 +229,8 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: navigateUrl,
-          clientId: clientId,
-          testId: testId,
+          clientId: recordingClientId,
+          testId: recordingTestId,
           dashboard_session_id: newDashboardSessionId
         })
       });
@@ -151,12 +247,15 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
       setStreamPath(`${data.clientId}/${data.testId}/${data.sessionId}`);
       setPort(data.port);
       setCurrentUrl(navigateUrl);
+
+      // Immediately update cell with the URL (even before commands are recorded)
+      updateCellCommands(commands, navigateUrl);
     } catch (err) {
       setError(err.message || 'Failed to start session');
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, cellName, clientId, testId]);
+  }, [apiUrl, cellName, recordingClientId, recordingTestId, commands, updateCellCommands]);
 
   // Stop recording session
   const stopSession = useCallback(async () => {
@@ -213,7 +312,7 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
     } finally {
       setExecuting(false);
     }
-  }, [sessionActive, apiUrl, dashboardSessionId, port, commands, currentUrl, updateCellCommands]);
+  }, [sessionActive, apiUrl, dashboardSessionId, commands, currentUrl, updateCellCommands]);
 
   // Handle viewport click
   const handleViewportClick = (e) => {

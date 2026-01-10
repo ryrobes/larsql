@@ -108,18 +108,6 @@ class Agent:
         if input_message:
             messages.append({"role": "user", "content": input_message})
 
-        # DEBUG: Log message structure being sent to API
-        import json
-        #print(f"\n[DEBUG] Agent.run() called - building {len(messages)} messages:")
-        # for i, msg in enumerate(messages):
-        #     role = msg.get("role", "unknown")
-        #     content_preview = str(msg.get("content", ""))[:80] if msg.get("content") else "(empty)"
-        #     has_tools = "tool_calls" in msg
-        #     has_tool_id = "tool_call_id" in msg
-        #     has_extra = any(k not in {'role', 'content', 'tool_calls', 'tool_call_id', 'name'} for k in msg.keys())
-        #     print(f"  [{i}] {role:12s} | Tools:{has_tools} | ToolID:{has_tool_id} | Extra:{has_extra} | {content_preview}")
-        # print()
-        
         # Litellm call
         args = {
             "model": self.model,
@@ -200,6 +188,8 @@ class Agent:
 
         original_count = len(messages)
         messages = sanitized_messages
+        # CRITICAL: Update args with sanitized messages!
+        args["messages"] = messages
 
         # print(f"[DEBUG] After sanitization: {len(messages)} messages (removed {original_count - len(messages)} empty/invalid messages)")
         # print(f"[DEBUG] Final message list being sent to LLM API:")

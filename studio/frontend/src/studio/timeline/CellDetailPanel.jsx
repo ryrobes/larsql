@@ -170,8 +170,9 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
     rvbbit_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
     bodybuilder: { language: 'markdown', codeKey: 'request', source: 'inputs' }, // Natural language LLM request
-    linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize batches
-    linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // For rabbitize (host)
+    browser: { language: 'yaml', codeKey: 'inputs', source: 'inputs_yaml' }, // Browser automation - show all inputs as YAML
+    linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // Shell commands
+    linux_shell_dangerous: { language: 'shell', codeKey: 'command', source: 'inputs' }, // Shell commands (host)
     hitl_screen: { language: 'html', codeKey: 'hitl', source: 'cell' }, // HTMX screen content
   };
   // Determine cell type - tool takes priority, HITL only for pure HITL cells (no tool)
@@ -183,9 +184,22 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const customEditors = useMemo(() => detectCellEditors(cell), [cell]);
   const hasCustomEditors = customEditors.length > 0;
 
-  const code = info.source === 'inputs'
-    ? (cell.inputs?.[info.codeKey] || '')
-    : (cell[info.codeKey] || '');
+  // Extract code based on source type
+  const code = useMemo(() => {
+    if (info.source === 'inputs_yaml') {
+      // Serialize entire inputs object as YAML (for browser cells)
+      try {
+        return cell.inputs ? yaml.dump(cell.inputs, { indent: 2, lineWidth: -1 }) : '';
+      } catch (e) {
+        console.error('Failed to serialize inputs as YAML:', e);
+        return JSON.stringify(cell.inputs, null, 2) || '';
+      }
+    } else if (info.source === 'inputs') {
+      return cell.inputs?.[info.codeKey] || '';
+    } else {
+      return cell[info.codeKey] || '';
+    }
+  }, [cell, info.source, info.codeKey]);
   const status = cellState?.status || 'pending';
   const error = cellState?.error;
   const images = cellState?.images;
@@ -706,7 +720,18 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   }, [index, updateCell]);
 
   const handleCodeChange = useCallback((value) => {
-    if (info.source === 'inputs') {
+    if (info.source === 'inputs_yaml') {
+      // Parse YAML and replace entire inputs object (for browser cells)
+      try {
+        const parsedInputs = yaml.load(value);
+        if (parsedInputs && typeof parsedInputs === 'object') {
+          updateCell(index, { inputs: parsedInputs });
+        }
+      } catch (e) {
+        // Don't update on invalid YAML - user is still typing
+        console.debug('YAML parse error (still typing):', e.message);
+      }
+    } else if (info.source === 'inputs') {
       updateCell(index, { inputs: { ...cell.inputs, [info.codeKey]: value } });
     } else {
       updateCell(index, { [info.codeKey]: value });
@@ -1063,6 +1088,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                            info.codeKey === 'code' ? 'Code' :
                            info.codeKey === 'instructions' ? 'Instructions' :
                            info.codeKey === 'command' ? 'Command' :
+                           info.codeKey === 'inputs' ? 'Inputs' :
                            info.codeKey.charAt(0).toUpperCase() + info.codeKey.slice(1)}
                         </span>
                       </div>

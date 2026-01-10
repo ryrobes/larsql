@@ -1,0 +1,59 @@
+# Native Browser Tool Demo
+#
+# This cascade demonstrates the native `browser` tool which provides
+# a clean YAML interface for browser automation. Unlike the legacy
+# shell-based approach, this tool:
+#
+# 1. Executes directly in Python (no subprocess)
+# 2. Auto-derives paths from session_id and cell_name
+# 3. Returns images and DOM artifacts directly in output
+# 4. Includes conversation_history for context flow
+#
+# Two ways to pass images to downstream LLM cells:
+#   a) Via selective context: context.from: ["browser_cell"]
+#   b) Via Jinja template: {{ outputs.browser_cell.images[0] }}
+
+cascade_id: browser_native_demo
+description: Demonstrate the native browser tool with context-based image flow
+
+inputs_schema:
+  url: URL to visit and analyze
+
+cells:
+  # Native browser tool - clean YAML interface
+  - name: capture_page
+    tool: browser
+    inputs:
+      url: "{{ input.url }}"
+      commands:
+        - [":wait", 1]
+        - [":screenshot"]
+        - [":scroll-wheel-down", 3]
+        - [":screenshot"]
+    handoffs:
+      - analyze_page
+
+  # LLM cell receives images via selective context
+  - name: analyze_page
+    instructions: |
+      Analyze the screenshots from the browser session.
+      Describe what you see on the page, including:
+      - The main purpose of the website
+      - Key UI elements visible
+      - Any notable content or features
+    context:
+      from: ["capture_page"]
+      include: ["messages"]  # Gets conversation_history with images
+    handoffs:
+      - summarize
+
+  # Alternative: Use Jinja template to select specific images
+  - name: summarize
+    instructions: |
+      Based on the analysis, provide a one-paragraph summary.
+
+      First screenshot (page top):
+      {{ outputs.capture_page.images[0] }}
+    context:
+      from: ["analyze_page"]
+      include: ["output"]

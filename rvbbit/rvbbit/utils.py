@@ -338,14 +338,17 @@ def cull_old_base64_images(messages: List[Dict], keep_recent: int = 3) -> List[D
     Cull old base64 images from messages, keeping only the most recent N images.
 
     Iterates through messages in reverse order, keeps base64 for the last N images,
-    and replaces older base64 data with placeholders to save tokens.
+    and removes older base64 images from multimodal content arrays.
+
+    IMPORTANT: The caller should check if keep_recent > 0 before calling this function.
+    If keep_recent=0, ALL images would be removed (not "keep all").
 
     Args:
         messages: List of message dicts
-        keep_recent: Number of recent images to keep (default: 3)
+        keep_recent: Number of recent images to keep. Must be > 0 to preserve any images.
 
     Returns:
-        New list of messages with old base64 culled
+        New list of messages with old base64 culled (deep copy, doesn't modify original)
     """
     import copy
 

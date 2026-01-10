@@ -1492,7 +1492,10 @@ class RVBBITRunner:
 
     def _load_cell_images(self, cell_name: str, config: ContextSourceConfig) -> List[str]:
         """
-        Load images from disk for a specific cell.
+        Load images for a specific cell.
+
+        First checks if the cell output contains images (e.g., from browser tool),
+        then falls back to loading from disk (legacy behavior).
 
         Args:
             cell_name: Name of the cell to load images from
@@ -1504,6 +1507,26 @@ class RVBBITRunner:
         import glob
         import base64
 
+        # First, check if the cell output contains images directly
+        # This is the case for the native browser tool which returns images in output
+        for entry in self.echo.lineage:
+            if entry.get('cell') == cell_name:
+                output = entry.get('output')
+                if isinstance(output, dict) and 'images' in output:
+                    images = output['images']
+                    if isinstance(images, list) and images:
+                        # Apply filtering
+                        if config.images_filter == "last":
+                            images = images[-1:] if images else []
+                        elif config.images_filter == "last_n":
+                            images = images[-config.images_count:] if images else []
+                        # "all" keeps all images
+
+                        console.print(f"  [dim]Using {len(images)} image(s) from cell '{cell_name}' output[/dim]")
+                        return images
+                break
+
+        # Fall back to loading from disk (legacy behavior)
         image_dir = os.path.join(get_config().image_dir, self.session_id, cell_name)
 
         if not os.path.exists(image_dir):
@@ -1763,15 +1786,37 @@ class RVBBITRunner:
 
         # Include messages (full conversation replay)
         if "messages" in config.include:
-            cell_messages = self._get_cell_messages(cell_name, config)
-            if cell_messages:
-                # Add header message
-                messages.append({
-                    "role": config.as_role,
-                    "content": f"[Conversation from {cell_name}]:"
-                })
-                # Add the actual messages with their original roles
-                messages.extend(cell_messages)
+            # First, check if the cell output contains conversation_history
+            # This is the case for browser tool which returns multimodal messages
+            conversation_history_used = False
+            for entry in self.echo.lineage:
+                if entry.get('cell') == cell_name:
+                    output = entry.get('output')
+                    if isinstance(output, dict) and 'conversation_history' in output:
+                        conv_history = output['conversation_history']
+                        if isinstance(conv_history, list) and conv_history:
+                            console.print(f"  [dim]Using {len(conv_history)} message(s) from cell '{cell_name}' conversation_history[/dim]")
+                            # Add header
+                            messages.append({
+                                "role": config.as_role,
+                                "content": f"[Context from {cell_name}]:"
+                            })
+                            # Add the multimodal messages directly
+                            messages.extend(conv_history)
+                            conversation_history_used = True
+                    break
+
+            # Fall back to echo.history messages (legacy behavior for LLM cells)
+            if not conversation_history_used:
+                cell_messages = self._get_cell_messages(cell_name, config)
+                if cell_messages:
+                    # Add header message
+                    messages.append({
+                        "role": config.as_role,
+                        "content": f"[Conversation from {cell_name}]:"
+                    })
+                    # Add the actual messages with their original roles
+                    messages.extend(cell_messages)
 
         # Include state (Cell 4 feature - basic implementation)
         if "state" in config.include:
@@ -4455,9 +4500,14 @@ Refinement directive: {reforge_config.honing_prompt}
 
             if isinstance(output_or_next_cell, str) and output_or_next_cell in [h.target if isinstance(h, HandoffConfig) else h for h in cell.handoffs]:
                 chosen_next_cell = output_or_next_cell # Dynamic handoff chosen by agent
-                self.echo.add_lineage(cell.name, f"Dynamically routed to: {chosen_next_cell}", trace_id=cell_trace.id)
+                # Don't add lineage here - deterministic cells already added their result to lineage
+                # Adding another entry would overwrite the actual output with a routing message
+                if not cell.is_deterministic():
+                    self.echo.add_lineage(cell.name, f"Dynamically routed to: {chosen_next_cell}", trace_id=cell_trace.id)
             else:
-                self.echo.add_lineage(cell.name, output_or_next_cell, trace_id=cell_trace.id)
+                # Only add lineage if deterministic cell hasn't already
+                if not cell.is_deterministic():
+                    self.echo.add_lineage(cell.name, output_or_next_cell, trace_id=cell_trace.id)
 
             # Store cell output in state for access by subsequent cells via {{ state.output_<cell_name> }}
             # Note: Deterministic cells already do this in _execute_deterministic_cell
@@ -10771,13 +10821,16 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             from .utils import cull_old_base64_images, cull_old_conversation_history
 
                             # Get config from environment (with defaults)
+                            # Note: 0 or negative values mean "disabled" (keep all)
                             keep_images = int(os.getenv('RVBBIT_KEEP_RECENT_IMAGES', '0'))
                             keep_turns = int(os.getenv('RVBBIT_KEEP_RECENT_TURNS', '0'))
 
                             # FIX: Actually update self.context_messages to make culling persistent
                             # This also handles system prompt positioning (moves to front, keeps only most recent)
-                            self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
-                            self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=keep_images)
+                            if keep_turns > 0:
+                                self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+                            if keep_images > 0:
+                                self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=keep_images)
 
                             # TOKEN BUDGET ENFORCEMENT: Check and enforce budget before agent call
                             if self.token_manager:
@@ -11331,17 +11384,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         from .utils import cull_old_base64_images, cull_old_conversation_history
 
                         # Get config from environment (with defaults)
+                        # Note: 0 or negative values mean "disabled" (keep all)
                         keep_images = int(os.getenv('RVBBIT_KEEP_RECENT_IMAGES', '0'))
                         keep_turns = int(os.getenv('RVBBIT_KEEP_RECENT_TURNS', '0'))
 
                         # FIX: Actually update self.context_messages (not just temporary variable!)
                         # Previous bug: culling was temporary, never persisted, all images accumulated
-                        self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
+                        if keep_turns > 0:
+                            self.context_messages = cull_old_conversation_history(self.context_messages, keep_recent_turns=keep_turns)
 
-                        # For follow-up, keep ONLY the most recent image (for iterative feedback)
-                        # This retains the latest generated image while dropping all older ones
-                        # Rationale: Agent already saw old images, they're saved to disk, only need latest for refinement
-                        self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=1)
+                        # For follow-up, keep only the most recent images (for iterative feedback)
+                        # This retains recent generated images while dropping older ones
+                        # Rationale: Agent already saw old images, they're saved to disk
+                        # Note: Only cull if RVBBIT_KEEP_RECENT_IMAGES is explicitly set > 0
+                        if keep_images > 0:
+                            self.context_messages = cull_old_base64_images(self.context_messages, keep_recent=keep_images)
 
                         # AUTO-CONTEXT: Rebuild context for follow-up (after tool results added)
                         followup_context, followup_stats = self._build_turn_context(

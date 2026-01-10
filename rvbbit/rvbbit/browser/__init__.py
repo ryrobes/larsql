@@ -11,7 +11,7 @@ Usage:
     # Direct Python API
     from rvbbit.browser import BrowserSession
 
-    async with BrowserSession(client_id="rvbbit", test_id="my-test") as session:
+    async with BrowserSession(session_id="my_session", cell_name="browser_1") as session:
         await session.initialize("https://example.com")
         await session.execute([":move-mouse", ":to", 400, 300])
         await session.execute([":click"])
@@ -156,7 +156,7 @@ def __getattr__(name):
         return getattr(dom_extractor, name)
 
     # Artifacts module
-    if name in ("ArtifactManager", "SessionArtifacts", "get_runs_directory", "list_sessions"):
+    if name in ("ArtifactManager", "SessionArtifacts", "get_browsers_directory", "get_runs_directory", "list_sessions"):
         from rvbbit.browser import artifacts
         return getattr(artifacts, name)
 
@@ -193,7 +193,8 @@ __all__ = [
     "ArtifactManager",
     "SessionArtifacts",
     # Utilities
-    "get_runs_directory",
+    "get_browsers_directory",
+    "get_runs_directory",  # Deprecated alias
     "list_sessions",
 ]
 

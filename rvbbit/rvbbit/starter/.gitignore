@@ -17,7 +17,8 @@ videos/
 data/
 session_dbs/
 research_dbs/
-rabbitize-runs/
+browsers/
+rabbitize-runs/  # Legacy, use browsers/ instead
 
 # Python
 __pycache__/

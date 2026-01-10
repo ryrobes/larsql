@@ -17,8 +17,24 @@ class TraitRegistry:
 
 _registry = TraitRegistry()
 
-def register_trait(name: str, func: Callable):
-    _registry.register_trait(name, func)
+def register_trait(name: str, func: Callable = None):
+    """
+    Register a trait (tool) function.
+
+    Can be used in two ways:
+    1. Direct call: register_trait("name", my_func)
+    2. Decorator: @register_trait("name")
+    """
+    if func is not None:
+        # Direct call: register_trait("name", func)
+        _registry.register_trait(name, func)
+        return func
+    else:
+        # Decorator usage: @register_trait("name")
+        def decorator(f: Callable) -> Callable:
+            _registry.register_trait(name, f)
+            return f
+        return decorator
 
 def get_trait(name: str) -> Callable:
     return _registry.get_trait(name)

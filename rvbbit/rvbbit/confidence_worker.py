@@ -17,7 +17,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Control via environment variable
-CONFIDENCE_ASSESSMENT_ENABLED = os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "true").lower() == "true"
+CONFIDENCE_ASSESSMENT_ENABLED = os.getenv("RVBBIT_CONFIDENCE_ASSESSMENT_ENABLED", "false").lower() == "true"
 
 # Note: Internal cascades are now marked with `internal: true` in their YAML config
 # instead of using a hardcoded blocklist. The is_internal_cascade_by_id() function

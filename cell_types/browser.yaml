@@ -1,0 +1,96 @@
+# Browser Cell - Native browser automation using Python Playwright
+#
+# Performs visual browser automation with automatic screenshot capture.
+# Uses the declarative `actions` format for recording and playback.
+#
+# The Browser Recorder UI can create and edit these cells interactively.
+#
+# Output includes:
+#   - images: Array of base64 screenshot data URLs
+#   - dom_snapshots: Array of markdown DOM representations
+#   - dom_coords: Array of clickable element coordinates
+#   - conversation_history: Multimodal messages for context flow
+#
+# Artifacts stored at: browsers/<session_id>/<cell_name>/
+
+type_id: browser
+display_name: Browser
+icon: mdi:web
+color: "#f87171"
+name_prefix: browser
+description: "Visual browser automation with screenshots and video recording. Returns images in output for downstream LLM cells."
+category: integration
+tags:
+  - integration
+  - advanced
+  - automation
+  - multimodal
+
+template:
+  tool: browser
+  inputs:
+    url: "https://example.com"
+    actions:
+      - wait: 1
+      - screenshot: {}
+  timeout: 5m
+
+# Schema for the Browser Recorder UI and validation
+inputs_schema:
+  url:
+    type: string
+    description: "URL to navigate to"
+    required: true
+  actions:
+    type: array
+    description: "List of browser actions to execute"
+    items:
+      type: object
+      description: "Action object like {wait: 1}, {click: {}}, {move: {x: 400, y: 300}}"
+  viewport:
+    type: array
+    description: "Browser viewport size [width, height]"
+    default: [1280, 720]
+  headless:
+    type: boolean
+    description: "Run browser in headless mode"
+    default: true
+  record_video:
+    type: boolean
+    description: "Enable video recording of the session"
+    default: false
+
+# Available actions reference (for documentation)
+# Mouse actions:
+#   - move: {x: 400, y: 300}     # Move cursor to position
+#   - click: {}                   # Click at current position
+#   - double_click: {}            # Double-click
+#   - right_click: {}             # Right-click
+#   - drag: {from_x: 100, from_y: 100, to_x: 200, to_y: 200}
+#
+# Keyboard actions:
+#   - type: "hello world"         # Type text
+#   - type: {text: "hello"}       # Alternative format
+#   - keypress: "Enter"           # Press a key (Enter, Tab, Escape, etc.)
+#   - hotkey: ["Control", "c"]    # Key combination
+#
+# Scrolling:
+#   - scroll_down: 3              # Scroll down (wheel clicks)
+#   - scroll_up: 3                # Scroll up
+#
+# Navigation:
+#   - url: "https://..."          # Navigate to URL
+#   - navigate: "https://..."     # Alias for url
+#   - back: {}                    # Go back
+#   - forward: {}                 # Go forward
+#   - reload: {}                  # Reload page
+#
+# Capture:
+#   - screenshot: {}              # Take screenshot (numbered automatically)
+#   - screenshot: "label"         # Take screenshot with custom label
+#   - extract: {}                 # Extract DOM to markdown
+#
+# Utilities:
+#   - wait: 2                     # Wait N seconds
+#   - wait_for: "#element"        # Wait for CSS selector
+#   - evaluate: "document.title"  # Run JavaScript

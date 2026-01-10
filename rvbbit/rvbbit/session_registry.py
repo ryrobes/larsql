@@ -107,11 +107,14 @@ class SessionRegistry:
                 # Fallback for dashboard context
                 self.root_dir = Path(os.environ.get('RVBBIT_ROOT', os.getcwd()))
 
-        self.runs_dir = self.root_dir / "rabbitize-runs"
-        self.registry_file = self.runs_dir / "registry.json"
+        self.browsers_dir = self.root_dir / "browsers"
+        self.registry_file = self.browsers_dir / "registry.json"
 
         # Ensure directory exists
-        self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.browsers_dir.mkdir(parents=True, exist_ok=True)
+
+        # Legacy alias
+        self.runs_dir = self.browsers_dir
 
     def _read_registry(self) -> Dict[str, dict]:
         """Read the registry file with file locking."""

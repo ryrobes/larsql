@@ -941,7 +941,7 @@ def main():
     browser_batch_parser.add_argument(
         '--output-dir',
         default=None,
-        help='Output directory for artifacts (default: rabbitize-runs/)'
+        help='Output directory for artifacts (default: browsers/)'
     )
     browser_batch_parser.add_argument(
         '--headless',
@@ -5064,7 +5064,7 @@ def cmd_browser_sessions(args):
     if not sessions:
         print("No browser sessions found.")
         print()
-        print("Session artifacts are stored in: rabbitize-runs/")
+        print("Session artifacts are stored in: browsers/")
         return
 
     print(f"Found {len(sessions)} session(s):")

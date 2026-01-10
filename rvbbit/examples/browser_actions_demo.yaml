@@ -1,0 +1,37 @@
+# Browser Actions Demo
+#
+# This cascade demonstrates the declarative `actions` syntax
+# as an alternative to the command array DSL.
+#
+# Actions are more readable and auto-convert to commands internally.
+
+cascade_id: browser_actions_demo
+description: Demonstrate browser tool with declarative actions syntax
+
+inputs_schema:
+  search_term: What to search for on Hacker News
+
+cells:
+  - name: search_hn
+    tool: browser
+    inputs:
+      url: "https://news.ycombinator.com"
+      actions:
+        - wait: 2
+        - screenshot: {}
+        - type: { text: "{{ input.search_term }}" }
+        - keypress: "Enter"
+        - wait: 2
+        - screenshot: "after_search"
+        - scroll_down: 3
+        - screenshot: "scrolled"
+    handoffs:
+      - analyze_results
+
+  - name: analyze_results
+    instructions: |
+      Look at the Hacker News search results.
+      Summarize the top stories related to the search term.
+    context:
+      from: ["search_hn"]
+      include: ["images"]  # Just the images, not full conversation

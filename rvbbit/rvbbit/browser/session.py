@@ -27,17 +27,16 @@ class BrowserSession:
     DOM extraction, and optional MJPEG streaming.
 
     Usage:
-        async with BrowserSession(client_id="rvbbit", test_id="my-flow") as session:
+        async with BrowserSession(session_id="my_session_123", cell_name="browser_1") as session:
             await session.initialize("https://example.com")
             await session.execute([":move-mouse", ":to", 400, 300])
             await session.execute([":click"])
             markdown, coords = await session.extract_dom()
 
     Args:
-        client_id: Organization/client identifier for artifact organization
-        test_id: Test/workflow identifier for artifact organization
-        session_id: Optional custom session ID (auto-generated if not provided)
-        runs_dir: Directory for storing artifacts (default: ./rabbitize-runs)
+        session_id: Cascade session ID (unique per run, e.g., "studio_new_13c5f6")
+        cell_name: Cell name (unique within cascade, e.g., "browser_1")
+        browsers_dir: Directory for storing artifacts (default: ./browsers)
         viewport: Browser viewport size as (width, height)
         headless: Run browser in headless mode
         record_video: Enable video recording
@@ -48,10 +47,9 @@ class BrowserSession:
 
     def __init__(
         self,
-        client_id: str = "rvbbit",
-        test_id: str = "interactive",
-        session_id: Optional[str] = None,
-        runs_dir: Optional[Path] = None,
+        session_id: str = "rvbbit",
+        cell_name: str = "browser",
+        browsers_dir: Optional[Path] = None,
         viewport: tuple[int, int] = (1280, 720),
         headless: bool = True,
         record_video: bool = False,
@@ -59,9 +57,8 @@ class BrowserSession:
         screenshot_interval: float = 0.1,
         stability_enabled: bool = True,
     ):
-        self.client_id = client_id
-        self.test_id = test_id
-        self.session_id = session_id or self._generate_session_id()
+        self.session_id = session_id
+        self.cell_name = cell_name
         self.viewport = {"width": viewport[0], "height": viewport[1]}
         self.headless = headless
         self.record_video = record_video
@@ -83,13 +80,13 @@ class BrowserSession:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
 
-        # Artifacts
-        from rvbbit.browser.artifacts import SessionArtifacts, get_runs_directory
+        # Artifacts - stored at browsers/<session_id>/<cell_name>/
+        from rvbbit.browser.artifacts import SessionArtifacts, get_browsers_directory
 
-        if runs_dir is None:
-            runs_dir = get_runs_directory()
+        if browsers_dir is None:
+            browsers_dir = get_browsers_directory()
         self.artifacts = SessionArtifacts.create(
-            runs_dir, client_id, test_id, self.session_id
+            browsers_dir, session_id, cell_name
         )
 
         # Optional components
@@ -97,11 +94,6 @@ class BrowserSession:
         self._screenshot_task: Optional[asyncio.Task] = None
         self._pending_upload_files: Optional[list] = None
         self._download_path: Optional[str] = None
-
-    @staticmethod
-    def _generate_session_id() -> str:
-        """Generate a timestamp-based session ID."""
-        return datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")[:-3]
 
     async def initialize(self, url: str, timeout: int = 60000) -> dict:
         """
@@ -324,8 +316,7 @@ class BrowserSession:
         # Save final metadata
         metadata = {
             "session_id": self.session_id,
-            "client_id": self.client_id,
-            "test_id": self.test_id,
+            "cell_name": self.cell_name,
             "command_count": self.command_index,
             "video_path": str(video_path) if video_path else None,
             "initial_url": getattr(self, "_initial_url", None),
@@ -512,8 +503,7 @@ class BrowserSession:
         """Get current session information."""
         return {
             "session_id": self.session_id,
-            "client_id": self.client_id,
-            "test_id": self.test_id,
+            "cell_name": self.cell_name,
             "initialized": self._initialized,
             "command_count": self.command_index,
             "mouse_position": [self.mouse_x, self.mouse_y],
@@ -530,8 +520,8 @@ class BrowserSession:
 
 async def create_session(
     url: str,
-    client_id: str = "rvbbit",
-    test_id: str = "interactive",
+    session_id: str = "rvbbit",
+    cell_name: str = "browser",
     headless: bool = True,
     **kwargs,
 ) -> BrowserSession:
@@ -540,8 +530,8 @@ async def create_session(
 
     Args:
         url: URL to navigate to
-        client_id: Client identifier
-        test_id: Test identifier
+        session_id: Cascade session ID
+        cell_name: Cell name for artifact organization
         headless: Run in headless mode
         **kwargs: Additional arguments for BrowserSession
 
@@ -549,8 +539,8 @@ async def create_session(
         Initialized BrowserSession
     """
     session = BrowserSession(
-        client_id=client_id,
-        test_id=test_id,
+        session_id=session_id,
+        cell_name=cell_name,
         headless=headless,
         **kwargs,
     )
