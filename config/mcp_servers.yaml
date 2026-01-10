@@ -1,6 +1,8 @@
+# DISABLED: Using built-in filesystem tools instead (read_file, write_file, edit_file, search_files, tree)
+# These have full RVBBIT_ROOT access and better features (ripgrep search, surgical edits)
 - name: filesystem
   transport: stdio
-  enabled: true
+  enabled: false
   command: npx
   args:
   - -y

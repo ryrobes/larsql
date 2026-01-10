@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react';
 import Split from 'react-split';
 import { Modal } from '../../components';
 import MessageContentViewer from './MessageContentViewer';
+import HITLContentRenderer from './HITLContentRenderer';
 import { BudgetStatusBar } from './BudgetStatusBar';
 import './SessionMessagesLog.css';
 
@@ -43,6 +44,7 @@ const ROLE_CONFIG = {
   error: { icon: 'mdi:alert-circle-outline', color: '#f87171', label: 'Error' },
   evaluator: { icon: 'mdi:scale-balance', color: '#f472b6', label: 'Evaluator' },
   ward: { icon: 'mdi:shield-outline', color: '#fb923c', label: 'Ward' },
+  render: { icon: 'mdi:checkbox-marked-circle-outline', color: '#10b981', label: 'Checkpoint' },
 };
 
 /**
@@ -855,11 +857,28 @@ const SessionMessagesLog = ({
               <div className="sml-detail-body">
                 <div className="sml-detail-section">
                   <div className="sml-detail-section-header">
-                    <Icon icon="mdi:text" width="14" />
-                    <span>Content</span>
+                    <Icon icon={selectedMessage.role === 'render' ? 'mdi:checkbox-marked-circle-outline' : 'mdi:text'} width="14" />
+                    <span>{selectedMessage.role === 'render' ? 'Checkpoint Content' : 'Content'}</span>
                   </div>
                   <div className="sml-detail-content-container">
-                    <MessageContentViewer content={selectedMessage.content_json} />
+                    {/* Render HITL content with iframe for 'render' role messages */}
+                    {selectedMessage.role === 'render' ? (() => {
+                      // Parse metadata_json if it's a string
+                      let metadata = selectedMessage.metadata_json;
+                      if (typeof metadata === 'string') {
+                        try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+                      }
+                      return (
+                        <HITLContentRenderer
+                          uiSpec={selectedMessage.content_json}
+                          checkpointId={metadata?.checkpoint_id || selectedMessage.trace_id}
+                          sessionId={selectedMessage.session_id}
+                          compact={true}
+                        />
+                      );
+                    })() : (
+                      <MessageContentViewer content={selectedMessage.content_json} />
+                    )}
                   </div>
                 </div>
 

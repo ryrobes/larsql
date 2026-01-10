@@ -60,7 +60,7 @@ def _register_all_traits():
 
     # Import and register traits
     from .traits.sql import run_sql
-    from .traits.extras import run_code, take_screenshot, linux_shell, linux_shell_dangerous, curl_text, fetch_url_with_browser
+    from .traits.extras import take_screenshot, linux_shell, curl_text, fetch_url_with_browser
     from .traits.human import ask_human, ask_human_custom, request_decision
     from .traits.display import show_ui
     from .traits.artifacts import create_artifact, list_artifacts, get_artifact
@@ -73,7 +73,7 @@ def _register_all_traits():
     from .traits.bodybuilder import bodybuilder
     from .traits.research_db import research_query, research_execute
     from .traits.chart import create_chart, create_vega_lite, create_plotly
-    from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image
+    from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
     from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
     from .traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
@@ -90,10 +90,8 @@ def _register_all_traits():
     # Core tools
     register_trait("smart_sql_run", run_sql)
     register_trait("linux_shell", linux_shell)
-    register_trait("linux_shell_dangerous", linux_shell_dangerous)
     register_trait("curl_text", curl_text)
     register_trait("fetch_url_with_browser", fetch_url_with_browser)
-    register_trait("run_code", run_code)
     register_trait("take_screenshot", take_screenshot)
     register_trait("ask_human", ask_human)
     register_trait("ask_human_custom", ask_human_custom)
@@ -125,10 +123,13 @@ def _register_all_traits():
     # Filesystem operations
     register_trait("read_file", read_file)
     register_trait("write_file", write_file)
+    register_trait("edit_file", edit_file)
     register_trait("append_file", append_file)
     register_trait("list_files", list_files)
     register_trait("file_info", file_info)
     register_trait("read_image", read_image)
+    register_trait("search_files", search_files)
+    register_trait("tree", tree)
 
     # SQL tools
     register_trait("sql_search", sql_search)

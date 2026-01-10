@@ -2811,7 +2811,7 @@ To call this tool, output a JSON code block:
         """
         Parse prompt-based tool calls from agent response.
 
-        Supports 22 formats for maximum LLM compatibility:
+        Supports 23 formats for maximum LLM compatibility:
 
         Format 1 (Preferred): Standard JSON with tool wrapper in code fence
             ```json
@@ -2828,8 +2828,12 @@ To call this tool, output a JSON code block:
             <function_call>...</function_call>
             <invoke name="tool_name">{"param": "value"}</invoke>
 
-        Format 4: Function call syntax
+        Format 4: Function call syntax (JSON args)
             tool_name({"param": "value"})
+
+        Format 4b: Python-style function calls with keyword arguments
+            tool_name(param="value", list_arg=[1, 2, 3])
+            request_decision(question="...", options=[{...}], html="...")
 
         Format 5: Anthropic/Claude-style with parameter elements
             <invoke name="tool_name">
@@ -2909,6 +2913,12 @@ To call this tool, output a JSON code block:
             <div>Any HTML content here</div>
             ```
             → Automatically converted to request_decision(html=...) for rendering
+
+        Format 23: Raw HTML without code fences (request_decision injection)
+            <form hx-post="/api/...">
+              <button>Submit</button>
+            </form>
+            → Detects interactive HTML (forms, buttons, HTMX) and wraps in request_decision
 
         Returns:
             tuple: (tool_calls, error_message)
@@ -3096,6 +3106,62 @@ To call this tool, output a JSON code block:
                     add_tool_call(func_name, arguments)
             except json.JSONDecodeError:
                 pass  # Not valid JSON, skip silently
+
+        # ============================================================
+        # Pattern 4b: Python-style function calls with keyword arguments
+        # Matches: request_decision(question="...", options=[...])
+        # This handles models that output Python syntax instead of JSON
+        # ============================================================
+        # Match function_name( ... ) with any content inside
+        python_func_pattern = r'\b(\w+)\s*\(\s*([\s\S]*?)\s*\)(?=\s*(?:```|$|\n\n|\Z))'
+
+        for match in re.finditer(python_func_pattern, content, re.DOTALL):
+            func_name = match.group(1)
+            func_body = match.group(2).strip()
+
+            # Skip common non-tool function names and already processed JSON calls
+            if func_name.lower() in {'print', 'console', 'log', 'json', 'dict', 'list',
+                                      'str', 'int', 'float', 'bool', 'len', 'range',
+                                      'open', 'read', 'write', 'append', 'extend'}:
+                continue
+
+            # Skip if this looks like JSON (already handled by Pattern 4)
+            if func_body.startswith('{') and func_body.endswith('}'):
+                continue
+
+            # Check if it looks like Python kwargs (contains key=value patterns)
+            if '=' in func_body and not func_body.startswith('{'):
+                try:
+                    # Use ast.literal_eval on a dict representation
+                    # Convert Python kwargs to dict syntax: key=val -> "key": val
+                    import ast
+
+                    # Wrap in dict() and try to eval
+                    # This handles: question="...", options=[...]
+                    dict_str = 'dict(' + func_body + ')'
+                    try:
+                        # Try to evaluate as Python literal
+                        arguments = eval(dict_str, {"__builtins__": {}, "dict": dict, "True": True, "False": False, "None": None}, {})
+                        if isinstance(arguments, dict) and len(arguments) > 0:
+                            add_tool_call(func_name, arguments)
+                    except:
+                        # Fallback: try ast.literal_eval with manual conversion
+                        # Convert key=value to "key": value format
+                        try:
+                            # Simple regex conversion for common cases
+                            json_like = func_body
+                            # Replace keyword args: word= -> "word":
+                            json_like = re.sub(r'(\w+)\s*=\s*', r'"\1": ', json_like)
+                            # Wrap in braces
+                            json_like = '{' + json_like + '}'
+                            # Try to parse as JSON
+                            arguments = json.loads(json_like)
+                            if isinstance(arguments, dict) and len(arguments) > 0:
+                                add_tool_call(func_name, arguments)
+                        except:
+                            pass  # Give up on this one
+                except Exception:
+                    pass  # Not parseable, skip
 
         # ============================================================
         # Pattern 5: Anthropic/Claude-style <function_calls><invoke>
@@ -3627,6 +3693,95 @@ To call this tool, output a JSON code block:
             }
 
             add_tool_call("request_decision", arguments)
+
+        # ============================================================
+        # Pattern 23: Raw HTML without code fences
+        # When models output raw HTML directly (not in code fences),
+        # detect it and wrap in request_decision. Only triggers if:
+        # 1. No tool calls found yet (model didn't call any tools)
+        # 2. Content contains substantial HTML (form, buttons, inputs, or HTMX)
+        # 3. The HTML looks like interactive/HITL content
+        # ============================================================
+        if not tool_calls:
+            # Check if content contains raw HTML that looks like HITL content
+            # Must have opening AND closing tags (not just inline elements)
+            html_indicators = [
+                # Form elements
+                (r'<form[\s>]', r'</form>'),
+                # HTMX attributes (strong indicator of interactive content)
+                (r'hx-(?:post|get|put|delete|patch|target|swap|trigger)', None),
+                # Button elements
+                (r'<button[\s>]', r'</button>'),
+                # Input with type (not just any input)
+                (r'<input[^>]+type\s*=', None),
+                # Select/textarea
+                (r'<select[\s>]', r'</select>'),
+                (r'<textarea[\s>]', r'</textarea>'),
+            ]
+
+            has_interactive_html = False
+            for open_pattern, close_pattern in html_indicators:
+                if re.search(open_pattern, content, re.IGNORECASE):
+                    # If there's a closing pattern requirement, check for it
+                    if close_pattern is None or re.search(close_pattern, content, re.IGNORECASE):
+                        has_interactive_html = True
+                        break
+
+            if has_interactive_html:
+                # Extract the HTML portion - look for the largest HTML block
+                # This regex finds content that starts with a tag and contains nested tags
+                html_block_pattern = r'(<(?:div|form|section|article|main|aside|header|footer|table|ul|ol|nav)[^>]*>[\s\S]*?</(?:div|form|section|article|main|aside|header|footer|table|ul|ol|nav)>)'
+
+                html_match = re.search(html_block_pattern, content, re.IGNORECASE | re.DOTALL)
+
+                if html_match:
+                    html_content = html_match.group(1).strip()
+                else:
+                    # Fallback: extract everything from first < to last >
+                    # Find the first substantial HTML tag
+                    first_tag = re.search(r'<(div|form|section|article|main|aside|header|table|ul|ol)[^>]*>', content, re.IGNORECASE)
+                    if first_tag:
+                        # Get from this tag to the end, trying to find balanced closing
+                        start_idx = first_tag.start()
+                        html_content = content[start_idx:].strip()
+                    else:
+                        html_content = content.strip()
+
+                # Only proceed if we have substantial HTML (more than just a small snippet)
+                if len(html_content) > 100 and '<' in html_content and '>' in html_content:
+                    # Try to extract a question from text before the HTML
+                    html_start = content.find(html_content[:50])
+                    preceding_text = content[:html_start].strip() if html_start > 0 else ""
+
+                    question = "Please provide your response"
+                    if preceding_text:
+                        paragraphs = preceding_text.split('\n\n')
+                        if paragraphs:
+                            last_para = paragraphs[-1].strip()
+                            lines = [l.strip() for l in last_para.split('\n') if l.strip()]
+                            if lines:
+                                potential_question = lines[-1]
+                                potential_question = re.sub(r'^#+\s*', '', potential_question)
+                                potential_question = re.sub(r'^\*+\s*', '', potential_question)
+                                potential_question = re.sub(r'^-\s*', '', potential_question)
+                                potential_question = potential_question.strip()
+                                if potential_question and len(potential_question) > 5:
+                                    question = potential_question
+
+                    console.print(
+                        f"[yellow]⚠️  AUTO-CORRECTED: Model output raw HTML instead of "
+                        f"using request_decision tool. Injecting into request_decision call.[/yellow]"
+                    )
+
+                    arguments = {
+                        "question": question,
+                        "options": [],
+                        "html": html_content,
+                        "severity": "info",
+                        "allow_custom": True
+                    }
+
+                    add_tool_call("request_decision", arguments)
 
         # ============================================================
         # Return results
@@ -5085,6 +5240,126 @@ If no tools are needed, return an empty array: []
         console.print(f"{indent}    [dim]Reasoning: {response_content[:150]}...[/dim]")
 
         return valid_traits
+
+    def _build_tools_from_traits(
+        self,
+        trait_list: list[str],
+        cell: "CellConfig",
+        enable_routing_tool: bool = False,
+        valid_handoff_targets: list[str] | None = None
+    ) -> tuple[dict, list, list]:
+        """
+        Build tool_map, tools_schema, and tool_descriptions from a list of trait names.
+
+        This is extracted for reuse in per-turn manifest refresh scenarios where
+        the Quartermaster re-selects tools mid-cell.
+
+        Args:
+            trait_list: List of tool names to build
+            cell: Cell config (for memory_name, etc.)
+            enable_routing_tool: Whether to add route_to tool
+            valid_handoff_targets: Valid targets for route_to
+
+        Returns:
+            Tuple of (tool_map, tools_schema, tool_descriptions)
+        """
+        from .trait_registry import get_trait
+        from .utils import get_tool_schema
+        from .memory import get_memory_system
+
+        tools_schema = []
+        tool_descriptions = []
+        tool_map = {}
+
+        for t_name in trait_list:
+            t = get_trait(t_name)
+            if t:
+                tool_map[t_name] = t
+                tools_schema.append(get_tool_schema(t, name=t_name))
+                tool_descriptions.append(self._generate_tool_description(t, t_name))
+            else:
+                # Check if this is a memory bank name
+                memory_system = get_memory_system()
+                if t_name == self.memory_name or memory_system.exists(t_name):
+                    memory_tool = self._create_memory_tool(t_name)
+                    tool_map[t_name] = memory_tool
+                    tools_schema.append(get_tool_schema(memory_tool, name=t_name))
+                    tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
+                else:
+                    # Check if this is a cascade tool or MCP tool
+                    from .traits_manifest import get_trait_manifest
+                    manifest = get_trait_manifest()
+                    if t_name in manifest:
+                        discovered_tool = get_trait(t_name)
+                        if discovered_tool:
+                            tool_map[t_name] = discovered_tool
+                            tools_schema.append(get_tool_schema(discovered_tool, name=t_name))
+                            tool_descriptions.append(self._generate_tool_description(discovered_tool, t_name))
+
+        # Note: route_to is handled separately in execute_cell as it needs closure state
+        return tool_map, tools_schema, tool_descriptions
+
+    def _inject_tool_delta(
+        self,
+        new_tools: set[str],
+        removed_tools: set[str],
+        tool_descriptions_map: dict[str, str],
+        trace: "TraceNode",
+        turn: int
+    ) -> None:
+        """
+        Inject a delta of tool changes into the conversation context.
+
+        For prompt-based tools, this adds a system message describing:
+        - New tools that are now being advertised
+        - Tools that are de-emphasized (still callable, just not actively prompted)
+
+        This avoids context bloat by not re-describing already-injected tools.
+        Note: "Removed" tools are still callable - they just aren't being actively
+        recommended for this phase of the conversation.
+
+        Args:
+            new_tools: Set of tool names newly advertised this turn
+            removed_tools: Set of tool names de-emphasized (still callable)
+            tool_descriptions_map: Map of tool_name -> full description
+            trace: Trace node for logging
+            turn: Current turn number
+        """
+        if not new_tools and not removed_tools:
+            return
+
+        indent = "  " * self.depth
+        parts = []
+
+        if new_tools:
+            console.print(f"{indent}  [cyan]📦 New tools available: {', '.join(sorted(new_tools))}[/cyan]")
+            parts.append("## Additional Tools Now Available\n")
+            for tool_name in sorted(new_tools):
+                if tool_name in tool_descriptions_map:
+                    parts.append(tool_descriptions_map[tool_name])
+                    parts.append("")  # Blank line between tools
+
+        if removed_tools:
+            console.print(f"{indent}  [dim]📤 Tools de-emphasized: {', '.join(sorted(removed_tools))}[/dim]")
+            removed_list = ", ".join(sorted(removed_tools))
+            parts.append(f"\n**Note:** The following tools are no longer recommended for this phase (but still callable if needed): {removed_list}")
+
+        if parts:
+            delta_content = "\n".join(parts)
+            delta_trace = trace.create_child("msg", f"tool_delta_turn_{turn}")
+            delta_msg = {"role": "system", "content": delta_content}
+            self.echo.add_history(
+                delta_msg,
+                trace_id=delta_trace.id,
+                parent_id=trace.id,
+                node_type="system",
+                metadata=self._get_metadata({
+                    "new_tools": list(new_tools),
+                    "removed_tools": list(removed_tools),
+                    "turn": turn
+                }, semantic_actor="framework", semantic_purpose="tool_delta")
+            )
+            self.context_messages.append(delta_msg)
 
     def _fetch_winning_mutations(self, cascade_id: str, cell_name: str, species_hash: str, limit: int = 5) -> List[Dict]:
         """
@@ -10381,6 +10656,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             tool_descriptions.append(self._generate_tool_description(discovered_tool, t_name))
                     # else: Tool not found
 
+        # Track currently active tools for per-turn manifest refresh
+        # This enables incremental tool injection (only new tools added, removed noted)
+        current_trait_set: set[str] = set(tool_map.keys())
+        tool_descriptions_map: dict[str, str] = {
+            name: self._generate_tool_description(func, name)
+            for name, func in tool_map.items()
+        }
+
         # Inject 'route_to' tool if routing enabled
         chosen_next_cell_by_agent = None
         chosen_next_cell = None # Initialize for consistency
@@ -10727,6 +11010,67 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                       })
                 self._update_graph()
 
+                # ========== PER-ATTEMPT MANIFEST REFRESH ==========
+                # If manifest_refresh is "per_attempt", re-run Quartermaster on validation retries.
+                # This allows tool set to evolve based on what validation feedback requires.
+                if (
+                    is_manifest and
+                    cell.manifest_refresh == "per_attempt"
+                ):
+                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting traits for attempt {attempt + 1}...[/bold cyan]")
+
+                    # Re-run Quartermaster with current context (includes validation errors)
+                    new_trait_list = self._run_quartermaster(cell, input_data, retry_trace, cell_model)
+
+                    # Add route_to back if routing is enabled
+                    if enable_routing_tool and "route_to" not in new_trait_list:
+                        new_trait_list.append("route_to")
+
+                    new_trait_set = set(new_trait_list)
+
+                    # Compute delta
+                    new_tools = new_trait_set - current_trait_set
+                    removed_tools = current_trait_set - new_trait_set
+
+                    if new_tools or removed_tools:
+                        console.print(f"{indent}  [bold cyan]📋 Manifest update: +{len(new_tools)} -{len(removed_tools)} tools[/bold cyan]")
+
+                        # Build tools for new trait list
+                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_traits(
+                            new_trait_list, cell, enable_routing_tool=False
+                        )
+
+                        # Re-add route_to if needed
+                        if enable_routing_tool and "route_to" in tool_map:
+                            new_tool_map["route_to"] = tool_map["route_to"]
+                            new_tools_schema.append(get_tool_schema(tool_map["route_to"]))
+
+                        # Update tool_descriptions_map with new tools
+                        for name, func in new_tool_map.items():
+                            if name not in tool_descriptions_map:
+                                tool_descriptions_map[name] = self._generate_tool_description(func, name)
+
+                        # Update the active tool set
+                        tool_map = new_tool_map
+                        tools_schema = new_tools_schema
+                        current_trait_set = new_trait_set
+
+                        # For native tools: Update agent's tools
+                        if use_native:
+                            agent.tools = tools_schema
+
+                        # For prompt-based tools: Inject delta
+                        else:
+                            self._inject_tool_delta(
+                                new_tools=new_tools,
+                                removed_tools=removed_tools,
+                                tool_descriptions_map=tool_descriptions_map,
+                                trace=retry_trace,
+                                turn=0  # Beginning of new attempt
+                            )
+                    else:
+                        console.print(f"{indent}  [dim]Quartermaster: no tool changes[/dim]")
+
             # Turn loop
             for i in range(max_turns):
                 # Track turn number
@@ -10766,6 +11110,68 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                 if max_turns > 1:
                     console.print(f"{indent}  [dim]Turn {i+1}/{max_turns}[/dim]")
+
+                # ========== PER-TURN MANIFEST REFRESH ==========
+                # If manifest_refresh is "per_turn" and this is NOT turn 0, re-run Quartermaster
+                # to adapt the tool set based on how the conversation has evolved.
+                if (
+                    is_manifest and
+                    cell.manifest_refresh == "per_turn" and
+                    i > 0  # Skip turn 0, tools were just selected
+                ):
+                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting traits for turn {i+1}...[/bold cyan]")
+
+                    # Re-run Quartermaster with current context (full conversation history)
+                    new_trait_list = self._run_quartermaster(cell, input_data, turn_trace, cell_model)
+
+                    # Add route_to back if routing is enabled (Quartermaster doesn't know about it)
+                    if enable_routing_tool and "route_to" not in new_trait_list:
+                        new_trait_list.append("route_to")
+
+                    new_trait_set = set(new_trait_list)
+
+                    # Compute delta
+                    new_tools = new_trait_set - current_trait_set
+                    removed_tools = current_trait_set - new_trait_set
+
+                    if new_tools or removed_tools:
+                        console.print(f"{indent}  [bold cyan]📋 Manifest update: +{len(new_tools)} -{len(removed_tools)} tools[/bold cyan]")
+
+                        # Build tools for new trait list
+                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_traits(
+                            new_trait_list, cell, enable_routing_tool=False
+                        )
+
+                        # Re-add route_to if needed (it has closure state, can't use helper)
+                        if enable_routing_tool and "route_to" in tool_map:
+                            new_tool_map["route_to"] = tool_map["route_to"]
+                            new_tools_schema.append(get_tool_schema(tool_map["route_to"]))
+
+                        # Update tool_descriptions_map with new tools
+                        for name, func in new_tool_map.items():
+                            if name not in tool_descriptions_map:
+                                tool_descriptions_map[name] = self._generate_tool_description(func, name)
+
+                        # Update the active tool set
+                        tool_map = new_tool_map
+                        tools_schema = new_tools_schema
+                        current_trait_set = new_trait_set
+
+                        # For native tools: Update agent's tools
+                        if use_native:
+                            agent.tools = tools_schema
+
+                        # For prompt-based tools: Inject delta (only new tools described)
+                        else:
+                            self._inject_tool_delta(
+                                new_tools=new_tools,
+                                removed_tools=removed_tools,
+                                tool_descriptions_map=tool_descriptions_map,
+                                trace=turn_trace,
+                                turn=i
+                            )
+                    else:
+                        console.print(f"{indent}  [dim]Quartermaster: no tool changes[/dim]")
 
                 # Determine current_input before calling agent
                 # Cell task is already in context_messages as a user message,

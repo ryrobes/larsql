@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import RichMarkdown from './RichMarkdown';
 import './GhostMessage.css';
 
 /**
  * GhostMessage - Live activity indicator showing LLM's work-in-progress
  *
  * Displays tool calls, tool results, and thinking messages.
- * Auto-removed by parent after timeout.
+ * Content is rendered with full markdown support (no truncation).
  *
  * Uses Framer Motion for enter/exit animations (applied by parent).
  */
@@ -69,16 +70,11 @@ const GhostMessage = ({ ghost }) => {
     return null;
   };
 
-  // Truncate long content
-  const truncate = (text, maxLength = 200) => {
-    if (!text) return '';
-    const str = typeof text === 'string' ? text : JSON.stringify(text);
-    if (str.length <= maxLength) return str;
-    return str.substring(0, maxLength) + '...';
-  };
-
   const parsedContent = ghost.arguments || tryParseJSON(ghost.content);
   const displayContent = ghost.content || ghost.result || '';
+
+  // State for collapsing long results
+  const [isExpanded, setIsExpanded] = useState(true);
 
   // For thinking type, extract text content even from JSON
   const thinkingText = React.useMemo(() => {
@@ -155,23 +151,30 @@ const GhostMessage = ({ ghost }) => {
               </details>
             )}
             {!parsedContent && displayContent && (
-              <div className="ghost-text">{truncate(displayContent)}</div>
+              <div className="ghost-text ghost-markdown">
+                <RichMarkdown>{displayContent}</RichMarkdown>
+              </div>
             )}
           </>
         )}
 
-        {/* Thinking: always show content */}
+        {/* Thinking: render with full markdown support */}
         {ghost.type === 'thinking' && thinkingText && (
-          <div className="ghost-text ghost-thinking-text">
-            {truncate(thinkingText, 500)}
+          <div className="ghost-text ghost-thinking-text ghost-markdown">
+            <RichMarkdown>{thinkingText}</RichMarkdown>
           </div>
         )}
 
-        {/* Tool result: show formatted result */}
+        {/* Tool result: collapsible with full content */}
         {ghost.type === 'tool_result' && (
-          <pre className="ghost-result-json">
-            {truncate(toolResultContent || displayContent, 400)}
-          </pre>
+          <details className="ghost-result" open={isExpanded}>
+            <summary onClick={(e) => { e.preventDefault(); setIsExpanded(!isExpanded); }}>
+              {isExpanded ? 'Result (click to collapse)' : 'Result (click to expand)'}
+            </summary>
+            <pre className="ghost-result-json">
+              {toolResultContent || displayContent}
+            </pre>
+          </details>
         )}
       </div>
     </div>

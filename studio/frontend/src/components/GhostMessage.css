@@ -113,12 +113,113 @@
   border-left-color: var(--color-accent-purple);
 }
 
-/* Thinking text - longer, more readable */
+/* Thinking text - full content, no truncation */
 .ghost-thinking-text {
   white-space: pre-wrap;
   word-wrap: break-word;
-  max-height: 200px;
-  overflow-y: auto;
   color: var(--color-text-secondary);
   line-height: 1.6;
+}
+
+/* ============================================
+   MARKDOWN CONTENT INSIDE GHOST MESSAGES
+   ============================================ */
+
+.ghost-markdown {
+  font-family: var(--font-sans);
+}
+
+.ghost-markdown .rich-markdown {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ghost-markdown .rich-markdown p {
+  margin: 0.5em 0;
+}
+
+.ghost-markdown .rich-markdown p:first-child {
+  margin-top: 0;
+}
+
+.ghost-markdown .rich-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.ghost-markdown .rich-markdown code {
+  background: rgba(0, 229, 255, 0.1);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.ghost-markdown .rich-markdown pre {
+  margin: 0.5em 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.ghost-markdown .rich-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.ghost-markdown .rich-markdown ul,
+.ghost-markdown .rich-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.ghost-markdown .rich-markdown li {
+  margin: 0.25em 0;
+}
+
+.ghost-markdown .rich-markdown blockquote {
+  margin: 0.5em 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--color-accent-purple);
+  color: var(--color-text-muted);
+}
+
+.ghost-markdown .rich-markdown h1,
+.ghost-markdown .rich-markdown h2,
+.ghost-markdown .rich-markdown h3,
+.ghost-markdown .rich-markdown h4,
+.ghost-markdown .rich-markdown h5,
+.ghost-markdown .rich-markdown h6 {
+  margin: 0.75em 0 0.5em;
+  color: var(--color-text-primary);
+}
+
+.ghost-markdown .rich-markdown h1:first-child,
+.ghost-markdown .rich-markdown h2:first-child,
+.ghost-markdown .rich-markdown h3:first-child {
+  margin-top: 0;
+}
+
+/* ============================================
+   TOOL RESULT (COLLAPSIBLE)
+   ============================================ */
+
+.ghost-result {
+  margin-top: 4px;
+}
+
+.ghost-result summary {
+  cursor: pointer;
+  color: var(--color-accent-green);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.ghost-result summary:hover {
+  color: var(--color-accent-cyan);
 }

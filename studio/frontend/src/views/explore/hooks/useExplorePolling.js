@@ -17,13 +17,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  */
 
 const POLL_INTERVAL = 750;        // 750ms (Studio's interval)
-const GHOST_TIMEOUT = 30000;      // 30s before auto-remove
-const GHOST_MAX_COUNT = 10;       // Keep last 10 only
+// DISABLED: No auto-removal - keep full conversation history
+// const GHOST_TIMEOUT = 30000;   // 30s before auto-remove
+// const GHOST_MAX_COUNT = 10;    // Keep last 10 only
 
 export default function useExplorePolling(sessionId) {
   // State
   const [logs, setLogs] = useState([]);
   const [checkpoint, setCheckpoint] = useState(null);
+  const [checkpointHistory, setCheckpointHistory] = useState([]);  // All checkpoints for history
   const [ghostMessages, setGhostMessages] = useState([]);
   const [toolCounts, setToolCounts] = useState({});  // { tool_name: count }
   const [orchestrationState, setOrchestrationState] = useState({
@@ -41,6 +43,23 @@ export default function useExplorePolling(sessionId) {
   const [cascadeId, setCascadeId] = useState(null);
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState(null);
+
+  // NEW: Rich analytics state
+  const [sessionStats, setSessionStats] = useState({
+    messageCount: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    durationMs: 0,
+    startTime: null,
+    lastActivityTime: null,
+    roleCounts: {},     // { assistant: N, user: N, tool: N, ... }
+    modelUsage: {},     // { 'model-name': N }
+    modelCosts: {},     // { 'model-name': cost } - cumulative cost per model
+    recentActivity: [], // Last 5 events [{type, tool, cell, timestamp}, ...]
+  });
+  const [cellAnalytics, setCellAnalytics] = useState({});  // Per-cell metrics from API
+  const [cascadeAnalytics, setCascadeAnalytics] = useState(null);  // Session-level analytics
+  const [childSessions, setChildSessions] = useState([]);  // Sub-cascades spawned
 
   // Refs (prevent re-render loops)
   const cursorRef = useRef('1970-01-01 00:00:00');
@@ -69,6 +88,7 @@ export default function useExplorePolling(sessionId) {
     // Clear all state
     setLogs([]);
     setCheckpoint(null);
+    setCheckpointHistory([]);
     setGhostMessages([]);
     setToolCounts({});
     setOrchestrationState({
@@ -86,6 +106,22 @@ export default function useExplorePolling(sessionId) {
     setCascadeId(null);
     setIsPolling(false);
     setError(null);
+    // Clear new analytics state
+    setSessionStats({
+      messageCount: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      durationMs: 0,
+      startTime: null,
+      lastActivityTime: null,
+      roleCounts: {},
+      modelUsage: {},
+      modelCosts: {},
+      recentActivity: [],
+    });
+    setCellAnalytics({});
+    setCascadeAnalytics(null);
+    setChildSessions([]);
 
     // Clear refs
     cursorRef.current = '1970-01-01 00:00:00';
@@ -243,20 +279,120 @@ export default function useExplorePolling(sessionId) {
       setGhostMessages(prev => {
         const combined = [...prev, ...newGhosts];
         console.log('[deriveGhostMessages] Ghost messages now:', combined.length);
-        // Keep last 10 only
-        return combined.slice(-GHOST_MAX_COUNT);
+        // Keep all messages - no limit, no auto-removal
+        return combined;
       });
 
-      // Setup auto-removal timeouts
-      newGhosts.forEach(ghost => {
-        const timeoutId = setTimeout(() => {
-          setGhostMessages(prev => prev.filter(g => g.id !== ghost.id));
-          ghostTimeoutsRef.current.delete(ghost.id);
-        }, GHOST_TIMEOUT);
-
-        ghostTimeoutsRef.current.set(ghost.id, timeoutId);
-      });
+      // DISABLED: No auto-removal - keep full conversation history
+      // newGhosts.forEach(ghost => {
+      //   const timeoutId = setTimeout(() => {
+      //     setGhostMessages(prev => prev.filter(g => g.id !== ghost.id));
+      //     ghostTimeoutsRef.current.delete(ghost.id);
+      //   }, GHOST_TIMEOUT);
+      //   ghostTimeoutsRef.current.set(ghost.id, timeoutId);
+      // });
     }
+  }, []);
+
+  // NEW: Derive rich session stats from all logs
+  const deriveSessionStats = useCallback((allLogs, newLogs) => {
+    if (newLogs.length === 0 && allLogs.length === 0) return;
+
+    // Accumulate stats from new logs
+    let deltaTokensIn = 0;
+    let deltaTokensOut = 0;
+    let deltaDurationMs = 0;
+    const deltaRoleCounts = {};
+    const deltaModelUsage = {};
+    const deltaModelCosts = {};  // Track cost per model
+    const newActivity = [];
+
+    for (const log of newLogs) {
+      // Token counts
+      deltaTokensIn += parseInt(log.tokens_in || 0, 10);
+      deltaTokensOut += parseInt(log.tokens_out || 0, 10);
+      deltaDurationMs += parseInt(log.duration_ms || 0, 10);
+
+      // Role counts
+      if (log.role) {
+        deltaRoleCounts[log.role] = (deltaRoleCounts[log.role] || 0) + 1;
+      }
+
+      // Model usage and costs - use full model name as-is
+      if (log.model) {
+        deltaModelUsage[log.model] = (deltaModelUsage[log.model] || 0) + 1;
+        // Track cost per model
+        const cost = parseFloat(log.cost || 0);
+        if (cost > 0) {
+          deltaModelCosts[log.model] = (deltaModelCosts[log.model] || 0) + cost;
+        }
+      }
+
+      // Recent activity - extract meaningful events
+      if (log.role === 'tool' || (log.role === 'assistant' && log.tool_calls_json)) {
+        let toolName = null;
+        try {
+          if (log.tool_calls_json) {
+            const calls = JSON.parse(log.tool_calls_json);
+            toolName = calls[0]?.function?.name || calls[0]?.name;
+          }
+          if (!toolName && log.metadata_json) {
+            const meta = JSON.parse(log.metadata_json);
+            toolName = meta.tool_name || meta.name;
+          }
+        } catch {}
+
+        newActivity.push({
+          type: log.role === 'tool' ? 'tool_result' : 'tool_call',
+          tool: toolName || 'unknown',
+          cell: log.cell_name,
+          timestamp: log.timestamp,
+        });
+      } else if (log.role === 'render') {
+        newActivity.push({
+          type: 'checkpoint',
+          cell: log.cell_name,
+          timestamp: log.timestamp,
+        });
+      }
+    }
+
+    // Find start time from all logs
+    const firstLog = allLogs[0];
+    const lastLog = allLogs[allLogs.length - 1] || newLogs[newLogs.length - 1];
+
+    setSessionStats(prev => {
+      const updatedRoleCounts = { ...prev.roleCounts };
+      for (const [role, count] of Object.entries(deltaRoleCounts)) {
+        updatedRoleCounts[role] = (updatedRoleCounts[role] || 0) + count;
+      }
+
+      const updatedModelUsage = { ...prev.modelUsage };
+      for (const [model, count] of Object.entries(deltaModelUsage)) {
+        updatedModelUsage[model] = (updatedModelUsage[model] || 0) + count;
+      }
+
+      const updatedModelCosts = { ...prev.modelCosts };
+      for (const [model, cost] of Object.entries(deltaModelCosts)) {
+        updatedModelCosts[model] = (updatedModelCosts[model] || 0) + cost;
+      }
+
+      // Keep last 8 activity items
+      const combinedActivity = [...prev.recentActivity, ...newActivity].slice(-8);
+
+      return {
+        messageCount: prev.messageCount + newLogs.length,
+        tokensIn: prev.tokensIn + deltaTokensIn,
+        tokensOut: prev.tokensOut + deltaTokensOut,
+        durationMs: prev.durationMs + deltaDurationMs,
+        startTime: prev.startTime || firstLog?.timestamp,
+        lastActivityTime: lastLog?.timestamp || prev.lastActivityTime,
+        roleCounts: updatedRoleCounts,
+        modelUsage: updatedModelUsage,
+        modelCosts: updatedModelCosts,
+        recentActivity: combinedActivity,
+      };
+    });
   }, []);
 
   // Update orchestration state from logs
@@ -337,6 +473,10 @@ export default function useExplorePolling(sessionId) {
         setLogs(prev => {
           const updated = [...prev, ...newRows];
           console.log('[useExplorePolling] Total logs now:', updated.length);
+
+          // Derive session stats with full logs context
+          deriveSessionStats(updated, newRows);
+
           return updated;
         });
 
@@ -358,6 +498,18 @@ export default function useExplorePolling(sessionId) {
       if (data.session_status !== undefined) setSessionStatus(data.session_status);
       if (data.session_error !== undefined) setSessionError(data.session_error);
       if (data.total_cost !== undefined) setTotalCost(data.total_cost);
+      if (data.cascade_id) setCascadeId(data.cascade_id);
+
+      // NEW: Capture rich analytics from API
+      if (data.cascade_analytics) {
+        setCascadeAnalytics(data.cascade_analytics);
+      }
+      if (data.cell_analytics && Object.keys(data.cell_analytics).length > 0) {
+        setCellAnalytics(data.cell_analytics);
+      }
+      if (data.child_sessions && data.child_sessions.length > 0) {
+        setChildSessions(data.child_sessions);
+      }
 
       setError(null);
     } catch (err) {
@@ -366,7 +518,7 @@ export default function useExplorePolling(sessionId) {
     } finally {
       setIsPolling(false);
     }
-  }, [sessionId, deriveGhostMessages, updateOrchestrationState]);
+  }, [sessionId, deriveGhostMessages, deriveSessionStats, updateOrchestrationState]);
 
   // Poll checkpoints (separate from logs)
   const pollCheckpoint = useCallback(async () => {
@@ -388,6 +540,9 @@ export default function useExplorePolling(sessionId) {
       });
 
       if (!data.error && data.checkpoints && data.checkpoints.length > 0) {
+        // Store full checkpoint history (for rendering responded checkpoints)
+        setCheckpointHistory(data.checkpoints);
+
         const pending = data.checkpoints.find(cp => cp.status === 'pending');
         console.log('[pollCheckpoint] Pending checkpoint:', pending ? pending.id : 'none');
         // Only update if checkpoint ID changed - prevents re-render that resets form state
@@ -464,6 +619,7 @@ export default function useExplorePolling(sessionId) {
     // Core data
     logs,
     checkpoint,
+    checkpointHistory,  // All checkpoints (for showing responded ones in history)
 
     // Derived state
     ghostMessages,
@@ -475,6 +631,12 @@ export default function useExplorePolling(sessionId) {
     sessionError,
     totalCost,
     cascadeId,
+
+    // NEW: Rich analytics
+    sessionStats,     // { messageCount, tokensIn, tokensOut, roleCounts, modelUsage, recentActivity, ... }
+    cellAnalytics,    // Per-cell metrics: { cell_name: { cell_cost, cell_duration_ms, ... } }
+    cascadeAnalytics, // Session-level analytics: { cost_z_score, is_cost_outlier, ... }
+    childSessions,    // Sub-cascades spawned: [{ session_id, parent_cell, ... }]
 
     // State
     isPolling,

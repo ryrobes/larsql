@@ -4214,6 +4214,7 @@ def playground_session_stream(session_id):
                 session_id,
                 parent_session_id,
                 trace_id,
+                cascade_id,
                 cell_name,
                 role,
                 node_type,
@@ -4444,6 +4445,13 @@ def playground_session_stream(session_id):
         except Exception as e:
             print(f"[session-stream] Could not fetch cell_analytics: {e}")
 
+        # Extract cascade_id from the first row that has it
+        cascade_id = None
+        for row in rows_to_return:
+            if row.get('cascade_id'):
+                cascade_id = row['cascade_id']
+                break
+
         # Extract child session info (sub-cascades that were spawned)
         child_sessions = {}
         for row in rows_to_return:
@@ -4466,6 +4474,7 @@ def playground_session_stream(session_id):
             'session_status': session_status,  # 'running', 'completed', 'error', 'cancelled', 'orphaned'
             'session_error': session_error,    # Error message if session_status == 'error'
             'total_cost': round(total_cost, 6),
+            'cascade_id': cascade_id,  # Cascade identifier for this session
             'child_sessions': list(child_sessions.values()),  # List of spawned sub-cascades
             'cascade_analytics': cascade_analytics,  # Pre-computed session-level analytics
             'cell_analytics': cell_analytics,  # Pre-computed per-cell analytics

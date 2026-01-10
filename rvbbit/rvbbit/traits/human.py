@@ -618,7 +618,7 @@ def request_decision(
     severity: str = "info",
     allow_custom: bool = True,
     html: str | None = None,
-    timeout_seconds: int = 600
+    timeout_seconds: int = 86400  # 24 hours - long timeout for interactive sessions
 ) -> dict:
     """
     Request a human decision with structured options.
@@ -916,7 +916,7 @@ def request_decision(
                   </div>
                 </form>
 
-        timeout_seconds: Maximum wait time (default 600 = 10 minutes)
+        timeout_seconds: Maximum wait time (default 86400 = 24 hours)
 
     Returns a JSON object with:
         - selected: The ID of the chosen option, or "custom" if they typed their own

@@ -1233,6 +1233,9 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 
+  <!-- Mermaid.js for diagrams (flowcharts, sequence diagrams, ER diagrams, etc.) -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
   <!-- AG Grid for data tables -->
   <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css">
@@ -1248,6 +1251,55 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
     //console.log('[HTMX iframe INIT] Vega loaded:', typeof vega !== 'undefined');
     //console.log('[HTMX iframe INIT] vegaEmbed loaded:', typeof vegaEmbed !== 'undefined');
     //console.log('[HTMX iframe INIT] AG Grid loaded:', typeof agGrid !== 'undefined');
+    //console.log('[HTMX iframe INIT] Mermaid loaded:', typeof mermaid !== 'undefined');
+
+    // Initialize Mermaid.js with dark theme matching RVBBIT aesthetics
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+          // RVBBIT color palette
+          primaryColor: '#1a1a2e',
+          primaryTextColor: '#f1f5f9',
+          primaryBorderColor: '#00e5ff',
+          lineColor: '#a78bfa',
+          secondaryColor: '#0f0f1a',
+          tertiaryColor: '#1e1e2e',
+          // Node colors
+          nodeBorder: '#00e5ff',
+          mainBkg: '#0a0a0a',
+          // Text
+          textColor: '#f1f5f9',
+          // Flowchart specific
+          edgeLabelBackground: '#1a1a2e',
+          clusterBkg: '#0f0f1a',
+          clusterBorder: '#a78bfa',
+          // Sequence diagram
+          actorBkg: '#1a1a2e',
+          actorBorder: '#00e5ff',
+          actorTextColor: '#f1f5f9',
+          actorLineColor: '#a78bfa',
+          signalColor: '#f1f5f9',
+          signalTextColor: '#f1f5f9',
+          noteBkgColor: '#1e1e2e',
+          noteBorderColor: '#a78bfa',
+          noteTextColor: '#f1f5f9'
+        },
+        flowchart: {
+          useMaxWidth: true,
+          htmlLabels: true,
+          curve: 'basis'
+        },
+        sequence: {
+          useMaxWidth: true,
+          diagramMarginX: 20,
+          diagramMarginY: 20
+        },
+        fontFamily: "'Google Sans Mono', 'IBM Plex Mono', monospace"
+      });
+      //console.log('[HTMX iframe] Mermaid initialized with RVBBIT dark theme');
+    }
 
     // Wait for HTMX to fully initialize
     window.addEventListener('DOMContentLoaded', () => {

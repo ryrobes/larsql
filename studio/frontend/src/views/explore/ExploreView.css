@@ -125,7 +125,7 @@
 
 .explore-main-content {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;  /* Let children handle their own scroll */
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -133,14 +133,41 @@
 }
 
 /* ============================================
+   MESSAGE LOG (AG Grid)
+   ============================================ */
+
+.explore-messages-log {
+  flex: 1;
+  min-height: 0;  /* Allow shrinking in flexbox */
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-dim);
+}
+
+.explore-messages-log .sml-container {
+  height: 100%;
+}
+
+/* Override SessionMessagesLog styles for explore context */
+.explore-session-log {
+  height: 100%;
+}
+
+.explore-session-log .sml-grid-container {
+  background: transparent;
+}
+
+/* ============================================
    CURRENT CHECKPOINT
    ============================================ */
 
 .current-checkpoint {
+  flex-shrink: 0;  /* Don't shrink - always show at bottom */
   border: 1px solid var(--color-accent-yellow);
   border-radius: 6px;
   padding: 12px;
-  background: transparent;
+  background: rgba(251, 191, 36, 0.05);
   box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
 }
 
@@ -203,6 +230,56 @@
 
 .explore-main-content::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 229, 255, 0.5);
+}
+
+/* ============================================
+   CONVERSATION TIMELINE
+   ============================================ */
+
+.conversation-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+}
+
+.conversation-item {
+  /* Each item in the timeline */
+}
+
+.conversation-item--checkpoint {
+  /* Styling for responded checkpoints in history */
+}
+
+.responded-checkpoint {
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.checkpoint-header-responded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-green);
+  background: rgba(52, 211, 153, 0.1);
+  border-bottom: 1px solid var(--color-border-dim);
+}
+
+.checkpoint-header-responded svg {
+  flex-shrink: 0;
+}
+
+.checkpoint-response-preview {
+  color: var(--color-text-muted);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
 }
 
 /* ============================================

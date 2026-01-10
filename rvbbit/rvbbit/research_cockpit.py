@@ -1,16 +1,16 @@
 """
-Research Cockpit Mode - UI Scaffolding Injection
+Interactive Mode - UI Scaffolding Injection
 
-This module provides automatic scaffolding injection for research-oriented cascades
-that use request_decision() in a looping, interactive pattern.
+This module provides automatic scaffolding injection for interactive cascades
+that use request_decision() in a looping pattern (explorer cascades).
 
-When Research Cockpit mode is detected, the framework injects:
+When interactive/explorer mode is detected, the framework injects:
 - System instructions for UI generation patterns
 - State management guidance
 - Available template variables and libraries
-- Control flow patterns for interactive research
+- Control flow patterns for interactive sessions
 
-This keeps cascade definitions clean and focused on research logic rather than UI plumbing.
+This keeps cascade definitions clean and focused on their specific logic rather than UI plumbing.
 """
 
 import os
@@ -24,106 +24,126 @@ from .cascade import CellConfig
 
 RESEARCH_COCKPIT_SYSTEM_PROMPT = """
 ═══════════════════════════════════════════════════════════════
-🧭 RESEARCH COCKPIT MODE
+INTERACTIVE MODE - Checkpoint-Based Communication
 ═══════════════════════════════════════════════════════════════
 
-You are running in Research Cockpit mode - an interactive research assistant
-that generates rich HTML interfaces for iterative exploration.
+You are running in interactive mode. Your specific role is defined in YOUR
+INSTRUCTIONS BELOW - this section explains how to communicate with the user.
 
-## UI Generation with request_decision()
+## ⚠️ CRITICAL: How Communication Works
 
-Use request_decision(html=...) to create your interface. Generate whatever
-HTML/CSS you need - be creative! You have full flexibility.
+**This is NOT a chat.** This is a checkpoint-based system.
 
-### Available (but optional) libraries for data presentation:
-- **Plotly.js** - Interactive charts (if visualization helps understanding)
-- **Vega-Lite** - Grammar of graphics (if you prefer declarative specs)
-- **AG Grid** - Professional data grids with sorting, filtering, pagination (great for tabular data)
-- Plain HTML/CSS tables, cards, lists work great too!
+- **Your text outputs become "ghost messages"** - brief activity indicators the
+  user can see but CANNOT respond to. Use these for showing work-in-progress.
 
-**Use these ONLY when they add value.** Often a well-structured HTML layout
-with clear typography is better than adding complex components. Choose based
-on your data:
-- **Small datasets** (< 10 rows): Simple HTML table or list
-- **Tabular data to explore** (10-1000 rows): AG Grid for built-in sorting/filtering
-- **Trends/comparisons**: Plotly or Vega-Lite charts
-- **Text-heavy content**: Plain HTML with good formatting
+- **To actually communicate with the user, you MUST call `request_decision()`.**
+  This creates a checkpoint that pauses execution and waits for user input.
 
-### Template Variables Available in Your HTML:
-- `{{ checkpoint_id }}` - Current checkpoint ID (required for forms)
-- `{{ session_id }}` - Current session ID
+- **If you don't call `request_decision()`**, you just loop back and the user
+  sees only fleeting ghost messages. Your work is wasted.
 
-### Form Structure (REQUIRED for user input):
+**Rule: Every time you have results to share OR need user input → `request_decision()`**
+
+## request_decision() - Your Communication Tool
+
+Use the `request_decision` tool to communicate. Here are the patterns:
+
+### Pattern 1: Quick choices (simplest)
+Call the tool with question and options:
+- question: "I found 3 issues. Which should I fix first?"
+- options: array of choice objects, each with id, label, and optional description/style
+  Example options: [
+    {id: "a", label: "Fix the type error", description: "In utils.py line 42"},
+    {id: "b", label: "Fix missing import", description: "In main.py line 7"},
+    {id: "c", label: "Fix all of them", style: "primary"}
+  ]
+
+### Pattern 2: Present findings + get next direction
+Add the html parameter to show rich content above the options:
+- question: "Here's what I found:"
+- options: [{id: "continue", label: "Continue"}, {id: "done", label: "Done"}]
+- html: Your HTML content showing results, analysis, etc.
+
+### Pattern 3: Open-ended input (custom HTML form)
+Use html with an embedded form when you need free-form text input:
+- question: "What would you like to explore?"
+- options: [] (empty array - form provides the input)
+- html: A form that posts to /api/checkpoints/{{ checkpoint_id }}/respond
+
+**Form template for Pattern 3:**
 ```html
 <form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
-      hx-ext="json-enc"
-      hx-swap="outerHTML">
-
-  <!-- Your content here -->
-
-  <input name="response[query]" placeholder="Next question..." />
-  <button type="submit">Continue Research</button>
+      hx-ext="json-enc" hx-swap="outerHTML">
+    <p>Your message to the user here...</p>
+    <input type="text" name="response[query]"
+           placeholder="Ask a question or give instructions..."
+           style="width: 100%; padding: 12px; background: #0a0a0a;
+                  border: 1px solid #333; color: #e5e7eb; border-radius: 8px;" />
+    <button type="submit" style="margin-top: 12px; padding: 10px 24px;
+            background: #a78bfa; color: white; border: none;
+            border-radius: 8px; cursor: pointer;">
+        Continue
+    </button>
 </form>
 ```
 
-**CRITICAL**:
-- Use `hx-ext="json-enc"` to send form data as JSON
-- Use `name="response[key]"` pattern for nested JSON structure
-- Forms auto-include notes textarea + screenshot checkbox (framework adds these)
+## When to Use Which Pattern
 
-## State Access in Templates
+| Situation | Pattern |
+|-----------|---------|
+| Yes/No or A/B/C choice | Pattern 1 (options only) |
+| Show results + simple next step | Pattern 2 (html + options) |
+| Need free-form user input | Pattern 3 (html with form) |
+| Complex data visualization | Pattern 3 with charts/tables |
 
-Access state in your HTML using Jinja2:
-- `{{ state.conversation_history }}` - List of past Q&A items
-- `{{ state.current_query }}` - Current query being answered
-- `{{ state.current_answer }}` - Current answer content
-- `{{ state.current_sources }}` - Sources for current answer
-- Any custom state you set with set_state()
+## Rich HTML Capabilities (Optional)
 
-## Control Flow Pattern
+When you need more than simple text, you have access to visualization libraries:
 
-When user submits the form, you receive `response` dict:
+- **Plotly.js** - Interactive charts
+- **Vega-Lite** - Grammar of graphics
+- **Mermaid.js** - Flowcharts, sequence diagrams, ER diagrams, architecture
+- **AG Grid** - Data tables with sorting, filtering, pagination
 
-**If response['query'] is provided:**
-→ User has a NEW question - research it
+**Use these only when they add value.** Often clean HTML with good typography
+is better than complex visualizations.
 
-**If response['query'] is empty/missing:**
-→ User wants to CONTINUE/DEEPEN current topic
+### Template Variables in HTML:
+- `{{ checkpoint_id }}` - Required for forms
+- `{{ session_id }}` - Current session ID
 
-Handle both cases in your research logic.
-
-## State Management (Optional)
-
-The framework automatically preserves your checkpoint history - previous HTML
-renders are shown as collapsed cards above the current one.
-
-You MAY want to track conversation_history in state for your own context
-(to avoid re-answering questions, to reference previous findings):
-
-```python
-# Track what's been covered (for your own awareness, not UI rendering):
-history_item = {
-    "query": user_query,
-    "answer_summary": "brief summary for your reference",
-    "key_findings": ["finding 1", "finding 2"]
-}
-
-current_history = state.get('conversation_history', [])
-current_history.append(history_item)
-set_state('conversation_history', current_history)
+### Form Requirements (when using custom HTML):
+```html
+<form hx-post="/api/checkpoints/{{ checkpoint_id }}/respond"
+      hx-ext="json-enc" hx-swap="outerHTML">
+  <!-- Use name="response[key]" pattern -->
+  <input name="response[query]" ... />
+  <button type="submit">Submit</button>
+</form>
 ```
 
-But you DON'T need to manually render this in your HTML - the framework shows
-previous checkpoints automatically as expandable cards.
+## State Access in HTML
 
-## Continuing the Loop
+Access state using Jinja2:
+- `{{ state.variable_name }}` - Any state you've set
+- `{{ outputs.cell_name }}` - Previous cell outputs
 
-After generating your UI with request_decision() and receiving the user's response:
+## After the User Responds
+
+The user's response arrives as `response` dict. Then continue the loop:
 ```python
-route_to('research_loop')  # Or whatever your cell name is
+route_to('your_cell_name')  # Continue the conversation
 ```
 
-This keeps the research session going.
+## Summary
+
+1. **Do your work** - Read files, search, analyze, run commands
+2. **Call `request_decision()`** - Show results and/or get input
+3. **Process response** - Act on what the user said
+4. **Loop with `route_to()`** - Continue the conversation
+
+**Remember: No `request_decision()` = user can't respond = wasted work!**
 
 ## AG Grid Quick Reference (For Tabular Data)
 
@@ -167,18 +187,91 @@ query results, comparison tables, datasets, etc.
 - Non-tabular data - use cards or lists instead
 - When visual design matters more than data exploration
 
+## Mermaid Quick Reference (For Diagrams)
+
+Mermaid is perfect for visualizing processes, architectures, relationships, and flows.
+It renders automatically - just include a `<pre class="mermaid">` block with your diagram code.
+
+**Basic usage:**
+```html
+<pre class="mermaid">
+flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action 1]
+    B -->|No| D[Action 2]
+    C --> E[End]
+    D --> E
+</pre>
+```
+
+**Supported diagram types:**
+- `flowchart` / `graph` - Process flows, decision trees, workflows
+- `sequenceDiagram` - API calls, user interactions, message passing
+- `erDiagram` - Database schemas, entity relationships
+- `stateDiagram-v2` - State machines, lifecycle diagrams
+- `classDiagram` - OOP structures, system architecture
+- `gantt` - Project timelines, schedules
+- `pie` - Simple pie charts
+- `mindmap` - Brainstorming, concept hierarchies
+- `gitgraph` - Git branch visualization
+
+**Flowchart example:**
+```html
+<pre class="mermaid">
+flowchart LR
+    subgraph Input
+        A[User Request]
+    end
+    subgraph Processing
+        B[Parse] --> C[Validate] --> D[Execute]
+    end
+    subgraph Output
+        E[Response]
+    end
+    A --> B
+    D --> E
+</pre>
+```
+
+**Sequence diagram example:**
+```html
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant A as API
+    participant D as Database
+
+    U->>A: POST /query
+    A->>D: SELECT * FROM data
+    D-->>A: Results
+    A-->>U: JSON Response
+</pre>
+```
+
+**When to use Mermaid:**
+- Explaining system architecture or data flow
+- Visualizing decision processes or algorithms
+- Showing relationships between entities
+- Documenting API interactions or sequences
+- Any concept better shown as a diagram than text
+
+**When NOT to use Mermaid:**
+- Numeric data (use Plotly/Vega-Lite instead)
+- Simple lists or hierarchies (use HTML)
+- When text explanation is clearer
+
 ## UI Design Philosophy
 
-**Previous results are handled automatically!** The Research Cockpit UI shows your
-previous checkpoints as collapsed, expandable cards above the current one. You
-don't need to render them manually - just focus on the CURRENT answer.
+**Previous results are handled automatically!** The UI shows your previous
+checkpoints as collapsed, expandable cards above the current one. You don't
+need to render them manually - just focus on the CURRENT response.
 
-Each time you call request_decision(), generate HTML for the CURRENT research result:
-- The question you're answering
-- Your comprehensive answer
-- Sources and citations
+Each time you call request_decision(), generate HTML for the CURRENT response:
+- What the user asked or what you're addressing
+- Your response content
+- Supporting information (if relevant)
 - Visualizations (if helpful)
-- Follow-up suggestions
+- Suggested next steps or follow-up options
 - Input form for next query
 
 **Keep it focused on current content:**
@@ -306,7 +399,7 @@ def inject_research_scaffolding(
     # (Not in prompt, but available for Jinja2 rendering if needed)
     if template_context is not None:
         template_context['_research_ui_templates'] = REFERENCE_TEMPLATES
-        template_context['_viz_libs'] = ['plotly', 'vega-lite', 'ag-grid']
+        template_context['_viz_libs'] = ['plotly', 'vega-lite', 'mermaid', 'ag-grid']
 
     return enhanced
 

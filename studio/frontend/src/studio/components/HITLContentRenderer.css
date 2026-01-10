@@ -1,0 +1,76 @@
+/* ============================================
+   HITLContentRenderer - Read-only HITL display
+   ============================================ */
+
+.hitl-renderer-wrapper {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-primary, #0a0a0a);
+  border: 1px solid var(--border-color, #333);
+}
+
+.hitl-renderer-compact {
+  border-radius: 6px;
+}
+
+/* Badge indicating read-only state */
+.hitl-renderer-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+/* Iframe styling */
+.hitl-renderer-iframe {
+  background: var(--bg-primary, #0a0a0a);
+  border-radius: 8px;
+}
+
+.hitl-renderer-compact .hitl-renderer-iframe {
+  border-radius: 6px;
+}
+
+/* Error state */
+.hitl-renderer-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #f87171;
+  font-size: 13px;
+}
+
+/* Empty state */
+.hitl-renderer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px;
+  background: var(--bg-secondary, #121212);
+  border: 1px dashed var(--border-color, #333);
+  border-radius: 8px;
+  color: var(--text-muted, #64748b);
+  font-size: 13px;
+}
+
+.hitl-renderer-compact .hitl-renderer-empty {
+  padding: 20px;
+}

@@ -1235,6 +1235,21 @@ class CellConfig(BaseModel):
     traits: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
     manifest_limit: int = 30  # Max tools to send to Quartermaster (semantic pre-filtering if embeddings available)
+
+    # ===== Per-Turn Tool Re-Selection (for manifest mode) =====
+    # Controls when Quartermaster re-assesses which tools are needed:
+    #   - "once" (default): Select tools once at cell start (existing behavior)
+    #   - "per_turn": Re-select tools at the start of each turn within max_turns loop
+    #   - "per_attempt": Re-select tools at each loop_until validation retry
+    #
+    # Use "per_turn" for long-running research loops where the conversation evolves
+    # and different tools become relevant. Only works when traits="manifest".
+    #
+    # Context efficiency:
+    #   - Native tools (use_native_tools: true): No bloat - tools passed via API
+    #   - Prompt-based (default): Only NEW tools are injected each turn, removed tools
+    #     are noted briefly. Already-defined tools are not re-injected.
+    manifest_refresh: Literal["once", "per_turn", "per_attempt"] = "once"
     model: Optional[str] = None  # Override default model for this cell
     image_config: Optional[ImageConfig] = None  # Config for image generation models (FLUX, SDXL, etc.)
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)

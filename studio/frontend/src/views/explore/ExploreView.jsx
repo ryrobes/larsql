@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Icon } from '@iconify/react';
-import { Button, CheckpointRenderer, GhostMessage, useToast, VideoLoader } from '../../components';
+import { Button, CheckpointRenderer, useToast, VideoLoader } from '../../components';
+import SessionMessagesLog from '../../studio/components/SessionMessagesLog';
 import SimpleSidebar from './components/SimpleSidebar';
 import CascadePickerModal from './components/CascadePickerModal';
 import useExplorePolling from './hooks/useExplorePolling';
@@ -92,16 +93,23 @@ const ExploreView = () => {
   }, []); // ONLY run once on mount!
 
   // Poll for all data (NO SSE!)
+  // Note: ghostMessages and checkpointHistory are still maintained by the hook,
+  // but we now use SessionMessagesLog which displays logs directly.
+  // Checkpoints (request_decision) appear as 'render' role messages in the log.
   const {
     logs,
-    checkpoint,
-    ghostMessages,
+    checkpoint,         // Used for pending checkpoint at bottom
     orchestrationState,
     sessionStatus,
     sessionError,
     totalCost,
     cascadeId,
     toolCounts,
+    // NEW: Rich analytics
+    sessionStats,
+    cellAnalytics,
+    cascadeAnalytics,
+    childSessions,
     isPolling,
     error
   } = useExplorePolling(sessionId);
@@ -281,36 +289,18 @@ const ExploreView = () => {
         <div className="explore-main-column">
           <div className="explore-main-content">
 
-            {/* EXTENSION POINT: Context Header (sticky, shows inputs) */}
-            {/* <CascadeContextHeader cascadeInputs={...} checkpointHistory={...} /> */}
-
-            {/* Ghost Messages (Live Activity) */}
-            <AnimatePresence>
-              {ghostMessages.map(ghost => (
-                <motion.div
-                  key={ghost.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 0.85, x: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <GhostMessage ghost={ghost} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {/* EXTENSION POINT: Timeline of Responded Checkpoints */}
-            {/* {checkpointHistory
-                .filter(cp => cp.status === 'responded')
-                .map((cp, idx) => (
-                  <ExpandableCheckpoint
-                    key={cp.id}
-                    checkpoint={cp}
-                    index={idx}
-                    sessionId={sessionId}
-                  />
-                ))
-            } */}
+            {/* Message Log - AG Grid with full message history and HITL rendering */}
+            <div className="explore-messages-log">
+              <SessionMessagesLog
+                logs={logs}
+                currentSessionId={sessionId}
+                showFilters={false}  // Cleaner explore UI
+                showCellColumn={true}
+                compact={true}
+                className="explore-session-log"
+                shouldPollBudget={false}  // Budget shown in sidebar
+              />
+            </div>
 
             {/* Current Pending Checkpoint */}
             {checkpoint && (
@@ -334,7 +324,7 @@ const ExploreView = () => {
             )}
 
             {/* Empty State */}
-            {!checkpoint && ghostMessages.length === 0 && (
+            {!checkpoint && logs.length === 0 && (
               <div className="explore-empty">
                 <Icon
                   icon={sessionStatus === 'completed' ? 'mdi:check-circle' : 'mdi:compass'}
@@ -383,6 +373,11 @@ const ExploreView = () => {
           totalCost={totalCost}
           sessionStatus={sessionStatus}
           toolCounts={toolCounts}
+          // NEW: Rich analytics
+          sessionStats={sessionStats}
+          cellAnalytics={cellAnalytics}
+          cascadeAnalytics={cascadeAnalytics}
+          childSessions={childSessions}
           onEnd={handleEndCascade}
           onNewCascade={() => setShowPicker(true)}
         />
