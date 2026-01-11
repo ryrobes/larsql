@@ -1579,7 +1579,11 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                   )}
                   {activeOutputTab === 'images' && images && images.length > 0 && (
                     <div className="cell-detail-images-only">
-                      {images.map((imagePath, idx) => {
+                      {images.map((rawImagePath, idx) => {
+                        // Guard against non-string imagePath
+                        const imagePath = typeof rawImagePath === 'string' ? rawImagePath : '';
+                        if (!imagePath) return null;
+
                         // Handle different image path formats:
                         // 1. Base64 data URLs (from browser tool): data:image/jpeg;base64,...
                         // 2. API paths: /api/images/...

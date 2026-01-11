@@ -30,9 +30,19 @@ sql_function:
   - OUTLIERS({{ texts }}, {{ num_outliers }}, '{{ criteria }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('apple'), ('banana'), ('orange'),
+          ('grape'), ('strawberry'), ('watermelon'),
+          ('chicken'), ('mango'), ('pineapple')
+        ) AS t(item)
+      )
+      SELECT OUTLIERS(item, 1) FROM test_data
+    expect:
+      type: contains
+      value: chicken
+    description: Identifies non-fruit item as outlier
 cells:
 - name: find_outliers
   model: google/gemini-2.5-flash-lite

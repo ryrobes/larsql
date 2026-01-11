@@ -519,10 +519,11 @@ class Agent:
                                     toon_telemetry = msg_toon.copy()
                                 else:
                                     # Sum up sizes if multiple TOON-encoded messages
+                                    # Use `or 0` since .get() returns None if key exists with None value
                                     if msg_toon.get("data_size_json"):
-                                        toon_telemetry["data_size_json"] = toon_telemetry.get("data_size_json", 0) + msg_toon["data_size_json"]
+                                        toon_telemetry["data_size_json"] = (toon_telemetry.get("data_size_json") or 0) + msg_toon["data_size_json"]
                                     if msg_toon.get("data_size_toon"):
-                                        toon_telemetry["data_size_toon"] = toon_telemetry.get("data_size_toon", 0) + msg_toon["data_size_toon"]
+                                        toon_telemetry["data_size_toon"] = (toon_telemetry.get("data_size_toon") or 0) + msg_toon["data_size_toon"]
 
                 # Add metadata to response
                 msg_dict.update({

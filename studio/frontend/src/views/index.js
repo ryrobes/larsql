@@ -138,6 +138,14 @@ export const views = {
     enabled: true,
   },
 
+  tests: {
+    component: lazy(() => import('./tests/TestsView')),
+    icon: 'mdi:test-tube',
+    label: 'Tests',
+    position: 'top',
+    enabled: true,
+  },
+
   interrupts: {
     component: lazy(() => import('./interrupts/InterruptsView')),
     icon: 'mdi:hand-back-right',

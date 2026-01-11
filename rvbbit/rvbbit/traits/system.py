@@ -150,6 +150,7 @@ def map_cascade(
     cascade: str,
     map_over: Union[List[Any], str],
     input_key: str = "item",
+    additional_inputs: Optional[Union[Dict[str, Any], str]] = None,
     mode: str = "aggregate",
     max_parallel: Union[int, str] = 5,
     on_error: str = "continue",
@@ -167,6 +168,8 @@ def map_cascade(
         map_over: Array of items to map over. Each item spawns one cascade.
                   Can also be a Jinja2 template string that resolves to an array.
         input_key: The input parameter name to inject each item as (default: "item")
+        additional_inputs: Additional inputs to pass to each child cascade.
+                          Can be a dict or JSON string. Merged with the mapped item.
         mode: How to collect results:
             - "aggregate": Return array of all results
             - "first_valid": Return first non-error result
@@ -193,6 +196,9 @@ def map_cascade(
             cascade: "traits/process_customer.yaml"
             map_over: "{{ outputs.list_customers }}"
             input_key: "customer_id"
+            additional_inputs:
+              output_dir: "/path/to/output"
+              format: "json"
             mode: "aggregate"
             max_parallel: 10
         ```
@@ -251,6 +257,24 @@ def map_cascade(
     if not isinstance(items, list):
         items = [items]  # Wrap single item in list
 
+    print(f"[map_cascade] Processing {len(items)} items: {items[:5]}{'...' if len(items) > 5 else ''}")
+
+    # Parse additional_inputs if provided as JSON string
+    extra_inputs: Dict[str, Any] = {}
+    if additional_inputs is not None:
+        print(f"[map_cascade] additional_inputs type: {type(additional_inputs)}, value: {additional_inputs}")
+        if isinstance(additional_inputs, str):
+            import json
+            try:
+                extra_inputs = json.loads(additional_inputs)
+            except Exception as e:
+                # Not valid JSON - skip
+                print(f"[map_cascade] Failed to parse additional_inputs as JSON: {e}")
+                pass
+        elif isinstance(additional_inputs, dict):
+            extra_inputs = additional_inputs
+        print(f"[map_cascade] extra_inputs after parsing: {extra_inputs}")
+
     total_items = len(items)
     if total_items == 0:
         return {
@@ -269,58 +293,54 @@ def map_cascade(
     except:
         pass
 
-    # Capture caller context for thread propagation
-    import contextvars
-    ctx = contextvars.copy_context()
-
     results = []
     errors = []
     successful_count = 0
 
     def run_single_item(index: int, item: Any) -> Dict[str, Any]:
-        """Execute cascade for single item. Runs in copied context to preserve caller_id."""
-        def _execute():
-            # Generate unique session ID for this map item
-            item_session_id = f"{parent_session_id}_map_{index}" if parent_session_id else f"map_{int(time.time())}_{uuid.uuid4().hex[:6]}_item_{index}"
+        """Execute cascade for single item."""
+        # Generate unique session ID for this map item
+        item_session_id = f"{parent_session_id}_map_{index}" if parent_session_id else f"map_{int(time.time())}_{uuid.uuid4().hex[:6]}_item_{index}"
 
-            # Build input data
-            input_data = {input_key: item}
+        # Build input data (merge extra_inputs first, then item so input_key takes precedence)
+        input_data = {**extra_inputs, input_key: item}
 
-            try:
-                # Run cascade synchronously (blocking)
-                result = run_cascade(
-                    resolved_cascade_ref,
-                    input_data,
-                    session_id=item_session_id,
-                    parent_trace=parent_trace,
-                    parent_session_id=parent_session_id
-                )
+        print(f"[map_cascade] Starting item {index + 1}/{total_items}: {item}")
+        print(f"[map_cascade] Full input_data for child cascade: {input_data}")
 
-                return {
-                    "index": index,
-                    "item": item,
-                    "result": result,
-                    "error": None,
-                    "session_id": item_session_id
-                }
+        try:
+            # Run cascade synchronously (blocking)
+            # Note: run_cascade will set up its own context internally
+            result = run_cascade(
+                resolved_cascade_ref,
+                input_data,
+                session_id=item_session_id,
+                parent_trace=parent_trace,
+                parent_session_id=parent_session_id
+            )
 
-            except Exception as e:
-                error_info = {
-                    "index": index,
-                    "item": item,
-                    "result": None,
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "session_id": item_session_id
-                }
+            return {
+                "index": index,
+                "item": item,
+                "result": result,
+                "error": None,
+                "session_id": item_session_id
+            }
 
-                if on_error == "fail_fast":
-                    raise
+        except Exception as e:
+            error_info = {
+                "index": index,
+                "item": item,
+                "result": None,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "session_id": item_session_id
+            }
 
-                return error_info
+            if on_error == "fail_fast":
+                raise
 
-        # Run in copied context to preserve caller_id
-        return ctx.run(_execute)
+            return error_info
 
     # Execute cascades in parallel using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=min(max_parallel, total_items)) as executor:

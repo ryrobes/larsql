@@ -34,6 +34,7 @@ const WarrenView = lazy(() => import('./views/warren/WarrenView'));
 const AppsView = lazy(() => import('./views/apps/AppsView'));
 const CatalogView = lazy(() => import('./views/catalog/CatalogView'));
 const WatchersView = lazy(() => import('./views/watchers/WatchersView'));
+const TestsView = lazy(() => import('./views/tests/TestsView'));
 
 // Wrapper to add Suspense to lazy components
 const withSuspense = (Component) => (
@@ -173,6 +174,12 @@ export const router = createBrowserRouter([
       {
         path: 'watchers',
         element: withSuspense(WatchersView),
+      },
+
+      // Tests - Test Dashboard
+      {
+        path: 'tests',
+        element: withSuspense(TestsView),
       },
 
       // Catch-all - redirect to home

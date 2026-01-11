@@ -20,9 +20,21 @@ sql_function:
   - SENTIMENT_AGG({{ texts }})
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('I absolutely love this product!'),
+          ('Best purchase I ever made'),
+          ('Fantastic quality and service'),
+          ('Highly recommend to everyone')
+        ) AS t(review)
+      )
+      SELECT SENTIMENT_AGG(review) FROM test_data
+    expect:
+      type: range
+      min: 0.3
+      max: 1.0
+    description: Positive reviews should return positive sentiment score
 cells:
 - name: analyze_sentiment
   model: google/gemini-2.5-flash-lite

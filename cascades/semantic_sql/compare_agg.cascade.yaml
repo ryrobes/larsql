@@ -27,9 +27,19 @@ sql_function:
   - COMPARE({{ values }}, '{{ focus }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('iPhone 15: $999, 6.1" display, A16 chip'),
+          ('iPhone 15 Pro: $1099, 6.1" display, A17 Pro chip'),
+          ('iPhone 15 Pro Max: $1199, 6.7" display, A17 Pro chip')
+        ) AS t(phone)
+      )
+      SELECT COMPARE(phone, 'differences') FROM test_data
+    expect:
+      type: contains
+      value: differences
+    description: Compares iPhone models to find differences
 cells:
 - name: analyze_comparison
   model: google/gemini-2.5-flash-lite

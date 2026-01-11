@@ -25,9 +25,22 @@ sql_function:
   - DEDUPE({{ texts }}, '{{ criteria }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('John Smith'),
+          ('Jon Smith'),
+          ('Johnny Smith'),
+          ('Jane Doe'),
+          ('J. Doe'),
+          ('Michael Johnson')
+        ) AS t(name)
+      )
+      SELECT DEDUPE(name) FROM test_data
+    expect:
+      type: contains
+      value: Smith
+    description: Deduplicates similar names
 cells:
 - name: deduplicate
   model: google/gemini-2.5-flash-lite

@@ -666,9 +666,13 @@ function MediaSection({ cells, cellStates, onNavigateToCell }) {
       {isExpanded && (
         <div className="nav-section-content nav-media-content">
           {mediaItems.map(item => {
-            const imageUrl = item.imagePath.startsWith('/api')
-              ? `http://localhost:5050${item.imagePath}`
-              : item.imagePath;
+            // Guard against non-string imagePath
+            const imagePath = typeof item.imagePath === 'string' ? item.imagePath : '';
+            if (!imagePath) return null;
+
+            const imageUrl = imagePath.startsWith('/api')
+              ? `http://localhost:5050${imagePath}`
+              : imagePath;
 
             return (
               <Tooltip key={item.key} label={`${item.cellName} - Image ${item.imageIndex + 1}`}>

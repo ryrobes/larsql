@@ -1,0 +1,36 @@
+# Basic Image to LLM Pattern
+#
+# This example shows the simplest way to read an image
+# and send it to a vision-capable LLM for analysis.
+#
+# Usage:
+#   rvbbit run examples/image_to_llm_basic.yaml --input '{"image": "/path/to/image.jpg"}'
+
+cascade_id: image_to_llm_basic
+description: Basic pattern for sending images to vision LLMs
+
+inputs_schema:
+  image: Path to the image file
+
+cells:
+  # Load the image - this returns {"content": str, "images": [path]}
+  # The runner automatically encodes and injects into next LLM call
+  - name: load_image
+    tool: read_image
+    inputs:
+      path: "{{ input.image }}"
+
+  # Vision LLM automatically receives the image via context
+  - name: analyze
+    model: "google/gemini-2.5-flash-preview-05-20"  # Or any vision-capable model
+    instructions: |
+      Describe what you see in this image in detail.
+      Include:
+      - Main subjects
+      - Colors and composition
+      - Any text visible
+      - Overall mood/style
+    context:
+      from:
+        - cell: load_image
+          include: [images, output]  # IMPORTANT: include images!

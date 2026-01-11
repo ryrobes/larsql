@@ -28,9 +28,20 @@ sql_function:
   - BEST({{ values }}, '{{ criteria }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('john@gmail.com'),
+          ('JOHN@GMAIL.COM'),
+          ('j@gmail.com'),
+          (NULL)
+        ) AS t(email)
+      )
+      SELECT BEST(email, 'highest quality') FROM test_data
+    expect:
+      type: contains
+      value: john@gmail.com
+    description: Selects best quality email from group
 cells:
 - name: select_best
   model: google/gemini-2.5-flash-lite

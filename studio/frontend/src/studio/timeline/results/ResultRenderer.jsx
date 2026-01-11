@@ -169,7 +169,11 @@ const ResultRenderer = ({ result, error, images }) => {
     return (
       <>
         <div className="cell-detail-images">
-          {images.map((imagePath, idx) => {
+          {images.map((rawImagePath, idx) => {
+            // Guard against non-string imagePath
+            const imagePath = typeof rawImagePath === 'string' ? rawImagePath : '';
+            if (!imagePath) return null;
+
             // imagePath is like: "/api/images/shy-pika-4e58df/riverflow_v2_max_preview/image_0.png"
             const imageUrl = imagePath.startsWith('http')
               ? imagePath

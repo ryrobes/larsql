@@ -692,3 +692,649 @@ def _tree_recursive(dir_path: str, prefix: str, lines: list, max_depth: int, cur
         else:
             size = _format_size(os.path.getsize(entry_path))
             lines.append(f"{prefix}{connector}📄 {entry} ({size})")
+
+
+@simple_eddy
+def get_image_info(path: str) -> dict:
+    """
+    Get detailed information about an image file including dimensions and aspect ratio.
+
+    Useful for filtering images by size, aspect ratio, or format before processing.
+
+    Args:
+        path: Path to the image file (absolute or relative). Supports ~ for home directory.
+              Supported formats: PNG, JPG, JPEG, GIF, WEBP, BMP, TIFF.
+
+    Returns:
+        Dict with image metadata:
+            - path: Absolute path to the image
+            - width: Image width in pixels
+            - height: Image height in pixels
+            - aspect_ratio: Width/height ratio (e.g., 1.778 for 16:9)
+            - aspect_name: Common name if recognized ("16:9", "4:3", "1:1", etc.)
+            - is_16x9: Boolean for quick 16:9 check (with 1% tolerance)
+            - format: Image format (PNG, JPEG, etc.)
+            - mode: Color mode (RGB, RGBA, L, etc.)
+            - file_size: File size in bytes
+            - file_size_human: Human-readable file size
+
+    Examples:
+        - Check single image: get_image_info("/photos/image.jpg")
+        - In a cascade: Use with list_files to filter by aspect ratio
+    """
+    resolved = _safe_path(path)
+
+    log_message(None, "system", f"get_image_info: {resolved}",
+                metadata={"tool": "get_image_info", "path": resolved})
+
+    if not os.path.exists(resolved):
+        return {"error": f"Image not found: {resolved}"}
+
+    if not os.path.isfile(resolved):
+        return {"error": f"Path is not a file: {resolved}"}
+
+    # Check extension
+    ext = os.path.splitext(resolved)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        return {"error": f"Unsupported image format: {ext}. Supported: {', '.join(sorted(IMAGE_EXTENSIONS))}"}
+
+    try:
+        from PIL import Image
+
+        with Image.open(resolved) as img:
+            width, height = img.size
+            img_format = img.format
+            mode = img.mode
+
+        # Calculate aspect ratio
+        aspect_ratio = width / height if height > 0 else 0
+
+        # Identify common aspect ratios (with 1% tolerance)
+        aspect_names = {
+            16/9: "16:9",
+            9/16: "9:16",
+            4/3: "4:3",
+            3/4: "3:4",
+            1.0: "1:1",
+            21/9: "21:9",
+            3/2: "3:2",
+            2/3: "2:3",
+        }
+
+        aspect_name = None
+        for ratio, name in aspect_names.items():
+            if abs(aspect_ratio - ratio) / ratio < 0.01:  # 1% tolerance
+                aspect_name = name
+                break
+
+        if not aspect_name:
+            # Generate approximate ratio
+            from math import gcd
+            g = gcd(width, height)
+            aspect_name = f"{width//g}:{height//g}"
+
+        # Check if 16:9 (with tolerance)
+        is_16x9 = abs(aspect_ratio - (16/9)) / (16/9) < 0.01
+
+        file_size = os.path.getsize(resolved)
+
+        return {
+            "path": resolved,
+            "filename": os.path.basename(resolved),
+            "width": width,
+            "height": height,
+            "aspect_ratio": round(aspect_ratio, 4),
+            "aspect_name": aspect_name,
+            "is_16x9": is_16x9,
+            "format": img_format,
+            "mode": mode,
+            "file_size": file_size,
+            "file_size_human": _format_size(file_size)
+        }
+
+    except ImportError:
+        return {"error": "PIL/Pillow not installed. Run: pip install Pillow"}
+    except Exception as e:
+        return {"error": f"Error reading image: {type(e).__name__}: {e}"}
+
+
+@simple_eddy
+def read_images(paths: list, max_images: int = 10) -> dict:
+    """
+    Read multiple image files for vision model processing.
+
+    All images will be automatically encoded and injected into the LLM conversation
+    as a multi-modal message. The runner handles resizing and encoding.
+
+    Args:
+        paths: List of paths to image files. Supports ~ for home directory.
+               Can also be a single path string (converted to list).
+        max_images: Maximum number of images to load (default: 10).
+                    Vision models have context limits, so this prevents overload.
+
+    Returns:
+        Image data structure that the runner will process into vision messages.
+        Includes list of successfully loaded images and any errors.
+
+    Examples:
+        - Load specific images: read_images(["/photos/img1.jpg", "/photos/img2.png"])
+        - Load from list: read_images(outputs.filtered_images)
+    """
+    # Handle single path as string
+    if isinstance(paths, str):
+        paths = [paths]
+
+    if not isinstance(paths, list):
+        return {"error": f"paths must be a list, got {type(paths).__name__}"}
+
+    log_message(None, "system", f"read_images: {len(paths)} paths (max={max_images})",
+                metadata={"tool": "read_images", "path_count": len(paths), "max_images": max_images})
+
+    loaded_images = []
+    errors = []
+
+    for path in paths[:max_images]:
+        resolved = _safe_path(path)
+
+        if not os.path.exists(resolved):
+            errors.append({"path": path, "error": "File not found"})
+            continue
+
+        if not os.path.isfile(resolved):
+            errors.append({"path": path, "error": "Not a file"})
+            continue
+
+        # Check extension
+        ext = os.path.splitext(resolved)[1].lower()
+        if ext not in IMAGE_EXTENSIONS:
+            errors.append({"path": path, "error": f"Unsupported format: {ext}"})
+            continue
+
+        loaded_images.append(resolved)
+
+    if not loaded_images:
+        return {
+            "error": "No valid images found",
+            "errors": errors,
+            "images": []
+        }
+
+    # Build summary
+    skipped = len(paths) - max_images if len(paths) > max_images else 0
+    summary_parts = [f"Loaded {len(loaded_images)} image(s)"]
+    if errors:
+        summary_parts.append(f"{len(errors)} failed")
+    if skipped > 0:
+        summary_parts.append(f"{skipped} skipped (max_images={max_images})")
+
+    return {
+        "content": ". ".join(summary_parts),
+        "images": loaded_images,
+        "loaded_count": len(loaded_images),
+        "error_count": len(errors),
+        "errors": errors if errors else None
+    }
+
+
+@simple_eddy
+def list_images(
+    path: str = ".",
+    recursive: bool = False,
+    filter_aspect: str | None = None,
+    min_width: int | None = None,
+    min_height: int | None = None
+) -> dict:
+    """
+    List image files in a directory with optional filtering.
+
+    Combines list_files with get_image_info for efficient image discovery.
+
+    Args:
+        path: Directory to search (default: current directory).
+        recursive: If True, search subdirectories (default: False).
+        filter_aspect: Filter by aspect ratio. Options:
+            - "16:9" or "landscape_wide": Only 16:9 images
+            - "not_16:9" or "not_landscape_wide": Exclude 16:9 images
+            - "4:3": Only 4:3 images
+            - "1:1" or "square": Only square images
+            - "portrait": Height > width
+            - "landscape": Width > height
+        min_width: Minimum width in pixels (optional).
+        min_height: Minimum height in pixels (optional).
+
+    Returns:
+        Dict with:
+            - images: List of image info dicts (same as get_image_info output)
+            - paths: List of just the paths (for easy use with read_images)
+            - count: Total matching images
+            - filtered_out: Count of images that didn't match filters
+
+    Examples:
+        - List all images: list_images("/photos")
+        - Find non-16:9 images: list_images("/photos", filter_aspect="not_16:9")
+        - Find large images: list_images("/photos", min_width=1920, recursive=True)
+    """
+    resolved = _safe_path(path)
+
+    log_message(None, "system", f"list_images: {resolved} (recursive={recursive}, filter={filter_aspect})",
+                metadata={"tool": "list_images", "path": resolved, "filter_aspect": filter_aspect})
+
+    if not os.path.exists(resolved):
+        return {"error": f"Path not found: {resolved}"}
+
+    if not os.path.isdir(resolved):
+        return {"error": f"Path is not a directory: {resolved}"}
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return {"error": "PIL/Pillow not installed. Run: pip install Pillow"}
+
+    # Find all image files
+    p = Path(resolved)
+    all_images = []
+
+    for ext in IMAGE_EXTENSIONS:
+        pattern = f"*{ext}"
+        if recursive:
+            all_images.extend(p.rglob(pattern))
+            # Also check uppercase
+            all_images.extend(p.rglob(pattern.upper()))
+        else:
+            all_images.extend(p.glob(pattern))
+            all_images.extend(p.glob(pattern.upper()))
+
+    # Remove duplicates and sort
+    all_images = sorted(set(all_images))
+
+    matching_images = []
+    filtered_out = 0
+
+    for img_path in all_images:
+        try:
+            with Image.open(img_path) as img:
+                width, height = img.size
+                img_format = img.format
+                mode = img.mode
+        except Exception:
+            continue
+
+        aspect_ratio = width / height if height > 0 else 0
+
+        # Apply filters
+        if filter_aspect:
+            filter_lower = filter_aspect.lower()
+            is_16x9 = abs(aspect_ratio - (16/9)) / (16/9) < 0.01
+            is_4x3 = abs(aspect_ratio - (4/3)) / (4/3) < 0.01
+            is_square = abs(aspect_ratio - 1.0) < 0.01
+
+            if filter_lower in ("16:9", "landscape_wide") and not is_16x9:
+                filtered_out += 1
+                continue
+            if filter_lower in ("not_16:9", "not_landscape_wide") and is_16x9:
+                filtered_out += 1
+                continue
+            if filter_lower == "4:3" and not is_4x3:
+                filtered_out += 1
+                continue
+            if filter_lower in ("1:1", "square") and not is_square:
+                filtered_out += 1
+                continue
+            if filter_lower == "portrait" and width >= height:
+                filtered_out += 1
+                continue
+            if filter_lower == "landscape" and width <= height:
+                filtered_out += 1
+                continue
+
+        if min_width and width < min_width:
+            filtered_out += 1
+            continue
+        if min_height and height < min_height:
+            filtered_out += 1
+            continue
+
+        # Identify aspect name
+        aspect_names = {16/9: "16:9", 9/16: "9:16", 4/3: "4:3", 3/4: "3:4", 1.0: "1:1", 21/9: "21:9", 3/2: "3:2"}
+        aspect_name = None
+        for ratio, name in aspect_names.items():
+            if abs(aspect_ratio - ratio) / ratio < 0.01:
+                aspect_name = name
+                break
+
+        file_size = img_path.stat().st_size
+
+        matching_images.append({
+            "path": str(img_path),
+            "filename": img_path.name,
+            "width": width,
+            "height": height,
+            "aspect_ratio": round(aspect_ratio, 4),
+            "aspect_name": aspect_name,
+            "is_16x9": abs(aspect_ratio - (16/9)) / (16/9) < 0.01,
+            "format": img_format,
+            "mode": mode,
+            "file_size": file_size,
+            "file_size_human": _format_size(file_size)
+        })
+
+    return {
+        "images": matching_images,
+        "paths": [img["path"] for img in matching_images],
+        "count": len(matching_images),
+        "filtered_out": filtered_out,
+        "total_scanned": len(all_images)
+    }
+
+
+@simple_eddy
+def save_image(
+    source: str,
+    destination: str,
+    format: str | None = None,
+    quality: int = 85,
+    resize: str | None = None
+) -> dict:
+    """
+    Save an image to the filesystem from various sources.
+
+    Handles:
+    - Base64 data URLs (e.g., from LLM image generation responses)
+    - Local file paths (copy/convert)
+    - HTTP/HTTPS URLs (download)
+
+    Args:
+        source: The image source. Can be:
+            - Base64 data URL: "data:image/png;base64,iVBORw0KGgo..."
+            - Local file path: "/path/to/image.png" or "~/photos/img.jpg"
+            - HTTP URL: "https://example.com/image.png"
+        destination: Where to save the image. Supports ~ for home directory.
+            If a directory, generates filename. If a file path, uses that name.
+        format: Output format (png, jpg, jpeg, webp, gif). Auto-detected from
+            destination extension if not specified. Defaults to PNG.
+        quality: JPEG/WebP quality (1-100). Default 85. Ignored for PNG/GIF.
+        resize: Optional resize specification:
+            - "WxH" (e.g., "1920x1080") - exact size
+            - "W" (e.g., "1920") - width, maintain aspect ratio
+            - "xH" (e.g., "x1080") - height, maintain aspect ratio
+
+    Returns:
+        Dict with:
+            - path: Absolute path where image was saved
+            - filename: Just the filename
+            - width, height: Final dimensions
+            - format: Output format used
+            - file_size: Size in bytes
+            - file_size_human: Human-readable size
+
+    Examples:
+        - Save base64 from LLM: save_image("data:image/png;base64,...", "/output/result.png")
+        - Download from URL: save_image("https://example.com/img.jpg", "~/downloads/")
+        - Convert format: save_image("/input/photo.png", "/output/photo.jpg", format="jpeg")
+        - Resize: save_image("/input/large.png", "/output/thumb.png", resize="256x256")
+    """
+    import base64
+    import re
+    import uuid
+    from datetime import datetime
+
+    log_message(None, "system", f"save_image: {source[:50]}... -> {destination}",
+                metadata={"tool": "save_image", "destination": destination})
+
+    try:
+        from PIL import Image
+        import io
+    except ImportError:
+        return {"error": "PIL/Pillow not installed. Run: pip install Pillow"}
+
+    # Resolve destination path
+    dest_resolved = _safe_path(destination)
+
+    # Safety check for destination
+    safety_error = _check_path_safety(dest_resolved)
+    if safety_error:
+        return {"error": safety_error}
+
+    # Determine if destination is a directory or file
+    if os.path.isdir(dest_resolved) or dest_resolved.endswith('/'):
+        # It's a directory - generate filename
+        os.makedirs(dest_resolved, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        ext = format.lower() if format else 'png'
+        if ext == 'jpeg':
+            ext = 'jpg'
+        filename = f"image_{timestamp}_{uuid.uuid4().hex[:6]}.{ext}"
+        dest_path = os.path.join(dest_resolved, filename)
+    else:
+        # It's a file path
+        dest_path = dest_resolved
+        # Create parent directory if needed
+        parent = os.path.dirname(dest_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        filename = os.path.basename(dest_path)
+
+    # Determine output format
+    if format:
+        out_format = format.upper()
+        if out_format == 'JPG':
+            out_format = 'JPEG'
+    else:
+        # Detect from destination extension
+        ext = os.path.splitext(dest_path)[1].lower()
+        format_map = {
+            '.png': 'PNG',
+            '.jpg': 'JPEG',
+            '.jpeg': 'JPEG',
+            '.gif': 'GIF',
+            '.webp': 'WEBP',
+            '.bmp': 'BMP',
+            '.tiff': 'TIFF',
+            '.tif': 'TIFF'
+        }
+        out_format = format_map.get(ext, 'PNG')
+
+    # Load image from source
+    img = None
+
+    # Case 1: Base64 data URL
+    if source.startswith('data:'):
+        # Parse data URL: data:image/png;base64,iVBORw0KGgo...
+        match = re.match(r'data:image/[^;]+;base64,(.+)', source)
+        if not match:
+            return {"error": "Invalid base64 data URL format. Expected: data:image/TYPE;base64,DATA"}
+
+        try:
+            image_data = base64.b64decode(match.group(1))
+            img = Image.open(io.BytesIO(image_data))
+        except Exception as e:
+            return {"error": f"Failed to decode base64 image: {e}"}
+
+    # Case 2: HTTP/HTTPS URL
+    elif source.startswith('http://') or source.startswith('https://'):
+        try:
+            import urllib.request
+            import urllib.error
+
+            # Download with timeout
+            req = urllib.request.Request(source, headers={'User-Agent': 'RVBBIT/1.0'})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                image_data = response.read()
+            img = Image.open(io.BytesIO(image_data))
+        except urllib.error.URLError as e:
+            return {"error": f"Failed to download image: {e}"}
+        except Exception as e:
+            return {"error": f"Failed to load image from URL: {e}"}
+
+    # Case 3: Local file path
+    else:
+        source_resolved = _safe_path(source)
+        if not os.path.exists(source_resolved):
+            return {"error": f"Source file not found: {source_resolved}"}
+        if not os.path.isfile(source_resolved):
+            return {"error": f"Source is not a file: {source_resolved}"}
+
+        try:
+            img = Image.open(source_resolved)
+        except Exception as e:
+            return {"error": f"Failed to open source image: {e}"}
+
+    if img is None:
+        return {"error": "Failed to load image from source"}
+
+    # Handle resize if specified
+    if resize:
+        try:
+            if 'x' in resize:
+                parts = resize.lower().split('x')
+                if parts[0] and parts[1]:
+                    # Exact size: WxH
+                    new_width = int(parts[0])
+                    new_height = int(parts[1])
+                elif parts[0]:
+                    # Width only: W (e.g., "1920x" or "1920")
+                    new_width = int(parts[0])
+                    aspect = img.height / img.width
+                    new_height = int(new_width * aspect)
+                else:
+                    # Height only: xH (e.g., "x1080")
+                    new_height = int(parts[1])
+                    aspect = img.width / img.height
+                    new_width = int(new_height * aspect)
+            else:
+                # Just a number = width
+                new_width = int(resize)
+                aspect = img.height / img.width
+                new_height = int(new_width * aspect)
+
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        except Exception as e:
+            return {"error": f"Failed to resize image: {e}"}
+
+    # Convert mode if necessary for output format
+    if out_format == 'JPEG' and img.mode in ('RGBA', 'LA', 'P'):
+        # JPEG doesn't support transparency - convert to RGB with white background
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'P':
+            img = img.convert('RGBA')
+        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+        img = background
+    elif out_format in ('PNG', 'WEBP', 'GIF') and img.mode == 'P':
+        img = img.convert('RGBA')
+
+    # Save the image
+    try:
+        save_kwargs = {}
+        if out_format == 'JPEG':
+            save_kwargs['quality'] = quality
+            save_kwargs['optimize'] = True
+        elif out_format == 'WEBP':
+            save_kwargs['quality'] = quality
+        elif out_format == 'PNG':
+            save_kwargs['optimize'] = True
+
+        img.save(dest_path, format=out_format, **save_kwargs)
+    except Exception as e:
+        return {"error": f"Failed to save image: {e}"}
+
+    # Get final file info
+    file_size = os.path.getsize(dest_path)
+
+    return {
+        "path": dest_path,
+        "filename": filename,
+        "width": img.width,
+        "height": img.height,
+        "format": out_format.lower(),
+        "file_size": file_size,
+        "file_size_human": _format_size(file_size),
+        "content": f"Saved image: {filename} ({img.width}x{img.height}, {_format_size(file_size)})",
+        "images": [dest_path]  # Standard protocol for image tools
+    }
+
+
+@simple_eddy
+def copy_image(source: str, destination: str) -> dict:
+    """
+    Copy an image file to a new location without re-encoding.
+
+    This is a simple file copy - use save_image if you need format conversion
+    or resizing.
+
+    Args:
+        source: Path to source image file.
+        destination: Destination path. If a directory, keeps original filename.
+
+    Returns:
+        Dict with path info and standard image protocol fields.
+
+    Examples:
+        - Copy to directory: copy_image("/photos/img.jpg", "/backup/")
+        - Copy with new name: copy_image("/photos/img.jpg", "/backup/photo_backup.jpg")
+    """
+    import shutil
+
+    source_resolved = _safe_path(source)
+    dest_resolved = _safe_path(destination)
+
+    log_message(None, "system", f"copy_image: {source_resolved} -> {dest_resolved}",
+                metadata={"tool": "copy_image", "source": source_resolved, "destination": dest_resolved})
+
+    if not os.path.exists(source_resolved):
+        return {"error": f"Source file not found: {source_resolved}"}
+
+    if not os.path.isfile(source_resolved):
+        return {"error": f"Source is not a file: {source_resolved}"}
+
+    # Check extension
+    ext = os.path.splitext(source_resolved)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        return {"error": f"Source is not a supported image format: {ext}"}
+
+    # Safety check for destination
+    safety_error = _check_path_safety(dest_resolved)
+    if safety_error:
+        return {"error": safety_error}
+
+    # Determine final destination path
+    if os.path.isdir(dest_resolved) or dest_resolved.endswith('/'):
+        os.makedirs(dest_resolved, exist_ok=True)
+        filename = os.path.basename(source_resolved)
+        dest_path = os.path.join(dest_resolved, filename)
+    else:
+        dest_path = dest_resolved
+        parent = os.path.dirname(dest_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        filename = os.path.basename(dest_path)
+
+    try:
+        shutil.copy2(source_resolved, dest_path)
+    except Exception as e:
+        return {"error": f"Failed to copy image: {e}"}
+
+    file_size = os.path.getsize(dest_path)
+
+    # Get dimensions
+    width, height = None, None
+    try:
+        from PIL import Image
+        with Image.open(dest_path) as img:
+            width, height = img.size
+    except Exception:
+        pass
+
+    result = {
+        "path": dest_path,
+        "filename": filename,
+        "file_size": file_size,
+        "file_size_human": _format_size(file_size),
+        "content": f"Copied image: {filename}",
+        "images": [dest_path]
+    }
+
+    if width and height:
+        result["width"] = width
+        result["height"] = height
+
+    return result

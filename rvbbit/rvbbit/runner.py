@@ -49,6 +49,31 @@ def _extract_toon_telemetry(response_dict: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def _safe_json_dumps(obj: Any, **kwargs) -> str:
+    """
+    JSON serialize with support for Pydantic models and other non-serializable types.
+
+    Handles:
+    - Pydantic models (BaseModel) via model_dump()
+    - Objects with __dict__ attribute
+    - Fallback to str() for truly non-serializable types
+    """
+    def default_handler(o):
+        # Handle Pydantic v2 models
+        if hasattr(o, 'model_dump'):
+            return o.model_dump()
+        # Handle Pydantic v1 models
+        if hasattr(o, 'dict') and callable(o.dict):
+            return o.dict()
+        # Handle objects with __dict__
+        if hasattr(o, '__dict__'):
+            return o.__dict__
+        # Fallback to string representation
+        return str(o)
+
+    return json.dumps(obj, default=default_handler, **kwargs)
+
+
 # Context variable for current hooks - allows tools to call hook methods
 _current_hooks: ContextVar[Optional['RVBBITHooks']] = ContextVar('current_hooks', default=None)
 
@@ -1522,8 +1547,38 @@ class RVBBITRunner:
                             images = images[-config.images_count:] if images else []
                         # "all" keeps all images
 
-                        console.print(f"  [dim]Using {len(images)} image(s) from cell '{cell_name}' output[/dim]")
-                        return images
+                        # Check if images need encoding (file paths vs data URLs)
+                        encoded_images = []
+                        for img in images:
+                            if isinstance(img, str):
+                                if img.startswith('data:'):
+                                    # Already a data URL
+                                    encoded_images.append(img)
+                                elif os.path.isfile(img):
+                                    # File path - encode to base64
+                                    try:
+                                        ext = os.path.splitext(img)[1].lower()
+                                        mime_type = {
+                                            '.png': 'image/png',
+                                            '.jpg': 'image/jpeg',
+                                            '.jpeg': 'image/jpeg',
+                                            '.gif': 'image/gif',
+                                            '.webp': 'image/webp',
+                                            '.bmp': 'image/bmp',
+                                            '.tiff': 'image/tiff',
+                                            '.tif': 'image/tiff',
+                                        }.get(ext, 'image/png')
+                                        with open(img, 'rb') as f:
+                                            img_data = base64.b64encode(f.read()).decode('utf-8')
+                                            encoded_images.append(f"data:{mime_type};base64,{img_data}")
+                                    except Exception as e:
+                                        console.print(f"  [yellow]Warning: Failed to encode image {img}: {e}[/yellow]")
+                                else:
+                                    # Assume it's a URL or already encoded differently
+                                    encoded_images.append(img)
+
+                        console.print(f"  [dim]Using {len(encoded_images)} image(s) from cell '{cell_name}' output[/dim]")
+                        return encoded_images
                 break
 
         # Fall back to loading from disk (legacy behavior)
@@ -10051,7 +10106,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 cascade_file=self.config_path if isinstance(self.config_path, str) else None,
                 cell_name=cell.name,
                 species_hash=cell_species_hash,
-                content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
+                content=_safe_json_dumps(result) if isinstance(result, (dict, list)) else str(result),
                 duration_ms=duration_ms,
                 metadata={
                     "cell_type": "deterministic",
@@ -10315,7 +10370,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 cascade_file=self.config_path if isinstance(self.config_path, str) else None,
                 cell_name=cell.name,
                 species_hash=cell_species_hash,
-                content=json.dumps(result) if isinstance(result, (dict, list)) else str(result),
+                content=_safe_json_dumps(result) if isinstance(result, (dict, list)) else str(result),
                 duration_ms=duration_ms,
                 metadata={
                     "cell_type": "hitl_screen",

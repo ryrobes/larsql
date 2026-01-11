@@ -937,7 +937,10 @@ const SessionMessagesLog = ({
                       </div>
                       <div className="sml-detail-images-grid">
                         {allImages.map((imageInfo, idx) => {
-                          const imagePath = imageInfo.path;
+                          // Guard against non-string imagePath
+                          const imagePath = typeof imageInfo.path === 'string' ? imageInfo.path : '';
+                          if (!imagePath) return null;
+
                           // Handle different image path formats:
                           // 1. Base64 data URLs (from browser tool): data:image/jpeg;base64,...
                           // 2. API paths: /api/images/...

@@ -65,6 +65,9 @@ export const ROUTES = {
   // Watchers - SQL Watch Subscriptions
   WATCHERS: '/watchers',
 
+  // Tests - Test Dashboard
+  TESTS: '/tests',
+
   // Legacy routes (for future migration)
   PLAYGROUND: '/playground',
   playgroundWithSession: (sessionId) => `/playground/${encodeURIComponent(sessionId)}`,
@@ -116,6 +119,7 @@ export function getViewFromPath(pathname) {
     'apps': 'apps',
     'catalog': 'catalog',
     'watchers': 'watchers',
+    'tests': 'tests',
     // Legacy
     'playground': 'playground',
     'sessions': 'sessions',
@@ -155,6 +159,7 @@ export function getRouteForView(viewId) {
     'apps': ROUTES.APPS,
     'catalog': ROUTES.CATALOG,
     'watchers': ROUTES.WATCHERS,
+    'tests': ROUTES.TESTS,
     // Legacy
     'playground': ROUTES.PLAYGROUND,
     'sessions': ROUTES.SESSIONS,

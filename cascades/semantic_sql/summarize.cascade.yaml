@@ -22,9 +22,19 @@ sql_function:
   - SUMMARIZE({{ texts }})
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The weather was sunny and warm'),
+          ('It was a beautiful day for outdoor activities'),
+          ('Perfect conditions for a picnic in the park')
+        ) AS t(review)
+      )
+      SELECT SUMMARIZE(review) FROM test_data
+    expect:
+      type: contains
+      value: weather
+    description: Summarizes multiple texts about weather into overview
 cells:
 - name: summarize
   model: google/gemini-2.5-flash-lite

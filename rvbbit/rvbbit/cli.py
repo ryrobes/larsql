@@ -65,6 +65,14 @@ def main():
     freeze_parser.add_argument('session_id', help='Session ID to freeze')
     freeze_parser.add_argument('--name', required=True, help='Name for the test snapshot')
     freeze_parser.add_argument('--description', default='', help='Description of what this tests')
+    freeze_parser.add_argument('--extract-contracts', action='store_true', default=True,
+                               help='Extract behavioral contracts (default: True)')
+    freeze_parser.add_argument('--no-contracts', action='store_true',
+                               help='Skip contract extraction')
+    freeze_parser.add_argument('--extract-anchors', action='store_true', default=True,
+                               help='Extract semantic anchors (default: True)')
+    freeze_parser.add_argument('--no-anchors', action='store_true',
+                               help='Skip anchor extraction')
 
     # test validate (alias: replay for backward compat)
     validate_parser = test_subparsers.add_parser(
@@ -74,6 +82,10 @@ def main():
     )
     validate_parser.add_argument('snapshot_name', help='Name of snapshot to validate')
     validate_parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    validate_parser.add_argument('--mode', '-m',
+                                 choices=['structure', 'contracts', 'anchors', 'deterministic', 'full'],
+                                 default='structure',
+                                 help='Validation mode: structure (default), contracts, anchors, deterministic, full')
 
     # test run
     run_tests_parser = test_subparsers.add_parser(
@@ -81,12 +93,26 @@ def main():
         help='Run all test snapshots'
     )
     run_tests_parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    run_tests_parser.add_argument('--mode', '-m',
+                                  choices=['structure', 'contracts', 'anchors', 'deterministic', 'full'],
+                                  default='structure',
+                                  help='Validation mode for all tests')
 
     # test list
     list_parser = test_subparsers.add_parser(
         'list',
         help='List all test snapshots'
     )
+
+    # test inspect
+    inspect_parser = test_subparsers.add_parser(
+        'inspect',
+        help='Inspect a snapshot\'s contracts and anchors'
+    )
+    inspect_parser.add_argument('snapshot_name', help='Name of snapshot to inspect')
+    inspect_parser.add_argument('--contracts', action='store_true', help='Show behavioral contracts')
+    inspect_parser.add_argument('--anchors', action='store_true', help='Show semantic anchors')
+    inspect_parser.add_argument('--json', action='store_true', help='Output as JSON')
 
     # Check command
     check_parser = subparsers.add_parser('check', help='Check optional dependencies (Rabbitize, Docker, etc.)')
@@ -1130,6 +1156,8 @@ def main():
             cmd_test_run(args)
         elif args.test_command == 'list':
             cmd_test_list(args)
+        elif args.test_command == 'inspect':
+            cmd_test_inspect(args)
         else:
             test_parser.print_help()
             sys.exit(1)
@@ -1621,20 +1649,27 @@ def cmd_test_freeze(args):
     from rvbbit.testing import SnapshotCapture
 
     try:
+        # Handle --no-contracts and --no-anchors flags
+        extract_contracts = not getattr(args, 'no_contracts', False)
+        extract_anchors = not getattr(args, 'no_anchors', False)
+
         capturer = SnapshotCapture()
         snapshot_file = capturer.freeze(
             args.session_id,
             args.name,
-            args.description
+            args.description,
+            extract_contracts=extract_contracts,
+            extract_anchors=extract_anchors
         )
 
         print()
         print("✓ Test snapshot created successfully!")
         print()
         print("Next steps:")
-        print(f"  • Replay: rvbbit test replay {args.name}")
-        print(f"  • Run all: rvbbit test run")
-        print(f"  • Pytest: pytest tests/test_snapshots.py")
+        print(f"  • Validate structure: rvbbit test replay {args.name}")
+        print(f"  • Validate contracts: rvbbit test replay {args.name} --mode contracts")
+        print(f"  • Full validation:    rvbbit test replay {args.name} --mode full")
+        print(f"  • Inspect snapshot:   rvbbit test inspect {args.name} --contracts --anchors")
 
     except Exception as e:
         print(f"✗ Failed to freeze snapshot: {e}", file=sys.stderr)
@@ -1647,17 +1682,24 @@ def cmd_test_validate(args):
 
     try:
         validator = SnapshotValidator()
-        result = validator.validate(args.snapshot_name, verbose=args.verbose)
+        mode = getattr(args, 'mode', 'structure')
+        result = validator.validate(args.snapshot_name, verbose=args.verbose, mode=mode)
 
-        if result["passed"]:
-            print(f"✓ {result['snapshot_name']} PASSED")
+        if result.passed:
+            print(f"✓ {result.snapshot_name} PASSED (mode={result.mode})")
             if not args.verbose:
-                print(f"  {len(result['checks'])} checks passed")
+                print(f"  {len(result.checks)} checks passed")
+            if result.warnings:
+                for warning in result.warnings:
+                    print(f"  ⚠ {warning}")
+            if result.mock_stats:
+                print(f"  Mock LLM: {result.mock_stats['total_responses']} frozen responses")
+            print(f"  Duration: {result.duration_ms:.1f}ms")
             sys.exit(0)
         else:
-            print(f"✗ {result['snapshot_name']} FAILED")
+            print(f"✗ {result.snapshot_name} FAILED (mode={result.mode})")
             print()
-            for failure in result["failures"]:
+            for failure in result.failures:
                 print(f"  Failure: {failure.get('message', 'Unknown')}")
                 if 'expected' in failure:
                     print(f"    Expected: {failure['expected']}")
@@ -1674,8 +1716,9 @@ def cmd_test_run(args):
     """Run all test snapshots."""
     from rvbbit.testing import SnapshotValidator
 
+    mode = getattr(args, 'mode', 'structure')
     validator = SnapshotValidator()
-    results = validator.validate_all(verbose=args.verbose)
+    results = validator.validate_all(verbose=args.verbose, mode=mode)
 
     if results["total"] == 0:
         print("No test snapshots found.")
@@ -1691,18 +1734,104 @@ def cmd_test_run(args):
 
     for snapshot_result in results["snapshots"]:
         if snapshot_result["passed"]:
-            print(f"  ✓ {snapshot_result['snapshot_name']}")
+            print(f"  ✓ {snapshot_result['name']}")
         else:
-            print(f"  ✗ {snapshot_result['snapshot_name']}")
+            print(f"  ✗ {snapshot_result['name']}")
             for failure in snapshot_result["failures"]:
                 print(f"      {failure.get('message', 'Unknown failure')}")
 
     print()
     print("="*60)
-    print(f"Results: {results['passed']}/{results['total']} passed")
+    print(f"Results: {results['passed']}/{results['total']} passed (mode={mode})")
     print("="*60)
 
     if results["failed"] > 0:
+        sys.exit(1)
+
+
+def cmd_test_inspect(args):
+    """Inspect a snapshot's contracts and anchors."""
+    from rvbbit.testing import SnapshotValidator
+    import json
+
+    try:
+        validator = SnapshotValidator()
+        show_contracts = getattr(args, 'contracts', False)
+        show_anchors = getattr(args, 'anchors', False)
+        as_json = getattr(args, 'json', False)
+
+        # If neither specified, show both
+        if not show_contracts and not show_anchors:
+            show_contracts = True
+            show_anchors = True
+
+        info = validator.inspect(args.snapshot_name, show_contracts=show_contracts, show_anchors=show_anchors)
+
+        if as_json:
+            print(json.dumps(info, indent=2))
+        else:
+            print()
+            print(f"Snapshot: {info['name']}")
+            if info.get('description'):
+                print(f"Description: {info['description']}")
+            print(f"Captured: {info['captured_at']}")
+            print(f"Session: {info['session_id']}")
+            print(f"Cascade: {info['cascade_file']}")
+            print(f"Cells: {' → '.join(info['cells'])}")
+            print(f"Total turns: {info['total_turns']}")
+            print()
+
+            if show_contracts and info.get('contracts'):
+                contracts = info['contracts']
+                print("Behavioral Contracts:")
+                print("-" * 40)
+
+                if contracts.get('cell_sequence'):
+                    print(f"  Cell sequence: {' → '.join(contracts['cell_sequence'])}")
+
+                if contracts.get('routing'):
+                    print(f"  Routing contracts: {len(contracts['routing'])}")
+                    for r in contracts['routing']:
+                        print(f"    • {r['from_cell']} → {r['to_cell']}")
+
+                if contracts.get('tool_calls'):
+                    print(f"  Tool call contracts: {len(contracts['tool_calls'])}")
+                    for t in contracts['tool_calls']:
+                        print(f"    • {t['cell']}: {t['tool']} (calls: {t['min_calls']}-{t.get('max_calls', '∞')})")
+
+                if contracts.get('outputs'):
+                    print(f"  Output contracts: {len(contracts['outputs'])}")
+                    for o in contracts['outputs']:
+                        fmt = f", format={o['format_type']}" if o.get('format_type') else ""
+                        print(f"    • {o['cell']}: length {o.get('min_length', 0)}-{o.get('max_length', '∞')}{fmt}")
+
+                print()
+
+            if show_anchors and info.get('anchors'):
+                anchors = info['anchors']
+                print("Semantic Anchors:")
+                print("-" * 40)
+
+                # Group by cell
+                by_cell = {}
+                for a in anchors:
+                    cell = a['cell']
+                    if cell not in by_cell:
+                        by_cell[cell] = []
+                    by_cell[cell].append(a)
+
+                for cell, cell_anchors in by_cell.items():
+                    print(f"  {cell}:")
+                    for a in cell_anchors:
+                        req = "required" if a.get('required', True) else "optional"
+                        print(f"    • \"{a['anchor']}\" ({req}, weight={a.get('weight', 1.0):.2f})")
+                print()
+
+    except FileNotFoundError as e:
+        print(f"✗ Snapshot not found: {args.snapshot_name}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ Error inspecting snapshot: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1739,6 +1868,18 @@ def cmd_test_list(args):
         print(f"      Cascade: {snapshot.get('cascade_file', 'unknown')}")
         print(f"      Cells: {', '.join(p['name'] for p in snapshot['execution']['cells'])}")
         print(f"      Captured: {snapshot['captured_at'][:10]}")
+
+        # Show contract/anchor status
+        has_contracts = "contracts" in snapshot
+        has_anchors = "anchors" in snapshot
+        features = []
+        if has_contracts:
+            c = snapshot['contracts']
+            features.append(f"{len(c.get('routing', []))} routing, {len(c.get('tool_calls', []))} tool contracts")
+        if has_anchors:
+            features.append(f"{len(snapshot['anchors'])} anchors")
+        if features:
+            print(f"      Features: {'; '.join(features)}")
         print()
 
 

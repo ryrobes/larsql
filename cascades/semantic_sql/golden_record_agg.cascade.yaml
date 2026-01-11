@@ -20,9 +20,19 @@ sql_function:
   - GOLDEN_RECORD({{ records }})
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('{"name": "JOHN SMITH", "email": "john@gmail.com", "phone": null}'),
+          ('{"name": "John Smith", "email": null, "phone": "(555) 123-4567"}'),
+          ('{"name": "John Q. Smith", "email": "john.smith@gmail.com", "phone": "555-123-4567"}')
+        ) AS t(record)
+      )
+      SELECT GOLDEN_RECORD(record) FROM test_data
+    expect:
+      type: contains
+      value: John
+    description: Creates golden record from duplicate customer records
 cells:
 - name: merge_golden
   model: google/gemini-2.5-flash-lite

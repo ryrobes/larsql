@@ -27,9 +27,19 @@ sql_function:
   - MERGE_RECORDS({{ records }}, '{{ strategy }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('{"name": "Acme Corp", "address": "123 Main St"}'),
+          ('{"name": "ACME Corporation", "phone": "555-1234"}'),
+          ('{"name": "Acme", "address": "123 Main Street", "website": "acme.com"}')
+        ) AS t(record)
+      )
+      SELECT MERGE_RECORDS(record, 'best_quality') FROM test_data
+    expect:
+      type: contains
+      value: merged
+    description: Merges company records using best quality strategy
 cells:
 - name: merge_with_strategy
   model: google/gemini-2.5-flash-lite

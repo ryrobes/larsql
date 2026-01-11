@@ -25,9 +25,20 @@ sql_function:
   - CONSENSUS({{ texts }}, '{{ prompt }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The service was excellent'),
+          ('Staff was friendly and helpful'),
+          ('Great customer service experience'),
+          ('Very attentive and professional team')
+        ) AS t(review)
+      )
+      SELECT CONSENSUS(review) FROM test_data
+    expect:
+      type: contains
+      value: service
+    description: Finds consensus in positive service reviews
 cells:
 - name: find_consensus
   model: x-ai/grok-4

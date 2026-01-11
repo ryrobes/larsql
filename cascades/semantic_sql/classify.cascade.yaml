@@ -28,9 +28,20 @@ sql_function:
   - CLASSIFY({{ texts }}, '{{ categories }}', '{{ prompt }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The cat sat on the mat'),
+          ('Dogs love to play fetch'),
+          ('My parrot talks all day'),
+          ('Fish swim in the tank')
+        ) AS t(text)
+      )
+      SELECT CLASSIFY(text, 'animal stories, food recipes, sports news') FROM test_data
+    expect:
+      type: contains
+      value: animal
+    description: Classifies pet-related texts correctly
 cells:
 - name: classify_collection
   model: google/gemini-2.5-flash-lite

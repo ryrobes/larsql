@@ -26,9 +26,20 @@ sql_function:
   - COALESCE_SMART({{ values }}, '{{ preference }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          (NULL),
+          ('N/A'),
+          ('test@test.com'),
+          ('jane@company.com')
+        ) AS t(email)
+      )
+      SELECT COALESCE_SMART(email) FROM test_data
+    expect:
+      type: contains
+      value: company.com
+    description: Picks best non-null value, skipping fake emails
 cells:
 - name: smart_coalesce
   model: google/gemini-2.5-flash-lite

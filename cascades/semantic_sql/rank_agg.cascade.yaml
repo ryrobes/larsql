@@ -25,9 +25,19 @@ sql_function:
   - '{{ values }} RANKED BY ''{{ criteria }}'''
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('Brief but vague answer'),
+          ('Comprehensive detailed response with examples and citations'),
+          ('OK response')
+        ) AS t(answer)
+      )
+      SELECT RANK_SEMANTIC(answer, 'by quality and completeness') FROM test_data
+    expect:
+      type: contains
+      value: rankings
+    description: Ranks answers by quality
 cells:
 - name: semantic_ranking
   model: google/gemini-2.5-flash-lite

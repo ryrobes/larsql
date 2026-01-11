@@ -27,9 +27,20 @@ sql_function:
   - MERGE_TEXTS({{ texts }}, '{{ mode }}')
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The product arrived on time.'),
+          ('Product arrived on time!'),
+          ('Fast shipping, item came early.'),
+          ('Great packaging and quick delivery.')
+        ) AS t(comment)
+      )
+      SELECT MERGE_TEXTS(comment, 'deduplicate') FROM test_data
+    expect:
+      type: contains
+      value: merged
+    description: Deduplicates similar shipping comments
 cells:
 - name: intelligent_merge
   model: google/gemini-2.5-flash-lite

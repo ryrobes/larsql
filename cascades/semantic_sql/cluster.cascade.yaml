@@ -32,9 +32,19 @@ sql_function:
   - MEANING({{ values }}, {{ num_clusters }}, {{ criterion }})
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('New York'), ('Los Angeles'), ('Chicago'),
+          ('Paris'), ('London'), ('Berlin'),
+          ('Tokyo'), ('Beijing'), ('Seoul')
+        ) AS t(city)
+      )
+      SELECT MEANING(city, 3, 'geographic region') FROM test_data
+    expect:
+      type: contains
+      value: clusters
+    description: Clusters cities by geographic region
 cells:
 - name: identify_clusters
   model: google/gemini-2.5-flash-lite

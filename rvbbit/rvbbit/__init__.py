@@ -73,7 +73,7 @@ def _register_all_traits():
     from .traits.bodybuilder import bodybuilder
     from .traits.research_db import research_query, research_execute
     from .traits.chart import create_chart, create_vega_lite, create_plotly
-    from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree
+    from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree, get_image_info, read_images, list_images, save_image, copy_image
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
     from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
     from .traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
@@ -128,6 +128,11 @@ def _register_all_traits():
     register_trait("list_files", list_files)
     register_trait("file_info", file_info)
     register_trait("read_image", read_image)
+    register_trait("read_images", read_images)
+    register_trait("get_image_info", get_image_info)
+    register_trait("list_images", list_images)
+    register_trait("save_image", save_image)
+    register_trait("copy_image", copy_image)
     register_trait("search_files", search_files)
     register_trait("tree", tree)
 

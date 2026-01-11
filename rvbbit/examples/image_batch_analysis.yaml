@@ -1,0 +1,49 @@
+# Batch Image Analysis
+#
+# This example shows how to send multiple images to a vision LLM
+# in a single call for comparison or batch analysis.
+#
+# Usage:
+#   rvbbit run examples/image_batch_analysis.yaml --input '{"folder": "/path/to/images"}'
+
+cascade_id: image_batch_analysis
+description: Analyze multiple images together with a vision LLM
+
+inputs_schema:
+  folder: Path to folder containing images
+  max_images: Maximum images to process (default 5)
+
+cells:
+  # List images in the folder
+  - name: list_folder
+    tool: list_images
+    inputs:
+      path: "{{ input.folder }}"
+      recursive: false
+
+  # Load multiple images at once
+  - name: load_images
+    tool: read_images
+    inputs:
+      paths: "{{ outputs.list_folder.paths }}"
+      max_images: "{{ input.max_images | default(5) }}"
+
+  # Analyze all images together
+  - name: compare_images
+    model: "google/gemini-2.5-flash-preview-05-20"
+    instructions: |
+      You are viewing {{ outputs.load_images.loaded_count }} images.
+
+      For each image, provide:
+      1. A brief description (1-2 sentences)
+      2. The dominant colors
+      3. The apparent subject matter
+
+      Then provide:
+      - Common themes across all images
+      - Key differences between them
+      - If they appear to be related (same event, series, etc.)
+    context:
+      from:
+        - cell: load_images
+          include: [images, output]

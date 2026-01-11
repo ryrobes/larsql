@@ -27,9 +27,21 @@ sql_function:
   - THEMES({{ texts }}, {{ num_topics }})
   cache: true
   test_cases:
-  - sql: '-- Aggregate function: requires numbered UDF testing'
-    skip: true
-    description: Aggregate functions need special test harness
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('Machine learning is transforming healthcare'),
+          ('AI models can detect cancer early'),
+          ('Deep learning improves medical imaging'),
+          ('Neural networks assist in diagnosis'),
+          ('Healthcare AI reduces costs')
+        ) AS t(article)
+      )
+      SELECT THEMES(article, 3) FROM test_data
+    expect:
+      type: contains
+      value: AI
+    description: Extracts themes from AI/healthcare articles
 cells:
 - name: extract_topics
   model: google/gemini-2.5-flash-lite

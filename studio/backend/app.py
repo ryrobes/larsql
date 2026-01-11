@@ -86,6 +86,7 @@ from sql_trail_api import sql_trail_bp
 from training_api import training_bp
 from catalog_api import catalog_bp
 from watchers_api import watchers_bp
+from tests_api import tests_bp
 
 app.register_blueprint(message_flow_bp)
 app.register_blueprint(checkpoint_bp)
@@ -115,6 +116,8 @@ app.register_blueprint(training_bp)
 app.register_blueprint(catalog_bp)
 # Watchers API - SQL watch subscriptions
 app.register_blueprint(watchers_bp)
+# Tests API - Unified test dashboard for semantic SQL and cascade snapshots
+app.register_blueprint(tests_bp)
 # Deprecated - keeping for backward compatibility
 app.register_blueprint(sql_query_bp)
 app.register_blueprint(notebook_bp)
