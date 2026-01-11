@@ -1198,3 +1198,286 @@ def export_query_results(caller_id: str):
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@sql_trail_bp.route('/api/sql-trail/query/<caller_id>/cell-attribution', methods=['GET'])
+def get_cell_attribution(caller_id: str):
+    """
+    Get cell-level LLM attribution data for query results.
+
+    Links result cells back to the LLM sessions that generated them,
+    enabling click-through to see the prompts and responses.
+
+    Returns:
+        {
+            cells: [{
+                row_index: int,
+                column_name: str,
+                session_id: str,
+                cascade_id: str,
+                phase_name: str,
+                model: str,
+                cost: float,
+                tokens_in: int,
+                tokens_out: int,
+                timestamp: str
+            }],
+            summary: {
+                total_cells: int,
+                total_cost: float,
+                models_used: [{model, count, cost}],
+                columns_with_attribution: [str]
+            }
+        }
+    """
+    try:
+        db = get_db()
+        safe_caller_id = caller_id.replace("'", "''")
+
+        # Query unified_logs for cell-level attribution
+        # The challenge: source_column_name/source_row_index might be on different log entries
+        # than the cost/tokens data (which is on the response entry with request_id).
+        #
+        # Solution: Use a CTE to first find all cells with source tracking,
+        # then join with ALL entries from those sessions to aggregate costs.
+        attribution_query = f"""
+            WITH cell_sessions AS (
+                -- Find all unique (session, row, column) combinations with source tracking
+                SELECT DISTINCT
+                    session_id,
+                    source_row_index,
+                    source_column_name
+                FROM unified_logs
+                WHERE caller_id = '{safe_caller_id}'
+                  AND source_column_name IS NOT NULL AND source_column_name != ''
+                  AND source_row_index IS NOT NULL AND source_row_index >= 0
+                  AND session_id IS NOT NULL AND session_id != ''
+            )
+            SELECT
+                cs.source_row_index,
+                cs.source_column_name,
+                cs.session_id,
+                any(ul.cascade_id) as cascade_id,
+                any(ul.cell_name) as cell_name,
+                anyIf(ul.model, ul.model IS NOT NULL AND ul.model != '') as model,
+                SUM(COALESCE(ul.cost, 0)) as cost,
+                SUM(COALESCE(ul.tokens_in, 0)) as tokens_in,
+                SUM(COALESCE(ul.tokens_out, 0)) as tokens_out,
+                MAX(ul.timestamp) as timestamp
+            FROM cell_sessions cs
+            JOIN unified_logs ul
+                ON ul.session_id = cs.session_id
+                AND ul.caller_id = '{safe_caller_id}'
+            GROUP BY cs.source_row_index, cs.source_column_name, cs.session_id
+            ORDER BY cs.source_row_index, cs.source_column_name
+        """
+
+        attribution_data = db.query(attribution_query)
+
+        # Format cells
+        cells = []
+        for row in attribution_data:
+            cells.append({
+                'row_index': safe_int(row.get('source_row_index')),
+                'column_name': row.get('source_column_name'),
+                'session_id': row.get('session_id'),
+                'cascade_id': row.get('cascade_id'),
+                'cell_name': row.get('cell_name'),
+                'model': row.get('model'),
+                'cost': round(safe_float(row.get('cost')), 6),
+                'tokens_in': safe_int(row.get('tokens_in')),
+                'tokens_out': safe_int(row.get('tokens_out')),
+                'timestamp': format_timestamp_utc(row.get('timestamp'))
+            })
+
+        # Build summary - aggregate models used across all cell sessions
+        models_query = f"""
+            WITH cell_sessions AS (
+                SELECT DISTINCT session_id
+                FROM unified_logs
+                WHERE caller_id = '{safe_caller_id}'
+                  AND source_column_name IS NOT NULL AND source_column_name != ''
+                  AND source_row_index IS NOT NULL AND source_row_index >= 0
+                  AND session_id IS NOT NULL AND session_id != ''
+            )
+            SELECT
+                ul.model,
+                COUNT(DISTINCT cs.session_id) as call_count,
+                SUM(ul.cost) as total_cost
+            FROM cell_sessions cs
+            JOIN unified_logs ul
+                ON ul.session_id = cs.session_id
+                AND ul.caller_id = '{safe_caller_id}'
+            WHERE ul.model IS NOT NULL AND ul.model != ''
+            GROUP BY ul.model
+            ORDER BY call_count DESC
+        """
+        models_data = db.query(models_query)
+
+        # Get unique columns with attribution
+        columns_with_attr = list(set(c['column_name'] for c in cells))
+
+        total_cost = sum(c['cost'] for c in cells)
+
+        return jsonify({
+            'cells': cells,
+            'summary': {
+                'total_cells': len(cells),
+                'total_cost': round(total_cost, 4),
+                'models_used': [
+                    {
+                        'model': row.get('model'),
+                        'count': safe_int(row.get('call_count')),
+                        'cost': round(safe_float(row.get('total_cost')), 4)
+                    }
+                    for row in models_data
+                ],
+                'columns_with_attribution': columns_with_attr
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@sql_trail_bp.route('/api/sql-trail/session/<session_id>/messages', methods=['GET'])
+def get_session_messages(session_id: str):
+    """
+    Get message history for a specific LLM session.
+
+    Shows the prompts, responses, and tool calls for debugging
+    and understanding how a cell value was computed.
+
+    Query params:
+        phase_name: Filter to specific phase (optional)
+        limit: Max messages (default: 100)
+
+    Returns:
+        {
+            session_id: str,
+            cascade_id: str,
+            messages: [{
+                role: str,
+                content: str,
+                phase_name: str,
+                model: str,
+                cost: float,
+                tokens_in: int,
+                tokens_out: int,
+                timestamp: str,
+                tool_calls: [{name, arguments}],
+                tool_result: str
+            }],
+            total_cost: float,
+            total_tokens: {in: int, out: int}
+        }
+    """
+    try:
+        cell_filter = request.args.get('cell_name')
+        limit = min(int(request.args.get('limit', 100)), 500)
+
+        db = get_db()
+        safe_session_id = session_id.replace("'", "''")
+
+        # Build cell filter
+        cell_clause = f" AND cell_name = '{cell_filter}'" if cell_filter else ""
+
+        # Query messages from unified_logs
+        # content_json contains the full message content
+        messages_query = f"""
+            SELECT
+                role,
+                content_json,
+                cell_name,
+                model,
+                cost,
+                tokens_in,
+                tokens_out,
+                timestamp,
+                tool_calls_json,
+                cascade_id
+            FROM unified_logs
+            WHERE session_id = '{safe_session_id}'{cell_clause}
+            ORDER BY timestamp
+            LIMIT {limit}
+        """
+
+        messages_data = db.query(messages_query)
+
+        if not messages_data:
+            return jsonify({'error': 'Session not found'}), 404
+
+        # Format messages
+        messages = []
+        total_cost = 0
+        total_tokens_in = 0
+        total_tokens_out = 0
+        cascade_id = None
+
+        for row in messages_data:
+            if not cascade_id:
+                cascade_id = row.get('cascade_id')
+
+            cost = safe_float(row.get('cost'))
+            tokens_in = safe_int(row.get('tokens_in'))
+            tokens_out = safe_int(row.get('tokens_out'))
+
+            total_cost += cost
+            total_tokens_in += tokens_in
+            total_tokens_out += tokens_out
+
+            # Parse content_json if present
+            content = row.get('content_json') or ''
+            if isinstance(content, str) and content.startswith('{'):
+                try:
+                    import json
+                    content_obj = json.loads(content)
+                    content = content_obj.get('content', content)
+                except Exception:
+                    pass
+
+            # Build tool calls if present (from tool_calls_json)
+            tool_calls = []
+            tool_calls_json = row.get('tool_calls_json')
+            if tool_calls_json:
+                try:
+                    import json
+                    parsed_calls = json.loads(tool_calls_json)
+                    if isinstance(parsed_calls, list):
+                        for tc in parsed_calls:
+                            tool_calls.append({
+                                'name': tc.get('function', {}).get('name') or tc.get('name', 'unknown'),
+                                'arguments': tc.get('function', {}).get('arguments') or tc.get('arguments', '')
+                            })
+                except Exception:
+                    pass
+
+            messages.append({
+                'role': row.get('role', 'unknown'),
+                'content': content,
+                'cell_name': row.get('cell_name'),
+                'model': row.get('model'),
+                'cost': round(cost, 6),
+                'tokens_in': tokens_in,
+                'tokens_out': tokens_out,
+                'timestamp': format_timestamp_utc(row.get('timestamp')),
+                'tool_calls': tool_calls
+            })
+
+        return jsonify({
+            'session_id': session_id,
+            'cascade_id': cascade_id,
+            'messages': messages,
+            'total_cost': round(total_cost, 4),
+            'total_tokens': {
+                'in': total_tokens_in,
+                'out': total_tokens_out
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

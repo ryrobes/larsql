@@ -7,22 +7,22 @@ import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-communi
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-// Dark theme for AG Grid - matches SQL Trail style
+// Dark theme for AG Grid - pure black with purple undertones (matches app theme)
 const darkGridTheme = themeQuartz.withParams({
-  backgroundColor: '#0a0a0a',
+  backgroundColor: '#000000',
   foregroundColor: '#cbd5e1',
-  headerBackgroundColor: '#111111',
-  headerTextColor: '#94a3b8',
-  oddRowBackgroundColor: '#0d0d0d',
-  borderColor: '#1e1e1e',
+  headerBackgroundColor: '#0a0510',
+  headerTextColor: '#f0f4f8',
+  oddRowBackgroundColor: '#050410',
+  borderColor: '#1a1628',
   rowBorder: true,
   wrapperBorder: false,
-  headerFontSize: 11,
+  headerFontSize: 12,
   headerFontWeight: 600,
   fontFamily: "'Google Sans Code', monospace",
-  fontSize: 12,
-  accentColor: '#a78bfa',
-  chromeBackgroundColor: '#0a0a0a',
+  fontSize: 13,
+  accentColor: '#00e5ff',
+  chromeBackgroundColor: '#000000',
 });
 
 const API_BASE = 'http://localhost:5050';
@@ -566,16 +566,183 @@ const ModelTooltip = ({ active, payload }) => {
 };
 
 /**
+ * Cell Detail Panel - Shows LLM messages for a selected cell
+ */
+const CellDetailPanel = ({ cellInfo, onClose }) => {
+  const [messages, setMessages] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!cellInfo?.session_id) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchMessages = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/sql-trail/session/${encodeURIComponent(cellInfo.session_id)}/messages?limit=50`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setMessages(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMessages();
+  }, [cellInfo?.session_id]);
+
+  if (!cellInfo) return null;
+
+  return (
+    <div className="cell-detail-panel">
+      <div className="cell-detail-header">
+        <div className="cell-detail-title">
+          <Icon icon="mdi:brain" width={16} />
+          <span>Cell [{cellInfo.row_index}, {cellInfo.column_name}]</span>
+        </div>
+        <button className="btn btn-ghost btn-xs" onClick={onClose}>
+          <Icon icon="mdi:close" width={16} />
+        </button>
+      </div>
+
+      <div className="cell-detail-meta">
+        <div className="cell-detail-meta-item">
+          <span className="cell-detail-meta-label">Session</span>
+          <code className="cell-detail-meta-value">{cellInfo.session_id?.substring(0, 20)}...</code>
+        </div>
+        <div className="cell-detail-meta-item">
+          <span className="cell-detail-meta-label">Cascade</span>
+          <span className="cell-detail-meta-value">{cellInfo.cascade_id || '-'}</span>
+        </div>
+        <div className="cell-detail-meta-item">
+          <span className="cell-detail-meta-label">Model</span>
+          <span className="cell-detail-meta-value">{cellInfo.model || '-'}</span>
+        </div>
+        <div className="cell-detail-meta-item">
+          <span className="cell-detail-meta-label">Cost</span>
+          <span className="cell-detail-meta-value accent-green">{formatCost(cellInfo.cost)}</span>
+        </div>
+      </div>
+
+      <div className="cell-detail-messages">
+        {loading && (
+          <div className="cell-detail-loading">
+            <Icon icon="mdi:loading" width={20} className="spin" />
+            <span>Loading messages...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="cell-detail-error">
+            <Icon icon="mdi:alert-circle" width={16} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {messages && !loading && (
+          <>
+            <div className="cell-detail-messages-header">
+              <span>{messages.messages?.length || 0} messages</span>
+              <span className="cell-detail-tokens">
+                {formatNumber(messages.total_tokens?.in || 0)} in / {formatNumber(messages.total_tokens?.out || 0)} out
+              </span>
+            </div>
+            <div className="cell-detail-messages-list">
+              {(messages.messages || []).map((msg, i) => (
+                <div key={i} className={`cell-detail-message cell-detail-message--${msg.role}`}>
+                  <div className="cell-detail-message-header">
+                    <span className={`cell-detail-message-role cell-detail-message-role--${msg.role}`}>
+                      {msg.role}
+                    </span>
+                    {msg.cell_name && (
+                      <span className="cell-detail-message-phase">{msg.cell_name}</span>
+                    )}
+                    {msg.cost > 0 && (
+                      <span className="cell-detail-message-cost">{formatCost(msg.cost)}</span>
+                    )}
+                  </div>
+                  <div className="cell-detail-message-content">
+                    {typeof msg.content === 'string'
+                      ? msg.content.substring(0, 500) + (msg.content.length > 500 ? '...' : '')
+                      : JSON.stringify(msg.content).substring(0, 500)}
+                  </div>
+                  {msg.tool_calls?.length > 0 && (
+                    <div className="cell-detail-message-tools">
+                      {msg.tool_calls.map((tc, j) => (
+                        <span key={j} className="cell-detail-tool-call">
+                          <Icon icon="mdi:function" width={12} />
+                          {tc.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="cell-detail-actions">
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            if (cellInfo.cascade_id && cellInfo.session_id) {
+              window.location.href = `/studio/${encodeURIComponent(cellInfo.cascade_id)}/${encodeURIComponent(cellInfo.session_id)}`;
+            }
+          }}
+          disabled={!cellInfo.cascade_id || !cellInfo.session_id}
+        >
+          <Icon icon="mdi:open-in-new" width={14} />
+          Open in Studio
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Results Viewer Component - Displays auto-materialized query results using AG Grid
+ * Enhanced with LLM cell attribution indicators
  */
 const ResultsViewer = ({ callerId, resultLocation }) => {
   const gridRef = useRef(null);
   const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [expanded, setExpanded] = useState(false);
   const [offset, setOffset] = useState(0);
-  const limit = 100; // Increased for better UX with ag-grid
+  const limit = 100;
+
+  // Cell attribution state
+  const [cellAttribution, setCellAttribution] = useState(null);
+  const [selectedCell, setSelectedCell] = useState(null);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+
+  // Build a map of attributed cells for quick lookup
+  const attributionMap = useMemo(() => {
+    if (!cellAttribution?.cells) return new Map();
+    const map = new Map();
+    for (const cell of cellAttribution.cells) {
+      const key = `${cell.row_index}:${cell.column_name}`;
+      if (!map.has(key)) {
+        map.set(key, cell);
+      }
+    }
+    return map;
+  }, [cellAttribution]);
+
+  // Compute max cost for heatmap normalization
+  const maxCellCost = useMemo(() => {
+    if (!cellAttribution?.cells?.length) return 0;
+    return Math.max(...cellAttribution.cells.map(c => c.cost || 0));
+  }, [cellAttribution]);
 
   const fetchResults = useCallback(async (newOffset = 0) => {
     setLoading(true);
@@ -594,7 +761,6 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
       const data = await res.json();
       setResults(data);
       setOffset(newOffset);
-      setExpanded(true);
     } catch (err) {
       console.error('Failed to fetch results:', err);
       setError(err.message);
@@ -602,6 +768,27 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
       setLoading(false);
     }
   }, [callerId]);
+
+  // Fetch cell attribution data
+  const fetchAttribution = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/sql-trail/query/${encodeURIComponent(callerId)}/cell-attribution`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setCellAttribution(data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch cell attribution:', err);
+    }
+  }, [callerId]);
+
+  // Auto-fetch results and attribution on mount
+  useEffect(() => {
+    fetchResults(0);
+    fetchAttribution();
+  }, [fetchResults, fetchAttribution]);
 
   const handleExport = useCallback((format) => {
     const url = `${API_BASE}/api/sql-trail/query/${encodeURIComponent(callerId)}/results/export?format=${format}`;
@@ -620,7 +807,15 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
     }
   }, [offset, results, fetchResults]);
 
-  // Generate AG Grid column definitions from results
+  const handleCellClick = useCallback((rowIndex, colName) => {
+    const key = `${rowIndex}:${colName}`;
+    const attribution = attributionMap.get(key);
+    if (attribution) {
+      setSelectedCell(attribution);
+    }
+  }, [attributionMap]);
+
+  // Generate AG Grid column definitions from results with attribution support
   const columnDefs = useMemo(() => {
     if (!results?.columns) return [];
 
@@ -635,16 +830,48 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
       flex: 1,
       cellRenderer: (params) => {
         const value = params.value;
-        if (value === null || value === undefined) {
-          return <span className="results-null">NULL</span>;
+        const rowIndex = params.data?._rowIndex + offset; // Adjust for pagination offset
+        const colName = col.name;
+        const attrKey = `${rowIndex}:${colName}`;
+        const attribution = attributionMap.get(attrKey);
+        const hasAttribution = !!attribution;
+
+        // Compute heatmap background if enabled
+        let heatmapStyle = {};
+        if (showHeatmap && hasAttribution && maxCellCost > 0) {
+          const intensity = (attribution.cost / maxCellCost);
+          // Purple gradient based on cost
+          heatmapStyle = {
+            background: `rgba(167, 139, 250, ${intensity * 0.4})`,
+          };
         }
-        if (typeof value === 'object') {
-          return <span className="results-json">{JSON.stringify(value)}</span>;
+
+        const content = value === null || value === undefined
+          ? <span className="results-null">NULL</span>
+          : typeof value === 'object'
+          ? <span className="results-json">{JSON.stringify(value)}</span>
+          : String(value);
+
+        if (hasAttribution) {
+          return (
+            <div
+              className="results-cell results-cell--attributed"
+              style={heatmapStyle}
+              onClick={() => handleCellClick(rowIndex, colName)}
+              title={`LLM computed - ${formatCost(attribution.cost)} - Click for details`}
+            >
+              <span className="results-cell-indicator">
+                <Icon icon="mdi:sparkles" width={12} />
+              </span>
+              <span className="results-cell-value">{content}</span>
+            </div>
+          );
         }
-        return String(value);
+
+        return <div className="results-cell">{content}</div>;
       }
     }));
-  }, [results?.columns]);
+  }, [results?.columns, attributionMap, showHeatmap, maxCellCost, offset, handleCellClick]);
 
   // Transform row data for AG Grid (rows are arrays, need to map to col_N keys)
   const rowData = useMemo(() => {
@@ -672,38 +899,8 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
     params.api.autoSizeAllColumns();
   }, []);
 
-  if (!expanded) {
-    return (
-      <div className="results-viewer-collapsed">
-        <div className="results-viewer-info">
-          <Icon icon="mdi:table-large" width={20} />
-          <div className="results-viewer-location">
-            <span className="results-viewer-label">Materialized Results Available</span>
-            <code className="results-viewer-path">
-              rvbbit_results.{resultLocation?.result_table || 'r_...'}
-            </code>
-          </div>
-        </div>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={() => fetchResults(0)}
-          disabled={loading}
-        >
-          {loading ? (
-            <>
-              <Icon icon="mdi:loading" width={14} className="spin" />
-              Loading...
-            </>
-          ) : (
-            <>
-              <Icon icon="mdi:eye" width={14} />
-              View Results
-            </>
-          )}
-        </button>
-      </div>
-    );
-  }
+  const hasAttributedCells = cellAttribution?.summary?.total_cells > 0;
+  const columnsWithAttribution = cellAttribution?.summary?.columns_with_attribution || [];
 
   return (
     <div className="results-viewer">
@@ -716,8 +913,27 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
               {formatNumber(results.total_rows)} rows
             </span>
           )}
+          {hasAttributedCells && (
+            <span className="results-viewer-attribution-badge">
+              <Icon icon="mdi:sparkles" width={12} />
+              {cellAttribution.summary.total_cells} LLM cells
+              <span className="results-viewer-attribution-cost">
+                {formatCost(cellAttribution.summary.total_cost)}
+              </span>
+            </span>
+          )}
         </div>
         <div className="results-viewer-actions">
+          {hasAttributedCells && (
+            <button
+              className={`btn btn-ghost btn-xs ${showHeatmap ? 'btn-active' : ''}`}
+              onClick={() => setShowHeatmap(!showHeatmap)}
+              title="Toggle cost heatmap"
+            >
+              <Icon icon="mdi:gradient-horizontal" width={14} />
+              Heatmap
+            </button>
+          )}
           <button
             className="btn btn-ghost btn-xs"
             onClick={() => handleExport('csv')}
@@ -734,15 +950,25 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
             <Icon icon="mdi:code-json" width={14} />
             JSON
           </button>
-          <button
-            className="btn btn-ghost btn-xs"
-            onClick={() => setExpanded(false)}
-            title="Collapse"
-          >
-            <Icon icon="mdi:chevron-up" width={14} />
-          </button>
         </div>
       </div>
+
+      {hasAttributedCells && (
+        <div className="results-viewer-attribution-summary">
+          <span className="results-viewer-attribution-label">LLM-computed columns:</span>
+          {columnsWithAttribution.map(col => (
+            <span key={col} className="results-viewer-attribution-col">
+              <Icon icon="mdi:sparkles" width={10} />
+              {col}
+            </span>
+          ))}
+          {cellAttribution.summary.models_used?.length > 0 && (
+            <span className="results-viewer-attribution-models">
+              via {cellAttribution.summary.models_used.map(m => m.model).join(', ')}
+            </span>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="results-viewer-error">
@@ -775,8 +1001,7 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
               enableCellTextSelection={true}
               ensureDomOrder={true}
               suppressRowClickSelection={true}
-              domLayout="autoHeight"
-              pagination={rowData.length > 25}
+              pagination={true}
               paginationPageSize={25}
               paginationPageSizeSelector={[25, 50, 100]}
             />
@@ -812,6 +1037,14 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
             </code>
           </div>
         </>
+      )}
+
+      {/* Cell Detail Panel - shown when clicking an attributed cell */}
+      {selectedCell && (
+        <CellDetailPanel
+          cellInfo={selectedCell}
+          onClose={() => setSelectedCell(null)}
+        />
       )}
     </div>
   );

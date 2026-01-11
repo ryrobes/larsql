@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import random
 import shutil
 import sys
 from pathlib import Path
@@ -1489,7 +1488,11 @@ def cmd_alice_run(args):
 
 
 def _maybe_render_startup_splash():
-    """Render a random TUI splash image on startup if interactive."""
+    """Render TUI splash image on startup if interactive.
+
+    Shows the semantic SQL server image for 'rvbbit serve sql',
+    otherwise shows the default RVBBIT logo.
+    """
     if os.environ.get("RVBBIT_NO_SPLASH"):
         return
     if not sys.stdout.isatty():
@@ -1503,8 +1506,20 @@ def _maybe_render_startup_splash():
     if not SPLASH_DIR.exists():
         return
 
-    images = [p for p in SPLASH_DIR.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}]
-    if not images:
+    # Detect if running SQL server command
+    args_lower = [arg.lower() for arg in sys.argv[1:4]]  # Check first few args
+    is_sql_server = (
+        ("serve" in args_lower and "sql" in args_lower) or
+        ("sql" in args_lower and "server" in args_lower)
+    )
+
+    # Pick the appropriate image
+    if is_sql_server:
+        image_path = SPLASH_DIR / "rvbbit-logo-semantic-sql-server.png"
+    else:
+        image_path = SPLASH_DIR / "rvbbit-logo-no-bkgrnd.png"
+
+    if not image_path.exists():
         return
 
     try:
@@ -1513,7 +1528,6 @@ def _maybe_render_startup_splash():
         cols = 80
     max_width = max(20, min(cols, 80))
 
-    image_path = random.choice(images)
     try:
         render_image_in_terminal(str(image_path), max_width=max_width)
         print()  # spacing after splash
@@ -5094,6 +5108,19 @@ def _run_server_subprocess(cmd, cwd=None, env=None):
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 print("   Force killing unresponsive process...")
+                # Render the error skull image
+                try:
+                    from rvbbit.terminal_image import render_image_in_terminal
+                    skull_path = os.path.join(
+                        os.path.dirname(os.path.dirname(__file__)),
+                        "error-skull.webp"
+                    )
+                    if os.path.exists(skull_path):
+                        print()  # Blank line before image
+                        render_image_in_terminal(skull_path, max_width=40)
+                        print()  # Blank line after image
+                except Exception:
+                    pass  # Don't let image rendering break shutdown
                 try:
                     # Send SIGKILL to entire process group
                     pgid = os.getpgid(process.pid)

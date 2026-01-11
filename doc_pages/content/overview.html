@@ -1,7 +1,6 @@
-<h1>RVBBIT Documentation</h1>
+<h1>Docs</h1>
 <p class="lead">
-  A declarative agent framework that evolved into a full-stack AI-native data IDE
-  with visual workflow building, polyglot execution, and self-healing capabilities.
+  Stop writing imperative glue code. Start orchestrating agents declaratively.
 </p>
 
 <div class="info-box tip">
@@ -12,7 +11,168 @@
   </p>
 </div>
 
-<h2>What is RVBBIT?</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE PROBLEM
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="the-problem">The Problem Everyone Faces</h2>
+
+<p>
+  You start with clean code. Six months later, you're debugging this:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">The Retry Hell</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># The retry loop that ruins every LLM project</span>
+<span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+    <span class="kw">try</span>:
+        result = llm.call(prompt)
+        validation = validate(result)
+        <span class="kw">if</span> validation.passed:
+            <span class="kw">return</span> result
+        <span class="cmt"># Error feedback accumulation</span>
+        prompt += <span class="str">f"\n\nError: {validation.error}. Try again."</span>
+    <span class="kw">except</span> JSONDecodeError <span class="kw">as</span> e:
+        prompt += <span class="str">f"\nFailed to parse JSON: {e}"</span>
+    <span class="kw">except</span> ToolCallError <span class="kw">as</span> e:
+        prompt += <span class="str">f"\nTool call failed: {e}"</span>
+
+<span class="cmt"># 47 lines later... still doesn't work reliably</span></pre>
+  </div>
+</div>
+
+<p>
+  This is the trajectory of every LLM project. You start clean, add a retry loop,
+  add error handling, add context accumulation, add nested conditionals... and suddenly
+  you have 2000+ lines of Python with global variables, nested loops, and debugging nightmares.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card" style="border-left-color: var(--warning);">
+    <h4>Slow</h4>
+    <p>Sequential execution - wait for each failure before trying again</p>
+  </div>
+  <div class="feature-card" style="border-left-color: var(--warning);">
+    <h4>Complex</h4>
+    <p>Error handling, context accumulation, nested loops, global state</p>
+  </div>
+  <div class="feature-card" style="border-left-color: var(--warning);">
+    <h4>Brittle</h4>
+    <p>One random LLM hiccup blocks everything</p>
+  </div>
+  <div class="feature-card" style="border-left-color: var(--warning);">
+    <h4>Low Quality</h4>
+    <p>Get whatever attempt N produces, not the best attempt</p>
+  </div>
+</div>
+
+<p>
+  <strong>The fundamental truth:</strong> LLMs fail randomly. JSON parsing errors. Context confusion.
+  Tool calling mistakes. You can't eliminate these failures - you have to <em>filter</em> them.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE INSIGHT
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="the-insight">The Insight: Stop Retrying, Start Filtering</h2>
+
+<p>
+  Instead of fighting errors serially, <strong>run multiple attempts in parallel and filter errors
+  out naturally</strong>. This is the core insight behind RVBBIT.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang json">RVBBIT Solution</span>
+  </div>
+  <div class="code-block-content">
+    <pre>{
+  <span class="key">"candidates"</span>: {
+    <span class="key">"factor"</span>: <span class="num">3</span>,
+    <span class="key">"evaluator_instructions"</span>: <span class="str">"Pick the best"</span>
+  }
+}</pre>
+  </div>
+</div>
+
+<p>
+  <strong>What happens:</strong>
+</p>
+<ol>
+  <li>Run 3 attempts <strong>in parallel</strong> (not sequential)</li>
+  <li>Random LLM errors <strong>naturally filtered out</strong> by evaluator</li>
+  <li>Evaluator picks <strong>THE BEST</strong> of the successes (not just "whatever worked")</li>
+  <li>Zero error handling code needed</li>
+</ol>
+
+<p>
+  <strong>This is genetic algorithms for LLM outputs.</strong> Errors become noise to filter,
+  not bugs to debug. The complexity is <em>contained</em> in declarative configuration -
+  the spaghetti stays in the bowl.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     THE MATH
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h3>The Counterintuitive Economics</h3>
+
+<div class="info-box note">
+  <div class="info-box-title">Why Candidates Are Faster AND Cheaper</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Serial Retries</th>
+        <th>Candidates</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Wall time</strong></td>
+        <td>6 seconds (sequential)</td>
+        <td>3 seconds (parallel)</td>
+      </tr>
+      <tr>
+        <td><strong>Success probability</strong></td>
+        <td>97.3% (compound)</td>
+        <td>97.3% (independent trials)</td>
+      </tr>
+      <tr>
+        <td><strong>Quality</strong></td>
+        <td>"Whatever worked"</td>
+        <td>"Best of successes"</td>
+      </tr>
+      <tr>
+        <td><strong>Complexity</strong></td>
+        <td>47 lines of error handling</td>
+        <td>4 lines of JSON</td>
+      </tr>
+      <tr>
+        <td><strong>Error handling</strong></td>
+        <td>Manual (nested try/catch)</td>
+        <td>Automatic (filter noise)</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p>
+  With 70% LLM success rate, serial retries give you "the result from attempt 3."
+  Candidates give you "the best of the 2-3 that succeeded." Same cost, higher quality,
+  faster execution.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     WHAT IS RVBBIT
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="what-is-rvbbit">What is RVBBIT?</h2>
+
 <p>
   RVBBIT is a Python framework for building multi-step LLM workflows called <strong>Cascades</strong>.
   Unlike traditional agentic frameworks, RVBBIT treats workflows as <strong>declarative configurations</strong>
@@ -20,41 +180,87 @@
   and polyglot code cells.
 </p>
 
-<h3>Key Philosophy</h3>
+<h3>Key Philosophy: Encapsulated Complexity</h3>
+
+<p>
+  The complexity of agent orchestration is inevitable. The question is where it lives.
+  Traditional approaches spread complexity across your codebase - retry loops, error handlers,
+  context managers, state machines. RVBBIT <em>encapsulates</em> that complexity inside
+  declarative cells.
+</p>
+
+<p>
+  <strong>No Python loops. No global state. No debugging spaghetti.</strong>
+</p>
+
 <p>
   Workflows (Cascades) are composed of <strong>Cells</strong>, where each cell can be:
 </p>
 <ul>
   <li><strong>LLM-Powered</strong>: Traditional agent execution with tool calling and multi-turn conversations</li>
-  <li><strong>Deterministic</strong>: Direct tool invocation without LLM mediation for predictable operations</li>
+  <li><strong>Deterministic</strong>: Direct tool invocation without LLM mediation (10-100x faster, $0 cost)</li>
   <li><strong>Polyglot</strong>: Execute SQL, Python, JavaScript, Clojure, or nested cascades</li>
   <li><strong>HITL Screens</strong>: Direct HTML rendering for human-in-the-loop checkpoints</li>
   <li><strong>Hybrid</strong>: Mix all approaches in a single workflow</li>
 </ul>
 
-<h2>The Five Self-* Properties</h2>
+<h3>Built for Iterative Artifact Generation</h3>
+
+<p>
+  Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), RVBBIT is designed
+  for <strong>monolithic context agents</strong> that iterate on complex tasks:
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:chart-bar"></iconify-icon></div>
+    <h4>Data Dashboards</h4>
+    <p>Query → Validate → Visualize → Refine</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:file-document"></iconify-icon></div>
+    <h4>Report Generation</h4>
+    <p>Research → Draft → Critique → Polish</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:code-braces"></iconify-icon></div>
+    <h4>Code Generation</h4>
+    <p>Explore → Implement → Test → Optimize</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:palette"></iconify-icon></div>
+    <h4>Design Systems</h4>
+    <p>Generate → Render → Critique → Iterate</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     FIVE SELF-* PROPERTIES
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="five-properties">The Five Self-* Properties</h2>
 <p>RVBBIT implements five self-improving capabilities:</p>
 
 <div class="feature-grid">
   <div class="feature-card">
     <div class="feature-card-icon"><iconify-icon icon="mdi:robot-outline"></iconify-icon></div>
     <h4>Self-Orchestrating</h4>
-    <p>Manifest/Quartermaster system - workflows dynamically select tools based on context</p>
+    <p><strong>Manifest/Quartermaster</strong> - workflows dynamically select tools based on context</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-icon magenta"><iconify-icon icon="mdi:test-tube"></iconify-icon></div>
     <h4>Self-Testing</h4>
-    <p>Snapshot system - tests write themselves from real executions</p>
+    <p><strong>Snapshot system</strong> - tests write themselves from real executions</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-icon green"><iconify-icon icon="mdi:chart-line"></iconify-icon></div>
     <h4>Self-Optimizing</h4>
-    <p>Passive optimization - prompts improve automatically from usage data</p>
+    <p><strong>Passive optimization</strong> - prompts improve automatically from usage data</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-icon purple"><iconify-icon icon="mdi:wrench-outline"></iconify-icon></div>
     <h4>Self-Healing</h4>
-    <p>Auto-fix - failed cells debug and repair themselves with LLM assistance</p>
+    <p><strong>Auto-fix</strong> - failed cells debug and repair themselves with LLM assistance</p>
   </div>
 </div>
 
@@ -62,11 +268,15 @@
   <div class="feature-card">
     <div class="feature-card-icon"><iconify-icon icon="mdi:creation"></iconify-icon></div>
     <h4>Self-Building</h4>
-    <p>Calliope - workflows constructed through natural language conversation</p>
+    <p><strong>Calliope</strong> - workflows constructed through natural language conversation</p>
   </div>
 </div>
 
-<h2>Core Architecture</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CORE ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="architecture">Core Architecture</h2>
 
 <h3>Cascades (Workflows)</h3>
 <p>
@@ -84,24 +294,46 @@
     <span class="code-block-lang yaml">YAML Example</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">cascade_id</span>: my_workflow
-<span class="key">description</span>: Simple example cascade
-<span class="key">inputs_schema</span>:
-  query: <span class="str">"User's search query"</span>
+    <pre><span class="key">cascade_id</span>: dashboard_autopilot
+<span class="key">description</span>: Generate and refine data dashboards
 
 <span class="key">cells</span>:
-  - <span class="key">name</span>: research
-    <span class="key">instructions</span>: <span class="str">"Research {{ input.query }} and summarize findings"</span>
+  - <span class="key">name</span>: generate_dashboard
+    <span class="key">instructions</span>: <span class="str">"Create a sales dashboard from the database"</span>
     <span class="key">traits</span>:
-      - brave_web_search
-    <span class="key">handoffs</span>: [analyze]
+      - smart_sql_run
+      - create_chart
+    <span class="key">candidates</span>:
+      <span class="key">factor</span>: <span class="num">3</span>
+      <span class="key">evaluator_instructions</span>: <span class="str">"Pick the most insightful dashboard"</span>
+      <span class="key">reforge</span>:
+        <span class="key">steps</span>: <span class="num">2</span>
+        <span class="key">honing_prompt</span>: <span class="str">"Improve visual clarity, data accuracy, accessibility"</span>
+    <span class="key">wards</span>:
+      <span class="key">post</span>:
+        - <span class="key">validator</span>: data_accuracy
+          <span class="key">mode</span>: blocking
+        - <span class="key">validator</span>: accessibility_check
+          <span class="key">mode</span>: retry
+          <span class="key">max_attempts</span>: <span class="num">2</span>
+    <span class="key">handoffs</span>: [review]
 
-  - <span class="key">name</span>: analyze
-    <span class="key">instructions</span>: <span class="str">"Analyze research and provide insights"</span>
+  - <span class="key">name</span>: review
+    <span class="key">instructions</span>: <span class="str">"Present dashboard for final approval"</span>
     <span class="key">context</span>:
-      <span class="key">from</span>: [research]</pre>
+      <span class="key">from</span>: [generate_dashboard]</pre>
   </div>
 </div>
+
+<p>
+  <strong>What this does:</strong>
+</p>
+<ol>
+  <li><strong>Candidates:</strong> Generate 3 dashboard variations in parallel, pick the best</li>
+  <li><strong>Wards:</strong> Block on data errors, retry on accessibility issues</li>
+  <li><strong>Reforge:</strong> Iteratively refine the winner with vision feedback + mutations</li>
+  <li><strong>Observability:</strong> Full execution trace, Mermaid graphs, real-time SSE events</li>
+</ol>
 
 <h3>Cell Types</h3>
 <p>
@@ -140,7 +372,11 @@
   </tbody>
 </table>
 
-<h2>Installation</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     INSTALLATION
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="installation">Installation</h2>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -154,7 +390,7 @@ pip install rvbbit
 pip install rvbbit[local-models]
 
 <span class="cmt"># From source</span>
-git clone https://github.com/rvbbit/rvbbit
+git clone https://github.com/ryrobes/rvbbit
 cd rvbbit/rvbbit
 pip install -e .</pre>
   </div>
@@ -189,7 +425,11 @@ pip install -e .</pre>
   </p>
 </div>
 
-<h2>Quick Start Examples</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     QUICK START
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="quickstart">Quick Start Examples</h2>
 
 <h3>1. Run a Cascade</h3>
 <div class="code-block">
@@ -251,7 +491,11 @@ rvbbit serve studio --dev
   </div>
 </div>
 
-<h2>Semantic SQL</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SEMANTIC SQL
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="semantic-sql">Semantic SQL</h2>
 <p>
   One of RVBBIT's most powerful features is <strong>Semantic SQL</strong> -
   the ability to use natural language and LLM-powered functions directly in SQL queries.
@@ -289,7 +533,11 @@ rvbbit serve studio --dev
   just define a cascade file with operator patterns!
 </p>
 
-<h2>Next Steps</h2>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     NEXT STEPS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="next">Next Steps</h2>
 <p>Explore the documentation to learn more:</p>
 <ul>
   <li><a href="#core-concepts" data-link>Core Concepts</a> - Understand Cascades, Cells, State, and Context</li>

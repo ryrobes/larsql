@@ -5,7 +5,19 @@
       "icon": "mdi:rocket-launch",
       "color": "cyan",
       "items": [
-        { "id": "overview", "title": "Overview" },
+        {
+          "id": "overview",
+          "title": "Overview",
+          "sections": [
+            { "anchor": "the-problem", "title": "The Problem Everyone Faces" },
+            { "anchor": "the-insight", "title": "Stop Retrying, Start Filtering" },
+            { "anchor": "what-is-rvbbit", "title": "What is RVBBIT?" },
+            { "anchor": "five-properties", "title": "Five Self-* Properties" },
+            { "anchor": "architecture", "title": "Core Architecture" },
+            { "anchor": "installation", "title": "Installation" },
+            { "anchor": "quickstart", "title": "Quick Start Examples" }
+          ]
+        },
         {
           "id": "core-concepts",
           "title": "Core Concepts",
@@ -89,7 +101,22 @@
       "icon": "mdi:star-four-points",
       "color": "green",
       "items": [
-        { "id": "semantic-sql", "title": "Semantic SQL" },
+        {
+          "id": "semantic-sql",
+          "title": "Semantic SQL",
+          "sections": [
+            { "anchor": "architecture", "title": "Architecture Overview" },
+            { "anchor": "query-pipeline", "title": "Query Processing Pipeline" },
+            { "anchor": "operators", "title": "Semantic Operators" },
+            { "anchor": "udf-system", "title": "UDF System" },
+            { "anchor": "sql-server", "title": "PostgreSQL Server" },
+            { "anchor": "annotations", "title": "Annotation System" },
+            { "anchor": "caching", "title": "Caching Strategies" },
+            { "anchor": "custom-operators", "title": "Custom Operators" },
+            { "anchor": "map-run", "title": "MAP/RUN Statements" },
+            { "anchor": "best-practices", "title": "Best Practices" }
+          ]
+        },
         {
           "id": "operators",
           "title": "Built-in Operators",
@@ -142,6 +169,19 @@
           ]
         },
         {
+          "id": "memory",
+          "title": "Memory System",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "three-tiers", "title": "Three Memory Tiers" },
+            { "anchor": "memory-banks", "title": "Named Memory Banks" },
+            { "anchor": "research-db", "title": "Research Database" },
+            { "anchor": "why-tool", "title": "Why Memory is a Tool" },
+            { "anchor": "comparison", "title": "Memory vs Context Cards" },
+            { "anchor": "rag", "title": "RAG System" }
+          ]
+        },
+        {
           "id": "mcp",
           "title": "MCP Integration",
           "sections": [
@@ -157,6 +197,6 @@
   ],
   "externalLinks": [
     { "title": "Home", "url": "index.html", "icon": "mdi:home" },
-    { "title": "GitHub", "url": "https://github.com/rvbbit/rvbbit", "icon": "mdi:github" }
+    { "title": "GitHub", "url": "https://github.com/ryrobes/rvbbit", "icon": "mdi:github" }
   ]
 }

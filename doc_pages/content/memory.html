@@ -1,0 +1,467 @@
+<h1>Memory System</h1>
+<p class="lead">
+  Understanding RVBBIT's distinctive approach to agent memory: retrieval is an explicit tool call,
+  not automatic context injection.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:brain"></iconify-icon> Core Philosophy</div>
+  <p>
+    <strong>Write automatically, read explicitly.</strong> Messages are auto-saved to configured memory banks,
+    but retrieval requires the agent to make an explicit tool call. This prevents context flooding
+    while giving agents control over when past knowledge is relevant.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#three-tiers">The Three Memory Tiers</a></li>
+    <li><a href="#memory-banks">Named Memory Banks</a></li>
+    <li><a href="#research-db">Research Database</a></li>
+    <li><a href="#why-tool">Why Memory is a Tool</a></li>
+    <li><a href="#comparison">Memory vs Context Cards</a></li>
+    <li><a href="#rag">RAG System</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  RVBBIT implements a distinctive approach to agent memory: <strong>memory retrieval is an explicit tool call</strong>,
+  not automatic context injection. This philosophy provides control, transparency, and cost management while
+  enabling agents to access persistent knowledge when needed.
+</p>
+
+<p>
+  Unlike frameworks that automatically inject "relevant" memories into every prompt (often flooding context
+  with marginally useful information), RVBBIT treats memory as a resource the agent can query when it
+  determines memory would be helpful.
+</p>
+
+<h2 id="three-tiers">The Three Memory Tiers</h2>
+
+<p>RVBBIT provides three distinct memory systems, each serving different persistence and access patterns:</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:database-search"></iconify-icon></div>
+    <h4>Named Memory Banks</h4>
+    <p>Cross-session persistent memory with semantic search. Shared across cascades.</p>
+    <ul>
+      <li>RAG-backed vector search</li>
+      <li>Auto-summarization every 50 messages</li>
+      <li>Becomes a callable tool</li>
+    </ul>
+    <p class="stat"><strong>Scope:</strong> Persistent / Multi-cascade</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:database-edit"></iconify-icon></div>
+    <h4>Research Database</h4>
+    <p>Per-cascade DuckDB for structured data storage with SQL interface.</p>
+    <ul>
+      <li>Standard SQL queries</li>
+      <li>CREATE/INSERT/SELECT/UPDATE</li>
+      <li>Ideal for accumulating findings</li>
+    </ul>
+    <p class="stat"><strong>Scope:</strong> Per-cascade / Structured</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:card-text"></iconify-icon></div>
+    <h4>Context Cards</h4>
+    <p>Session-scoped summaries and embeddings for auto-context selection.</p>
+    <ul>
+      <li>Auto-generated per message</li>
+      <li>Powers inter-cell selection</li>
+      <li>Session-scoped only</li>
+    </ul>
+    <p class="stat"><strong>Scope:</strong> Session / Automatic</p>
+  </div>
+</div>
+
+<h2 id="memory-banks">Named Memory Banks</h2>
+
+<p>
+  When you configure a <code>memory</code> field on a cascade, that memory bank name becomes a <strong>callable tool</strong>
+  that the agent can invoke to search past conversations:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Memory Bank Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: sql_assistant
+<span class="key">memory</span>: sql_patterns_memory  <span class="cmt"># Creates tool named "sql_patterns_memory"</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: assist
+    <span class="key">instructions</span>: |
+      Help the user write SQL queries.
+      Search your memory for similar patterns if helpful.
+    <span class="key">traits</span>:
+      - sql_data
+      - sql_patterns_memory  <span class="cmt"># Agent can call this to search memories</span></pre>
+  </div>
+</div>
+
+<h3>How It Works</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Operation</th>
+      <th>Automatic/Explicit</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Save</strong></td>
+      <td>Automatic</td>
+      <td>Every message is auto-saved to the memory bank during execution</td>
+    </tr>
+    <tr>
+      <td><strong>Retrieve</strong></td>
+      <td>Explicit tool call</td>
+      <td>Agent must call the memory tool with a search query</td>
+    </tr>
+    <tr>
+      <td><strong>Summarize</strong></td>
+      <td>Automatic</td>
+      <td>LLM generates summary every 50 messages</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  When the agent calls the memory tool, it performs semantic search using embeddings:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Memory Tool Call (Agent Perspective)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Agent decides to search memory for SQL patterns</span>
+result = sql_patterns_memory(
+    query=<span class="str">"how to join tables with aggregation"</span>,
+    limit=<span class="num">5</span>
+)
+<span class="cmt"># Returns formatted results with relevant past conversations</span></pre>
+  </div>
+</div>
+
+<h3>Storage Structure</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">$RVBBIT_ROOT/memories/</span>
+  </div>
+  <div class="code-block-content">
+    <pre>memories/
+└── sql_patterns_memory/
+    ├── metadata.json         <span class="cmt"># Stats, summary, cascade list</span>
+    └── messages/
+        ├── session_123_1234567890_user.json
+        ├── session_123_1234567891_assistant.json
+        └── ...</pre>
+  </div>
+</div>
+
+<h3>Cross-Cascade Sharing</h3>
+
+<p>
+  Multiple cascades can share the same memory bank, building a collective knowledge base:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Shared Memory Bank</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># cascade_a.yaml</span>
+<span class="key">cascade_id</span>: sql_helper
+<span class="key">memory</span>: shared_sql_knowledge
+<span class="key">cells</span>: [...]
+
+<span class="cmt"># cascade_b.yaml</span>
+<span class="key">cascade_id</span>: data_analyst
+<span class="key">memory</span>: shared_sql_knowledge  <span class="cmt"># Same bank!</span>
+<span class="key">cells</span>: [...]</pre>
+  </div>
+</div>
+
+<p>
+  Both cascades contribute to and can query the same memory bank, enabling knowledge transfer
+  across different workflows.
+</p>
+
+<h2 id="research-db">Research Database</h2>
+
+<p>
+  For structured data that needs SQL-style querying, the Research Database provides
+  per-cascade DuckDB storage:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Research Database Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: market_research
+<span class="key">research_db</span>: market_research  <span class="cmt"># Creates DuckDB file</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: gather_data
+    <span class="key">instructions</span>: |
+      Research competitor pricing. Store findings in the database.
+    <span class="key">traits</span>:
+      - brave_web_search
+      - research_execute  <span class="cmt"># CREATE/INSERT/UPDATE</span>
+      - research_query    <span class="cmt"># SELECT queries</span></pre>
+  </div>
+</div>
+
+<p>
+  The agent can then create tables and store structured findings:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Research Database Usage (Agent Perspective)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Create schema</span>
+research_execute(<span class="str">"""
+    CREATE TABLE IF NOT EXISTS competitors (
+        name VARCHAR,
+        pricing DECIMAL,
+        features TEXT[]
+    )
+"""</span>)
+
+<span class="cmt"># Store findings</span>
+research_execute(<span class="str">"""
+    INSERT INTO competitors VALUES
+    ('Acme Corp', 99.99, ['feature1', 'feature2'])
+"""</span>)
+
+<span class="cmt"># Query later</span>
+research_query(<span class="str">"SELECT * FROM competitors ORDER BY pricing"</span>)</pre>
+  </div>
+</div>
+
+<h3>Research Tools</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Purpose</th>
+      <th>SQL Operations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>research_execute</code></td>
+      <td>Schema & data modification</td>
+      <td>CREATE, INSERT, UPDATE, DELETE, ALTER</td>
+    </tr>
+    <tr>
+      <td><code>research_query</code></td>
+      <td>Data retrieval</td>
+      <td>SELECT only</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="why-tool">Why Memory is a Tool</h2>
+
+<p>
+  This design is intentional and provides several advantages over automatic memory injection:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Auto-Injection (Other Frameworks)</th>
+      <th>Tool-Based (RVBBIT)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Context Size</strong></td>
+      <td>Unpredictable, may flood</td>
+      <td>Agent controls what to retrieve</td>
+    </tr>
+    <tr>
+      <td><strong>Relevance</strong></td>
+      <td>Algorithm guesses relevance</td>
+      <td>Agent decides when memory helps</td>
+    </tr>
+    <tr>
+      <td><strong>Cost</strong></td>
+      <td>Embedding costs on every turn</td>
+      <td>Only when agent queries</td>
+    </tr>
+    <tr>
+      <td><strong>Transparency</strong></td>
+      <td>Hidden injection</td>
+      <td>Explicit tool call, fully logged</td>
+    </tr>
+    <tr>
+      <td><strong>Composability</strong></td>
+      <td>One global memory</td>
+      <td>Multiple named banks, shared across cascades</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> Agent Instructions Matter</div>
+  <p>
+    Since memory retrieval is explicit, you should instruct agents when to search memory.
+    Include guidance like "Search your memory for similar patterns before attempting new solutions"
+    in cell instructions when memory lookup would be beneficial.
+  </p>
+</div>
+
+<h2 id="comparison">Memory vs Context Cards</h2>
+
+<p>
+  Context cards (used by <a href="#auto-context" data-link>auto-context</a>) and memory banks serve different purposes:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Context Cards</th>
+      <th>Memory Banks</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Scope</strong></td>
+      <td>Single session</td>
+      <td>Cross-session, persistent</td>
+    </tr>
+    <tr>
+      <td><strong>Access</strong></td>
+      <td>Automatic (inter-cell)</td>
+      <td>Explicit tool call</td>
+    </tr>
+    <tr>
+      <td><strong>Purpose</strong></td>
+      <td>Short-term working memory</td>
+      <td>Long-term knowledge base</td>
+    </tr>
+    <tr>
+      <td><strong>Sharing</strong></td>
+      <td>Session-isolated</td>
+      <td>Shared across cascades</td>
+    </tr>
+    <tr>
+      <td><strong>Storage</strong></td>
+      <td>ClickHouse (unified_logs)</td>
+      <td>Files + ClickHouse RAG index</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:check-circle-outline"></iconify-icon> Best Practices</div>
+  <ul>
+    <li><strong>Use Memory Banks</strong> for knowledge that should persist across sessions (SQL patterns, user preferences, domain knowledge)</li>
+    <li><strong>Use Research Database</strong> for structured findings within a workflow (competitor data, scraped results)</li>
+    <li><strong>Use Context Cards</strong> implicitly via auto-context for within-session intelligence</li>
+    <li><strong>Instruct agents</strong> to search memory when relevant - they won't do it automatically</li>
+  </ul>
+</div>
+
+<h2 id="rag">RAG System (Document Memory)</h2>
+
+<p>
+  For static document collections, RVBBIT provides cell-level RAG configuration:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">RAG Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: answer_questions
+    <span class="key">rag</span>:
+      <span class="key">directory</span>: <span class="str">"./docs"</span>
+      <span class="key">recursive</span>: <span class="kw">true</span>
+      <span class="key">include_patterns</span>: [<span class="str">"*.md"</span>, <span class="str">"*.txt"</span>]
+    <span class="key">instructions</span>: |
+      Answer questions about our documentation.
+      Search the docs first before responding.
+    <span class="cmt"># Tools auto-injected: rag_search, rag_read_chunk, rag_list_sources</span></pre>
+  </div>
+</div>
+
+<p>
+  RAG tools are automatically injected when the <code>rag</code> block is present:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>rag_search(query, k=5)</code></td>
+      <td>Semantic search over indexed documents</td>
+    </tr>
+    <tr>
+      <td><code>rag_read_chunk(chunk_id)</code></td>
+      <td>Fetch full text of a specific chunk</td>
+    </tr>
+    <tr>
+      <td><code>rag_list_sources()</code></td>
+      <td>List available documents in the index</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>RAG Configuration Options</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Full RAG Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">rag</span>:
+  <span class="key">directory</span>: <span class="str">"./docs"</span>           <span class="cmt"># Root directory to index</span>
+  <span class="key">recursive</span>: <span class="kw">true</span>                <span class="cmt"># Include subdirectories</span>
+  <span class="key">include_patterns</span>:              <span class="cmt"># File patterns to include</span>
+    - <span class="str">"*.md"</span>
+    - <span class="str">"*.txt"</span>
+    - <span class="str">"*.pdf"</span>
+  <span class="key">exclude_patterns</span>:              <span class="cmt"># Patterns to exclude</span>
+    - <span class="str">"**/node_modules/**"</span>
+    - <span class="str">"**/.git/**"</span>
+  <span class="key">chunk_size</span>: <span class="num">1000</span>              <span class="cmt"># Characters per chunk</span>
+  <span class="key">chunk_overlap</span>: <span class="num">200</span>            <span class="cmt"># Overlap between chunks</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Related Documentation</h2>
+
+<ul>
+  <li><a href="#auto-context" data-link>Auto-Context Deep Dive</a> - Intelligent context management including context cards</li>
+  <li><a href="#context" data-link>Context Management</a> - Traditional explicit context configuration</li>
+  <li><a href="#tools" data-link>Tools (Traits)</a> - Tool system overview</li>
+  <li><a href="#embedding" data-link>Vector Search & Embedding</a> - Embedding system used by memory</li>
+</ul>

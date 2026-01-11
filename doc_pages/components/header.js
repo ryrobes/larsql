@@ -18,7 +18,7 @@ export function renderHeader(navData, currentPage) {
                 ${link.title}
               </a>
             `).join('')}
-            <a href="https://github.com/rvbbit/rvbbit" class="btn" target="_blank" rel="noopener">
+            <a href="https://github.com/ryrobes/rvbbit" class="btn" target="_blank" rel="noopener">
               <iconify-icon icon="mdi:github"></iconify-icon>
               GitHub
             </a>
