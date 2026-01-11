@@ -68,6 +68,19 @@
             { "anchor": "auto-context", "title": "Auto Context" },
             { "anchor": "token-budget", "title": "Token Budget" }
           ]
+        },
+        {
+          "id": "auto-context",
+          "title": "Auto-Context Deep Dive",
+          "sections": [
+            { "anchor": "overview", "title": "System Overview" },
+            { "anchor": "decision-flow", "title": "Decision Flow Diagram" },
+            { "anchor": "intra-cell", "title": "Intra-Cell Context" },
+            { "anchor": "inter-cell", "title": "Inter-Cell Context" },
+            { "anchor": "configuration", "title": "Configuration Reference" },
+            { "anchor": "token-savings", "title": "Token Savings" },
+            { "anchor": "examples", "title": "Examples" }
+          ]
         }
       ]
     },

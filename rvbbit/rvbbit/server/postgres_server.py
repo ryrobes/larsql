@@ -1657,37 +1657,91 @@ class ClientConnection:
             # Non-fatal - just log the error
             print(f"[{self.session_id}]   ⚠️  Could not create results registry table: {e}")
 
-    def _maybe_materialize_result(self, query: str, result_df, query_id: str | None = None):
+    def _pandas_dtype_to_clickhouse(self, dtype) -> str:
+        """Convert pandas dtype to ClickHouse type."""
+        dtype_str = str(dtype).lower()
+
+        if 'int64' in dtype_str:
+            return 'Int64'
+        elif 'int32' in dtype_str:
+            return 'Int32'
+        elif 'int16' in dtype_str:
+            return 'Int16'
+        elif 'int8' in dtype_str:
+            return 'Int8'
+        elif 'uint64' in dtype_str:
+            return 'UInt64'
+        elif 'uint32' in dtype_str:
+            return 'UInt32'
+        elif 'uint16' in dtype_str:
+            return 'UInt16'
+        elif 'uint8' in dtype_str:
+            return 'UInt8'
+        elif 'float64' in dtype_str:
+            return 'Float64'
+        elif 'float32' in dtype_str:
+            return 'Float32'
+        elif 'bool' in dtype_str:
+            return 'Bool'
+        elif 'datetime64' in dtype_str:
+            return 'DateTime64(6)'
+        elif 'date' in dtype_str:
+            return 'Date'
+        elif 'timedelta' in dtype_str:
+            return 'Int64'  # Store as microseconds
+        else:
+            return 'String'  # Default to String for object, category, etc.
+
+    def _sanitize_column_name(self, name: str) -> str:
+        """Sanitize column name for ClickHouse."""
+        import re
+        # Replace non-alphanumeric chars with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(name))
+        # Ensure starts with letter or underscore
+        if sanitized and sanitized[0].isdigit():
+            sanitized = '_' + sanitized
+        # Avoid empty names
+        if not sanitized:
+            sanitized = '_col'
+        return sanitized
+
+    def _maybe_materialize_result(self, query: str, result_df, query_id: str | None = None, caller_id: str | None = None):
         """
         Auto-materialize RVBBIT query results for "query insurance".
 
-        This saves expensive LLM-powered query results to a date-based schema
-        so users can recover them if their connection drops or client crashes.
+        Creates an ACTUAL TABLE in ClickHouse for each result set:
+        - Result table: rvbbit_results.r_<caller_id>
+        - Log entry: rvbbit_results.query_results (metadata/index)
+
+        This gives full columnar benefits - results are queryable with SQL!
 
         Args:
             query: The original SQL query
             result_df: The pandas DataFrame result
             query_id: Optional query ID for naming (generated if not provided)
+            caller_id: Optional caller_id for linking to sql_query_log
 
         Returns:
             Dict with result location info if materialized:
             {
-                'db_name': database name,
-                'db_path': full path to DuckDB file,
-                'schema_name': schema within DuckDB,
-                'table_name': table within schema
+                'stored_in': 'clickhouse',
+                'result_table': 'r_abc123',
+                'caller_id': caller_id,
+                'query_id': query_id,
+                'row_count': N,
+                'column_count': N
             }
             Returns None if not materialized.
         """
-        import pandas as pd
+        import json
+        import re
         from datetime import datetime
 
-        # Skip if not a persistent database
-        if not self.is_persistent_db:
-            return None
+        print(f"[{self.session_id}]   🔍 _maybe_materialize_result called: query_id={query_id}, caller_id={caller_id}, rows={len(result_df) if result_df is not None else 0}")
 
         # Skip if empty results
         if result_df is None or len(result_df) == 0:
+            print(f"[{self.session_id}]   ⏭️  Skipping: empty results")
             return None
 
         # Skip if results are too large (configurable threshold)
@@ -1695,6 +1749,8 @@ class ClientConnection:
         if len(result_df) > max_rows:
             print(f"[{self.session_id}]   ⚠️  Skipping auto-materialize: {len(result_df)} rows > {max_rows} limit")
             return None
+
+        result_location = None
 
         try:
             # Generate query ID if not provided
@@ -1704,59 +1760,181 @@ class ClientConnection:
                 # Use last 12 chars of existing query_id
                 query_id = query_id[-12:] if len(query_id) > 12 else query_id
 
-            # Create date-based schema name
-            date_str = datetime.now().strftime('%Y%m%d')
-            schema_name = f"_results_{date_str}"
-            table_name = f"q_{query_id}"
-            full_table_name = f"{schema_name}.{table_name}"
+            # Use caller_id if provided, otherwise generate one
+            effective_caller_id = caller_id or f"sql-{query_id}"
 
-            # Create schema if not exists
-            self.duckdb_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+            # Sanitize caller_id for table name (alphanumeric + underscore only)
+            safe_table_suffix = re.sub(r'[^a-zA-Z0-9]', '_', effective_caller_id)
+            result_table_name = f"r_{safe_table_suffix}"
 
-            # Register DataFrame and create table
-            temp_name = f"_temp_materialize_{query_id}"
-            self.duckdb_conn.register(temp_name, result_df)
-            self.duckdb_conn.execute(f"CREATE TABLE {full_table_name} AS SELECT * FROM {temp_name}")
-            self.duckdb_conn.unregister(temp_name)
-
-            # Create query fingerprint (first 200 chars, normalized)
-            query_fingerprint = ' '.join(query.split())[:200]
-
-            # Log to registry
-            self.duckdb_conn.execute("""
-                INSERT INTO _rvbbit_results
-                (query_id, schema_name, table_name, full_table_name, query_fingerprint, row_count, column_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, [query_id, schema_name, table_name, full_table_name, query_fingerprint, len(result_df), len(result_df.columns)])
-
-            # Get the full database path for SQL Trail logging
-            from ..config import get_config
-            config = get_config()
-            safe_db_name = self.database_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-            db_path = os.path.join(config.root_dir, 'session_dbs', f"{safe_db_name}.duckdb")
-
-            # Also export to Parquet for cross-process access (DuckDB has file-level locks)
-            parquet_dir = os.path.join(config.root_dir, 'session_dbs', '.results_cache')
-            os.makedirs(parquet_dir, exist_ok=True)
-            parquet_path = os.path.join(parquet_dir, f"{safe_db_name}_{schema_name}_{table_name}.parquet")
+            # === PRIMARY: Create actual table in ClickHouse ===
+            print(f"[{self.session_id}]   🔍 Creating ClickHouse table {result_table_name} for {len(result_df)} rows...")
             try:
-                result_df.to_parquet(parquet_path, index=False)
-            except Exception as parquet_err:
-                # Non-fatal - DuckDB table is still available
-                print(f"[{self.session_id}]   ⚠️  Parquet export failed: {parquet_err}")
+                from ..db_adapter import get_db
+                db = get_db()
 
-            print(f"[{self.session_id}]   💾 Auto-materialized: {full_table_name} ({len(result_df)} rows, {len(result_df.columns)} cols)")
+                # Build column definitions
+                columns = list(result_df.columns)
+                sanitized_columns = [self._sanitize_column_name(c) for c in columns]
+                column_types = [self._pandas_dtype_to_clickhouse(result_df[col].dtype) for col in columns]
 
-            return {
-                'db_name': self.database_name,
-                'db_path': db_path,
-                'schema_name': schema_name,
-                'table_name': table_name
-            }
+                # Create column spec for CREATE TABLE
+                column_defs = []
+                for san_col, ch_type in zip(sanitized_columns, column_types):
+                    # Use Nullable for all columns to handle None values
+                    column_defs.append(f"`{san_col}` Nullable({ch_type})")
+
+                columns_sql = ",\n    ".join(column_defs)
+
+                # Drop existing table if exists (result tables are ephemeral)
+                drop_sql = f"DROP TABLE IF EXISTS rvbbit_results.{result_table_name}"
+                db.execute(drop_sql)
+
+                # Create the result table
+                create_sql = f"""
+                    CREATE TABLE rvbbit_results.{result_table_name} (
+                        {columns_sql}
+                    )
+                    ENGINE = MergeTree()
+                    ORDER BY tuple()
+                """
+                db.execute(create_sql)
+
+                # Insert data row by row (for type safety)
+                # Build INSERT statement with placeholders
+                placeholders = ", ".join(["%s"] * len(columns))
+                col_names = ", ".join([f"`{c}`" for c in sanitized_columns])
+
+                # Prepare rows for insertion
+                rows_to_insert = []
+                for _, row in result_df.iterrows():
+                    row_values = []
+                    for val in row:
+                        if val is None or (hasattr(val, '__class__') and val.__class__.__name__ == 'NaT'):
+                            row_values.append(None)
+                        elif hasattr(val, 'isoformat'):
+                            row_values.append(val.isoformat())
+                        elif isinstance(val, bytes):
+                            row_values.append(val.hex())
+                        elif hasattr(val, 'item'):  # numpy types
+                            row_values.append(val.item())
+                        else:
+                            row_values.append(val)
+                    rows_to_insert.append(tuple(row_values))
+
+                # Batch insert (ClickHouse is optimized for this)
+                if rows_to_insert:
+                    # Build VALUES clause
+                    def format_value(v):
+                        if v is None:
+                            return 'NULL'
+                        elif isinstance(v, str):
+                            return "'" + v.replace("\\", "\\\\").replace("'", "''") + "'"
+                        elif isinstance(v, bool):
+                            return '1' if v else '0'
+                        elif isinstance(v, (int, float)):
+                            return str(v)
+                        elif isinstance(v, (dict, list)):
+                            return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''") + "'"
+                        else:
+                            return "'" + str(v).replace("\\", "\\\\").replace("'", "''") + "'"
+
+                    # Insert in batches of 1000
+                    batch_size = 1000
+                    for i in range(0, len(rows_to_insert), batch_size):
+                        batch = rows_to_insert[i:i + batch_size]
+                        values_strs = []
+                        for row_tuple in batch:
+                            row_str = "(" + ", ".join(format_value(v) for v in row_tuple) + ")"
+                            values_strs.append(row_str)
+
+                        insert_sql = f"INSERT INTO rvbbit_results.{result_table_name} ({col_names}) VALUES {', '.join(values_strs)}"
+                        db.execute(insert_sql)
+
+                # Log to query_results index table
+                safe_caller_id = effective_caller_id.replace("'", "''")
+                safe_query_id = query_id.replace("'", "''")
+                safe_source_db = self.database_name.replace("'", "''")
+                safe_query = query[:10000].replace("'", "''")
+
+                # Format arrays for ClickHouse
+                columns_arr = "[" + ",".join(f"'{c.replace(chr(39), chr(39)+chr(39))}'" for c in sanitized_columns) + "]"
+                types_arr = "[" + ",".join(f"'{t.replace(chr(39), chr(39)+chr(39))}'" for t in column_types) + "]"
+
+                log_sql = f"""
+                    INSERT INTO rvbbit_results.query_results
+                    (caller_id, query_id, result_table, columns, column_types, row_count, column_count, source_database, source_query)
+                    VALUES (
+                        '{safe_caller_id}',
+                        '{safe_query_id}',
+                        '{result_table_name}',
+                        {columns_arr},
+                        {types_arr},
+                        {len(result_df)},
+                        {len(columns)},
+                        '{safe_source_db}',
+                        '{safe_query}'
+                    )
+                """
+                db.execute(log_sql)
+
+                print(f"[{self.session_id}]   💾 Results materialized: rvbbit_results.{result_table_name} ({len(result_df)} rows, {len(columns)} cols)")
+
+                result_location = {
+                    'stored_in': 'clickhouse',
+                    'result_table': result_table_name,
+                    'caller_id': effective_caller_id,
+                    'query_id': query_id,
+                    'row_count': len(result_df),
+                    'column_count': len(columns)
+                }
+
+            except Exception as ch_err:
+                print(f"[{self.session_id}]   ⚠️  ClickHouse storage failed: {ch_err}")
+                import traceback
+                traceback.print_exc()
+                # Continue to try DuckDB
+
+            # === SECONDARY: Also store in DuckDB (for persistent databases only) ===
+            if self.is_persistent_db:
+                try:
+                    date_str = datetime.now().strftime('%Y%m%d')
+                    schema_name = f"_results_{date_str}"
+                    table_name = f"q_{query_id}"
+                    full_table_name = f"{schema_name}.{table_name}"
+
+                    # Create schema if not exists
+                    self.duckdb_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
+
+                    # Register DataFrame and create table
+                    temp_name = f"_temp_materialize_{query_id}"
+                    self.duckdb_conn.register(temp_name, result_df)
+                    self.duckdb_conn.execute(f"CREATE TABLE {full_table_name} AS SELECT * FROM {temp_name}")
+                    self.duckdb_conn.unregister(temp_name)
+
+                    # Create query fingerprint (first 200 chars, normalized)
+                    query_fingerprint = ' '.join(query.split())[:200]
+
+                    # Log to registry
+                    self.duckdb_conn.execute("""
+                        INSERT INTO _rvbbit_results
+                        (query_id, schema_name, table_name, full_table_name, query_fingerprint, row_count, column_count)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, [query_id, schema_name, table_name, full_table_name, query_fingerprint, len(result_df), len(result_df.columns)])
+
+                    print(f"[{self.session_id}]   💾 Also stored in DuckDB: {full_table_name}")
+
+                except Exception as duckdb_err:
+                    # Non-fatal - ClickHouse is primary
+                    print(f"[{self.session_id}]   ⚠️  DuckDB storage failed (non-fatal): {duckdb_err}")
+
+            return result_location
 
         except Exception as e:
             # Non-fatal - log and continue
             print(f"[{self.session_id}]   ⚠️  Auto-materialize failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _extract_rvbbit_hints(self, query: str) -> tuple:
@@ -3768,13 +3946,20 @@ class ClientConnection:
 
             result_kwargs = {}
             if result_location:
-                result_kwargs = {
-                    'result_db_name': result_location.get('db_name'),
-                    'result_db_path': result_location.get('db_path'),
-                    'result_schema': result_location.get('schema_name'),
-                    'result_table': result_location.get('table_name'),
-                }
-                print(f"[{self.session_id}]   📝 Logging result location to SQL Trail: {result_kwargs}")
+                # New format: results stored in ClickHouse (rvbbit_results.query_results)
+                # The API will query ClickHouse directly using caller_id
+                if result_location.get('stored_in') == 'clickhouse':
+                    # Just log that we have results, actual data is in rvbbit_results database
+                    print(f"[{self.session_id}]   📝 Results stored in ClickHouse: caller_id={result_location.get('caller_id')}, rows={result_location.get('row_count')}")
+                else:
+                    # Legacy format (DuckDB) - for backwards compatibility
+                    result_kwargs = {
+                        'result_db_name': result_location.get('db_name'),
+                        'result_db_path': result_location.get('db_path'),
+                        'result_schema': result_location.get('schema_name'),
+                        'result_table': result_location.get('table_name'),
+                    }
+                    print(f"[{self.session_id}]   📝 Logging result location to SQL Trail: {result_kwargs}")
 
             log_query_complete(
                 query_id=query_id,
@@ -4095,7 +4280,7 @@ class ClientConnection:
                             send_query_results(self.sock, metadata_df, self.transaction_status)
                         else:
                             # 6. Auto-materialize for query insurance, then send results to client
-                            _result_location = self._maybe_materialize_result(query, result_df, _current_query_id)
+                            _result_location = self._maybe_materialize_result(query, result_df, _current_query_id, _caller_id)
                             send_query_results(self.sock, result_df, self.transaction_status)
 
                         if is_parallel and is_materialized:
@@ -4179,7 +4364,7 @@ class ClientConnection:
                 result_df = result.fetchdf()
 
             # Auto-materialize for query insurance (uses original query for detection)
-            _result_location = self._maybe_materialize_result(original_query, result_df, _current_query_id)
+            _result_location = self._maybe_materialize_result(original_query, result_df, _current_query_id, _caller_id)
 
             # Arrow syntax: save result as named table if save_as hint present
             if 'save_as' in rvbbit_hints:
@@ -7626,9 +7811,15 @@ class ClientConnection:
                 # Also log the rewritten query
                 print(f"[{self.session_id}]         Rewritten (first 200 chars): {duckdb_query[:200]}...")
 
+            # Auto-materialize for query insurance (Extended Query Protocol)
+            _result_location = self._maybe_materialize_result(
+                original_query or query, result_df, _query_id, _caller_id
+            )
+
             # Log query completion for SQL Trail (Extended Query Protocol)
             self._complete_query_tracking(
-                _query_id, _query_start_time, _caller_id, result_df
+                _query_id, _query_start_time, _caller_id, result_df,
+                result_location=_result_location
             )
 
         except Exception as e:

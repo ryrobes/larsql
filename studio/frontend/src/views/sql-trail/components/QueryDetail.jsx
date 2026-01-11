@@ -1,6 +1,29 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
+import { AgGridReact } from 'ag-grid-react';
+import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Dark theme for AG Grid - matches SQL Trail style
+const darkGridTheme = themeQuartz.withParams({
+  backgroundColor: '#0a0a0a',
+  foregroundColor: '#cbd5e1',
+  headerBackgroundColor: '#111111',
+  headerTextColor: '#94a3b8',
+  oddRowBackgroundColor: '#0d0d0d',
+  borderColor: '#1e1e1e',
+  rowBorder: true,
+  wrapperBorder: false,
+  headerFontSize: 11,
+  headerFontWeight: 600,
+  fontFamily: "'Google Sans Code', monospace",
+  fontSize: 12,
+  accentColor: '#a78bfa',
+  chromeBackgroundColor: '#0a0a0a',
+});
 
 const API_BASE = 'http://localhost:5050';
 
@@ -543,15 +566,16 @@ const ModelTooltip = ({ active, payload }) => {
 };
 
 /**
- * Results Viewer Component - Displays auto-materialized query results
+ * Results Viewer Component - Displays auto-materialized query results using AG Grid
  */
 const ResultsViewer = ({ callerId, resultLocation }) => {
+  const gridRef = useRef(null);
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [offset, setOffset] = useState(0);
-  const limit = 50;
+  const limit = 100; // Increased for better UX with ag-grid
 
   const fetchResults = useCallback(async (newOffset = 0) => {
     setLoading(true);
@@ -596,19 +620,57 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
     }
   }, [offset, results, fetchResults]);
 
-  // Format cell value for display
-  const formatCell = (value, type) => {
-    if (value === null || value === undefined) {
-      return <span className="results-null">NULL</span>;
-    }
-    if (typeof value === 'object') {
-      return <code className="results-json">{JSON.stringify(value)}</code>;
-    }
-    if (typeof value === 'string' && value.length > 100) {
-      return <span title={value}>{value.substring(0, 100)}...</span>;
-    }
-    return String(value);
-  };
+  // Generate AG Grid column definitions from results
+  const columnDefs = useMemo(() => {
+    if (!results?.columns) return [];
+
+    return results.columns.map((col, idx) => ({
+      field: `col_${idx}`,
+      headerName: col.name,
+      headerTooltip: `${col.name} (${col.type})`,
+      sortable: true,
+      filter: true,
+      resizable: true,
+      minWidth: 100,
+      flex: 1,
+      cellRenderer: (params) => {
+        const value = params.value;
+        if (value === null || value === undefined) {
+          return <span className="results-null">NULL</span>;
+        }
+        if (typeof value === 'object') {
+          return <span className="results-json">{JSON.stringify(value)}</span>;
+        }
+        return String(value);
+      }
+    }));
+  }, [results?.columns]);
+
+  // Transform row data for AG Grid (rows are arrays, need to map to col_N keys)
+  const rowData = useMemo(() => {
+    if (!results?.rows || !results?.columns) return [];
+
+    return results.rows.map((row, rowIdx) => {
+      const rowObj = { _rowIndex: rowIdx };
+      results.columns.forEach((col, colIdx) => {
+        rowObj[`col_${colIdx}`] = row[colIdx];
+      });
+      return rowObj;
+    });
+  }, [results]);
+
+  // Default column definition
+  const defaultColDef = useMemo(() => ({
+    sortable: true,
+    filter: true,
+    resizable: true,
+    minWidth: 80,
+  }), []);
+
+  // Auto-size columns on first data render
+  const onFirstDataRendered = useCallback((params) => {
+    params.api.autoSizeAllColumns();
+  }, []);
 
   if (!expanded) {
     return (
@@ -618,7 +680,7 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
           <div className="results-viewer-location">
             <span className="results-viewer-label">Materialized Results Available</span>
             <code className="results-viewer-path">
-              {resultLocation?.schema}.{resultLocation?.table}
+              rvbbit_results.{resultLocation?.result_table || 'r_...'}
             </code>
           </div>
         </div>
@@ -701,57 +763,52 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
 
       {results && !loading && (
         <>
-          <div className="results-viewer-table-wrapper">
-            <table className="results-viewer-table">
-              <thead>
-                <tr>
-                  {results.columns.map((col, i) => (
-                    <th key={i} title={col.type}>
-                      {col.name}
-                      <span className="results-col-type">{col.type}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {results.rows.map((row, rowIdx) => (
-                  <tr key={rowIdx}>
-                    {row.map((cell, cellIdx) => (
-                      <td key={cellIdx}>
-                        {formatCell(cell, results.columns[cellIdx]?.type)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="results-viewer-grid-wrapper">
+            <AgGridReact
+              ref={gridRef}
+              rowData={rowData}
+              columnDefs={columnDefs}
+              defaultColDef={defaultColDef}
+              theme={darkGridTheme}
+              animateRows={false}
+              onFirstDataRendered={onFirstDataRendered}
+              enableCellTextSelection={true}
+              ensureDomOrder={true}
+              suppressRowClickSelection={true}
+              domLayout="autoHeight"
+              pagination={rowData.length > 25}
+              paginationPageSize={25}
+              paginationPageSizeSelector={[25, 50, 100]}
+            />
           </div>
 
-          <div className="results-viewer-pagination">
-            <button
-              className="btn btn-ghost btn-xs"
-              onClick={handlePrev}
-              disabled={offset === 0}
-            >
-              <Icon icon="mdi:chevron-left" width={14} />
-              Previous
-            </button>
-            <span className="results-viewer-page-info">
-              Showing {offset + 1} - {Math.min(offset + results.rows.length, results.total_rows)} of {formatNumber(results.total_rows)}
-            </span>
-            <button
-              className="btn btn-ghost btn-xs"
-              onClick={handleNext}
-              disabled={!results.has_more}
-            >
-              Next
-              <Icon icon="mdi:chevron-right" width={14} />
-            </button>
-          </div>
+          {results.total_rows > limit && (
+            <div className="results-viewer-pagination">
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={handlePrev}
+                disabled={offset === 0}
+              >
+                <Icon icon="mdi:chevron-left" width={14} />
+                Previous {limit}
+              </button>
+              <span className="results-viewer-page-info">
+                Rows {offset + 1} - {Math.min(offset + results.rows.length, results.total_rows)} of {formatNumber(results.total_rows)}
+              </span>
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={handleNext}
+                disabled={!results.has_more}
+              >
+                Next {limit}
+                <Icon icon="mdi:chevron-right" width={14} />
+              </button>
+            </div>
+          )}
 
           <div className="results-viewer-footer">
             <code className="results-viewer-location-small">
-              {resultLocation?.db_name} → {resultLocation?.schema}.{resultLocation?.table}
+              rvbbit_results.{results.result_table || resultLocation?.result_table}
             </code>
           </div>
         </>

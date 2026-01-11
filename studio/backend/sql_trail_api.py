@@ -460,6 +460,24 @@ def get_query_detail(caller_id: str):
 
         query_row = query_data[0]
 
+        # Check if results exist in ClickHouse (stored as actual tables)
+        safe_caller_id = caller_id.replace("'", "''")
+        results_check_query = f"""
+            SELECT result_table, row_count, column_count
+            FROM rvbbit_results.query_results
+            WHERE caller_id = '{safe_caller_id}'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """
+        try:
+            results_check = db.query(results_check_query)
+            has_clickhouse_results = bool(results_check and len(results_check) > 0 and results_check[0].get('result_table'))
+            results_info = results_check[0] if has_clickhouse_results else {}
+        except Exception:
+            # Table might not exist yet
+            has_clickhouse_results = False
+            results_info = {}
+
         # Get cascade executions from tracking table
         cascade_execs_query = f"""
             SELECT
@@ -537,12 +555,11 @@ def get_query_detail(caller_id: str):
                 'error_message': query_row.get('error_message'),
                 'protocol': query_row.get('protocol'),
                 'timestamp': format_timestamp_utc(query_row.get('timestamp')),
-                # Result location for auto-materialized RVBBIT query results
-                'result_db_name': query_row.get('result_db_name'),
-                'result_db_path': query_row.get('result_db_path'),
-                'result_schema': query_row.get('result_schema'),
-                'result_table': query_row.get('result_table'),
-                'has_materialized_result': bool(query_row.get('result_db_path') and query_row.get('result_table'))
+                # Result availability - stored as actual tables in rvbbit_results database
+                'has_materialized_result': has_clickhouse_results,
+                'result_table': results_info.get('result_table') if has_clickhouse_results else None,
+                'result_row_count': safe_int(results_info.get('row_count')) if has_clickhouse_results else None,
+                'result_column_count': safe_int(results_info.get('column_count')) if has_clickhouse_results else None
             },
             'spawned_sessions': [
                 {
@@ -962,11 +979,10 @@ def get_time_series():
 @sql_trail_bp.route('/api/sql-trail/query/<caller_id>/results', methods=['GET'])
 def get_query_results(caller_id: str):
     """
-    Fetch auto-materialized query results from DuckDB.
+    Fetch auto-materialized query results from ClickHouse.
 
-    For RVBBIT queries, results are automatically saved to a date-based schema
-    in the session DuckDB file. This endpoint retrieves those results for
-    display in the SQL Trail UI.
+    Results are stored as actual tables in rvbbit_results database.
+    The query_results table is a log/index pointing to the actual data tables.
 
     Query params:
         offset: Row offset for pagination (default: 0)
@@ -980,7 +996,8 @@ def get_query_results(caller_id: str):
             offset: int,
             limit: int,
             has_more: bool,
-            result_location: {db_name, db_path, schema, table}
+            source: 'clickhouse',
+            result_table: 'r_xxx'
         }
     """
     try:
@@ -991,303 +1008,87 @@ def get_query_results(caller_id: str):
 
         db = get_db()
 
-        # Get result location from sql_query_log
-        location_query = f"""
+        # First, get the result table reference from the log
+        safe_caller_id = caller_id.replace("'", "''")
+        log_query = f"""
             SELECT
-                result_db_name,
-                result_db_path,
-                result_schema,
-                result_table
-            FROM sql_query_log
-            WHERE caller_id = '{caller_id}'
-            ORDER BY timestamp DESC
+                result_table,
+                columns,
+                column_types,
+                row_count,
+                column_count,
+                source_database,
+                created_at
+            FROM rvbbit_results.query_results
+            WHERE caller_id = '{safe_caller_id}'
+            ORDER BY created_at DESC
             LIMIT 1
         """
-        location_data = db.query(location_query)
-        print(f"[sql_trail_api] Location data: {location_data}", flush=True)
 
-        if not location_data:
-            return jsonify({'error': 'Query not found'}), 404
+        log_data = db.query(log_query)
 
-        loc = location_data[0]
-        db_path = loc.get('result_db_path')
-        schema_name = loc.get('result_schema')
-        table_name = loc.get('result_table')
-        print(f"[sql_trail_api] db_path={db_path}, schema={schema_name}, table={table_name}", flush=True)
-
-        if not db_path or not table_name:
+        if not log_data:
+            # No results in ClickHouse - return 404
             return jsonify({
                 'error': 'No materialized results',
-                'message': 'This query does not have auto-materialized results. Results are only saved for RVBBIT queries (cascades, UDFs, semantic operators) on persistent databases.'
+                'message': 'This query does not have auto-materialized results. Results are saved for queries that use RVBBIT features (cascades, UDFs, semantic operators).'
             }), 404
 
-        # Check if DuckDB file exists
-        if not os.path.exists(db_path):
+        log_row = log_data[0]
+        result_table = log_row.get('result_table')
+        columns_list = log_row.get('columns', [])
+        column_types_list = log_row.get('column_types', [])
+        total_rows = safe_int(log_row.get('row_count', 0))
+
+        if not result_table:
             return jsonify({
-                'error': 'Database file not found',
-                'message': f'The session database file has been deleted or moved: {db_path}',
-                'result_location': {
-                    'db_name': loc.get('result_db_name'),
-                    'db_path': db_path,
-                    'schema': schema_name,
-                    'table': table_name
-                }
+                'error': 'No result table reference',
+                'message': 'Log entry exists but no result table reference found.'
             }), 404
 
-        # Connect to the session DuckDB and fetch results
-        import duckdb
-        import subprocess
-        import json as json_lib
-        import pandas as pd
+        # Build column info
+        columns = [
+            {'name': name, 'type': column_types_list[i] if i < len(column_types_list) else 'unknown'}
+            for i, name in enumerate(columns_list)
+        ]
+
+        # Query the actual result table with pagination
+        col_names = ", ".join([f"`{c}`" for c in columns_list])
+        data_query = f"""
+            SELECT {col_names}
+            FROM rvbbit_results.{result_table}
+            LIMIT {limit} OFFSET {offset}
+        """
 
         try:
-            print(f"[sql_trail_api] Fetching results, db_path={db_path}", flush=True)
-
-            # First, try Parquet cache (no locking issues)
-            db_name = loc.get('result_db_name', '')
-            safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-            session_dbs_dir = os.path.dirname(db_path)
-            parquet_dir = os.path.join(session_dbs_dir, '.results_cache')
-            parquet_path = os.path.join(parquet_dir, f"{safe_db_name}_{schema_name}_{table_name}.parquet")
-
-            if os.path.exists(parquet_path):
-                try:
-                    print(f"[sql_trail_api] Reading from Parquet cache: {parquet_path}", flush=True)
-                    df = pd.read_parquet(parquet_path)
-                    total_rows = len(df)
-
-                    # Get columns
-                    columns = [{'name': col, 'type': str(df[col].dtype)} for col in df.columns]
-
-                    # Paginate
-                    page_df = df.iloc[offset:offset + limit]
-
-                    # Convert to list of lists
-                    rows = []
-                    for _, row in page_df.iterrows():
-                        row_data = []
-                        for val in row:
-                            if pd.isna(val):
-                                row_data.append(None)
-                            elif hasattr(val, 'isoformat'):
-                                row_data.append(val.isoformat())
-                            elif isinstance(val, (dict, list)):
-                                row_data.append(val)
-                            elif isinstance(val, bytes):
-                                row_data.append(val.hex())
-                            else:
-                                try:
-                                    row_data.append(float(val) if isinstance(val, (int, float)) else str(val))
-                                except:
-                                    row_data.append(str(val))
-                        rows.append(row_data)
-
-                    return jsonify({
-                        'columns': columns,
-                        'rows': rows,
-                        'total_rows': total_rows,
-                        'offset': offset,
-                        'limit': limit,
-                        'has_more': (offset + len(rows)) < total_rows,
-                        'source': 'parquet_cache',
-                        'result_location': {
-                            'db_name': loc.get('result_db_name'),
-                            'db_path': db_path,
-                            'schema': schema_name,
-                            'table': table_name
-                        }
-                    })
-                except Exception as parquet_err:
-                    print(f"[sql_trail_api] Parquet read failed: {parquet_err}, falling back to DuckDB", flush=True)
-
-            # Fall back to DuckDB
-            print(f"[sql_trail_api] Connecting to DuckDB: {db_path}", flush=True)
-            conn = None
-
-            # Try different connection methods
-            for attempt, method in enumerate(['read_only', 'normal', 'subprocess']):
-                try:
-                    if method == 'read_only':
-                        conn = duckdb.connect(db_path, read_only=True)
-                        print(f"[sql_trail_api] Connected with read_only=True", flush=True)
-                        break
-                    elif method == 'normal':
-                        conn = duckdb.connect(db_path)
-                        print(f"[sql_trail_api] Connected without read_only", flush=True)
-                        break
-                    elif method == 'subprocess':
-                        # Fall back to subprocess - bypasses in-process locking
-                        print(f"[sql_trail_api] Trying subprocess method", flush=True)
-                        full_table = f'"{schema_name}"."{table_name}"' if schema_name else f'"{table_name}"'
-
-                        # Build the query script
-                        query_script = f"""
-import duckdb
-import json
-
-conn = duckdb.connect('{db_path}', read_only=True)
-full_table = {repr(full_table)}
-
-# Get count
-count_result = conn.execute(f"SELECT COUNT(*) FROM {{full_table}}").fetchone()
-total_rows = count_result[0] if count_result else 0
-
-# Get columns
-describe_result = conn.execute(f"DESCRIBE {{full_table}}").fetchall()
-columns = [{{'name': row[0], 'type': row[1]}} for row in describe_result]
-
-# Get data
-data_result = conn.execute(f"SELECT * FROM {{full_table}} LIMIT {limit} OFFSET {offset}").fetchall()
-rows = []
-for row in data_result:
-    row_data = []
-    for val in row:
-        if val is None:
-            row_data.append(None)
-        elif hasattr(val, 'isoformat'):
-            row_data.append(val.isoformat())
-        elif isinstance(val, (dict, list)):
-            row_data.append(val)
-        elif isinstance(val, bytes):
-            row_data.append(val.hex())
-        else:
-            try:
-                row_data.append(float(val) if isinstance(val, (int, float)) else str(val))
-            except:
-                row_data.append(str(val))
-    rows.append(row_data)
-
-conn.close()
-print(json.dumps({{'columns': columns, 'rows': rows, 'total_rows': total_rows}}))
-"""
-                        result = subprocess.run(
-                            ['python', '-c', query_script],
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-                        if result.returncode == 0:
-                            data = json_lib.loads(result.stdout.strip())
-                            return jsonify({
-                                'columns': data['columns'],
-                                'rows': data['rows'],
-                                'total_rows': data['total_rows'],
-                                'offset': offset,
-                                'limit': limit,
-                                'has_more': (offset + len(data['rows'])) < data['total_rows'],
-                                'result_location': {
-                                    'db_name': loc.get('result_db_name'),
-                                    'db_path': db_path,
-                                    'schema': schema_name,
-                                    'table': table_name
-                                }
-                            })
-                        else:
-                            raise Exception(f"Subprocess failed: {result.stderr}")
-                except Exception as method_err:
-                    print(f"[sql_trail_api] Method {method} failed: {method_err}", flush=True)
-                    if method == 'subprocess':
-                        raise  # Re-raise on last attempt
-                    continue
-
-            if conn is None:
-                raise Exception("All connection methods failed")
-
-            # Build full table reference
-            full_table = f"{schema_name}.{table_name}" if schema_name else table_name
-            print(f"[sql_trail_api] Querying table: {full_table}", flush=True)
-
-            # Check if table exists
-            try:
-                conn.execute(f"SELECT 1 FROM {full_table} LIMIT 1")
-            except Exception as table_err:
-                conn.close()
-                return jsonify({
-                    'error': 'Result table not found',
-                    'message': f'The result table {full_table} no longer exists. It may have been cleaned up.',
-                    'result_location': {
-                        'db_name': loc.get('result_db_name'),
-                        'db_path': db_path,
-                        'schema': schema_name,
-                        'table': table_name
-                    }
-                }), 404
-
-            # Get total row count
-            count_result = conn.execute(f"SELECT COUNT(*) FROM {full_table}").fetchone()
-            total_rows = count_result[0] if count_result else 0
-
-            # Get column info
-            describe_result = conn.execute(f"DESCRIBE {full_table}").fetchall()
-            columns = [
-                {'name': row[0], 'type': row[1]}
-                for row in describe_result
-            ]
-
-            # Fetch paginated data
-            data_result = conn.execute(f"""
-                SELECT * FROM {full_table}
-                LIMIT {limit} OFFSET {offset}
-            """)
-
-            # Convert to list of lists for JSON serialization
-            rows = []
-            for row in data_result.fetchall():
-                row_data = []
-                for val in row:
-                    # Handle special types for JSON serialization
-                    if val is None:
-                        row_data.append(None)
-                    elif hasattr(val, 'isoformat'):
-                        row_data.append(val.isoformat())
-                    elif isinstance(val, (dict, list)):
-                        row_data.append(val)
-                    elif isinstance(val, bytes):
-                        row_data.append(val.hex())
-                    else:
-                        try:
-                            # Try to convert to native Python type
-                            row_data.append(float(val) if isinstance(val, (int, float)) else str(val))
-                        except:
-                            row_data.append(str(val))
-                rows.append(row_data)
-
-            conn.close()
-
+            result_data = db.query(data_query)
+        except Exception as table_err:
+            # Table might have been dropped (expired)
+            print(f"[sql_trail_api] Result table query failed: {table_err}", flush=True)
             return jsonify({
-                'columns': columns,
-                'rows': rows,
-                'total_rows': total_rows,
-                'offset': offset,
-                'limit': limit,
-                'has_more': (offset + len(rows)) < total_rows,
-                'result_location': {
-                    'db_name': loc.get('result_db_name'),
-                    'db_path': db_path,
-                    'schema': schema_name,
-                    'table': table_name
-                }
-            })
+                'error': 'Result table not found',
+                'message': f'The result table {result_table} may have expired or been dropped.'
+            }), 404
 
-        except Exception as duckdb_err:
-            error_str = str(duckdb_err)
-            # Check if it's a locking error
-            is_lock_error = 'lock' in error_str.lower() or 'busy' in error_str.lower() or 'exclusive' in error_str.lower()
-            if is_lock_error:
-                message = f"Database is locked by another process (likely pgwire server). Results for new queries will be cached in Parquet format for reliable access. For this query, close your SQL client connection and try again."
-            else:
-                message = error_str
-            return jsonify({
-                'error': 'Failed to read results',
-                'message': message,
-                'is_lock_error': is_lock_error,
-                'result_location': {
-                    'db_name': loc.get('result_db_name'),
-                    'db_path': db_path,
-                    'schema': schema_name,
-                    'table': table_name
-                }
-            }), 500
+        # Convert to row arrays (list of lists, not list of dicts)
+        rows = []
+        for row_dict in result_data:
+            row_values = [row_dict.get(col) for col in columns_list]
+            rows.append(row_values)
+
+        print(f"[sql_trail_api] Returning {len(rows)} rows from rvbbit_results.{result_table} (total: {total_rows})", flush=True)
+
+        return jsonify({
+            'columns': columns,
+            'rows': rows,
+            'total_rows': total_rows,
+            'offset': offset,
+            'limit': limit,
+            'has_more': (offset + len(rows)) < total_rows,
+            'source': 'clickhouse',
+            'result_table': result_table,
+            'source_database': log_row.get('source_database', '')
+        })
 
     except Exception as e:
         import traceback
@@ -1306,6 +1107,10 @@ def export_query_results(caller_id: str):
     Returns:
         File download (CSV or JSON)
     """
+    import json as json_lib
+    from flask import Response
+    import io
+
     try:
         export_format = request.args.get('format', 'csv').lower()
 
@@ -1314,70 +1119,74 @@ def export_query_results(caller_id: str):
 
         db = get_db()
 
-        # Get result location
-        location_query = f"""
-            SELECT
-                result_db_name,
-                result_db_path,
-                result_schema,
-                result_table
-            FROM sql_query_log
-            WHERE caller_id = '{caller_id}'
-            ORDER BY timestamp DESC
+        # First, get the result table reference from the log
+        safe_caller_id = caller_id.replace("'", "''")
+        log_query = f"""
+            SELECT result_table, columns
+            FROM rvbbit_results.query_results
+            WHERE caller_id = '{safe_caller_id}'
+            ORDER BY created_at DESC
             LIMIT 1
         """
-        location_data = db.query(location_query)
 
-        if not location_data:
-            return jsonify({'error': 'Query not found'}), 404
+        log_data = db.query(log_query)
 
-        loc = location_data[0]
-        db_path = loc.get('result_db_path')
-        schema_name = loc.get('result_schema')
-        table_name = loc.get('result_table')
-
-        if not db_path or not table_name or not os.path.exists(db_path):
+        if not log_data:
             return jsonify({'error': 'No materialized results available'}), 404
 
-        import duckdb
-        import pandas as pd
-        from flask import Response
-        import io
+        log_row = log_data[0]
+        result_table = log_row.get('result_table')
+        columns = log_row.get('columns', [])
 
-        result_df = None
+        if not result_table:
+            return jsonify({'error': 'No result table reference found'}), 404
 
-        # First, try Parquet cache (no locking issues)
-        db_name = loc.get('result_db_name', '')
-        safe_db_name = db_name.replace("/", "_").replace("\\", "_").replace("..", "_")
-        session_dbs_dir = os.path.dirname(db_path)
-        parquet_dir = os.path.join(session_dbs_dir, '.results_cache')
-        parquet_path = os.path.join(parquet_dir, f"{safe_db_name}_{schema_name}_{table_name}.parquet")
+        # Query ALL data from the actual result table (no limit for export)
+        col_names = ", ".join([f"`{c}`" for c in columns])
+        data_query = f"""
+            SELECT {col_names}
+            FROM rvbbit_results.{result_table}
+        """
 
-        if os.path.exists(parquet_path):
-            try:
-                result_df = pd.read_parquet(parquet_path)
-            except Exception as parquet_err:
-                print(f"[sql_trail_api] Export: Parquet read failed, falling back to DuckDB: {parquet_err}")
+        try:
+            result_data = db.query(data_query)
+        except Exception as table_err:
+            return jsonify({
+                'error': 'Result table not found',
+                'message': f'The result table {result_table} may have expired or been dropped.'
+            }), 404
 
-        # Fall back to DuckDB if Parquet not available
-        if result_df is None:
-            conn = duckdb.connect(db_path, read_only=True)
-            full_table = f"{schema_name}.{table_name}" if schema_name else table_name
-            result_df = conn.execute(f"SELECT * FROM {full_table}").fetchdf()
-            conn.close()
+        # Convert to row arrays
+        rows = []
+        for row_dict in result_data:
+            row_values = [row_dict.get(col) for col in columns]
+            rows.append(row_values)
 
         if export_format == 'json':
-            # Convert DataFrame to JSON
-            json_data = result_df.to_json(orient='records', date_format='iso')
+            # Convert to list of dicts for JSON export
+            json_rows = [dict(zip(columns, row)) for row in rows]
+            json_data = json_lib.dumps(json_rows, indent=2, default=str)
             return Response(
                 json_data,
                 mimetype='application/json',
                 headers={'Content-Disposition': f'attachment; filename=query_results_{caller_id[:12]}.json'}
             )
         else:
-            # Convert DataFrame to CSV
+            # Convert to CSV
             output = io.StringIO()
-            result_df.to_csv(output, index=False)
+            # Write header
+            output.write(','.join(f'"{c}"' for c in columns) + '\n')
+            # Write rows
+            for row in rows:
+                csv_row = []
+                for val in row:
+                    if val is None:
+                        csv_row.append('')
+                    elif isinstance(val, str):
+                        csv_row.append(f'"{val.replace(chr(34), chr(34)+chr(34))}"')
+                    else:
+                        csv_row.append(str(val))
+                output.write(','.join(csv_row) + '\n')
             csv_data = output.getvalue()
             return Response(
                 csv_data,

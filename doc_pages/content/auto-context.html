@@ -1,0 +1,761 @@
+<h1>Auto-Context Deep Dive</h1>
+<p class="lead">
+  A comprehensive guide to RVBBIT's intelligent context management system.
+  Understand exactly how context is selected, compressed, and optimized at every level.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Key Design Principle</div>
+  <p>
+    <strong>NEVER drop information</strong> - originals are always stored and available for injection.
+    Auto-context compresses what the LLM <em>sees</em>, not what RVBBIT <em>stores</em>.
+    This means you can always retrieve full history if needed. A message that might get culled in one turn might be fully re-included in a subsequent turn if it seems relevant.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">System Overview</a></li>
+    <li><a href="#decision-flow">Decision Flow Diagram</a></li>
+    <li><a href="#intra-cell">Intra-Cell Context (Within a Cell)</a></li>
+    <li><a href="#inter-cell">Inter-Cell Context (Between Cells)</a></li>
+    <li><a href="#configuration">Configuration Reference</a></li>
+    <li><a href="#token-savings">Token Savings Analysis</a></li>
+    <li><a href="#examples">Example Cascades</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">System Overview</h2>
+
+<p>
+  RVBBIT's auto-context system operates at two distinct levels, each solving different problems:
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:message-processing"></iconify-icon></div>
+    <h4>Intra-Cell (Within)</h4>
+    <p>
+      Manages context <strong>within a single cell's turn loop</strong>.
+      Prevents context explosion during long-running research, iteration, or tool-heavy cells.
+    </p>
+    <ul>
+      <li>Sliding window for recent turns</li>
+      <li>Observation masking for old tool results</li>
+      <li>Loop compression for retry attempts</li>
+    </ul>
+    <p class="stat"><strong>Typical savings:</strong> 50-80%</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:arrow-right-bold-box-outline"></iconify-icon></div>
+    <h4>Inter-Cell (Between)</h4>
+    <p>
+      Controls what context <strong>flows from prior cells</strong> to the current cell.
+      Uses intelligent selection instead of manual <code>context.from</code> configuration.
+    </p>
+    <ul>
+      <li>Anchors (always-included context)</li>
+      <li>Multiple selection strategies</li>
+      <li>Token budget enforcement</li>
+    </ul>
+    <p class="stat"><strong>Typical savings:</strong> 40-70%</p>
+  </div>
+</div>
+
+<h2 id="decision-flow">Decision Flow Diagram</h2>
+
+<p>
+  This diagram shows exactly what happens when auto-context processes a new turn or cell execution.
+  The system first determines whether this is an intra-cell operation (within a turn loop) or 
+  inter-cell (starting a new cell), then applies the appropriate context building strategy.
+</p>
+
+<div class="mermaid-container">
+<pre class="mermaid">
+stateDiagram-v2
+    direction LR
+    [*] --> CheckType: New Turn/Cell
+
+    CheckType --> IntraCell: Within Cell Turn?
+    CheckType --> InterCell: New Cell Start?
+
+    state "Intra-Cell Context" as IntraCell {
+        direction TB
+        [*] --> IC_CheckEnabled: Start
+
+        IC_CheckEnabled --> IC_FullHistory: Disabled
+        IC_CheckEnabled --> IC_CheckLoop: Enabled
+
+        IC_CheckLoop --> IC_LoopCompression: Loop retry?
+        IC_CheckLoop --> IC_StandardBuild: Normal turn
+
+        state "Standard Build" as IC_StandardBuild {
+            direction TB
+            SB_Start --> SB_System: Keep system prompts
+            SB_System --> SB_Window: Calculate window
+            SB_Window --> SB_Older: Mask older messages
+            SB_Older --> SB_Recent: Keep recent full
+        }
+
+        state "Loop Compression" as IC_LoopCompression {
+            direction TB
+            LC_System --> LC_Task: Original task
+            LC_Task --> LC_Fails: Recent failures
+            LC_Fails --> LC_Retry: Retry prompt
+        }
+
+        IC_LoopCompression --> IC_Done: Minimal context
+        IC_StandardBuild --> IC_Done: Standard context
+        IC_FullHistory --> IC_Done: Full history
+    }
+
+    state "Inter-Cell Context" as InterCell {
+        direction TB
+        [*] --> EC_CheckMode: Start
+
+        EC_CheckMode --> EC_Explicit: Explicit mode
+        EC_CheckMode --> EC_Auto: Auto mode
+
+        state "Auto Selection" as EC_Auto {
+            direction TB
+            AS_Anchors --> AS_Cards: Get context cards
+            AS_Cards --> AS_Strategy: Choose strategy
+
+            AS_Strategy --> AS_Heuristic: heuristic
+            AS_Strategy --> AS_Semantic: semantic
+            AS_Strategy --> AS_LLM: llm
+            AS_Strategy --> AS_Hybrid: hybrid
+
+            AS_Heuristic --> AS_Inject: Keywords + recency
+            AS_Semantic --> AS_Inject: Vector similarity
+            AS_LLM --> AS_Inject: LLM selection
+            AS_Hybrid --> AS_Inject: Prefilter + LLM
+
+            AS_Inject --> AS_Done: Inject by hash
+        }
+
+        EC_Auto --> EC_Done: Auto context
+        EC_Explicit --> EC_Done: Explicit context
+    }
+
+    IntraCell --> [*]: To LLM Call
+    InterCell --> [*]: To Cell Execution
+</pre>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:information-outline"></iconify-icon> Diagram Legend</div>
+  <p><strong>Intra-Cell Path:</strong> For each turn within a cell, context is either passed through fully (disabled),
+  compressed via loop compression (for retries), or built with sliding window + masking (standard).</p>
+  <p><strong>Inter-Cell Path:</strong> When starting a new cell, context is either explicitly configured or
+  auto-selected using one of four strategies. Anchors (input, outputs, callouts, errors) are always included.
+  Context cards contain hash references, summaries, keywords, and embeddings for efficient selection.</p>
+</div>
+
+<h2 id="intra-cell">Intra-Cell Context (Within a Cell)</h2>
+
+<p>
+  Intra-cell context management prevents context explosion during long-running cells.
+  It uses a <strong>tiered approach</strong> that progressively compresses older messages.
+</p>
+
+<h3>The Three Tiers</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tier</th>
+      <th>Messages</th>
+      <th>Treatment</th>
+      <th>Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Tier 0</strong><br>System</td>
+      <td>System prompt(s)</td>
+      <td>Always preserved in full</td>
+      <td>Core instructions must never be lost</td>
+    </tr>
+    <tr>
+      <td><strong>Tier 1</strong><br>Recent Window</td>
+      <td>Last N turns (default: 5)</td>
+      <td>Full fidelity</td>
+      <td>Recent context is most relevant for current work</td>
+    </tr>
+    <tr>
+      <td><strong>Tier 2</strong><br>Older Messages</td>
+      <td>Beyond window</td>
+      <td>Masked/Compressed</td>
+      <td>Historical details rarely needed, but references available</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Window Calculation</h3>
+
+<p>
+  The sliding window is calculated based on turns, not individual messages. Since each turn 
+  typically involves ~3 messages (user prompt, assistant response with tool calls, tool results), 
+  the window boundary is: <code>window * 3</code> messages from the end.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Window Boundary Logic</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># From auto_context.py:200-204</span>
+window_messages = self.config.window * 3  <span class="cmt"># ~3 msgs per turn</span>
+window_start = max(0, len(messages) - window_messages)
+
+older_messages = messages[:window_start]   <span class="cmt"># Apply masking</span>
+recent_messages = messages[window_start:]  <span class="cmt"># Full fidelity</span></pre>
+  </div>
+</div>
+
+<h3>Observation Masking</h3>
+
+<p>
+  When tool results are older than the window, they're replaced with reference placeholders.
+  The original content is still stored and can be retrieved by hash if needed.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Before Masking (2000 chars)</span>
+  </div>
+  <div class="code-block-content">
+    <pre>{
+  "role": "tool",
+  "tool_call_id": "call_abc123",
+  "content": "{"data": [...2000 chars of JSON...]}"
+}</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">After Masking (~50 chars)</span>
+  </div>
+  <div class="code-block-content">
+    <pre>{
+  "role": "tool", 
+  "tool_call_id": "call_abc123",
+  "content": "[Tool structured result, 2000 chars, ref=a1b2c3d4]",
+  "_masked": true,
+  "_original_hash": "a1b2c3d4"
+}</pre>
+  </div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:check-circle-outline"></iconify-icon> Hash References</div>
+  <p>
+    The <code>ref=a1b2c3d4</code> hash allows retrieval of the original content if needed.
+    This is how auto-context maintains the "never drop" principle - the data exists,
+    the LLM just doesn't see it unless it's relevant.
+  </p>
+</div>
+
+<h3>Message Processing Rules</h3>
+
+<p>For each message outside the recent window, the following rules are applied in order:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Condition</th>
+      <th>Action</th>
+      <th>Rationale</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Contains error keywords</td>
+      <td><strong>Preserve fully</strong></td>
+      <td>Errors are always important for debugging</td>
+    </tr>
+    <tr>
+      <td>Tool result &gt; min_masked_size</td>
+      <td>Mask with hash placeholder</td>
+      <td>Large results dominate token budget</td>
+    </tr>
+    <tr>
+      <td>Tool result &lt;= min_masked_size</td>
+      <td>Preserve fully</td>
+      <td>Small results aren't worth masking overhead</td>
+    </tr>
+    <tr>
+      <td>Assistant with tool_calls</td>
+      <td>Mask to tool list + preview</td>
+      <td>Tool call JSON is verbose but tool names helpful</td>
+    </tr>
+    <tr>
+      <td>Assistant reasoning &gt; 2000 chars</td>
+      <td>Truncate to 2000 chars</td>
+      <td>Very long reasoning rarely needed in full</td>
+    </tr>
+    <tr>
+      <td>User message</td>
+      <td>Preserve fully</td>
+      <td>User instructions are always important</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Loop Compression</h3>
+
+<p>
+  For <code>loop_until</code> retry attempts, a radically minimal context is built.
+  The insight: retry attempts don't need the full conversation history - they need to know
+  what they're trying to do and why previous attempts failed.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Loop Context Structure (Attempt #4)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Only these 4 components are included:</span>
+
+<span class="str">System: You are a data analyst...</span>
+
+<span class="str">User: [Original Task]</span>
+<span class="str">Generate a report analyzing Q4 sales data with charts...</span>
+
+<span class="str">Assistant: [Attempt #2]</span>
+<span class="str">Here is my analysis...</span>
+
+<span class="str">User: [Validation Failed]</span>
+<span class="str">Missing required "summary" section in output</span>
+
+<span class="str">Assistant: [Attempt #3]</span>
+<span class="str">Here is the corrected report...</span>
+
+<span class="str">User: [Validation Failed]</span>
+<span class="str">Chart data doesn't match the numbers in the text</span>
+
+<span class="str">User: Please try again (Attempt #4). Address the validation issues noted above.</span></pre>
+  </div>
+</div>
+
+<p>
+  This achieves <strong>70-80% token reduction</strong> for loop_until scenarios, where
+  traditional approaches would accumulate all attempts at full fidelity.
+</p>
+
+<h2 id="inter-cell">Inter-Cell Context (Between Cells)</h2>
+
+<p>
+  When a cell starts, it may need context from prior cells. Instead of manually specifying
+  <code>context: {from: [cell_a, cell_b]}</code>, auto-context can intelligently select
+  what's relevant.
+</p>
+
+<h3>Anchors: Always-Included Context</h3>
+
+<p>
+  Anchors are messages that are <strong>always included</strong> regardless of selection strategy.
+  They represent critical context that should never be omitted:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Anchor Type</th>
+      <th>What It Includes</th>
+      <th>Why It's Anchored</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>input</code></td>
+      <td>Original cascade input</td>
+      <td>The task/request never becomes irrelevant</td>
+    </tr>
+    <tr>
+      <td><code>output</code></td>
+      <td>Final outputs from specified cells</td>
+      <td>Completed work should inform next steps</td>
+    </tr>
+    <tr>
+      <td><code>callouts</code></td>
+      <td>User-marked important messages</td>
+      <td>Explicitly flagged as important</td>
+    </tr>
+    <tr>
+      <td><code>errors</code></td>
+      <td>Error messages (limit: 5)</td>
+      <td>Errors inform debugging and avoidance</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Anchor Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">context</span>:
+  <span class="key">mode</span>: auto
+  <span class="key">anchors</span>:
+    <span class="key">window</span>: <span class="num">3</span>              <span class="cmt"># Last N turns from current cell</span>
+    <span class="key">from_cells</span>: [previous]  <span class="cmt"># Which cells to get outputs from</span>
+    <span class="key">include</span>:               <span class="cmt"># What to anchor</span>
+      - output
+      - callouts  
+      - input
+      - errors</pre>
+  </div>
+</div>
+
+<h3>Context Cards</h3>
+
+<p>
+  Every message logged during execution gets a "context card" stored in the database.
+  These cards contain metadata that enables fast selection without loading full content:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>content_hash</code></td><td>SHA256 reference to original content</td></tr>
+    <tr><td><code>summary</code></td><td>LLM-generated summary (~100 chars)</td></tr>
+    <tr><td><code>keywords</code></td><td>Extracted keywords for heuristic matching</td></tr>
+    <tr><td><code>embedding</code></td><td>Vector embedding for semantic search</td></tr>
+    <tr><td><code>estimated_tokens</code></td><td>Token count for budget enforcement</td></tr>
+    <tr><td><code>is_callout</code></td><td>Whether user marked as important</td></tr>
+    <tr><td><code>message_timestamp</code></td><td>For recency scoring</td></tr>
+  </tbody>
+</table>
+
+<h3>Selection Strategies</h3>
+
+<h4>Heuristic Selection (Fast, No LLM)</h4>
+
+<p>
+  Scores candidates using keyword overlap, recency, and callout status.
+  Good for cost-sensitive workloads where approximate selection is acceptable.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Heuristic Scoring Formula</span>
+  </div>
+  <div class="code-block-content">
+    <pre>score = 0.0
+score += keyword_overlap * keyword_weight * 10    <span class="cmt"># How many keywords match</span>
+score += recency_score * recency_weight * 50      <span class="cmt"># Newer = higher (0-1)</span>
+score += callout_weight * 100 if is_callout       <span class="cmt"># Big boost for callouts</span>
+score += 5 if role == "assistant"                 <span class="cmt"># Slight preference for outputs</span></pre>
+  </div>
+</div>
+
+<h4>Semantic Selection (Vector Search)</h4>
+
+<p>
+  Embeds the current task instructions and finds similar context cards using vector similarity.
+  Good when keyword overlap doesn't capture semantic relationships.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Semantic Selection Flow</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># 1. Embed current task</span>
+task_embedding = embed(cell.instructions[:1000])
+
+<span class="cmt"># 2. Search context cards by similarity</span>
+results = db.search_context_cards_semantic(
+    session_id=session_id,
+    query_embedding=task_embedding,
+    limit=max_messages,
+    similarity_threshold=0.5
+)
+
+<span class="cmt"># 3. Select until budget exhausted</span>
+selected = []
+for r in results:
+    if tokens_used + r.tokens <= budget:
+        selected.append(r.content_hash)</pre>
+  </div>
+</div>
+
+<h4>LLM Selection (Most Accurate)</h4>
+
+<p>
+  A cheap, fast model scans a "menu" of context summaries and picks relevant ones.
+  Most accurate but adds a small LLM call cost.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">LLM Selection Menu Format</span>
+  </div>
+  <div class="code-block-content">
+    <pre>[a1b2c3d4] assistant (research, ~500 tok): Found 3 relevant papers on...
+[e5f6g7h8] user (research, ~100 tok): Can you also check industry reports?
+[i9j0k1l2] assistant (analyze, ~800 tok): Key findings show 40% improvement...</pre>
+  </div>
+</div>
+
+<p>
+  The context selector model (default: <code>gemini-2.5-flash-lite</code>) returns JSON:
+  <code>{"selected": ["a1b2c3d4", "i9j0k1l2"], "reasoning": "These contain the research findings..."}</code>
+</p>
+
+<h4>Hybrid Selection (Recommended)</h4>
+
+<p>
+  Combines heuristic prefiltering with LLM final selection for the best balance of 
+  accuracy and cost:
+</p>
+
+<ol>
+  <li><strong>Prefilter:</strong> Heuristic selects top candidates at 2x the token budget</li>
+  <li><strong>Skip LLM:</strong> If &le;5 candidates remain, use heuristic result directly</li>
+  <li><strong>LLM Final:</strong> Otherwise, LLM picks from the prefiltered pool</li>
+</ol>
+
+<h3>Original Content Injection</h3>
+
+<p>
+  After selection, the selected content hashes are used to retrieve the full original
+  messages from <code>unified_logs</code>. This ensures the LLM receives complete,
+  unmodified context even though selection was based on summaries.
+</p>
+
+<h2 id="configuration">Configuration Reference</h2>
+
+<h3>Intra-Cell Configuration</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cell-Level Intra-Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: research
+    <span class="key">instructions</span>: <span class="str">"Research the topic thoroughly"</span>
+    <span class="key">intra_context</span>:
+      <span class="key">enabled</span>: <span class="kw">true</span>
+      <span class="key">window</span>: <span class="num">5</span>                     <span class="cmt"># Last N turns at full fidelity</span>
+      <span class="key">mask_observations_after</span>: <span class="num">3</span>   <span class="cmt"># Mask tool results older than N turns</span>
+      <span class="key">compress_loops</span>: <span class="kw">true</span>          <span class="cmt"># Use minimal context for retries</span>
+      <span class="key">loop_history_limit</span>: <span class="num">3</span>        <span class="cmt"># Max prior attempts to include</span>
+      <span class="key">preserve_reasoning</span>: <span class="kw">true</span>      <span class="cmt"># Keep assistant msgs without tools</span>
+      <span class="key">preserve_errors</span>: <span class="kw">true</span>         <span class="cmt"># Always keep error messages</span>
+      <span class="key">min_masked_size</span>: <span class="num">200</span>         <span class="cmt"># Don't mask results under N chars</span></pre>
+  </div>
+</div>
+
+<h3>Cascade-Level Defaults</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cascade-Level Auto-Context</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: my_research_flow
+<span class="key">auto_context</span>:
+  <span class="key">intra_cell</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">window</span>: <span class="num">5</span>
+    <span class="key">compress_loops</span>: <span class="kw">true</span>
+  <span class="key">inter_cell</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">selection</span>:
+      <span class="key">strategy</span>: hybrid
+      <span class="key">max_tokens</span>: <span class="num">30000</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: research
+    <span class="cmt"># Inherits cascade-level auto_context settings</span>
+    
+  - <span class="key">name</span>: synthesis
+    <span class="key">intra_context</span>:
+      <span class="key">window</span>: <span class="num">10</span>  <span class="cmt"># Cell-level override</span></pre>
+  </div>
+</div>
+
+<h3>Inter-Cell Configuration</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Auto Selection Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: synthesis
+    <span class="key">context</span>:
+      <span class="key">mode</span>: auto                    <span class="cmt"># Enable auto-selection</span>
+      <span class="key">anchors</span>:
+        <span class="key">from_cells</span>: [previous]       <span class="cmt"># Always include outputs from</span>
+        <span class="key">include</span>: [output, callouts, input]
+      <span class="key">selection</span>:
+        <span class="key">strategy</span>: hybrid            <span class="cmt"># heuristic, semantic, llm, hybrid</span>
+        <span class="key">max_tokens</span>: <span class="num">30000</span>            <span class="cmt"># Token budget for selected context</span>
+        <span class="key">max_messages</span>: <span class="num">50</span>             <span class="cmt"># Max messages to select</span>
+        <span class="key">recency_weight</span>: <span class="num">0.3</span>         <span class="cmt"># Weight for heuristic recency</span>
+        <span class="key">keyword_weight</span>: <span class="num">0.4</span>         <span class="cmt"># Weight for keyword overlap</span>
+        <span class="key">callout_weight</span>: <span class="num">0.3</span>         <span class="cmt"># Weight for callout boost</span>
+        <span class="key">similarity_threshold</span>: <span class="num">0.5</span>   <span class="cmt"># Min similarity for semantic</span></pre>
+  </div>
+</div>
+
+<h2 id="token-savings">Token Savings Analysis</h2>
+
+<p>
+  Real-world token savings depend on workload characteristics. Here are typical scenarios:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Without Auto-Context</th>
+      <th>With Auto-Context</th>
+      <th>Savings</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>15-turn research cell</td>
+      <td>~170K tokens</td>
+      <td>~65K tokens</td>
+      <td><strong>62%</strong></td>
+    </tr>
+    <tr>
+      <td>10-iteration loop_until</td>
+      <td>~200K tokens</td>
+      <td>~40K tokens</td>
+      <td><strong>80%</strong></td>
+    </tr>
+    <tr>
+      <td>5-way candidates with iterations</td>
+      <td>~500K tokens</td>
+      <td>~150K tokens</td>
+      <td><strong>70%</strong></td>
+    </tr>
+    <tr>
+      <td>Simple 3-cell cascade</td>
+      <td>~15K tokens</td>
+      <td>~12K tokens</td>
+      <td><strong>20%</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-warning">
+  <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> When Auto-Context Helps Most</div>
+  <p>
+    Auto-context provides the biggest savings for:
+  </p>
+  <ul>
+    <li><strong>Long-running cells</strong> with many turns (research, iteration)</li>
+    <li><strong>loop_until patterns</strong> with multiple retry attempts</li>
+    <li><strong>Tool-heavy workflows</strong> with large result payloads</li>
+    <li><strong>Candidates/soundings</strong> that multiply context across branches</li>
+  </ul>
+  <p>
+    For simple, short cascades, overhead may exceed savings. The system is disabled by default
+    and should be enabled explicitly when beneficial.
+  </p>
+</div>
+
+<h2 id="examples">Example Cascades</h2>
+
+<h3>Research Workflow with Auto-Context</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">examples/auto_context_demo.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: research_with_auto_context
+<span class="key">description</span>: <span class="str">Research workflow using intelligent context management</span>
+
+<span class="key">auto_context</span>:
+  <span class="key">intra_cell</span>:
+    <span class="key">enabled</span>: <span class="kw">true</span>
+    <span class="key">window</span>: <span class="num">5</span>
+    <span class="key">compress_loops</span>: <span class="kw">true</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: gather
+    <span class="key">instructions</span>: |
+      Research {{ input.topic }} thoroughly.
+      Use web search and document tools.
+      Mark key findings with callouts.
+    <span class="key">traits</span>: [brave_web_search, read_document]
+    <span class="key">rules</span>:
+      <span class="key">max_turns</span>: <span class="num">15</span>
+    <span class="key">callouts</span>:
+      <span class="key">output</span>: <span class="str">"Research findings for {{ input.topic }}"</span>
+    <span class="key">handoffs</span>: [analyze]
+
+  - <span class="key">name</span>: analyze
+    <span class="key">instructions</span>: |
+      Analyze the research findings and identify key themes.
+    <span class="key">context</span>:
+      <span class="key">mode</span>: auto
+      <span class="key">selection</span>:
+        <span class="key">strategy</span>: hybrid
+        <span class="key">max_tokens</span>: <span class="num">20000</span>
+    <span class="key">handoffs</span>: [synthesize]
+
+  - <span class="key">name</span>: synthesize
+    <span class="key">instructions</span>: |
+      Create a comprehensive report from the research and analysis.
+    <span class="key">context</span>:
+      <span class="key">mode</span>: auto
+      <span class="key">anchors</span>:
+        <span class="key">from_cells</span>: [gather, analyze]
+        <span class="key">include</span>: [output, callouts]</pre>
+  </div>
+</div>
+
+<h3>Loop Until with Compression</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">examples/loop_compression_demo.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: validated_generation
+<span class="key">description</span>: <span class="str">Generate valid JSON with loop compression</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: generate
+    <span class="key">instructions</span>: |
+      Generate a JSON report with these sections:
+      - summary (required)
+      - data_points (array of objects)
+      - recommendations (array of strings)
+    <span class="key">rules</span>:
+      <span class="key">loop_until</span>: <span class="str">"output contains valid JSON with all required sections"</span>
+      <span class="key">max_attempts</span>: <span class="num">5</span>
+    <span class="key">intra_context</span>:
+      <span class="key">enabled</span>: <span class="kw">true</span>
+      <span class="key">compress_loops</span>: <span class="kw">true</span>
+      <span class="key">loop_history_limit</span>: <span class="num">2</span>  <span class="cmt"># Only show last 2 failures</span></pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Related Documentation</h2>
+
+<ul>
+  <li><a href="#context" data-link>Context Management</a> - Traditional explicit context configuration</li>
+  <li><a href="#validation" data-link>Validation (Wards)</a> - loop_until and validation patterns</li>
+  <li><a href="#candidates" data-link>Candidates & Evaluation</a> - Multi-candidate workflows</li>
+</ul>

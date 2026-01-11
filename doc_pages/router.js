@@ -60,6 +60,9 @@ class Router {
       // Handle anchor links within content
       this.setupInternalLinks(contentEl);
 
+      // Render Mermaid diagrams if any exist
+      this.renderMermaidDiagrams(contentEl);
+
       // Scroll to hash anchor if present (e.g., #page-id#section)
       this.scrollToAnchor();
 
@@ -107,6 +110,26 @@ class Router {
 
   navigate(pageId) {
     window.location.hash = pageId;
+  }
+
+  async renderMermaidDiagrams(container) {
+    // Find all mermaid code blocks and render them
+    const mermaidBlocks = container.querySelectorAll('pre.mermaid');
+    if (mermaidBlocks.length === 0) return;
+
+    // Check if mermaid is loaded
+    if (typeof mermaid === 'undefined') {
+      console.warn('Mermaid not loaded, skipping diagram rendering');
+      return;
+    }
+
+    try {
+      await mermaid.run({
+        nodes: mermaidBlocks
+      });
+    } catch (error) {
+      console.error('Error rendering Mermaid diagrams:', error);
+    }
   }
 }
 

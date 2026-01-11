@@ -2365,6 +2365,14 @@
   font-size: 0.9rem;
 }
 
+/* AG Grid wrapper for results viewer */
+.results-viewer-grid-wrapper {
+  width: 100%;
+  min-height: 200px;
+  max-height: 500px;
+}
+
+/* Legacy HTML table styles (kept for backwards compatibility) */
 .results-viewer-table-wrapper {
   overflow-x: auto;
   max-height: 400px;

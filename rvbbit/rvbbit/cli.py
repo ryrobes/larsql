@@ -176,6 +176,22 @@ def main():
         help='Run specific migration version only'
     )
 
+    # db cleanup-results (drop expired result tables)
+    db_cleanup_parser = db_subparsers.add_parser(
+        'cleanup-results',
+        help='Drop expired query result tables from rvbbit_results database'
+    )
+    db_cleanup_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be dropped without executing'
+    )
+    db_cleanup_parser.add_argument(
+        '--all',
+        action='store_true',
+        help='Drop ALL result tables (not just expired)'
+    )
+
     # SQL command group (query and server)
     sql_parser = subparsers.add_parser('sql', help='SQL commands (query or start PostgreSQL server)')
     sql_subparsers = sql_parser.add_subparsers(dest='sql_command', help='SQL subcommands')
@@ -1123,6 +1139,8 @@ def main():
             cmd_db_init(args)
         elif args.db_command == 'migrate':
             cmd_db_migrate(args)
+        elif args.db_command == 'cleanup-results':
+            cmd_db_cleanup_results(args)
         else:
             db_parser.print_help()
             sys.exit(1)
@@ -2625,6 +2643,133 @@ def cmd_db_migrate(args):
 
     except Exception as e:
         print(f"✗ Migration error: {e}")
+        print()
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_db_cleanup_results(args):
+    """Drop expired query result tables from rvbbit_results database."""
+    from rvbbit.config import get_clickhouse_url
+    from rvbbit.db_adapter import get_db_adapter
+
+    print()
+    print("="*60)
+    print("CLEANUP QUERY RESULT TABLES")
+    print("="*60)
+    print()
+    print(f"Connection: {get_clickhouse_url()}")
+    print()
+
+    try:
+        db = get_db_adapter()
+
+        # Get list of result tables (r_*) from rvbbit_results database
+        tables_query = """
+            SELECT name
+            FROM system.tables
+            WHERE database = 'rvbbit_results'
+            AND startsWith(name, 'r_')
+            ORDER BY name
+        """
+        tables_result = db.query(tables_query)
+        result_tables = [row['name'] for row in tables_result]
+
+        if not result_tables:
+            print("No result tables found in rvbbit_results database.")
+            print()
+            return
+
+        print(f"Found {len(result_tables)} result table(s)")
+        print()
+
+        # If --all, drop all tables
+        if args.all:
+            tables_to_drop = result_tables
+            print("Mode: Drop ALL result tables")
+        else:
+            # Find tables that are expired (based on query_results log)
+            expired_query = """
+                SELECT DISTINCT result_table
+                FROM rvbbit_results.query_results
+                WHERE expire_date < today()
+                AND result_table != ''
+            """
+            expired_result = db.query(expired_query)
+            expired_tables = set(row['result_table'] for row in expired_result)
+
+            # Also find orphan tables (not in log) - these are likely from old tests
+            logged_query = """
+                SELECT DISTINCT result_table
+                FROM rvbbit_results.query_results
+                WHERE result_table != ''
+            """
+            logged_result = db.query(logged_query)
+            logged_tables = set(row['result_table'] for row in logged_result)
+
+            orphan_tables = set(result_tables) - logged_tables
+
+            tables_to_drop = list(expired_tables) + list(orphan_tables)
+            print(f"Mode: Drop expired and orphan tables only")
+            print(f"  - Expired: {len(expired_tables)}")
+            print(f"  - Orphan (not in log): {len(orphan_tables)}")
+
+        if not tables_to_drop:
+            print()
+            print("No tables to drop.")
+            print()
+            return
+
+        print()
+        print(f"Tables to drop: {len(tables_to_drop)}")
+        print("-" * 40)
+        for table in tables_to_drop[:20]:  # Show first 20
+            print(f"  - {table}")
+        if len(tables_to_drop) > 20:
+            print(f"  ... and {len(tables_to_drop) - 20} more")
+        print()
+
+        if args.dry_run:
+            print("[DRY RUN] No tables were dropped.")
+            print()
+            print("Run without --dry-run to actually drop these tables.")
+            print()
+            return
+
+        # Drop the tables
+        dropped = 0
+        failed = 0
+        for table in tables_to_drop:
+            try:
+                db.execute(f"DROP TABLE IF EXISTS rvbbit_results.{table}")
+                dropped += 1
+            except Exception as drop_err:
+                print(f"  ✗ Failed to drop {table}: {drop_err}")
+                failed += 1
+
+        # Also clean up the log entries for dropped tables
+        if dropped > 0 and not args.all:
+            # Mark dropped tables in the log
+            for table in tables_to_drop:
+                try:
+                    db.execute(f"""
+                        ALTER TABLE rvbbit_results.query_results
+                        UPDATE is_dropped = true
+                        WHERE result_table = '{table}'
+                    """)
+                except Exception:
+                    pass  # Non-fatal
+
+        print()
+        if failed > 0:
+            print(f"✗ Dropped {dropped} table(s), {failed} failed")
+        else:
+            print(f"✓ Dropped {dropped} table(s)")
+        print()
+
+    except Exception as e:
+        print(f"✗ Cleanup failed: {e}")
         print()
         import traceback
         traceback.print_exc()

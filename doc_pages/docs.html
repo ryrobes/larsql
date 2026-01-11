@@ -14,6 +14,72 @@
   <!-- Icons -->
   <script src="https://cdn.jsdelivr.net/npm/iconify-icon@2.1.0/dist/iconify-icon.min.js"></script>
 
+  <!-- Mermaid Diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      themeVariables: {
+        // Base colors
+        darkMode: true,
+        background: '#0a0a12',
+        primaryColor: '#1a1535',
+        primaryTextColor: '#e0e0e0',
+        primaryBorderColor: '#00d4ff',
+        secondaryColor: '#1a1535',
+        tertiaryColor: '#1a1535',
+
+        // Line colors
+        lineColor: '#3d4a5c',
+
+        // Node colors
+        mainBkg: '#1a1535',
+        nodeBkg: '#12121f',
+        nodeBorder: '#00d4ff',
+
+        // Cluster/composite state colors
+        clusterBkg: '#151530',
+        clusterBorder: 'rgba(0, 212, 255, 0.4)',
+
+        // Labels
+        titleColor: '#00d4ff',
+        edgeLabelBackground: '#0a0a12',
+
+        // Notes
+        noteTextColor: '#e0e0e0',
+        noteBkgColor: '#1a1535',
+        noteBorderColor: '#00d4ff',
+
+        // State diagram specific
+        labelBackgroundColor: '#0a0a12',
+        stateBkg: '#12121f',
+        stateBorder: '#00d4ff',
+        innerEndBackground: '#1a1535',
+        labelBoxBkgColor: '#1a1535',
+        labelBoxBorderColor: '#00d4ff',
+
+        // Composite states - the key ones
+        compositeBackground: '#151530',
+        compositeBorder: 'rgba(0, 212, 255, 0.3)',
+        compositeTitleBackground: '#1a1535',
+
+        // Additional state diagram vars
+        altBackground: '#151530',
+        fillType0: '#1a1535',
+        fillType1: '#151530',
+        fillType2: '#1a1535',
+        fillType3: '#151530',
+        fillType4: '#1a1535',
+        fillType5: '#151530',
+        fillType6: '#1a1535',
+        fillType7: '#151530'
+      },
+      flowchart: { curve: 'basis' },
+      securityLevel: 'loose'
+    });
+  </script>
+
   <!-- Styles -->
   <link rel="stylesheet" href="styles.css">
 

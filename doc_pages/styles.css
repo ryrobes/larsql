@@ -602,6 +602,67 @@ pre code {
 .cmt { color: #6a737d; font-style: italic; }
 .key { color: var(--purple); }
 
+/* Mermaid Diagrams */
+.mermaid-container {
+  background: linear-gradient(145deg, rgba(10, 10, 18, 0.9), rgba(26, 26, 46, 0.5));
+  border: 1px solid rgba(28, 246, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 30px;
+  margin: 32px 0;
+  overflow-x: auto;
+}
+
+.mermaid-container pre.mermaid {
+  background: transparent;
+  border: none;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mermaid theme overrides - purple-blue dark theme */
+.mermaid .node rect,
+.mermaid .node polygon,
+.mermaid .node circle {
+  fill: #12121f !important;
+  stroke: var(--cyan) !important;
+}
+
+.mermaid .state-start,
+.mermaid .state-end {
+  fill: var(--cyan) !important;
+}
+
+.mermaid .edgePath path {
+  stroke: #3d4a5c !important;
+}
+
+.mermaid .label,
+.mermaid text {
+  fill: var(--text) !important;
+}
+
+/* State diagram cluster backgrounds */
+.mermaid .statediagram-cluster rect {
+  fill: #151530 !important;
+  stroke: rgba(0, 212, 255, 0.35) !important;
+}
+
+.mermaid .cluster-label {
+  fill: var(--cyan) !important;
+}
+
+/* State nodes inside clusters */
+.mermaid g.stateGroup rect {
+  fill: #12121f !important;
+  stroke: var(--cyan) !important;
+}
+
 /* --------------------------------------------------------------------------
    Info Boxes (landing page style)
    -------------------------------------------------------------------------- */
