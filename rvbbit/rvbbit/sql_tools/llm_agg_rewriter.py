@@ -587,102 +587,23 @@ def _build_replacement(
             return f"Use {annotation.model} - {prompt}"
         return prompt
 
-    if func_def.name == "LLM_AGG":
-        # Special case: LLM_AGG has prompt first, column second
-        prompt = args[0]
-        col = args[1]
-        # Annotation can override or enhance the prompt
-        if annotation and annotation.prompt:
-            # Prepend annotation to existing prompt
-            existing = prompt.strip("'\"")
-            combined = f"{annotation.prompt} {existing}"
-            prompt = sql_quote(build_prompt_with_candidates_and_model(combined))
-        elif annotation and (annotation.model or annotation.candidates):
-            # Model hint or candidates config, no prompt override
-            existing = prompt.strip("'\"")
-            prompt = sql_quote(build_prompt_with_candidates_and_model(existing))
-        return f"llm_agg_2({prompt}, LIST({col})::VARCHAR)"
+    # Generic handling for ALL aggregates - uses cascade names directly
+    # No hardcoded special cases needed anymore since everything goes through cascades
+    #
+    # Flow: MEANING(col, 3) → semantic_cluster_2(LIST(col)::VARCHAR, 3)
+    #       SUMMARIZE(col) → semantic_summarize_1(LIST(col)::VARCHAR)
+    #
+    # The cascade handles all the logic (prompts, models, caching, etc.)
 
-    elif func_def.name == "LLM_SUMMARIZE":
-        col = args[0]
-        # Determine prompt: explicit arg > annotation > none
-        prompt_arg = args[1] if len(args) >= 2 else None
-        if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(annotation.prompt))
-        elif prompt_arg is None and annotation and (annotation.model or annotation.candidates):
-            # Model hint or candidates config, but no custom prompt - use default
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model("summarize these items"))
-        elif prompt_arg is not None and annotation and annotation.candidates:
-            # Explicit prompt arg but with candidates - inject prefix into existing prompt
-            existing = prompt_arg.strip("'\"")
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(existing))
+    col = args[0]
+    total_args = len(args)
+    extra_args = ", ".join(args[1:])
+    if extra_args:
+        extra_args = ", " + extra_args
 
-        # Determine max_items: explicit arg > annotation > none
-        max_items_arg = args[2] if len(args) >= 3 else None
-        if max_items_arg is None and annotation and annotation.max_tokens:
-            # max_tokens in annotation maps to max_items (sample size)
-            max_items_arg = str(annotation.max_tokens)
-
-        if prompt_arg is None:
-            # No annotation with candidates - just basic call
-            return f"llm_summarize_1(LIST({col})::VARCHAR)"
-        elif max_items_arg is None:
-            return f"llm_summarize_2(LIST({col})::VARCHAR, {prompt_arg})"
-        else:
-            return f"llm_summarize_3(LIST({col})::VARCHAR, {prompt_arg}, {max_items_arg})"
-
-    elif func_def.name == "LLM_CLASSIFY":
-        col = args[0]
-        categories = args[1]
-        # Prompt is optional 3rd arg
-        prompt_arg = args[2] if len(args) >= 3 else None
-        if prompt_arg is None and annotation and annotation.prompt:
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(annotation.prompt))
-        elif prompt_arg is None and annotation and (annotation.model or annotation.candidates):
-            # Model hint or candidates config, but no custom prompt - use default
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model("classify these items"))
-        elif prompt_arg is not None and annotation and annotation.candidates:
-            # Explicit prompt arg but with candidates - inject prefix into existing prompt
-            existing = prompt_arg.strip("'\"")
-            prompt_arg = sql_quote(build_prompt_with_candidates_and_model(existing))
-
-        if prompt_arg is None:
-            return f"llm_classify_2(LIST({col})::VARCHAR, {categories})"
-        else:
-            return f"llm_classify_3(LIST({col})::VARCHAR, {categories}, {prompt_arg})"
-
-    elif func_def.name == "LLM_SENTIMENT":
-        col = args[0]
-        # SENTIMENT is now cascade-backed directly via semantic_sentiment().
-        # It expects a JSON array of texts, so we wrap the grouped values with LIST() and to_json().
-        #
-        # Note: model/prompt annotations are intentionally ignored here for now; the cascade controls
-        # the model and prompt and this keeps the behavior explicit and consistent with YAML.
-        return f"semantic_sentiment(to_json(LIST({col})))"
-
-    elif func_def.name == "LLM_THEMES":
-        col = args[0]
-        # Max themes is optional 2nd arg
-        max_themes_arg = args[1] if len(args) >= 2 else None
-        if max_themes_arg is None and annotation and annotation.max_tokens:
-            # Use max_tokens as max_themes hint
-            max_themes_arg = str(min(annotation.max_tokens, 20))  # Cap at 20 themes
-
-        if max_themes_arg is None:
-            return f"llm_themes_1(LIST({col})::VARCHAR)"
-        else:
-            return f"llm_themes_2(LIST({col})::VARCHAR, {max_themes_arg})"
-
-    else:
-        # Generic fallback - use arg count suffix
-        col = args[0]
-        total_args = len(args)
-        extra_args = ", ".join(args[1:])
-        if extra_args:
-            extra_args = ", " + extra_args
-        # impl_name already has _impl suffix, replace with _{n}
-        base_name = func_def.impl_name.replace("_impl", "")
-        return f"{base_name}_{total_args}(LIST({col})::VARCHAR{extra_args})"
+    # impl_name is now just the cascade name (e.g., "semantic_cluster")
+    base_name = func_def.impl_name
+    return f"{base_name}_{total_args}(LIST({col})::VARCHAR{extra_args})"
 
 
 # ============================================================================

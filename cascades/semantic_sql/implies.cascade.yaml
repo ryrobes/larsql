@@ -23,9 +23,25 @@ sql_function:
   - '{{ premise }} IMPLIES {{ conclusion }}'
   cache: true
   test_cases:
+  # Function syntax
   - sql: SELECT semantic_implies('John is a bachelor', 'John is unmarried')
     expect: true
-    description: Implication detected
+    description: "Function: Implication detected"
+  - sql: SELECT semantic_implies('It is raining', 'The ground is wet')
+    expect: true
+    description: "Function: Causal implication"
+  - sql: SELECT semantic_implies('The sky is blue', 'Today is Monday')
+    expect: false
+    description: "Function: No logical implication"
+  # Infix IMPLIES syntax - need WITH for proper parsing
+  - sql: "WITH t AS (SELECT 'All birds can fly' AS premise) SELECT premise FROM t WHERE premise IMPLIES 'Eagles can fly'"
+    expect:
+      type: contains
+      value: birds
+    description: "Infix IMPLIES: logical deduction"
+  - sql: "WITH t AS (SELECT 'Some dogs are friendly' AS premise) SELECT CASE WHEN premise IMPLIES 'All dogs are friendly' THEN 'yes' ELSE 'no' END FROM t"
+    expect: "no"
+    description: "Infix IMPLIES: invalid overgeneralization"
 cells:
 - name: check_implication
   model: google/gemini-2.5-flash-lite

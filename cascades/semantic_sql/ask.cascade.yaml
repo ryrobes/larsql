@@ -57,12 +57,23 @@ sql_function:
   - ASK '{{ prompt }}' FROM {{ text }}
   cache: true
   test_cases:
-  - sql: SELECT semantic_ask('The sky is blue because of Rayleigh scattering', 'What
-      color is the sky?')
+  # Function syntax
+  - sql: SELECT semantic_ask('The sky is blue because of Rayleigh scattering', 'What color is the sky?')
     expect:
       type: contains
       value: blue
-    description: Question answered from text
+    description: "Function: Question answered from text"
+  - sql: SELECT semantic_ask('The product costs $99.99 and ships within 3 days', 'How much does it cost?')
+    expect:
+      type: contains
+      value: '99'
+    description: "Function: Price extracted via question"
+  # Infix ASK syntax - need WITH for proper parsing
+  - sql: "WITH t AS (SELECT 'Einstein developed the theory of relativity' AS fact) SELECT fact ASK 'Who developed this?' FROM t"
+    expect:
+      type: contains
+      value: Einstein
+    description: "Infix ASK: extracts answer from text"
 cells:
 - name: apply_prompt
   use_training: true

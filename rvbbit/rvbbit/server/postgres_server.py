@@ -6459,7 +6459,8 @@ class ClientConnection:
 
         except Exception as e:
             print(f"[{self.session_id}]      ✗ Parse error: {e}")
-            send_error(self.sock, f"Parse error: {str(e)}", transaction_status=self.transaction_status)
+            # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Parse error: {str(e)}"))
 
     def _handle_bind(self, msg: dict):
         """
@@ -6563,7 +6564,8 @@ class ClientConnection:
 
         except Exception as e:
             print(f"[{self.session_id}]      ✗ Bind error: {e}")
-            send_error(self.sock, f"Bind error: {str(e)}", transaction_status=self.transaction_status)
+            # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Bind error: {str(e)}"))
 
     def _handle_describe(self, msg: dict):
         """
@@ -7090,7 +7092,8 @@ class ClientConnection:
                     self.sock.sendall(NoData.encode())
                     return
 
-            send_error(self.sock, f"Describe error: {str(e)}", transaction_status=self.transaction_status)
+            # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Describe error: {str(e)}"))
 
     def _handle_execute(self, msg: dict):
         """
@@ -7866,7 +7869,8 @@ class ClientConnection:
             # Mark transaction as errored
             if self.transaction_status == 'T':
                 self.transaction_status = 'E'
-            send_error(self.sock, f"Execute error: {str(e)}", transaction_status=self.transaction_status)
+            # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Execute error: {str(e)}"))
 
             # Log query error for SQL Trail (Extended Query Protocol)
             self._error_query_tracking(_query_id, _query_start_time, e)
@@ -7898,7 +7902,8 @@ class ClientConnection:
 
         except Exception as e:
             print(f"[{self.session_id}]      ✗ Close error: {e}")
-            send_error(self.sock, f"Close error: {str(e)}", transaction_status=self.transaction_status)
+            # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Close error: {str(e)}"))
 
     def _handle_sync(self):
         """

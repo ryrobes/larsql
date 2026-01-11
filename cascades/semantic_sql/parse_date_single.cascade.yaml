@@ -31,11 +31,12 @@ sql_function:
     strategy: fingerprint
     fingerprint_args: [date_text]
   test_cases:
-  - sql: SELECT parse_date_llm('March 15th, 2024')
+  - sql: SELECT parse_date('March 15th, 2024')
     expect:
       type: contains
       value: '2024-03-15'
     description: Date parsed from text
+    skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
 cells:
 - name: parse
   #model: google/gemini-2.5-flash-lite

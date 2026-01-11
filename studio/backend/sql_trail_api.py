@@ -1236,22 +1236,37 @@ def get_cell_attribution(caller_id: str):
 
         # Query unified_logs for cell-level attribution
         # The challenge: source_column_name/source_row_index might be on different log entries
-        # than the cost/tokens data (which is on the response entry with request_id).
+        # OR stored only in invocation_metadata_json (not in dedicated columns).
         #
-        # Solution: Use a CTE to first find all cells with source tracking,
-        # then join with ALL entries from those sessions to aggregate costs.
+        # Solution: Use COALESCE to check both:
+        # 1. Dedicated columns (source_column_name, source_row_index)
+        # 2. Fallback to extracting from invocation_metadata_json
         attribution_query = f"""
             WITH cell_sessions AS (
                 -- Find all unique (session, row, column) combinations with source tracking
+                -- Check both dedicated columns AND invocation_metadata_json
                 SELECT DISTINCT
                     session_id,
-                    source_row_index,
-                    source_column_name
+                    COALESCE(
+                        source_row_index,
+                        JSONExtractInt(invocation_metadata_json, 'source', 'row_index')
+                    ) as source_row_index,
+                    COALESCE(
+                        source_column_name,
+                        JSONExtractString(invocation_metadata_json, 'source', 'column')
+                    ) as source_column_name
                 FROM unified_logs
                 WHERE caller_id = '{safe_caller_id}'
-                  AND source_column_name IS NOT NULL AND source_column_name != ''
-                  AND source_row_index IS NOT NULL AND source_row_index >= 0
                   AND session_id IS NOT NULL AND session_id != ''
+                  AND (
+                    -- Has dedicated source tracking columns
+                    (source_column_name IS NOT NULL AND source_column_name != ''
+                     AND source_row_index IS NOT NULL AND source_row_index >= 0)
+                    OR
+                    -- OR has source in invocation_metadata_json
+                    (JSONExtractString(invocation_metadata_json, 'source', 'column') != ''
+                     AND JSONExtractInt(invocation_metadata_json, 'source', 'row_index') >= 0)
+                  )
             )
             SELECT
                 cs.source_row_index,
@@ -1296,9 +1311,14 @@ def get_cell_attribution(caller_id: str):
                 SELECT DISTINCT session_id
                 FROM unified_logs
                 WHERE caller_id = '{safe_caller_id}'
-                  AND source_column_name IS NOT NULL AND source_column_name != ''
-                  AND source_row_index IS NOT NULL AND source_row_index >= 0
                   AND session_id IS NOT NULL AND session_id != ''
+                  AND (
+                    (source_column_name IS NOT NULL AND source_column_name != ''
+                     AND source_row_index IS NOT NULL AND source_row_index >= 0)
+                    OR
+                    (JSONExtractString(invocation_metadata_json, 'source', 'column') != ''
+                     AND JSONExtractInt(invocation_metadata_json, 'source', 'row_index') >= 0)
+                  )
             )
             SELECT
                 ul.model,

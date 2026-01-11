@@ -39,11 +39,34 @@ sql_function:
   - '{{ text }} EXTRACTS ''{{ what }}'''
   cache: true
   test_cases:
+  # Function syntax
   - sql: SELECT semantic_extract('The price is $49.99 per unit', 'price')
     expect:
       type: contains
       value: '49.99'
-    description: Price extracted
+    description: "Function: Price extracted"
+  - sql: SELECT semantic_extract('Contact John Smith at john@company.com', 'email')
+    expect:
+      type: contains
+      value: 'john@company.com'
+    description: "Function: Email extracted"
+  # Alias syntax - Note: extract() conflicts with DuckDB builtin, use semantic_extract
+  - sql: "SELECT semantic_extract('Order shipped ref 12345 on Monday', 'order number')"
+    expect:
+      type: contains
+      value: '12345'
+    description: "Function: order number extracted"
+  # Infix EXTRACTS syntax - need WITH for proper parsing
+  - sql: "WITH t AS (SELECT 'Meeting with CEO scheduled for 3pm' AS msg) SELECT msg EXTRACTS 'time' FROM t"
+    expect:
+      type: contains
+      value: '3pm'
+    description: "Infix EXTRACTS: time extracted from text"
+  - sql: "WITH t AS (SELECT 'Product: iPhone 15 Pro Max - great camera!' AS review) SELECT review EXTRACTS 'product name' FROM t"
+    expect:
+      type: contains
+      value: 'iPhone'
+    description: "Infix EXTRACTS: product name extracted"
 cells:
 - name: extract
   model: google/gemini-2.5-flash-lite

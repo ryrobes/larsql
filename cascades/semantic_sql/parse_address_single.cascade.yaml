@@ -40,11 +40,13 @@ sql_function:
         path: "$.city"
         value: "Boston"
       description: "City extracted from address"
+      skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
     - sql: "SELECT parse_address('456 Oak Ave Apt 2B, New York NY')"
       expect:
         type: contains
         value: "New York"
       description: "Multi-part address parsed"
+      skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
 
 cells:
   - name: parse

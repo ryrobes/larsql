@@ -35,18 +35,34 @@ sql_function:
     - "{{ value }} VALID AS '{{ type }}'"
   cache: true
   test_cases:
+    # Function syntax tests
     - sql: "SELECT valid('john@gmail.com', 'email')"
       expect: true
-      description: "Valid email returns true"
+      description: "Function: Valid email returns true"
     - sql: "SELECT valid('not-an-email', 'email')"
       expect: false
-      description: "Invalid email returns false"
+      description: "Function: Invalid email returns false"
     - sql: "SELECT valid('(555) 123-4567', 'phone')"
       expect: true
-      description: "Valid US phone returns true"
+      description: "Function: Valid US phone returns true"
     - sql: "SELECT valid('02101', 'zip')"
       expect: true
-      description: "Valid US zip returns true"
+      description: "Function: Valid US zip returns true"
+    # Infix IS VALID syntax tests
+    - sql: "WITH t AS (SELECT 'user@example.org' AS email) SELECT email FROM t WHERE email IS VALID 'email'"
+      expect:
+        type: contains
+        value: "user@example.org"
+      description: "Infix IS VALID: filters valid emails"
+    - sql: "WITH t AS (SELECT 'invalid' AS email) SELECT CASE WHEN email IS VALID 'email' THEN 'yes' ELSE 'no' END FROM t"
+      expect: "no"
+      description: "Infix IS VALID: returns false for invalid"
+    # Infix VALID AS syntax tests
+    - sql: "WITH t AS (SELECT '10.0.0.1' AS ip) SELECT ip FROM t WHERE ip VALID AS 'ip'"
+      expect:
+        type: contains
+        value: "10.0.0.1"
+      description: "Infix VALID AS: validates IP address"
 
 cells:
   - name: check_valid

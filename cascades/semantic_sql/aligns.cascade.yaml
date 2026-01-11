@@ -25,11 +25,32 @@ sql_function:
   - '{{ text }} ALIGNS WITH {{ narrative }}'
   cache: false
   test_cases:
+  # ALIGNS WITH infix
   - sql: WITH t AS (SELECT 'We prioritize safety above all' AS msg) SELECT * FROM t WHERE msg ALIGNS WITH 'safety first'
     expect:
       type: contains
       value: safety
-    description: ALIGNS WITH operator detects narrative alignment
+    description: "Infix ALIGNS WITH: filters aligned content"
+  # ALIGNS infix (shorter form) - need to use WITH for proper parsing
+  - sql: "WITH t AS (SELECT 'Our eco-friendly products reduce waste' AS msg) SELECT msg FROM t WHERE msg ALIGNS 'sustainability' > 0.5"
+    expect:
+      type: contains
+      value: eco-friendly
+    description: "Infix ALIGNS: filters aligned content"
+  # Function syntax
+  - sql: "SELECT semantic_aligns('Cost-cutting is our priority', 'quality and safety first')"
+    expect:
+      type: range
+      min: 0.0
+      max: 0.5
+    description: "Function: low score for misaligned narrative"
+  # Alias syntax
+  - sql: "SELECT aligns('Innovation drives our strategy', 'forward-thinking')"
+    expect:
+      type: range
+      min: 0.6
+      max: 1.0
+    description: "Alias aligns(): detects thematic alignment"
 cells:
 - name: evaluate_alignment
   model: google/gemini-3-flash-preview

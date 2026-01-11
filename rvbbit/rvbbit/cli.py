@@ -230,6 +230,16 @@ def main():
     ssql_test_parser.add_argument('--filter', default=None, help='Filter by operator name (e.g., "quality", "valid*")')
     ssql_test_parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
     ssql_test_parser.add_argument('--fail-fast', action='store_true', help='Stop on first failure')
+    ssql_test_parser.add_argument(
+        '--mode', '-m',
+        choices=['internal', 'simple', 'extended', 'all'],
+        default='internal',
+        help='Execution mode: internal (DuckDB direct), simple (psql Simple Query Protocol), '
+             'extended (psycopg2 Extended Query Protocol), all (run all modes)'
+    )
+    ssql_test_parser.add_argument('--host', default='localhost', help='PostgreSQL host for psql/extended modes')
+    ssql_test_parser.add_argument('--port', type=int, default=15432, help='PostgreSQL port for psql/extended modes')
+    ssql_test_parser.add_argument('--database', '-d', default='rvbbit', help='Database name for psql/extended modes')
     ssql_test_parser.set_defaults(func=cmd_sql_test)
 
     # ssql list (list available operators)
@@ -2152,9 +2162,157 @@ def cmd_ssql_list(args):
 
 # ========== SEMANTIC SQL TEST COMMAND ==========
 
+def _execute_internal(sql: str, conn, lock, rewriter_func) -> tuple:
+    """
+    Execute SQL via internal DuckDB connection.
+
+    Returns (actual_value, error_message or None)
+    """
+    try:
+        rewritten_sql = rewriter_func(sql, duckdb_conn=conn)
+        with lock:
+            result = conn.execute(rewritten_sql)
+            df = result.fetchdf()
+
+        if df.empty:
+            return None, None
+        return df.iloc[0, 0], None
+    except Exception as e:
+        return None, str(e)
+
+
+def _execute_psql_simple(sql: str, host: str, port: int, database: str) -> tuple:
+    """
+    Execute SQL via psql CLI (Simple Query Protocol).
+
+    The psql -c flag uses Simple Query Protocol where each query
+    is sent as a single Query message.
+
+    Returns (actual_value, error_message or None)
+    """
+    import subprocess
+    import re
+
+    try:
+        # Run psql with -c (single command) - uses Simple Query Protocol
+        # -t: tuples only (no headers/footers)
+        # -A: unaligned output
+        # -F: field separator (use tab for parsing)
+        result = subprocess.run(
+            [
+                'psql',
+                '-h', host,
+                '-p', str(port),
+                '-d', database,
+                '-U', 'user',
+                '-t',  # Tuples only
+                '-A',  # Unaligned
+                '-c', sql
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, 'PGPASSWORD': ''}  # Empty password
+        )
+
+        if result.returncode != 0:
+            # Parse error from stderr
+            error = result.stderr.strip()
+            # Extract just the error message, not full traceback
+            if 'ERROR:' in error:
+                error = error.split('ERROR:')[1].split('\n')[0].strip()
+            return None, error
+
+        # Parse output - first line is the value
+        output = result.stdout.strip()
+        if not output:
+            return None, None
+
+        # Handle multi-line output (take first value)
+        value = output.split('\n')[0].strip()
+        return value, None
+
+    except subprocess.TimeoutExpired:
+        return None, "Query timed out (120s)"
+    except FileNotFoundError:
+        return None, "psql not found - install postgresql-client"
+    except Exception as e:
+        return None, str(e)
+
+
+def _execute_extended(sql: str, host: str, port: int, database: str) -> tuple:
+    """
+    Execute SQL via psycopg2 (Extended Query Protocol).
+
+    psycopg2 uses the Extended Query Protocol by default, which involves:
+    Parse → Bind → Describe → Execute → Sync message sequence.
+
+    Returns (actual_value, error_message or None)
+    """
+    try:
+        import psycopg2
+    except ImportError:
+        return None, "psycopg2 not installed - run: pip install psycopg2-binary"
+
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            database=database,
+            user='user',
+            password='',
+            connect_timeout=10
+        )
+        conn.autocommit = True
+
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+            if row is None:
+                return None, None
+            return row[0], None
+
+    except psycopg2.Error as e:
+        # Extract error message
+        error = str(e).split('\n')[0].strip()
+        return None, error
+    except Exception as e:
+        return None, str(e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _check_postgres_server(host: str, port: int) -> tuple:
+    """
+    Check if postgres server is reachable.
+
+    Returns (is_available: bool, error_message: str or None)
+    """
+    import socket
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        if result == 0:
+            return True, None
+        return False, f"Cannot connect to {host}:{port}"
+    except Exception as e:
+        return False, str(e)
+
+
 def cmd_sql_test(args):
     """
     Run tests defined in semantic SQL cascade files.
+
+    Supports multiple execution modes:
+    - internal: Direct DuckDB execution (fastest, no network)
+    - simple: PostgreSQL Simple Query Protocol via psql
+    - extended: PostgreSQL Extended Query Protocol via psycopg2
+    - all: Run tests in all modes and compare results
 
     Looks for test_cases in sql_function blocks and executes them.
     Supports multiple expectation types:
@@ -2175,39 +2333,67 @@ def cmd_sql_test(args):
     console = Console()
     session_id = f"test-{uuid.uuid4().hex[:8]}"
 
-    # Initialize semantic SQL
-    try:
-        from rvbbit.sql_tools.session_db import get_session_db, get_session_lock
-        from rvbbit.sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
-        from rvbbit.semantic_sql.registry import initialize_registry, get_sql_function_registry
+    # Determine which modes to run
+    mode = getattr(args, 'mode', 'internal')
+    modes_to_run = ['internal', 'simple', 'extended'] if mode == 'all' else [mode]
+
+    # Check postgres server availability for non-internal modes
+    if mode in ('simple', 'extended', 'all'):
+        available, error = _check_postgres_server(args.host, args.port)
+        if not available:
+            console.print(f"[red]PostgreSQL server not available at {args.host}:{args.port}[/red]")
+            console.print(f"[dim]Start with: rvbbit serve sql --port {args.port}[/dim]")
+            if mode != 'all':
+                sys.exit(1)
+            else:
+                console.print("[yellow]Falling back to internal mode only[/yellow]")
+                modes_to_run = ['internal']
+
+    # Initialize internal mode resources if needed
+    conn = None
+    lock = None
+    rewriter_func = None
+
+    if 'internal' in modes_to_run:
+        try:
+            from rvbbit.sql_tools.session_db import get_session_db, get_session_lock
+            from rvbbit.sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
+            from rvbbit.semantic_sql.registry import initialize_registry, get_sql_function_registry
+            from rvbbit.config import get_config
+            from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+
+            config = get_config()
+            initialize_registry(force=True)
+
+            conn = get_session_db(session_id)
+            lock = get_session_lock(session_id)
+            rewriter_func = rewrite_rvbbit_syntax
+
+            with lock:
+                register_rvbbit_udf(conn)
+                register_dynamic_sql_functions(conn)
+
+        except Exception as e:
+            console.print(f"[red]Failed to initialize internal mode: {e}[/red]")
+            if 'internal' in modes_to_run and len(modes_to_run) == 1:
+                sys.exit(1)
+            modes_to_run = [m for m in modes_to_run if m != 'internal']
+    else:
         from rvbbit.config import get_config
-
         config = get_config()
-        initialize_registry(force=True)
-        registry = get_sql_function_registry()
-
-        conn = get_session_db(session_id)
-        lock = get_session_lock(session_id)
-
-        with lock:
-            register_rvbbit_udf(conn)
-            register_dynamic_sql_functions(conn)
-
-    except Exception as e:
-        console.print(f"[red]Failed to initialize: {e}[/red]")
-        sys.exit(1)
 
     # Find cascades with test_cases
     cascades_dir = Path(config.cascades_dir)
     semantic_sql_dir = cascades_dir / 'semantic_sql'
 
-    tests_found = 0
-    tests_passed = 0
-    tests_failed = 0
-    failures = []
+    # Track results per mode
+    results_by_mode = {m: {'found': 0, 'passed': 0, 'failed': 0, 'failures': []} for m in modes_to_run}
 
     console.print()
-    console.print("[bold]Running Semantic SQL Tests[/bold]")
+    mode_str = ', '.join(modes_to_run)
+    console.print(f"[bold]Running Semantic SQL Tests[/bold] [dim]({mode_str})[/dim]")
+    if mode in ('simple', 'extended', 'all'):
+        console.print(f"[dim]PostgreSQL: {args.host}:{args.port}/{args.database}[/dim]")
     console.print()
 
     for cascade_file in sorted(semantic_sql_dir.glob('*.yaml')):
@@ -2242,85 +2428,175 @@ def cmd_sql_test(args):
                     console.print(f"  [yellow]⊘[/yellow] {description} [dim](skipped)[/dim]")
                 continue
 
-            tests_found += 1
+            # Run test in each mode
+            mode_results = {}
 
-            try:
-                # Rewrite SQL through full operator stack (same as postgres_server)
-                from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
-                rewritten_sql = rewrite_rvbbit_syntax(sql, duckdb_conn=conn)
+            for run_mode in modes_to_run:
+                results_by_mode[run_mode]['found'] += 1
 
-                with lock:
-                    result = conn.execute(rewritten_sql)
-                    df = result.fetchdf()
+                try:
+                    if run_mode == 'internal':
+                        actual, error = _execute_internal(sql, conn, lock, rewriter_func)
+                    elif run_mode == 'simple':
+                        actual, error = _execute_psql_simple(sql, args.host, args.port, args.database)
+                    elif run_mode == 'extended':
+                        actual, error = _execute_extended(sql, args.host, args.port, args.database)
 
-                if df.empty:
-                    actual = None
-                else:
-                    actual = df.iloc[0, 0]
+                    if error:
+                        passed = False
+                        reason = f"Error: {error}"
+                        actual = None
+                    else:
+                        passed, reason = _evaluate_expectation(actual, expect)
 
-                # Evaluate expectation
-                passed, reason = _evaluate_expectation(actual, expect)
+                    mode_results[run_mode] = {
+                        'passed': passed,
+                        'actual': actual,
+                        'reason': reason,
+                        'error': error
+                    }
 
-                if passed:
-                    tests_passed += 1
-                    if args.verbose:
-                        console.print(f"  [green]✓[/green] {description}")
-                else:
-                    tests_failed += 1
-                    failures.append({
+                    if passed:
+                        results_by_mode[run_mode]['passed'] += 1
+                    else:
+                        results_by_mode[run_mode]['failed'] += 1
+                        results_by_mode[run_mode]['failures'].append({
+                            'operator': fn_name,
+                            'sql': sql,
+                            'expected': expect,
+                            'actual': actual,
+                            'reason': reason,
+                            'description': description,
+                            'mode': run_mode
+                        })
+
+                except Exception as e:
+                    results_by_mode[run_mode]['failed'] += 1
+                    mode_results[run_mode] = {
+                        'passed': False,
+                        'actual': None,
+                        'reason': f"Exception: {e}",
+                        'error': str(e)
+                    }
+                    results_by_mode[run_mode]['failures'].append({
                         'operator': fn_name,
                         'sql': sql,
                         'expected': expect,
-                        'actual': actual,
-                        'reason': reason,
-                        'description': description
+                        'actual': None,
+                        'reason': f"Exception: {e}",
+                        'description': description,
+                        'mode': run_mode
                     })
+
+            # Display result
+            if len(modes_to_run) == 1:
+                # Single mode - simple display
+                run_mode = modes_to_run[0]
+                r = mode_results[run_mode]
+                if r['passed']:
+                    if args.verbose:
+                        console.print(f"  [green]✓[/green] {description}")
+                else:
                     console.print(f"  [red]✗[/red] {description}")
                     if args.verbose:
                         console.print(f"    SQL: {sql}")
                         console.print(f"    Expected: {expect}")
-                        console.print(f"    Actual: {actual}")
-                        console.print(f"    Reason: {reason}")
+                        console.print(f"    Actual: {r['actual']}")
+                        console.print(f"    Reason: {r['reason']}")
+            else:
+                # Multi-mode - show comparison
+                status_parts = []
+                all_passed = True
+                for run_mode in modes_to_run:
+                    r = mode_results[run_mode]
+                    mode_abbrev = {'internal': 'int', 'simple': 'sim', 'extended': 'ext'}[run_mode]
+                    if r['passed']:
+                        status_parts.append(f"[green]{mode_abbrev}:✓[/green]")
+                    else:
+                        status_parts.append(f"[red]{mode_abbrev}:✗[/red]")
+                        all_passed = False
 
-                    if args.fail_fast:
-                        break
+                status = ' '.join(status_parts)
+                if all_passed:
+                    if args.verbose:
+                        console.print(f"  {status} {description}")
+                else:
+                    console.print(f"  {status} {description}")
+                    if args.verbose:
+                        console.print(f"    SQL: {sql}")
+                        for run_mode in modes_to_run:
+                            r = mode_results[run_mode]
+                            mode_abbrev = {'internal': 'int', 'simple': 'sim', 'extended': 'ext'}[run_mode]
+                            if not r['passed']:
+                                console.print(f"    [{mode_abbrev}] {r['reason']} (got: {r['actual']})")
 
-            except Exception as e:
-                tests_failed += 1
-                failures.append({
-                    'operator': fn_name,
-                    'sql': sql,
-                    'expected': expect,
-                    'actual': None,
-                    'reason': f"Error: {e}",
-                    'description': description
-                })
-                console.print(f"  [red]✗[/red] {description} - Error: {e}")
-
-                if args.fail_fast:
+            # Check fail-fast across all modes
+            if args.fail_fast:
+                if any(not mode_results[m]['passed'] for m in modes_to_run):
                     break
 
-        if args.fail_fast and tests_failed > 0:
-            break
+        if args.fail_fast:
+            if any(results_by_mode[m]['failed'] > 0 for m in modes_to_run):
+                break
 
     # Summary
     console.print()
     console.print("[bold]Summary[/bold]")
-    console.print(f"  Total: {tests_found}")
-    console.print(f"  [green]Passed: {tests_passed}[/green]")
-    if tests_failed > 0:
-        console.print(f"  [red]Failed: {tests_failed}[/red]")
 
-    if failures and not args.verbose:
-        console.print()
-        console.print("[bold]Failures:[/bold]")
-        for f in failures[:5]:  # Show first 5
-            console.print(f"  [red]•[/red] {f['operator']}: {f['description']}")
-            console.print(f"    {f['reason']}")
-        if len(failures) > 5:
-            console.print(f"  ... and {len(failures) - 5} more")
+    if len(modes_to_run) == 1:
+        run_mode = modes_to_run[0]
+        r = results_by_mode[run_mode]
+        console.print(f"  Mode: {run_mode}")
+        console.print(f"  Total: {r['found']}")
+        console.print(f"  [green]Passed: {r['passed']}[/green]")
+        if r['failed'] > 0:
+            console.print(f"  [red]Failed: {r['failed']}[/red]")
 
-    sys.exit(0 if tests_failed == 0 else 1)
+        if r['failures'] and not args.verbose:
+            console.print()
+            console.print("[bold]Failures:[/bold]")
+            for f in r['failures'][:5]:
+                console.print(f"  [red]•[/red] {f['operator']}: {f['description']}")
+                console.print(f"    {f['reason']}")
+            if len(r['failures']) > 5:
+                console.print(f"  ... and {len(r['failures']) - 5} more")
+    else:
+        # Multi-mode summary table
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Mode")
+        table.add_column("Total", justify="right")
+        table.add_column("Passed", justify="right", style="green")
+        table.add_column("Failed", justify="right", style="red")
+        table.add_column("Pass Rate", justify="right")
+
+        for run_mode in modes_to_run:
+            r = results_by_mode[run_mode]
+            rate = f"{100*r['passed']//r['found']}%" if r['found'] > 0 else "N/A"
+            table.add_row(
+                run_mode,
+                str(r['found']),
+                str(r['passed']),
+                str(r['failed']) if r['failed'] > 0 else "-",
+                rate
+            )
+
+        console.print(table)
+
+        # Show mode-specific failures
+        for run_mode in modes_to_run:
+            r = results_by_mode[run_mode]
+            if r['failures'] and not args.verbose:
+                console.print()
+                console.print(f"[bold]Failures ({run_mode}):[/bold]")
+                for f in r['failures'][:3]:
+                    console.print(f"  [red]•[/red] {f['operator']}: {f['description']}")
+                    console.print(f"    {f['reason']}")
+                if len(r['failures']) > 3:
+                    console.print(f"  ... and {len(r['failures']) - 3} more")
+
+    # Exit code - fail if any mode has failures
+    total_failed = sum(results_by_mode[m]['failed'] for m in modes_to_run)
+    sys.exit(0 if total_failed == 0 else 1)
 
 
 def _evaluate_expectation(actual, expect):

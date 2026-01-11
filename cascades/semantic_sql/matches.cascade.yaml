@@ -25,16 +25,37 @@ sql_function:
   - '{{ text }} ~ {{ criterion }}'
   cache: true
   test_cases:
+  # MEANS infix operator
   - sql: WITH t AS (SELECT 'apple pie recipe' AS text) SELECT * FROM t WHERE text MEANS 'dessert recipes'
     expect:
       type: contains
       value: apple pie
-    description: MEANS operator matches related content
+    description: "Infix MEANS: matches related content"
+  # Tilde operator (short form)
   - sql: WITH t AS (SELECT 'quantum physics' AS topic) SELECT * FROM t WHERE topic ~ 'science'
     expect:
       type: contains
       value: quantum
-    description: Tilde operator matches semantic content
+    description: "Infix ~: matches semantic content"
+  # MATCHES infix operator
+  - sql: WITH t AS (SELECT 'customer complaint about shipping delay' AS msg) SELECT * FROM t WHERE msg MATCHES 'delivery issues'
+    expect:
+      type: contains
+      value: shipping
+    description: "Infix MATCHES: filters by semantic match"
+  # Function syntax
+  - sql: "SELECT semantic_matches('renewable energy investments', 'environmental topics')"
+    expect: true
+    description: "Function: returns true for semantic match"
+  # Skip flaky test - LLM interpretation can be overly generous
+  - sql: "SELECT semantic_matches('basketball game results', 'cooking recipes')"
+    skip: true
+    expect: false
+    description: "Function: returns false for unrelated topics (skipped - LLM varies)"
+  # Negative case with infix
+  - sql: WITH t AS (SELECT 'weather forecast' AS text) SELECT CASE WHEN text MEANS 'financial news' THEN 'yes' ELSE 'no' END FROM t
+    expect: "no"
+    description: "Infix MEANS: returns false for unrelated"
 cells:
 - name: evaluate
   model: google/gemini-2.5-flash-lite

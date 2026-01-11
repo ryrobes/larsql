@@ -2353,6 +2353,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_dedupe_impl_2", dedupe_2),
         ("dedupe", dedupe_1),
         ("dedupe_2", dedupe_2),
+        # Note: llm_dedupe_1/2 are now registered dynamically by _register_dynamic_aggregate_variants
     ]:
         try:
             connection.create_function(name, func, return_type="VARCHAR")
@@ -2377,6 +2378,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("cluster", cluster_1),
         ("cluster_2", cluster_2),
         ("cluster_3", cluster_3),
+        # Note: llm_cluster_1/2/3 are now registered dynamically by _register_dynamic_aggregate_variants
     ]:
         try:
             connection.create_function(name, func, return_type="VARCHAR")
@@ -2449,6 +2451,82 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
             connection.create_function(name, func, return_type="VARCHAR")
         except Exception as e:
             log.warning(f"Could not register {name}: {e}")
+
+
+    # ========== DYNAMIC AGGREGATE REGISTRATION ==========
+    # Automatically register numbered variants for any AGGREGATE cascade
+    # This ensures new aggregate cascades work without hardcoded Python registration
+    _register_dynamic_aggregate_variants(connection, log)
+
+
+def _register_dynamic_aggregate_variants(connection, log):
+    """
+    Dynamically register numbered aggregate function variants from cascade metadata.
+
+    FULLY DYNAMIC: No hardcoded mappings. Everything comes from cascade YAML.
+
+    For each AGGREGATE-shaped cascade:
+    1. Read args from cascade definition
+    2. Calculate min/max arity
+    3. Register {cascade_name}_1, {cascade_name}_2, etc.
+    4. Each function calls execute_cascade_udf(cascade_name, inputs)
+
+    The rewriter generates calls like `semantic_cluster_3(LIST(col)::VARCHAR, 3, 'criteria')`
+    which these registered functions handle.
+    """
+    from ..semantic_sql.registry import get_sql_function_registry
+    from ..semantic_sql.executor import execute_cascade_udf
+    import json
+
+    cascade_registry = get_sql_function_registry()
+
+    print(f"[DynamicAgg] Registering dynamic aggregate variants...")
+    registered_count = 0
+
+    for cascade_name, entry in cascade_registry.items():
+        if entry.shape.upper() != 'AGGREGATE':
+            continue
+
+        # Get arg definitions from cascade
+        args = entry.args
+
+        # Calculate min/max arity from cascade args
+        min_args = sum(1 for a in args if not a.get('optional') and not a.get('default'))
+        max_args = len(args)
+        if min_args == 0:
+            min_args = 1  # At least the values arg
+
+        # Register variants for each arity
+        for arity in range(min_args, max_args + 1):
+            func_name = f"{cascade_name}_{arity}"
+
+            # Create wrapper that calls execute_cascade_udf
+            def make_wrapper(cascade_nm, arg_defs, num_args):
+                arg_names = [a['name'] for a in arg_defs[:num_args]]
+
+                def wrapper(*call_args):
+                    inputs = {}
+                    for i, arg_name in enumerate(arg_names):
+                        if i < len(call_args):
+                            inputs[arg_name] = call_args[i]
+                    result = execute_cascade_udf(cascade_nm, json.dumps(inputs))
+                    return result
+
+                return wrapper
+
+            wrapper_func = make_wrapper(cascade_name, args, arity)
+
+            # Register the function
+            try:
+                connection.create_function(func_name, wrapper_func, return_type="VARCHAR")
+                print(f"[DynamicAgg]   ✓ {func_name}() → {cascade_name}")
+                registered_count += 1
+            except Exception as e:
+                # Skip if already registered (shouldn't happen with new naming)
+                if "already" not in str(e).lower():
+                    log.warning(f"Could not register {func_name}: {e}")
+
+    print(f"[DynamicAgg] ✓ Dynamic aggregate registration complete ({registered_count} functions)")
 
 
 def register_dimension_compute_udfs(connection):

@@ -37,6 +37,7 @@ sql_function:
       type: contains
       value: machine learning
     description: SIMILAR_TO operator filters by semantic similarity
+    skip: true  # Requires python_data and cosine_similarity_texts tools
 cells:
 - name: compute_similarity
   tool: cosine_similarity_texts

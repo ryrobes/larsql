@@ -159,35 +159,33 @@ def lookup_aggregate_function(name: str) -> Optional[AggregateFunction]:
 
 
 # ============================================================================
-# Legacy Compatibility Layer
+# Aggregate Function Interface
 # ============================================================================
-# Provides same interface as old hardcoded LLM_AGG_FUNCTIONS/LLM_AGG_ALIASES
-# for gradual migration of sql_explain.py
+# Returns aggregate function metadata derived purely from cascade definitions.
+# NO legacy mappings - uses cascade names directly.
 
 
 def get_llm_agg_functions_compat() -> Tuple[Dict, Dict]:
     """
-    Legacy compatibility: Return (LLM_AGG_FUNCTIONS, LLM_AGG_ALIASES) format.
+    Return aggregate function metadata derived from cascade definitions.
 
-    This matches the old hardcoded dict structure for backwards compatibility
-    with sql_explain.py and llm_agg_rewriter.py while we migrate them.
+    FULLY DYNAMIC: No hardcoded mappings. Everything comes from cascade YAML.
+    - Function names use cascade names directly (e.g., semantic_cluster)
+    - Aliases come from cascade operators (e.g., MEANING → semantic_cluster)
+    - Args come from cascade inputs_schema
 
-    IMPORTANT: Maps cascade names (semantic_*) to legacy LLM_* keys for backwards
-    compatibility with existing DuckDB UDFs (llm_summarize_1, llm_classify_2, etc.)
-
-    CRITICAL: Adds extra args that the Python impl functions accept but cascades don't
-    declare (for backwards compatibility with old SQL queries).
+    The rewriter generates calls like `semantic_cluster_3(...)` which
+    dynamic registration handles via execute_cascade_udf().
 
     Returns:
         Tuple of (functions_dict, aliases_dict)
     """
     from dataclasses import dataclass as compat_dataclass
 
-    # Mimic old LLMAggFunction structure
     @compat_dataclass
     class LLMAggFunctionCompat:
         name: str
-        impl_name: str
+        impl_name: str  # Now just the cascade name (no _impl suffix)
         min_args: int
         max_args: int
         return_type: str
@@ -199,45 +197,23 @@ def get_llm_agg_functions_compat() -> Tuple[Dict, Dict]:
     functions = {}
     aliases = {}
 
-    # Map cascade names to legacy LLM_* names for backwards compatibility
-    # semantic_summarize → (LLM_SUMMARIZE, llm_summarize_impl, max_args)
-    #
-    # CRITICAL: max_args comes from Python impl signature, NOT cascade (for backwards compat)
-    # Old queries may pass extra args that cascades ignore - we need to accept them
-    cascade_to_legacy = {
-        'semantic_summarize': ('LLM_SUMMARIZE', 'llm_summarize_impl', 3),  # (values, prompt, max_items)
-        'semantic_classify_collection': ('LLM_CLASSIFY', 'llm_classify_impl', 3),  # (values, categories, prompt)
-        'semantic_sentiment': ('LLM_SENTIMENT', 'llm_sentiment_impl', 1),  # (values)
-        'semantic_themes': ('LLM_THEMES', 'llm_themes_impl', 2),  # (values, max_themes)
-        'semantic_cluster': ('LLM_CLUSTER', 'llm_cluster_impl', 3),  # (values, num_clusters, criteria)
-        'semantic_consensus': ('LLM_CONSENSUS', 'llm_consensus_impl', 2),  # (values, prompt)
-        'semantic_dedupe': ('LLM_DEDUPE', 'llm_dedupe_impl', 2),  # (values, criteria)
-        'semantic_outliers': ('LLM_OUTLIERS', 'llm_outliers_impl', 3),  # (values, num_outliers, criteria)
-    }
-
     for canonical_name, agg_func in registry.items():
-        # Map to legacy LLM_* key and impl_name if known, otherwise use cascade name
-        legacy_mapping = cascade_to_legacy.get(canonical_name.lower())
-        if legacy_mapping:
-            legacy_key, legacy_impl, legacy_max_args = legacy_mapping
-        else:
-            legacy_key = canonical_name.upper()
-            legacy_impl = agg_func.impl_name
-            legacy_max_args = agg_func.max_args
+        # Use cascade name directly - no legacy mapping needed
+        func_key = canonical_name.upper()
 
-        # Convert to old format
         compat_func = LLMAggFunctionCompat(
-            name=legacy_key,
-            impl_name=legacy_impl,  # Use legacy llm_* prefix to match registered UDFs
+            name=func_key,
+            impl_name=canonical_name,  # Just the cascade name, no _impl
             min_args=agg_func.min_args,
-            max_args=legacy_max_args,  # Use impl function signature, not cascade declaration
+            max_args=agg_func.max_args,
             return_type=agg_func.return_type,
         )
 
-        functions[legacy_key] = compat_func
+        functions[func_key] = compat_func
 
-        # Build aliases mapping (alias → legacy key)
+        # Build aliases mapping (alias → canonical name)
+        # e.g., MEANING → SEMANTIC_CLUSTER
         for alias in agg_func.aliases:
-            aliases[alias.upper()] = legacy_key
+            aliases[alias.upper()] = func_key
 
     return functions, aliases

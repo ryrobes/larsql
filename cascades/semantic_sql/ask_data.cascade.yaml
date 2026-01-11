@@ -57,11 +57,9 @@ sql_function:
     cache_as: ask_data  # Share cache with ask_data_sql
   cache: true
   test_cases:
-    - sql: SELECT ask_data('select 1 as test')
-      expect:
-        type: regex
-        pattern: test
-      description: Simple passthrough query
+    - sql: SELECT * from ask_data('select 1 as test')
+      expect: 1
+      description: Simple passthrough query returns value
 
 cells:
   - name: generate_query
