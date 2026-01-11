@@ -2811,7 +2811,7 @@ To call this tool, output a JSON code block:
         """
         Parse prompt-based tool calls from agent response.
 
-        Supports 23 formats for maximum LLM compatibility:
+        Supports 24 formats for maximum LLM compatibility:
 
         Format 1 (Preferred): Standard JSON with tool wrapper in code fence
             ```json
@@ -2891,6 +2891,14 @@ To call this tool, output a JSON code block:
         Format 18: Qwen/DeepSeek special tokens
             <|tool_call|>{"name": "...", "arguments": {...}}<|/tool_call|>
             [TOOL_CALL]...[/TOOL_CALL]
+
+        Format 18b: Hash rocket syntax (Perl/Ruby style) in special tokens
+            [TOOL_CALL]
+            {tool => 'read_file', args => {
+              --path "/path/to/file"
+            }}
+            [/TOOL_CALL]
+            → Converts => to :, single to double quotes, strips -- prefix from args
 
         Format 19: Use/Call directive style
             Use: tool_name
@@ -3544,7 +3552,37 @@ To call this tool, output a JSON code block:
                         if tool_name and isinstance(arguments, dict):
                             add_tool_call(tool_name, arguments)
                 except json.JSONDecodeError:
-                    pass
+                    # Try to parse alternate syntaxes that aren't valid JSON
+                    # Format 17b: Hash rocket syntax (Perl/Ruby style)
+                    # {tool => 'read_file', args => { --path "/path/to/file" }}
+                    if '=>' in token_content:
+                        try:
+                            converted = token_content
+                            # Quote bare keys before => (e.g., {tool => becomes {"tool":)
+                            # Matches: {key => or , key => at start of object/after comma
+                            converted = re.sub(r'([{,]\s*)(\w+)\s*=>', r'\1"\2":', converted)
+                            # Convert remaining => to : (shouldn't be any, but safety)
+                            converted = re.sub(r'\s*=>\s*', ': ', converted)
+                            # Convert single quotes to double quotes
+                            converted = converted.replace("'", '"')
+                            # Handle --arg "value" pattern: add colon between key and value
+                            # Matches: --arg_name "value" or --arg_name 'value' (after quote conversion)
+                            converted = re.sub(r'--(\w+)\s+"', r'"\1": "', converted)
+                            # Handle --arg value (unquoted value)
+                            converted = re.sub(r'--(\w+)\s+([^"\s{}\[\],]+)', r'"\1": "\2"', converted)
+
+                            data = json.loads(converted)
+                            if isinstance(data, dict):
+                                tool_name = data.get("name") or data.get("tool") or data.get("function")
+                                arguments = data.get("arguments") or data.get("parameters") or data.get("args") or {}
+                                if tool_name and isinstance(arguments, dict):
+                                    add_tool_call(tool_name, arguments)
+                        except (json.JSONDecodeError, Exception):
+                            # If conversion still fails, record the error
+                            error_detail = f"Possible tool call with non-JSON syntax:\n"
+                            error_detail += f"  Pattern: hash rocket (=>)\n"
+                            error_detail += f"  Content: {token_content[:150]}{'...' if len(token_content) > 150 else ''}\n"
+                            parse_errors.append(error_detail)
 
         # ============================================================
         # Pattern 18: Use/Call directive style (some instruction models)

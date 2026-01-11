@@ -107,12 +107,39 @@
 }
 
 /* ============================================
-   LAYOUT - Two-column flexbox
+   LAYOUT - Two-column flexbox (three when context explorer open)
    ============================================ */
 
 .explore-layout {
   display: flex;
   height: calc(100% - 60px); /* Account for header */
+}
+
+/* Context Explorer Sidebar (left) */
+.explore-context-sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border-dim);
+  background: var(--color-bg-secondary);
+}
+
+/* Smooth transition for main column when context explorer opens/closes */
+.explore-layout.with-context-explorer .explore-main-column {
+  transition: flex 0.3s ease-out;
+}
+
+/* Override ContextExplorerSidebar styles for explore context */
+.explore-context-sidebar .ces-container {
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  border: none;
+}
+
+.explore-context-sidebar .ces-header {
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border-dim);
 }
 
 /* Main column (scrollable) */
@@ -121,6 +148,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0; /* Allow shrinking in flexbox */
 }
 
 .explore-main-content {
@@ -156,6 +184,27 @@
 
 .explore-session-log .sml-grid-container {
   background: transparent;
+}
+
+/* Highlight rows with context (clickable for context explorer) */
+.explore-session-log .sml-row-has-context {
+  cursor: pointer;
+}
+
+.explore-session-log .sml-row-has-context:hover .ag-cell {
+  background: rgba(0, 229, 255, 0.08);
+}
+
+/* Selected message highlight (when context explorer is open) */
+.explore-session-log .sml-row-selected {
+  background: rgba(167, 139, 250, 0.15) !important;
+  border-left: 3px solid var(--color-accent-purple) !important;
+}
+
+/* Hash hover highlighting (from context explorer) */
+.explore-session-log .sml-row-hover-highlighted {
+  background: rgba(0, 229, 255, 0.12) !important;
+  border-left: 3px solid var(--color-accent-cyan) !important;
 }
 
 /* ============================================
@@ -295,9 +344,21 @@
    RESPONSIVE
    ============================================ */
 
+@media (max-width: 1400px) {
+  /* Narrower context sidebar on medium screens */
+  .explore-context-sidebar {
+    max-width: 320px;
+  }
+}
+
 @media (max-width: 1024px) {
   .explore-layout {
     flex-direction: column;
+  }
+
+  /* Hide context explorer on mobile/tablet */
+  .explore-context-sidebar {
+    display: none;
   }
 
   .simple-sidebar {

@@ -154,6 +154,28 @@ def main():
         help='Initialize ClickHouse schema (create tables if needed)'
     )
 
+    # db migrate (run pending migrations)
+    db_migrate_parser = db_subparsers.add_parser(
+        'migrate',
+        help='Run database migrations'
+    )
+    db_migrate_parser.add_argument(
+        '--status',
+        action='store_true',
+        help='Show migration status without running'
+    )
+    db_migrate_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be done without executing'
+    )
+    db_migrate_parser.add_argument(
+        '--version',
+        type=int,
+        default=None,
+        help='Run specific migration version only'
+    )
+
     # SQL command group (query and server)
     sql_parser = subparsers.add_parser('sql', help='SQL commands (query or start PostgreSQL server)')
     sql_subparsers = sql_parser.add_subparsers(dest='sql_command', help='SQL subcommands')
@@ -1099,6 +1121,8 @@ def main():
             cmd_db_status(args)
         elif args.db_command == 'init':
             cmd_db_init(args)
+        elif args.db_command == 'migrate':
+            cmd_db_migrate(args)
         else:
             db_parser.print_help()
             sys.exit(1)
@@ -2493,6 +2517,114 @@ def cmd_db_init(args):
 
     except Exception as e:
         print(f"✗ Schema initialization failed: {e}")
+        print()
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def cmd_db_migrate(args):
+    """Run database migrations or show migration status."""
+    from rvbbit.config import get_clickhouse_url
+    from rvbbit.db_adapter import get_db_adapter
+    from rvbbit.migrations import MigrationRunner, get_migration_status
+
+    print()
+    print("="*60)
+    print("DATABASE MIGRATIONS")
+    print("="*60)
+    print()
+    print(f"Connection: {get_clickhouse_url()}")
+    print()
+
+    try:
+        db = get_db_adapter()
+        runner = MigrationRunner(db_adapter=db)
+
+        # Show status mode
+        if args.status:
+            print("Migration Status:")
+            print("-" * 60)
+            print()
+
+            status = runner.get_status()
+            if not status:
+                print("No migrations found in migrations/sql/")
+                return
+
+            pending_count = 0
+            applied_count = 0
+
+            for m in status:
+                status_icon = {
+                    'pending': '○',
+                    'applied': '✓',
+                    'failed': '✗',
+                    'rolled_back': '↩',
+                }.get(m['status'], '?')
+
+                checksum_status = '' if m.get('checksum_match', True) else ' [MODIFIED]'
+                always_run = ' [always_run]' if m.get('always_run') else ''
+
+                print(f"  {status_icon} {m['version']:03d} {m['name']}")
+                print(f"       Status: {m['status']}{checksum_status}{always_run}")
+                if m.get('executed_at'):
+                    print(f"       Executed: {m['executed_at']}")
+                print()
+
+                if m['status'] == 'pending':
+                    pending_count += 1
+                elif m['status'] == 'applied':
+                    applied_count += 1
+
+            print(f"Summary: {applied_count} applied, {pending_count} pending")
+            print()
+            return
+
+        # Dry run mode
+        if args.dry_run:
+            print("DRY RUN - showing what would be executed:")
+            print("-" * 60)
+            print()
+
+            pending = runner.get_pending_migrations()
+            if not pending:
+                print("No pending migrations")
+                return
+
+            for m in pending:
+                print(f"  Would run: {m.version:03d}_{m.name}")
+                print(f"             {m.description}")
+                print(f"             {len(m.statements)} statements")
+                print()
+
+            print(f"Total: {len(pending)} migration(s) would be executed")
+            print()
+            print("Run without --dry-run to apply these migrations.")
+            print()
+            return
+
+        # Run migrations
+        print("Running migrations...")
+        print("-" * 60)
+        print()
+
+        successful, failed = runner.run_all(dry_run=False, stop_on_error=True)
+
+        print()
+        if failed > 0:
+            print(f"✗ {failed} migration(s) failed")
+            sys.exit(1)
+        elif successful > 0:
+            print(f"✓ {successful} migration(s) applied successfully")
+        else:
+            print("✓ No pending migrations")
+        print()
+        print("Run 'rvbbit db migrate --status' to view all migrations.")
+        print()
+
+    except Exception as e:
+        print(f"✗ Migration error: {e}")
         print()
         import traceback
         traceback.print_exc()

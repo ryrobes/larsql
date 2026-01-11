@@ -533,80 +533,43 @@ class ClickHouseAdapter:
             print(f"[RVBBIT] Warning: Could not check/create database: {e}")
 
     def _ensure_tables(self):
-        """Ensure all required tables exist."""
-        from .schema import get_all_schemas
+        """
+        Legacy method - now a no-op since migrations handle table creation.
 
-        schemas = get_all_schemas()
-        for table_name, ddl in schemas.items():
-            try:
-                # Check if table exists
-                result = self.client.execute(
-                    f"SELECT 1 FROM system.tables WHERE database = '{self.database}' AND name = '{table_name}'"
-                )
-                if not result:
-                    print(f"[RVBBIT] Creating table '{table_name}'...")
-                    self.client.execute(ddl)
-                    print(f"[RVBBIT] Table '{table_name}' created")
-            except Exception as e:
-                print(f"[RVBBIT] Warning: Could not ensure table '{table_name}': {e}")
+        Tables are created by numbered migrations in rvbbit/migrations/sql/.
+        This method is kept for backwards compatibility but does nothing.
+        """
+        # Tables are now created by migrations - see _run_migrations()
+        pass
 
     def _run_migrations(self):
         """
-        Run all pending migrations from the migrations directory.
+        Run all pending migrations using the Rails-style migrations system.
 
-        Migrations are SQL files that use IF NOT EXISTS / IF EXISTS clauses
-        for idempotency, so they're safe to run multiple times.
+        Migrations are numbered SQL files in rvbbit/migrations/sql/ that are
+        tracked in the schema_migrations table. Each migration runs exactly once.
+
+        Features:
+        - Version tracking in schema_migrations table
+        - Checksum verification for change detection
+        - Idempotent execution (each migration runs once)
+        - Support for always_run maintenance tasks
         """
-        from pathlib import Path
+        try:
+            from .migrations import MigrationRunner
 
-        # Find migrations directory (relative to this file)
-        migrations_dir = Path(__file__).parent.parent / "migrations"
+            runner = MigrationRunner(db_adapter=self)
+            successful, failed = runner.run_all(dry_run=False, stop_on_error=True)
 
-        if not migrations_dir.exists():
-            return
+            if failed > 0:
+                print(f"[RVBBIT] Warning: {failed} migration(s) failed")
+            elif successful > 0:
+                print(f"[RVBBIT] {successful} migration(s) applied successfully")
 
-        # Get all .sql files sorted alphabetically
-        migration_files = sorted(migrations_dir.glob("*.sql"))
-
-        if not migration_files:
-            return
-
-        print(f"[RVBBIT] Running {len(migration_files)} migrations...")
-
-        for migration_file in migration_files:
-            try:
-                # Read migration SQL
-                sql_content = migration_file.read_text()
-
-                # Split by semicolons and execute each statement
-                statements = [s.strip() for s in sql_content.split(';') if s.strip()]
-
-                executed = 0
-                for statement in statements:
-                    # Skip comments-only blocks
-                    lines = [l for l in statement.split('\n') if l.strip() and not l.strip().startswith('--')]
-                    if not lines:
-                        continue
-
-                    # Skip SELECT statements (verification queries)
-                    first_line = lines[0].strip().upper()
-                    if first_line.startswith('SELECT'):
-                        continue
-
-                    try:
-                        self.client.execute(statement)
-                        executed += 1
-                    except Exception as stmt_err:
-                        # Log but don't fail - migration may have already been applied
-                        err_str = str(stmt_err).lower()
-                        if "already exists" not in err_str and "duplicate" not in err_str:
-                            print(f"[RVBBIT] Migration '{migration_file.name}' warning: {stmt_err}")
-
-                if executed > 0:
-                    print(f"[RVBBIT] Migration '{migration_file.name}': {executed} statements executed")
-
-            except Exception as e:
-                print(f"[RVBBIT] Warning: Could not run migration '{migration_file.name}': {e}")
+        except ImportError as e:
+            print(f"[RVBBIT] Warning: Could not load migrations module: {e}")
+        except Exception as e:
+            print(f"[RVBBIT] Warning: Migration error: {e}")
 
     # =========================================================================
     # Query Operations

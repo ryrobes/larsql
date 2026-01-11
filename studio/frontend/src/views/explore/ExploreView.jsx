@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
 import { Button, CheckpointRenderer, useToast, VideoLoader } from '../../components';
 import SessionMessagesLog from '../../studio/components/SessionMessagesLog';
+import ContextExplorerSidebar from '../../studio/components/ContextExplorerSidebar';
 import SimpleSidebar from './components/SimpleSidebar';
 import CascadePickerModal from './components/CascadePickerModal';
 import useExplorePolling from './hooks/useExplorePolling';
@@ -37,6 +38,33 @@ const ExploreView = () => {
   const { showToast } = useToast();
 
   const [showPicker, setShowPicker] = useState(!sessionId);
+
+  // Context Explorer state
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [hoveredHash, setHoveredHash] = useState(null);
+
+  // Context explorer handlers
+  const handleMessageClick = useCallback((message) => {
+    // Only show context explorer for messages that have context
+    if (message && message.context_hashes && message.context_hashes.length > 0) {
+      setSelectedMessage(message);
+    } else {
+      setSelectedMessage(null);
+    }
+  }, []);
+
+  const handleCloseContextExplorer = useCallback(() => {
+    setSelectedMessage(null);
+  }, []);
+
+  const handleHoverHash = useCallback((hash) => {
+    setHoveredHash(hash);
+  }, []);
+
+  const handleNavigateToMessage = useCallback((messageIndex) => {
+    // Could scroll to message in grid - for now just console log
+    console.log('[ExploreView] Navigate to message index:', messageIndex);
+  }, []);
 
   // Auto-restore last session (with session validation) - ONLY RUN ONCE ON MOUNT
   const hasAutoRestored = React.useRef(false);
@@ -282,8 +310,32 @@ const ExploreView = () => {
         </Button>
       </div>
 
-      {/* Two-column layout */}
-      <div className="explore-layout">
+      {/* Two-column layout (three columns when context explorer is open) */}
+      <div className={`explore-layout ${selectedMessage ? 'with-context-explorer' : ''}`}>
+
+        {/* Context Explorer Sidebar (left) - appears when message with context is selected */}
+        <AnimatePresence>
+          {selectedMessage && (
+            <motion.div
+              className="explore-context-sidebar"
+              initial={{ opacity: 0, x: -320, width: 0 }}
+              animate={{ opacity: 1, x: 0, width: 360 }}
+              exit={{ opacity: 0, x: -320, width: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+            >
+              <ContextExplorerSidebar
+                selectedMessage={selectedMessage}
+                allLogs={logs}
+                hoveredHash={hoveredHash}
+                onHoverHash={handleHoverHash}
+                onClose={handleCloseContextExplorer}
+                onNavigateToMessage={handleNavigateToMessage}
+                cascadeAnalytics={cascadeAnalytics}
+                cellAnalytics={cellAnalytics}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Main Column */}
         <div className="explore-main-column">
@@ -299,6 +351,11 @@ const ExploreView = () => {
                 compact={true}
                 className="explore-session-log"
                 shouldPollBudget={false}  // Budget shown in sidebar
+                // Context Explorer integration
+                onMessageClick={handleMessageClick}
+                hoveredHash={hoveredHash}
+                onHoverHash={handleHoverHash}
+                externalSelectedMessage={selectedMessage}
               />
             </div>
 
