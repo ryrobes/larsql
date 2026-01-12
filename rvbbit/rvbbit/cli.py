@@ -5882,8 +5882,8 @@ def cmd_browser_batch(args):
 
     async def run_batch():
         session = BrowserSession(
-            client_id=args.client_id,
-            test_id=args.test_id,
+            session_id=args.client_id,
+            cell_name=args.test_id,
         )
 
         artifacts_result = {

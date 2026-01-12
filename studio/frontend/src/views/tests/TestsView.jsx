@@ -43,6 +43,7 @@ const TEST_TYPES = {
   all: { label: 'All Tests', icon: 'mdi:test-tube', color: '#94a3b8' },
   semantic_sql: { label: 'Semantic SQL', icon: 'mdi:database-search', color: '#60a5fa' },
   cascade_snapshot: { label: 'Snapshots', icon: 'mdi:camera', color: '#a78bfa' },
+  visual_regression: { label: 'Visual', icon: 'mdi:image-compare', color: '#f472b6' },
 };
 
 // Status colors
@@ -618,11 +619,12 @@ const TestsView = () => {
           'contracts': 'con',
           'anchors': 'anc',
           'deterministic': 'det',
-          'full': 'ful'
+          'full': 'ful',
+          'visual': 'vis'
         };
 
         // Sort modes in a sensible order
-        const modeOrder = ['internal', 'simple', 'extended', 'structure', 'contracts', 'anchors', 'deterministic', 'full'];
+        const modeOrder = ['internal', 'simple', 'extended', 'structure', 'contracts', 'anchors', 'deterministic', 'full', 'visual'];
         const sortedModes = modes.sort((a, b) => {
           const aIdx = modeOrder.indexOf(a);
           const bIdx = modeOrder.indexOf(b);
@@ -668,11 +670,16 @@ const TestsView = () => {
       width: 130,
       cellRenderer: (params) => {
         const config = TEST_TYPES[params.value] || TEST_TYPES.all;
+        const labelMap = {
+          'semantic_sql': 'SQL',
+          'cascade_snapshot': 'Snapshot',
+          'visual_regression': 'Visual'
+        };
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Icon icon={config.icon} width={14} style={{ color: config.color }} />
             <span style={{ color: config.color, fontSize: '11px' }}>
-              {params.value === 'semantic_sql' ? 'SQL' : 'Snapshot'}
+              {labelMap[params.value] || params.value}
             </span>
           </div>
         );

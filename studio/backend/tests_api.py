@@ -73,6 +73,10 @@ class TestDefinition:
     validation_modes: List[str] = field(default_factory=list)
     has_contracts: bool = False
     has_anchors: bool = False
+    # For visual regression
+    initial_url: str = ""
+    browser_batch: List[Any] = field(default_factory=list)
+    threshold: float = 0.95
 
 
 @dataclass
@@ -109,6 +113,12 @@ class TestResult:
     error_type: str = ""
     error_message: str = ""
     error_traceback: str = ""
+    # For visual regression
+    session_id: str = ""
+    previous_session_id: str = ""
+    overall_score: float = 0.0
+    is_baseline: bool = False
+    screenshots_compared: str = ""  # JSON array of screenshot comparisons
 
 
 def _get_config():
@@ -236,11 +246,64 @@ def discover_snapshot_tests(filter_pattern: Optional[str] = None) -> List[TestDe
     return tests
 
 
+def discover_visual_tests(filter_pattern: Optional[str] = None) -> List[TestDefinition]:
+    """
+    Discover visual regression tests from browsers/visual_tests/*.visual.yaml
+    """
+    import yaml
+
+    config = _get_config()
+    browsers_dir = os.path.join(config.root_dir, 'browsers', 'visual_tests')
+
+    tests = []
+
+    if not os.path.isdir(browsers_dir):
+        return tests
+
+    for filename in os.listdir(browsers_dir):
+        if not filename.endswith('.visual.yaml'):
+            continue
+
+        filepath = os.path.join(browsers_dir, filename)
+        try:
+            with open(filepath) as f:
+                spec = yaml.safe_load(f)
+
+            if not spec:
+                continue
+
+            test_id = spec.get('test_id', f"visual/{filename.replace('.visual.yaml', '')}")
+            test_name = test_id.split('/')[-1] if '/' in test_id else test_id
+
+            # Apply filter if provided
+            if filter_pattern and filter_pattern.lower() not in test_id.lower():
+                continue
+
+            tests.append(TestDefinition(
+                test_id=test_id,
+                test_type='visual_regression',
+                test_group=spec.get('group', 'visual'),
+                test_name=test_name,
+                description=spec.get('description', ''),
+                source_file=filepath,
+                source_line=0,
+                initial_url=spec.get('initial_url', ''),
+                browser_batch=spec.get('browser_batch', []),
+                threshold=spec.get('threshold', 0.95)
+            ))
+
+        except Exception as e:
+            print(f"[TestsAPI] Error loading visual test {filename}: {e}")
+
+    return tests
+
+
 def discover_all_tests(filter_pattern: Optional[str] = None) -> Dict[str, List[TestDefinition]]:
     """Discover all tests from all sources."""
     return {
         'semantic_sql': discover_semantic_sql_tests(filter_pattern),
-        'cascade_snapshot': discover_snapshot_tests(filter_pattern)
+        'cascade_snapshot': discover_snapshot_tests(filter_pattern),
+        'visual_regression': discover_visual_tests(filter_pattern)
     }
 
 
@@ -544,6 +607,128 @@ def _run_snapshot_test(test: TestDefinition, mode: str = 'structure') -> TestRes
     return result
 
 
+def _run_visual_test(test: TestDefinition, db) -> TestResult:
+    """Execute a single visual regression test."""
+    import subprocess
+    import uuid
+    from rvbbit.visual_compare import compare_sessions, VisualTestResult
+
+    start_time = datetime.now(timezone.utc)
+    result = TestResult(
+        test_id=test.test_id,
+        test_type=test.test_type,
+        test_group=test.test_group,
+        test_name=test.test_name,
+        description=test.description,
+        source_file=test.source_file,
+        validation_mode='visual',
+        status='pending'
+    )
+
+    config = _get_config()
+    browsers_dir = os.path.join(config.root_dir, 'browsers')
+
+    # Generate session ID for this run
+    session_id = f"visual_{test.test_id.replace('/', '_')}_{uuid.uuid4().hex[:8]}"
+
+    try:
+        # Find previous run for this test from ClickHouse
+        previous_session_id = None
+        try:
+            prev_rows = db.query("""
+                SELECT session_id FROM test_results
+                WHERE test_id = %(test_id)s
+                  AND test_type = 'visual_regression'
+                  AND session_id != ''
+                ORDER BY started_at DESC
+                LIMIT 1
+            """, {'test_id': test.test_id})
+            if prev_rows:
+                previous_session_id = prev_rows[0]['session_id']
+        except Exception as e:
+            print(f"[TestsAPI] Could not find previous visual run: {e}")
+
+        # Convert browser batch to JSON string
+        commands_json = json.dumps(test.browser_batch)
+
+        # Run browser batch via CLI
+        cmd = [
+            'rvbbit', 'browser', 'batch',
+            '--url', test.initial_url or 'http://localhost:5550',
+            '--commands', commands_json,
+            '--client-id', session_id
+        ]
+
+        print(f"[TestsAPI] Running visual test: {' '.join(cmd)}")
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+        if proc.returncode != 0:
+            result.status = 'error'
+            result.error_type = 'BrowserBatchError'
+            result.error_message = proc.stderr[:500] if proc.stderr else 'Browser batch failed'
+            return result
+
+        # Compare screenshots to previous run
+        current_session_path = os.path.join(browsers_dir, session_id)
+        previous_session_path = os.path.join(browsers_dir, previous_session_id) if previous_session_id else None
+
+        # Create diff output directory
+        diff_dir = os.path.join(browsers_dir, 'visual_diffs', test.test_id.replace('/', '_'), session_id)
+        os.makedirs(diff_dir, exist_ok=True)
+
+        comparison = compare_sessions(
+            previous_session_path=previous_session_path,
+            current_session_path=current_session_path,
+            test_id=test.test_id,
+            threshold=test.threshold,
+            diff_output_dir=diff_dir
+        )
+
+        # Populate result
+        result.session_id = session_id
+        result.previous_session_id = previous_session_id or ''
+        result.overall_score = comparison.overall_score
+        result.is_baseline = comparison.is_baseline
+        result.screenshots_compared = json.dumps([
+            {
+                'name': s.name,
+                'similarity': s.similarity,
+                'passed': s.passed,
+                'previous_path': s.previous_path,
+                'current_path': s.current_path,
+                'diff_path': s.diff_path,
+                'error': s.error
+            }
+            for s in comparison.screenshots
+        ])
+
+        if comparison.is_baseline:
+            result.status = 'passed'
+            result.failure_message = 'Baseline established (first run)'
+        elif comparison.passed:
+            result.status = 'passed'
+        else:
+            result.status = 'failed'
+            result.failure_type = 'visual_drift'
+            failed_screenshots = [s for s in comparison.screenshots if not s.passed]
+            result.failure_message = f"{len(failed_screenshots)} screenshots below threshold ({test.threshold:.0%})"
+
+    except subprocess.TimeoutExpired:
+        result.status = 'error'
+        result.error_type = 'Timeout'
+        result.error_message = 'Browser batch timed out after 120s'
+    except Exception as e:
+        result.status = 'error'
+        result.error_type = type(e).__name__
+        result.error_message = str(e)
+        result.error_traceback = traceback.format_exc()
+
+    end_time = datetime.now(timezone.utc)
+    result.duration_ms = (end_time - start_time).total_seconds() * 1000
+
+    return result
+
+
 def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a batch of tests synchronously."""
     results: List[TestResult] = []
@@ -614,6 +799,8 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
                 modes_to_run = ['internal', 'simple', 'extended']
             else:
                 modes_to_run = [ssql_mode]
+        elif test.test_type == 'visual_regression':
+            modes_to_run = ['visual']  # Visual tests have only one mode
         else:
             modes_to_run = [snapshot_mode]
 
@@ -626,6 +813,8 @@ def execute_tests(tests: List[TestDefinition], run_id: str, options: Dict[str, A
             try:
                 if test.test_type == 'semantic_sql':
                     result = _run_semantic_sql_test(test, mode=mode)
+                elif test.test_type == 'visual_regression':
+                    result = _run_visual_test(test, db)
                 else:
                     result = _run_snapshot_test(test, mode=mode)
             except Exception as e:
@@ -717,25 +906,27 @@ def _store_test_result(run_id: str, result: TestResult):
     """Store a test result in ClickHouse."""
     db = _get_db()
 
-    db.execute("""
-        INSERT INTO test_results (
-            run_id, test_id, test_type, test_group, test_name, test_description,
-            source_file, source_line, started_at, completed_at, duration_ms, status,
-            sql_query, expected_value, actual_value, expect_type,
-            validation_mode, cells_validated, contracts_checked, contracts_passed,
-            anchors_checked, anchors_passed, judge_score, judge_reasoning,
-            failure_type, failure_message, failure_diff,
-            error_type, error_message, error_traceback
-        ) VALUES (
-            %(run_id)s, %(test_id)s, %(test_type)s, %(test_group)s, %(test_name)s, %(description)s,
-            %(source_file)s, %(source_line)s, %(started_at)s, %(completed_at)s, %(duration_ms)s, %(status)s,
-            %(sql_query)s, %(expected_value)s, %(actual_value)s, %(expect_type)s,
-            %(validation_mode)s, %(cells_validated)s, %(contracts_checked)s, %(contracts_passed)s,
-            %(anchors_checked)s, %(anchors_passed)s, %(judge_score)s, %(judge_reasoning)s,
-            %(failure_type)s, %(failure_message)s, %(failure_diff)s,
-            %(error_type)s, %(error_message)s, %(error_traceback)s
-        )
-    """, {
+    # Base columns that always exist
+    base_columns = """
+        run_id, test_id, test_type, test_group, test_name, test_description,
+        source_file, source_line, started_at, completed_at, duration_ms, status,
+        sql_query, expected_value, actual_value, expect_type,
+        validation_mode, cells_validated, contracts_checked, contracts_passed,
+        anchors_checked, anchors_passed, judge_score, judge_reasoning,
+        failure_type, failure_message, failure_diff,
+        error_type, error_message, error_traceback
+    """
+    base_values = """
+        %(run_id)s, %(test_id)s, %(test_type)s, %(test_group)s, %(test_name)s, %(description)s,
+        %(source_file)s, %(source_line)s, %(started_at)s, %(completed_at)s, %(duration_ms)s, %(status)s,
+        %(sql_query)s, %(expected_value)s, %(actual_value)s, %(expect_type)s,
+        %(validation_mode)s, %(cells_validated)s, %(contracts_checked)s, %(contracts_passed)s,
+        %(anchors_checked)s, %(anchors_passed)s, %(judge_score)s, %(judge_reasoning)s,
+        %(failure_type)s, %(failure_message)s, %(failure_diff)s,
+        %(error_type)s, %(error_message)s, %(error_traceback)s
+    """
+
+    base_params = {
         'run_id': run_id,
         'test_id': result.test_id,
         'test_type': result.test_type,
@@ -765,8 +956,34 @@ def _store_test_result(run_id: str, result: TestResult):
         'failure_diff': result.failure_diff,
         'error_type': result.error_type,
         'error_message': result.error_message,
-        'error_traceback': result.error_traceback
-    })
+        'error_traceback': result.error_traceback,
+    }
+
+    # Try with visual columns first
+    try:
+        visual_columns = ", session_id, previous_session_id, overall_score, is_baseline, screenshots_compared"
+        visual_values = ", %(session_id)s, %(previous_session_id)s, %(overall_score)s, %(is_baseline)s, %(screenshots_compared)s"
+        visual_params = {
+            'session_id': result.session_id,
+            'previous_session_id': result.previous_session_id,
+            'overall_score': result.overall_score,
+            'is_baseline': 1 if result.is_baseline else 0,
+            'screenshots_compared': result.screenshots_compared
+        }
+
+        db.execute(f"""
+            INSERT INTO test_results ({base_columns}{visual_columns})
+            VALUES ({base_values}{visual_values})
+        """, {**base_params, **visual_params})
+    except Exception as e:
+        # Fall back to base columns only if visual columns don't exist
+        if 'session_id' in str(e) or 'No such column' in str(e):
+            db.execute(f"""
+                INSERT INTO test_results ({base_columns})
+                VALUES ({base_values})
+            """, base_params)
+        else:
+            raise
 
 
 # =============================================================================
@@ -1010,25 +1227,46 @@ def get_run(run_id: str):
             'error_traceback': row.get('error_traceback')
         }
 
-        # Get test results
-        results_query = """
-            SELECT
-                test_id, test_type, test_group, test_name, test_description,
-                source_file, source_line, duration_ms, status,
-                sql_query, expected_value, actual_value, expect_type,
-                validation_mode, cells_validated, contracts_checked, contracts_passed,
-                anchors_checked, anchors_passed, judge_score, judge_reasoning,
-                failure_type, failure_message, failure_diff,
-                error_type, error_message, error_traceback
-            FROM test_results
-            WHERE run_id = %(run_id)s
-            ORDER BY test_type, test_group, test_id
-        """
-        result_rows = db.query(results_query, {'run_id': run_id})
+        # Get test results - check if visual columns exist first
+        try:
+            # Try with visual columns
+            results_query = """
+                SELECT
+                    test_id, test_type, test_group, test_name, test_description,
+                    source_file, source_line, duration_ms, status,
+                    sql_query, expected_value, actual_value, expect_type,
+                    validation_mode, cells_validated, contracts_checked, contracts_passed,
+                    anchors_checked, anchors_passed, judge_score, judge_reasoning,
+                    failure_type, failure_message, failure_diff,
+                    error_type, error_message, error_traceback,
+                    session_id, previous_session_id, overall_score, is_baseline, screenshots_compared
+                FROM test_results
+                WHERE run_id = %(run_id)s
+                ORDER BY test_type, test_group, test_id
+            """
+            result_rows = db.query(results_query, {'run_id': run_id})
+            has_visual_columns = True
+        except Exception:
+            # Fallback without visual columns
+            results_query = """
+                SELECT
+                    test_id, test_type, test_group, test_name, test_description,
+                    source_file, source_line, duration_ms, status,
+                    sql_query, expected_value, actual_value, expect_type,
+                    validation_mode, cells_validated, contracts_checked, contracts_passed,
+                    anchors_checked, anchors_passed, judge_score, judge_reasoning,
+                    failure_type, failure_message, failure_diff,
+                    error_type, error_message, error_traceback
+                FROM test_results
+                WHERE run_id = %(run_id)s
+                ORDER BY test_type, test_group, test_id
+            """
+            result_rows = db.query(results_query, {'run_id': run_id})
+            has_visual_columns = False
 
         results = []
         for row in result_rows:
-            results.append({
+            result = {
                 'test_id': row['test_id'],
                 'test_type': row['test_type'],
                 'test_group': row['test_group'],
@@ -1055,8 +1293,15 @@ def get_run(run_id: str):
                 'failure_diff': row.get('failure_diff'),
                 'error_type': row.get('error_type'),
                 'error_message': row.get('error_message'),
-                'error_traceback': row.get('error_traceback')
-            })
+                'error_traceback': row.get('error_traceback'),
+            }
+            if has_visual_columns:
+                result['session_id'] = row.get('session_id')
+                result['previous_session_id'] = row.get('previous_session_id')
+                result['overall_score'] = row.get('overall_score')
+                result['is_baseline'] = bool(row.get('is_baseline'))
+                result['screenshots_compared'] = row.get('screenshots_compared')
+            results.append(result)
 
         return jsonify({
             'run': run,
@@ -1184,6 +1429,8 @@ def get_bulk_test_history():
                     CASE
                         WHEN tr.test_type = 'semantic_sql' THEN
                             coalesce(nullIf(tr.validation_mode, ''), JSONExtractString(r.run_options, 'ssql_mode'), 'internal')
+                        WHEN tr.test_type = 'visual_regression' THEN
+                            coalesce(nullIf(tr.validation_mode, ''), 'visual')
                         ELSE
                             coalesce(nullIf(tr.validation_mode, ''), JSONExtractString(r.run_options, 'snapshot_mode'), 'structure')
                     END as mode,
@@ -1192,6 +1439,8 @@ def get_bulk_test_history():
                         CASE
                             WHEN tr.test_type = 'semantic_sql' THEN
                                 coalesce(nullIf(tr.validation_mode, ''), JSONExtractString(r.run_options, 'ssql_mode'), 'internal')
+                            WHEN tr.test_type = 'visual_regression' THEN
+                                coalesce(nullIf(tr.validation_mode, ''), 'visual')
                             ELSE
                                 coalesce(nullIf(tr.validation_mode, ''), JSONExtractString(r.run_options, 'snapshot_mode'), 'structure')
                         END
@@ -1226,6 +1475,44 @@ def get_bulk_test_history():
             'history': history,
             'limit': limit
         })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@tests_bp.route('/api/tests/visual/screenshot/<path:filepath>', methods=['GET'])
+def get_visual_screenshot(filepath: str):
+    """
+    Serve a screenshot image from the browsers directory.
+    Path should be relative to RVBBIT_ROOT/browsers/
+    """
+    from flask import send_file
+    try:
+        config = _get_config()
+        browsers_dir = os.path.join(config.root_dir, 'browsers')
+        full_path = os.path.join(browsers_dir, filepath)
+
+        # Security: ensure path is within browsers directory
+        full_path = os.path.abspath(full_path)
+        if not full_path.startswith(os.path.abspath(browsers_dir)):
+            return jsonify({'error': 'Invalid path'}), 400
+
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        # Determine mime type
+        ext = os.path.splitext(full_path)[1].lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_types.get(ext, 'application/octet-stream')
+
+        return send_file(full_path, mimetype=mime_type)
 
     except Exception as e:
         traceback.print_exc()

@@ -7,6 +7,7 @@ import './TestDetailPanel.css';
 const TEST_TYPE_CONFIG = {
   semantic_sql: { icon: 'mdi:database-search', color: '#60a5fa', label: 'Semantic SQL' },
   cascade_snapshot: { icon: 'mdi:camera', color: '#a78bfa', label: 'Snapshot' },
+  visual_regression: { icon: 'mdi:image-compare', color: '#f472b6', label: 'Visual Regression' },
 };
 
 // Status colors
@@ -66,17 +67,169 @@ const CodeBlock = ({ title, content, language = 'sql' }) => {
 };
 
 /**
+ * Convert absolute path to relative path for screenshot API
+ */
+const getScreenshotUrl = (absolutePath) => {
+  if (!absolutePath) return null;
+  // Extract relative path from browsers/ directory
+  const browserIndex = absolutePath.indexOf('/browsers/');
+  if (browserIndex === -1) return null;
+  const relativePath = absolutePath.substring(browserIndex + '/browsers/'.length);
+  return `http://localhost:5050/api/tests/visual/screenshot/${relativePath}`;
+};
+
+/**
+ * Visual score meter component
+ */
+const ScoreMeter = ({ score, threshold = 0.95 }) => {
+  const percentage = Math.round(score * 100);
+  const passed = score >= threshold;
+  const color = passed ? '#34d399' : '#f87171';
+
+  return (
+    <div className="visual-score-meter">
+      <div className="visual-score-bar">
+        <div
+          className="visual-score-fill"
+          style={{ width: `${percentage}%`, background: color }}
+        />
+        <div
+          className="visual-score-threshold"
+          style={{ left: `${threshold * 100}%` }}
+          title={`Threshold: ${Math.round(threshold * 100)}%`}
+        />
+      </div>
+      <div className="visual-score-labels">
+        <span className="visual-score-value" style={{ color }}>
+          {percentage}%
+        </span>
+        <span className="visual-score-threshold-label">
+          Threshold: {Math.round(threshold * 100)}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Screenshot comparison card
+ */
+const ScreenshotComparison = ({ screenshot, expanded, onToggle }) => {
+  const { name, similarity, passed, previous_path, current_path, diff_path, error } = screenshot;
+  const percentage = Math.round(similarity * 100);
+  const statusColor = passed ? '#34d399' : '#f87171';
+
+  return (
+    <div className={`visual-screenshot-card ${passed ? 'passed' : 'failed'} ${expanded ? 'expanded' : ''}`}>
+      <div className="visual-screenshot-header" onClick={onToggle}>
+        <div className="visual-screenshot-status">
+          <Icon
+            icon={passed ? 'mdi:check-circle' : 'mdi:close-circle'}
+            width={16}
+            style={{ color: statusColor }}
+          />
+          <span className="visual-screenshot-name">{name}</span>
+        </div>
+        <div className="visual-screenshot-score" style={{ color: statusColor }}>
+          {percentage}%
+          <Icon
+            icon={expanded ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+            width={16}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div className="visual-screenshot-error">
+          <Icon icon="mdi:alert-circle" width={14} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {expanded && !error && (
+        <div className="visual-screenshot-comparison">
+          {previous_path && (
+            <div className="visual-screenshot-img-container">
+              <div className="visual-screenshot-img-label">Previous</div>
+              <img
+                src={getScreenshotUrl(previous_path)}
+                alt="Previous screenshot"
+                className="visual-screenshot-img"
+                loading="lazy"
+              />
+            </div>
+          )}
+          {current_path && (
+            <div className="visual-screenshot-img-container">
+              <div className="visual-screenshot-img-label">Current</div>
+              <img
+                src={getScreenshotUrl(current_path)}
+                alt="Current screenshot"
+                className="visual-screenshot-img"
+                loading="lazy"
+              />
+            </div>
+          )}
+          {diff_path && (
+            <div className="visual-screenshot-img-container diff">
+              <div className="visual-screenshot-img-label">Diff</div>
+              <img
+                src={getScreenshotUrl(diff_path)}
+                alt="Diff"
+                className="visual-screenshot-img"
+                loading="lazy"
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * TestDetailPanel - Shows detailed information about a selected test
  */
 const TestDetailPanel = ({ test, lastRun, onClose, onRun, isRunning }) => {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedScreenshots, setExpandedScreenshots] = useState({});
 
   // Get result for this test from last run
   const testResult = lastRun?.results?.find(r => r.test_id === test.test_id);
   const status = testResult?.status || 'pending';
   const typeConfig = TEST_TYPE_CONFIG[test.test_type] || TEST_TYPE_CONFIG.semantic_sql;
   const statusColor = STATUS_COLORS[status] || STATUS_COLORS.pending;
+
+  // Parse screenshots_compared for visual tests
+  const screenshotsCompared = React.useMemo(() => {
+    if (testResult?.screenshots_compared) {
+      try {
+        return JSON.parse(testResult.screenshots_compared);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [testResult?.screenshots_compared]);
+
+  // Toggle screenshot expansion
+  const toggleScreenshot = useCallback((name) => {
+    setExpandedScreenshots(prev => ({
+      ...prev,
+      [name]: !prev[name]
+    }));
+  }, []);
+
+  // Auto-expand failed screenshots
+  useEffect(() => {
+    if (screenshotsCompared.length > 0) {
+      const failedNames = screenshotsCompared
+        .filter(s => !s.passed)
+        .reduce((acc, s) => ({ ...acc, [s.name]: true }), {});
+      setExpandedScreenshots(failedNames);
+    }
+  }, [screenshotsCompared]);
 
   // Fetch test history
   const fetchHistory = useCallback(async () => {
@@ -238,6 +391,73 @@ const TestDetailPanel = ({ test, lastRun, onClose, onRun, isRunning }) => {
               <MetadataField label="Has Anchors" value={test.has_anchors} color={test.has_anchors ? '#34d399' : '#64748b'} />
               {test.validation_modes && (
                 <MetadataField label="Validation Modes" value={test.validation_modes.join(', ')} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Visual Regression Details (for visual tests) */}
+        {test.test_type === 'visual_regression' && testResult && (
+          <div className="test-detail-section">
+            <h3 className="test-detail-section-title">Visual Comparison</h3>
+
+            {/* Baseline indicator */}
+            {testResult.is_baseline && (
+              <div className="visual-baseline-notice">
+                <Icon icon="mdi:information" width={16} />
+                <span>Baseline established - this is the first run (no comparison available)</span>
+              </div>
+            )}
+
+            {/* Overall score */}
+            {!testResult.is_baseline && (
+              <div className="visual-overall-score">
+                <div className="visual-overall-score-label">Overall Similarity</div>
+                <ScoreMeter
+                  score={testResult.overall_score || 0}
+                  threshold={test.threshold || 0.95}
+                />
+              </div>
+            )}
+
+            {/* Session info */}
+            <div className="test-detail-fields" style={{ marginTop: 12 }}>
+              <MetadataField label="Session ID" value={testResult.session_id} />
+              {testResult.previous_session_id && (
+                <MetadataField label="Compared To" value={testResult.previous_session_id} />
+              )}
+            </div>
+
+            {/* Screenshots */}
+            {screenshotsCompared.length > 0 && (
+              <div className="visual-screenshots-section">
+                <div className="visual-screenshots-header">
+                  <span>Screenshots ({screenshotsCompared.filter(s => s.passed).length}/{screenshotsCompared.length} passed)</span>
+                </div>
+                <div className="visual-screenshots-list">
+                  {screenshotsCompared.map((screenshot) => (
+                    <ScreenshotComparison
+                      key={screenshot.name}
+                      screenshot={screenshot}
+                      expanded={expandedScreenshots[screenshot.name] || false}
+                      onToggle={() => toggleScreenshot(screenshot.name)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Visual test config (for visual tests without results yet) */}
+        {test.test_type === 'visual_regression' && !testResult && (
+          <div className="test-detail-section">
+            <h3 className="test-detail-section-title">Visual Test Config</h3>
+            <div className="test-detail-fields">
+              <MetadataField label="Initial URL" value={test.initial_url} />
+              <MetadataField label="Threshold" value={`${Math.round((test.threshold || 0.95) * 100)}%`} />
+              {test.browser_batch && (
+                <MetadataField label="Commands" value={`${test.browser_batch.length} commands`} />
               )}
             </div>
           </div>
