@@ -20,6 +20,92 @@ _RVBBIT_ROOT = os.getenv("RVBBIT_ROOT", os.getcwd())
 # (e.g., analytics_worker.py uses `from .config import RVBBIT_ROOT`)
 RVBBIT_ROOT = _RVBBIT_ROOT
 
+# ============================================================================
+# Google Credentials Resolver
+# ============================================================================
+# Cache for resolved credentials path (avoids creating multiple temp files)
+_resolved_google_credentials_path: Optional[str] = None
+_google_credentials_temp_file: Optional[str] = None
+
+
+def _resolve_google_credentials() -> Optional[str]:
+    """
+    Resolve GOOGLE_APPLICATION_CREDENTIALS to a file path.
+
+    Supports two formats:
+    1. File path: Traditional path to a JSON credentials file
+    2. JSON string: Raw JSON content (common in containerized deployments)
+
+    If JSON content is detected (starts with '{'), it will be written to a
+    temporary file and that path will be returned. The temp file persists
+    for the lifetime of the process and is cleaned up on exit.
+
+    Returns:
+        Path to credentials file, or None if not set
+    """
+    global _resolved_google_credentials_path, _google_credentials_temp_file
+
+    # Return cached result if already resolved
+    if _resolved_google_credentials_path is not None:
+        return _resolved_google_credentials_path
+
+    creds_value = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if not creds_value:
+        return None
+
+    creds_value = creds_value.strip()
+    if not creds_value:
+        return None
+
+    # Check if it looks like JSON content (starts with '{')
+    if creds_value.startswith("{"):
+        # Validate it's actually valid JSON
+        try:
+            json.loads(creds_value)
+        except json.JSONDecodeError as e:
+            print(f"[Config] Warning: GOOGLE_APPLICATION_CREDENTIALS looks like JSON but failed to parse: {e}")
+            # Fall back to treating it as a path
+            _resolved_google_credentials_path = creds_value
+            return creds_value
+
+        # Write JSON to a temporary file
+        import tempfile
+        import atexit
+
+        try:
+            # Create temp file that persists (delete=False)
+            # Using .json extension for clarity in logs/debugging
+            fd, temp_path = tempfile.mkstemp(suffix=".json", prefix="gcloud_creds_")
+            with os.fdopen(fd, 'w') as f:
+                f.write(creds_value)
+
+            _google_credentials_temp_file = temp_path
+            _resolved_google_credentials_path = temp_path
+
+            # Register cleanup handler
+            def _cleanup_temp_credentials():
+                if _google_credentials_temp_file and os.path.exists(_google_credentials_temp_file):
+                    try:
+                        os.unlink(_google_credentials_temp_file)
+                    except Exception:
+                        pass  # Best effort cleanup
+
+            atexit.register(_cleanup_temp_credentials)
+
+            print(f"[Config] Resolved GOOGLE_APPLICATION_CREDENTIALS from JSON string to temp file")
+            return temp_path
+
+        except Exception as e:
+            print(f"[Config] Warning: Failed to write credentials to temp file: {e}")
+            # Can't proceed without valid credentials
+            return None
+    else:
+        # Treat as file path
+        if not os.path.exists(creds_value):
+            print(f"[Config] Warning: GOOGLE_APPLICATION_CREDENTIALS file not found: {creds_value}")
+        _resolved_google_credentials_path = creds_value
+        return creds_value
+
 
 # ============================================================================
 # MCP Server Configuration Loader
@@ -266,9 +352,10 @@ class Config(BaseModel):
         default_factory=lambda: os.getenv("RVBBIT_VERTEX_LOCATION", "us-central1")
     )
     # Path to service account JSON credentials file
+    # Supports BOTH file paths AND raw JSON content in GOOGLE_APPLICATION_CREDENTIALS
     # Falls back to Application Default Credentials (ADC) if not set
     vertex_credentials_path: Optional[str] = Field(
-        default_factory=lambda: os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        default_factory=_resolve_google_credentials
     )
 
     # =========================================================================
@@ -389,15 +476,49 @@ def set_vertex_provider(
     Args:
         project: Google Cloud project ID
         location: Vertex AI region (e.g., "us-central1")
-        credentials_path: Path to service account JSON file
+        credentials_path: Path to service account JSON file, OR raw JSON content
         enabled: Enable/disable Vertex AI
     """
-    global _global_config
+    global _global_config, _resolved_google_credentials_path, _google_credentials_temp_file
+
     if project:
         _global_config.vertex_project = project
     if location:
         _global_config.vertex_location = location
     if credentials_path:
-        _global_config.vertex_credentials_path = credentials_path
+        # Support both file path and raw JSON content
+        if credentials_path.strip().startswith("{"):
+            # JSON content - write to temp file
+            import tempfile
+
+            try:
+                # Validate JSON
+                json.loads(credentials_path)
+
+                # Create temp file
+                fd, temp_path = tempfile.mkstemp(suffix=".json", prefix="gcloud_creds_")
+                with os.fdopen(fd, 'w') as f:
+                    f.write(credentials_path)
+
+                # Clean up any previous temp file
+                if _google_credentials_temp_file and os.path.exists(_google_credentials_temp_file):
+                    try:
+                        os.unlink(_google_credentials_temp_file)
+                    except Exception:
+                        pass
+
+                _google_credentials_temp_file = temp_path
+                _resolved_google_credentials_path = temp_path
+                _global_config.vertex_credentials_path = temp_path
+
+                print(f"[Config] set_vertex_provider: Resolved credentials from JSON string to temp file")
+
+            except json.JSONDecodeError as e:
+                print(f"[Config] Warning: credentials_path looks like JSON but failed to parse: {e}")
+                _global_config.vertex_credentials_path = credentials_path
+        else:
+            # File path
+            _global_config.vertex_credentials_path = credentials_path
+
     if enabled is not None:
         _global_config.vertex_enabled = enabled

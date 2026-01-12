@@ -25,6 +25,7 @@ const PROVIDER_ICONS = {
   'google': 'simple-icons:google',
   'google-ai': 'simple-icons:google',
   'gemini': 'simple-icons:google',
+  'vertex_ai': 'simple-icons:googlecloud',
 
   // Meta/Facebook
   'meta': 'simple-icons:meta',
@@ -116,6 +117,7 @@ function getProviderColor(provider) {
     anthropic: '#d97757',
     openai: '#10a37f',
     google: '#4285f4',
+    vertex_ai: '#4285f4',
     meta: '#0668e1',
     'meta-llama': '#0668e1',
     microsoft: '#00a4ef',

@@ -1622,7 +1622,7 @@ _models_cache = {
 @studio_bp.route('/models', methods=['GET'])
 def get_models():
     """
-    Fetch available LLM models from OpenRouter API and Ollama local models.
+    Fetch available LLM models from OpenRouter API, Ollama local models, and Vertex AI.
 
     Returns cached data if available and fresh (< 3 hours old).
 
@@ -1630,6 +1630,7 @@ def get_models():
         {
             "models": [...],           # OpenRouter models
             "ollama_models": [...],    # Local Ollama models
+            "vertex_models": [...],    # Vertex AI models
             "default_model": "...",
             "cached": true,
             "cache_age_seconds": 1234
@@ -1646,12 +1647,14 @@ def get_models():
         if age < _models_cache['ttl_seconds']:
             cfg = get_config()
 
-            # Fetch fresh Ollama models from database (fast, always up-to-date)
+            # Fetch fresh Ollama and Vertex models from database (fast, always up-to-date)
             ollama_models = _fetch_ollama_models_from_db()
+            vertex_models = _fetch_vertex_models_from_db()
 
             return jsonify({
                 'models': _models_cache['data'],
                 'ollama_models': ollama_models,
+                'vertex_models': vertex_models,
                 'default_model': cfg.default_model,
                 'cached': True,
                 'cache_age_seconds': int(age)
@@ -1687,12 +1690,14 @@ def get_models():
         # Get default model from config
         default_model = cfg.default_model
 
-        # Fetch Ollama models from database
+        # Fetch Ollama and Vertex models from database
         ollama_models = _fetch_ollama_models_from_db()
+        vertex_models = _fetch_vertex_models_from_db()
 
         return jsonify({
             'models': models,
             'ollama_models': ollama_models,
+            'vertex_models': vertex_models,
             'default_model': default_model,
             'cached': False,
             'cache_age_seconds': 0
@@ -1707,18 +1712,24 @@ def get_models():
         except:
             default_model = 'google/gemini-2.5-flash-lite'
 
-        # Still try to fetch Ollama models on error
+        # Still try to fetch Ollama and Vertex models on error
         try:
             ollama_models = _fetch_ollama_models_from_db()
         except:
             ollama_models = []
+
+        try:
+            vertex_models = _fetch_vertex_models_from_db()
+        except:
+            vertex_models = []
 
         return jsonify({
             'error': str(e),
             'traceback': traceback.format_exc(),
             'default_model': default_model,
             'models': [],
-            'ollama_models': ollama_models
+            'ollama_models': ollama_models,
+            'vertex_models': vertex_models
         }), 500
 
 
@@ -1780,6 +1791,76 @@ def _fetch_ollama_models_from_db():
     except Exception as e:
         import traceback
         print(f"[ERROR] Failed to fetch Ollama models from DB: {e}")
+        print(traceback.format_exc())
+        return []
+
+
+def _fetch_vertex_models_from_db():
+    """
+    Fetch Vertex AI models from the openrouter_models table in ClickHouse.
+
+    Returns:
+        List of model dicts compatible with OpenRouter schema
+    """
+    try:
+        from rvbbit.db_adapter import get_db
+
+        db = get_db()
+        if not db:
+            return []
+
+        # Query Vertex AI models from ClickHouse database
+        query = """
+            SELECT
+                model_id,
+                model_name,
+                description,
+                context_length,
+                prompt_price,
+                completion_price,
+                input_modalities,
+                output_modalities
+            FROM openrouter_models
+            WHERE provider = 'vertex_ai'
+            ORDER BY model_id
+        """
+
+        rows = db.query(query)
+
+        models = []
+        for row in rows:
+            # Use actual modality arrays from database
+            input_mods = row.get('input_modalities', []) or ['text']
+            output_mods = row.get('output_modalities', []) or ['text']
+
+            # Build modality string for display
+            modality = f"{','.join(input_mods)}->{','.join(output_mods)}"
+
+            models.append({
+                'id': row['model_id'],
+                'name': row['model_name'],
+                'description': row['description'],
+                'context_length': row['context_length'],
+                'pricing': {
+                    'prompt': str(row['prompt_price']),
+                    'completion': str(row['completion_price']),
+                },
+                'architecture': {
+                    'modality': modality,
+                    'input_modalities': input_mods if input_mods else ['text'],
+                    'output_modalities': output_mods if output_mods else ['text'],
+                },
+                'top_provider': {
+                    'is_moderated': False,
+                    'is_vertex': True,
+                }
+            })
+
+        return models
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Failed to fetch Vertex AI models from DB: {e}")
         print(traceback.format_exc())
         return []
 

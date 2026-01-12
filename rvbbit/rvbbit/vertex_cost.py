@@ -26,20 +26,39 @@ logger = logging.getLogger(__name__)
 
 
 # Vertex AI Gemini Pricing (USD per 1M tokens)
-# Updated: January 2025
+# Updated: January 2026
 # Source: https://cloud.google.com/vertex-ai/generative-ai/pricing
 #
 # Format: {
 #     "model-name": {
 #         "input": rate per 1M tokens,
 #         "output": rate per 1M tokens,
-#         "input_long": rate for >128K context (optional),
-#         "output_long": rate for >128K context (optional),
-#         "context_threshold": tokens at which long-context pricing kicks in (default 128000)
+#         "input_long": rate for >200K context (optional),
+#         "output_long": rate for >200K context (optional),
+#         "context_threshold": tokens at which long-context pricing kicks in (default 200000)
 #     }
 # }
 VERTEX_PRICING = {
-    # Gemini 2.5 models
+    # Gemini 3 models (preview)
+    "gemini-3-pro-preview": {
+        "input": 2.00,
+        "output": 12.00,
+        "input_long": 4.00,
+        "output_long": 18.00,
+        "context_threshold": 200000,
+    },
+    "gemini-3-flash-preview": {
+        "input": 0.50,
+        "output": 3.00,
+        "context_threshold": 200000,
+    },
+    "gemini-3-pro-image-preview": {
+        "input": 2.00,
+        "output": 120.00,  # Image output pricing
+        "context_threshold": 200000,
+    },
+
+    # Gemini 2.5 models (GA)
     "gemini-2.5-pro": {
         "input": 1.25,
         "output": 10.00,
@@ -55,43 +74,44 @@ VERTEX_PRICING = {
         "context_threshold": 200000,
     },
     "gemini-2.5-flash": {
-        "input": 0.075,
-        "output": 0.30,
-        "input_long": 0.15,
-        "output_long": 0.60,
-        "context_threshold": 128000,
+        "input": 0.30,
+        "output": 2.50,
+        "context_threshold": 200000,
     },
     "gemini-2.5-flash-preview": {
-        "input": 0.075,
-        "output": 0.30,
-        "input_long": 0.15,
-        "output_long": 0.60,
-        "context_threshold": 128000,
+        "input": 0.30,
+        "output": 2.50,
+        "context_threshold": 200000,
     },
     "gemini-2.5-flash-lite": {
-        "input": 0.02,
-        "output": 0.05,
+        "input": 0.10,
+        "output": 0.40,
+    },
+    "gemini-2.5-flash-image": {
+        "input": 0.30,
+        "output": 30.00,  # Image output pricing
     },
 
     # Gemini 2.0 models
     "gemini-2.0-flash": {
-        "input": 0.10,
-        "output": 0.40,
+        "input": 0.15,
+        "output": 0.60,
+        "context_threshold": 200000,
     },
     "gemini-2.0-flash-exp": {
-        "input": 0.10,
-        "output": 0.40,
+        "input": 0.15,
+        "output": 0.60,
     },
     "gemini-2.0-flash-lite": {
-        "input": 0.02,
-        "output": 0.05,
+        "input": 0.075,
+        "output": 0.30,
     },
     "gemini-2.0-pro": {
         "input": 1.25,
         "output": 10.00,
         "input_long": 2.50,
         "output_long": 15.00,
-        "context_threshold": 128000,
+        "context_threshold": 200000,
     },
 
     # Gemini 1.5 models (legacy, still available)

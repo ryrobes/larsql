@@ -173,6 +173,7 @@ function ModelGroup({ title, iconName, models, defaultOpen = true }) {
 function ModelBrowserPalette() {
   const [models, setModels] = useState([]);
   const [ollamaModels, setOllamaModels] = useState([]);
+  const [vertexModels, setVertexModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
@@ -188,6 +189,14 @@ function ModelBrowserPalette() {
   const [isOllamaExpanded, setIsOllamaExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem('studio-sidebar-local-models-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isVertexExpanded, setIsVertexExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-vertex-models-expanded');
       return saved !== null ? saved === 'true' : true;
     } catch {
       return true;
@@ -211,6 +220,14 @@ function ModelBrowserPalette() {
     }
   }, [isOllamaExpanded]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-vertex-models-expanded', String(isVertexExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isVertexExpanded]);
+
   // Fetch models from backend
   useEffect(() => {
     let mounted = true;
@@ -230,6 +247,7 @@ function ModelBrowserPalette() {
         if (mounted) {
           setModels(data.models || []);
           setOllamaModels(data.ollama_models || []);
+          setVertexModels(data.vertex_models || []);
           setLoading(false);
         }
       } catch (err) {
@@ -378,6 +396,38 @@ function ModelBrowserPalette() {
                   title="ollama"
                   iconName="mdi:chip"
                   models={ollamaModels}
+                  defaultOpen={true}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VERTEX AI Section */}
+      {vertexModels.length > 0 && (
+        <div className="nav-section model-browser-section">
+          <div
+            className="nav-section-header"
+            onClick={() => setIsVertexExpanded(!isVertexExpanded)}
+          >
+            <Icon
+              icon={isVertexExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+              className="nav-chevron"
+            />
+            <Icon icon="simple-icons:googlecloud" className="nav-section-icon" style={{ width: '14px', height: '14px', color: '#4285f4', opacity: 0.7 }} />
+            <span className="nav-section-title">Vertex AI</span>
+            <span className="nav-section-count">{vertexModels.length}</span>
+          </div>
+
+          {isVertexExpanded && (
+            <div className="nav-section-content model-browser-content">
+              {/* Vertex AI models - no search or filters, just list all */}
+              <div className="model-groups-container">
+                <ModelGroup
+                  title="gemini"
+                  iconName="simple-icons:google"
+                  models={vertexModels}
                   defaultOpen={true}
                 />
               </div>
