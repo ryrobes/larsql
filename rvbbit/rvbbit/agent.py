@@ -133,6 +133,28 @@ class Agent:
             # Always use localhost for Ollama models (ignore configured base_url)
             args["base_url"] = "http://localhost:11434"
 
+        # Explicitly set provider for Vertex AI (Google Cloud)
+        # Model prefix takes precedence, similar to Ollama
+        elif self.model and self.model.startswith("vertex_ai/"):
+            args["custom_llm_provider"] = "vertex_ai"
+            # Remove base_url - LiteLLM handles Vertex AI endpoints directly
+            args.pop("base_url", None)
+            args.pop("api_key", None)  # Vertex uses Google credentials, not API key
+
+            # Vertex AI has lower max_tokens limits than OpenRouter
+            # gemini-2.0-flash: max 8192, gemini-2.5-pro: max 65536
+            # Use 8192 as safe default for all Vertex models
+            args["max_tokens"] = 8192
+
+            # Pass Vertex-specific config to LiteLLM
+            cfg = get_config()
+            if cfg.vertex_project:
+                args["vertex_project"] = cfg.vertex_project
+            if cfg.vertex_location:
+                args["vertex_location"] = cfg.vertex_location
+            if cfg.vertex_credentials_path:
+                args["vertex_credentials"] = cfg.vertex_credentials_path
+
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"
@@ -459,10 +481,23 @@ class Agent:
 
                 # Cost handling:
                 # - Ollama: cost=0 (local/free), no need to fetch
+                # - Vertex AI: cost calculated immediately from token counts
                 # - OpenRouter: cost=None (will be fetched by unified logger)
                 cost = None
                 if provider == "ollama":
                     cost = 0.0  # Local models are free
+                elif provider == "vertex_ai":
+                    # Calculate Vertex AI cost immediately (no per-request cost API)
+                    try:
+                        from .vertex_cost import calculate_vertex_cost
+                        cost = calculate_vertex_cost(
+                            model=self.model,
+                            tokens_in=tokens_in,
+                            tokens_out=tokens_out,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate Vertex AI cost: {e}")
+                        cost = None
 
                 # Build TOON telemetry from transport metrics
                 # ALWAYS log baseline metrics for analytics, even if no transforms occurred

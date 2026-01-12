@@ -245,6 +245,33 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Google Vertex AI Configuration
+    # =========================================================================
+    # Enable Vertex AI as an additional provider (OpenRouter remains default)
+    vertex_enabled: bool = Field(
+        default_factory=lambda: os.getenv("RVBBIT_VERTEX_ENABLED", "false").lower() == "true"
+    )
+    # Google Cloud Project ID for Vertex AI
+    # Checks multiple env vars for compatibility with Google SDK conventions
+    vertex_project: Optional[str] = Field(
+        default_factory=lambda: (
+            os.getenv("RVBBIT_VERTEX_PROJECT") or
+            os.getenv("VERTEXAI_PROJECT") or
+            os.getenv("GOOGLE_CLOUD_PROJECT") or
+            os.getenv("GCLOUD_PROJECT")
+        )
+    )
+    # Vertex AI location/region (default: us-central1)
+    vertex_location: str = Field(
+        default_factory=lambda: os.getenv("RVBBIT_VERTEX_LOCATION", "us-central1")
+    )
+    # Path to service account JSON credentials file
+    # Falls back to Application Default Credentials (ADC) if not set
+    vertex_credentials_path: Optional[str] = Field(
+        default_factory=lambda: os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them
@@ -348,3 +375,29 @@ def get_clickhouse_url() -> str:
     """
     c = _global_config
     return f"clickhouse://{c.clickhouse_user}@{c.clickhouse_host}:{c.clickhouse_port}/{c.clickhouse_database}"
+
+
+def set_vertex_provider(
+    project: str | None = None,
+    location: str | None = None,
+    credentials_path: str | None = None,
+    enabled: bool | None = None
+):
+    """
+    Override Vertex AI settings at runtime.
+
+    Args:
+        project: Google Cloud project ID
+        location: Vertex AI region (e.g., "us-central1")
+        credentials_path: Path to service account JSON file
+        enabled: Enable/disable Vertex AI
+    """
+    global _global_config
+    if project:
+        _global_config.vertex_project = project
+    if location:
+        _global_config.vertex_location = location
+    if credentials_path:
+        _global_config.vertex_credentials_path = credentials_path
+    if enabled is not None:
+        _global_config.vertex_enabled = enabled

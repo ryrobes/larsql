@@ -299,6 +299,103 @@ class ModelRegistry:
             size_bytes /= 1024.0
         return f"{size_bytes:.1f}PB"
 
+    def _fetch_vertex_models(self) -> List[Dict]:
+        """
+        Return known Vertex AI Gemini models.
+
+        Unlike OpenRouter/Ollama, we don't dynamically fetch from an API.
+        Instead, we maintain a list of known Vertex AI models with their
+        capabilities and pricing information.
+
+        Returns:
+            List of model dicts compatible with ModelInfo format
+        """
+        from .config import get_config
+
+        cfg = get_config()
+
+        # Only include Vertex models if Vertex is configured
+        if not cfg.vertex_project:
+            logger.debug("Vertex AI not configured (no project) - skipping Vertex models")
+            return []
+
+        # Known Vertex AI Gemini models (January 2025)
+        # These are always available on Vertex AI
+        vertex_models = [
+            # Gemini 2.5 models
+            {
+                "id": "vertex_ai/gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro",
+                "description": "Google's most capable model with 1M context window",
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image", "audio", "video"],
+                "output_modalities": ["text"],
+                "context_length": 1000000,
+                "pricing": {"prompt": "1.25", "completion": "10.00"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+            {
+                "id": "vertex_ai/gemini-2.5-flash",
+                "name": "Gemini 2.5 Flash",
+                "description": "Fast and efficient with 1M context window",
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image", "audio", "video"],
+                "output_modalities": ["text"],
+                "context_length": 1000000,
+                "pricing": {"prompt": "0.075", "completion": "0.30"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+            {
+                "id": "vertex_ai/gemini-2.5-flash-lite",
+                "name": "Gemini 2.5 Flash Lite",
+                "description": "Ultra-fast and cost-effective",
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image"],
+                "output_modalities": ["text"],
+                "context_length": 1000000,
+                "pricing": {"prompt": "0.02", "completion": "0.05"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+            # Gemini 2.0 models
+            {
+                "id": "vertex_ai/gemini-2.0-flash",
+                "name": "Gemini 2.0 Flash",
+                "description": "Previous generation flash model",
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image", "audio"],
+                "output_modalities": ["text"],
+                "context_length": 1000000,
+                "pricing": {"prompt": "0.10", "completion": "0.40"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+            {
+                "id": "vertex_ai/gemini-2.0-flash-lite",
+                "name": "Gemini 2.0 Flash Lite",
+                "description": "Previous generation lite model",
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image"],
+                "output_modalities": ["text"],
+                "context_length": 1000000,
+                "pricing": {"prompt": "0.02", "completion": "0.05"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+            # Embedding models
+            {
+                "id": "vertex_ai/text-embedding-005",
+                "name": "Text Embedding 005",
+                "description": "Google's text embedding model",
+                "modality": "text->embedding",
+                "input_modalities": ["text"],
+                "output_modalities": ["embedding"],
+                "context_length": 2048,
+                "pricing": {"prompt": "0.00002", "completion": "0"},
+                "top_provider": {"name": "vertex_ai", "is_local": False},
+            },
+        ]
+
+        logger.info(f"Loaded {len(vertex_models)} Vertex AI models")
+        return vertex_models
+
     def _fetch_from_api(self) -> bool:
         """Fetch models from OpenRouter API and Ollama. Returns True on success."""
         import httpx
@@ -349,6 +446,13 @@ class ModelRegistry:
                 self._models[model.id] = model
                 # Ollama models don't generate images (yet)
 
+            # Fetch Vertex AI models (Google Cloud)
+            vertex_models = self._fetch_vertex_models()
+            for model_data in vertex_models:
+                models_data.append(model_data)
+                model = ModelInfo(**model_data)
+                self._models[model.id] = model
+
             # Add unlisted image models (with validation)
             # These are models that work but don't appear in /models endpoint
             validated_unlisted = 0
@@ -381,11 +485,12 @@ class ModelRegistry:
             self._save_cache(models_data)
 
             ollama_count = len(ollama_models)
-            openrouter_count = len(self._models) - ollama_count
+            vertex_count = len(vertex_models)
+            openrouter_count = len(self._models) - ollama_count - vertex_count
 
             logger.info(
                 f"Fetched {len(self._models)} models total: "
-                f"{openrouter_count} from OpenRouter, {ollama_count} from Ollama "
+                f"{openrouter_count} from OpenRouter, {ollama_count} from Ollama, {vertex_count} from Vertex AI "
                 f"({len(self._image_output_models)} image output, {validated_unlisted} unlisted)"
             )
             return True

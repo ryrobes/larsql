@@ -170,11 +170,21 @@ def extract_provider_from_model(model: str) -> str:
         "anthropic/claude-3.5-sonnet" -> "anthropic"
         "openai/gpt-4" -> "openai"
         "x-ai/grok-4.1-fast:free" -> "x-ai"
+        "vertex_ai/gemini-2.5-flash" -> "vertex_ai"
+        "ollama/llama3" -> "ollama"
         "grok-4.1-fast:free" -> "unknown"
     """
     if not model:
         return "unknown"
 
+    # Handle explicit provider prefixes
+    # These take precedence over generic "/" splitting
+    if model.startswith("vertex_ai/"):
+        return "vertex_ai"
+    if model.startswith("ollama/"):
+        return "ollama"
+
+    # Generic provider extraction from "provider/model" format
     if "/" in model:
         return model.split("/")[0]
 
