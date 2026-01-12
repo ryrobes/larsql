@@ -1,0 +1,71 @@
+# Folder Outpainting to 16:9
+#
+# Takes a folder of images, finds any that aren't 16:9, and uses Gemini 3 Flash
+# to outpaint them to 16:9 aspect ratio.
+#
+# Usage:
+#   rvbbit run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/path/to/images"}'
+#   rvbbit run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/photos", "output_dir": "/photos/wide"}'
+
+cascade_id: folder_outpaint_16x9
+description: Outpaint all non-16:9 images in a folder to 16:9 using Gemini 3 Flash
+
+inputs_schema:
+  folder: Path to folder containing images
+  output_dir: Directory for processed images (optional, defaults to {folder}/outpainted_16x9)
+
+cells:
+  - name: setup
+    tool: python_data
+    inputs:
+      code: |
+        import os
+        folder = "{{ input.folder }}"
+        output_dir = "{{ input.output_dir | default('') }}"
+
+        if not output_dir:
+            output_dir = os.path.join(folder, "outpainted_16x9")
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        result = {
+            "folder": os.path.abspath(folder),
+            "output_dir": os.path.abspath(output_dir)
+        }
+    handoffs: [find_images]
+
+  - name: find_images
+    tool: list_images
+    inputs:
+      path: "{{ outputs['setup']['result']['folder'] }}"
+      recursive: false
+      filter_aspect: "not_16:9"
+    handoffs: [process_batch]
+
+  - name: process_batch
+    tool: map_cascade
+    inputs:
+      cascade: "cascades/outpaint_single.yaml"
+      map_over: "{{ outputs.find_images.paths | tojson }}"
+      input_key: "image_path"
+      additional_inputs:
+        output_dir: "{{ outputs['setup']['result']['output_dir'] }}"
+      mode: "aggregate"
+      max_parallel: 2
+      on_error: "collect_errors"
+    handoffs: [summarize]
+
+  - name: summarize
+    instructions: |
+      Summarize the batch outpainting results.
+
+      SOURCE: {{ outputs['setup']['result']['folder'] }}
+      OUTPUT: {{ outputs['setup']['result']['output_dir'] }}
+
+      Found {{ outputs.find_images.count }} non-16:9 images.
+      Skipped {{ outputs.find_images.filtered_out }} images (already 16:9).
+
+      Results:
+      {{ outputs.process_batch | tojson }}
+
+      List successes and failures clearly.

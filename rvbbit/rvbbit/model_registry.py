@@ -102,6 +102,8 @@ class ModelRegistry:
         "sourceful/riverflow-v2-max-preview",
         "sourceful/riverflow-v2-standard-preview",
         "sourceful/riverflow-v2-fast-preview",
+        # ByteDance Seedream models
+        "bytedance-seed/seedream-4.5",
     ]
 
     def __init__(self):
