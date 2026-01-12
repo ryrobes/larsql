@@ -1,160 +1,32 @@
-# Single Image Repaint Analyzer
-#
-# This cascade is designed to be called via map_cascade.
-# It analyzes a single image, generates repaint instructions for 16:9,
-# and saves the result with a unique filename.
+# Single Image Outpaint to 16:9
 #
 # Input: { "image_path": "/path/to/image.jpg", "output_dir": "/path/to/output" }
 
 cascade_id: image_repaint_single
-description: Analyze single image and generate 16:9 repaint instructions
+description: Outpaint image to 16:9
 
 inputs_schema:
-  image_path: Path to the image file to analyze
-  output_dir: Directory to save processed images (optional, defaults to same dir as source)
+  image_path: Path to the image file
+  output_dir: Directory to save result (optional)
 
 cells:
-  # Step 1: Get image info (dimensions, current aspect)
-  - name: get_info
-    tool: get_image_info
-    inputs:
-      path: "{{ input.image_path }}"
-    handoffs: [load_image]
-
-  # Step 2: Load the image for vision analysis
-  - name: load_image
-    tool: read_image
-    inputs:
-      path: "{{ input.image_path }}"
-    handoffs: [analyze_image]
-
-  # Step 3: Analyze with vision LLM and generate outpaint prompt
-  - name: analyze_image
-    model: bytedance-seed/seedream-4.5
-    instructions: |
-      You are an image composition expert. Analyze this image and provide instructions
-      for extending/repainting it to fit a 16:9 aspect ratio.
-
-      CURRENT IMAGE INFO:
-      - Path: {{ outputs['get_info']['path'] }}
-      - Filename: {{ outputs['get_info']['filename'] }}
-      - Current size: {{ outputs['get_info']['width'] }}x{{ outputs['get_info']['height'] }}
-      - Current aspect: {{ outputs['get_info']['aspect_name'] }} ({{ outputs['get_info']['aspect_ratio'] }})
-      - Target aspect: 16:9 (1.778)
-
-      ANALYZE THE IMAGE AND PROVIDE:
-
-      1. **Composition Analysis**: What is the main subject and background?
-
-      2. **Extension Strategy**: Should we extend horizontally or vertically?
-         - If current ratio > 1.778: extend vertically (add top/bottom)
-         - If current ratio < 1.778: extend horizontally (add sides)
-
-      3. **Repaint Instructions**: What to generate in the new areas?
-
-      4. **Outpaint Prompt**: A prompt for an AI outpainting model.
-
-      Return ONLY a JSON object (no markdown, no explanation) with these fields:
-      - extension_direction: "horizontal" or "vertical"
-      - composition_summary: brief description
-      - outpaint_prompt: the prompt for AI generation
-      - fill_description: what to generate in extended areas
-    context:
-      from:
-        - cell: load_image
-          include: [images, output]
-    handoffs: [prepare_save]
-
-  # Step 4: Prepare all save parameters in one python_data cell
-  # This computes dimensions and filename, avoiding cross-cell template issues
-  - name: prepare_save
+  - name: setup
     tool: python_data
     inputs:
       code: |
         import os
         from datetime import datetime
-        import hashlib
-
-        # Get image info from prior cell
-        width = {{ outputs['get_info']['width'] }}
-        height = {{ outputs['get_info']['height'] }}
-        aspect_ratio = {{ outputs['get_info']['aspect_ratio'] }}
-        aspect_name = "{{ outputs['get_info']['aspect_name'] }}"
-
-        # Calculate target 16:9 dimensions
-        target_ratio = 16 / 9  # 1.778
-
-        if aspect_ratio < target_ratio:
-            # Image is too tall, extend width
-            target_width = int(height * target_ratio)
-            target_height = height
-            extension_direction = "horizontal"
-        else:
-            # Image is too wide, extend height
-            target_width = width
-            target_height = int(width / target_ratio)
-            extension_direction = "vertical"
-
-        # Generate unique filename
-        original_path = "{{ input.image_path }}"
-        original_name = os.path.splitext(os.path.basename(original_path))[0]
-        original_ext = os.path.splitext(original_path)[1]
-
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        path_hash = hashlib.md5(original_path.encode()).hexdigest()[:6]
-        output_filename = f"{original_name}_16x9_{timestamp}_{path_hash}{original_ext}"
-
-        # Determine output directory
-        output_dir = "{{ input.output_dir | default('') }}"
-        if not output_dir:
-            output_dir = os.path.dirname(original_path)
-
-        output_path = os.path.join(output_dir, output_filename)
-
+        path = "{{ input.image_path }}"
+        out_dir = "{{ input.output_dir | default('') }}" or os.path.dirname(path)
+        name = os.path.splitext(os.path.basename(path))[0]
         result = {
-            "original_width": width,
-            "original_height": height,
-            "original_aspect": aspect_name,
-            "target_width": target_width,
-            "target_height": target_height,
-            "extension_direction": extension_direction,
-            "resize_spec": f"{target_width}x{target_height}",
-            "output_filename": output_filename,
-            "output_path": output_path,
-            "output_dir": output_dir
+            "image_path": path,
+            "output_path": os.path.join(out_dir, f"{name}_16x9_{datetime.now().strftime('%H%M%S')}.png")
         }
-    handoffs: [save_processed]
+    handoffs: [outpaint]
 
-  # Step 5: Save the resized image
-  - name: save_processed
-    tool: save_image
+  - name: outpaint
+    tool: outpaint_16x9
     inputs:
-      source: "{{ input.image_path }}"
-      destination: "{{ outputs['prepare_save']['result']['output_path'] }}"
-      resize: "{{ outputs['prepare_save']['result']['resize_spec'] }}"
-    handoffs: [create_result]
-
-  # Step 6: Create final result summary
-  - name: create_result
-    tool: python_data
-    inputs:
-      code: |
-        result = {
-            "status": "success",
-            "original": {
-                "path": "{{ input.image_path }}",
-                "width": {{ outputs['prepare_save']['result']['original_width'] }},
-                "height": {{ outputs['prepare_save']['result']['original_height'] }},
-                "aspect": "{{ outputs['prepare_save']['result']['original_aspect'] }}"
-            },
-            "processed": {
-                "path": "{{ outputs['save_processed']['path'] }}",
-                "filename": "{{ outputs['save_processed']['filename'] }}",
-                "width": {{ outputs['save_processed']['width'] }},
-                "height": {{ outputs['save_processed']['height'] }},
-                "file_size": "{{ outputs['save_processed']['file_size_human'] }}"
-            },
-            "extension_direction": "{{ outputs['prepare_save']['result']['extension_direction'] }}",
-            "note": "Image resized to 16:9. For true outpainting, integrate with an image generation API."
-        }
-    # No handoffs - this is the final cell
+      image_path: "{{ outputs['setup']['result']['image_path'] }}"
+      output_path: "{{ outputs['setup']['result']['output_path'] }}"

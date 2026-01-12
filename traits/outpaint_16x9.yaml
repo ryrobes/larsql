@@ -1,0 +1,52 @@
+# Outpaint to 16:9 - Simple cascade tool
+#
+# Usage as tool: tool: outpaint_16x9
+# Inputs: image_path, output_path
+
+cascade_id: outpaint_16x9
+description: Outpaint image to 16:9 using Gemini
+
+inputs_schema:
+  image_path: Source image
+  output_path: Where to save result
+
+cells:
+  - name: load
+    tool: read_image
+    inputs:
+      path: "{{ input.image_path }}"
+    handoffs: [outpaint]
+
+  - name: outpaint
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Extend this image to 16:9 aspect ratio.
+      Seamlessly continue the scene, matching style and lighting.
+      Return the outpainted image.
+    context:
+      from:
+        - cell: load
+          include: [images]
+    handoffs: [save]
+
+  - name: save
+    tool: python_data
+    inputs:
+      code: |
+        import base64, re, os
+        from PIL import Image
+        import io
+
+        output = '''{{ outputs['outpaint'] }}'''
+        dest = "{{ input.output_path }}"
+        os.makedirs(os.path.dirname(dest) or '.', exist_ok=True)
+
+        # Find base64 image in response
+        match = re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', output)
+        if match:
+            img_data = base64.b64decode(match.group(1))
+            with open(dest, 'wb') as f:
+                f.write(img_data)
+            result = {"path": dest, "status": "success", "images": [dest]}
+        else:
+            result = {"error": "No image in response", "output": output[:200]}

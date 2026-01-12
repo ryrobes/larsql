@@ -26,5 +26,7 @@ marimo/docs
 
 research_dbs/market_research.duckdb.wal
 *.log 
+.tmp_*
 
 .playwright-mcp
+studio/backend/{{ outputs\['setup_output']\['result']\['output_dir'] }}
