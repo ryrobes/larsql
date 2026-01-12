@@ -1626,11 +1626,15 @@ def get_models():
 
     Returns cached data if available and fresh (< 3 hours old).
 
+    Note: Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
+    Use azure/<deployment-name> directly with your deployment name from Azure Portal.
+
     Response:
         {
             "models": [...],           # OpenRouter models
             "ollama_models": [...],    # Local Ollama models
             "vertex_models": [...],    # Vertex AI models
+            "azure_models": [],        # Always empty (discovery not supported)
             "default_model": "...",
             "cached": true,
             "cache_age_seconds": 1234
@@ -1647,14 +1651,16 @@ def get_models():
         if age < _models_cache['ttl_seconds']:
             cfg = get_config()
 
-            # Fetch fresh Ollama and Vertex models from database (fast, always up-to-date)
+            # Fetch fresh Ollama, Vertex, and Azure models from database (fast, always up-to-date)
             ollama_models = _fetch_ollama_models_from_db()
             vertex_models = _fetch_vertex_models_from_db()
+            azure_models = _fetch_azure_models_from_db()
 
             return jsonify({
                 'models': _models_cache['data'],
                 'ollama_models': ollama_models,
                 'vertex_models': vertex_models,
+                'azure_models': azure_models,
                 'default_model': cfg.default_model,
                 'cached': True,
                 'cache_age_seconds': int(age)
@@ -1690,14 +1696,16 @@ def get_models():
         # Get default model from config
         default_model = cfg.default_model
 
-        # Fetch Ollama and Vertex models from database
+        # Fetch Ollama, Vertex, and Azure models from database
         ollama_models = _fetch_ollama_models_from_db()
         vertex_models = _fetch_vertex_models_from_db()
+        azure_models = _fetch_azure_models_from_db()
 
         return jsonify({
             'models': models,
             'ollama_models': ollama_models,
             'vertex_models': vertex_models,
+            'azure_models': azure_models,
             'default_model': default_model,
             'cached': False,
             'cache_age_seconds': 0
@@ -1712,7 +1720,7 @@ def get_models():
         except:
             default_model = 'google/gemini-2.5-flash-lite'
 
-        # Still try to fetch Ollama and Vertex models on error
+        # Still try to fetch Ollama, Vertex, and Azure models on error
         try:
             ollama_models = _fetch_ollama_models_from_db()
         except:
@@ -1723,13 +1731,19 @@ def get_models():
         except:
             vertex_models = []
 
+        try:
+            azure_models = _fetch_azure_models_from_db()
+        except:
+            azure_models = []
+
         return jsonify({
             'error': str(e),
             'traceback': traceback.format_exc(),
             'default_model': default_model,
             'models': [],
             'ollama_models': ollama_models,
-            'vertex_models': vertex_models
+            'vertex_models': vertex_models,
+            'azure_models': azure_models
         }), 500
 
 
@@ -1863,6 +1877,22 @@ def _fetch_vertex_models_from_db():
         print(f"[ERROR] Failed to fetch Vertex AI models from DB: {e}")
         print(traceback.format_exc())
         return []
+
+
+def _fetch_azure_models_from_db():
+    """
+    Azure OpenAI models - returns empty list.
+
+    Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
+    Users should use azure/<deployment-name> directly with their deployment name
+    from Azure Portal. The inference routing handles this automatically.
+
+    Returns:
+        Empty list (deployment discovery not supported)
+    """
+    # We can't discover Azure deployments, so nothing to show in the UI
+    # Users who have Azure configured know their deployment names
+    return []
 
 
 @studio_bp.route('/tools', methods=['GET'])

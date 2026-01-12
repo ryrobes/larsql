@@ -359,6 +359,39 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Azure OpenAI Configuration
+    # =========================================================================
+    # Auto-enable if API key is set
+    azure_enabled: bool = Field(
+        default_factory=lambda: bool(
+            os.getenv("AZURE_API_KEY") or os.getenv("RVBBIT_AZURE_API_KEY")
+        )
+    )
+    # Azure OpenAI API key for authentication
+    # Used by LiteLLM's azure provider
+    azure_api_key: Optional[str] = Field(
+        default_factory=lambda: (
+            os.getenv("AZURE_API_KEY") or
+            os.getenv("RVBBIT_AZURE_API_KEY")
+        )
+    )
+    # Azure OpenAI endpoint base URL
+    # Format: https://<resource-name>.openai.azure.com
+    azure_api_base: Optional[str] = Field(
+        default_factory=lambda: (
+            os.getenv("AZURE_API_BASE") or
+            os.getenv("RVBBIT_AZURE_API_BASE")
+        )
+    )
+    # Azure OpenAI API version (default: 2024-10-21)
+    azure_api_version: str = Field(
+        default_factory=lambda: os.getenv(
+            "AZURE_API_VERSION",
+            os.getenv("RVBBIT_AZURE_API_VERSION", "2024-10-21")
+        )
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them

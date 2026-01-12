@@ -513,6 +513,62 @@ def fetch_models_from_vertex() -> List[Dict]:
     return vertex_models
 
 
+# ============================================================================
+# Azure OpenAI Model Discovery
+# ============================================================================
+
+# Import pricing from azure_cost module (avoids duplication)
+def _get_azure_pricing(model_name: str) -> Dict:
+    """
+    Get Azure OpenAI pricing for a model.
+
+    Args:
+        model_name: Model name without azure/ prefix
+
+    Returns:
+        Dict with input, output, tier
+    """
+    try:
+        from .azure_cost import get_pricing, get_model_tier
+        pricing = get_pricing(model_name)
+        return {
+            "input": pricing.get("input", 0.0),
+            "output": pricing.get("output", 0.0),
+            "tier": pricing.get("tier", "standard"),
+        }
+    except ImportError:
+        return {"input": 0.0, "output": 0.0, "tier": "standard"}
+
+
+def fetch_models_from_azure() -> List[Dict]:
+    """
+    Azure OpenAI model discovery.
+
+    Note: Azure OpenAI deployments API requires Azure AD auth which we don't support.
+    We cannot discover deployed models, so we don't add anything to the catalog.
+
+    Users should use azure/<deployment-name> directly with their deployment name
+    from Azure Portal. The inference routing in agent.py handles this.
+
+    Returns:
+        Empty list (deployment discovery not supported)
+    """
+    config = get_config()
+
+    # Check if Azure OpenAI is configured
+    if not config.azure_enabled:
+        return []
+
+    # Azure is configured but we can't discover deployments (requires Azure AD)
+    # Just log that it's available for manual use
+    console.print("[cyan]Azure OpenAI configured[/cyan]")
+    console.print("[dim]Use azure/<your-deployment-name> directly (deployment discovery not supported)[/dim]")
+
+    # Return empty - we can't discover what's actually deployed
+    # The catalog would just show "maybe available" models which is misleading
+    return []
+
+
 def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
     """
     Classify model into tier based on pricing and characteristics.
@@ -534,6 +590,13 @@ def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
         # Extract model name without prefix
         model_name = model_id[10:]  # len("vertex_ai/") = 10
         pricing_info = _lookup_pricing(model_name)
+        return pricing_info.get("tier", "standard")
+
+    # Check if it's an Azure OpenAI model (use pricing lookup for tier)
+    if model_id.startswith("azure/"):
+        # Extract model name without prefix
+        model_name = model_id[6:]  # len("azure/") = 6
+        pricing_info = _get_azure_pricing(model_name)
         return pricing_info.get("tier", "standard")
 
     prompt_price = float(pricing.get("prompt", 0))
@@ -679,6 +742,9 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
     Main refresh function: fetch models from OpenRouter, Ollama, and Vertex AI, then populate ClickHouse.
 
+    Note: Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
+    Use azure/<deployment-name> directly with your deployment name from Azure Portal.
+
     Args:
         skip_verification: If True, skip verification step (faster but less accurate)
         workers: Number of parallel verification workers
@@ -686,9 +752,9 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     config = get_config()
     db = get_db()
 
-    console.print("\n[bold cyan]╔═══════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI)  ║[/bold cyan]")
-    console.print("[bold cyan]╚═══════════════════════════════════════════════════╝[/bold cyan]\n")
+    console.print("\n[bold cyan]╔════════════════════════════════════════════════════════════════╗[/bold cyan]")
+    console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI)               ║[/bold cyan]")
+    console.print("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/bold cyan]\n")
 
     # Step 1a: Fetch models from OpenRouter
     try:
@@ -703,10 +769,14 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     # Step 1c: Fetch models from Vertex AI (non-fatal if not configured)
     vertex_models = fetch_models_from_vertex()
 
-    # Combine all models
+    # Step 1d: Check Azure OpenAI (discovery not supported, just logs status)
+    fetch_models_from_azure()
+
+    # Combine all models (Azure returns empty - discovery requires Azure AD)
     raw_models = openrouter_models + ollama_models + vertex_models
     console.print(f"\n[green]✓[/green] Total models: {len(raw_models)} "
-                 f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, Vertex AI: {len(vertex_models)})\n")
+                 f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, "
+                 f"Vertex AI: {len(vertex_models)})\n")
 
     # Step 2: Verify OpenRouter models only (Ollama models are always active)
     verification_results = {}
@@ -733,6 +803,9 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
         # Vertex AI models
         'vertex_ai/gemini-2.5-pro', 'vertex_ai/gemini-2.5-flash', 'vertex_ai/gemini-2.5-flash-lite',
         'vertex_ai/gemini-3-pro-preview', 'vertex_ai/gemini-3-flash-preview',
+        # Azure OpenAI models
+        'azure/gpt-4o', 'azure/gpt-4o-mini', 'azure/gpt-4.1',
+        'azure/o1', 'azure/o1-mini', 'azure/o3-mini',
     }
 
     rows = []

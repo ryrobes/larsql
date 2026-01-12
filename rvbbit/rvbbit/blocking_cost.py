@@ -171,6 +171,7 @@ def extract_provider_from_model(model: str) -> str:
         "openai/gpt-4" -> "openai"
         "x-ai/grok-4.1-fast:free" -> "x-ai"
         "vertex_ai/gemini-2.5-flash" -> "vertex_ai"
+        "azure/gpt-4o" -> "azure"
         "ollama/llama3" -> "ollama"
         "grok-4.1-fast:free" -> "unknown"
     """
@@ -181,6 +182,8 @@ def extract_provider_from_model(model: str) -> str:
     # These take precedence over generic "/" splitting
     if model.startswith("vertex_ai/"):
         return "vertex_ai"
+    if model.startswith("azure/"):
+        return "azure"
     if model.startswith("ollama/"):
         return "ollama"
 

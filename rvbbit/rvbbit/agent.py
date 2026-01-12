@@ -155,6 +155,25 @@ class Agent:
             if cfg.vertex_credentials_path:
                 args["vertex_credentials"] = cfg.vertex_credentials_path
 
+        # Explicitly set provider for Azure OpenAI
+        # Model prefix takes precedence, similar to Vertex AI
+        # Format: azure/<deployment-name>
+        elif self.model and self.model.startswith("azure/"):
+            args["custom_llm_provider"] = "azure"
+            # Clear OpenRouter credentials - Azure uses its own
+            args.pop("base_url", None)
+            args.pop("api_key", None)
+            # Set Azure-specific parameters from config
+            azure_cfg = get_config()
+            if azure_cfg.azure_api_key:
+                args["api_key"] = azure_cfg.azure_api_key
+            if azure_cfg.azure_api_base:
+                args["api_base"] = azure_cfg.azure_api_base
+            if azure_cfg.azure_api_version:
+                args["api_version"] = azure_cfg.azure_api_version
+            # Azure OpenAI supports similar token limits
+            args["max_tokens"] = 16384
+
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"
@@ -482,6 +501,7 @@ class Agent:
                 # Cost handling:
                 # - Ollama: cost=0 (local/free), no need to fetch
                 # - Vertex AI: cost calculated immediately from token counts
+                # - Azure AI: cost calculated immediately from token counts
                 # - OpenRouter: cost=None (will be fetched by unified logger)
                 cost = None
                 if provider == "ollama":
@@ -497,6 +517,18 @@ class Agent:
                         )
                     except Exception as e:
                         logger.warning(f"Failed to calculate Vertex AI cost: {e}")
+                        cost = None
+                elif provider == "azure":
+                    # Calculate Azure OpenAI cost immediately (no per-request cost API)
+                    try:
+                        from .azure_cost import calculate_azure_cost
+                        cost = calculate_azure_cost(
+                            model=self.model,
+                            tokens_in=tokens_in,
+                            tokens_out=tokens_out,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate Azure OpenAI cost: {e}")
                         cost = None
 
                 # Build TOON telemetry from transport metrics
