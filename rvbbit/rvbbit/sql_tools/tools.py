@@ -283,7 +283,7 @@ def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:
         return json.dumps({
             "error": f"Connection '{connection}' not found",
             "available_connections": list(connections.keys()),
-            "hint": "Check sql_connections/*.json files"
+            "hint": "Check sql_connections/*.yaml files"
         })
 
     conn_config = connections[connection]

@@ -174,6 +174,30 @@ class Agent:
             # Azure OpenAI supports similar token limits
             args["max_tokens"] = 16384
 
+        # Explicitly set provider for AWS Bedrock
+        # Model prefix takes precedence, similar to Vertex AI
+        # Format: bedrock/<model-id> (e.g., bedrock/anthropic.claude-3-sonnet-20240229-v1:0)
+        # Inference profiles include context suffix: bedrock/amazon.nova-premier-v1:0:1000k
+        elif self.model and self.model.startswith("bedrock/"):
+            args["custom_llm_provider"] = "bedrock"
+            # Clear OpenRouter credentials - Bedrock uses AWS credentials
+            args.pop("base_url", None)
+            args.pop("api_key", None)
+            # Set AWS region from config
+            bedrock_cfg = get_config()
+            if bedrock_cfg.bedrock_region:
+                args["aws_region_name"] = bedrock_cfg.bedrock_region
+            # Bedrock supports large context windows
+            args["max_tokens"] = 8192
+
+            # Use Converse API for all Bedrock models (required for Nova, works for all)
+            # LiteLLM format: bedrock/converse/<model-id>
+            model_id = args["model"]
+            if model_id.startswith("bedrock/") and not model_id.startswith("bedrock/converse/"):
+                # Convert bedrock/model-id to bedrock/converse/model-id
+                base_model = model_id[8:]  # Remove "bedrock/" prefix
+                args["model"] = f"bedrock/converse/{base_model}"
+
         if self.tools:
             args["tools"] = self.tools
             args["tool_choice"] = "auto"

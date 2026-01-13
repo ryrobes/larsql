@@ -2,7 +2,7 @@
 Lazy ATTACH for configured external data sources.
 
 Goal: make queries like `SELECT * FROM prod_db.public.users` "just work" by
-attaching the referenced connection from `sql_connections/*.json` on demand.
+attaching the referenced connection from `sql_connections/*.yaml` on demand.
 
 Design principles:
 - Best-effort: never fail a query just because an auto-attach failed.

@@ -29,6 +29,20 @@
             { "anchor": "execution", "title": "Execution Flow" },
             { "anchor": "terminology", "title": "Nautical Terminology" }
           ]
+        },
+        {
+          "id": "providers",
+          "title": "AI Providers",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "openrouter", "title": "OpenRouter (Recommended)" },
+            { "anchor": "vertex-ai", "title": "Google Vertex AI" },
+            { "anchor": "bedrock", "title": "AWS Bedrock" },
+            { "anchor": "azure", "title": "Azure OpenAI" },
+            { "anchor": "ollama", "title": "Ollama (Local)" },
+            { "anchor": "model-selection", "title": "Model Selection" },
+            { "anchor": "cli", "title": "CLI Commands" }
+          ]
         }
       ]
     },
@@ -190,6 +204,26 @@
             { "anchor": "stdio", "title": "Stdio Servers" },
             { "anchor": "http", "title": "HTTP Servers" },
             { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Resources",
+      "icon": "mdi:book-open-variant",
+      "color": "orange",
+      "items": [
+        {
+          "id": "competitive-analysis",
+          "title": "Competitive Landscape",
+          "sections": [
+            { "anchor": "market-overview", "title": "Market Overview" },
+            { "anchor": "text-to-sql", "title": "Text-to-SQL Tools" },
+            { "anchor": "semantic-frameworks", "title": "Semantic Frameworks" },
+            { "anchor": "feature-matrix", "title": "Feature Matrix" },
+            { "anchor": "operator-coverage", "title": "Operator Coverage" },
+            { "anchor": "code-comparison", "title": "Code Comparison" },
+            { "anchor": "when-to-use", "title": "When to Use Each" }
           ]
         }
       ]

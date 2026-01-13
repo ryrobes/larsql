@@ -39,6 +39,7 @@ const PROVIDER_ICONS = {
   // Cloud providers
   'aws': 'simple-icons:amazonaws',
   'amazon': 'simple-icons:amazonaws',
+  'bedrock': 'simple-icons:amazonaws',
   'cohere': 'mdi:cloud',
 
   // AI companies
@@ -122,6 +123,7 @@ function getProviderColor(provider) {
     'meta-llama': '#0668e1',
     microsoft: '#00a4ef',
     azure: '#0078d4',
+    bedrock: '#ff9900',
     'x-ai': '#1da1f2',
     nvidia: '#76b900',
     mistral: '#ff7000',

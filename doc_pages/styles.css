@@ -766,6 +766,23 @@ tr:last-child td {
   border-bottom: none;
 }
 
+/* Reference Tables (quick-reference summary tables) */
+.reference-table {
+  font-size: 0.85rem;
+}
+
+.reference-table td code {
+  background: rgba(28, 246, 255, 0.12);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--cyan);
+}
+
+.reference-table td strong {
+  color: var(--ink);
+}
+
 /* --------------------------------------------------------------------------
    TOC (Table of Contents - in content)
    Hidden since we now show sub-sections in sidebar

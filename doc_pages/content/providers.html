@@ -1,0 +1,605 @@
+<h1>AI Providers</h1>
+<p class="lead">
+  RVBBIT supports multiple AI providers out of the box. Use OpenRouter for the broadest model selection,
+  or connect directly to enterprise cloud providers like Google Vertex AI, AWS Bedrock, and Azure OpenAI.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#openrouter">OpenRouter (Recommended)</a></li>
+    <li><a href="#vertex-ai">Google Vertex AI</a></li>
+    <li><a href="#bedrock">AWS Bedrock</a></li>
+    <li><a href="#azure">Azure OpenAI</a></li>
+    <li><a href="#ollama">Ollama (Local)</a></li>
+    <li><a href="#model-selection">Model Selection</a></li>
+    <li><a href="#cli">CLI Commands</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  RVBBIT routes inference requests based on model ID prefixes. Each provider has its own authentication
+  method and configuration, but the usage pattern is consistent across all providers.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:router"></iconify-icon></div>
+    <h4>OpenRouter</h4>
+    <p>Default provider with 300+ models, unified API, accurate cost tracking</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:google-cloud"></iconify-icon></div>
+    <h4>Vertex AI</h4>
+    <p>Google Cloud's managed AI platform with Gemini models</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon green"><iconify-icon icon="mdi:aws"></iconify-icon></div>
+    <h4>AWS Bedrock</h4>
+    <p>Fully managed foundation models from AWS</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon purple"><iconify-icon icon="mdi:microsoft-azure"></iconify-icon></div>
+    <h4>Azure OpenAI</h4>
+    <p>Enterprise Azure deployments of OpenAI models</p>
+  </div>
+</div>
+
+<h3>Provider Routing</h3>
+
+<p>
+  Models are routed based on their ID prefix:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang config">Model ID Routing</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># OpenRouter (default - no prefix needed)</span>
+anthropic/claude-sonnet-4
+openai/gpt-4o
+google/gemini-2.5-flash
+
+<span class="cmt"># Vertex AI</span>
+vertex_ai/gemini-2.5-pro
+vertex_ai/gemini-2.5-flash
+
+<span class="cmt"># AWS Bedrock</span>
+bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0
+bedrock/us.amazon.nova-premier-v1:0
+
+<span class="cmt"># Azure OpenAI</span>
+azure/my-gpt4-deployment
+azure/my-o1-deployment
+
+<span class="cmt"># Ollama (local)</span>
+ollama/llama3.3:70b
+ollama/qwen2.5-coder:32b</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="openrouter">OpenRouter (Recommended)</h2>
+
+<p>
+  OpenRouter is the default and recommended provider. It offers access to 300+ models from all major providers
+  through a single API, with accurate cost tracking and unified billing.
+</p>
+
+<div class="info-box tip">
+  <div class="info-box-title">Why OpenRouter?</div>
+  <p>
+    OpenRouter provides the most accurate cost information, which RVBBIT uses for detailed cost analytics.
+    It also offers automatic fallbacks and load balancing across providers.
+  </p>
+</div>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">OpenRouter Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Required: Your OpenRouter API key</span>
+<span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-v1-xxxxxxxxxxxx</span>
+
+<span class="cmt"># Optional: Override default model</span>
+<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span>
+
+<span class="cmt"># Optional: Override base URL (rarely needed)</span>
+<span class="key">RVBBIT_PROVIDER_BASE_URL</span>=<span class="str">https://openrouter.ai/api/v1</span></pre>
+  </div>
+</div>
+
+<h3>Getting Started</h3>
+
+<ol>
+  <li>Sign up at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></li>
+  <li>Create an API key in your dashboard</li>
+  <li>Set the <code>OPENROUTER_API_KEY</code> environment variable</li>
+  <li>Run <code>rvbbit models refresh</code> to populate the model catalog</li>
+</ol>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using OpenRouter Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: openai/gpt-4o</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Summarize this'</span>, text) <span class="kw">FROM</span> docs</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="vertex-ai">Google Vertex AI</h2>
+
+<p>
+  Connect directly to Google Cloud's Vertex AI platform for Gemini models.
+  Ideal for organizations already using Google Cloud or requiring data residency in specific regions.
+</p>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>A Google Cloud project with Vertex AI API enabled</li>
+  <li>Service account credentials OR Application Default Credentials (ADC)</li>
+  <li>The <code>google-auth</code> Python package: <code>pip install google-auth</code></li>
+</ul>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Vertex AI Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Required: Google Cloud project ID</span>
+<span class="cmt"># Can use any of these (checked in order):</span>
+<span class="key">RVBBIT_VERTEX_PROJECT</span>=<span class="str">my-project-id</span>
+<span class="cmt"># or</span>
+<span class="key">VERTEXAI_PROJECT</span>=<span class="str">my-project-id</span>
+<span class="cmt"># or</span>
+<span class="key">GOOGLE_CLOUD_PROJECT</span>=<span class="str">my-project-id</span>
+
+<span class="cmt"># Optional: Region (default: us-central1)</span>
+<span class="key">RVBBIT_VERTEX_LOCATION</span>=<span class="str">us-central1</span>
+
+<span class="cmt"># Authentication: Service account credentials</span>
+<span class="cmt"># Option 1: Path to JSON file</span>
+<span class="key">GOOGLE_APPLICATION_CREDENTIALS</span>=<span class="str">/path/to/service-account.json</span>
+
+<span class="cmt"># Option 2: Raw JSON content (useful for containers/CI)</span>
+<span class="key">GOOGLE_APPLICATION_CREDENTIALS</span>=<span class="str">'{"type":"service_account","project_id":"..."}'</span></pre>
+  </div>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">ADC Authentication</div>
+  <p>
+    If <code>GOOGLE_APPLICATION_CREDENTIALS</code> is not set, RVBBIT will attempt to use
+    Application Default Credentials (ADC). Run <code>gcloud auth application-default login</code>
+    to set up ADC locally.
+  </p>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Vertex AI Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use vertex_ai/ prefix</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">vertex_ai/gemini-2.5-pro</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: vertex_ai/gemini-2.5-flash</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Summarize this'</span>, text) <span class="kw">FROM</span> docs</pre>
+  </div>
+</div>
+
+<h3>Available Models</h3>
+
+<p>Run <code>rvbbit models refresh</code> to discover all available Vertex AI models. Common models include:</p>
+
+<ul>
+  <li><code>vertex_ai/gemini-2.5-pro</code> - Flagship model with 1M context</li>
+  <li><code>vertex_ai/gemini-2.5-flash</code> - Fast and cost-effective</li>
+  <li><code>vertex_ai/gemini-2.5-flash-lite</code> - Ultra-low latency</li>
+  <li><code>vertex_ai/gemini-3-pro-preview</code> - Latest generation</li>
+</ul>
+
+<hr>
+
+<h2 id="bedrock">AWS Bedrock</h2>
+
+<p>
+  AWS Bedrock provides fully managed access to foundation models from Anthropic, Meta, Mistral, Cohere, and Amazon.
+  Perfect for organizations with existing AWS infrastructure or requiring AWS compliance standards.
+</p>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>An AWS account with Bedrock access enabled in your region</li>
+  <li>IAM permissions for <code>bedrock:InvokeModel</code> and <code>bedrock:ListFoundationModels</code></li>
+  <li>The <code>boto3</code> Python package: <code>pip install boto3</code></li>
+</ul>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">AWS Bedrock Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Authentication Option 1: Access keys</span>
+<span class="key">AWS_ACCESS_KEY_ID</span>=<span class="str">AKIAXXXXXXXXXXXXXXXX</span>
+<span class="key">AWS_SECRET_ACCESS_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+
+<span class="cmt"># Authentication Option 2: Named profile</span>
+<span class="key">AWS_PROFILE</span>=<span class="str">my-profile</span>
+
+<span class="cmt"># Authentication Option 3: IAM role (automatic on EC2/ECS/Lambda)</span>
+<span class="cmt"># No environment variables needed</span>
+
+<span class="cmt"># Region configuration (checked in order)</span>
+<span class="key">AWS_REGION</span>=<span class="str">us-east-1</span>
+<span class="cmt"># or</span>
+<span class="key">AWS_DEFAULT_REGION</span>=<span class="str">us-east-1</span>
+<span class="cmt"># or</span>
+<span class="key">RVBBIT_BEDROCK_REGION</span>=<span class="str">us-east-1</span>
+
+<span class="cmt"># Optional: Explicitly enable Bedrock</span>
+<span class="key">RVBBIT_BEDROCK_ENABLED</span>=<span class="str">true</span></pre>
+  </div>
+</div>
+
+<div class="info-box warning">
+  <div class="info-box-title">Model Access</div>
+  <p>
+    Not all Bedrock models are available by default. You may need to request model access
+    in the AWS Console under Bedrock &rarr; Model access. Claude and Amazon Titan models
+    typically require no additional approval.
+  </p>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Bedrock Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use bedrock/ prefix</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># Using inference profiles (cross-region)</span>
+- <span class="key">name</span>: process
+  <span class="key">model</span>: <span class="str">bedrock/us.amazon.nova-premier-v1:0</span>
+  <span class="key">instructions</span>: <span class="str">"Process this request"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: bedrock/anthropic.claude-3-haiku-20240307-v1:0</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Summarize'</span>, text) <span class="kw">FROM</span> docs</pre>
+  </div>
+</div>
+
+<h3>Available Models</h3>
+
+<p>
+  Bedrock models are discovered dynamically. Run <code>rvbbit models refresh</code> to populate the catalog.
+  Common model families include:
+</p>
+
+<ul>
+  <li><strong>Anthropic Claude</strong> - Claude 3.5 Sonnet, Claude 3 Haiku/Opus</li>
+  <li><strong>Amazon Nova</strong> - Nova Premier, Nova Pro, Nova Lite</li>
+  <li><strong>Meta Llama</strong> - Llama 3.2, Llama 3.1</li>
+  <li><strong>Mistral</strong> - Mistral Large, Mixtral</li>
+  <li><strong>Cohere</strong> - Command R+, Command R</li>
+</ul>
+
+<hr>
+
+<h2 id="azure">Azure OpenAI</h2>
+
+<p>
+  Azure OpenAI provides enterprise deployments of OpenAI models with Azure's security, compliance, and regional availability.
+  You deploy specific model versions to named deployments in your Azure OpenAI resource.
+</p>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>An Azure subscription with Azure OpenAI access approved</li>
+  <li>An Azure OpenAI resource created in a supported region</li>
+  <li>One or more model deployments configured in the resource</li>
+</ul>
+
+<h3>Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Azure OpenAI Configuration</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Required: Azure OpenAI API key</span>
+<span class="key">AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+<span class="cmt"># or</span>
+<span class="key">RVBBIT_AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+
+<span class="cmt"># Required: Azure OpenAI endpoint</span>
+<span class="cmt"># Format: https://&lt;resource-name&gt;.openai.azure.com</span>
+<span class="key">AZURE_API_BASE</span>=<span class="str">https://my-openai-resource.openai.azure.com</span>
+<span class="cmt"># or</span>
+<span class="key">RVBBIT_AZURE_API_BASE</span>=<span class="str">https://my-openai-resource.openai.azure.com</span>
+
+<span class="cmt"># Optional: API version (default: 2024-10-21)</span>
+<span class="key">AZURE_API_VERSION</span>=<span class="str">2024-10-21</span></pre>
+  </div>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">Deployment Names</div>
+  <p>
+    Azure OpenAI uses <strong>deployment names</strong>, not model IDs. Use the name you assigned
+    when creating the deployment in Azure Portal. For example, if you deployed GPT-4o as "my-gpt4o-deployment",
+    use <code>azure/my-gpt4o-deployment</code>.
+  </p>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Azure OpenAI Deployments</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use azure/&lt;deployment-name&gt;</span>
+- <span class="key">name</span>: analyze
+  <span class="key">model</span>: <span class="str">azure/my-gpt4o-deployment</span>
+  <span class="key">instructions</span>: <span class="str">"Analyze the data"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: azure/my-o1-deployment</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Reason through this'</span>, problem) <span class="kw">FROM</span> cases</pre>
+  </div>
+</div>
+
+<h3>Finding Your Deployment Names</h3>
+
+<ol>
+  <li>Go to <a href="https://portal.azure.com" target="_blank">Azure Portal</a></li>
+  <li>Navigate to your Azure OpenAI resource</li>
+  <li>Click "Model deployments" in the left menu</li>
+  <li>Use the deployment name (not the model name) with the <code>azure/</code> prefix</li>
+</ol>
+
+<hr>
+
+<h2 id="ollama">Ollama (Local)</h2>
+
+<p>
+  Run models locally with zero API costs using Ollama. Perfect for development, testing,
+  or scenarios requiring data privacy.
+</p>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>Ollama installed and running: <a href="https://ollama.ai" target="_blank">ollama.ai</a></li>
+  <li>One or more models pulled: <code>ollama pull llama3.3</code></li>
+</ul>
+
+<h3>Configuration</h3>
+
+<p>
+  No environment variables required. RVBBIT auto-detects Ollama at <code>localhost:11434</code>.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Ollama Setup</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Install Ollama (macOS/Linux)</span>
+curl -fsSL https://ollama.ai/install.sh | sh
+
+<span class="cmt"># Start Ollama service</span>
+ollama serve
+
+<span class="cmt"># Pull models</span>
+ollama pull llama3.3:70b
+ollama pull qwen2.5-coder:32b
+ollama pull deepseek-r1:32b
+
+<span class="cmt"># Refresh RVBBIT model catalog</span>
+rvbbit models refresh</pre>
+  </div>
+</div>
+
+<h3>Usage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Using Ollama Models</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># In cascade YAML - use ollama/ prefix</span>
+- <span class="key">name</span>: code_review
+  <span class="key">model</span>: <span class="str">ollama/qwen2.5-coder:32b</span>
+  <span class="key">instructions</span>: <span class="str">"Review this code for issues"</span>
+
+<span class="cmt"># In SQL</span>
+<span class="cmt">-- @ model: ollama/llama3.3:70b</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Explain this'</span>, concept) <span class="kw">FROM</span> topics</pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Free Inference</div>
+  <p>
+    Ollama models have zero API costs. They're ideal for development, iteration,
+    and high-volume batch processing where cost would otherwise be prohibitive.
+  </p>
+</div>
+
+<hr>
+
+<h2 id="model-selection">Model Selection</h2>
+
+<p>
+  RVBBIT provides multiple ways to specify which model to use:
+</p>
+
+<h3>Default Model</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Setting Default Model</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Set default for all RVBBIT operations</span>
+<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span></pre>
+  </div>
+</div>
+
+<h3>Per-Cell Override</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cell-Level Model Selection</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Override model for a specific cell</span>
+- <span class="key">name</span>: complex_reasoning
+  <span class="key">model</span>: <span class="str">openai/o1</span>  <span class="cmt"># Reasoning model for this cell</span>
+  <span class="key">instructions</span>: <span class="str">"Solve this complex problem"</span>
+
+- <span class="key">name</span>: quick_extraction
+  <span class="key">model</span>: <span class="str">vertex_ai/gemini-2.5-flash</span>  <span class="cmt"># Fast model for extraction</span>
+  <span class="key">instructions</span>: <span class="str">"Extract key fields"</span></pre>
+  </div>
+</div>
+
+<h3>SQL Annotations</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL Model Selection</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Specific model for expensive analysis</span>
+<span class="cmt">-- @ model: anthropic/claude-opus-4</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Deep legal analysis'</span>, contract) <span class="kw">FROM</span> contracts
+
+<span class="cmt">-- Fast model for simple classification</span>
+<span class="cmt">-- @ model: vertex_ai/gemini-2.5-flash-lite</span>
+<span class="kw">SELECT</span> <span class="fn">CLASSIFY</span>(text, [<span class="str">'spam'</span>, <span class="str">'ham'</span>]) <span class="kw">FROM</span> messages
+
+<span class="cmt">-- Local model for development</span>
+<span class="cmt">-- @ model: ollama/llama3.3:70b</span>
+<span class="kw">SELECT</span> <span class="fn">ASK</span>(<span class="str">'Test query'</span>, data) <span class="kw">FROM</span> test_data</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2 id="cli">CLI Commands</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Model Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Refresh model catalog from all providers</span>
+rvbbit models refresh
+
+<span class="cmt"># Refresh with parallel verification (faster)</span>
+rvbbit models refresh --workers 20
+
+<span class="cmt"># List available models</span>
+rvbbit models list
+rvbbit models list --provider vertex_ai
+rvbbit models list --provider bedrock
+rvbbit models list --type text
+
+<span class="cmt"># Verify a specific model is active</span>
+rvbbit models verify --model-id anthropic/claude-sonnet-4
+
+<span class="cmt"># Show model statistics</span>
+rvbbit models stats</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Quick Reference</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Provider</th>
+      <th>Prefix</th>
+      <th>Required Env Vars</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>OpenRouter</strong></td>
+      <td><code>none</code></td>
+      <td><code>OPENROUTER_API_KEY</code></td>
+    </tr>
+    <tr>
+      <td><strong>Vertex AI</strong></td>
+      <td><code>vertex_ai/</code></td>
+      <td><code>RVBBIT_VERTEX_PROJECT</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+    </tr>
+    <tr>
+      <td><strong>Bedrock</strong></td>
+      <td><code>bedrock/</code></td>
+      <td><code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code> (or IAM role)</td>
+    </tr>
+    <tr>
+      <td><strong>Azure</strong></td>
+      <td><code>azure/</code></td>
+      <td><code>AZURE_API_KEY</code>, <code>AZURE_API_BASE</code></td>
+    </tr>
+    <tr>
+      <td><strong>Ollama</strong></td>
+      <td><code>ollama/</code></td>
+      <td>None (auto-detected)</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Further Reading</h2>
+<ul>
+  <li><a href="https://openrouter.ai/docs" target="_blank">OpenRouter Documentation</a></li>
+  <li><a href="https://cloud.google.com/vertex-ai/docs" target="_blank">Vertex AI Documentation</a></li>
+  <li><a href="https://docs.aws.amazon.com/bedrock/" target="_blank">AWS Bedrock Documentation</a></li>
+  <li><a href="https://learn.microsoft.com/azure/ai-services/openai/" target="_blank">Azure OpenAI Documentation</a></li>
+  <li><a href="https://ollama.ai" target="_blank">Ollama</a></li>
+</ul>

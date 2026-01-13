@@ -392,6 +392,29 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # AWS Bedrock Configuration
+    # =========================================================================
+    # Auto-enable if AWS credentials are available
+    # Uses standard AWS credential chain: env vars, ~/.aws/credentials, IAM role
+    bedrock_enabled: bool = Field(
+        default_factory=lambda: bool(
+            os.getenv("AWS_ACCESS_KEY_ID") or
+            os.getenv("AWS_PROFILE") or
+            os.getenv("RVBBIT_BEDROCK_ENABLED", "").lower() == "true"
+        )
+    )
+    # AWS region for Bedrock (default: us-east-1)
+    # Bedrock availability varies by region
+    bedrock_region: str = Field(
+        default_factory=lambda: (
+            os.getenv("AWS_REGION") or
+            os.getenv("AWS_DEFAULT_REGION") or
+            os.getenv("RVBBIT_BEDROCK_REGION") or
+            "us-east-1"
+        )
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them

@@ -169,7 +169,7 @@ class ClientConnection:
             from ..sql_tools.udf import register_dynamic_sql_functions
             register_dynamic_sql_functions(self.duckdb_conn)
 
-            # Lazy ATTACH: configured sql_connections/*.json attached on first reference.
+            # Lazy ATTACH: configured sql_connections/*.yaml attached on first reference.
             # Non-fatal if config loading fails.
             try:
                 from ..sql_tools.config import load_sql_connections

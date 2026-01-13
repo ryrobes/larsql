@@ -1,0 +1,1014 @@
+<h1>Competitive Landscape</h1>
+<p class="lead">
+  How RVBBIT compares to other AI-powered data tools: text-to-SQL generators, semantic operator
+  frameworks, and research projects from Stanford and MIT.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Key Insight</div>
+  <p>
+    <strong>Text-to-SQL tools help you write SQL. RVBBIT lets AI <em>be</em> the SQL operator.</strong>
+    Instead of translating "find urgent tickets" to <code>WHERE priority = 'high'</code>, RVBBIT
+    executes <code>WHERE description MEANS 'urgent'</code> directly with semantic understanding.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#market-overview">Market Overview</a></li>
+    <li><a href="#text-to-sql">Text-to-SQL Tools</a></li>
+    <li><a href="#semantic-frameworks">Semantic Operator Frameworks</a></li>
+    <li><a href="#feature-matrix">Feature Comparison Matrix</a></li>
+    <li><a href="#operator-coverage">Operator Coverage</a></li>
+    <li><a href="#code-comparison">Code Comparison</a></li>
+    <li><a href="#when-to-use">When to Use Each</a></li>
+  </ul>
+</div>
+
+<h2 id="market-overview">Market Overview</h2>
+
+<p>
+  The AI + Data space is segmented into distinct categories. Understanding these distinctions helps
+  clarify where RVBBIT fits and when other tools might be more appropriate.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:translate"></iconify-icon></div>
+    <h4>Text-to-SQL Tools</h4>
+    <p>
+      <strong>AIQuery.co, AI2SQL, Text2SQL.ai</strong><br>
+      Translate natural language to SQL strings. User copies query to their database.
+    </p>
+    <p class="stat">Output: SQL to copy/paste</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:function-variant"></iconify-icon></div>
+    <h4>Semantic Frameworks</h4>
+    <p>
+      <strong>LOTUS, Palimpzest, RVBBIT</strong><br>
+      AI embedded as first-class operators in data processing pipelines.
+    </p>
+    <p class="stat">Output: AI-enriched results</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:shield-lock"></iconify-icon></div>
+    <h4>Endpoint Security</h4>
+    <p>
+      <strong>AIQuery.io</strong><br>
+      osquery-based endpoint monitoring. Different market entirely (name collision).
+    </p>
+    <p class="stat">Market: IT/Security ops</p>
+  </div>
+</div>
+
+<h3>Market Positioning</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Products</th>
+      <th>AI Role</th>
+      <th>RVBBIT Relationship</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Text-to-SQL</strong></td>
+      <td>AIQuery.co, AI2SQL, Text2SQL.ai</td>
+      <td>Query generation helper</td>
+      <td>Different market - translation vs execution</td>
+    </tr>
+    <tr>
+      <td><strong>Pandas-based</strong></td>
+      <td>LOTUS (Stanford/Berkeley)</td>
+      <td>DataFrame semantic operators</td>
+      <td>Similar vision, Python API vs SQL</td>
+    </tr>
+    <tr>
+      <td><strong>Declarative Python</strong></td>
+      <td>Palimpzest (MIT)</td>
+      <td>Cost-optimized semantic ops</td>
+      <td>Similar vision, research focus</td>
+    </tr>
+    <tr>
+      <td><strong>SQL-native</strong></td>
+      <td>RVBBIT</td>
+      <td>SQL operators + wire protocol</td>
+      <td>—</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="text-to-sql">Text-to-SQL Tools</h2>
+
+<p>
+  These tools help users <strong>write</strong> SQL queries using natural language. They are not direct
+  competitors to RVBBIT—they operate as translation layers, while RVBBIT embeds AI into query execution.
+</p>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:information-outline"></iconify-icon> The Fundamental Difference</div>
+  <p>
+    <strong>Text-to-SQL:</strong> "Find urgent tickets" → <code>SELECT * FROM tickets WHERE priority = 'high'</code> (user copies to database)<br>
+    <strong>RVBBIT:</strong> <code>SELECT * FROM tickets WHERE description MEANS 'urgent'</code> → AI-filtered results directly
+  </p>
+</div>
+
+<h3>Quick Comparison</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>What It Does</th>
+      <th>Pricing</th>
+      <th>Key Feature</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong><a href="https://aiquery.co/" target="_blank">AIQuery.co</a></strong></td>
+      <td>NL → SQL string (GPT/PaLM)</td>
+      <td>$10/mo or $100/yr</td>
+      <td>Schema management, query history</td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://ai2sql.io/" target="_blank">AI2SQL</a></strong></td>
+      <td>Suite of SQL AI tools</td>
+      <td>Freemium</td>
+      <td>Query explainer, optimizer, fixer</td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://www.text2sql.ai/" target="_blank">Text2SQL.ai</a></strong></td>
+      <td>NL → SQL with schema awareness</td>
+      <td>Free trial, $0.05/req</td>
+      <td>95% accuracy claim, desktop app</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>RVBBIT vs Text-to-SQL</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Text-to-SQL Tools</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>What AI Does</strong></td>
+      <td>Generates SQL string</td>
+      <td>Executes within SQL</td>
+    </tr>
+    <tr>
+      <td><strong>Output</strong></td>
+      <td>Query to copy/paste</td>
+      <td>Actual query results</td>
+    </tr>
+    <tr>
+      <td><strong>Integration</strong></td>
+      <td>Standalone web app</td>
+      <td>PostgreSQL wire protocol</td>
+    </tr>
+    <tr>
+      <td><strong>Semantic Operators</strong></td>
+      <td>None</td>
+      <td>85+ operators</td>
+    </tr>
+    <tr>
+      <td><strong>Use Case</strong></td>
+      <td>Help non-technical users write SQL</td>
+      <td>Embed AI reasoning in data pipelines</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="semantic-frameworks">Semantic Operator Frameworks</h2>
+
+<p>
+  These are RVBBIT's <strong>true peers</strong>—academic projects that share the same vision of
+  embedding AI directly into data processing as first-class operators.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:speedometer"></iconify-icon></div>
+    <h4>LOTUS</h4>
+    <p>
+      <strong>Stanford/Berkeley • Pandas API</strong><br>
+      Focus: Speed optimization through model cascades. Route easy cases to small models.
+    </p>
+    <p class="stat">9 semantic operators</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:currency-usd"></iconify-icon></div>
+    <h4>Palimpzest</h4>
+    <p>
+      <strong>MIT • Declarative Python</strong><br>
+      Focus: Cost optimization via Abacus optimizer. Auto-balance quality/cost/latency.
+    </p>
+    <p class="stat">6 semantic operators</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:database-cog"></iconify-icon></div>
+    <h4>RVBBIT</h4>
+    <p>
+      <strong>Production-focused • SQL syntax</strong><br>
+      Focus: Operator breadth, SQL ecosystem integration, no-code extensibility.
+    </p>
+    <p class="stat">85+ semantic operators</p>
+  </div>
+</div>
+
+<h3>LOTUS (Stanford/Berkeley)</h3>
+
+<p>
+  <a href="https://github.com/lotus-data/lotus" target="_blank">LOTUS</a> (LLMs Over Text, Unstructured
+  and Structured Data) extends Pandas DataFrames with semantic operators. Created by advisors including
+  Matei Zaharia (Spark creator).
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Interface</strong></td>
+      <td>Pandas DataFrame API (Python)</td>
+    </tr>
+    <tr>
+      <td><strong>Key Innovation</strong></td>
+      <td>Model cascades for 1000x speedup</td>
+    </tr>
+    <tr>
+      <td><strong>Paper</strong></td>
+      <td><a href="https://arxiv.org/abs/2407.11418" target="_blank">arXiv:2407.11418</a> (VLDB 2024)</td>
+    </tr>
+    <tr>
+      <td><strong>License</strong></td>
+      <td>Apache 2.0</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>LOTUS Operators</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Operator</th>
+      <th>Purpose</th>
+      <th>RVBBIT Equivalent</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>sem_filter(predicate)</code></td>
+      <td>Filter by NL predicate</td>
+      <td><code>MEANS</code>, <code>MATCHES</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_map(projection)</code></td>
+      <td>NL projection per row</td>
+      <td><code>ASK()</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_extract(attrs)</code></td>
+      <td>Extract quoted substrings</td>
+      <td><code>EXTRACTS</code>, <code>PARSE()</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_agg(langex)</code></td>
+      <td>Cross-record aggregation</td>
+      <td><code>SUMMARIZE()</code>, <code>THEMES()</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_topk(criteria, k)</code></td>
+      <td>NL ranking</td>
+      <td><code>RANK()</code> aggregate</td>
+    </tr>
+    <tr>
+      <td><code>sem_join(predicate)</code></td>
+      <td>Semantic join</td>
+      <td><code>MEANS</code> in JOIN</td>
+    </tr>
+    <tr>
+      <td><code>sem_sim_join()</code></td>
+      <td>Similarity join</td>
+      <td><code>SIMILAR_TO</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_search(query, k)</code></td>
+      <td>Vector search</td>
+      <td><code>VECTOR_SEARCH()</code></td>
+    </tr>
+    <tr>
+      <td><code>sem_cluster_by()</code></td>
+      <td>Semantic clustering</td>
+      <td><code>CLUSTER()</code>, <code>THEME()</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Palimpzest (MIT)</h3>
+
+<p>
+  <a href="https://palimpzest.org/" target="_blank">Palimpzest</a> focuses on cost-based optimization
+  through its Abacus optimizer, automatically navigating tradeoffs between quality, cost, and latency.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Interface</strong></td>
+      <td>Declarative Python</td>
+    </tr>
+    <tr>
+      <td><strong>Key Innovation</strong></td>
+      <td>Abacus cost-based optimizer</td>
+    </tr>
+    <tr>
+      <td><strong>Multi-Modal</strong></td>
+      <td>Native support for text, images, audio, tables</td>
+    </tr>
+    <tr>
+      <td><strong>Paper</strong></td>
+      <td><a href="https://vldb.org/cidrdb/papers/2025/p12-liu.pdf" target="_blank">CIDR 2025</a></td>
+    </tr>
+    <tr>
+      <td><strong>License</strong></td>
+      <td>MIT</td>
+    </tr>
+  </tbody>
+</table>
+
+<h4>Abacus Optimizer</h4>
+
+<p>Palimpzest's key innovation—automatic optimization across three dimensions:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Palimpzest Execution Modes</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Maximize quality regardless of cost</span>
+output = dataset.run(max_quality=<span class="kw">True</span>)
+
+<span class="cmt"># Minimize cost while maintaining baseline quality</span>
+output = dataset.run(min_cost=<span class="kw">True</span>)
+
+<span class="cmt"># Fastest execution</span>
+output = dataset.run(min_time=<span class="kw">True</span>)
+
+<span class="cmt"># Quality-first with cost constraint</span>
+output = dataset.run(max_quality=<span class="kw">True</span>, cost_constraint=<span class="num">50.0</span>)</pre>
+  </div>
+</div>
+
+<h4>Optimization Techniques</h4>
+
+<table>
+  <thead>
+    <tr>
+      <th>Technique</th>
+      <th>Description</th>
+      <th>Impact</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Model Selection</strong></td>
+      <td>Swap GPT-4 → GPT-3.5 when quality similar</td>
+      <td>Cost ↓</td>
+    </tr>
+    <tr>
+      <td><strong>Code Synthesis</strong></td>
+      <td>Replace LLM calls with generated Python</td>
+      <td>Cost ↓↓</td>
+    </tr>
+    <tr>
+      <td><strong>Model Routing</strong></td>
+      <td>Route by difficulty level</td>
+      <td>Cost ↓, Quality ↔</td>
+    </tr>
+    <tr>
+      <td><strong>Ensemble Methods</strong></td>
+      <td>Mixture-of-Agents</td>
+      <td>Quality ↑</td>
+    </tr>
+    <tr>
+      <td><strong>Context Reduction</strong></td>
+      <td>Embedding-based filtering</td>
+      <td>Cost ↓</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="feature-matrix">Feature Comparison Matrix</h2>
+
+<h3>Core Capabilities</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>AIQuery.co</th>
+      <th>LOTUS</th>
+      <th>Palimpzest</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Interface</strong></td>
+      <td>Web UI</td>
+      <td>Pandas API</td>
+      <td>Python declarative</td>
+      <td><strong>SQL (wire protocol)</strong></td>
+    </tr>
+    <tr>
+      <td><strong>AI Role</strong></td>
+      <td>Query generator</td>
+      <td>Semantic operators</td>
+      <td>Semantic operators</td>
+      <td><strong>Semantic operators</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Operator Count</strong></td>
+      <td>N/A</td>
+      <td>9</td>
+      <td>6 + relational</td>
+      <td><strong>85+</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Output</strong></td>
+      <td>SQL string</td>
+      <td>DataFrame</td>
+      <td>DataFrame</td>
+      <td><strong>Query results</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Multi-Modal</strong></td>
+      <td>No</td>
+      <td>Recent</td>
+      <td><strong>Yes (native)</strong></td>
+      <td>Via tools</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Integration & Deployment</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>AIQuery.co</th>
+      <th>LOTUS</th>
+      <th>Palimpzest</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>SQL Client Support</strong></td>
+      <td>N/A</td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>PostgreSQL wire</strong></td>
+    </tr>
+    <tr>
+      <td><strong>BI Tool Integration</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes (Tableau, etc.)</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Self-Hosted</strong></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td><strong>Yes</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Cloud Providers</strong></td>
+      <td>OpenAI, PaLM</td>
+      <td>LiteLLM</td>
+      <td>Multiple</td>
+      <td><strong>OpenRouter + Vertex + Bedrock + Azure + Ollama</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Optimization Features</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>AIQuery.co</th>
+      <th>LOTUS</th>
+      <th>Palimpzest</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Model Cascades</strong></td>
+      <td>No</td>
+      <td><strong>Yes</strong></td>
+      <td>Via routing</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td><strong>Cost Optimization</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes (Abacus)</strong></td>
+      <td>Manual (hints)</td>
+    </tr>
+    <tr>
+      <td><strong>Code Synthesis</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes</strong></td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td><strong>Caching</strong></td>
+      <td>No</td>
+      <td>Basic</td>
+      <td>Basic</td>
+      <td><strong>Advanced (3 strategies)</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Token Efficiency</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>Context reduction</td>
+      <td><strong>TOON format (45-60%)</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Production Features</h3>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>AIQuery.co</th>
+      <th>LOTUS</th>
+      <th>Palimpzest</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Self-Healing</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Cost Tracking</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>Yes</td>
+      <td><strong>Yes</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Session Management</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Workflow Orchestration</strong></td>
+      <td>No</td>
+      <td>No</td>
+      <td>No</td>
+      <td><strong>Yes (Cascades)</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Extensibility</strong></td>
+      <td>No</td>
+      <td>Python code</td>
+      <td>Python code</td>
+      <td><strong>YAML (no code)</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="operator-coverage">Operator Coverage</h2>
+
+<h3>By Category</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>LOTUS</th>
+      <th>Palimpzest</th>
+      <th>RVBBIT</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Filtering</strong></td>
+      <td><code>sem_filter</code></td>
+      <td><code>sem_filter</code></td>
+      <td><code>MEANS</code>, <code>MATCHES</code>, <code>~</code>, <code>SCORE</code>, <code>ABOUT</code></td>
+    </tr>
+    <tr>
+      <td><strong>Mapping</strong></td>
+      <td><code>sem_map</code></td>
+      <td><code>sem_map</code></td>
+      <td><code>ASK()</code></td>
+    </tr>
+    <tr>
+      <td><strong>Extraction</strong></td>
+      <td><code>sem_extract</code></td>
+      <td>via sem_map</td>
+      <td><code>EXTRACTS</code>, <code>PARSE()</code>, <code>PARSE_NAME()</code>, <code>PARSE_ADDRESS()</code>, <code>PARSE_DATE()</code></td>
+    </tr>
+    <tr>
+      <td><strong>Aggregation</strong></td>
+      <td><code>sem_agg</code></td>
+      <td><code>sem_aggregate</code></td>
+      <td><code>SUMMARIZE()</code>, <code>THEMES()</code>, <code>CONSENSUS()</code>, <code>BEST()</code>, <code>MERGE_TEXTS()</code></td>
+    </tr>
+    <tr>
+      <td><strong>Ranking</strong></td>
+      <td><code>sem_topk</code></td>
+      <td><code>sem_topk</code></td>
+      <td><code>RANK()</code> aggregate</td>
+    </tr>
+    <tr>
+      <td><strong>Joining</strong></td>
+      <td><code>sem_join</code>, <code>sem_sim_join</code></td>
+      <td><code>sem_join</code></td>
+      <td><code>MEANS</code> in JOIN, <code>SIMILAR_TO</code></td>
+    </tr>
+    <tr>
+      <td><strong>Clustering</strong></td>
+      <td><code>sem_cluster_by</code></td>
+      <td>—</td>
+      <td><code>CLUSTER()</code>, <code>THEME()</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>RVBBIT-Unique Operators</h3>
+
+<p>
+  Operators not found in LOTUS or Palimpzest:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Operators</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Logic</strong></td>
+      <td><code>CONTRADICTS</code>, <code>IMPLIES</code>, <code>ALIGNS</code></td>
+      <td>Semantic reasoning between texts</td>
+    </tr>
+    <tr>
+      <td><strong>Classification</strong></td>
+      <td><code>CLASSIFY(text, categories)</code></td>
+      <td>Multi-class classification</td>
+    </tr>
+    <tr>
+      <td><strong>Scoring</strong></td>
+      <td><code>SCORE</code>, <code>ABOUT</code>, <code>SENTIMENT</code></td>
+      <td>Relevance and sentiment scores</td>
+    </tr>
+    <tr>
+      <td><strong>Data Quality</strong></td>
+      <td><code>QUALITY()</code>, <code>VALIDATE()</code>, <code>VALID()</code></td>
+      <td>Data validation and assessment</td>
+    </tr>
+    <tr>
+      <td><strong>Normalization</strong></td>
+      <td><code>NORMALIZE()</code>, <code>CANONICAL()</code>, <code>FORMALIZE()</code></td>
+      <td>Data standardization</td>
+    </tr>
+    <tr>
+      <td><strong>MDM</strong></td>
+      <td><code>DEDUPE()</code>, <code>MATCH_PAIR()</code>, <code>GOLDEN_RECORD()</code>, <code>SAME_AS()</code></td>
+      <td>Master data management</td>
+    </tr>
+    <tr>
+      <td><strong>Dimensions</strong></td>
+      <td><code>THEME()</code>, <code>INTENT()</code>, <code>AUDIENCE()</code>, <code>TOXICITY()</code>, <code>CREDIBILITY()</code></td>
+      <td>Semantic GROUP BY dimensions</td>
+    </tr>
+    <tr>
+      <td><strong>Imputation</strong></td>
+      <td><code>FILL()</code>, <code>IMPUTE()</code>, <code>DEFAULT_SMART()</code></td>
+      <td>Missing value handling</td>
+    </tr>
+    <tr>
+      <td><strong>Translation</strong></td>
+      <td><code>SMART_TRANSLATE()</code></td>
+      <td>Multilingual support</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:counter"></iconify-icon> Operator Counts</div>
+  <p>
+    <strong>LOTUS:</strong> 9 operators<br>
+    <strong>Palimpzest:</strong> 6 semantic + relational<br>
+    <strong>RVBBIT:</strong> 85+ operators (with no-code extensibility via YAML)
+  </p>
+</div>
+
+<h2 id="code-comparison">Code Comparison</h2>
+
+<h3>Task: Find fraud content, classify, summarize by type</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">LOTUS (~25 lines)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">import</span> lotus
+<span class="kw">import</span> pandas <span class="kw">as</span> pd
+<span class="kw">from</span> lotus.models <span class="kw">import</span> LM
+
+lm = LM(model=<span class="str">"gpt-4o-mini"</span>)
+lotus.settings.configure(lm=lm)
+
+<span class="cmt"># Load data</span>
+docs = pd.DataFrame({<span class="str">"id"</span>: [...], <span class="str">"content"</span>: [...]})
+
+<span class="cmt"># Filter for fraud content</span>
+filtered = docs.sem_filter(<span class="str">"discusses financial fraud"</span>)
+
+<span class="cmt"># Classify (custom sem_map)</span>
+classified = filtered.sem_map(
+    <span class="str">"Classify into: [accounting, securities, wire, other]. "</span>
+    <span class="str">"Return only the category. Text: {content}"</span>
+)
+classified[<span class="str">"category"</span>] = classified[<span class="str">"_map_result"</span>]
+
+<span class="cmt"># Aggregate by category</span>
+summaries = []
+<span class="kw">for</span> cat <span class="kw">in</span> classified[<span class="str">"category"</span>].unique():
+    cat_docs = classified[classified[<span class="str">"category"</span>] == cat]
+    summary = cat_docs.sem_agg(<span class="str">f"Summarize {cat} fraud findings"</span>)
+    summaries.append({<span class="str">"category"</span>: cat, <span class="str">"summary"</span>: summary})
+
+result = pd.DataFrame(summaries)</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">Palimpzest (~15 lines)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">import</span> palimpzest <span class="kw">as</span> pz
+
+schema = {
+    <span class="str">"fraud_type"</span>: {<span class="str">"type"</span>: str, <span class="str">"desc"</span>: <span class="str">"type of fraud discussed"</span>},
+    <span class="str">"summary"</span>: {<span class="str">"type"</span>: str, <span class="str">"desc"</span>: <span class="str">"brief summary"</span>}
+}
+
+docs = pz.TextFileDataset(id=<span class="str">"docs"</span>, path=<span class="str">"documents/"</span>)
+
+result = (docs
+    .sem_filter(<span class="str">"discusses financial fraud"</span>)
+    .sem_map(schema)
+    .run(max_quality=<span class="kw">True</span>, cost_constraint=<span class="num">50.0</span>)
+)
+
+<span class="cmt"># Manual grouping needed for aggregation</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">RVBBIT (7 lines)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Single query does it all</span>
+<span class="kw">SELECT</span>
+    <span class="fn">CLASSIFY</span>(content, [<span class="str">'accounting'</span>, <span class="str">'securities'</span>, <span class="str">'wire'</span>, <span class="str">'other'</span>]) <span class="kw">AS</span> fraud_type,
+    <span class="fn">SUMMARIZE</span>(content) <span class="kw">AS</span> summary,
+    <span class="kw">COUNT</span>(*) <span class="kw">AS</span> doc_count
+<span class="kw">FROM</span> documents
+<span class="kw">WHERE</span> content <span class="fn">MEANS</span> <span class="str">'financial fraud'</span>
+<span class="kw">GROUP BY</span> fraud_type;</pre>
+  </div>
+</div>
+
+<h3>Task: Find contradictions in analyst reports</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">LOTUS / Palimpzest</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Not directly supported - requires custom implementation</span>
+<span class="cmt"># Would need to iterate over pairs and use sem_map for comparison</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">RVBBIT (native CONTRADICTS operator)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    r1.analyst,
+    r1.conclusion,
+    r2.analyst <span class="kw">AS</span> contradicting_analyst,
+    r2.conclusion <span class="kw">AS</span> contradicting_conclusion
+<span class="kw">FROM</span> reports r1
+<span class="kw">JOIN</span> reports r2 <span class="kw">ON</span> r1.company = r2.company
+<span class="kw">WHERE</span> r1.conclusion <span class="fn">CONTRADICTS</span> r2.conclusion
+  <span class="kw">AND</span> r1.id < r2.id;</pre>
+  </div>
+</div>
+
+<h3>Task: Master Data Management</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang python">LOTUS / Palimpzest</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Not directly supported - requires extensive custom implementation</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">RVBBIT (native MDM operators)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    <span class="fn">GOLDEN_RECORD</span>(customer_name, address, phone, email) <span class="kw">AS</span> canonical_record,
+    <span class="kw">COUNT</span>(*) <span class="kw">AS</span> duplicate_count
+<span class="kw">FROM</span> customers
+<span class="kw">GROUP BY</span> <span class="fn">DEDUPE</span>(customer_name, address);</pre>
+  </div>
+</div>
+
+<h2 id="when-to-use">When to Use Each</h2>
+
+<h3>Decision Matrix</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Best Choice</th>
+      <th>Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Help non-technical users write SQL</td>
+      <td><strong>AIQuery.co</strong></td>
+      <td>Simple, purpose-built UI</td>
+    </tr>
+    <tr>
+      <td>Python-first data science workflow</td>
+      <td><strong>LOTUS</strong></td>
+      <td>Pandas integration, speed optimizations</td>
+    </tr>
+    <tr>
+      <td>Automatic cost optimization needed</td>
+      <td><strong>Palimpzest</strong></td>
+      <td>Abacus optimizer, code synthesis</td>
+    </tr>
+    <tr>
+      <td>Need SQL client compatibility</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>PostgreSQL wire protocol</td>
+    </tr>
+    <tr>
+      <td>Need logic operators (CONTRADICTS, etc.)</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>Unique operators</td>
+    </tr>
+    <tr>
+      <td>Need MDM capabilities</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>DEDUPE, GOLDEN_RECORD, etc.</td>
+    </tr>
+    <tr>
+      <td>Multi-modal (images, audio)</td>
+      <td><strong>Palimpzest</strong></td>
+      <td>Native multi-modal support</td>
+    </tr>
+    <tr>
+      <td>Production data platform</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>Self-healing, cost tracking, workflow orchestration</td>
+    </tr>
+    <tr>
+      <td>Academic reproducibility</td>
+      <td><strong>LOTUS / Palimpzest</strong></td>
+      <td>Peer-reviewed papers, citations</td>
+    </tr>
+    <tr>
+      <td>No-code operator extensibility</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>YAML cascade definitions</td>
+    </tr>
+    <tr>
+      <td>Enterprise cloud providers</td>
+      <td><strong>RVBBIT</strong></td>
+      <td>Vertex AI, Bedrock, Azure OpenAI</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Complementary Usage</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:handshake"></iconify-icon> These Tools Can Work Together</div>
+  <ol>
+    <li><strong>Exploration:</strong> Use Palimpzest for cost-optimized notebook exploration</li>
+    <li><strong>Speed:</strong> Use LOTUS when raw throughput matters</li>
+    <li><strong>Production:</strong> Export to RVBBIT for SQL pipelines with rich operators</li>
+    <li><strong>Integration:</strong> RVBBIT's wire protocol connects to any BI tool</li>
+  </ol>
+</div>
+
+<h3>Summary: Competitive Position</h3>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:check-circle"></iconify-icon></div>
+    <h4>RVBBIT Strengths</h4>
+    <ul>
+      <li>85+ semantic operators (10x academic projects)</li>
+      <li>PostgreSQL wire protocol (any SQL client)</li>
+      <li>No-code extensibility (YAML cascades)</li>
+      <li>Production features (self-healing, cost tracking)</li>
+      <li>Unique operators (CONTRADICTS, MDM, parsing)</li>
+    </ul>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:star"></iconify-icon></div>
+    <h4>Where Others Excel</h4>
+    <ul>
+      <li><strong>LOTUS:</strong> Speed (model cascades, batching)</li>
+      <li><strong>Palimpzest:</strong> Cost optimization (Abacus, code synthesis)</li>
+      <li><strong>Palimpzest:</strong> Multi-modal (native image/audio)</li>
+      <li><strong>Both:</strong> Academic rigor (peer-reviewed papers)</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<h2>References</h2>
+
+<h3>Text-to-SQL Tools</h3>
+<ul>
+  <li><a href="https://aiquery.co/" target="_blank">AIQuery.co</a></li>
+  <li><a href="https://ai2sql.io/" target="_blank">AI2SQL</a></li>
+  <li><a href="https://www.text2sql.ai/" target="_blank">Text2SQL.ai</a></li>
+</ul>
+
+<h3>Academic Projects</h3>
+<ul>
+  <li><a href="https://github.com/lotus-data/lotus" target="_blank">LOTUS GitHub</a></li>
+  <li><a href="https://arxiv.org/abs/2407.11418" target="_blank">LOTUS Paper (arXiv)</a></li>
+  <li><a href="https://palimpzest.org/" target="_blank">Palimpzest Website</a></li>
+  <li><a href="https://github.com/mitdbg/palimpzest" target="_blank">Palimpzest GitHub</a></li>
+  <li><a href="https://vldb.org/cidrdb/papers/2025/p12-liu.pdf" target="_blank">Palimpzest CIDR 2025 Paper</a></li>
+  <li><a href="https://dsg.csail.mit.edu/projects/palimpzest/" target="_blank">MIT DSG Project Page</a></li>
+</ul>

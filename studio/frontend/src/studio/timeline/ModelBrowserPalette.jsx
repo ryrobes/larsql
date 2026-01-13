@@ -174,6 +174,7 @@ function ModelBrowserPalette() {
   const [models, setModels] = useState([]);
   const [ollamaModels, setOllamaModels] = useState([]);
   const [vertexModels, setVertexModels] = useState([]);
+  const [bedrockModels, setBedrockModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchText, setSearchText] = useState('');
@@ -197,6 +198,14 @@ function ModelBrowserPalette() {
   const [isVertexExpanded, setIsVertexExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem('studio-sidebar-vertex-models-expanded');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const [isBedrockExpanded, setIsBedrockExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studio-sidebar-bedrock-models-expanded');
       return saved !== null ? saved === 'true' : true;
     } catch {
       return true;
@@ -228,6 +237,14 @@ function ModelBrowserPalette() {
     }
   }, [isVertexExpanded]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('studio-sidebar-bedrock-models-expanded', String(isBedrockExpanded));
+    } catch (e) {
+      console.warn('Failed to save sidebar state:', e);
+    }
+  }, [isBedrockExpanded]);
+
   // Fetch models from backend
   useEffect(() => {
     let mounted = true;
@@ -248,6 +265,7 @@ function ModelBrowserPalette() {
           setModels(data.models || []);
           setOllamaModels(data.ollama_models || []);
           setVertexModels(data.vertex_models || []);
+          setBedrockModels(data.bedrock_models || []);
           setLoading(false);
         }
       } catch (err) {
@@ -428,6 +446,38 @@ function ModelBrowserPalette() {
                   title="gemini"
                   iconName="simple-icons:google"
                   models={vertexModels}
+                  defaultOpen={true}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AWS BEDROCK Section */}
+      {bedrockModels.length > 0 && (
+        <div className="nav-section model-browser-section">
+          <div
+            className="nav-section-header"
+            onClick={() => setIsBedrockExpanded(!isBedrockExpanded)}
+          >
+            <Icon
+              icon={isBedrockExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+              className="nav-chevron"
+            />
+            <Icon icon="simple-icons:amazonaws" className="nav-section-icon" style={{ width: '14px', height: '14px', color: '#ff9900', opacity: 0.7 }} />
+            <span className="nav-section-title">Bedrock</span>
+            <span className="nav-section-count">{bedrockModels.length}</span>
+          </div>
+
+          {isBedrockExpanded && (
+            <div className="nav-section-content model-browser-content">
+              {/* Bedrock models - no search or filters, just list all */}
+              <div className="model-groups-container">
+                <ModelGroup
+                  title="bedrock"
+                  iconName="simple-icons:amazonaws"
+                  models={bedrockModels}
                   defaultOpen={true}
                 />
               </div>

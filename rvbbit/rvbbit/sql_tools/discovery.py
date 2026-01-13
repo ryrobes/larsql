@@ -5,12 +5,36 @@ Charts all configured SQL databases and builds a unified RAG index.
 """
 
 import os
-import json
+import yaml
 import time
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+
+
+def _sanitize_for_yaml(obj):
+    """
+    Recursively convert non-YAML-serializable types to strings.
+    Handles pandas NA, Timestamp, numpy types, etc.
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_yaml(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_yaml(v) for v in obj]
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    # Handle pandas/numpy NA values
+    try:
+        import pandas as pd
+        if pd.isna(obj):
+            return None
+    except (ImportError, TypeError, ValueError):
+        pass
+    # Convert everything else to string (Timestamp, numpy types, etc.)
+    return str(obj)
 
 from ..config import get_config
 from ..rag.indexer import ensure_rag_index
@@ -64,7 +88,7 @@ def discover_all_schemas(session_id: str | None = None):
     connections = load_sql_connections()
     if not connections:
         console.print("[yellow]⚠️  No SQL connections found in sql_connections/[/yellow]")
-        console.print("[dim]Create connection configs like: sql_connections/prod_db.json[/dim]")
+        console.print("[dim]Create connection configs like: sql_connections/prod_db.yaml[/dim]")
         return
 
     console.print(f"[dim]Found {len(connections)} enabled connection(s)[/dim]")
@@ -132,10 +156,10 @@ def discover_all_schemas(session_id: str | None = None):
                         db_dir = os.path.join(samples_dir, conn_name, schema or "default")
 
                     os.makedirs(db_dir, exist_ok=True)
-                    table_file = os.path.join(db_dir, f"{table_name}.json")
+                    table_file = os.path.join(db_dir, f"{table_name}.yaml")
 
                     with open(table_file, "w") as f:
-                        json.dump(table_meta, f, indent=2, default=str)
+                        yaml.safe_dump(_sanitize_for_yaml(table_meta), f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
                     total_tables += 1
                     total_columns += len(table_meta["columns"])
@@ -181,7 +205,7 @@ def discover_all_schemas(session_id: str | None = None):
     rag_config = RagConfig(
         directory=samples_dir,
         recursive=True,
-        include=["*.json"],
+        include=["*.yaml"],
         exclude=[]
     )
 
@@ -270,7 +294,7 @@ def discover_all_schemas(session_id: str | None = None):
         console.print(f"[dim]  RAG ID: {rag_ctx.rag_id}[/dim]")
         console.print(f"[dim]  Tables indexed: {total_tables}[/dim]")
         console.print(f"[dim]  Total columns: {total_columns}[/dim]")
-        console.print(f"[dim]  Metadata saved: sql_connections/discovery_metadata.json[/dim]")
+        console.print(f"[dim]  Metadata saved: sql_connections/discovery_metadata.yaml[/dim]")
         console.print()
         console.print("[cyan]💡 Use sql_search tool in cascades to search schemas[/cyan]")
 

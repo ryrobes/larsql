@@ -3,7 +3,7 @@ SQL connection configuration and metadata management.
 """
 
 import os
-import json
+import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Literal
 from pydantic import BaseModel, Field
@@ -65,15 +65,15 @@ def load_sql_connections() -> Dict[str, SqlConnectionConfig]:
 
     connections = {}
 
-    # Load explicit JSON configs from sql_connections/
+    # Load explicit YAML configs from sql_connections/
     if os.path.exists(sql_dir):
-        for file in Path(sql_dir).glob("*.json"):
-            if file.name == "discovery_metadata.json":
+        for file in Path(sql_dir).glob("*.yaml"):
+            if file.name == "discovery_metadata.yaml":
                 continue
 
             try:
                 with open(file) as f:
-                    data = json.load(f)
+                    data = yaml.safe_load(f)
                     config = SqlConnectionConfig(**data)
 
                     if config.enabled:
@@ -136,9 +136,9 @@ def save_discovery_metadata(metadata: DiscoveryMetadata):
     sql_dir = os.path.join(cfg.root_dir, "sql_connections")
     os.makedirs(sql_dir, exist_ok=True)
 
-    meta_path = os.path.join(sql_dir, "discovery_metadata.json")
+    meta_path = os.path.join(sql_dir, "discovery_metadata.yaml")
     with open(meta_path, "w") as f:
-        json.dump(metadata.model_dump(), f, indent=2)
+        yaml.safe_dump(metadata.model_dump(), f, default_flow_style=False, sort_keys=False)
 
 
 def load_discovery_metadata() -> Optional[DiscoveryMetadata]:
@@ -146,14 +146,14 @@ def load_discovery_metadata() -> Optional[DiscoveryMetadata]:
     from ..config import get_config
 
     cfg = get_config()
-    meta_path = os.path.join(cfg.root_dir, "sql_connections", "discovery_metadata.json")
+    meta_path = os.path.join(cfg.root_dir, "sql_connections", "discovery_metadata.yaml")
 
     if not os.path.exists(meta_path):
         return None
 
     try:
         with open(meta_path) as f:
-            return DiscoveryMetadata(**json.load(f))
+            return DiscoveryMetadata(**yaml.safe_load(f))
     except Exception as e:
         print(f"Warning: Failed to load discovery metadata: {e}")
         return None

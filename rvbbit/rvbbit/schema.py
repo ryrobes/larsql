@@ -901,6 +901,10 @@ CREATE TABLE IF NOT EXISTS openrouter_models (
     last_verified DateTime64(3) DEFAULT now64(3),
     verification_error Nullable(String),
 
+    -- Inference type (for Bedrock models)
+    inference_type LowCardinality(String) DEFAULT 'ON_DEMAND',  -- 'ON_DEMAND', 'PROVISIONED', 'INFERENCE_PROFILE'
+    is_inference_profile Bool DEFAULT false,
+
     -- Timestamps
     created_at DateTime64(3) DEFAULT now64(3),
     updated_at DateTime64(3) DEFAULT now64(3),

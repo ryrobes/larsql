@@ -569,6 +569,420 @@ def fetch_models_from_azure() -> List[Dict]:
     return []
 
 
+# ============================================================================
+# AWS Bedrock Model Discovery
+# ============================================================================
+
+# Fallback pricing table for Bedrock (used when Pricing API is not accessible)
+# Prices per 1M tokens, updated periodically
+# Source: https://aws.amazon.com/bedrock/pricing/
+BEDROCK_FALLBACK_PRICING = {
+    # Anthropic Claude models
+    "anthropic.claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
+    "anthropic.claude-3-5-haiku": {"input": 0.80, "output": 4.00},
+    "anthropic.claude-3-sonnet": {"input": 3.00, "output": 15.00},
+    "anthropic.claude-3-haiku": {"input": 0.25, "output": 1.25},
+    "anthropic.claude-3-opus": {"input": 15.00, "output": 75.00},
+    "anthropic.claude-v2": {"input": 8.00, "output": 24.00},
+    "anthropic.claude-instant": {"input": 0.80, "output": 2.40},
+    # Amazon Titan models
+    "amazon.titan-text-premier": {"input": 0.50, "output": 1.50},
+    "amazon.titan-text-express": {"input": 0.20, "output": 0.60},
+    "amazon.titan-text-lite": {"input": 0.15, "output": 0.20},
+    "amazon.titan-embed": {"input": 0.10, "output": 0.0},
+    # Meta Llama models
+    "meta.llama3-2-90b": {"input": 2.00, "output": 2.00},
+    "meta.llama3-2-11b": {"input": 0.35, "output": 0.35},
+    "meta.llama3-2-3b": {"input": 0.15, "output": 0.15},
+    "meta.llama3-2-1b": {"input": 0.10, "output": 0.10},
+    "meta.llama3-1-405b": {"input": 5.32, "output": 16.00},
+    "meta.llama3-1-70b": {"input": 2.65, "output": 3.50},
+    "meta.llama3-1-8b": {"input": 0.30, "output": 0.60},
+    "meta.llama3-70b": {"input": 2.65, "output": 3.50},
+    "meta.llama3-8b": {"input": 0.30, "output": 0.60},
+    # Mistral models
+    "mistral.mistral-large": {"input": 4.00, "output": 12.00},
+    "mistral.mistral-small": {"input": 1.00, "output": 3.00},
+    "mistral.mixtral-8x7b": {"input": 0.45, "output": 0.70},
+    "mistral.mistral-7b": {"input": 0.15, "output": 0.20},
+    # Cohere models
+    "cohere.command-r-plus": {"input": 3.00, "output": 15.00},
+    "cohere.command-r": {"input": 0.50, "output": 1.50},
+    "cohere.command-text": {"input": 1.50, "output": 2.00},
+    "cohere.command-light": {"input": 0.30, "output": 0.60},
+    "cohere.embed": {"input": 0.10, "output": 0.0},
+    # AI21 models
+    "ai21.jamba-1-5-large": {"input": 2.00, "output": 8.00},
+    "ai21.jamba-1-5-mini": {"input": 0.20, "output": 0.40},
+    "ai21.j2-ultra": {"input": 18.80, "output": 18.80},
+    "ai21.j2-mid": {"input": 12.50, "output": 12.50},
+    # Stability AI models
+    "stability.stable-diffusion": {"input": 0.0, "output": 0.04},  # Per image
+    "stability.sd3-large": {"input": 0.0, "output": 0.08},
+}
+
+
+def _fetch_bedrock_pricing(region: str = "us-east-1") -> Dict[str, Dict]:
+    """
+    Fetch current Bedrock pricing from AWS Pricing API.
+
+    The Pricing API is only available in us-east-1 and ap-south-1.
+    Prices are returned per 1000 input/output tokens (or per 1M for some).
+
+    Args:
+        region: AWS region (pricing API queries us-east-1 regardless)
+
+    Returns:
+        Dict mapping model ID to pricing info: {model_id: {"input": float, "output": float}}
+    """
+    try:
+        import boto3
+
+        # Show which AWS identity we're using
+        try:
+            sts = boto3.client('sts')
+            identity = sts.get_caller_identity()
+            console.print(f"[dim]AWS Identity: {identity.get('Arn', 'unknown')}[/dim]")
+        except Exception as e:
+            console.print(f"[dim]Could not get AWS identity: {e}[/dim]")
+
+        # Pricing API is only available in us-east-1
+        pricing_client = boto3.client('pricing', region_name='us-east-1')
+
+        pricing_data = {}
+
+        # Get all Bedrock products
+        paginator = pricing_client.get_paginator('get_products')
+
+        page_count = 0
+        item_count = 0
+
+        for page in paginator.paginate(
+            ServiceCode='AmazonBedrock',
+            MaxResults=100
+        ):
+            page_count += 1
+            price_list = page.get('PriceList', [])
+            item_count += len(price_list)
+
+            for price_item_json in price_list:
+                try:
+                    import json
+                    price_item = json.loads(price_item_json)
+
+                    # Extract model ID from attributes
+                    attrs = price_item.get('product', {}).get('attributes', {})
+                    model_id = attrs.get('inferenceType', '')
+                    usage_type = attrs.get('usagetype', '')
+
+                    # Get model name from 'model' attribute (cleaner than parsing usagetype)
+                    model_name = attrs.get('model', '')
+
+                    # Parse the pricing terms
+                    terms = price_item.get('terms', {}).get('OnDemand', {})
+                    for _, term_data in terms.items():
+                        price_dimensions = term_data.get('priceDimensions', {})
+                        for _, dim_data in price_dimensions.items():
+                            price_per_unit = float(dim_data.get('pricePerUnit', {}).get('USD', 0))
+
+                            # Skip zero prices and non-token pricing
+                            if price_per_unit == 0:
+                                continue
+
+                            # Use 'model' attribute if available, else extract from usagetype
+                            # Format: REGION-ModelName-input-token-count
+                            usage_lower = usage_type.lower()
+
+                            # Get model key from 'model' attribute or extract from usagetype
+                            if model_name:
+                                model_key = model_name.lower()
+                            else:
+                                # Extract model name from usagetype (after region prefix)
+                                parts = usage_type.split('-')
+                                if len(parts) >= 2:
+                                    # Skip region prefix (e.g., "USW2", "EUS1")
+                                    # Find where model name starts
+                                    model_parts = []
+                                    for part in parts[1:]:
+                                        if 'input' in part.lower() or 'output' in part.lower():
+                                            break
+                                        model_parts.append(part)
+                                    model_key = '-'.join(model_parts).lower() if model_parts else ''
+                                else:
+                                    model_key = ''
+
+                            if not model_key:
+                                continue
+
+                            # Check for input/output token pricing (lowercase patterns)
+                            if 'input-token' in usage_lower or 'input token' in usage_lower:
+                                if model_key not in pricing_data:
+                                    pricing_data[model_key] = {"input": 0, "output": 0}
+                                # Price is per 1000 tokens, convert to per 1M
+                                pricing_data[model_key]["input"] = price_per_unit * 1000
+
+                            elif 'output-token' in usage_lower or 'output token' in usage_lower:
+                                if model_key not in pricing_data:
+                                    pricing_data[model_key] = {"input": 0, "output": 0}
+                                pricing_data[model_key]["output"] = price_per_unit * 1000
+
+                except Exception as e:
+                    # Skip malformed pricing entries
+                    continue
+
+        if page_count == 0:
+            console.print("[dim]Pricing API returned no pages[/dim]")
+        else:
+            console.print(f"[dim]Pricing API total: {item_count} items, parsed {len(pricing_data)} model prices[/dim]")
+
+        return pricing_data
+
+    except ImportError:
+        console.print("[yellow]⚠[/yellow] boto3 not installed - cannot fetch Bedrock pricing")
+        return {}
+    except Exception as e:
+        error_str = str(e)
+        if "AccessDeniedException" in error_str or "not authorized" in error_str:
+            console.print(f"[yellow]⚠[/yellow] Pricing API access denied - need pricing:GetProducts permission")
+        else:
+            console.print(f"[yellow]⚠[/yellow] Failed to fetch Bedrock pricing: {e}")
+        return {}
+
+
+def _match_bedrock_pricing(model_id: str, pricing_data: Dict[str, Dict]) -> Dict:
+    """
+    Match a Bedrock model ID to pricing data.
+
+    Uses dynamic pricing if available, falls back to static table.
+
+    Args:
+        model_id: Bedrock model ID (e.g., "anthropic.claude-3-sonnet-20240229-v1:0")
+        pricing_data: Dict from _fetch_bedrock_pricing() (may be empty)
+
+    Returns:
+        Pricing dict with input/output per 1M tokens
+    """
+    model_lower = model_id.lower()
+
+    # Try dynamic pricing first (from AWS Pricing API)
+    if pricing_data:
+        if model_lower in pricing_data:
+            return pricing_data[model_lower]
+        for key in pricing_data:
+            if model_lower.startswith(key) or key in model_lower:
+                return pricing_data[key]
+
+    # Fall back to static pricing table
+    # Try exact match first
+    for key in BEDROCK_FALLBACK_PRICING:
+        if model_lower.startswith(key) or key in model_lower:
+            return BEDROCK_FALLBACK_PRICING[key]
+
+    # Default pricing (unknown model)
+    return {"input": 0.0, "output": 0.0}
+
+
+def fetch_models_from_bedrock() -> List[Dict]:
+    """
+    Fetch available models from AWS Bedrock.
+
+    Uses boto3 to:
+    1. List foundation models available in the account
+    2. Fetch dynamic pricing from AWS Pricing API
+    3. Combine into model catalog
+
+    Requires AWS credentials (via env vars, ~/.aws/credentials, or IAM role).
+
+    Returns:
+        List of model dicts compatible with OpenRouter schema
+    """
+    config = get_config()
+
+    if not config.bedrock_enabled:
+        return []
+
+    try:
+        import boto3
+    except ImportError:
+        console.print("[yellow]⚠[/yellow] boto3 not installed - run: pip install boto3")
+        return []
+
+    console.print(f"[cyan]Fetching models from AWS Bedrock (region: {config.bedrock_region})...[/cyan]")
+
+    try:
+        # Create Bedrock client
+        bedrock = boto3.client('bedrock', region_name=config.bedrock_region)
+
+        # List all foundation models
+        response = bedrock.list_foundation_models()
+        foundation_models = response.get('modelSummaries', [])
+
+        if not foundation_models:
+            console.print("[yellow]⚠[/yellow] No Bedrock models found - check AWS credentials and region")
+            return []
+
+        # Also fetch inference profiles (these are directly callable, even for models
+        # that don't support ON_DEMAND on the base model ID)
+        inference_profiles = []
+        try:
+            profiles_response = bedrock.list_inference_profiles()
+            inference_profiles = profiles_response.get('inferenceProfileSummaries', [])
+            if inference_profiles:
+                console.print(f"[dim]Found {len(inference_profiles)} inference profiles[/dim]")
+        except Exception as e:
+            console.print(f"[dim]Could not fetch inference profiles: {e}[/dim]")
+
+        # Fetch dynamic pricing
+        console.print("[cyan]Fetching Bedrock pricing from AWS Pricing API...[/cyan]")
+        pricing_data = _fetch_bedrock_pricing(config.bedrock_region)
+
+        if pricing_data:
+            console.print(f"[green]✓[/green] Fetched dynamic pricing for {len(pricing_data)} model variants")
+        else:
+            console.print(f"[yellow]⚠[/yellow] Using fallback pricing table ({len(BEDROCK_FALLBACK_PRICING)} models)")
+            console.print("[dim]Grant pricing:GetProducts permission for dynamic pricing[/dim]")
+
+        bedrock_models = []
+        skipped_no_ondemand = 0
+
+        # First, add inference profiles (these are always callable)
+        for profile in inference_profiles:
+            profile_id = profile.get('inferenceProfileId', '')
+            profile_name = profile.get('inferenceProfileName', profile_id)
+
+            if not profile_id:
+                continue
+
+            # Extract base model info from the profile
+            # Profile IDs look like: us.amazon.nova-premier-v1:0 or amazon.nova-premier-v1:0:1000k
+            provider = "amazon"
+            if "anthropic" in profile_id.lower():
+                provider = "anthropic"
+            elif "meta" in profile_id.lower():
+                provider = "meta"
+            elif "mistral" in profile_id.lower():
+                provider = "mistral"
+            elif "cohere" in profile_id.lower():
+                provider = "cohere"
+
+            # Get pricing for the base model
+            pricing = _match_bedrock_pricing(profile_id, pricing_data)
+
+            bedrock_models.append({
+                "id": f"bedrock/{profile_id}",
+                "name": f"{profile_name} (Inference Profile)",
+                "description": f"AWS Bedrock Inference Profile - {provider}",
+                "context_length": 200000,  # Inference profiles typically have large context
+                "pricing": {
+                    "prompt": str(pricing.get("input", 0) / 1_000_000),
+                    "completion": str(pricing.get("output", 0) / 1_000_000),
+                },
+                "architecture": {
+                    "modality": "text->text",
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                },
+                "top_provider": {
+                    "is_moderated": True,
+                },
+                "_bedrock_tier": "standard",
+                "_model_type": "text",
+                "_provider": provider.lower(),
+                "_is_active": True,
+                "_is_inference_profile": True,
+            })
+
+        # Then add foundation models that support ON_DEMAND inference
+        for model in foundation_models:
+            model_id = model.get('modelId', '')
+            model_name = model.get('modelName', model_id)
+            provider = model.get('providerName', 'unknown')
+
+            if not model_id:
+                continue
+
+            # Check if model supports ON_DEMAND inference
+            inference_types = model.get('inferenceTypesSupported', [])
+            if 'ON_DEMAND' not in inference_types:
+                skipped_no_ondemand += 1
+                continue  # Skip models that require provisioned throughput or inference profiles
+
+            # Get input/output modalities
+            input_modalities = model.get('inputModalities', ['TEXT'])
+            output_modalities = model.get('outputModalities', ['TEXT'])
+
+            # Normalize modality names
+            input_mods = [m.lower() for m in input_modalities]
+            output_mods = [m.lower() for m in output_modalities]
+
+            # Determine model type
+            model_type = "text"
+            if "image" in output_mods:
+                model_type = "image"
+            elif "embedding" in output_mods or model.get('modelLifecycle', {}).get('status') == 'EMBEDDING':
+                model_type = "embedding"
+
+            # Get pricing (dynamic from API)
+            pricing = _match_bedrock_pricing(model_id, pricing_data)
+
+            # Determine tier based on provider and pricing
+            tier = "standard"
+            if pricing.get("input", 0) > 10:
+                tier = "flagship"
+            elif pricing.get("input", 0) < 1:
+                tier = "fast"
+            if "lite" in model_id.lower() or "instant" in model_id.lower():
+                tier = "fast"
+            if "opus" in model_id.lower() or "large" in model_id.lower():
+                tier = "flagship"
+
+            # Check if model is active/available
+            lifecycle = model.get('modelLifecycle', {})
+            is_active = lifecycle.get('status', 'ACTIVE') == 'ACTIVE'
+
+            # Build modality string
+            modality_str = f"{'+'.join(input_mods)}->{'+'.join(output_mods)}"
+
+            bedrock_models.append({
+                "id": f"bedrock/{model_id}",
+                "name": f"{model_name} ({provider})",
+                "description": f"AWS Bedrock - {provider}",
+                "context_length": model.get('responseStreamingSupported', False) and 200000 or 100000,
+                "pricing": {
+                    "prompt": str(pricing.get("input", 0) / 1_000_000),  # Convert to per-token
+                    "completion": str(pricing.get("output", 0) / 1_000_000),
+                },
+                "architecture": {
+                    "modality": modality_str,
+                    "input_modalities": input_mods,
+                    "output_modalities": output_mods,
+                },
+                "top_provider": {
+                    "is_moderated": True,  # Bedrock has content moderation
+                },
+                "_bedrock_tier": tier,
+                "_model_type": model_type,
+                "_provider": provider.lower(),
+                "_is_active": is_active,
+            })
+
+        if skipped_no_ondemand > 0:
+            console.print(f"[dim]Skipped {skipped_no_ondemand} models requiring provisioned throughput[/dim]")
+        console.print(f"[green]✓[/green] Fetched {len(bedrock_models)} Bedrock models")
+        return bedrock_models
+
+    except Exception as e:
+        error_msg = str(e)
+        if "credentials" in error_msg.lower() or "UnauthorizedAccess" in error_msg:
+            console.print("[yellow]⚠[/yellow] AWS credentials not configured or insufficient permissions")
+            console.print("[dim]Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or configure ~/.aws/credentials[/dim]")
+        elif "Could not connect" in error_msg:
+            console.print(f"[yellow]⚠[/yellow] Could not connect to Bedrock in {config.bedrock_region}")
+        else:
+            console.print(f"[yellow]⚠[/yellow] Bedrock API error: {e}")
+        return []
+
+
 def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
     """
     Classify model into tier based on pricing and characteristics.
@@ -598,6 +1012,12 @@ def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
         model_name = model_id[6:]  # len("azure/") = 6
         pricing_info = _get_azure_pricing(model_name)
         return pricing_info.get("tier", "standard")
+
+    # Check if it's a Bedrock model (tier determined during fetch)
+    if model_id.startswith("bedrock/"):
+        # Bedrock tier is determined dynamically from pricing during model fetch
+        # Fall through to price-based classification
+        pass
 
     prompt_price = float(pricing.get("prompt", 0))
 
@@ -740,7 +1160,7 @@ def verify_models_parallel(
 
 def refresh_models(skip_verification: bool = False, workers: int = 10):
     """
-    Main refresh function: fetch models from OpenRouter, Ollama, and Vertex AI, then populate ClickHouse.
+    Main refresh function: fetch models from OpenRouter, Ollama, Vertex AI, and Bedrock, then populate ClickHouse.
 
     Note: Azure OpenAI deployment discovery requires Azure AD auth which we don't support.
     Use azure/<deployment-name> directly with your deployment name from Azure Portal.
@@ -753,7 +1173,7 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     db = get_db()
 
     console.print("\n[bold cyan]╔════════════════════════════════════════════════════════════════╗[/bold cyan]")
-    console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI)               ║[/bold cyan]")
+    console.print("[bold cyan]║  Model Refresh (OpenRouter + Ollama + Vertex AI + Bedrock)     ║[/bold cyan]")
     console.print("[bold cyan]╚════════════════════════════════════════════════════════════════╝[/bold cyan]\n")
 
     # Step 1a: Fetch models from OpenRouter
@@ -772,11 +1192,14 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     # Step 1d: Check Azure OpenAI (discovery not supported, just logs status)
     fetch_models_from_azure()
 
+    # Step 1e: Fetch models from AWS Bedrock (non-fatal if not configured)
+    bedrock_models = fetch_models_from_bedrock()
+
     # Combine all models (Azure returns empty - discovery requires Azure AD)
-    raw_models = openrouter_models + ollama_models + vertex_models
+    raw_models = openrouter_models + ollama_models + vertex_models + bedrock_models
     console.print(f"\n[green]✓[/green] Total models: {len(raw_models)} "
                  f"(OpenRouter: {len(openrouter_models)}, Ollama: {len(ollama_models)}, "
-                 f"Vertex AI: {len(vertex_models)})\n")
+                 f"Vertex AI: {len(vertex_models)}, Bedrock: {len(bedrock_models)})\n")
 
     # Step 2: Verify OpenRouter models only (Ollama models are always active)
     verification_results = {}
@@ -823,6 +1246,10 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
         if model_id in verification_results:
             is_active, verification_error = verification_results[model_id]
 
+        # Determine inference type for Bedrock models
+        is_inference_profile = model.get("_is_inference_profile", False)
+        inference_type = "INFERENCE_PROFILE" if is_inference_profile else "ON_DEMAND"
+
         row = {
             "model_id": model_id,
             "model_name": model.get("name", model_id),
@@ -838,6 +1265,8 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
             "completion_price": float(pricing.get("completion", 0)),
             "is_active": is_active,
             "verification_error": verification_error,
+            "inference_type": inference_type,
+            "is_inference_profile": is_inference_profile,
             "metadata_json": json.dumps({
                 "top_provider": model.get("top_provider", {}),
                 "architecture": arch

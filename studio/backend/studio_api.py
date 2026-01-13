@@ -1622,7 +1622,7 @@ _models_cache = {
 @studio_bp.route('/models', methods=['GET'])
 def get_models():
     """
-    Fetch available LLM models from OpenRouter API, Ollama local models, and Vertex AI.
+    Fetch available LLM models from OpenRouter API, Ollama, Vertex AI, and Bedrock.
 
     Returns cached data if available and fresh (< 3 hours old).
 
@@ -1634,6 +1634,7 @@ def get_models():
             "models": [...],           # OpenRouter models
             "ollama_models": [...],    # Local Ollama models
             "vertex_models": [...],    # Vertex AI models
+            "bedrock_models": [...],   # AWS Bedrock models
             "azure_models": [],        # Always empty (discovery not supported)
             "default_model": "...",
             "cached": true,
@@ -1651,15 +1652,17 @@ def get_models():
         if age < _models_cache['ttl_seconds']:
             cfg = get_config()
 
-            # Fetch fresh Ollama, Vertex, and Azure models from database (fast, always up-to-date)
+            # Fetch fresh Ollama, Vertex, Bedrock, and Azure models from database (fast, always up-to-date)
             ollama_models = _fetch_ollama_models_from_db()
             vertex_models = _fetch_vertex_models_from_db()
+            bedrock_models = _fetch_bedrock_models_from_db()
             azure_models = _fetch_azure_models_from_db()
 
             return jsonify({
                 'models': _models_cache['data'],
                 'ollama_models': ollama_models,
                 'vertex_models': vertex_models,
+                'bedrock_models': bedrock_models,
                 'azure_models': azure_models,
                 'default_model': cfg.default_model,
                 'cached': True,
@@ -1696,15 +1699,17 @@ def get_models():
         # Get default model from config
         default_model = cfg.default_model
 
-        # Fetch Ollama, Vertex, and Azure models from database
+        # Fetch Ollama, Vertex, Bedrock, and Azure models from database
         ollama_models = _fetch_ollama_models_from_db()
         vertex_models = _fetch_vertex_models_from_db()
+        bedrock_models = _fetch_bedrock_models_from_db()
         azure_models = _fetch_azure_models_from_db()
 
         return jsonify({
             'models': models,
             'ollama_models': ollama_models,
             'vertex_models': vertex_models,
+            'bedrock_models': bedrock_models,
             'azure_models': azure_models,
             'default_model': default_model,
             'cached': False,
@@ -1720,7 +1725,7 @@ def get_models():
         except:
             default_model = 'google/gemini-2.5-flash-lite'
 
-        # Still try to fetch Ollama, Vertex, and Azure models on error
+        # Still try to fetch Ollama, Vertex, Bedrock, and Azure models on error
         try:
             ollama_models = _fetch_ollama_models_from_db()
         except:
@@ -1730,6 +1735,11 @@ def get_models():
             vertex_models = _fetch_vertex_models_from_db()
         except:
             vertex_models = []
+
+        try:
+            bedrock_models = _fetch_bedrock_models_from_db()
+        except:
+            bedrock_models = []
 
         try:
             azure_models = _fetch_azure_models_from_db()
@@ -1743,6 +1753,7 @@ def get_models():
             'models': [],
             'ollama_models': ollama_models,
             'vertex_models': vertex_models,
+            'bedrock_models': bedrock_models,
             'azure_models': azure_models
         }), 500
 
@@ -1893,6 +1904,79 @@ def _fetch_azure_models_from_db():
     # We can't discover Azure deployments, so nothing to show in the UI
     # Users who have Azure configured know their deployment names
     return []
+
+
+def _fetch_bedrock_models_from_db():
+    """
+    Fetch AWS Bedrock models from the openrouter_models table in ClickHouse.
+
+    Returns:
+        List of model dicts compatible with OpenRouter schema
+    """
+    try:
+        from rvbbit.db_adapter import get_db
+
+        db = get_db()
+        if not db:
+            return []
+
+        # Query Bedrock models from ClickHouse database
+        query = """
+            SELECT
+                model_id,
+                model_name,
+                description,
+                context_length,
+                prompt_price,
+                completion_price,
+                input_modalities,
+                output_modalities,
+                tier
+            FROM openrouter_models
+            WHERE provider = 'bedrock'
+            ORDER BY model_id
+        """
+
+        rows = db.query(query)
+
+        models = []
+        for row in rows:
+            # Use actual modality arrays from database
+            input_mods = row.get('input_modalities', []) or ['text']
+            output_mods = row.get('output_modalities', []) or ['text']
+            tier = row.get('tier', 'standard') or 'standard'
+
+            # Build modality string for display
+            modality = f"{','.join(input_mods)}->{','.join(output_mods)}"
+
+            models.append({
+                'id': row['model_id'],
+                'name': row['model_name'],
+                'description': row['description'],
+                'context_length': row['context_length'],
+                'pricing': {
+                    'prompt': str(row['prompt_price']),
+                    'completion': str(row['completion_price']),
+                },
+                'architecture': {
+                    'modality': modality,
+                    'input_modalities': input_mods if input_mods else ['text'],
+                    'output_modalities': output_mods if output_mods else ['text'],
+                },
+                'top_provider': {
+                    'is_moderated': True,  # Bedrock has content moderation
+                    'is_bedrock': True,
+                },
+                'tier': tier,
+            })
+
+        return models
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Failed to fetch Bedrock models from DB: {e}")
+        print(traceback.format_exc())
+        return []
 
 
 @studio_bp.route('/tools', methods=['GET'])
