@@ -187,7 +187,7 @@ def extract_provider_from_model(model: str) -> str:
         return "azure"
     if model.startswith("bedrock/"):
         return "bedrock"
-    if model.startswith("ollama/"):
+    if model.startswith("ollama/") or model.startswith("ollama@"):
         return "ollama"
 
     # Generic provider extraction from "provider/model" format

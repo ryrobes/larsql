@@ -1729,7 +1729,7 @@ def get_models():
         try:
             ollama_models = _fetch_ollama_models_from_db()
         except:
-            ollama_models = []
+            ollama_models = {}  # Dict format for grouped hosts
 
         try:
             vertex_models = _fetch_vertex_models_from_db()
@@ -1762,8 +1762,15 @@ def _fetch_ollama_models_from_db():
     """
     Fetch Ollama models from the openrouter_models table in ClickHouse.
 
+    Returns models grouped by host for UI display:
+    {
+        "local": [...models...],      # localhost models (ollama/model)
+        "gpu1": [...models...],       # remote alias (ollama@gpu1/model)
+        "10.174.1.205:11434": [...]   # remote IP (ollama@host/model)
+    }
+
     Returns:
-        List of model dicts compatible with OpenRouter schema
+        Dict mapping host/alias to list of model dicts
     """
     try:
         # Use ClickHouse connection from rvbbit (not DuckDB)
@@ -1771,7 +1778,7 @@ def _fetch_ollama_models_from_db():
 
         db = get_db()
         if not db:
-            return []
+            return {}
 
         # Query Ollama models from ClickHouse database
         query = """
@@ -1789,10 +1796,34 @@ def _fetch_ollama_models_from_db():
 
         rows = db.query(query)
 
-        models = []
+        # Group models by host extracted from model_id
+        # - ollama/model-name → "local"
+        # - ollama@alias/model-name → alias
+        # - ollama@host:port/model-name → host:port
+        grouped = {}
+
         for row in rows:
-            models.append({
-                'id': row['model_id'],
+            model_id = row['model_id']
+
+            # Extract host from model_id
+            if model_id.startswith('ollama@'):
+                # Remote: ollama@host/model or ollama@alias/model
+                rest = model_id[7:]  # Remove "ollama@"
+                if '/' in rest:
+                    host = rest.split('/')[0]
+                else:
+                    host = rest  # Fallback
+            elif model_id.startswith('ollama/'):
+                # Local: ollama/model
+                host = 'local'
+            else:
+                host = 'unknown'
+
+            # Determine if this is truly local
+            is_local = host == 'local' or host in ('localhost', '127.0.0.1', 'localhost:11434')
+
+            model_dict = {
+                'id': model_id,
                 'name': row['model_name'],
                 'description': row['description'],
                 'context_length': row['context_length'],
@@ -1807,17 +1838,22 @@ def _fetch_ollama_models_from_db():
                 },
                 'top_provider': {
                     'is_moderated': False,
-                    'is_local': True,
-                }
-            })
+                    'is_local': is_local,
+                },
+                '_ollama_host': host,
+            }
 
-        return models
+            if host not in grouped:
+                grouped[host] = []
+            grouped[host].append(model_dict)
+
+        return grouped
 
     except Exception as e:
         import traceback
         print(f"[ERROR] Failed to fetch Ollama models from DB: {e}")
         print(traceback.format_exc())
-        return []
+        return {}
 
 
 def _fetch_vertex_models_from_db():

@@ -1,0 +1,104 @@
+# Ephemeral RAG Demo
+#
+# This cascade demonstrates the automatic ephemeral RAG system that
+# transparently handles large content by indexing it for semantic search.
+#
+# When content exceeds the configured threshold (default: 100K chars),
+# it is automatically:
+# 1. Chunked with sentence-boundary awareness
+# 2. Embedded using the configured embedding model
+# 3. Indexed in ClickHouse with a session-scoped ephemeral rag_id
+# 4. Replaced with a placeholder + search tool injection
+#
+# The model then naturally uses the search tool to find relevant sections,
+# staying within context budget while maintaining semantic access to all content.
+#
+# Configuration:
+#   RVBBIT_EPHEMERAL_RAG_ENABLED=true (default)
+#   RVBBIT_EPHEMERAL_RAG_THRESHOLD=100000 (chars, default ~100K)
+#   RVBBIT_EPHEMERAL_RAG_CHUNK_SIZE=1500 (chars per chunk)
+#   RVBBIT_EPHEMERAL_RAG_CHUNK_OVERLAP=200 (overlap between chunks)
+#
+# Run with:
+#   rvbbit run cascades/examples/ephemeral_rag_demo.yaml \
+#     --input '{"topic": "climate change policy"}'
+
+cascade_id: ephemeral_rag_demo
+description: |
+  Demonstrates automatic handling of large content via ephemeral RAG.
+  The system automatically indexes large tool results, template values,
+  and context injections - replacing them with searchable placeholders.
+
+inputs_schema:
+  topic: A topic to research and summarize
+
+cells:
+  # Step 1: Generate a very large document (simulates tool explosion)
+  # This will trigger ephemeral RAG indexing
+  - name: generate_large_document
+    instructions: |
+      Generate a comprehensive research document about "{{ input.topic }}".
+
+      IMPORTANT: Make this document VERY detailed and long.
+      Include multiple sections covering:
+      - Historical background (at least 5 paragraphs)
+      - Current state of affairs (at least 5 paragraphs)
+      - Key stakeholders and their positions (at least 10 stakeholders)
+      - Recent developments and news (at least 10 items)
+      - Policy proposals and their analysis (at least 5 proposals)
+      - Scientific consensus and data (at least 5 data points)
+      - Economic impacts (at least 5 paragraphs)
+      - Future outlook and predictions (at least 5 scenarios)
+      - Frequently asked questions (at least 10 Q&As)
+      - References and citations (at least 20 items)
+
+      The document should be at least 50,000 characters to properly demonstrate
+      the ephemeral RAG system (which activates at 100K chars by default).
+
+      Format as a well-structured markdown document.
+    rules:
+      max_turns: 1
+    handoffs: [analyze_document]
+
+  # Step 2: Analyze the document
+  # If the document is large enough, it will be auto-indexed and
+  # a search tool will be injected for semantic access
+  - name: analyze_document
+    instructions: |
+      You have access to a large research document about "{{ input.topic }}".
+
+      {{ outputs.generate_large_document }}
+
+      NOTE: If the content above shows a placeholder like "[LARGE CONTENT INDEXED...]",
+      you have a search tool available to query the content semantically.
+
+      Your task:
+      1. If you have a search tool (e.g., search_generate_large_document()),
+         use it to find the most relevant information
+      2. Extract the 3 most important insights
+      3. Identify any controversial or debated points
+      4. Summarize the key policy recommendations
+
+      Provide a concise executive summary (max 500 words) based on your analysis.
+    traits:
+      - manifest  # Auto-inject any ephemeral RAG search tools
+    rules:
+      max_turns: 5
+    handoffs: [final_summary]
+
+  # Step 3: Final summary
+  - name: final_summary
+    instructions: |
+      Based on the analysis from the previous step:
+
+      {{ outputs.analyze_document }}
+
+      Create a final executive briefing that:
+      1. Opens with a single-sentence summary
+      2. Lists 3 key takeaways as bullet points
+      3. Identifies the single most important action item
+      4. Notes any caveats or areas of uncertainty
+
+      Format for a busy executive who has 30 seconds to read this.
+    rules:
+      max_turns: 1

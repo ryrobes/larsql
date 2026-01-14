@@ -1,5 +1,5 @@
 import json
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, Tuple
 import litellm
 import logging
 from .echo import Echo
@@ -53,6 +53,52 @@ def _parse_llm_response_content(content: Any) -> Any:
 
     # Return as-is
     return content
+
+
+def parse_ollama_model(model: str, config) -> Tuple[str, str]:
+    """
+    Parse ollama@host:port/model or ollama@alias/model format.
+
+    Supports:
+    - ollama@10.10.10.1/mistral         -> ("http://10.10.10.1:11434", "mistral")
+    - ollama@gpu-server:9999/llama3     -> ("http://gpu-server:9999", "llama3")
+    - ollama@gpu1/qwen                  -> (config.ollama_hosts["gpu1"], "qwen")
+
+    Args:
+        model: Full model string (e.g., "ollama@10.10.10.1/mistral")
+        config: Config object with ollama_hosts dictionary
+
+    Returns:
+        Tuple of (base_url, model_name)
+
+    Raises:
+        ValueError: If model format is invalid
+    """
+    if "@" not in model:
+        raise ValueError(f"parse_ollama_model requires @ in model string: {model}")
+
+    # Format: ollama@<host_spec>/<model>
+    _, rest = model.split("@", 1)
+
+    if "/" not in rest:
+        raise ValueError(f"Invalid ollama model format: {model}. Expected ollama@host/model")
+
+    host_spec, model_name = rest.split("/", 1)
+
+    # Check if host_spec is a named alias from config
+    if hasattr(config, 'ollama_hosts') and host_spec in config.ollama_hosts:
+        base_url = config.ollama_hosts[host_spec]
+    else:
+        # Raw host:port or just host
+        if ":" in host_spec:
+            # Host with explicit port
+            base_url = f"http://{host_spec}"
+        else:
+            # Host without port - use default 11434
+            base_url = f"http://{host_spec}:11434"
+
+    return base_url, model_name
+
 
 class Agent:
     """
@@ -108,7 +154,7 @@ class Agent:
         if input_message:
             messages.append({"role": "user", "content": input_message})
 
-        # Litellm call
+        # Litellm call - start with explicit params
         args = {
             "model": self.model,
             "messages": messages,
@@ -120,18 +166,40 @@ class Agent:
             "max_tokens": 16384,
         }
 
-        # Explicitly set provider for OpenRouter to avoid ambiguity
-        if self.base_url and "openrouter" in self.base_url:
-             args["custom_llm_provider"] = "openai"
+        # Default to OpenRouter when no explicit base_url is provided
+        # and model doesn't have a special provider prefix
+        if self.base_url is None:
+            # Check if model has a special provider prefix that doesn't need OpenRouter
+            special_prefixes = ("ollama/", "ollama@", "vertex_ai/", "azure/", "bedrock/")
+            if not self.model or not any(self.model.startswith(p) for p in special_prefixes):
+                # Default to OpenRouter for standard models
+                cfg = get_config()
+                args["base_url"] = cfg.provider_base_url  # Default: https://openrouter.ai/api/v1
+                args["api_key"] = cfg.provider_api_key    # OPENROUTER_API_KEY
+                args["custom_llm_provider"] = "openai"    # OpenRouter uses OpenAI-compatible API
 
-        # Explicitly set provider for Ollama (local GPU)
-        # Override base_url even if set to OpenRouter (model prefix takes precedence)
-        if self.base_url and "ollama" in self.base_url.lower():
+        # Explicitly set provider for OpenRouter to avoid ambiguity
+        if args.get("base_url") and "openrouter" in args["base_url"]:
+            args["custom_llm_provider"] = "openai"
+
+        # Explicitly set provider for Ollama (local/remote GPU)
+        # Supports: ollama/model (default URL), ollama@host/model, ollama@alias/model
+        if args.get("base_url") and "ollama" in args["base_url"].lower():
             args["custom_llm_provider"] = "ollama"
-        elif self.model and self.model.startswith("ollama/"):
+        elif self.model and (self.model.startswith("ollama/") or self.model.startswith("ollama@")):
             args["custom_llm_provider"] = "ollama"
-            # Always use localhost for Ollama models (ignore configured base_url)
-            args["base_url"] = "http://localhost:11434"
+
+            if "@" in self.model:
+                # Parse ollama@host:port/model or ollama@alias/model format
+                cfg = get_config()
+                base_url, clean_model = parse_ollama_model(self.model, cfg)
+                args["base_url"] = base_url
+                # Update model in args only (not self.model - would break retries)
+                args["model"] = f"ollama/{clean_model}"
+            else:
+                # Standard ollama/model format - use configured default URL
+                cfg = get_config()
+                args["base_url"] = cfg.ollama_base_url
 
         # Explicitly set provider for Vertex AI (Google Cloud)
         # Model prefix takes precedence, similar to Ollama

@@ -67,8 +67,12 @@ class ModelInfo:
 
     @property
     def is_local(self) -> bool:
-        """Whether this is a local Ollama model."""
-        return self.top_provider.get("is_local", False) or self.id.startswith("ollama/")
+        """Whether this is a local/remote Ollama model."""
+        return (
+            self.top_provider.get("is_local", False) or
+            self.id.startswith("ollama/") or
+            self.id.startswith("ollama@")
+        )
 
 
 class ModelRegistry:
@@ -241,21 +245,72 @@ class ModelRegistry:
             logger.debug(f"Could not validate model {model_id}: {e}")
             return True
 
-    def _fetch_ollama_models(self, ollama_base_url: str = "http://localhost:11434") -> List[Dict]:
+    def _fetch_ollama_models(self, ollama_urls: List[str] | None = None) -> List[Dict]:
         """
-        Fetch models from local Ollama instance.
+        Fetch models from Ollama instances (local and remote).
 
         Args:
-            ollama_base_url: Base URL for Ollama API (default: http://localhost:11434)
+            ollama_urls: List of Ollama base URLs to query. If None, uses config
+                         (default URL + all configured host aliases).
 
         Returns:
             List of model dicts compatible with ModelInfo format
         """
+        from .config import get_config
+
+        # Build URL list from config if not provided
+        if ollama_urls is None:
+            cfg = get_config()
+            if not cfg.ollama_enabled:
+                return []
+
+            # Start with default URL
+            urls_with_aliases: List[tuple] = [(cfg.ollama_base_url, None)]
+
+            # Add configured host aliases
+            for alias, url in cfg.ollama_hosts.items():
+                urls_with_aliases.append((url, alias))
+
+            # Deduplicate by URL (keep first occurrence)
+            seen_urls = set()
+            ollama_urls_with_aliases = []
+            for url, alias in urls_with_aliases:
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    ollama_urls_with_aliases.append((url, alias))
+        else:
+            # External URLs provided - no aliases
+            ollama_urls_with_aliases = [(url, None) for url in ollama_urls]
+
+        all_models = []
+        for base_url, alias in ollama_urls_with_aliases:
+            models = self._fetch_ollama_from_url(base_url, alias)
+            all_models.extend(models)
+
+        if all_models:
+            logger.info(f"Fetched {len(all_models)} models from Ollama ({len(ollama_urls_with_aliases)} hosts)")
+
+        return all_models
+
+    def _fetch_ollama_from_url(self, base_url: str, alias: str | None = None) -> List[Dict]:
+        """
+        Fetch models from a single Ollama instance.
+
+        Args:
+            base_url: Ollama API base URL (e.g., http://localhost:11434)
+            alias: Optional host alias for this URL (used in model IDs for remotes)
+
+        Returns:
+            List of model dicts
+        """
         import httpx
+
+        # Determine if this is localhost (default) or remote
+        is_localhost = "localhost" in base_url or "127.0.0.1" in base_url
 
         try:
             with httpx.Client(timeout=10.0) as client:
-                response = client.get(f"{ollama_base_url}/api/tags")
+                response = client.get(f"{base_url}/api/tags")
                 response.raise_for_status()
                 data = response.json()
 
@@ -264,28 +319,41 @@ class ModelRegistry:
                 # Ollama returns: {"name": "gpt-oss:20b", "size": 13GB, "modified_at": ...}
                 model_name = m.get("name", "")
 
-                # Format as ollama/model for consistency with LiteLLM
-                model_id = f"ollama/{model_name}"
+                # Format model ID:
+                # - Localhost: ollama/model (backward compatible)
+                # - Remote with alias: ollama@alias/model
+                # - Remote without alias: ollama@host/model
+                if is_localhost and alias is None:
+                    model_id = f"ollama/{model_name}"
+                    description_prefix = "Local"
+                elif alias:
+                    model_id = f"ollama@{alias}/{model_name}"
+                    description_prefix = f"Remote ({alias})"
+                else:
+                    # Extract host from URL for model ID
+                    host = base_url.replace("http://", "").replace("https://", "")
+                    model_id = f"ollama@{host}/{model_name}"
+                    description_prefix = f"Remote ({host})"
 
                 ollama_models.append({
                     "id": model_id,
                     "name": model_name,
-                    "description": f"Local Ollama model (size: {self._format_size(m.get('size', 0))})",
+                    "description": f"{description_prefix} Ollama model (size: {self._format_size(m.get('size', 0))})",
                     "modality": "text->text",
                     "input_modalities": ["text"],
                     "output_modalities": ["text"],
                     "context_length": 0,  # Ollama doesn't expose this via API
-                    "pricing": {"prompt": "0", "completion": "0"},  # Local = free!
-                    "top_provider": {"name": "ollama", "is_local": True},
+                    "pricing": {"prompt": "0", "completion": "0"},  # Ollama = free!
+                    "top_provider": {"name": "ollama", "is_local": is_localhost},
                 })
 
             if ollama_models:
-                logger.info(f"Fetched {len(ollama_models)} models from Ollama")
+                logger.debug(f"Fetched {len(ollama_models)} models from Ollama at {base_url}")
 
             return ollama_models
 
         except Exception as e:
-            logger.debug(f"Could not fetch Ollama models (is Ollama running?): {e}")
+            logger.debug(f"Could not fetch Ollama models from {base_url}: {e}")
             return []
 
     def _format_size(self, size_bytes: int) -> str:

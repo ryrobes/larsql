@@ -10,7 +10,7 @@ Key changes from dual-mode:
 """
 import os
 import json
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 # Get RVBBIT_ROOT once at module load
@@ -105,6 +105,47 @@ def _resolve_google_credentials() -> Optional[str]:
             print(f"[Config] Warning: GOOGLE_APPLICATION_CREDENTIALS file not found: {creds_value}")
         _resolved_google_credentials_path = creds_value
         return creds_value
+
+
+# ============================================================================
+# Ollama Hosts Configuration Parser
+# ============================================================================
+
+def _parse_ollama_hosts() -> Dict[str, str]:
+    """
+    Parse RVBBIT_OLLAMA_HOSTS environment variable.
+
+    Supports both JSON and YAML formats for flexibility:
+    - JSON: {"gpu1": "http://10.10.10.1:11434", "gpu2": "http://192.168.1.50:9999"}
+    - YAML: gpu1: http://10.10.10.1:11434\\n gpu2: http://192.168.1.50:9999
+
+    Returns:
+        Dictionary mapping alias names to Ollama base URLs
+    """
+    hosts_str = os.getenv("RVBBIT_OLLAMA_HOSTS", "")
+    if not hosts_str:
+        return {}
+
+    # Try JSON first (most common for env vars)
+    try:
+        result = json.loads(hosts_str)
+        if isinstance(result, dict):
+            return result
+        return {}
+    except json.JSONDecodeError:
+        pass
+
+    # Try YAML as fallback
+    try:
+        import yaml
+        result = yaml.safe_load(hosts_str)
+        if isinstance(result, dict):
+            return result
+        return {}
+    except Exception:
+        pass
+
+    return {}
 
 
 # ============================================================================
@@ -239,6 +280,61 @@ class Config(BaseModel):
 
     # STT uses the same provider as LLM calls (OpenRouter)
     # No separate API key needed - uses provider_api_key
+
+    # =========================================================================
+    # Ephemeral RAG Configuration (Auto-indexing for Large Inputs)
+    # =========================================================================
+    # Enable automatic indexing of large content that exceeds context limits
+    # When enabled, large inputs/outputs are automatically chunked, embedded,
+    # and searchable via injected tools instead of being passed inline
+    ephemeral_rag_enabled: bool = Field(
+        default_factory=lambda: os.getenv(
+            "RVBBIT_EPHEMERAL_RAG_ENABLED", "true"
+        ).lower() == "true"
+    )
+
+    # Character threshold above which content is indexed instead of inline
+    # Default: 25K chars ≈ 6K tokens - triggers for moderately large content
+    # Content below this is passed inline as normal
+    ephemeral_rag_threshold: int = Field(
+        default_factory=lambda: int(os.getenv(
+            "RVBBIT_EPHEMERAL_RAG_THRESHOLD", "25000"
+        ))
+    )
+
+    # Chunk size for splitting large content (characters)
+    ephemeral_rag_chunk_size: int = Field(
+        default_factory=lambda: int(os.getenv(
+            "RVBBIT_EPHEMERAL_RAG_CHUNK_SIZE", "1500"
+        ))
+    )
+
+    # Overlap between consecutive chunks (characters)
+    ephemeral_rag_chunk_overlap: int = Field(
+        default_factory=lambda: int(os.getenv(
+            "RVBBIT_EPHEMERAL_RAG_CHUNK_OVERLAP", "200"
+        ))
+    )
+
+    # =========================================================================
+    # Smart Search Configuration (LLM-Powered RAG Filtering)
+    # =========================================================================
+    # Enable LLM-powered post-filtering of RAG/schema search results
+    # When enabled, search results are evaluated by an LLM for TRUE relevance,
+    # filtering out false positives and providing reasoning for each result.
+    # This reduces context bloat by returning fewer, higher-quality results.
+    smart_search_enabled: bool = Field(
+        default_factory=lambda: os.getenv(
+            "RVBBIT_SMART_SEARCH", "true"
+        ).lower() == "true"
+    )
+
+    # Model to use for smart search filtering (should be fast and cheap)
+    smart_search_model: str = Field(
+        default_factory=lambda: os.getenv(
+            "RVBBIT_SMART_SEARCH_MODEL", "google/gemini-2.5-flash-lite"
+        )
+    )
 
     # =========================================================================
     # Directory Configuration
@@ -415,6 +511,24 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Ollama Configuration (Local/Remote LLM Servers)
+    # =========================================================================
+    # Enabled by default since Ollama is commonly used for local models
+    ollama_enabled: bool = Field(
+        default_factory=lambda: os.getenv("RVBBIT_OLLAMA_ENABLED", "true").lower() == "true"
+    )
+    # Default Ollama base URL (used for ollama/model syntax)
+    ollama_base_url: str = Field(
+        default_factory=lambda: os.getenv("RVBBIT_OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    # Named host aliases for remote Ollama servers
+    # Format: {"alias": "http://host:port"} - use with ollama@alias/model syntax
+    # Environment: RVBBIT_OLLAMA_HOSTS='{"gpu1": "http://10.10.10.1:11434"}'
+    ollama_hosts: Dict[str, str] = Field(
+        default_factory=_parse_ollama_hosts
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them
@@ -578,3 +692,27 @@ def set_vertex_provider(
 
     if enabled is not None:
         _global_config.vertex_enabled = enabled
+
+
+def set_ollama_provider(
+    base_url: str | None = None,
+    hosts: Dict[str, str] | None = None,
+    enabled: bool | None = None
+):
+    """
+    Override Ollama settings at runtime.
+
+    Args:
+        base_url: Default Ollama server URL (e.g., "http://localhost:11434")
+        hosts: Dictionary of named host aliases
+               (e.g., {"gpu1": "http://10.10.10.1:11434"})
+        enabled: Enable/disable Ollama integration
+    """
+    global _global_config
+
+    if base_url:
+        _global_config.ollama_base_url = base_url
+    if hosts is not None:
+        _global_config.ollama_hosts = hosts
+    if enabled is not None:
+        _global_config.ollama_enabled = enabled

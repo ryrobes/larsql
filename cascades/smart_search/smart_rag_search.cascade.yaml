@@ -1,0 +1,97 @@
+cascade_id: smart_rag_search
+internal: true
+description: |
+  LLM-powered RAG search with intelligent filtering and reasoning.
+
+  Takes raw vector search results and applies LLM-based filtering to:
+  1. Evaluate TRUE relevance beyond vector similarity scores
+  2. Filter out noise and false positives
+  3. Generate reasoning for why results are relevant
+  4. Optionally synthesize/summarize the key information
+
+  This is the "Phase 1" of smarter RAG - wraps existing search with
+  an intelligent post-filter that reduces context bloat.
+
+  Usage:
+    - Direct: smart_rag_search(query="...", results="[...]", k=5)
+    - Wrapped: search_chunks(..., smart=True)
+
+inputs_schema:
+  query: Original search query
+  results: JSON array of raw search results with text, score, chunk_id, source
+  k: Number of filtered results to return (default 5)
+  synthesize: If true, also provide a synthesis of the key findings (default false)
+  context_hint: Optional hint about what context this search is for (e.g., "SQL query generation")
+
+cells:
+  - name: filter_and_rank
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a search result evaluator. Your job is to filter and rank RAG search results
+      based on TRUE relevance to the query - not just vector similarity scores.
+
+      QUERY: {{ input.query }}
+      {% if input.context_hint %}
+      CONTEXT: {{ input.context_hint }}
+      {% endif %}
+
+      RAW SEARCH RESULTS (may contain noise/false positives):
+      {{ input.results }}
+
+      TASK:
+      1. Evaluate each result's ACTUAL relevance to the query
+      2. Filter out results that are tangentially related but won't help answer the query
+      3. Keep only the top {{ input.k | default(5) }} most useful results
+      4. For each kept result, explain WHY it's relevant (1 sentence)
+      {% if input.synthesize %}
+      5. Provide a brief synthesis of the key information found
+      {% endif %}
+
+      EVALUATION CRITERIA:
+      - Does this result directly address what the query is asking?
+      - Does it contain actionable information (not just mentions of the topic)?
+      - Would including this in context actually help vs add noise?
+      - Is the information specific enough to be useful?
+
+      Return JSON:
+      {
+        "filtered_results": [
+          {
+            "chunk_id": "original chunk_id",
+            "source": "original source",
+            "text": "original text (truncated if very long)",
+            "original_score": 0.85,
+            "relevance_score": 0.0-1.0,
+            "reasoning": "Why this is relevant to the query"
+          }
+        ],
+        "dropped_count": 3,
+        "dropped_reasons": ["Result X was about Y which doesn't help with Z"],
+        {% if input.synthesize %}
+        "synthesis": "Brief synthesis of key findings from the relevant results"
+        {% endif %}
+      }
+    output_schema:
+      type: object
+      required:
+        - filtered_results
+        - dropped_count
+      properties:
+        filtered_results:
+          type: array
+          items:
+            type: object
+            required:
+              - chunk_id
+              - relevance_score
+              - reasoning
+        dropped_count:
+          type: integer
+        dropped_reasons:
+          type: array
+          items:
+            type: string
+        synthesis:
+          type: string
+    rules:
+      max_turns: 1

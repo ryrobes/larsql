@@ -138,7 +138,8 @@ function ModelPill({ model }) {
 function ModelGroup({ title, iconName, models, defaultOpen = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
-  if (models.length === 0) return null;
+  // Guard against invalid models prop
+  if (!Array.isArray(models) || models.length === 0) return null;
 
   return (
     <div className="model-group">
@@ -172,7 +173,7 @@ function ModelGroup({ title, iconName, models, defaultOpen = true }) {
  */
 function ModelBrowserPalette() {
   const [models, setModels] = useState([]);
-  const [ollamaModels, setOllamaModels] = useState([]);
+  const [ollamaModelsByHost, setOllamaModelsByHost] = useState({});  // Grouped by host: { "local": [...], "gpu1": [...] }
   const [vertexModels, setVertexModels] = useState([]);
   const [bedrockModels, setBedrockModels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -187,12 +188,13 @@ function ModelBrowserPalette() {
       return false;
     }
   });
-  const [isOllamaExpanded, setIsOllamaExpanded] = useState(() => {
+  // Expanded state for each Ollama host (keyed by host name)
+  const [ollamaExpandedByHost, setOllamaExpandedByHost] = useState(() => {
     try {
-      const saved = localStorage.getItem('studio-sidebar-local-models-expanded');
-      return saved !== null ? saved === 'true' : true;
+      const saved = localStorage.getItem('studio-sidebar-ollama-expanded');
+      return saved ? JSON.parse(saved) : { local: true };
     } catch {
-      return true;
+      return { local: true };
     }
   });
   const [isVertexExpanded, setIsVertexExpanded] = useState(() => {
@@ -223,11 +225,11 @@ function ModelBrowserPalette() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('studio-sidebar-local-models-expanded', String(isOllamaExpanded));
+      localStorage.setItem('studio-sidebar-ollama-expanded', JSON.stringify(ollamaExpandedByHost));
     } catch (e) {
       console.warn('Failed to save sidebar state:', e);
     }
-  }, [isOllamaExpanded]);
+  }, [ollamaExpandedByHost]);
 
   useEffect(() => {
     try {
@@ -263,7 +265,16 @@ function ModelBrowserPalette() {
 
         if (mounted) {
           setModels(data.models || []);
-          setOllamaModels(data.ollama_models || []);
+          // ollama_models can be:
+          // - dict grouped by host: { "local": [...], "gpu1": [...] } (new format)
+          // - array of models: [...] (legacy format, convert to { "local": [...] })
+          const ollamaData = data.ollama_models;
+          if (Array.isArray(ollamaData)) {
+            // Legacy array format - group all under "local"
+            setOllamaModelsByHost({ local: ollamaData });
+          } else {
+            setOllamaModelsByHost(ollamaData || {});
+          }
           setVertexModels(data.vertex_models || []);
           setBedrockModels(data.bedrock_models || []);
           setLoading(false);
@@ -340,6 +351,24 @@ function ModelBrowserPalette() {
     }));
   }, [filteredModels]);
 
+  // Get sorted list of Ollama hosts (local first, then alphabetical)
+  const ollamaHosts = useMemo(() => {
+    const hosts = Object.keys(ollamaModelsByHost);
+    return hosts.sort((a, b) => {
+      if (a === 'local') return -1;
+      if (b === 'local') return 1;
+      return a.localeCompare(b);
+    });
+  }, [ollamaModelsByHost]);
+
+  // Helper to toggle expansion for a specific Ollama host
+  const toggleOllamaHost = (host) => {
+    setOllamaExpandedByHost(prev => ({
+      ...prev,
+      [host]: !prev[host]
+    }));
+  };
+
   if (loading) {
     return (
       <div className="nav-section model-browser-section">
@@ -390,37 +419,52 @@ function ModelBrowserPalette() {
 
   return (
     <>
-      {/* LOCAL MODELS Section */}
-      {ollamaModels.length > 0 && (
-        <div className="nav-section model-browser-section">
-          <div
-            className="nav-section-header"
-            onClick={() => setIsOllamaExpanded(!isOllamaExpanded)}
-          >
-            <Icon
-              icon={isOllamaExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
-              className="nav-chevron"
-            />
-            <img src="/ollama_vector.svg" alt="Ollama" className="nav-section-icon" style={{ width: '14px', height: '14px', objectFit: 'contain', opacity: 0.6 }} />
-            <span className="nav-section-title">Local Models</span>
-            <span className="nav-section-count">{ollamaModels.length}</span>
-          </div>
+      {/* OLLAMA MODELS Sections - one per host */}
+      {ollamaHosts.map(host => {
+        const hostModels = ollamaModelsByHost[host] || [];
+        if (hostModels.length === 0) return null;
 
-          {isOllamaExpanded && (
-            <div className="nav-section-content model-browser-content">
-              {/* Ollama models - no search or filters, just list all */}
-              <div className="model-groups-container">
-                <ModelGroup
-                  title="ollama"
-                  iconName="mdi:chip"
-                  models={ollamaModels}
-                  defaultOpen={true}
-                />
-              </div>
+        const isExpanded = ollamaExpandedByHost[host] ?? true;
+        const isLocal = host === 'local';
+
+        // Display label: "Local Models" for local, alias/hostname for remote
+        const displayLabel = isLocal ? 'Local Models' : `Ollama (${host})`;
+        const iconStyle = { width: '14px', height: '14px', objectFit: 'contain', opacity: isLocal ? 0.6 : 0.8 };
+
+        return (
+          <div key={host} className="nav-section model-browser-section">
+            <div
+              className="nav-section-header"
+              onClick={() => toggleOllamaHost(host)}
+            >
+              <Icon
+                icon={isExpanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+                className="nav-chevron"
+              />
+              {isLocal ? (
+                <img src="/ollama_vector.svg" alt="Ollama" className="nav-section-icon" style={iconStyle} />
+              ) : (
+                <Icon icon="mdi:server-network" className="nav-section-icon" style={{ ...iconStyle, color: '#60a5fa' }} />
+              )}
+              <span className="nav-section-title">{displayLabel}</span>
+              <span className="nav-section-count">{hostModels.length}</span>
             </div>
-          )}
-        </div>
-      )}
+
+            {isExpanded && (
+              <div className="nav-section-content model-browser-content">
+                <div className="model-groups-container">
+                  <ModelGroup
+                    title={isLocal ? 'ollama' : host}
+                    iconName={isLocal ? 'mdi:chip' : 'mdi:server'}
+                    models={hostModels}
+                    defaultOpen={true}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* VERTEX AI Section */}
       {vertexModels.length > 0 && (

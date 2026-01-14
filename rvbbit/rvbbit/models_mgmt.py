@@ -113,33 +113,103 @@ def scrape_ollama_model_metadata(model_name: str) -> Dict:
         return {}
 
 
-def fetch_models_from_ollama(ollama_base_url: str = "http://localhost:11434") -> List[Dict]:
+def fetch_models_from_ollama(ollama_urls: List[str] | None = None) -> List[Dict]:
     """
-    Fetch all models from local Ollama instance.
+    Fetch all models from Ollama instances (local and remote).
 
     Args:
-        ollama_base_url: Base URL for Ollama API (default: http://localhost:11434)
+        ollama_urls: List of Ollama base URLs. If None, uses config
+                     (default URL + all configured host aliases).
 
     Returns:
         List of model dicts compatible with OpenRouter schema
     """
-    console.print(f"[cyan]Fetching models from Ollama ({ollama_base_url})...[/cyan]")
+    from .config import get_config
+
+    # Build URL list from config if not provided
+    if ollama_urls is None:
+        cfg = get_config()
+        if not cfg.ollama_enabled:
+            console.print("[dim]Ollama disabled in config[/dim]")
+            return []
+
+        # Start with default URL
+        urls_with_aliases: List[tuple] = [(cfg.ollama_base_url, None)]
+
+        # Add configured host aliases
+        for alias, url in cfg.ollama_hosts.items():
+            urls_with_aliases.append((url, alias))
+
+        # Deduplicate by URL (keep first occurrence)
+        seen_urls = set()
+        ollama_urls_list = []
+        for url, alias in urls_with_aliases:
+            if url not in seen_urls:
+                seen_urls.add(url)
+                ollama_urls_list.append((url, alias))
+    else:
+        ollama_urls_list = [(url, None) for url in ollama_urls]
+
+    console.print(f"[cyan]Fetching models from {len(ollama_urls_list)} Ollama host(s)...[/cyan]")
+
+    all_models = []
+    for base_url, alias in ollama_urls_list:
+        models = _fetch_ollama_from_single_url(base_url, alias)
+        all_models.extend(models)
+
+    console.print(f"[green]✓[/green] Fetched {len(all_models)} Ollama models from {len(ollama_urls_list)} host(s)")
+    return all_models
+
+
+def _fetch_ollama_from_single_url(base_url: str, alias: str | None = None) -> List[Dict]:
+    """
+    Fetch models from a single Ollama instance.
+
+    Args:
+        base_url: Ollama API base URL
+        alias: Optional host alias for this URL
+
+    Returns:
+        List of model dicts
+    """
+    # Determine if this is localhost (default) or remote
+    is_localhost = "localhost" in base_url or "127.0.0.1" in base_url
+    host_desc = alias or base_url
 
     try:
         with httpx.Client(timeout=10.0) as client:
-            response = client.get(f"{ollama_base_url}/api/tags")
+            response = client.get(f"{base_url}/api/tags")
             response.raise_for_status()
             data = response.json()
 
         ollama_models = []
         raw_models = data.get("models", [])
 
-        console.print(f"[cyan]Scraping metadata from ollama.com...[/cyan]")
+        if not raw_models:
+            console.print(f"  [dim]No models found at {host_desc}[/dim]")
+            return []
+
+        console.print(f"  [cyan]Scraping metadata for {len(raw_models)} models from {host_desc}...[/cyan]")
 
         for m in raw_models:
             model_name = m.get("name", "")
-            model_id = f"ollama/{model_name}"
             size_bytes = m.get("size", 0)
+
+            # Format model ID:
+            # - Localhost: ollama/model (backward compatible)
+            # - Remote with alias: ollama@alias/model
+            # - Remote without alias: ollama@host/model
+            if is_localhost and alias is None:
+                model_id = f"ollama/{model_name}"
+                location_desc = "Local"
+            elif alias:
+                model_id = f"ollama@{alias}/{model_name}"
+                location_desc = f"Remote ({alias})"
+            else:
+                # Extract host from URL for model ID
+                host = base_url.replace("http://", "").replace("https://", "")
+                model_id = f"ollama@{host}/{model_name}"
+                location_desc = f"Remote ({host})"
 
             # Format size as human-readable
             size_gb = size_bytes / (1024**3)
@@ -150,7 +220,7 @@ def fetch_models_from_ollama(ollama_base_url: str = "http://localhost:11434") ->
             parameters = metadata.get('parameters', '')
 
             # Build description with parameters if available
-            description_parts = [f"Local Ollama model ({size_gb:.1f}GB)"]
+            description_parts = [f"{location_desc} Ollama model ({size_gb:.1f}GB)"]
             if parameters:
                 description_parts.append(f"{parameters} parameters")
 
@@ -170,17 +240,19 @@ def fetch_models_from_ollama(ollama_base_url: str = "http://localhost:11434") ->
                 },
                 "top_provider": {
                     "is_moderated": False,
+                    "is_local": is_localhost,
                 },
+                "_ollama_host": base_url,  # Store for reference
             })
 
-        console.print(f"[green]✓[/green] Fetched {len(ollama_models)} Ollama models with metadata")
+        console.print(f"  [green]✓[/green] Fetched {len(ollama_models)} models from {host_desc}")
         return ollama_models
 
     except httpx.ConnectError:
-        console.print("[yellow]⚠[/yellow] Ollama not running (skipping local models)")
+        console.print(f"  [yellow]⚠[/yellow] Could not connect to Ollama at {host_desc}")
         return []
     except Exception as e:
-        console.print(f"[yellow]⚠[/yellow] Failed to fetch Ollama models: {e}")
+        console.print(f"  [yellow]⚠[/yellow] Failed to fetch from {host_desc}: {e}")
         return []
 
 
@@ -995,8 +1067,8 @@ def classify_tier(pricing: Dict, context_length: int, model_id: str) -> str:
     Returns:
         Tier string: 'local', 'flagship', 'standard', 'fast', 'open', or 'embedding'
     """
-    # Check if it's a local Ollama model
-    if model_id.startswith("ollama/"):
+    # Check if it's an Ollama model (local or remote)
+    if model_id.startswith("ollama/") or model_id.startswith("ollama@"):
         return "local"
 
     # Check if it's a Vertex AI model (use pricing lookup for tier)
@@ -1237,6 +1309,9 @@ def refresh_models(skip_verification: bool = False, workers: int = 10):
     for model in raw_models:
         model_id = model.get("id", "")
         provider = model_id.split("/")[0] if "/" in model_id else "other"
+        # Handle ollama@host/model format - extract base provider
+        if "@" in provider:
+            provider = provider.split("@")[0]  # "ollama@gpu1" -> "ollama"
         pricing = model.get("pricing", {})
         arch = model.get("architecture", {})
 

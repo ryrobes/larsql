@@ -6150,6 +6150,29 @@ def cmd_init(args):
             for cell_type in cell_types_starter.glob('*.yaml'):
                 copy_file(f'cell_types/{cell_type.name}')
 
+    # Copy SQL connections (unless --minimal)
+    if not args.minimal:
+        sql_conn_starter = starter_dir / 'sql_connections'
+        if sql_conn_starter.exists():
+            (workspace / 'sql_connections').mkdir(parents=True, exist_ok=True)
+            for conn_file in sql_conn_starter.glob('*.yaml'):
+                copy_file(f'sql_connections/{conn_file.name}')
+
+    # Copy sample data SQL script (unless --minimal)
+    if not args.minimal:
+        data_starter = starter_dir / 'data'
+        if data_starter.exists():
+            for sql_file in data_starter.glob('*.sql'):
+                copy_file(f'data/{sql_file.name}')
+
+    # Copy scripts (unless --minimal)
+    if not args.minimal:
+        scripts_starter = starter_dir / 'scripts'
+        if scripts_starter.exists():
+            (workspace / 'scripts').mkdir(parents=True, exist_ok=True)
+            for script_file in scripts_starter.glob('*.py'):
+                copy_file(f'scripts/{script_file.name}')
+
     # Create .rvbbit marker file
     try:
         from importlib.metadata import version as get_version
@@ -6198,6 +6221,10 @@ def cmd_init(args):
     print()
     print("  5. Run your first cascade:")
     print("     rvbbit run cascades/examples/hello_world.yaml")
+    print()
+    print("  6. (Optional) Set up sample data for SQL testing:")
+    print("     python scripts/setup_sample_data.py")
+    print("     rvbbit sql crawl")
     print()
 
 

@@ -36,6 +36,13 @@ This workspace was created with `rvbbit init`.
    rvbbit run cascades/examples/hello_world.yaml
    ```
 
+6. **(Optional) Set up sample data for SQL testing:**
+   ```bash
+   python scripts/setup_sample_data.py
+   rvbbit sql crawl
+   rvbbit sql query "SELECT * FROM sample_data.customers"
+   ```
+
 ## Directory Structure
 
 ```
@@ -43,8 +50,10 @@ This workspace was created with `rvbbit init`.
 ├── cascades/          # Your workflow definitions
 │   └── examples/      # Example cascades to get started
 ├── traits/            # Custom tools (Python functions or cascade tools)
+├── sql_connections/   # Database connection configurations
 ├── config/            # Configuration files (MCP servers, etc.)
-├── data/              # RAG index files
+├── data/              # RAG index files and sample databases
+├── scripts/           # Utility scripts
 ├── logs/              # Execution logs
 ├── states/            # Session state snapshots
 ├── graphs/            # Mermaid execution graphs

@@ -168,7 +168,9 @@ def sql_rag_search(
 def sql_search(
     query: str,
     k: int = 10,
-    min_row_count: Optional[int] = None
+    min_row_count: Optional[int] = None,
+    smart: Optional[bool] = None,
+    task_context: Optional[str] = None
 ) -> str:
     """
     Search SQL schema metadata using Elasticsearch hybrid search.
@@ -192,12 +194,15 @@ def sql_search(
         query: Natural language description (can be multi-word, verbose)
         k: Number of results to return (default: 10)
         min_row_count: Optional filter for minimum table size
+        smart: Enable LLM-powered smart filtering (default: from RVBBIT_SMART_SEARCH env)
+        task_context: Optional context about what user is trying to do
 
     Returns:
         JSON with matching tables and their metadata including:
         - Table names and database info
         - Full column schemas with types
         - Row counts
+        - schema_brief (if smart=True): Compact summary for efficient LLM consumption
         **Note:** Sample rows are NOT included (use run_sql to query actual data)
     """
     try:
@@ -223,19 +228,47 @@ def sql_search(
         )
         query_embedding = embed_result['embeddings'][0]
 
-        # Hybrid search
+        # Hybrid search - fetch more if smart filtering will be applied
+        from ..rag.smart_search import is_smart_search_enabled
+
+        use_smart = smart if smart is not None else is_smart_search_enabled()
+        fetch_k = k * 3 if use_smart else k
+
         tables = hybrid_search_sql_schemas(
             query=query,
             query_embedding=query_embedding,
-            k=k,
+            k=fetch_k,
             min_row_count=min_row_count
         )
+
+        # Apply smart filtering if enabled
+        if use_smart and len(tables) > k:
+            from ..rag.smart_search import smart_schema_search
+
+            smart_result = smart_schema_search(
+                query=query,
+                raw_results=tables,
+                k=k,
+                task_context=task_context
+            )
+
+            return json.dumps({
+                "query": query,
+                "source": "elasticsearch+smart",
+                "total_results": len(smart_result.get("tables", [])),
+                "tables": smart_result.get("tables", tables[:k]),
+                "schema_brief": smart_result.get("schema_brief"),
+                "dropped_tables": smart_result.get("dropped_tables", []),
+                "smart_search_used": smart_result.get("smart_search_used", False),
+                "note": "Results filtered by LLM for relevance. Use run_sql to query actual data."
+            }, indent=2, default=str)
 
         return json.dumps({
             "query": query,
             "source": "elasticsearch",
             "total_results": len(tables),
-            "tables": tables,
+            "tables": tables[:k],
+            "smart_search_used": False,
             "note": "Results optimized for LLM - sample_rows excluded. Use run_sql to query actual data."
         }, indent=2, default=str)
 
@@ -246,6 +279,48 @@ def sql_search(
         # If Elasticsearch fails, fallback to RAG
         print(f"Elasticsearch search failed, falling back to RAG: {e}")
         return sql_rag_search(query, k=k, score_threshold=0.3)
+
+
+def smart_sql_search(
+    query: str,
+    k: int = 5,
+    task_context: Optional[str] = None
+) -> str:
+    """
+    Smart SQL schema search with LLM-powered filtering and synthesis.
+
+    This is the recommended search for exploration and query building.
+    It fetches more results than needed, then uses LLM to:
+    1. Filter out irrelevant tables (keyword matches that aren't useful)
+    2. Highlight only the columns that matter
+    3. Generate a compact "schema_brief" for efficient context
+
+    The schema_brief is ideal for LLM consumption - instead of passing
+    all column metadata, it provides a 2-3 sentence summary like:
+    "For finding user emails, use users.email (1M rows). Join to
+    user_sessions for login timestamps."
+
+    Args:
+        query: Natural language description of what to find
+        k: Number of tables to return (default: 5)
+        task_context: Optional context about what you're trying to do
+            (e.g., "write a query to find inactive users")
+
+    Returns:
+        JSON with:
+        - tables: Filtered relevant tables with key_columns highlighted
+        - schema_brief: Compact summary for LLM context
+        - dropped_tables: Tables filtered out with reasons
+
+    Example:
+        smart_sql_search("user email addresses", task_context="find inactive users")
+    """
+    return sql_search(
+        query=query,
+        k=k,
+        smart=True,
+        task_context=task_context
+    )
 
 
 def run_sql(sql: str, connection: str, limit: Optional[int] = 200) -> str:

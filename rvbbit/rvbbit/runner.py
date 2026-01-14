@@ -93,6 +93,7 @@ except ImportError:
 
 from .cascade import load_cascade_config, CascadeConfig, CellConfig, AsyncCascadeRef, HandoffConfig, ContextConfig, ContextSourceConfig, HumanInputConfig, AudibleConfig, DecisionPointConfig, IntraCellContextConfig, AutoFixConfig, PolyglotValidatorConfig
 from .auto_context import IntraCellContextBuilder, IntraContextConfig, ContextSelectionStats
+from .ephemeral_rag import EphemeralRagManager, is_ephemeral_rag_enabled
 import re
 from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
@@ -284,6 +285,10 @@ class RVBBITRunner:
             self.echo.set_message_callback(self._save_to_memory)
         else:
             self.memory_system = None
+
+        # Ephemeral RAG manager (created per-cell, but we track reference here)
+        # Used for auto-indexing large inputs that exceed context limits
+        self._ephemeral_rag_manager: Optional[EphemeralRagManager] = None
 
         # Audible system state
         self._audible_signal = threading.Event()  # Set when UI signals an audible
@@ -10453,6 +10458,48 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             if rag_context:
                 clear_current_rag_context()
 
+        # ========== EPHEMERAL RAG: Initialize manager for large input handling ==========
+        # This manager automatically indexes large content (inputs, tool results, context)
+        # and injects search tools so the model can query them instead of inline overflow
+        ephemeral_rag_tools: Dict[str, Any] = {}
+        if is_ephemeral_rag_enabled():
+            cfg = get_config()
+            self._ephemeral_rag_manager = EphemeralRagManager(
+                session_id=self.session_id,
+                cell_name=cell.name,
+                threshold=cfg.ephemeral_rag_threshold,
+                chunk_size=cfg.ephemeral_rag_chunk_size,
+                chunk_overlap=cfg.ephemeral_rag_chunk_overlap,
+            )
+        else:
+            self._ephemeral_rag_manager = None
+
+        def _cleanup_ephemeral_rag():
+            """Clean up ephemeral RAG indexes on cell completion."""
+            if self._ephemeral_rag_manager:
+                try:
+                    stats = self._ephemeral_rag_manager.get_stats()
+                    if stats["replacements_count"] > 0:
+                        console.print(f"{indent}[dim]🧹 Cleaning up {stats['replacements_count']} ephemeral RAG indexes ({stats['total_chunks_indexed']} chunks)[/dim]")
+                        # Log cleanup to unified_logs
+                        log_message(
+                            self.session_id, "ephemeral_rag_cleanup",
+                            f"Cleaned up {stats['replacements_count']} ephemeral RAG indexes ({stats['total_chunks_indexed']} chunks)",
+                            trace_id=trace.id, parent_id=trace.parent_id, node_type="ephemeral_rag",
+                            depth=trace.depth, cell_name=cell.name, cascade_id=self.config.cascade_id,
+                            metadata={
+                                "indexes_cleaned": stats["replacements_count"],
+                                "chunks_removed": stats["total_chunks_indexed"],
+                                "tools_removed": stats["tools_created"],
+                                "sources": stats["sources"],
+                            }
+                        )
+                    self._ephemeral_rag_manager.cleanup()
+                except Exception as e:
+                    log.warning(f"[ephemeral-rag] Cleanup error: {e}")
+                finally:
+                    self._ephemeral_rag_manager = None
+
         # Prepare outputs dict for easier templating
         outputs = {item['cell']: item['output'] for item in self.echo.lineage}
         outputs = enrich_outputs_with_artifacts(outputs, self.config.cells, self.session_id)
@@ -10520,6 +10567,35 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     f"Cite sources as path#line_start-line_end."
                 )
             # else: no RAG context and no RAG tools requested - leave context as-is
+
+        # ========== EPHEMERAL RAG: Process template data for large values ==========
+        # Before rendering instructions, check all template data for large content.
+        # Large values get indexed and replaced with placeholders + search tools.
+        if self._ephemeral_rag_manager:
+            processed_render_context, new_tool_names = self._ephemeral_rag_manager.process_template_data(render_context)
+            if new_tool_names:
+                console.print(f"{indent}[bold cyan]📦 Auto-indexed {len(new_tool_names)} large input(s) for semantic search[/bold cyan]")
+                for tool_name in new_tool_names:
+                    console.print(f"{indent}  [dim]→ {tool_name}()[/dim]")
+                # Get the tools for later injection
+                ephemeral_rag_tools = self._ephemeral_rag_manager.get_all_tools()
+                # Log ephemeral RAG activation to unified_logs
+                rag_stats = self._ephemeral_rag_manager.get_stats()
+                log_message(
+                    self.session_id, "ephemeral_rag_index",
+                    f"Auto-indexed {len(new_tool_names)} large input(s) for semantic search",
+                    trace_id=trace.id, parent_id=trace.parent_id, node_type="ephemeral_rag",
+                    depth=trace.depth, cell_name=cell.name, cascade_id=self.config.cascade_id,
+                    metadata={
+                        "tools_created": new_tool_names,
+                        "total_chunks": rag_stats["total_chunks_indexed"],
+                        "total_chars": rag_stats["total_chars_indexed"],
+                        "sources": rag_stats["sources"],
+                        "threshold": get_config().ephemeral_rag_threshold,
+                        "trigger": "template_data",
+                    }
+                )
+            render_context = processed_render_context
 
         # ========== RESEARCH COCKPIT MODE: Inject UI scaffolding ==========
         # If this cell is running in Research Cockpit mode (interactive research UI),
@@ -10777,6 +10853,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             tool_map["route_to"] = route_to_tool
             tools_schema.append(get_tool_schema(route_to_tool))
             tool_descriptions.append(self._generate_tool_description(route_to_tool, "route_to"))
+
+        # ========== EPHEMERAL RAG: Inject search tools for large inputs ==========
+        # These tools were created when processing template data for large values
+        if ephemeral_rag_tools:
+            for tool_name, tool_fn in ephemeral_rag_tools.items():
+                tool_map[tool_name] = tool_fn
+                tools_schema.append(get_tool_schema(tool_fn, name=tool_name))
+                tool_descriptions.append(self._generate_tool_description(tool_fn, tool_name))
 
         # ========== CONTEXT SYSTEM (SELECTIVE-BY-DEFAULT) ==========
         # Build context fresh for each cell from config
@@ -11854,10 +11938,41 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # Add tool result message
                             # Native tools use role="tool" with tool_call_id
                             # Prompt-based tools use role="user" to avoid provider-specific formats
+
+                            # EPHEMERAL RAG: Check if tool result is too large
+                            # If so, index it and replace with placeholder + inject search tool
+                            result_content = str(result)
+                            if self._ephemeral_rag_manager:
+                                processed_result, new_tool = self._ephemeral_rag_manager.process_tool_result(func_name, result_content)
+                                if new_tool:
+                                    console.print(f"{indent}    [bold cyan]📦 Tool result too large, indexed for search: {new_tool}()[/bold cyan]")
+                                    # Inject the new search tool
+                                    new_tool_fn = self._ephemeral_rag_manager.get_tool(new_tool)
+                                    if new_tool_fn and new_tool not in tool_map:
+                                        tool_map[new_tool] = new_tool_fn
+                                        tools_schema.append(get_tool_schema(new_tool_fn, name=new_tool))
+                                        tool_descriptions.append(self._generate_tool_description(new_tool_fn, new_tool))
+                                    # Log tool result indexing to unified_logs
+                                    rag_stats = self._ephemeral_rag_manager.get_stats()
+                                    log_message(
+                                        self.session_id, "ephemeral_rag_index",
+                                        f"Tool result from '{func_name}' too large, indexed for search: {new_tool}()",
+                                        trace_id=tool_trace.id, parent_id=trace.id, node_type="ephemeral_rag",
+                                        depth=trace.depth + 1, cell_name=cell.name, cascade_id=self.config.cascade_id,
+                                        metadata={
+                                            "tool_created": new_tool,
+                                            "source_tool": func_name,
+                                            "result_size_chars": len(result_content),
+                                            "threshold": get_config().ephemeral_rag_threshold,
+                                            "trigger": "tool_result",
+                                        }
+                                    )
+                                result_content = processed_result
+
                             if use_native:
-                                tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": str(result)}
+                                tool_msg = {"role": "tool", "tool_call_id": tc["id"], "content": result_content}
                             else:
-                                tool_msg = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
+                                tool_msg = {"role": "user", "content": f"Tool Result ({func_name}):\n{result_content}"}
                             self.context_messages.append(tool_msg)
 
                             # DEBUG: Verify tool result was added
@@ -12031,14 +12146,43 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                                         console.print(f"{indent}    [green]✔ {func_name} (follow-up)[/green] -> {str(result)[:100]}...")
 
+                                        # EPHEMERAL RAG: Check if follow-up tool result is too large
+                                        # Same pattern as initial tool processing - index and inject search tool
+                                        result_content_fu = str(result)
+                                        if self._ephemeral_rag_manager:
+                                            processed_result_fu, new_tool_fu = self._ephemeral_rag_manager.process_tool_result(func_name, result_content_fu)
+                                            if new_tool_fu:
+                                                console.print(f"{indent}    [bold cyan]📦 Follow-up result too large, indexed: {new_tool_fu}()[/bold cyan]")
+                                                # Inject the new search tool for follow-up
+                                                new_tool_fn_fu = self._ephemeral_rag_manager.get_tool(new_tool_fu)
+                                                if new_tool_fn_fu and new_tool_fu not in tool_map:
+                                                    tool_map[new_tool_fu] = new_tool_fn_fu
+                                                    tools_schema.append(get_tool_schema(new_tool_fn_fu, name=new_tool_fu))
+                                                    tool_descriptions.append(self._generate_tool_description(new_tool_fn_fu, new_tool_fu))
+                                                # Log follow-up tool result indexing to unified_logs
+                                                log_message(
+                                                    self.session_id, "ephemeral_rag_index",
+                                                    f"Follow-up tool result from '{func_name}' too large, indexed: {new_tool_fu}()",
+                                                    trace_id=tool_trace_fu.id, parent_id=trace.id, node_type="ephemeral_rag",
+                                                    depth=trace.depth + 1, cell_name=cell.name, cascade_id=self.config.cascade_id,
+                                                    metadata={
+                                                        "tool_created": new_tool_fu,
+                                                        "source_tool": func_name,
+                                                        "result_size_chars": len(result_content_fu),
+                                                        "threshold": get_config().ephemeral_rag_threshold,
+                                                        "trigger": "follow_up_tool_result",
+                                                    }
+                                                )
+                                            result_content_fu = processed_result_fu
+
                                         # Track tool output
                                         tool_outputs.append({
                                             "tool": func_name,
-                                            "result": str(result)
+                                            "result": result_content_fu
                                         })
 
                                         # Add tool result to context
-                                        tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{str(result)}"}
+                                        tool_msg_fu = {"role": "user", "content": f"Tool Result ({func_name}):\n{result_content_fu}"}
                                         self.context_messages.append(tool_msg_fu)
 
                                         # Log to echo
@@ -12732,9 +12876,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 console.print(f"{indent}[red]✗ Extraction failed: {e}[/red]")
                 self.echo.add_error(cell.name, "extraction_error", str(e))
                 _cleanup_rag()
+                _cleanup_ephemeral_rag()
                 return f"[EXTRACTION ERROR: {e}]"
 
         _cleanup_rag()
+        _cleanup_ephemeral_rag()
 
         # Convert output to string for checkpoint handling
         cell_output_str = response_content if isinstance(response_content, str) else str(response_content)
