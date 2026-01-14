@@ -54,8 +54,8 @@ pip install .
 - `RVBBIT_CLICKHOUSE_HOST` (default: `localhost`)
 - `RVBBIT_CLICKHOUSE_PORT` (default: `9000`)
 - `RVBBIT_CLICKHOUSE_DATABASE` (default: `rvbbit`)
-- `RVBBIT_CLICKHOUSE_USER` (default: `default`)
-- `RVBBIT_CLICKHOUSE_PASSWORD` (default: empty)
+- `RVBBIT_CLICKHOUSE_USER` (default: `rvbbit`)
+- `RVBBIT_CLICKHOUSE_PASSWORD` (default: `rvbbit`)
 
 **Directory Structure**:
 ```
@@ -69,18 +69,19 @@ $RVBBIT_ROOT/
 ├── videos/         # Video recordings (Rabbitize)
 ├── session_dbs/    # Session-scoped DuckDB files with temp tables
 ├── research_dbs/   # Research database DuckDB files per cascade
-├── examples/       # Example cascade definitions
 ├── traits/         # Reusable tool cascades
-└── cascades/       # User-defined cascades
+├── cascades/       # User-defined cascades
+│   └── examples/   # Example cascade definitions
+└── sql_connections/ # SQL connection YAML files
 ```
 
 ## Common Commands
 
 ### Running Cascades
 ```bash
-rvbbit run examples/simple_flow.json --input '{"data": "test"}'
-rvbbit run examples/simple_flow.json --input input.json
-rvbbit run examples/simple_flow.json --input '{"key": "value"}' --session my_session_123
+rvbbit run cascades/examples/simple_flow.json --input '{"data": "test"}'
+rvbbit run cascades/examples/simple_flow.json --input input.json
+rvbbit run cascades/examples/simple_flow.json --input '{"key": "value"}' --session my_session_123
 # Legacy: rvbbit examples/simple_flow.json --input '...'  (also works)
 ```
 

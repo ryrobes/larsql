@@ -27,6 +27,7 @@ dependencies = [
     "pillow",
     "gunicorn[gevent]",
     "jsonschema",
+    "openpyxl",
     "readchar",  # For Hot or Not interactive rating UI
     "miniaudio",  # For ElevenLabs TTS audio playback
     "requests",  # For ElevenLabs API calls and Rabbitize REST API

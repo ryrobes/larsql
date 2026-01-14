@@ -1,0 +1,231 @@
+<h1>Signals</h1>
+<p class="lead">
+  Signals enable cross-cascade communication, allowing workflows to coordinate with each other
+  through a durable event system. Wait for upstream processes, notify downstream consumers,
+  and build complex orchestration patterns.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#tools">Signal Tools</a></li>
+    <li><a href="#patterns">Common Patterns</a></li>
+    <li><a href="#cli">CLI Commands</a></li>
+    <li><a href="#storage">Signal Storage</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  Signals are named events that cascades can wait for or fire. They're stored durably in ClickHouse
+  and support payloads for passing data between workflows.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:bell-ring-outline"></iconify-icon></div>
+    <h4>Durable</h4>
+    <p>Signals survive restarts and are tracked in ClickHouse</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:clock-outline"></iconify-icon></div>
+    <h4>Timeout Support</h4>
+    <p>Configure timeouts for waiting cascades</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:package-variant"></iconify-icon></div>
+    <h4>Payload Data</h4>
+    <p>Pass structured data with signal events</p>
+  </div>
+</div>
+
+<h2 id="tools">Signal Tools</h2>
+
+<h3>await_signal</h3>
+
+<p>
+  Wait for a named signal before continuing execution:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Wait for Signal</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: wait_for_data
+  <span class="key">tool</span>: await_signal
+  <span class="key">inputs</span>:
+    <span class="key">signal_name</span>: <span class="str">"daily_data_ready"</span>
+    <span class="key">timeout</span>: <span class="str">"4h"</span>                    <span class="cmt"># Wait up to 4 hours</span>
+    <span class="key">description</span>: <span class="str">"Waiting for upstream ETL to complete"</span></pre>
+  </div>
+</div>
+
+<h4>Timeout Format</h4>
+
+<p>Timeouts support human-readable durations:</p>
+
+<ul>
+  <li><code>30s</code> - 30 seconds</li>
+  <li><code>5m</code> - 5 minutes</li>
+  <li><code>2h</code> - 2 hours</li>
+  <li><code>1d</code> - 1 day</li>
+</ul>
+
+<h3>fire_signal</h3>
+
+<p>
+  Fire a signal to wake up waiting cascades:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Fire Signal</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: notify_downstream
+  <span class="key">tool</span>: fire_signal
+  <span class="key">inputs</span>:
+    <span class="key">signal_name</span>: <span class="str">"preprocessing_complete"</span>
+    <span class="key">payload</span>: <span class="str">'{"row_count": {{ state.row_count }}, "status": "success"}'</span></pre>
+  </div>
+</div>
+
+<h3>list_signals</h3>
+
+<p>
+  List signals for a cascade:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">List Signals</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: check_signals
+  <span class="key">tool</span>: list_signals
+  <span class="key">inputs</span>:
+    <span class="key">cascade_id</span>: <span class="str">"{{ input.cascade }}"</span>
+    <span class="key">status</span>: <span class="str">"pending"</span>  <span class="cmt"># pending, fired, expired</span></pre>
+  </div>
+</div>
+
+<h2 id="patterns">Common Patterns</h2>
+
+<h3>ETL Pipeline Coordination</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Upstream: cascades/etl_extract.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: etl_extract
+<span class="key">cells</span>:
+  - <span class="key">name</span>: extract_data
+    <span class="key">tool</span>: sql_data
+    <span class="key">inputs</span>:
+      <span class="key">query</span>: <span class="str">"SELECT * FROM source_table"</span>
+
+  - <span class="key">name</span>: notify_transform
+    <span class="key">tool</span>: fire_signal
+    <span class="key">inputs</span>:
+      <span class="key">signal_name</span>: <span class="str">"extract_complete"</span>
+      <span class="key">payload</span>: <span class="str">'{"rows": {{ outputs.extract_data.row_count }}}'</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Downstream: cascades/etl_transform.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: etl_transform
+<span class="key">cells</span>:
+  - <span class="key">name</span>: wait_for_extract
+    <span class="key">tool</span>: await_signal
+    <span class="key">inputs</span>:
+      <span class="key">signal_name</span>: <span class="str">"extract_complete"</span>
+      <span class="key">timeout</span>: <span class="str">"1h"</span>
+
+  - <span class="key">name</span>: transform_data
+    <span class="key">instructions</span>: <span class="str">|
+      Transform the extracted data.
+      Source had {{ outputs.wait_for_extract.payload.rows }} rows.
+    </span></pre>
+  </div>
+</div>
+
+<h3>Fan-Out/Fan-In</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Coordinator</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cells</span>:
+  - <span class="key">name</span>: spawn_workers
+    <span class="key">tool</span>: map_cascade
+    <span class="key">inputs</span>:
+      <span class="key">cascade</span>: <span class="str">"worker.yaml"</span>
+      <span class="key">items</span>: <span class="str">"{{ input.work_items }}"</span>
+
+  - <span class="key">name</span>: wait_for_all
+    <span class="key">tool</span>: await_signal
+    <span class="key">inputs</span>:
+      <span class="key">signal_name</span>: <span class="str">"all_workers_complete"</span>
+      <span class="key">timeout</span>: <span class="str">"30m"</span></pre>
+  </div>
+</div>
+
+<h2 id="cli">CLI Commands</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Signal Management</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># List signals for a cascade</span>
+rvbbit signals list --cascade my_cascade
+
+<span class="cmt"># Fire a signal manually</span>
+rvbbit signals fire daily_data_ready --payload <span class="str">'{"row_count": 1000}'</span>
+
+<span class="cmt"># Check signal status</span>
+rvbbit signals status signal_abc123
+
+<span class="cmt"># Cancel a pending signal</span>
+rvbbit signals cancel signal_abc123 --reason <span class="str">"timeout"</span></pre>
+  </div>
+</div>
+
+<h2 id="storage">Signal Storage</h2>
+
+<p>
+  Signals are stored in ClickHouse with the following properties:
+</p>
+
+<ul>
+  <li><strong>Durability</strong> - Survives process restarts</li>
+  <li><strong>HTTP callbacks</strong> - Sub-second wake-up latency</li>
+  <li><strong>Polling fallback</strong> - Reliability if callbacks are missed</li>
+  <li><strong>TTL</strong> - Signals expire after configured timeout</li>
+</ul>
+
+<div class="info-box">
+  <div class="info-box-title">Signal Lifecycle</div>
+  <p>
+    When a cascade calls <code>await_signal</code>, it registers a pending signal and
+    either blocks (in sync mode) or suspends (in async mode). When another cascade
+    calls <code>fire_signal</code> with the matching name, the waiting cascade resumes
+    with the payload data.
+  </p>
+</div>
+
+<hr>
+
+<h2>Next: Triggers</h2>
+<p>
+  Learn about scheduling cascades: <a href="#triggers" data-link>Triggers</a>.
+</p>

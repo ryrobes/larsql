@@ -1,0 +1,153 @@
+# SQL Connections Integration Test Infrastructure
+#
+# USAGE:
+#   Start core services (MinIO + MongoDB):
+#     docker compose -f docker-compose.sql-tests.yml up -d
+#
+#   Start with Cassandra (slow to start):
+#     docker compose -f docker-compose.sql-tests.yml --profile cassandra up -d
+#
+#   Run MinIO setup after services are ready:
+#     python tests/fixtures/setup_minio.py
+#
+#   Stop and cleanup:
+#     docker compose -f docker-compose.sql-tests.yml down -v
+#
+
+services:
+  # ===========================================================================
+  # MinIO - S3-Compatible Object Storage
+  # ===========================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: rvbbit-test-minio
+    ports:
+      - "9100:9000"    # S3 API
+      - "9101:9001"    # Console UI
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # MongoDB
+  # ===========================================================================
+  mongodb:
+    image: mongo:7
+    container_name: rvbbit-test-mongodb
+    ports:
+      - "27117:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: testpassword
+      MONGO_INITDB_DATABASE: testdb
+    volumes:
+      - mongodb-data:/data/db
+      - ./tests/fixtures/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Cassandra (optional - slow to start)
+  # ===========================================================================
+  cassandra:
+    image: cassandra:4.1
+    container_name: rvbbit-test-cassandra
+    profiles:
+      - cassandra
+    ports:
+      - "9142:9042"    # CQL native protocol
+    environment:
+      - CASSANDRA_CLUSTER_NAME=TestCluster
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ===========================================================================
+  # PostgreSQL (for postgres connector tests)
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: rvbbit-test-postgres
+    ports:
+      - "5532:5432"
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: testdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================================================
+  # MySQL (for mysql connector tests)
+  # ===========================================================================
+  mysql:
+    image: mysql:8
+    container_name: rvbbit-test-mysql
+    ports:
+      - "3406:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpassword
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - sql-tests
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+  mongodb-data:
+  cassandra-data:
+  postgres-data:
+  mysql-data:
+
+networks:
+  sql-tests:
+    driver: bridge

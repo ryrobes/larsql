@@ -174,21 +174,53 @@ def _auto_format_inputs_as_toon(inputs: Dict[str, Any]) -> Dict[str, Any]:
     return modified_inputs
 
 
-def _inject_candidates_into_cascade(cascade_path: str, candidates_config: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Load a cascade file and inject candidates config at the top level.
+    Deep merge override into base dict.
 
-    This enables cascade-level sampling (run entire cascade N times, pick best)
-    triggered by SQL comment hints like:
-        -- @ candidates.factor: 3
-        -- @ candidates.evaluator: Pick the most accurate response
+    Override values take precedence. Nested dicts are merged recursively.
+    """
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a cascade file and inject overrides at cascade and cell levels.
+
+    This enables cascade-level and cell-level overrides triggered by SQL comment hints:
+        -- @ candidates.factor: 3  (keyword-based)
+        -- @@ run 3 candidates with cheap model  (NL-interpreted)
+
+    Supports two override formats:
+
+    1. Legacy flat format (for backwards compatibility):
+       {"factor": 3, "evaluator": "...", "model": "..."}
+
+    2. New structured format (from NL interpreter):
+       {
+         "cascade_overrides": {
+           "candidates": {"factor": 3, ...},
+           "token_budget": {...},
+           "narrator": {...}
+         },
+         "cell_overrides": {
+           "default": {"model": "...", "rules": {...}, "wards": {...}},
+           "specific_cell": {"model": "..."}
+         }
+       }
 
     Args:
         cascade_path: Path to the cascade YAML/JSON file
-        candidates_config: Candidates configuration from SQL hints
+        overrides_config: Override configuration from SQL hints
 
     Returns:
-        Modified cascade config dict with candidates block injected
+        Modified cascade config dict with overrides injected
     """
     from ..loaders import load_config_file
 
@@ -196,44 +228,111 @@ def _inject_candidates_into_cascade(cascade_path: str, candidates_config: Dict[s
     cascade_dict = load_config_file(cascade_path)
     config = copy.deepcopy(cascade_dict)
 
-    # Build candidates block
-    candidates = {}
+    # Detect format: new structured vs legacy flat
+    is_new_format = 'cascade_overrides' in overrides_config or 'cell_overrides' in overrides_config
 
-    # Map hint keys to cascade candidates config
-    if 'factor' in candidates_config:
-        candidates['factor'] = candidates_config['factor']
+    if is_new_format:
+        # New structured format from NL interpreter
+        cascade_overrides = overrides_config.get('cascade_overrides', {})
+        cell_overrides = overrides_config.get('cell_overrides', {})
 
-    if 'multi_model' in candidates_config:
-        candidates['multi_model'] = candidates_config['multi_model']
-        # Ensure factor matches number of models
-        if 'factor' not in candidates:
-            candidates['factor'] = len(candidates_config['multi_model'])
+        # Apply cascade-level overrides
+        for key, value in cascade_overrides.items():
+            if key == 'candidates':
+                # Merge with existing candidates config
+                existing = config.get('candidates', {})
+                config['candidates'] = _deep_merge(existing, value)
+                log.info(f"[cascade_udf] Injected cascade candidates: {config['candidates']}")
+            elif key in ['token_budget', 'narrator', 'auto_context', 'memory', 'max_parallel']:
+                config[key] = value
+                log.info(f"[cascade_udf] Injected cascade {key}: {value}")
 
-    if 'evaluator' in candidates_config:
-        candidates['evaluator_instructions'] = candidates_config['evaluator']
+        # Apply cell-level overrides
+        if cell_overrides and 'cells' in config:
+            default_overrides = cell_overrides.get('default', {})
 
-    if 'max_parallel' in candidates_config:
-        candidates['max_parallel'] = candidates_config['max_parallel']
+            for i, cell in enumerate(config['cells']):
+                cell_name = cell.get('name', f'cell_{i}')
 
-    if 'mode' in candidates_config:
-        candidates['mode'] = candidates_config['mode']
+                # Get specific overrides for this cell, or use default
+                specific_overrides = cell_overrides.get(cell_name, {})
+                merged_overrides = _deep_merge(default_overrides, specific_overrides)
 
-    if 'mutate' in candidates_config:
-        candidates['mutate'] = candidates_config['mutate']
+                if not merged_overrides:
+                    continue
 
-    if 'reforge' in candidates_config:
-        # Reforge is a nested config
-        candidates['reforge'] = {'rounds': candidates_config['reforge']}
+                # Apply overrides to cell
+                for key, value in merged_overrides.items():
+                    if key == 'model':
+                        config['cells'][i]['model'] = value
+                        log.info(f"[cascade_udf] Cell '{cell_name}' model → {value}")
+                    elif key == 'candidates':
+                        existing = config['cells'][i].get('candidates', {})
+                        config['cells'][i]['candidates'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' candidates → {config['cells'][i]['candidates']}")
+                    elif key == 'rules':
+                        existing = config['cells'][i].get('rules', {})
+                        config['cells'][i]['rules'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' rules → {config['cells'][i]['rules']}")
+                    elif key == 'wards':
+                        existing = config['cells'][i].get('wards', {})
+                        config['cells'][i]['wards'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' wards → {config['cells'][i]['wards']}")
+                    elif key == 'intra_context':
+                        existing = config['cells'][i].get('intra_context', {})
+                        config['cells'][i]['intra_context'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' intra_context → {config['cells'][i]['intra_context']}")
+                    elif key == 'context':
+                        existing = config['cells'][i].get('context', {})
+                        config['cells'][i]['context'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' context → {config['cells'][i]['context']}")
+                    elif key in ['traits', 'handoffs', 'use_native_tools', 'output_schema']:
+                        config['cells'][i][key] = value
+                        log.info(f"[cascade_udf] Cell '{cell_name}' {key} → {value}")
 
-    if 'evaluator_model' in candidates_config:
-        candidates['evaluator_model'] = candidates_config['evaluator_model']
+    else:
+        # Legacy flat format for backwards compatibility
+        candidates = {}
 
-    # Inject at top level
-    if candidates:
-        config['candidates'] = candidates
-        log.info(f"[cascade_udf] Injected candidates config: {candidates}")
+        # Map hint keys to cascade candidates config
+        if 'factor' in overrides_config:
+            candidates['factor'] = overrides_config['factor']
+
+        if 'multi_model' in overrides_config:
+            candidates['multi_model'] = overrides_config['multi_model']
+            # Ensure factor matches number of models
+            if 'factor' not in candidates:
+                candidates['factor'] = len(overrides_config['multi_model'])
+
+        if 'evaluator' in overrides_config:
+            candidates['evaluator_instructions'] = overrides_config['evaluator']
+
+        if 'max_parallel' in overrides_config:
+            candidates['max_parallel'] = overrides_config['max_parallel']
+
+        if 'mode' in overrides_config:
+            candidates['mode'] = overrides_config['mode']
+
+        if 'mutate' in overrides_config:
+            candidates['mutate'] = overrides_config['mutate']
+
+        if 'reforge' in overrides_config:
+            # Reforge is a nested config
+            candidates['reforge'] = {'rounds': overrides_config['reforge']}
+
+        if 'evaluator_model' in overrides_config:
+            candidates['evaluator_model'] = overrides_config['evaluator_model']
+
+        # Inject at top level
+        if candidates:
+            config['candidates'] = candidates
+            log.info(f"[cascade_udf] Injected candidates config: {candidates}")
 
     return config
+
+
+# Backwards compatibility alias
+_inject_candidates_into_cascade = _inject_overrides_into_cascade
 
 
 def _run_cascade_sync(

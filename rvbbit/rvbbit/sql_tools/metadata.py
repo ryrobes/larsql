@@ -81,6 +81,147 @@ class TableMetadata:
             rows = self.conn.fetch_all(sql)
             return [(None, row[0]) for row in rows]
 
+        # === Cloud Database Types ===
+        elif config.type == "bigquery":
+            # BigQuery attaches as a database
+            # Use SHOW TABLES which works with BigQuery extension
+            # Note: This doesn't give us dataset info, tables appear flat
+            sql = f"SHOW TABLES FROM {alias}"
+            try:
+                rows = self.conn.fetch_all(sql)
+                # SHOW TABLES returns (name,) tuples - deduplicate
+                seen = set()
+                tables = []
+                for row in rows:
+                    table_name = row[0]
+                    if table_name not in seen:
+                        seen.add(table_name)
+                        tables.append((None, table_name))
+                return tables
+            except Exception as e:
+                print(f"    ⚠️  Failed to list BigQuery tables: {str(e)[:80]}")
+                return []
+
+        elif config.type == "snowflake":
+            # Snowflake attaches as a database
+            sql = f"""
+                SELECT table_schema, table_name
+                FROM {alias}.information_schema.tables
+                WHERE table_type = 'BASE TABLE'
+                ORDER BY table_schema, table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(row[0], row[1]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list Snowflake tables: {str(e)[:80]}")
+                return []
+
+        elif config.type == "motherduck":
+            # Motherduck uses DuckDB's table listing
+            sql = f"""
+                SELECT schema_name, table_name
+                FROM duckdb_tables()
+                WHERE database_name = '{alias}'
+                ORDER BY schema_name, table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(row[0], row[1]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list Motherduck tables: {str(e)[:80]}")
+                return []
+
+        # === Remote Filesystem Types (create views in a schema) ===
+        elif config.type in ("s3", "azure", "gcs", "http"):
+            # These create VIEWS in a schema named {alias}
+            # Use duckdb_views() since S3 files are registered as views
+            sql = f"""
+                SELECT view_name
+                FROM duckdb_views()
+                WHERE schema_name = '{alias}'
+                ORDER BY view_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list {config.type} views: {str(e)[:80]}")
+                return []
+
+        # === Materialized Types (create tables in a schema) ===
+        elif config.type in ("mongodb", "cassandra"):
+            # These materialize collections/tables into a DuckDB schema
+            # Use duckdb_tables() to avoid routing through attached databases
+            sql = f"""
+                SELECT table_name
+                FROM duckdb_tables()
+                WHERE schema_name = '{alias}'
+                ORDER BY table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list {config.type} tables: {str(e)[:80]}")
+                return []
+
+        # === Scanner Types (create views in a schema) ===
+        elif config.type in ("excel", "gsheets"):
+            # These create VIEWS for sheets
+            # Use duckdb_views() since these are registered as views
+            sql = f"""
+                SELECT view_name
+                FROM duckdb_views()
+                WHERE schema_name = '{alias}'
+                ORDER BY view_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list {config.type} views: {str(e)[:80]}")
+                return []
+
+        elif config.type == "odbc":
+            # ODBC requires manual table discovery - skip for now
+            print(f"    ⚠️  ODBC table discovery not implemented - use manual queries")
+            return []
+
+        # === Lakehouse Types ===
+        elif config.type in ("delta", "iceberg"):
+            # These create VIEWS in a schema
+            # Use duckdb_views() since these are registered as views
+            sql = f"""
+                SELECT view_name
+                FROM duckdb_views()
+                WHERE schema_name = '{alias}'
+                ORDER BY view_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list {config.type} views: {str(e)[:80]}")
+                return []
+
+        # === ClickHouse (materialized into DuckDB schema) ===
+        elif config.type == "clickhouse":
+            # ClickHouse tables are materialized into a DuckDB schema
+            # Use duckdb_tables() to list them
+            sql = f"""
+                SELECT table_name
+                FROM duckdb_tables()
+                WHERE schema_name = '{alias}'
+                ORDER BY table_name
+            """
+            try:
+                rows = self.conn.fetch_all(sql)
+                return [(alias, row[0]) for row in rows]
+            except Exception as e:
+                print(f"    ⚠️  Failed to list ClickHouse tables: {str(e)[:80]}")
+                return []
+
         else:
             raise ValueError(f"Unsupported database type: {config.type}")
 
@@ -118,22 +259,54 @@ class TableMetadata:
         """
         alias = config.connection_name
 
-        # Build qualified table name
+        # Build qualified table name based on connection type
         if config.type == "csv_folder":
             # For CSV: csv_files.bigfoot_sightings
             full_table_name = f"{alias}.{table_name}"
             display_schema = alias
+
         elif config.type == "duckdb_folder":
             # For DuckDB folder: schema is db_name (e.g., "market_research")
             # Query: market_research.table_name (direct, since db is attached)
             full_table_name = f"{schema}.{table_name}"
             display_schema = schema  # db_name
+
+        elif config.type in ("s3", "azure", "gcs", "http", "mongodb", "cassandra",
+                             "excel", "gsheets", "delta", "iceberg", "clickhouse"):
+            # These create views/tables in a schema named after the alias
+            # Query: alias.table_name
+            full_table_name = f"{alias}.{table_name}"
+            display_schema = alias
+
+        elif config.type in ("bigquery", "snowflake", "motherduck"):
+            # Cloud databases attach as databases - schema is the dataset/schema
+            if schema and schema != alias:
+                full_table_name = f"{alias}.{schema}.{table_name}"
+                display_schema = schema
+            else:
+                full_table_name = f"{alias}.{table_name}"
+                display_schema = None
+
         elif schema:
+            # Default: alias.schema.table
             full_table_name = f"{alias}.{schema}.{table_name}"
             display_schema = schema
         else:
             full_table_name = f"{alias}.{table_name}"
             display_schema = None
+
+        # For remote filesystem types, re-apply credentials before querying
+        if config.type == "s3":
+            self._ensure_s3_credentials(config)
+        elif config.type == "gcs":
+            self._ensure_gcs_credentials(config)
+        elif config.type == "azure":
+            self._ensure_azure_credentials(config)
+
+        # BigQuery uses Storage Read API which requires special permissions
+        # Fall back to schema-only extraction if data access fails
+        if config.type == "bigquery":
+            return self._extract_bigquery_metadata(config, full_table_name, table_name, display_schema)
 
         try:
             # Get row count
@@ -239,3 +412,123 @@ class TableMetadata:
             })
 
         return columns
+
+    def _ensure_s3_credentials(self, config: SqlConnectionConfig) -> None:
+        """Re-apply S3 credentials before querying S3-backed views."""
+        import os
+
+        try:
+            self.conn.execute("LOAD httpfs;")
+        except Exception:
+            pass
+
+        if config.access_key_env:
+            access_key = os.getenv(config.access_key_env, "")
+            if access_key:
+                self.conn.execute(f"SET s3_access_key_id='{access_key}';")
+
+        if config.secret_key_env:
+            secret_key = os.getenv(config.secret_key_env, "")
+            if secret_key:
+                self.conn.execute(f"SET s3_secret_access_key='{secret_key}';")
+
+        if config.region:
+            self.conn.execute(f"SET s3_region='{config.region}';")
+
+        if config.endpoint_url:
+            self.conn.execute(f"SET s3_endpoint='{config.endpoint_url.replace('http://', '').replace('https://', '')}';")
+            self.conn.execute("SET s3_url_style='path';")
+            # Disable SSL for local endpoints
+            if 'localhost' in config.endpoint_url or '127.0.0.1' in config.endpoint_url:
+                self.conn.execute("SET s3_use_ssl=false;")
+
+    def _ensure_gcs_credentials(self, config: SqlConnectionConfig) -> None:
+        """Re-apply GCS credentials before querying GCS-backed views."""
+        from .config import resolve_google_credentials
+
+        try:
+            self.conn.execute("LOAD httpfs;")
+        except Exception:
+            pass
+
+        # Resolve credentials (handles JSON string → temp file)
+        creds_path = resolve_google_credentials(config.credentials_env or "GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_path:
+            self.conn.execute(f"SET gcs_credentials_file='{creds_path}';")
+
+    def _ensure_azure_credentials(self, config: SqlConnectionConfig) -> None:
+        """Re-apply Azure credentials before querying Azure-backed views."""
+        import os
+
+        try:
+            self.conn.execute("LOAD azure;")
+        except Exception:
+            pass
+
+        if config.connection_string_env:
+            conn_str = os.getenv(config.connection_string_env, "")
+            if conn_str:
+                self.conn.execute(f"SET azure_storage_connection_string='{conn_str}';")
+
+    def _extract_bigquery_metadata(
+        self,
+        config: SqlConnectionConfig,
+        full_table_name: str,
+        table_name: str,
+        display_schema: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Extract BigQuery metadata using schema-only approach.
+
+        BigQuery's Storage Read API requires additional permissions that may not
+        be available. This method falls back to DESCRIBE for schema info and
+        skips row counts/samples if data access fails.
+        """
+        try:
+            # Try DESCRIBE first - this often works even without Storage API
+            desc_sql = f"DESCRIBE {full_table_name}"
+            desc_df = self.conn.fetch_df(desc_sql)
+
+            columns = []
+            for _, col_row in desc_df.iterrows():
+                col_name = col_row['column_name']
+                col_type = col_row['column_type']
+                nullable = col_row.get('null', 'YES') == 'YES'
+
+                columns.append({
+                    "name": col_name,
+                    "type": col_type,
+                    "nullable": nullable,
+                    "metadata": {}  # Skip detailed metadata for BigQuery
+                })
+
+            # Try to get row count and samples, but don't fail if it doesn't work
+            row_count = None
+            sample_columns = []
+            sample_rows = []
+
+            try:
+                row_count_sql = f"SELECT COUNT(*) as cnt FROM {full_table_name}"
+                row_count = self.conn.fetch_one(row_count_sql)[0]
+
+                sample_sql = f"SELECT * FROM {full_table_name} LIMIT {config.sample_row_limit}"
+                sample_df = self.conn.fetch_df(sample_sql)
+                sample_columns = list(sample_df.columns)
+                sample_rows = sample_df.values.tolist()
+            except Exception:
+                # Storage API not available - that's OK, we have schema info
+                pass
+
+            return {
+                "table_name": table_name,
+                "schema": display_schema,
+                "database": config.connection_name,
+                "row_count": row_count,
+                "columns": columns,
+                "sample_columns": sample_columns,
+                "sample_rows": sample_rows
+            }
+
+        except Exception as e:
+            print(f"    ⚠️  Error extracting BigQuery metadata for {full_table_name}: {str(e)[:100]}")
+            return None

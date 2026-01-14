@@ -1,0 +1,1129 @@
+<h1>SQL Connections</h1>
+<p class="lead">
+  Connect RVBBIT to 18+ data sources through DuckDB's federation capabilities. Query PostgreSQL,
+  BigQuery, Snowflake, S3, MongoDB, and more with a unified SQL interface.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Federation, Not ETL</div>
+  <p>
+    RVBBIT federates queries across data sources using DuckDB's ATTACH capability. For most sources,
+    data stays where it is—queries are pushed down. For document databases (MongoDB, Cassandra),
+    data is materialized into DuckDB for SQL compatibility.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#quick-start">Quick Start</a></li>
+    <li><a href="#connection-types">Connection Types</a></li>
+    <li><a href="#databases">Traditional Databases</a></li>
+    <li><a href="#cloud-warehouses">Cloud Data Warehouses</a></li>
+    <li><a href="#object-storage">Object Storage</a></li>
+    <li><a href="#lakehouse">Lakehouse Formats</a></li>
+    <li><a href="#document-dbs">Document Databases</a></li>
+    <li><a href="#files">Spreadsheets & Files</a></li>
+    <li><a href="#schema-discovery">Schema Discovery</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ul>
+</div>
+
+<h2 id="quick-start">Quick Start</h2>
+
+<p>
+  Connections are configured via YAML files in the <code>sql_connections/</code> directory.
+</p>
+
+<h3>Step 1: Create Connection File</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/my_postgres.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: my_postgres
+<span class="key">type</span>: postgres
+<span class="key">host</span>: localhost
+<span class="key">port</span>: <span class="num">5432</span>
+<span class="key">database</span>: mydb
+<span class="key">user</span>: myuser
+<span class="key">password_env</span>: POSTGRES_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>Step 2: Set Environment Variables</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Environment Setup</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">export</span> POSTGRES_PASSWORD=<span class="str">"secret"</span></pre>
+  </div>
+</div>
+
+<h3>Step 3: Run Schema Discovery</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre>rvbbit sql crawl</pre>
+  </div>
+</div>
+
+<h3>Step 4: Query Your Data</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">CLI</span>
+  </div>
+  <div class="code-block-content">
+    <pre>rvbbit sql query <span class="str">"SELECT * FROM my_postgres.public.users LIMIT 10"</span></pre>
+  </div>
+</div>
+
+<h2 id="connection-types">Connection Types Overview</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Types</th>
+      <th>Federation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Traditional Databases</strong></td>
+      <td><code>postgres</code>, <code>mysql</code>, <code>sqlite</code>, <code>clickhouse</code></td>
+      <td>Native ATTACH (ClickHouse materializes)</td>
+    </tr>
+    <tr>
+      <td><strong>Cloud Warehouses</strong></td>
+      <td><code>bigquery</code>, <code>snowflake</code>, <code>motherduck</code></td>
+      <td>Native ATTACH via extensions</td>
+    </tr>
+    <tr>
+      <td><strong>Object Storage</strong></td>
+      <td><code>s3</code>, <code>gcs</code>, <code>azure</code>, <code>http</code></td>
+      <td>Direct file reads (Parquet, CSV, JSON)</td>
+    </tr>
+    <tr>
+      <td><strong>Lakehouse</strong></td>
+      <td><code>delta</code>, <code>iceberg</code></td>
+      <td>Native format support</td>
+    </tr>
+    <tr>
+      <td><strong>Document DBs</strong></td>
+      <td><code>mongodb</code>, <code>cassandra</code></td>
+      <td>Materializes to DuckDB</td>
+    </tr>
+    <tr>
+      <td><strong>Files</strong></td>
+      <td><code>excel</code>, <code>gsheets</code>, <code>csv_folder</code>, <code>duckdb_folder</code></td>
+      <td>Direct reads / materialization</td>
+    </tr>
+    <tr>
+      <td><strong>Generic</strong></td>
+      <td><code>odbc</code></td>
+      <td>Via ODBC drivers</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Common Configuration Options</h3>
+
+<p>All connection types support these optional fields:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>enabled</code></td>
+      <td><code>true</code></td>
+      <td>Whether the connection is active</td>
+    </tr>
+    <tr>
+      <td><code>read_only</code></td>
+      <td><code>true</code></td>
+      <td>Prevent write operations</td>
+    </tr>
+    <tr>
+      <td><code>sample_row_limit</code></td>
+      <td><code>50</code></td>
+      <td>Max rows for schema discovery samples</td>
+    </tr>
+    <tr>
+      <td><code>distinct_value_threshold</code></td>
+      <td><code>100</code></td>
+      <td>Show value distribution if distinct count below this</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="databases">Traditional Databases</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:elephant"></iconify-icon></div>
+    <h4>PostgreSQL</h4>
+    <p>Native DuckDB ATTACH using the <code>postgres</code> extension.</p>
+    <p class="stat">Default port: 5432</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:dolphin"></iconify-icon></div>
+    <h4>MySQL</h4>
+    <p>Native DuckDB ATTACH using the <code>mysql</code> extension.</p>
+    <p class="stat">Default port: 3306</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:database"></iconify-icon></div>
+    <h4>SQLite</h4>
+    <p>Direct file attachment for SQLite databases.</p>
+    <p class="stat">Local files only</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--orange);"><iconify-icon icon="mdi:home-analytics"></iconify-icon></div>
+    <h4>ClickHouse</h4>
+    <p>HTTP API connection, tables materialized into DuckDB.</p>
+    <p class="stat">Default port: 8123 (HTTP)</p>
+  </div>
+</div>
+
+<h3>PostgreSQL</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>host</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>PostgreSQL server hostname</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>Database name</td>
+    </tr>
+    <tr>
+      <td><code>port</code></td>
+      <td>No</td>
+      <td>5432</td>
+      <td>PostgreSQL port</td>
+    </tr>
+    <tr>
+      <td><code>user</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>Username</td>
+    </tr>
+    <tr>
+      <td><code>password_env</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>Environment variable containing password</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/production_db.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: production_db
+<span class="key">type</span>: postgres
+<span class="key">host</span>: db.example.com
+<span class="key">port</span>: <span class="num">5432</span>
+<span class="key">database</span>: production
+<span class="key">user</span>: readonly_user
+<span class="key">password_env</span>: PROD_DB_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">read_only</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Query Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> production_db.public.users;
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> production_db.analytics.events;</pre>
+  </div>
+</div>
+
+<h3>MySQL</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/mysql_analytics.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: mysql_analytics
+<span class="key">type</span>: mysql
+<span class="key">host</span>: mysql.example.com
+<span class="key">port</span>: <span class="num">3306</span>
+<span class="key">database</span>: analytics
+<span class="key">user</span>: analyst
+<span class="key">password_env</span>: MYSQL_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>SQLite</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/local_cache.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: local_cache
+<span class="key">type</span>: sqlite
+<span class="key">database</span>: /path/to/cache.db
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>ClickHouse</h3>
+
+<div class="callout callout-warning">
+  <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> Materialization</div>
+  <p>
+    ClickHouse tables are <strong>materialized</strong> (copied) into DuckDB. Use <code>sample_row_limit</code>
+    to control how many rows are copied per table. This is different from PostgreSQL/MySQL which use
+    native federation.
+  </p>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/clickhouse_logs.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: clickhouse_logs
+<span class="key">type</span>: clickhouse
+<span class="key">host</span>: clickhouse.example.com
+<span class="key">port</span>: <span class="num">8123</span>  <span class="cmt"># HTTP port, not 9000</span>
+<span class="key">database</span>: logs
+<span class="key">user</span>: reader
+<span class="key">password_env</span>: CLICKHOUSE_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">1000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install clickhouse-connect</pre>
+  </div>
+</div>
+
+<h2 id="cloud-warehouses">Cloud Data Warehouses</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:google-cloud"></iconify-icon></div>
+    <h4>BigQuery</h4>
+    <p>Native DuckDB extension from community repository.</p>
+    <p class="stat">GCP service account auth</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:snowflake"></iconify-icon></div>
+    <h4>Snowflake</h4>
+    <p>Native DuckDB <code>snowflake</code> extension.</p>
+    <p class="stat">Account + user + warehouse</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:duck"></iconify-icon></div>
+    <h4>Motherduck</h4>
+    <p>Cloud-hosted DuckDB with native ATTACH.</p>
+    <p class="stat">Token-based auth</p>
+  </div>
+</div>
+
+<h3>BigQuery</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>project_id</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>GCP project ID to query</td>
+    </tr>
+    <tr>
+      <td><code>credentials_env</code></td>
+      <td>No</td>
+      <td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+      <td>Env var for service account JSON</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/bigquery_analytics.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: bigquery_analytics
+<span class="key">type</span>: bigquery
+<span class="key">project_id</span>: my-gcp-project
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">read_only</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Environment Setup</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Option 1: Path to service account JSON file</span>
+<span class="kw">export</span> GOOGLE_APPLICATION_CREDENTIALS=<span class="str">"/path/to/service-account.json"</span>
+
+<span class="cmt"># Option 2: JSON content directly (useful in containers)</span>
+<span class="kw">export</span> GOOGLE_APPLICATION_CREDENTIALS=<span class="str">'{"type":"service_account","project_id":"..."}'</span></pre>
+  </div>
+</div>
+
+<p><strong>Required GCP Permissions:</strong></p>
+<ul>
+  <li><code>bigquery.jobs.create</code> - To run queries</li>
+  <li><code>bigquery.tables.getData</code> - To read table data</li>
+  <li><code>bigquery.readsessions.create</code> (optional) - For Storage Read API (faster reads)</li>
+</ul>
+
+<h3>Snowflake</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>account</code></td>
+      <td>Yes</td>
+      <td>Account identifier (e.g., <code>xy12345.us-east-1</code>)</td>
+    </tr>
+    <tr>
+      <td><code>user</code></td>
+      <td>Yes</td>
+      <td>Snowflake username</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>No</td>
+      <td>Default database</td>
+    </tr>
+    <tr>
+      <td><code>warehouse</code></td>
+      <td>No</td>
+      <td>Compute warehouse</td>
+    </tr>
+    <tr>
+      <td><code>role</code></td>
+      <td>No</td>
+      <td>Snowflake role</td>
+    </tr>
+    <tr>
+      <td><code>password_env</code></td>
+      <td>No</td>
+      <td>Env var for password</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/snowflake_warehouse.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: snowflake_warehouse
+<span class="key">type</span>: snowflake
+<span class="key">account</span>: xy12345.us-east-1
+<span class="key">user</span>: analyst
+<span class="key">database</span>: ANALYTICS
+<span class="key">warehouse</span>: COMPUTE_WH
+<span class="key">role</span>: ANALYST_ROLE
+<span class="key">password_env</span>: SNOWFLAKE_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>Motherduck</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/motherduck_analytics.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: motherduck_analytics
+<span class="key">type</span>: motherduck
+<span class="key">database</span>: my_analytics
+<span class="key">motherduck_token_env</span>: MOTHERDUCK_TOKEN
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h2 id="object-storage">Object Storage</h2>
+
+<p>
+  Read Parquet, CSV, and JSON files directly from cloud object storage.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--orange);"><iconify-icon icon="mdi:aws"></iconify-icon></div>
+    <h4>Amazon S3</h4>
+    <p>Also supports MinIO, Cloudflare R2, DigitalOcean Spaces via <code>endpoint_url</code>.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:google-cloud"></iconify-icon></div>
+    <h4>Google Cloud Storage</h4>
+    <p>Read from GCS buckets with service account auth.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:microsoft-azure"></iconify-icon></div>
+    <h4>Azure Blob Storage</h4>
+    <p>Read from Azure containers via connection string.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:web"></iconify-icon></div>
+    <h4>HTTP/HTTPS</h4>
+    <p>Read files directly from URLs.</p>
+  </div>
+</div>
+
+<h3>Amazon S3</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>bucket</code></td>
+      <td>Yes</td>
+      <td>—</td>
+      <td>S3 bucket name</td>
+    </tr>
+    <tr>
+      <td><code>prefix</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>Path prefix within bucket</td>
+    </tr>
+    <tr>
+      <td><code>region</code></td>
+      <td>No</td>
+      <td>us-east-1</td>
+      <td>AWS region</td>
+    </tr>
+    <tr>
+      <td><code>access_key_env</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>Env var for AWS access key</td>
+    </tr>
+    <tr>
+      <td><code>secret_key_env</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>Env var for AWS secret key</td>
+    </tr>
+    <tr>
+      <td><code>file_pattern</code></td>
+      <td>No</td>
+      <td>*.parquet</td>
+      <td>Glob pattern for files</td>
+    </tr>
+    <tr>
+      <td><code>endpoint_url</code></td>
+      <td>No</td>
+      <td>—</td>
+      <td>S3-compatible endpoint (MinIO, R2)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/s3_data_lake.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: s3_data_lake
+<span class="key">type</span>: s3
+<span class="key">bucket</span>: my-data-lake
+<span class="key">prefix</span>: bronze/events
+<span class="key">region</span>: us-west-2
+<span class="key">access_key_env</span>: AWS_ACCESS_KEY_ID
+<span class="key">secret_key_env</span>: AWS_SECRET_ACCESS_KEY
+<span class="key">file_pattern</span>: <span class="str">"*.parquet"</span>
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h4>S3-Compatible Storage (MinIO, R2)</h4>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">MinIO Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: minio_data
+<span class="key">type</span>: s3
+<span class="key">bucket</span>: analytics
+<span class="key">prefix</span>: raw
+<span class="key">endpoint_url</span>: http://localhost:9000
+<span class="key">access_key_env</span>: MINIO_ACCESS_KEY
+<span class="key">secret_key_env</span>: MINIO_SECRET_KEY
+<span class="key">file_pattern</span>: <span class="str">"*.parquet"</span>
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cloudflare R2 Example</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: r2_storage
+<span class="key">type</span>: s3
+<span class="key">bucket</span>: my-bucket
+<span class="key">endpoint_url</span>: https://account-id.r2.cloudflarestorage.com
+<span class="key">access_key_env</span>: R2_ACCESS_KEY
+<span class="key">secret_key_env</span>: R2_SECRET_KEY
+<span class="key">file_pattern</span>: <span class="str">"**/*.parquet"</span>
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>Google Cloud Storage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/gcs_warehouse.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: gcs_warehouse
+<span class="key">type</span>: gcs
+<span class="key">bucket</span>: my-data-warehouse
+<span class="key">prefix</span>: processed/2024
+<span class="key">credentials_env</span>: GOOGLE_APPLICATION_CREDENTIALS
+<span class="key">file_pattern</span>: <span class="str">"*.parquet"</span>
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>Azure Blob Storage</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/azure_data.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: azure_data
+<span class="key">type</span>: azure
+<span class="key">bucket</span>: analytics-container
+<span class="key">prefix</span>: exports
+<span class="key">connection_string_env</span>: AZURE_STORAGE_CONNECTION_STRING
+<span class="key">file_pattern</span>: <span class="str">"*.parquet"</span>
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>HTTP/HTTPS Files</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/public_dataset.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: public_dataset
+<span class="key">type</span>: http
+<span class="key">folder_path</span>: https://example.com/data/events.parquet
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h2 id="lakehouse">Lakehouse Formats</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--cyan);"><iconify-icon icon="mdi:delta"></iconify-icon></div>
+    <h4>Delta Lake</h4>
+    <p>Read Delta tables from local paths or cloud storage (s3://, azure://).</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:hexagon-multiple"></iconify-icon></div>
+    <h4>Apache Iceberg</h4>
+    <p>Read Iceberg tables with optional catalog support (REST, Glue, Hive).</p>
+  </div>
+</div>
+
+<h3>Delta Lake</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Local Delta Table</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: delta_events
+<span class="key">type</span>: delta
+<span class="key">table_path</span>: /data/delta/events
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Delta on S3</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: delta_s3
+<span class="key">type</span>: delta
+<span class="key">table_path</span>: s3://my-bucket/delta/customers
+<span class="key">access_key_env</span>: AWS_ACCESS_KEY_ID
+<span class="key">secret_key_env</span>: AWS_SECRET_ACCESS_KEY
+<span class="key">region</span>: us-east-1
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>Apache Iceberg</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/iceberg_warehouse.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: iceberg_warehouse
+<span class="key">type</span>: iceberg
+<span class="key">table_path</span>: s3://my-bucket/iceberg/sales
+<span class="key">access_key_env</span>: AWS_ACCESS_KEY_ID
+<span class="key">secret_key_env</span>: AWS_SECRET_ACCESS_KEY
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h2 id="document-dbs">Document Databases</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-title"><iconify-icon icon="mdi:alert-outline"></iconify-icon> Materialization Required</div>
+  <p>
+    Document databases (MongoDB, Cassandra) are <strong>materialized</strong> into DuckDB tables.
+    Use <code>sample_row_limit</code> to control data volume. Nested documents are flattened with
+    underscores (e.g., <code>address.city</code> becomes <code>address_city</code>).
+  </p>
+</div>
+
+<h3>MongoDB</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Required</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>mongodb_uri_env</code></td>
+      <td>Yes</td>
+      <td>Env var containing MongoDB connection URI</td>
+    </tr>
+    <tr>
+      <td><code>database</code></td>
+      <td>Yes</td>
+      <td>MongoDB database name</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/mongo_users.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: mongo_users
+<span class="key">type</span>: mongodb
+<span class="key">mongodb_uri_env</span>: MONGODB_URI
+<span class="key">database</span>: production
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">10000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Environment & Dependencies</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">export</span> MONGODB_URI=<span class="str">"mongodb://user:password@localhost:27017"</span>
+pip install pymongo pandas</pre>
+  </div>
+</div>
+
+<h3>Cassandra</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/cassandra_events.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: cassandra_events
+<span class="key">type</span>: cassandra
+<span class="key">cassandra_hosts</span>:
+  - cassandra1.example.com
+  - cassandra2.example.com
+<span class="key">cassandra_keyspace</span>: events
+<span class="key">user</span>: reader
+<span class="key">password_env</span>: CASSANDRA_PASSWORD
+<span class="key">enabled</span>: <span class="kw">true</span>
+<span class="key">sample_row_limit</span>: <span class="num">5000</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install cassandra-driver pandas</pre>
+  </div>
+</div>
+
+<h2 id="files">Spreadsheets & Files</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:google-spreadsheet"></iconify-icon></div>
+    <h4>Google Sheets</h4>
+    <p>Read sheets via service account. Sheet must be shared.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:microsoft-excel"></iconify-icon></div>
+    <h4>Excel Files</h4>
+    <p>Read local .xlsx/.xls files. Each sheet becomes a table.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:file-delimited"></iconify-icon></div>
+    <h4>CSV Folder</h4>
+    <p>Auto-load all CSV files from a directory.</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--orange);"><iconify-icon icon="mdi:database"></iconify-icon></div>
+    <h4>DuckDB Folder</h4>
+    <p>Attach multiple .duckdb files from a directory.</p>
+  </div>
+</div>
+
+<h3>Google Sheets</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/sales_tracker.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: sales_tracker
+<span class="key">type</span>: gsheets
+<span class="key">spreadsheet_id</span>: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+<span class="key">sheet_name</span>: Q4_Sales  <span class="cmt"># Optional: specific sheet</span>
+<span class="key">credentials_env</span>: GOOGLE_APPLICATION_CREDENTIALS
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<p><strong>Note:</strong> The spreadsheet must be shared with the service account email.</p>
+
+<h3>Excel Files</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/budget_2024.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: budget_2024
+<span class="key">type</span>: excel
+<span class="key">file_path</span>: /data/reports/budget_2024.xlsx
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Query Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> budget_2024.Sheet1;
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> budget_2024.Summary;</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Dependency</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install openpyxl</pre>
+  </div>
+</div>
+
+<h3>CSV Folder</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/csv_data.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: csv_data
+<span class="key">type</span>: csv_folder
+<span class="key">folder_path</span>: /data/csv_exports
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Query Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- For file: customers.csv</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> csv_data.customers;
+
+<span class="cmt">-- For file: 2024-sales-report.csv</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> csv_data._2024_sales_report;</pre>
+  </div>
+</div>
+
+<h3>DuckDB Folder</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/research_dbs.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: research_dbs
+<span class="key">type</span>: duckdb_folder
+<span class="key">folder_path</span>: /data/research
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h3>ODBC (Generic)</h3>
+
+<p>Connect to any ODBC-compatible database.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">sql_connections/legacy_db.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">connection_name</span>: legacy_db
+<span class="key">type</span>: odbc
+<span class="key">odbc_dsn</span>: LegacyOracleDB
+<span class="key">enabled</span>: <span class="kw">true</span></pre>
+  </div>
+</div>
+
+<h2 id="schema-discovery">Schema Discovery</h2>
+
+<p>
+  After configuring connections, run schema discovery to index tables for search and populate
+  the RAG index for natural language queries.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Discovery Commands</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Basic discovery</span>
+rvbbit sql crawl
+
+<span class="cmt"># With custom session ID</span>
+rvbbit sql crawl --session my_discovery
+
+<span class="cmt"># With all environment variables</span>
+MONGODB_URI=<span class="str">"mongodb://..."</span> \
+AWS_ACCESS_KEY_ID=<span class="str">"..."</span> \
+AWS_SECRET_ACCESS_KEY=<span class="str">"..."</span> \
+rvbbit sql crawl</pre>
+  </div>
+</div>
+
+<h3>What Discovery Does</h3>
+
+<ol>
+  <li>Connects to each enabled data source</li>
+  <li>Lists all tables/views</li>
+  <li>Extracts schema information (columns, types)</li>
+  <li>Samples data for value distributions</li>
+  <li>Builds a RAG index for natural language queries</li>
+</ol>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>BigQuery: "Error while creating read session"</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:help-circle-outline"></iconify-icon> Solution</div>
+  <p>
+    Missing BigQuery Storage Read API permissions. Either grant <code>bigquery.readsessions.create</code>
+    and <code>bigquery.readsessions.getData</code>, or accept that schema info will be available but
+    row counts/samples won't.
+  </p>
+</div>
+
+<h3>S3/MinIO: "HTTP 403" errors</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:help-circle-outline"></iconify-icon> Solution</div>
+  <p>
+    S3 credentials not set or expired. Ensure environment variables are set:
+  </p>
+  <pre>export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."</pre>
+</div>
+
+<h3>MongoDB: "missing mongodb_uri_env or env var not set"</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:help-circle-outline"></iconify-icon> Solution</div>
+  <p>
+    The <code>MONGODB_URI</code> environment variable isn't set:
+  </p>
+  <pre>export MONGODB_URI="mongodb://user:password@host:27017"</pre>
+</div>
+
+<h3>ClickHouse: "Authentication failed"</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:help-circle-outline"></iconify-icon> Solution</div>
+  <p>
+    Wrong credentials or using native port instead of HTTP. Use port <strong>8123</strong> (HTTP),
+    not 9000 (native).
+  </p>
+</div>
+
+<h3>General: "Unsupported database type"</h3>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:help-circle-outline"></iconify-icon> Solution</div>
+  <p>
+    Typo in <code>type</code> field. Check it matches one of the supported types exactly.
+  </p>
+</div>
+
+<h2>Dependencies Reference</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Required Packages</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>postgres</code>, <code>mysql</code>, <code>sqlite</code></td>
+      <td>Built into DuckDB</td>
+    </tr>
+    <tr>
+      <td><code>bigquery</code>, <code>snowflake</code>, <code>motherduck</code></td>
+      <td>DuckDB extensions (auto-installed)</td>
+    </tr>
+    <tr>
+      <td><code>s3</code>, <code>gcs</code>, <code>azure</code>, <code>http</code></td>
+      <td>DuckDB httpfs extension (auto-installed)</td>
+    </tr>
+    <tr>
+      <td><code>delta</code>, <code>iceberg</code></td>
+      <td>DuckDB extensions</td>
+    </tr>
+    <tr>
+      <td><code>mongodb</code></td>
+      <td><code>pip install pymongo pandas</code></td>
+    </tr>
+    <tr>
+      <td><code>cassandra</code></td>
+      <td><code>pip install cassandra-driver pandas</code></td>
+    </tr>
+    <tr>
+      <td><code>clickhouse</code></td>
+      <td><code>pip install clickhouse-connect</code></td>
+    </tr>
+    <tr>
+      <td><code>excel</code></td>
+      <td><code>pip install openpyxl</code></td>
+    </tr>
+    <tr>
+      <td><code>gsheets</code></td>
+      <td>DuckDB extension + service account</td>
+    </tr>
+    <tr>
+      <td><code>odbc</code></td>
+      <td>System ODBC drivers</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Install All Optional Connectors</span>
+  </div>
+  <div class="code-block-content">
+    <pre>pip install pymongo cassandra-driver clickhouse-connect openpyxl pandas</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next Steps</h2>
+
+<ul>
+  <li><a href="#semantic-sql" data-link>Semantic SQL</a> - Run AI-powered queries on connected data</li>
+  <li><a href="#embedding" data-link>Vector Search</a> - Create embeddings from your data</li>
+  <li><a href="#providers" data-link>AI Providers</a> - Configure LLM providers for semantic operations</li>
+</ul>

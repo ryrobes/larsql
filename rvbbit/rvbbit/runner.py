@@ -4892,7 +4892,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Build cascade config for hashing
             cascade_config_for_hash = {
                 'cascade_id': self.config.cascade_id,
-                'cells': [cell.dict() if hasattr(cell, 'dict') else cell for cell in self.config.cells] if self.config.cells else [],
+                'cells': [cell.model_dump() if hasattr(cell, 'model_dump') else cell for cell in self.config.cells] if self.config.cells else [],
             }
 
             # Compute genus_hash (cascade invocation identity)
@@ -5016,32 +5016,34 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Trigger analytics worker (async, non-blocking)
             # Pre-computes context-aware insights, Z-scores, and anomaly detection
-            try:
-                #print(f"[RUNNER] Triggering analytics for session: {self.session_id}, depth: {self.depth}")
-                from .analytics_worker import analyze_cascade_execution
-                import threading
+            # Skip if RVBBIT_DISABLE_ANALYTICS is set (e.g., during tests)
+            if os.getenv("RVBBIT_DISABLE_ANALYTICS", "").lower() not in ("true", "1", "yes"):
+                try:
+                    #print(f"[RUNNER] Triggering analytics for session: {self.session_id}, depth: {self.depth}")
+                    from .analytics_worker import analyze_cascade_execution
+                    import threading
 
-                def run_analytics():
-                    try:
-                        #print(f"[ANALYTICS_THREAD] Starting analysis for {self.session_id}")
-                        result = analyze_cascade_execution(self.session_id)
-                        #print(f"[ANALYTICS_THREAD] Completed: {result.get('success') if result else 'None'}")
-                    except Exception as e:
-                        logger = logging.getLogger(__name__)
-                        logger.debug(f"Analytics worker failed: {e}")
-                        print(f"[ANALYTICS_THREAD] FAILED: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    def run_analytics():
+                        try:
+                            #print(f"[ANALYTICS_THREAD] Starting analysis for {self.session_id}")
+                            result = analyze_cascade_execution(self.session_id)
+                            #print(f"[ANALYTICS_THREAD] Completed: {result.get('success') if result else 'None'}")
+                        except Exception as e:
+                            logger = logging.getLogger(__name__)
+                            logger.debug(f"Analytics worker failed: {e}")
+                            print(f"[ANALYTICS_THREAD] FAILED: {e}")
+                            import traceback
+                            traceback.print_exc()
 
-                # Run in background thread (don't block cascade completion)
-                analytics_thread = threading.Thread(target=run_analytics, daemon=True)
-                analytics_thread.start()
-                #print(f"[RUNNER] Analytics thread started for {self.session_id}")
+                    # Run in background thread (don't block cascade completion)
+                    analytics_thread = threading.Thread(target=run_analytics, daemon=True)
+                    analytics_thread.start()
+                    #print(f"[RUNNER] Analytics thread started for {self.session_id}")
 
-            except Exception as e:
-                print(f"[RUNNER] Failed to start analytics: {e}")
-                import traceback
-                traceback.print_exc()
+                except Exception as e:
+                    print(f"[RUNNER] Failed to start analytics: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Credit snapshot tracking (async, non-blocking)
             # Logs OpenRouter credit balance if stale or cascade had significant cost
@@ -5118,7 +5120,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 role="error",
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
-                cascade_config=self.config.dict() if hasattr(self.config, 'dict') else None,
+                cascade_config=self.config.model_dump() if hasattr(self.config, 'model_dump') else None,
                 content=f"{error_type}: {display_msg}\n\nTraceback:\n{error_tb}",
                 metadata={
                     "error_type": error_type,
@@ -5552,7 +5554,7 @@ If no tools are needed, return an empty array: []
         if mutation_mode == "rewrite":
             # Get species hash for this exact cell config
             if not species_hash:
-                species_hash = compute_species_hash(cell.dict(), input_data)
+                species_hash = compute_species_hash(cell.model_dump(), input_data)
 
             # Fetch previous winners with same species (apples-to-apples)
             limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
@@ -7334,7 +7336,7 @@ Use only numbers 0-100 for scores."""
         # Species hash is used to compare similar prompt rewrites, not needed for other mutation modes
         cell_species_hash = None
         if mutation_mode == 'rewrite':
-            cell_species_hash = compute_species_hash(cell.dict(), input_data)
+            cell_species_hash = compute_species_hash(cell.model_dump(), input_data)
 
         if cell.candidates.mutate:
             if cell.candidates.mutations:
@@ -9165,7 +9167,7 @@ Refinement directive: {reforge_config.honing_prompt}
                 depth=self.depth,
                 cascade_id=self.config.cascade_id,
                 cell_name=cell.name,
-                cell_config=cell.dict() if hasattr(cell, 'dict') else None,
+                cell_config=cell.model_dump() if hasattr(cell, 'model_dump') else None,
                 content=f"{error_type}: {display_msg}\n\nTraceback:\n{error_tb}",
                 metadata={
                     "error_type": error_type,
@@ -10047,7 +10049,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         try:
             from .utils import compute_species_hash
 
-            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
+            cell_config = cell.model_dump() if hasattr(cell, 'model_dump') else (cell if isinstance(cell, dict) else {})
             cell_species_hash = compute_species_hash(cell_config, input_data)
 
         except Exception as e:
@@ -10311,7 +10313,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         try:
             from .utils import compute_species_hash
 
-            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
+            cell_config = cell.model_dump() if hasattr(cell, 'model_dump') else (cell if isinstance(cell, dict) else {})
             cell_species_hash = compute_species_hash(cell_config, input_data)
 
         except Exception as e:
@@ -10426,7 +10428,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             from .utils import compute_species_hash
 
             # Get cell config as dict
-            cell_config = cell.dict() if hasattr(cell, 'dict') else (cell if isinstance(cell, dict) else {})
+            cell_config = cell.model_dump() if hasattr(cell, 'model_dump') else (cell if isinstance(cell, dict) else {})
 
             # Compute species_hash (cell-level identity)
             cell_species_hash = compute_species_hash(cell_config, input_data)
@@ -10694,7 +10696,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                    trace_id=trace.id, parent_id=trace.parent_id, node_type="cell", depth=trace.depth,
                    model=cell_model, parent_session_id=self.parent_session_id,
                    cell_name=cell.name, cascade_id=self.config.cascade_id,
-                   species_hash=cell_species_hash, cell_config=cell.dict() if cell_species_hash else None)
+                   species_hash=cell_species_hash, cell_config=cell.model_dump() if cell_species_hash else None)
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
         trait_list = cell.traits

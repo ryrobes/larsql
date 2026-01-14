@@ -7,6 +7,7 @@ enabling hybrid workflows that mix deterministic and intelligent cells.
 
 import asyncio
 import importlib
+import inspect
 import json
 import os
 import re
@@ -377,7 +378,7 @@ def execute_with_retry(
     for attempt in range(max_attempts):
         try:
             # For sync execution (most common case)
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 # If async, need to run in event loop
                 loop = asyncio.new_event_loop()
                 try:

@@ -239,13 +239,13 @@ def discover_all_schemas(session_id: str | None = None):
                 embeddings_data = db.query(embeddings_query)
 
                 # Create mapping: table filename -> embedding
-                # rel_path looks like "conn_name/schema/table.json" or "conn_name/table.json"
+                # rel_path looks like "conn_name/schema/table.yaml" or "conn_name/table.yaml"
                 embedding_map = {}
                 for row in embeddings_data:
-                    # Extract table name from path
+                    # Extract table name from path (handle both .yaml and legacy .json)
                     path_parts = row['rel_path'].split('/')
-                    table_filename = path_parts[-1]  # "table.json"
-                    table_name = table_filename.replace('.json', '')
+                    table_filename = path_parts[-1]
+                    table_name = table_filename.replace('.yaml', '').replace('.json', '')
                     embedding_map[table_name] = row
 
                 # Update pending docs with embeddings

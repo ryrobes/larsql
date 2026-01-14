@@ -1,0 +1,295 @@
+<h1>TOON Format</h1>
+<p class="lead">
+  Token-Oriented Object Notation (TOON) is RVBBIT's preferred transport format for tabular data,
+  achieving <strong>45-60% token savings</strong> compared to JSON when sending data to LLMs.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Why TOON?</div>
+  <p>
+    LLM APIs charge by tokens. A SQL result with 100 rows as JSON might be 5,000 tokens,
+    but as TOON it's only 2,500 tokens - saving real money on every query while maintaining
+    full data fidelity.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#what-is-toon">What is TOON?</a></li>
+    <li><a href="#format">Format Specification</a></li>
+    <li><a href="#usage">Usage in RVBBIT</a></li>
+    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#when-to-use">When to Use TOON</a></li>
+    <li><a href="#telemetry">Telemetry & Analytics</a></li>
+  </ul>
+</div>
+
+<h2 id="what-is-toon">What is TOON?</h2>
+
+<p>
+  TOON combines YAML-style indentation with CSV-style tabular arrays for token-efficient data encoding.
+  It's designed specifically for LLM context windows where every token counts.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:arrow-collapse"></iconify-icon></div>
+    <h4>Compact</h4>
+    <p>45-60% smaller than JSON for tabular data</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:brain"></iconify-icon></div>
+    <h4>LLM-Friendly</h4>
+    <p>LLMs can parse and understand TOON format</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:auto-fix"></iconify-icon></div>
+    <h4>Automatic</h4>
+    <p>RVBBIT auto-detects when to use TOON</p>
+  </div>
+</div>
+
+<h2 id="format">Format Specification</h2>
+
+<h3>JSON vs TOON Comparison</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang json">JSON (184 characters)</span>
+  </div>
+  <div class="code-block-content">
+    <pre>[
+  {"id": 1, "name": "Alice", "score": 95.5, "status": "active"},
+  {"id": 2, "name": "Bob", "score": 87.2, "status": "active"},
+  {"id": 3, "name": "Carol", "score": 92.0, "status": "inactive"}
+]</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">TOON (116 characters, 37% savings)</span>
+  </div>
+  <div class="code-block-content">
+    <pre>[3]{id,name,score,status}:
+  1,Alice,95.5,active
+  2,Bob,87.2,active
+  3,Carol,92,inactive</pre>
+  </div>
+</div>
+
+<h3>Format Structure</h3>
+
+<p>TOON uses a header line followed by data rows:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">TOON Structure</span>
+  </div>
+  <div class="code-block-content">
+    <pre>[ROW_COUNT]{column1,column2,column3}:
+  value1,value2,value3
+  value4,value5,value6
+  ...</pre>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>[N]</code></td>
+      <td>Row count (helps LLM understand data size)</td>
+    </tr>
+    <tr>
+      <td><code>{col1,col2,...}</code></td>
+      <td>Column names (schema header)</td>
+    </tr>
+    <tr>
+      <td><code>:</code></td>
+      <td>Header/data separator</td>
+    </tr>
+    <tr>
+      <td>Indented rows</td>
+      <td>CSV-style data rows</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="usage">Usage in RVBBIT</h2>
+
+<h3>Automatic TOON (Default)</h3>
+
+<p>
+  RVBBIT automatically uses TOON when appropriate. The <code>format="auto"</code> setting
+  (default) uses TOON for results with more than 5 rows:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Automatic TOON</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: load_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">inputs</span>:
+    <span class="key">query</span>: <span class="str">"SELECT * FROM customers LIMIT 100"</span>
+    <span class="cmt"># format defaults to "auto" - uses TOON for >5 rows</span></pre>
+  </div>
+</div>
+
+<h3>Explicit TOON</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Force TOON Encoding</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: load_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">inputs</span>:
+    <span class="key">query</span>: <span class="str">"SELECT * FROM customers"</span>
+    <span class="key">format</span>: toon  <span class="cmt"># Always use TOON</span></pre>
+  </div>
+</div>
+
+<h3>Force JSON</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Force JSON Encoding</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: load_data
+  <span class="key">tool</span>: sql_data
+  <span class="key">inputs</span>:
+    <span class="key">query</span>: <span class="str">"SELECT * FROM customers"</span>
+    <span class="key">format</span>: json  <span class="cmt"># Always use JSON</span></pre>
+  </div>
+</div>
+
+<h3>Jinja2 Filters</h3>
+
+<p>Use filters in templates for explicit control:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Jinja2 Filters</span>
+  </div>
+  <div class="code-block-content">
+    <pre>- <span class="key">name</span>: analyze
+  <span class="key">instructions</span>: <span class="str">|
+    Analyze this data:
+    {{ outputs.load_data | totoon }}  # Explicit TOON
+
+    Compare with:
+    {{ outputs.other_data | tojson }}  # Explicit JSON
+
+    Or let RVBBIT decide:
+    {{ outputs.auto_data }}            # Auto-format
+  </span></pre>
+  </div>
+</div>
+
+<h2 id="configuration">Configuration</h2>
+
+<h3>Environment Variables</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>RVBBIT_DATA_FORMAT</code></td>
+      <td>auto</td>
+      <td>Default format: <code>auto</code>, <code>toon</code>, or <code>json</code></td>
+    </tr>
+    <tr>
+      <td><code>RVBBIT_TOON_MIN_ROWS</code></td>
+      <td>5</td>
+      <td>Minimum rows to trigger TOON in auto mode</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="when-to-use">When to Use TOON</h2>
+
+<h3>TOON Excels At</h3>
+
+<ul>
+  <li><strong>SQL results</strong> - Uniform arrays of objects</li>
+  <li><strong>Wide tables</strong> - Many columns benefit most</li>
+  <li><strong>Large datasets</strong> - 10+ rows show significant savings</li>
+  <li><strong>Aggregate operators</strong> - <code>summarize()</code>, <code>themes()</code>, etc.</li>
+</ul>
+
+<h3>Use JSON Instead For</h3>
+
+<ul>
+  <li>Simple string arrays (minimal savings)</li>
+  <li>Deeply nested non-uniform objects</li>
+  <li>Small datasets (&lt;5 rows)</li>
+  <li>Data that needs exact JSON formatting</li>
+</ul>
+
+<div class="info-box">
+  <div class="info-box-title">Smart Fallback</div>
+  <p>
+    When <code>format="auto"</code>, RVBBIT analyzes the data structure and automatically
+    falls back to JSON for non-uniform or small datasets where TOON provides minimal benefit.
+  </p>
+</div>
+
+<h2 id="telemetry">Telemetry & Analytics</h2>
+
+<p>
+  TOON usage and savings are tracked in ClickHouse for analysis:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">View TOON Savings</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    data_format,
+    <span class="fn">COUNT</span>(*) <span class="kw">AS</span> operations,
+    <span class="fn">AVG</span>(data_token_savings_pct) <span class="kw">AS</span> avg_savings_pct,
+    <span class="fn">SUM</span>(data_size_json - data_size_toon) <span class="kw">AS</span> total_chars_saved
+<span class="kw">FROM</span> rvbbit.unified_logs
+<span class="kw">WHERE</span> data_format = <span class="str">'toon'</span>
+<span class="kw">GROUP BY</span> data_format;</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Check Decoder Success Rate</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    <span class="fn">COUNT</span>(*) <span class="kw">AS</span> decode_attempts,
+    <span class="fn">COUNTIf</span>(toon_decode_success) <span class="kw">AS</span> successful,
+    (<span class="fn">COUNTIf</span>(toon_decode_success) * <span class="num">100.0</span> / <span class="fn">COUNT</span>(*)) <span class="kw">AS</span> success_rate
+<span class="kw">FROM</span> rvbbit.unified_logs
+<span class="kw">WHERE</span> toon_decode_attempted;</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>Next: Memory System</h2>
+<p>
+  Learn about RVBBIT's memory tiers: <a href="#memory" data-link>Memory System</a>.
+</p>

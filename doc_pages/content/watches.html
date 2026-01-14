@@ -1,0 +1,677 @@
+<h1>Watches</h1>
+<p class="lead">
+  Watches are reactive SQL subscriptions that continuously monitor your data and automatically
+  trigger actions when query results change. Unlike traditional database triggers, watches
+  support <strong>semantic SQL operators</strong> - trigger on meaning, not just data.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Beyond Traditional Triggers</div>
+  <p>
+    Traditional triggers fire on row-level INSERT/UPDATE/DELETE. RVBBIT watches poll arbitrary
+    queries and detect <em>semantic changes</em> - alert when error messages become <em>similar to</em>
+    a pattern, or when customer feedback <em>themes</em> shift. This is intelligent monitoring.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#create">Creating Watches</a></li>
+    <li><a href="#actions">Action Types</a></li>
+    <li><a href="#manage">Managing Watches</a></li>
+    <li><a href="#daemon">Watch Daemon</a></li>
+    <li><a href="#semantic">Semantic Watches</a></li>
+    <li><a href="#patterns">Common Patterns</a></li>
+    <li><a href="#api">REST API</a></li>
+    <li><a href="#monitoring">Monitoring</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  Watches work by polling SQL queries at configurable intervals. When results change
+  (detected via content hashing), the specified action is executed.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:database-search"></iconify-icon></div>
+    <h4>SQL-Based</h4>
+    <p>Define watches using familiar SQL syntax with full semantic operator support</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:compare"></iconify-icon></div>
+    <h4>Change Detection</h4>
+    <p>Hash-based comparison triggers only when results actually change</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:arrow-decision"></iconify-icon></div>
+    <h4>Multiple Actions</h4>
+    <p>Trigger cascades, fire signals, or execute SQL statements</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--orange);"><iconify-icon icon="mdi:brain"></iconify-icon></div>
+    <h4>Semantic Intelligence</h4>
+    <p>Use MEANS, SIMILAR_TO, THEMES and other semantic operators in watch queries</p>
+  </div>
+</div>
+
+<h2 id="create">Creating Watches</h2>
+
+<h3>Basic Syntax</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">CREATE WATCH Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> watch_name
+<span class="kw">POLL EVERY</span> <span class="str">'interval'</span>
+<span class="kw">AS</span> query
+<span class="kw">ON TRIGGER</span> action_type action_spec;</pre>
+  </div>
+</div>
+
+<h3>Error Spike Monitor</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Example: Error Monitoring</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> error_spike
+<span class="kw">POLL EVERY</span> <span class="str">'5m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span>
+    toStartOfHour(timestamp) <span class="kw">AS</span> hour,
+    <span class="fn">count</span>(*) <span class="kw">AS</span> error_count,
+    <span class="fn">groupArray</span>(message)[<span class="num">1</span>:<span class="num">10</span>] <span class="kw">AS</span> sample_messages
+  <span class="kw">FROM</span> application_logs
+  <span class="kw">WHERE</span> level = <span class="str">'ERROR'</span>
+    <span class="kw">AND</span> timestamp > now() - <span class="kw">INTERVAL</span> <span class="num">2</span> <span class="kw">HOUR</span>
+  <span class="kw">GROUP BY</span> hour
+  <span class="kw">HAVING</span> error_count > <span class="num">50</span>
+<span class="kw">ON TRIGGER CASCADE</span> <span class="str">'cascades/error_handler.yaml'</span>;</pre>
+  </div>
+</div>
+
+<h3>Poll Intervals</h3>
+
+<p>Intervals support human-readable formats:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Format</th>
+      <th>Duration</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>'30s'</code></td>
+      <td>30 seconds</td>
+    </tr>
+    <tr>
+      <td><code>'5m'</code></td>
+      <td>5 minutes</td>
+    </tr>
+    <tr>
+      <td><code>'1h'</code></td>
+      <td>1 hour</td>
+    </tr>
+    <tr>
+      <td><code>'300'</code></td>
+      <td>300 seconds (plain number)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="actions">Action Types</h2>
+
+<p>Watches support three action types when triggered:</p>
+
+<h3>CASCADE Action</h3>
+
+<p>Spawn a cascade workflow with the trigger data as input:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Cascade Action</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> sentiment_shift
+<span class="kw">POLL EVERY</span> <span class="str">'15m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> product_id, <span class="fn">AVG</span>(sentiment_score) <span class="kw">AS</span> avg_sentiment
+  <span class="kw">FROM</span> reviews
+  <span class="kw">WHERE</span> created_at > now() - <span class="kw">INTERVAL</span> <span class="num">1</span> <span class="kw">DAY</span>
+  <span class="kw">GROUP BY</span> product_id
+  <span class="kw">HAVING</span> avg_sentiment < <span class="num">0.3</span>
+<span class="kw">ON TRIGGER CASCADE</span> <span class="str">'cascades/investigate_sentiment.yaml'</span>;</pre>
+  </div>
+</div>
+
+<p>The cascade receives these inputs:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Cascade Input</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Available in cascade via {{ input.* }}</span>
+<span class="key">trigger_rows</span>: [...]     <span class="cmt"># Query results (TOON format)</span>
+<span class="key">watch_name</span>: sentiment_shift
+<span class="key">triggered_at</span>: <span class="str">"2025-01-13T10:30:00Z"</span></pre>
+  </div>
+</div>
+
+<h3>SIGNAL Action</h3>
+
+<p>Fire a signal for cross-cascade coordination:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Signal Action</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> data_ready
+<span class="kw">POLL EVERY</span> <span class="str">'1m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> <span class="fn">count</span>(*) <span class="kw">AS</span> pending
+  <span class="kw">FROM</span> upload_queue
+  <span class="kw">WHERE</span> status = <span class="str">'ready'</span>
+  <span class="kw">HAVING</span> pending > <span class="num">0</span>
+<span class="kw">ON TRIGGER SIGNAL</span> <span class="str">'new_uploads_available'</span>;</pre>
+  </div>
+</div>
+
+<p>Other cascades can then <code>await_signal('new_uploads_available')</code>.</p>
+
+<h3>SQL Action</h3>
+
+<p>Execute a SQL statement directly:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL Action</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> cleanup_expired
+<span class="kw">POLL EVERY</span> <span class="str">'1h'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> <span class="num">1</span>
+  <span class="kw">WHERE</span> (
+    <span class="kw">SELECT</span> <span class="fn">count</span>(*)
+    <span class="kw">FROM</span> sessions
+    <span class="kw">WHERE</span> expires_at < now()
+  ) > <span class="num">1000</span>
+<span class="kw">ON TRIGGER SQL</span> <span class="str">'DELETE FROM sessions WHERE expires_at < now()'</span>;</pre>
+  </div>
+</div>
+
+<h2 id="manage">Managing Watches</h2>
+
+<h3>List Watches</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SHOW WATCHES</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SHOW WATCHES</span>;
+
+<span class="cmt">-- Output:</span>
+<span class="cmt">-- name          | action_type | enabled | poll_interval | trigger_count | last_checked</span>
+<span class="cmt">-- error_spike   | cascade     | true    | 5m            | 42            | 2025-01-13 10:30:00</span>
+<span class="cmt">-- data_ready    | signal      | true    | 1m            | 1203          | 2025-01-13 10:35:12</span></pre>
+  </div>
+</div>
+
+<h3>Describe Watch</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">DESCRIBE WATCH</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">DESCRIBE WATCH</span> error_spike;
+
+<span class="cmt">-- Shows full configuration:</span>
+<span class="cmt">-- - Query text</span>
+<span class="cmt">-- - Action type and spec</span>
+<span class="cmt">-- - Poll interval</span>
+<span class="cmt">-- - Enabled status</span>
+<span class="cmt">-- - Statistics (trigger count, last check, errors)</span></pre>
+  </div>
+</div>
+
+<h3>Modify Watch</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">ALTER WATCH</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Disable a watch</span>
+<span class="kw">ALTER WATCH</span> error_spike <span class="kw">SET</span> enabled = <span class="kw">false</span>;
+
+<span class="cmt">-- Change poll interval</span>
+<span class="kw">ALTER WATCH</span> error_spike <span class="kw">SET POLL EVERY</span> <span class="str">'10m'</span>;
+
+<span class="cmt">-- Re-enable</span>
+<span class="kw">ALTER WATCH</span> error_spike <span class="kw">SET</span> enabled = <span class="kw">true</span>;</pre>
+  </div>
+</div>
+
+<h3>Manual Trigger</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">TRIGGER WATCH</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Force immediate execution (for testing)</span>
+<span class="kw">TRIGGER WATCH</span> error_spike;</pre>
+  </div>
+</div>
+
+<h3>Delete Watch</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">DROP WATCH</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">DROP WATCH</span> error_spike;</pre>
+  </div>
+</div>
+
+<h2 id="daemon">Watch Daemon</h2>
+
+<p>
+  Watches require a background daemon to poll and execute. Start it with:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Start Watch Daemon</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Start with defaults</span>
+rvbbit serve watcher
+
+<span class="cmt"># With custom settings</span>
+rvbbit serve watcher \
+  --poll-interval <span class="num">10</span> \     <span class="cmt"># Check due watches every 10s</span>
+  --max-concurrent <span class="num">5</span>       <span class="cmt"># Max parallel watch evaluations</span></pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Daemon Behavior</div>
+  <p>
+    The daemon checks all enabled watches every <code>poll-interval</code> seconds. For each
+    watch, if <code>last_checked_at + poll_interval_seconds &lt; now()</code>, it evaluates
+    the query and compares the result hash. If changed, the action fires.
+  </p>
+</div>
+
+<h2 id="semantic">Semantic Watches</h2>
+
+<p>
+  The real power of watches comes from combining them with semantic SQL operators.
+  Monitor for <em>meaning</em>, not just data.
+</p>
+
+<h3>Novel Error Detection</h3>
+
+<p>Alert only when error messages are semantically different from known patterns:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Semantic Error Watch</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> novel_errors
+<span class="kw">POLL EVERY</span> <span class="str">'5m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> message, <span class="fn">count</span>(*) <span class="kw">AS</span> occurrences
+  <span class="kw">FROM</span> error_logs
+  <span class="kw">WHERE</span> timestamp > now() - <span class="kw">INTERVAL</span> <span class="num">1</span> <span class="kw">HOUR</span>
+    <span class="cmt">-- Only errors NOT similar to known patterns</span>
+    <span class="kw">AND NOT</span> (message <span class="fn">SIMILAR_TO</span> <span class="str">'connection timeout'</span>)
+    <span class="kw">AND NOT</span> (message <span class="fn">SIMILAR_TO</span> <span class="str">'rate limit exceeded'</span>)
+    <span class="kw">AND NOT</span> (message <span class="fn">SIMILAR_TO</span> <span class="str">'authentication failed'</span>)
+  <span class="kw">GROUP BY</span> message
+  <span class="kw">HAVING</span> occurrences > <span class="num">10</span>
+<span class="kw">ON TRIGGER CASCADE</span> <span class="str">'cascades/investigate_novel_error.yaml'</span>;</pre>
+  </div>
+</div>
+
+<h3>Content Moderation</h3>
+
+<p>Monitor for semantically problematic content:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Content Watch</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> content_moderation
+<span class="kw">POLL EVERY</span> <span class="str">'2m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> post_id, content, author_id
+  <span class="kw">FROM</span> posts
+  <span class="kw">WHERE</span> created_at > now() - <span class="kw">INTERVAL</span> <span class="num">5</span> <span class="kw">MINUTE</span>
+    <span class="kw">AND</span> moderation_status = <span class="str">'pending'</span>
+    <span class="kw">AND</span> (
+      content <span class="fn">MEANS</span> <span class="str">'hate speech or discrimination'</span>
+      <span class="kw">OR</span> content <span class="fn">MEANS</span> <span class="str">'violent threats'</span>
+      <span class="kw">OR</span> content <span class="fn">MEANS</span> <span class="str">'spam or scam'</span>
+    )
+<span class="kw">ON TRIGGER CASCADE</span> <span class="str">'cascades/content_review.yaml'</span>;</pre>
+  </div>
+</div>
+
+<h3>Customer Intent Detection</h3>
+
+<p>Detect purchase intent in support conversations:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Intent Watch</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> purchase_intent
+<span class="kw">POLL EVERY</span> <span class="str">'1m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span>
+    conversation_id,
+    customer_id,
+    last_message
+  <span class="kw">FROM</span> support_conversations
+  <span class="kw">WHERE</span> status = <span class="str">'active'</span>
+    <span class="kw">AND</span> last_message <span class="fn">MEANS</span> <span class="str">'ready to purchase or upgrade'</span>
+    <span class="kw">AND</span> assigned_to IS NULL
+<span class="kw">ON TRIGGER SIGNAL</span> <span class="str">'high_intent_customer'</span>;</pre>
+  </div>
+</div>
+
+<h3>Theme Shift Monitoring</h3>
+
+<p>Alert when feedback themes change:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Theme Watch</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">CREATE WATCH</span> feedback_themes
+<span class="kw">POLL EVERY</span> <span class="str">'1h'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span>
+    <span class="fn">THEMES</span>(feedback_text, <span class="num">5</span>) <span class="kw">AS</span> top_themes,
+    <span class="fn">count</span>(*) <span class="kw">AS</span> feedback_count
+  <span class="kw">FROM</span> customer_feedback
+  <span class="kw">WHERE</span> created_at > now() - <span class="kw">INTERVAL</span> <span class="num">24</span> <span class="kw">HOUR</span>
+<span class="kw">ON TRIGGER CASCADE</span> <span class="str">'cascades/analyze_theme_shift.yaml'</span>;</pre>
+  </div>
+</div>
+
+<h2 id="patterns">Common Patterns</h2>
+
+<h3>Pattern 1: Alerting Pipeline</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Alert Handler Cascade</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: error_handler
+<span class="key">inputs_schema</span>:
+  <span class="key">trigger_rows</span>: <span class="str">"Rows that triggered the watch"</span>
+  <span class="key">watch_name</span>: <span class="str">"Name of the triggering watch"</span>
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: analyze
+    <span class="key">instructions</span>: <span class="str">|
+      Analyze these error patterns:
+      {{ input.trigger_rows | totoon }}
+
+      Identify:
+      1. Root cause hypothesis
+      2. Severity (critical/high/medium/low)
+      3. Recommended action
+    </span>
+
+  - <span class="key">name</span>: notify
+    <span class="key">tool</span>: fire_signal
+    <span class="key">inputs</span>:
+      <span class="key">signal_name</span>: <span class="str">"alert_{{ outputs.analyze.severity }}"</span>
+      <span class="key">payload</span>: <span class="str">'{{ outputs.analyze | tojson }}'</span></pre>
+  </div>
+</div>
+
+<h3>Pattern 2: Self-Healing</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Self-Healing Watch</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Watch detects stuck jobs</span>
+<span class="kw">CREATE WATCH</span> stuck_jobs
+<span class="kw">POLL EVERY</span> <span class="str">'5m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> job_id, started_at, status
+  <span class="kw">FROM</span> job_queue
+  <span class="kw">WHERE</span> status = <span class="str">'running'</span>
+    <span class="kw">AND</span> started_at < now() - <span class="kw">INTERVAL</span> <span class="num">30</span> <span class="kw">MINUTE</span>
+<span class="cmt">-- Auto-reset stuck jobs</span>
+<span class="kw">ON TRIGGER SQL</span> <span class="str">'
+  UPDATE job_queue
+  SET status = ''pending'', attempts = attempts + 1
+  WHERE status = ''running''
+    AND started_at < now() - INTERVAL 30 MINUTE
+'</span>;</pre>
+  </div>
+</div>
+
+<h3>Pattern 3: Cascade Chain</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Watch → Signal → Cascade</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Watch 1: Detect and signal</span>
+<span class="kw">CREATE WATCH</span> data_quality_check
+<span class="kw">POLL EVERY</span> <span class="str">'10m'</span>
+<span class="kw">AS</span>
+  <span class="kw">SELECT</span> table_name, <span class="fn">count</span>(*) <span class="kw">AS</span> null_count
+  <span class="kw">FROM</span> data_quality_issues
+  <span class="kw">WHERE</span> detected_at > now() - <span class="kw">INTERVAL</span> <span class="num">1</span> <span class="kw">HOUR</span>
+  <span class="kw">GROUP BY</span> table_name
+  <span class="kw">HAVING</span> null_count > <span class="num">100</span>
+<span class="kw">ON TRIGGER SIGNAL</span> <span class="str">'data_quality_alert'</span>;
+
+<span class="cmt">-- Separate cascade awaits the signal</span>
+<span class="cmt">-- (See Signals documentation)</span></pre>
+  </div>
+</div>
+
+<h2 id="api">REST API</h2>
+
+<p>The Studio backend provides REST endpoints for watch management:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Endpoint</th>
+      <th>Method</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/api/watchers</code></td>
+      <td>GET</td>
+      <td>List all watches with filters</td>
+    </tr>
+    <tr>
+      <td><code>/api/watchers/:name</code></td>
+      <td>GET</td>
+      <td>Get watch details with execution history</td>
+    </tr>
+    <tr>
+      <td><code>/api/watchers/:name/toggle</code></td>
+      <td>POST</td>
+      <td>Enable/disable watch</td>
+    </tr>
+    <tr>
+      <td><code>/api/watchers/:name/trigger</code></td>
+      <td>POST</td>
+      <td>Manually trigger watch</td>
+    </tr>
+    <tr>
+      <td><code>/api/watchers/:name</code></td>
+      <td>DELETE</td>
+      <td>Delete watch</td>
+    </tr>
+    <tr>
+      <td><code>/api/watchers/executions</code></td>
+      <td>GET</td>
+      <td>List recent executions</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="monitoring">Monitoring</h2>
+
+<h3>Studio UI</h3>
+
+<p>
+  The Studio UI (<code>/watchers</code>) provides a real-time dashboard for watch management:
+</p>
+
+<ul>
+  <li><strong>Watch List</strong>: Status badges, filters by status/action type, search</li>
+  <li><strong>Detail Panel</strong>: Configuration, statistics, execution history</li>
+  <li><strong>Controls</strong>: Manual trigger, enable/disable, delete</li>
+  <li><strong>Execution History</strong>: Status, duration, cascade session links, error messages</li>
+</ul>
+
+<h3>SQL Queries</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Watch Statistics</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Watch statistics view</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> rvbbit.mv_watch_stats;
+
+<span class="cmt">-- Recent executions for a watch</span>
+<span class="kw">SELECT</span>
+  triggered_at,
+  status,
+  duration_ms,
+  row_count,
+  error_message
+<span class="kw">FROM</span> rvbbit.watch_executions
+<span class="kw">WHERE</span> watch_name = <span class="str">'error_spike'</span>
+<span class="kw">ORDER BY</span> triggered_at <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="num">20</span>;
+
+<span class="cmt">-- Watch state</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> rvbbit.watches <span class="kw">FINAL</span>
+<span class="kw">WHERE</span> name = <span class="str">'error_spike'</span>;</pre>
+  </div>
+</div>
+
+<h3>Error Tracking</h3>
+
+<p>
+  Watches track consecutive errors. If a watch fails repeatedly, check:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Check Watch Errors</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+  name,
+  consecutive_errors,
+  last_error,
+  last_checked_at
+<span class="kw">FROM</span> rvbbit.watches <span class="kw">FINAL</span>
+<span class="kw">WHERE</span> consecutive_errors > <span class="num">0</span>;</pre>
+  </div>
+</div>
+
+<div class="info-box warning">
+  <div class="info-box-title">Error Behavior</div>
+  <p>
+    Watches are <strong>not auto-disabled</strong> on errors. The daemon continues polling,
+    and errors are recorded for manual investigation. This prevents false negatives from
+    transient issues.
+  </p>
+</div>
+
+<hr>
+
+<h2>Comparison: Watches vs Triggers vs Signals</h2>
+
+<table class="reference-table">
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>Traditional DB Triggers</th>
+      <th>RVBBIT Watches</th>
+      <th>RVBBIT Signals</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Scope</strong></td>
+      <td>Single table</td>
+      <td>Any SQL query</td>
+      <td>Named events</td>
+    </tr>
+    <tr>
+      <td><strong>Event</strong></td>
+      <td>Row INSERT/UPDATE/DELETE</td>
+      <td>Query result change</td>
+      <td>Explicit fire()</td>
+    </tr>
+    <tr>
+      <td><strong>Detection</strong></td>
+      <td>Immediate</td>
+      <td>Polling (configurable)</td>
+      <td>N/A (push)</td>
+    </tr>
+    <tr>
+      <td><strong>Conditions</strong></td>
+      <td>Simple (exact values)</td>
+      <td>Semantic (MEANS, SIMILAR_TO)</td>
+      <td>N/A</td>
+    </tr>
+    <tr>
+      <td><strong>Actions</strong></td>
+      <td>SQL only</td>
+      <td>Cascades, signals, SQL</td>
+      <td>Wake waiting cascades</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Next: Competitive Analysis</h2>
+<p>
+  See how RVBBIT compares to other tools: <a href="#competitive-analysis" data-link>Competitive Landscape</a>.
+</p>

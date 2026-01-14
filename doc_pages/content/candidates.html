@@ -77,7 +77,8 @@
 <h3>LLM Evaluator (Default)</h3>
 
 <p>
-  An LLM reviews all outputs and picks the best:
+  An LLM reviews all outputs and picks the best. This is the default behavior when no
+  <code>evaluator</code> is specified:
 </p>
 
 <div class="code-block">
@@ -87,8 +88,7 @@
   <div class="code-block-content">
     <pre><span class="key">candidates</span>:
   <span class="key">factor</span>: <span class="num">5</span>
-  <span class="key">evaluator</span>: llm  <span class="cmt"># Default</span>
-  <span class="key">evaluator_model</span>: <span class="str">anthropic/claude-opus-4</span>  <span class="cmt"># Optional override</span>
+  <span class="cmt"># No 'evaluator' field = LLM evaluation (default)</span>
   <span class="key">evaluator_instructions</span>: <span class="str">|
     Evaluate on: accuracy, clarity, completeness.
     Explain your reasoning.
@@ -96,23 +96,46 @@
   </div>
 </div>
 
-<h3>Custom Validator Evaluator</h3>
+<div class="info-box">
+  <div class="info-box-title">Evaluator Options</div>
+  <p>
+    The <code>evaluator</code> field only accepts <code>human</code> or <code>hybrid</code>.
+    Omit it entirely for LLM evaluation (the default). The evaluator uses the cell's model
+    or system default model.
+  </p>
+</div>
+
+<h3>Pre-Evaluation Validator</h3>
+
+<p>
+  Use a <code>validator</code> to filter candidates <em>before</em> the LLM evaluator sees them.
+  This is useful for filtering out candidates that fail basic requirements (e.g., code that doesn't run):
+</p>
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang yaml">Custom Evaluator</span>
+    <span class="code-block-lang yaml">Pre-Evaluation Validator</span>
   </div>
   <div class="code-block-content">
     <pre><span class="key">candidates</span>:
-  <span class="key">factor</span>: <span class="num">3</span>
-  <span class="key">evaluator</span>:
+  <span class="key">factor</span>: <span class="num">5</span>
+  <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best valid output"</span>
+  <span class="key">validator</span>:                <span class="cmt"># Filters before LLM evaluation</span>
     <span class="key">python</span>: <span class="str">|
-      # outputs is a list of all candidate outputs
-      scores = [len(o.get('analysis', '')) for o in outputs]
-      best_idx = scores.index(max(scores))
-      return {"winner": best_idx, "scores": scores}
+      # Return valid=True for candidates that should be evaluated
+      has_analysis = bool(output.get('analysis'))
+      return {"valid": has_analysis, "reason": "Has analysis" if has_analysis else "Missing analysis"}
     </span></pre>
   </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Validator vs Evaluator</div>
+  <p>
+    The <code>validator</code> filters candidates (pass/fail), then the LLM evaluator picks the
+    winner from the remaining candidates. Validators use the standard ward format:
+    <code>{"valid": bool, "reason": str}</code>.
+  </p>
 </div>
 
 <h2 id="human-eval">Human Evaluation</h2>
@@ -199,13 +222,40 @@
   <span class="key">factor</span>: <span class="num">3</span>
   <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best draft"</span>
   <span class="key">reforge</span>:
-    <span class="key">enabled</span>: <span class="kw">true</span>
-    <span class="key">max_iterations</span>: <span class="num">3</span>
-    <span class="key">instructions</span>: <span class="str">|
-      Improve this output. Address:
-      {{ evaluation_feedback }}
+    <span class="key">steps</span>: <span class="num">3</span>                   <span class="cmt"># Number of refinement iterations</span>
+    <span class="key">honing_prompt</span>: <span class="str">|
+      Improve this output. Address any weaknesses
+      and enhance clarity and completeness.
     </span>
-    <span class="key">stop_condition</span>: <span class="str">"score >= 8"</span></pre>
+    <span class="key">factor_per_step</span>: <span class="num">2</span>         <span class="cmt"># Candidates per reforge step</span>
+    <span class="key">mutate</span>: <span class="kw">true</span>               <span class="cmt"># Apply variation strategies</span></pre>
+  </div>
+</div>
+
+<h3>Reforge with Early Stopping</h3>
+
+<p>
+  Use a threshold (ward-like validator) for early stopping:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">Reforge with Threshold</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">candidates</span>:
+  <span class="key">factor</span>: <span class="num">3</span>
+  <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best draft"</span>
+  <span class="key">reforge</span>:
+    <span class="key">steps</span>: <span class="num">5</span>
+    <span class="key">honing_prompt</span>: <span class="str">"Refine further..."</span>
+    <span class="key">threshold</span>:                 <span class="cmt"># Early stopping validator</span>
+      <span class="key">validator</span>:
+        <span class="key">python</span>: <span class="str">|
+          score = len(output.get('analysis', '')) / 1000
+          return {"valid": score >= 0.8, "reason": f"Score: {score}"}
+        </span>
+      <span class="key">mode</span>: blocking</pre>
   </div>
 </div>
 

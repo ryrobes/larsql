@@ -4,14 +4,24 @@ Pytest configuration for RVBBIT tests.
 This file is automatically loaded by pytest when running from the repo root.
 It registers custom markers to avoid warnings.
 """
+import os
 import warnings
 import pytest
+
+
+# Disable background analytics during tests to prevent:
+# 1. "cannot schedule new futures after shutdown" errors from litellm
+# 2. Flaky test failures from resource contention
+# 3. Unnecessary LLM calls during test runs
+os.environ.setdefault("RVBBIT_ENABLE_RELEVANCE_ANALYSIS", "false")
+os.environ.setdefault("RVBBIT_DISABLE_ANALYTICS", "true")
 
 
 def pytest_configure(config):
     """Register custom markers and filter known warnings."""
     # Filter known warnings from dependencies
     warnings.filterwarnings("ignore", category=DeprecationWarning, module="litellm.*")
+    warnings.filterwarnings("ignore", message=".*asyncio.iscoroutinefunction.*", category=DeprecationWarning)
     warnings.filterwarnings("ignore", message=".*Pydantic serializer.*", category=UserWarning)
 
     # Register custom markers
@@ -23,6 +33,22 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "requires_clickhouse: marks tests that require ClickHouse database"
+    )
+    # SQL connections integration test markers
+    config.addinivalue_line(
+        "markers", "docker: marks tests that require docker containers (MinIO, MongoDB, etc.)"
+    )
+    config.addinivalue_line(
+        "markers", "cloud: marks tests that require cloud credentials (GCP or AWS)"
+    )
+    config.addinivalue_line(
+        "markers", "gcp: marks tests that require GCP credentials (GOOGLE_APPLICATION_CREDENTIALS)"
+    )
+    config.addinivalue_line(
+        "markers", "aws: marks tests that require AWS credentials (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)"
+    )
+    config.addinivalue_line(
+        "markers", "slow: marks tests that are slow to run (e.g., Cassandra startup)"
     )
 
 

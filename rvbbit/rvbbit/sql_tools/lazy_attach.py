@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from .config import SqlConnectionConfig
+from .config import SqlConnectionConfig, resolve_google_credentials
 from .connector import sanitize_name
 
 log = logging.getLogger(__name__)
@@ -404,6 +404,56 @@ class LazyAttachManager:
         if cfg.type == "sqlite":
             self._attach_sqlite(cfg)
             return
+        # Phase 1: Cloud databases
+        if cfg.type == "bigquery":
+            self._attach_bigquery(cfg)
+            return
+        if cfg.type == "snowflake":
+            self._attach_snowflake(cfg)
+            return
+        if cfg.type == "motherduck":
+            self._attach_motherduck(cfg)
+            return
+        # Phase 2: Remote filesystems
+        if cfg.type == "s3":
+            self._attach_s3(cfg)
+            return
+        if cfg.type == "azure":
+            self._attach_azure(cfg)
+            return
+        if cfg.type == "gcs":
+            self._attach_gcs(cfg)
+            return
+        if cfg.type == "http":
+            self._attach_http(cfg)
+            return
+        # Phase 3: Lakehouse formats
+        if cfg.type == "delta":
+            self._attach_delta(cfg)
+            return
+        if cfg.type == "iceberg":
+            self._attach_iceberg(cfg)
+            return
+        # Phase 4: Scanner functions
+        if cfg.type == "odbc":
+            self._attach_odbc(cfg)
+            return
+        if cfg.type == "gsheets":
+            self._attach_gsheets(cfg)
+            return
+        if cfg.type == "excel":
+            self._attach_excel(cfg)
+            return
+        # Phase 5: Hybrid/materialization (handled separately due to table-based lazy attach)
+        if cfg.type == "mongodb":
+            self._attach_mongodb(cfg)
+            return
+        if cfg.type == "cassandra":
+            self._attach_cassandra(cfg)
+            return
+        if cfg.type == "clickhouse":
+            self._attach_clickhouse(cfg)
+            return
         # csv_folder is handled via schema/table materialization (not catalog attach)
         if cfg.type == "csv_folder":
             return
@@ -458,6 +508,598 @@ class LazyAttachManager:
         self._conn.execute(
             f"ATTACH '{_escape_single_quotes(cfg.database)}' AS {alias} (TYPE sqlite);"
         )
+
+    # -------------------------------------------------------------------------
+    # Phase 1: Cloud Database Connectors
+    # -------------------------------------------------------------------------
+
+    def _attach_bigquery(self, cfg: SqlConnectionConfig) -> None:
+        """Attach BigQuery database via DuckDB extension."""
+        try:
+            self._conn.execute("INSTALL bigquery FROM community;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD bigquery;")
+
+        if not cfg.project_id:
+            raise ValueError(f"bigquery config missing project_id for {cfg.connection_name}")
+
+        # Handle credentials - BigQuery extension uses GOOGLE_APPLICATION_CREDENTIALS
+        # Use resolver which handles both file paths and JSON strings
+        if cfg.credentials_env:
+            creds_path = resolve_google_credentials(cfg.credentials_env)
+            if creds_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+        else:
+            # Fallback to default GOOGLE_APPLICATION_CREDENTIALS
+            creds_path = resolve_google_credentials()
+            if creds_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+
+        conn_str = f"project={cfg.project_id}"
+        read_only_clause = ", READ_ONLY" if cfg.read_only else ""
+        alias = _quote_ident(cfg.connection_name)
+
+        self._conn.execute(
+            f"ATTACH '{_escape_single_quotes(conn_str)}' AS {alias} (TYPE bigquery{read_only_clause});"
+        )
+
+    def _attach_snowflake(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Snowflake database via DuckDB extension."""
+        try:
+            self._conn.execute("INSTALL snowflake;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD snowflake;")
+
+        if not cfg.account or not cfg.user:
+            raise ValueError(f"snowflake config missing account/user for {cfg.connection_name}")
+
+        conn_parts = [f"account={cfg.account}", f"user={cfg.user}"]
+        if cfg.password:
+            conn_parts.append(f"password={cfg.password}")
+        if cfg.database:
+            conn_parts.append(f"database={cfg.database}")
+        if cfg.warehouse:
+            conn_parts.append(f"warehouse={cfg.warehouse}")
+        if cfg.role:
+            conn_parts.append(f"role={cfg.role}")
+
+        conn_str = ";".join(conn_parts)
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(
+            f"ATTACH '{_escape_single_quotes(conn_str)}' AS {alias} (TYPE snowflake);"
+        )
+
+    def _attach_motherduck(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Motherduck database."""
+        if not cfg.database:
+            raise ValueError(f"motherduck config missing database for {cfg.connection_name}")
+
+        # Set token if provided
+        if cfg.motherduck_token_env:
+            token = os.getenv(cfg.motherduck_token_env)
+            if token:
+                self._conn.execute(f"SET motherduck_token='{_escape_single_quotes(token)}';")
+
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(
+            f"ATTACH 'md:{_escape_single_quotes(cfg.database)}' AS {alias};"
+        )
+
+    # -------------------------------------------------------------------------
+    # Phase 2: Remote Filesystem Connectors
+    # -------------------------------------------------------------------------
+
+    def _attach_s3(self, cfg: SqlConnectionConfig) -> None:
+        """Attach S3 bucket as a DuckDB schema."""
+        try:
+            self._conn.execute("INSTALL httpfs;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD httpfs;")
+
+        # Configure S3 credentials
+        region = cfg.region or "us-east-1"
+        self._conn.execute(f"SET s3_region='{region}';")
+
+        if cfg.access_key_env:
+            access_key = os.getenv(cfg.access_key_env, "")
+            if access_key:
+                self._conn.execute(f"SET s3_access_key_id='{access_key}';")
+
+        if cfg.secret_key_env:
+            secret_key = os.getenv(cfg.secret_key_env, "")
+            if secret_key:
+                self._conn.execute(f"SET s3_secret_access_key='{secret_key}';")
+
+        # Support S3-compatible endpoints (MinIO, R2, etc.)
+        if cfg.endpoint_url:
+            endpoint = cfg.endpoint_url.replace('http://', '').replace('https://', '')
+            self._conn.execute(f"SET s3_endpoint='{endpoint}';")
+            self._conn.execute("SET s3_url_style='path';")
+            # Disable SSL for localhost endpoints
+            if 'localhost' in cfg.endpoint_url or '127.0.0.1' in cfg.endpoint_url:
+                self._conn.execute("SET s3_use_ssl=false;")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Build S3 path and create views for files
+        prefix = cfg.prefix.rstrip('/') if cfg.prefix else ""
+        s3_base = f"s3://{cfg.bucket}/{prefix}" if prefix else f"s3://{cfg.bucket}"
+        pattern = cfg.file_pattern or "*.parquet"
+
+        try:
+            glob_path = f"{s3_base.rstrip('/')}/{pattern}"
+            files = self._conn.execute(f"SELECT * FROM glob('{glob_path}')").fetchall()
+            for row in files:
+                file_path = row[0]
+                table_name = sanitize_name(Path(file_path).name)
+                try:
+                    if file_path.endswith('.parquet'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_parquet('{file_path}')")
+                    elif file_path.endswith('.csv'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_csv_auto('{file_path}')")
+                except Exception as e:
+                    log.debug("[lazy_attach] Failed creating S3 view %s: %s", table_name, e)
+        except Exception as e:
+            log.debug("[lazy_attach] S3 glob failed for %s: %s", cfg.connection_name, e)
+
+    def _attach_azure(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Azure Blob Storage as a DuckDB schema."""
+        try:
+            self._conn.execute("INSTALL azure;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD azure;")
+
+        # Configure Azure credentials
+        if cfg.connection_string_env:
+            conn_str = os.getenv(cfg.connection_string_env, "")
+            if conn_str:
+                self._conn.execute(f"SET azure_storage_connection_string='{conn_str}';")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Build Azure path and create views
+        prefix = cfg.prefix.rstrip('/') if cfg.prefix else ""
+        azure_base = f"azure://{cfg.bucket}/{prefix}" if prefix else f"azure://{cfg.bucket}"
+        pattern = cfg.file_pattern or "*.parquet"
+
+        try:
+            glob_path = f"{azure_base.rstrip('/')}/{pattern}"
+            files = self._conn.execute(f"SELECT * FROM glob('{glob_path}')").fetchall()
+            for row in files:
+                file_path = row[0]
+                table_name = sanitize_name(Path(file_path).name)
+                try:
+                    if file_path.endswith('.parquet'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_parquet('{file_path}')")
+                    elif file_path.endswith('.csv'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_csv_auto('{file_path}')")
+                except Exception as e:
+                    log.debug("[lazy_attach] Failed creating Azure view %s: %s", table_name, e)
+        except Exception as e:
+            log.debug("[lazy_attach] Azure glob failed for %s: %s", cfg.connection_name, e)
+
+    def _attach_gcs(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Google Cloud Storage as a DuckDB schema."""
+        try:
+            self._conn.execute("INSTALL httpfs;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD httpfs;")
+
+        # Configure GCS credentials - use resolver which handles both file paths and JSON strings
+        if cfg.credentials_env:
+            creds_path = resolve_google_credentials(cfg.credentials_env)
+            if creds_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+        else:
+            # Fallback to default GOOGLE_APPLICATION_CREDENTIALS
+            creds_path = resolve_google_credentials()
+            if creds_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Build GCS path and create views
+        prefix = cfg.prefix.rstrip('/') if cfg.prefix else ""
+        gcs_base = f"gcs://{cfg.bucket}/{prefix}" if prefix else f"gcs://{cfg.bucket}"
+        pattern = cfg.file_pattern or "*.parquet"
+
+        try:
+            glob_path = f"{gcs_base.rstrip('/')}/{pattern}"
+            files = self._conn.execute(f"SELECT * FROM glob('{glob_path}')").fetchall()
+            for row in files:
+                file_path = row[0]
+                table_name = sanitize_name(Path(file_path).name)
+                try:
+                    if file_path.endswith('.parquet'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_parquet('{file_path}')")
+                    elif file_path.endswith('.csv'):
+                        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_csv_auto('{file_path}')")
+                except Exception as e:
+                    log.debug("[lazy_attach] Failed creating GCS view %s: %s", table_name, e)
+        except Exception as e:
+            log.debug("[lazy_attach] GCS glob failed for %s: %s", cfg.connection_name, e)
+
+    def _attach_http(self, cfg: SqlConnectionConfig) -> None:
+        """Attach HTTP-accessible file as a DuckDB schema."""
+        try:
+            self._conn.execute("INSTALL httpfs;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD httpfs;")
+
+        if not cfg.folder_path:
+            raise ValueError(f"http config missing folder_path for {cfg.connection_name}")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Create view for HTTP file
+        base_url = cfg.folder_path
+        table_name = sanitize_name(Path(base_url).name) or "data"
+
+        try:
+            if base_url.endswith('.parquet'):
+                self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_parquet('{base_url}')")
+            elif base_url.endswith('.csv'):
+                self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_csv_auto('{base_url}')")
+            elif base_url.endswith('.json') or base_url.endswith('.jsonl'):
+                self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_json_auto('{base_url}')")
+            else:
+                self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_parquet('{base_url}')")
+        except Exception as e:
+            log.debug("[lazy_attach] HTTP attach failed for %s: %s", cfg.connection_name, e)
+
+    # -------------------------------------------------------------------------
+    # Phase 3: Lakehouse Format Connectors
+    # -------------------------------------------------------------------------
+
+    def _attach_delta(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Delta Lake table."""
+        try:
+            self._conn.execute("INSTALL delta;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD delta;")
+
+        # Configure S3 if needed
+        if cfg.table_path and cfg.table_path.startswith('s3://'):
+            try:
+                self._conn.execute("INSTALL httpfs;")
+            except Exception:
+                pass
+            self._conn.execute("LOAD httpfs;")
+
+            region = cfg.region or "us-east-1"
+            self._conn.execute(f"SET s3_region='{region}';")
+
+            if cfg.access_key_env:
+                access_key = os.getenv(cfg.access_key_env, "")
+                if access_key:
+                    self._conn.execute(f"SET s3_access_key_id='{access_key}';")
+
+            if cfg.secret_key_env:
+                secret_key = os.getenv(cfg.secret_key_env, "")
+                if secret_key:
+                    self._conn.execute(f"SET s3_secret_access_key='{secret_key}';")
+
+        if not cfg.table_path:
+            raise ValueError(f"delta config missing table_path for {cfg.connection_name}")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Create view for Delta table
+        table_name = sanitize_name(Path(cfg.table_path).name) or "delta_table"
+        self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM delta_scan('{cfg.table_path}')")
+
+    def _attach_iceberg(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Iceberg table."""
+        try:
+            self._conn.execute("INSTALL iceberg;")
+        except Exception:
+            pass
+        self._conn.execute("LOAD iceberg;")
+
+        alias = _quote_ident(cfg.connection_name)
+
+        if cfg.catalog_type == "rest" and cfg.catalog_uri:
+            # REST catalog - attach as Iceberg database
+            self._conn.execute(f"ATTACH '{_escape_single_quotes(cfg.catalog_uri)}' AS {alias} (TYPE iceberg);")
+        elif cfg.table_path:
+            # File-based Iceberg table
+            self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+            table_name = sanitize_name(Path(cfg.table_path).name) or "iceberg_table"
+            self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM iceberg_scan('{cfg.table_path}')")
+        else:
+            raise ValueError(f"iceberg config missing catalog_uri or table_path for {cfg.connection_name}")
+
+    # -------------------------------------------------------------------------
+    # Phase 4: Scanner Function Connectors
+    # -------------------------------------------------------------------------
+
+    def _attach_odbc(self, cfg: SqlConnectionConfig) -> None:
+        """Attach ODBC data source (placeholder schema only)."""
+        # Create schema for ODBC connection
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+        # ODBC tables must be queried explicitly with odbc_scan()
+        log.debug("[lazy_attach] ODBC schema created for %s (use odbc_scan for queries)", cfg.connection_name)
+
+    def _attach_gsheets(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Google Sheets as a DuckDB view."""
+        try:
+            self._conn.execute("INSTALL gsheets FROM community;")
+        except Exception:
+            log.debug("[lazy_attach] gsheets extension not available for %s", cfg.connection_name)
+            return
+
+        try:
+            self._conn.execute("LOAD gsheets;")
+        except Exception as e:
+            log.debug("[lazy_attach] Failed loading gsheets: %s", e)
+            return
+
+        if not cfg.spreadsheet_id:
+            raise ValueError(f"gsheets config missing spreadsheet_id for {cfg.connection_name}")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Configure credentials if provided
+        if cfg.credentials_env:
+            creds = os.getenv(cfg.credentials_env, "")
+            if creds:
+                try:
+                    self._conn.execute(f"CREATE SECRET gsheet_secret (TYPE gsheet, token='{creds}');")
+                except Exception:
+                    pass
+
+        # Create view for the sheet
+        sheet_ref = cfg.sheet_name or ""
+        table_name = (cfg.sheet_name or "sheet").replace(" ", "_").replace("-", "_")
+
+        if sheet_ref:
+            self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_gsheet('{cfg.spreadsheet_id}', sheet='{sheet_ref}')")
+        else:
+            self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_gsheet('{cfg.spreadsheet_id}')")
+
+    def _attach_excel(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Excel file as DuckDB views."""
+        try:
+            self._conn.execute("INSTALL spatial;")
+        except Exception:
+            pass
+
+        try:
+            self._conn.execute("LOAD spatial;")
+        except Exception:
+            pass
+
+        if not cfg.file_path:
+            raise ValueError(f"excel config missing file_path for {cfg.connection_name}")
+
+        file_path = Path(cfg.file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Excel file not found: {cfg.file_path}")
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Discover sheets
+        if cfg.sheet_name:
+            sheets = [cfg.sheet_name]
+        else:
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(cfg.file_path, read_only=True)
+                sheets = wb.sheetnames
+                wb.close()
+            except ImportError:
+                sheets = ["Sheet1"]
+            except Exception:
+                sheets = ["Sheet1"]
+
+        for sheet in sheets:
+            table_name = sheet.replace(" ", "_").replace("-", "_")
+            try:
+                self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM st_read('{cfg.file_path}', layer='{sheet}')")
+            except Exception:
+                try:
+                    self._conn.execute(f"CREATE VIEW {alias}.{_quote_ident(table_name)} AS SELECT * FROM read_xlsx('{cfg.file_path}', sheet='{sheet}')")
+                except Exception as e:
+                    log.debug("[lazy_attach] Failed attaching Excel sheet %s: %s", sheet, e)
+
+    # -------------------------------------------------------------------------
+    # Phase 5: Hybrid/Materialization Connectors
+    # -------------------------------------------------------------------------
+
+    def _attach_mongodb(self, cfg: SqlConnectionConfig) -> None:
+        """Attach MongoDB by materializing collections into DuckDB."""
+        try:
+            from pymongo import MongoClient
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] MongoDB connector requires pymongo and pandas")
+            return
+
+        uri = os.getenv(cfg.mongodb_uri_env) if cfg.mongodb_uri_env else None
+        if not uri:
+            raise ValueError(f"mongodb config missing mongodb_uri_env or env var not set for {cfg.connection_name}")
+
+        if not cfg.database:
+            raise ValueError(f"mongodb config missing database for {cfg.connection_name}")
+
+        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
+        db = client[cfg.database]
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        for collection_name in db.list_collection_names():
+            limit = cfg.sample_row_limit or 1000
+            docs = list(db[collection_name].find().limit(limit))
+
+            if not docs:
+                continue
+
+            df = pd.json_normalize(docs)
+            df.columns = [c.replace(".", "_").replace("$", "") for c in df.columns]
+
+            if "_id" in df.columns:
+                df["_id"] = df["_id"].astype(str)
+
+            table_name = collection_name.replace("-", "_").replace(" ", "_")
+            temp_name = f'_mongo_{table_name}'
+
+            self._conn.register(temp_name, df)
+            self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(table_name)} AS SELECT * FROM {temp_name}")
+            self._conn.unregister(temp_name)
+
+        client.close()
+
+    def _attach_cassandra(self, cfg: SqlConnectionConfig) -> None:
+        """Attach Cassandra by materializing tables into DuckDB."""
+        try:
+            from cassandra.cluster import Cluster
+            from cassandra.auth import PlainTextAuthProvider
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] Cassandra connector requires cassandra-driver and pandas")
+            return
+
+        if not cfg.cassandra_hosts:
+            raise ValueError(f"cassandra config missing cassandra_hosts for {cfg.connection_name}")
+
+        if not cfg.cassandra_keyspace:
+            raise ValueError(f"cassandra config missing cassandra_keyspace for {cfg.connection_name}")
+
+        auth = None
+        if cfg.user:
+            password = os.getenv(cfg.password_env) if cfg.password_env else None
+            auth = PlainTextAuthProvider(cfg.user, password or "")
+
+        cluster = Cluster(cfg.cassandra_hosts, auth_provider=auth)
+        session = cluster.connect(cfg.cassandra_keyspace)
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        tables_query = f"SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{cfg.cassandra_keyspace}'"
+        tables = session.execute(tables_query)
+
+        for row in tables:
+            table_name = row.table_name
+            limit = cfg.sample_row_limit or 1000
+
+            try:
+                sample_query = f"SELECT * FROM {table_name} LIMIT {limit}"
+                rows = session.execute(sample_query)
+
+                df = pd.DataFrame(list(rows))
+                if df.empty:
+                    continue
+
+                temp_name = f'_cass_{table_name}'
+                self._conn.register(temp_name, df)
+                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(table_name)} AS SELECT * FROM {temp_name}")
+                self._conn.unregister(temp_name)
+            except Exception as e:
+                log.debug("[lazy_attach] Failed materializing Cassandra table %s: %s", table_name, e)
+
+        cluster.shutdown()
+
+    def _attach_clickhouse(self, cfg: SqlConnectionConfig) -> None:
+        """Attach ClickHouse by materializing tables into DuckDB."""
+        try:
+            import clickhouse_connect
+            import pandas as pd
+        except ImportError:
+            log.warning("[lazy_attach] ClickHouse connector requires clickhouse-connect and pandas: pip install clickhouse-connect")
+            return
+
+        if not cfg.host:
+            raise ValueError(f"clickhouse config missing host for {cfg.connection_name}")
+
+        # Get connection parameters
+        host = cfg.host
+        port = cfg.port or 8123  # ClickHouse HTTP port (default)
+        database = cfg.database or "default"
+        user = cfg.user or "default"
+        password = cfg.password or (os.getenv(cfg.password_env) if cfg.password_env else "")
+
+        try:
+            client = clickhouse_connect.get_client(
+                host=host,
+                port=port,
+                database=database,
+                username=user,
+                password=password,
+            )
+        except Exception as e:
+            log.warning("[lazy_attach] Failed to connect to ClickHouse %s:%s: %s", host, port, e)
+            return
+
+        # Create schema
+        alias = _quote_ident(cfg.connection_name)
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # Get list of tables in the database
+        try:
+            tables_result = client.query(f"SHOW TABLES FROM {database}")
+            table_names = [row[0] for row in tables_result.result_rows]
+        except Exception as e:
+            log.warning("[lazy_attach] Failed to list ClickHouse tables: %s", e)
+            client.close()
+            return
+
+        materialized_count = 0
+        total_rows = 0
+
+        for table_name in table_names:
+            limit = cfg.sample_row_limit or 1000
+
+            try:
+                # Get sample data
+                df = client.query_df(f"SELECT * FROM {database}.{table_name} LIMIT {limit}")
+
+                if df.empty:
+                    continue
+
+                # Sanitize table name for DuckDB
+                safe_table_name = table_name.replace("-", "_").replace(" ", "_")
+                temp_name = f'_ch_{safe_table_name}'
+
+                self._conn.register(temp_name, df)
+                self._conn.execute(f"CREATE TABLE {alias}.{_quote_ident(safe_table_name)} AS SELECT * FROM {temp_name}")
+                self._conn.unregister(temp_name)
+
+                materialized_count += 1
+                total_rows += len(df)
+                print(f"    ✓ Materialized ClickHouse table: {table_name} → {cfg.connection_name}.{safe_table_name} ({len(df)} rows)")
+
+            except Exception as e:
+                log.debug("[lazy_attach] Failed materializing ClickHouse table %s: %s", table_name, e)
+                print(f"    ⚠️  Failed to materialize {table_name}: {str(e)[:60]}")
+
+        client.close()
+        print(f"  └─ Materialized ClickHouse: {database} ({materialized_count} tables, {total_rows} rows)")
 
     def _attach_duckdb_file_if_present(self, db_name: str) -> bool:
         # Avoid reserved/system catalogs

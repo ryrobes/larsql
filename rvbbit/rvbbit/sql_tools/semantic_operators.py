@@ -54,7 +54,7 @@ Cascade Integration:
 
 import re
 import logging
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, Literal
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -283,6 +283,370 @@ def _find_annotation_for_line(
 
 
 # ============================================================================
+# Natural Language Annotations (-- @@)
+# ============================================================================
+
+@dataclass
+class NLAnnotation:
+    """Natural language annotation for LLM interpretation."""
+    hints: str                           # Concatenated NL hints
+    scope: Literal["global", "local"]    # global = top of query
+    target_line: Optional[int] = None    # Line number (for local scope)
+    start_pos: int = 0
+    end_pos: int = 0
+
+
+def _has_nl_annotations(query: str) -> bool:
+    """Check if query contains -- @@ annotations (but not -- @@@)."""
+    return bool(re.search(r'--\s*@@(?!@)', query))
+
+
+def _parse_nl_annotations(query: str) -> List[Tuple[int, NLAnnotation]]:
+    """
+    Parse all -- @@ annotations from query.
+
+    Returns list of (target_line, NLAnnotation) tuples.
+
+    Rules:
+    - -- @@ at top of query (before any SQL) = global scope
+    - -- @@ before a specific line = local scope for that line
+    - Multiple consecutive -- @@ lines are concatenated
+    """
+    annotations = []
+    lines = query.split('\n')
+
+    current_hints = []
+    current_start = 0
+    current_pos = 0
+    in_nl_annotation = False
+    first_sql_seen = False
+
+    for line_num, line in enumerate(lines):
+        line_start = current_pos
+        line_end = current_pos + len(line)
+        stripped = line.strip()
+
+        # Check for -- @@ (exactly two @, not three or more)
+        if stripped.startswith('-- @@') and not stripped.startswith('-- @@@'):
+            content = stripped[5:].strip()  # After "-- @@"
+
+            if not in_nl_annotation:
+                current_start = line_start
+                current_hints = []
+                in_nl_annotation = True
+
+            if content:  # Only add non-empty hints
+                current_hints.append(content)
+
+        elif stripped and not stripped.startswith('--'):
+            # This is a SQL line (non-comment, non-empty)
+            if in_nl_annotation:
+                # Determine scope: global if no SQL seen yet, local otherwise
+                scope: Literal["global", "local"] = "global" if not first_sql_seen else "local"
+                target_line = line_num if scope == "local" else None
+
+                annotations.append((
+                    line_num,
+                    NLAnnotation(
+                        hints=' '.join(current_hints),
+                        scope=scope,
+                        target_line=target_line,
+                        start_pos=current_start,
+                        end_pos=line_end - len(line)
+                    )
+                ))
+
+                in_nl_annotation = False
+                current_hints = []
+
+            first_sql_seen = True
+
+        current_pos = line_end + 1  # +1 for newline
+
+    # Handle annotation at end of query (no SQL after)
+    if in_nl_annotation and current_hints:
+        # Treat as global if no SQL seen, otherwise orphaned (still add it)
+        scope = "global" if not first_sql_seen else "local"
+        annotations.append((
+            len(lines) - 1,
+            NLAnnotation(
+                hints=' '.join(current_hints),
+                scope=scope,
+                target_line=None,
+                start_pos=current_start,
+                end_pos=current_pos
+            )
+        ))
+
+    return annotations
+
+
+def _strip_nl_annotation_lines(query: str) -> str:
+    """Remove -- @@ lines from query after processing."""
+    lines = query.split('\n')
+    filtered = [
+        line for line in lines
+        if not (line.strip().startswith('-- @@') and not line.strip().startswith('-- @@@'))
+    ]
+    return '\n'.join(filtered)
+
+
+def _interpret_nl_annotations(
+    query: str,
+    nl_annotations: List[Tuple[int, NLAnnotation]],
+    session_id: Optional[str] = None
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Invoke the interpreter cascade for each NL annotation.
+
+    Returns dict mapping scope key to interpreted config:
+    - "global" for global scope annotations
+    - f"line_{N}" for local scope annotations
+
+    This is the LLM invocation point - only called if _has_nl_annotations() is True.
+    """
+    from ..semantic_sql.executor import _run_cascade_sync, _extract_cascade_output
+    from ..session_naming import generate_woodland_id
+    import json
+
+    results = {}
+
+    for target_line, annotation in nl_annotations:
+        # Generate session ID for interpreter
+        woodland_id = generate_woodland_id()
+        interp_session = f"nl_interp_{woodland_id}"
+
+        # Run interpreter cascade
+        try:
+            log.info(f"[nl_annotation] Interpreting: '{annotation.hints}' (scope={annotation.scope})")
+
+            result = _run_cascade_sync(
+                "cascades/internal/nl_annotation_interpreter.cascade.yaml",
+                interp_session,
+                {
+                    "sql_query": query,
+                    "hints": annotation.hints,
+                    "scope": annotation.scope
+                }
+            )
+
+            # Extract output from cascade result
+            output = _extract_cascade_output(result)
+
+            # Parse JSON if string
+            if isinstance(output, str):
+                output = output.strip()
+                # Strip markdown code fences if present
+                if output.startswith('```'):
+                    lines = output.split('\n')
+                    # Remove first line (```json) and last line (```)
+                    json_lines = [l for l in lines[1:] if not l.strip().startswith('```')]
+                    output = '\n'.join(json_lines)
+                try:
+                    output = json.loads(output)
+                except json.JSONDecodeError:
+                    log.warning(f"[nl_annotation] Failed to parse interpreter output as JSON: {output}")
+                    output = {}
+
+            # Validate output structure
+            output = _validate_nl_config(output) if isinstance(output, dict) else {}
+
+            # Store by scope
+            key = "global" if annotation.scope == "global" else f"line_{target_line}"
+            results[key] = output
+
+            log.info(f"[nl_annotation] Interpreted config for {key}: {output}")
+
+        except Exception as e:
+            log.warning(f"[nl_annotation] Failed to interpret annotation: {e}")
+            # Continue - don't break query execution for interpreter failures
+
+    return results
+
+
+def _validate_nl_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and sanitize NL-interpreted config."""
+    validated = {}
+
+    candidates = config.get("candidates", {})
+    if candidates and isinstance(candidates, dict):
+        validated["candidates"] = {}
+
+        if "factor" in candidates:
+            factor = candidates["factor"]
+            if isinstance(factor, int) and 1 <= factor <= 20:
+                validated["candidates"]["factor"] = factor
+
+        if "max_parallel" in candidates:
+            mp = candidates["max_parallel"]
+            if isinstance(mp, int) and 1 <= mp <= 10:
+                validated["candidates"]["max_parallel"] = mp
+
+        if "mode" in candidates and candidates["mode"] in ("evaluate", "aggregate"):
+            validated["candidates"]["mode"] = candidates["mode"]
+
+        if "evaluator_instructions" in candidates and isinstance(candidates["evaluator_instructions"], str):
+            validated["candidates"]["evaluator"] = candidates["evaluator_instructions"]
+
+        if "mutate" in candidates and isinstance(candidates["mutate"], bool):
+            validated["candidates"]["mutate"] = candidates["mutate"]
+
+        if "model_override" in candidates and isinstance(candidates["model_override"], str):
+            validated["candidates"]["model_override"] = candidates["model_override"]
+
+        if "multi_model" in candidates and isinstance(candidates["multi_model"], list):
+            validated["candidates"]["multi_model"] = candidates["multi_model"]
+
+    if "model" in config and isinstance(config["model"], str):
+        validated["model"] = config["model"]
+
+    if "threshold" in config:
+        t = config["threshold"]
+        if isinstance(t, (int, float)) and 0 <= t <= 1:
+            validated["threshold"] = float(t)
+
+    return validated
+
+
+def _merge_nl_overrides(
+    annotations: List[Tuple[int, int, SemanticAnnotation]],
+    nl_overrides: Dict[str, Dict[str, Any]]
+) -> List[Tuple[int, int, SemanticAnnotation]]:
+    """
+    Merge NL-interpreted overrides into existing annotations.
+
+    For global scope: Apply to first annotation or create new one.
+    For local scope: Match to annotation by line number.
+    """
+    if not nl_overrides:
+        return annotations
+
+    # Handle global overrides
+    global_config = nl_overrides.get("global", {})
+    if global_config:
+        if annotations:
+            # Merge into first annotation
+            ann = annotations[0][2]
+            _apply_nl_config_to_annotation(ann, global_config)
+        else:
+            # Create synthetic annotation for global scope
+            ann = SemanticAnnotation()
+            _apply_nl_config_to_annotation(ann, global_config)
+            annotations.insert(0, (0, 0, ann))
+
+    # Handle local overrides
+    for key, config in nl_overrides.items():
+        if key.startswith("line_"):
+            target_line = int(key[5:])
+            # Find or create annotation for this line
+            matched = False
+            for _idx, (line_num, _end_pos, ann) in enumerate(annotations):
+                if line_num == target_line:
+                    _apply_nl_config_to_annotation(ann, config)
+                    matched = True
+                    break
+
+            if not matched:
+                ann = SemanticAnnotation(line_end=target_line)
+                _apply_nl_config_to_annotation(ann, config)
+                annotations.append((target_line, 0, ann))
+
+    return annotations
+
+
+def _deep_merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep merge override into base dict. Override values take precedence."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge_dict(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _apply_nl_config_to_annotation(ann: SemanticAnnotation, config: Dict[str, Any]) -> None:
+    """
+    Apply NL-interpreted config to a SemanticAnnotation.
+
+    Handles two formats:
+
+    1. New structured format (from NL interpreter with full DSL knowledge):
+       {
+         "cascade_overrides": {
+           "candidates": {"factor": 3, ...},
+           "token_budget": {...},
+           "narrator": {...}
+         },
+         "cell_overrides": {
+           "default": {"model": "...", "rules": {...}, "wards": {...}},
+           "specific_cell": {"model": "..."}
+         }
+       }
+
+    2. Legacy flat format (backwards compatibility):
+       {"model": "...", "threshold": 0.7, "candidates": {"factor": 3}}
+
+    The annotation.candidates field stores the full override config for injection
+    into the cascade via __RVBBIT_CANDIDATES:{...}__ prefix.
+    """
+    # Detect format: new structured vs legacy flat
+    is_new_format = 'cascade_overrides' in config or 'cell_overrides' in config
+
+    if is_new_format:
+        # New structured format - store entire config for cascade injection
+        if ann.candidates is None:
+            ann.candidates = {}
+
+        # Deep merge the override structure
+        ann.candidates = _deep_merge_dict(ann.candidates, config)
+
+        # Also extract model for the annotation-level model hint (used by some rewriters)
+        cell_overrides = config.get('cell_overrides', {})
+        default_model = cell_overrides.get('default', {}).get('model')
+        if default_model:
+            ann.model = default_model
+
+        # Threshold from cascade_overrides (if present)
+        cascade_overrides = config.get('cascade_overrides', {})
+        if 'threshold' in cascade_overrides:
+            ann.threshold = cascade_overrides['threshold']
+
+    else:
+        # Legacy flat format for backwards compatibility
+        # Model override (from top-level or candidates.model_override)
+        if config.get("model"):
+            ann.model = config["model"]
+
+        # Threshold
+        if config.get("threshold") is not None:
+            ann.threshold = config["threshold"]
+
+        # Candidates config
+        candidates_config = config.get("candidates", {})
+        if candidates_config:
+            if ann.candidates is None:
+                ann.candidates = {}
+
+            # Map NL fields to candidates config
+            if candidates_config.get("factor"):
+                ann.candidates["factor"] = candidates_config["factor"]
+            if candidates_config.get("max_parallel"):
+                ann.candidates["max_parallel"] = candidates_config["max_parallel"]
+            if candidates_config.get("mode"):
+                ann.candidates["mode"] = candidates_config["mode"]
+            if candidates_config.get("evaluator"):
+                ann.candidates["evaluator"] = candidates_config["evaluator"]
+            if candidates_config.get("mutate") is not None:
+                ann.candidates["mutate"] = candidates_config["mutate"]
+            if candidates_config.get("model_override"):
+                # Model override from candidates goes to annotation model
+                ann.model = candidates_config["model_override"]
+            if candidates_config.get("multi_model"):
+                ann.candidates["multi_model"] = candidates_config["multi_model"]
+
+
+# ============================================================================
 # Semantic Operator Detection
 # ============================================================================
 
@@ -305,12 +669,16 @@ def has_semantic_operators(query: str) -> bool:
 # Rewriting Functions
 # ============================================================================
 
-def rewrite_semantic_operators(query: str) -> str:
+def rewrite_semantic_operators(query: str, session_id: Optional[str] = None) -> str:
     """
     Rewrite semantic SQL operators to UDF calls.
 
     Preserves annotations by injecting prompt text into the criteria string,
     allowing bodybuilder to pick up model hints.
+
+    Supports two annotation syntaxes:
+    - -- @ key: value  (keyword-based, parsed directly)
+    - -- @@ natural language hint  (LLM-interpreted at runtime)
 
     IMPORTANT: Only removes annotations that are actually used for semantic operators.
     Annotations before LLM aggregate functions (SUMMARIZE, THEMES, etc.) are preserved
@@ -318,6 +686,7 @@ def rewrite_semantic_operators(query: str) -> str:
 
     Args:
         query: SQL query with semantic operators
+        session_id: Optional session ID for logging/tracing
 
     Returns:
         Rewritten SQL with UDF calls
@@ -328,14 +697,33 @@ def rewrite_semantic_operators(query: str) -> str:
     if not has_semantic_operators(query) and not has_trait:
         return query
 
+    # =========================================================================
+    # Natural Language Annotations (-- @@)
+    # =========================================================================
+    # If query contains -- @@ annotations, invoke LLM interpreter to convert
+    # natural language hints into structured cascade configuration overrides.
+    # This happens ONCE per query, before any operator rewriting.
+    nl_overrides = {}
+    if _has_nl_annotations(query):
+        nl_annotations = _parse_nl_annotations(query)
+        if nl_annotations:
+            log.info(f"[nl_annotation] Found {len(nl_annotations)} NL annotation(s), invoking interpreter...")
+            nl_overrides = _interpret_nl_annotations(query, nl_annotations, session_id)
+            # Strip -- @@ lines from query (they've been processed)
+            query = _strip_nl_annotation_lines(query)
+
     # Rewrite trait::name() syntax first (before other rewrites)
     query = _rewrite_trait_namespace_syntax(query)
 
     # Rewrite TRAIT name ... END block syntax
     query = _rewrite_trait_block_syntax(query)
 
-    # Parse annotations first (we need line numbers)
+    # Parse keyword-based annotations (-- @)
     annotations = _parse_annotations(query)
+
+    # Merge NL-interpreted overrides into annotations
+    if nl_overrides:
+        annotations = _merge_nl_overrides(annotations, nl_overrides)
 
     # Track which annotations were used (by line range)
     used_annotation_lines = set()

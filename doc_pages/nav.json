@@ -116,6 +116,22 @@
       "color": "green",
       "items": [
         {
+          "id": "sql-connections",
+          "title": "SQL Connections",
+          "sections": [
+            { "anchor": "quick-start", "title": "Quick Start" },
+            { "anchor": "connection-types", "title": "Connection Types" },
+            { "anchor": "databases", "title": "Traditional Databases" },
+            { "anchor": "cloud-warehouses", "title": "Cloud Data Warehouses" },
+            { "anchor": "object-storage", "title": "Object Storage" },
+            { "anchor": "lakehouse", "title": "Lakehouse Formats" },
+            { "anchor": "document-dbs", "title": "Document Databases" },
+            { "anchor": "files", "title": "Spreadsheets & Files" },
+            { "anchor": "schema-discovery", "title": "Schema Discovery" },
+            { "anchor": "troubleshooting", "title": "Troubleshooting" }
+          ]
+        },
+        {
           "id": "semantic-sql",
           "title": "Semantic SQL",
           "sections": [
@@ -155,6 +171,18 @@
             { "anchor": "searching", "title": "Vector Search" },
             { "anchor": "hybrid", "title": "Hybrid Search" },
             { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        },
+        {
+          "id": "toon-format",
+          "title": "TOON Format",
+          "sections": [
+            { "anchor": "what-is-toon", "title": "What is TOON?" },
+            { "anchor": "format", "title": "Format Specification" },
+            { "anchor": "usage", "title": "Usage in RVBBIT" },
+            { "anchor": "configuration", "title": "Configuration" },
+            { "anchor": "when-to-use", "title": "When to Use TOON" },
+            { "anchor": "telemetry", "title": "Telemetry & Analytics" }
           ]
         },
         {
@@ -204,6 +232,43 @@
             { "anchor": "stdio", "title": "Stdio Servers" },
             { "anchor": "http", "title": "HTTP Servers" },
             { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        },
+        {
+          "id": "signals",
+          "title": "Signals",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "tools", "title": "Signal Tools" },
+            { "anchor": "patterns", "title": "Common Patterns" },
+            { "anchor": "cli", "title": "CLI Commands" },
+            { "anchor": "storage", "title": "Signal Storage" }
+          ]
+        },
+        {
+          "id": "triggers",
+          "title": "Triggers",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "cron", "title": "Cron Triggers" },
+            { "anchor": "sensor", "title": "Sensor Triggers" },
+            { "anchor": "webhook", "title": "Webhook Triggers" },
+            { "anchor": "cli", "title": "CLI Commands" }
+          ]
+        },
+        {
+          "id": "watches",
+          "title": "Watches",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "create", "title": "Creating Watches" },
+            { "anchor": "actions", "title": "Action Types" },
+            { "anchor": "manage", "title": "Managing Watches" },
+            { "anchor": "daemon", "title": "Watch Daemon" },
+            { "anchor": "semantic", "title": "Semantic Watches" },
+            { "anchor": "patterns", "title": "Common Patterns" },
+            { "anchor": "api", "title": "REST API" },
+            { "anchor": "monitoring", "title": "Monitoring" }
           ]
         }
       ]

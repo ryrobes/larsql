@@ -87,6 +87,7 @@ def _register_all_traits():
     from .traits.signal_tools import await_signal, fire_signal, list_signals as signal_list_signals
     from .traits.rlm_tools import rlm_exec, llm_analyze, llm_batch_analyze, chunk_text
     from .traits.trait_executor import trait_executor, list_available_traits
+    from .traits.cascade_validator import validate_cascade_overrides
 
     # Core tools
     register_trait("smart_sql_run", run_sql)
@@ -111,6 +112,7 @@ def _register_all_traits():
     register_trait("map_cascade", map_cascade)
     register_trait("cascade_write", cascade_write)
     register_trait("cascade_read", cascade_read)
+    register_trait("validate_cascade_overrides", validate_cascade_overrides)
     register_trait("bodybuilder", bodybuilder)
     register_trait("research_query", research_query)
     register_trait("research_execute", research_execute)

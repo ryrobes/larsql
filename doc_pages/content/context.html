@@ -183,13 +183,51 @@
     <pre>- <span class="key">name</span>: final_analysis
   <span class="key">instructions</span>: <span class="str">"Final analysis..."</span>
   <span class="key">token_budget</span>:
-    <span class="key">max_context_tokens</span>: <span class="num">50000</span>
-    <span class="key">pruning_strategy</span>: smart  <span class="cmt"># smart, fifo, importance</span>
-    <span class="key">preserve</span>:
-      - <span class="str">"error messages"</span>
-      - <span class="str">"final outputs"</span></pre>
+    <span class="key">max_total</span>: <span class="num">50000</span>            <span class="cmt"># Hard limit for context</span>
+    <span class="key">reserve_for_output</span>: <span class="num">4000</span>    <span class="cmt"># Leave room for response</span>
+    <span class="key">strategy</span>: sliding_window    <span class="cmt"># sliding_window, prune_oldest, summarize, fail</span>
+    <span class="key">warning_threshold</span>: <span class="num">0.8</span>      <span class="cmt"># Warn at 80% capacity</span></pre>
   </div>
 </div>
+
+<h3>Token Budget Options</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Default</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>max_total</code></td>
+      <td>100000</td>
+      <td>Hard limit for total context tokens</td>
+    </tr>
+    <tr>
+      <td><code>reserve_for_output</code></td>
+      <td>4000</td>
+      <td>Tokens reserved for model response</td>
+    </tr>
+    <tr>
+      <td><code>strategy</code></td>
+      <td>sliding_window</td>
+      <td>How to prune: <code>sliding_window</code>, <code>prune_oldest</code>, <code>summarize</code>, <code>fail</code></td>
+    </tr>
+    <tr>
+      <td><code>warning_threshold</code></td>
+      <td>0.8</td>
+      <td>Log warning when usage exceeds this ratio</td>
+    </tr>
+    <tr>
+      <td><code>cell_overrides</code></td>
+      <td>null</td>
+      <td>Per-cell budget overrides (dict)</td>
+    </tr>
+  </tbody>
+</table>
 
 <hr>
 
