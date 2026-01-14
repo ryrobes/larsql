@@ -48,7 +48,7 @@ const formatDuration = (ms) => {
  * - Output: Results table/JSON
  */
 const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose, onMessageClick, hoveredHash = null, onHoverHash, externalSelectedMessage = null }) => {
-  const { updateCell, runCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode, cascade } = useStudioCascadeStore();
+  const { updateCell, removeCell, desiredOutputTab, setDesiredOutputTab, isRunningAll, cascadeSessionId, viewMode, cascade } = useStudioCascadeStore();
   const [activeTab, setActiveTab] = useState('code');
   const [activeOutputTab, setActiveOutputTab] = useState('output');
   const [showYamlEditor, setShowYamlEditor] = useState(false);
@@ -742,10 +742,6 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     updateCell(index, { name: e.target.value });
   };
 
-  const handleRun = () => {
-    runCell(cell.name);
-  };
-
   const handleDelete = () => {
     setIsDeleteModalOpen(true);
   };
@@ -908,18 +904,6 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
         </div>
 
         <div className="cell-detail-header-right">
-          <button
-            className="cell-detail-btn cell-detail-btn-run"
-            onClick={handleRun}
-            disabled={status === 'running'}
-          >
-            {status === 'running' ? (
-              <span className="cell-detail-spinner" />
-            ) : (
-              <Icon icon="mdi:play" width="16" />
-            )}
-            Run
-          </button>
           <button
             className="cell-detail-btn cell-detail-btn-delete"
             onClick={handleDelete}

@@ -636,6 +636,12 @@ async def execute_sql_function(
     # Import here to avoid circular imports
     from ..runner import RVBBITRunner
 
+    # Ensure traits are registered before running any cascade
+    # This is normally done by the run_cascade wrapper in __init__.py,
+    # but SQL functions import RVBBITRunner directly
+    from .. import _register_all_traits
+    _register_all_traits()
+
     # Prepare cascade inputs based on output mode
     cascade_inputs = cleaned_args
     if output_mode in ("sql_execute", "sql_raw") and fn.structure_args:

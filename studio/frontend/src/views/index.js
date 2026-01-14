@@ -84,7 +84,7 @@ export const views = {
 
   explore: {
     component: lazy(() => import('./explore/ExploreView')),
-    icon: 'mdi:compass',
+    icon: 'mdi:rabbit',
     label: 'Explore',
     position: 'top',
     enabled: true,
@@ -103,7 +103,7 @@ export const views = {
     icon: 'mdi:account-heart',
     label: 'Calliope',
     position: 'top',
-    enabled: true,
+    enabled: false, // TODO: Feature incomplete
   },
 
   warren: {
@@ -111,7 +111,7 @@ export const views = {
     icon: 'mdi:rabbit',
     label: 'The Warren',
     position: 'top',
-    enabled: true,
+    enabled: false, // TODO: Feature incomplete
   },
 
   apps: {
@@ -119,7 +119,7 @@ export const views = {
     icon: 'mdi:apps',
     label: 'Apps',
     position: 'top',
-    enabled: true,
+    enabled: false, // TODO: Feature incomplete
   },
 
   catalog: {

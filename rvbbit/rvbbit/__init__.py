@@ -225,6 +225,14 @@ def _register_all_traits():
         cosine_similarity_texts, elasticsearch_hybrid_search, agent_embed_batch
     )
 
+    # Discover and register declarative tools (.tool.yaml/.tool.json)
+    # This includes local model tools like local_sentiment, local_ner
+    try:
+        from .tool_definitions import discover_and_register_declarative_tools
+        discover_and_register_declarative_tools()
+    except Exception:
+        pass  # Non-fatal if tool discovery fails
+
 
 def __getattr__(name: str):
     """Lazy-load attributes on first access."""
