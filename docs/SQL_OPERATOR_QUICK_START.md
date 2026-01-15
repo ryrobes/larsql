@@ -259,6 +259,11 @@ Newlines work everywhere (token-based parsing).
 - Troubleshooting guide
 - Real-world examples
 
+**See:** `docs/TRAIT_SQL_SYNTAX.md` for:
+- `trait::` namespace syntax for calling any tool from SQL
+- Dot accessor syntax for scalar field extraction
+- Examples with local models and search tools
+
 ---
 
 ## Summary

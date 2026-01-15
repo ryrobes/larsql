@@ -1384,7 +1384,75 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
     except Exception as e:
         logger.warning(f"Could not register trait UDF: {e}")
 
-    logger.info("Registered 7 embedding/trait UDFs for Semantic SQL")
+    # =========================================================================
+    # UDF 6: trait_json(name, args) → VARCHAR (JSON content directly)
+    # For scalar extraction with json_extract_string()
+    # Usage: SELECT json_extract_string(trait_json('fn', '{}'), '$.label') FROM t
+    # =========================================================================
+
+    def trait_json_udf(trait_name: str, args_json: str | None = None) -> str:
+        """
+        Call any registered trait and return JSON content directly.
+
+        Unlike trait() which returns a file path for read_json_auto(),
+        this UDF returns the JSON string directly for use with
+        json_extract_string() in scalar extraction scenarios.
+
+        Args:
+            trait_name: Name of trait to call (e.g., 'local_sentiment')
+            args_json: JSON string of arguments (e.g., '{"text": "Hello"}')
+
+        Returns:
+            JSON string containing the result (for json_extract_string)
+        """
+        import json
+
+        try:
+            # Parse args
+            args = json.loads(args_json) if args_json else {}
+
+            # Call via cascade system for observability
+            result = execute_sql_function_sync(
+                "trait",
+                {"trait_name": trait_name, "args": json.dumps(args)}
+            )
+
+            # Normalize result to list for consistent structure
+            if result is None:
+                rows = [{"_trait": trait_name, "result": None}]
+            elif isinstance(result, dict):
+                rows = [result]
+            elif isinstance(result, list):
+                rows = result
+            elif isinstance(result, str):
+                # Try to parse as JSON
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, dict):
+                        rows = [parsed]
+                    elif isinstance(parsed, list):
+                        rows = parsed
+                    else:
+                        rows = [{"_trait": trait_name, "result": parsed}]
+                except json.JSONDecodeError:
+                    rows = [{"_trait": trait_name, "result": result}]
+            else:
+                rows = [{"_trait": trait_name, "result": result}]
+
+            # Return JSON string directly (not file path)
+            return json.dumps(rows)
+
+        except Exception as e:
+            logger.error(f"trait_json UDF failed: {e}")
+            return json.dumps([{"_trait": trait_name, "error": str(e)}])
+
+    try:
+        connection.create_function("trait_json", trait_json_udf, return_type="VARCHAR", null_handling="special")
+        logger.debug("Registered trait_json UDF")
+    except Exception as e:
+        logger.warning(f"Could not register trait_json UDF: {e}")
+
+    logger.info("Registered 8 embedding/trait UDFs for Semantic SQL")
 
 
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] | None = None):

@@ -898,4 +898,4 @@ For detailed feature reference, see `docs/claude/`:
 | `testing.md` | Snapshot testing system |
 | `optimization.md` | Training data, Passive prompt optimization |
 
-Also see: `CLICKHOUSE_SETUP.md`, `CONNECT_NOW.md`, `docs/harbor-design.md`, `docs/DATARABBIT_VISION.md`
+Also see: `CLICKHOUSE_SETUP.md`, `CONNECT_NOW.md`, `docs/harbor-design.md`, `docs/DATARABBIT_VISION.md`, `docs/TRAIT_SQL_SYNTAX.md`

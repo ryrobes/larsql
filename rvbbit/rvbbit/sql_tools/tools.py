@@ -28,9 +28,133 @@ def sanitize_for_json(obj):
 
 from ..config import get_config
 from ..rag.store import search_chunks
+
+
+def _compact_tables(tables: list) -> list:
+    """
+    Strip heavy metadata from table schemas to reduce output size.
+
+    Removes value_distribution arrays from column metadata which can be
+    massive (thousands of entries per column). Keeps essential info:
+    - Table name, database, schema
+    - Row count
+    - Column names and types
+    - Basic stats (min, max, distinct_count)
+
+    This prevents issues with:
+    - JDBC clients failing on huge VARCHAR values
+    - PostgreSQL wire protocol message limits
+    - JSON parsing overhead in downstream tools
+    """
+    compacted = []
+    for table in tables:
+        compact_table = {
+            "qualified_name": table.get("qualified_name"),
+            "database": table.get("database"),
+            "schema": table.get("schema"),
+            "table_name": table.get("table_name"),
+            "description": table.get("description"),
+            "row_count": table.get("row_count"),
+            "match_score": table.get("match_score"),
+        }
+
+        # Compact columns - keep type info but strip value_distribution
+        if "columns" in table:
+            compact_columns = []
+            for col in table.get("columns", []):
+                compact_col = {
+                    "name": col.get("name"),
+                    "type": col.get("type"),
+                    "nullable": col.get("nullable"),
+                }
+                # Keep basic metadata but exclude value_distribution
+                if "metadata" in col and col["metadata"]:
+                    compact_col["metadata"] = {
+                        "distinct_count": col["metadata"].get("distinct_count"),
+                        "min": col["metadata"].get("min"),
+                        "max": col["metadata"].get("max"),
+                        # Explicitly exclude value_distribution
+                    }
+                compact_columns.append(compact_col)
+            compact_table["columns"] = compact_columns
+
+        compacted.append(compact_table)
+
+    return compacted
 from ..rag.context import RagContext
 from .config import load_discovery_metadata, load_sql_connections
 from .connector import DatabaseConnector
+
+
+def _pivot_tables_to_rows(tables: list, query: str, source: str, schema_brief: Optional[str] = None) -> list:
+    """
+    Convert a list of table metadata dicts into a flat row-per-table format.
+
+    Instead of returning one row with all tables in a nested array, this returns
+    one row per table with flattened fields. The columns array is pre-serialized
+    as JSON to avoid STRUCT[] type issues with PostgreSQL wire protocol.
+
+    Output structure per row:
+    - query: The search query
+    - source: Data source (elasticsearch, rag, etc.)
+    - qualified_name: Full table reference
+    - database, schema, table_name: Table identifiers
+    - description: Table description
+    - row_count: Number of rows
+    - match_score: Search relevance score
+    - columns_json: Pre-serialized JSON of column metadata
+    - schema_brief: Optional LLM-generated summary (only on first row if present)
+    - relevance, reasoning, key_columns_json, join_hint: Smart search enrichments (if present)
+    """
+    rows = []
+    compacted = _compact_tables(tables)
+
+    # Also need to preserve smart search fields that aren't in _compact_tables
+    # Build a lookup by qualified_name
+    smart_fields_by_name = {
+        t.get("qualified_name"): {
+            "relevance": t.get("relevance"),
+            "reasoning": t.get("reasoning"),
+            "key_columns": t.get("key_columns"),
+            "join_hint": t.get("join_hint"),
+        }
+        for t in tables
+    }
+
+    for i, table in enumerate(compacted):
+        qname = table.get("qualified_name")
+        smart_fields = smart_fields_by_name.get(qname, {})
+
+        row = {
+            "query": query,
+            "source": source,
+            "qualified_name": qname,
+            "database": table.get("database"),
+            "schema": table.get("schema"),
+            "table_name": table.get("table_name"),
+            "description": table.get("description", ""),
+            "row_count": table.get("row_count"),
+            "match_score": table.get("match_score"),
+            "columns_json": json.dumps(table.get("columns", [])),
+        }
+
+        # Add smart search enrichments if present
+        if smart_fields.get("relevance"):
+            row["relevance"] = smart_fields["relevance"]
+        if smart_fields.get("reasoning"):
+            row["reasoning"] = smart_fields["reasoning"]
+        if smart_fields.get("key_columns"):
+            row["key_columns_json"] = json.dumps(smart_fields["key_columns"])
+        if smart_fields.get("join_hint"):
+            row["join_hint"] = smart_fields["join_hint"]
+
+        # Include schema_brief only on first row to avoid repetition
+        if i == 0 and schema_brief:
+            row["schema_brief"] = schema_brief
+
+        rows.append(row)
+
+    return rows
 
 
 def sql_rag_search(
@@ -62,11 +186,12 @@ def sql_rag_search(
         score_threshold: Minimum similarity score (default: 0.3)
 
     Returns:
-        JSON with matching tables and their metadata including:
-        - Full column schemas with types
-        - Value distributions for low-cardinality columns
-        - Min/max ranges for high-cardinality columns
-        - Sample rows from each table (can be large!)
+        JSON array with one row per matching table:
+        - query: Search query used
+        - source: "rag"
+        - qualified_name, database, schema, table_name: Table identifiers
+        - description, row_count, match_score: Table metadata
+        - columns_json: JSON string of column metadata
     """
     # Load discovery metadata
     meta = load_discovery_metadata()
@@ -157,12 +282,9 @@ def sql_rag_search(
         except Exception as e:
             print(f"Warning: Failed to load {full_path}: {e}")
 
-    return json.dumps({
-        "query": query,
-        "rag_id": meta.rag_id,
-        "total_results": len(tables),
-        "tables": tables
-    }, indent=2, default=str)
+    # Return one row per table for easier SQL consumption
+    rows = _pivot_tables_to_rows(tables, query, source="rag")
+    return json.dumps(rows, default=str)
 
 
 def sql_search(
@@ -198,12 +320,13 @@ def sql_search(
         task_context: Optional context about what user is trying to do
 
     Returns:
-        JSON with matching tables and their metadata including:
-        - Table names and database info
-        - Full column schemas with types
-        - Row counts
-        - schema_brief (if smart=True): Compact summary for efficient LLM consumption
-        **Note:** Sample rows are NOT included (use run_sql to query actual data)
+        JSON array with one row per matching table:
+        - query: Search query used
+        - source: "elasticsearch" or "elasticsearch+smart"
+        - qualified_name, database, schema, table_name: Table identifiers
+        - description, row_count, match_score: Table metadata
+        - columns_json: JSON string of column metadata
+        - schema_brief (first row only, if smart=True): Compact summary for LLM consumption
     """
     try:
         # Try Elasticsearch first
@@ -252,25 +375,37 @@ def sql_search(
                 task_context=task_context
             )
 
-            return json.dumps({
-                "query": query,
-                "source": "elasticsearch+smart",
-                "total_results": len(smart_result.get("tables", [])),
-                "tables": smart_result.get("tables", tables[:k]),
-                "schema_brief": smart_result.get("schema_brief"),
-                "dropped_tables": smart_result.get("dropped_tables", []),
-                "smart_search_used": smart_result.get("smart_search_used", False),
-                "note": "Results filtered by LLM for relevance. Use run_sql to query actual data."
-            }, indent=2, default=str)
+            smart_tables = smart_result.get("tables", tables[:k])
+            schema_brief = smart_result.get("schema_brief")
 
-        return json.dumps({
-            "query": query,
-            "source": "elasticsearch",
-            "total_results": len(tables),
-            "tables": tables[:k],
-            "smart_search_used": False,
-            "note": "Results optimized for LLM - sample_rows excluded. Use run_sql to query actual data."
-        }, indent=2, default=str)
+            # Merge smart search results with original table metadata
+            # Smart search returns different structure (relevance, reasoning, key_columns)
+            # We need to map back to original tables and enrich with smart fields
+            tables_by_name = {t.get("qualified_name"): t for t in tables}
+            merged_tables = []
+            for smart_table in smart_tables:
+                qname = smart_table.get("qualified_name")
+                original = tables_by_name.get(qname, {})
+                # Start with original table metadata
+                merged = {**original}
+                # Add smart search enrichments
+                if smart_table.get("relevance"):
+                    merged["relevance"] = smart_table.get("relevance")
+                if smart_table.get("reasoning"):
+                    merged["reasoning"] = smart_table.get("reasoning")
+                if smart_table.get("key_columns"):
+                    merged["key_columns"] = smart_table.get("key_columns")
+                if smart_table.get("join_hint"):
+                    merged["join_hint"] = smart_table.get("join_hint")
+                merged_tables.append(merged)
+
+            # Return one row per table for easier SQL consumption
+            rows = _pivot_tables_to_rows(merged_tables, query, source="elasticsearch+smart", schema_brief=schema_brief)
+            return json.dumps(rows, default=str)
+
+        # Return one row per table for easier SQL consumption
+        rows = _pivot_tables_to_rows(tables[:k], query, source="elasticsearch")
+        return json.dumps(rows, default=str)
 
     except ImportError:
         # Elasticsearch not available - fallback to RAG
@@ -307,10 +442,10 @@ def smart_sql_search(
             (e.g., "write a query to find inactive users")
 
     Returns:
-        JSON with:
-        - tables: Filtered relevant tables with key_columns highlighted
-        - schema_brief: Compact summary for LLM context
-        - dropped_tables: Tables filtered out with reasons
+        JSON array with one row per matching table:
+        - query, source, qualified_name, database, schema, table_name
+        - description, row_count, match_score, columns_json
+        - schema_brief (first row only): Compact LLM-ready summary
 
     Example:
         smart_sql_search("user email addresses", task_context="find inactive users")

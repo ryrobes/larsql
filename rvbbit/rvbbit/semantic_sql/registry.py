@@ -606,6 +606,9 @@ async def execute_sql_function(
                 log.debug(f"[sql_fn] Wrote {len(results)} rows to {temp_path}")
                 return temp_path
 
+            # For VARCHAR return type, ensure dict/list outputs are JSON serialized
+            if fn.returns == "VARCHAR" and isinstance(cached, (dict, list)):
+                return json.dumps(cached)
             return cached
 
     # Track cache miss for SQL Trail
@@ -840,6 +843,12 @@ async def execute_sql_function(
         else:
             # Default: content-based cache key
             set_cached_result(cache_name, cleaned_args, output)
+
+    # IMPORTANT: For VARCHAR return type, ensure dict/list outputs are JSON serialized.
+    # Without this, DuckDB uses Python's str() which produces {'key': ...} format
+    # instead of valid JSON {"key": ...}, breaking read_json_auto() consumption.
+    if fn.returns == "VARCHAR" and isinstance(output, (dict, list)):
+        output = json.dumps(output)
 
     return output
 

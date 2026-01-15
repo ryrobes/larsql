@@ -877,3 +877,4 @@ WITH (                            -- Options
 - `examples/sql_syntax_examples.sql` - Complete syntax examples
 - `examples/test_schema_output.yaml` - Example cascade with output_schema
 - `RVBBIT_MAP_QUICKSTART.md` - Original MAP syntax guide
+- `TRAIT_SQL_SYNTAX.md` - trait:: namespace syntax with dot accessors

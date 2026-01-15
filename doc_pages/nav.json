@@ -230,6 +230,20 @@
           ]
         },
         {
+          "id": "trait-sql",
+          "title": "trait:: SQL Syntax",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "table-mode", "title": "Table Mode" },
+            { "anchor": "scalar-mode", "title": "Scalar Mode (Dot Accessor)" },
+            { "anchor": "syntax-reference", "title": "Syntax Reference" },
+            { "anchor": "common-patterns", "title": "Common Patterns" },
+            { "anchor": "available-tools", "title": "Available Tools" },
+            { "anchor": "performance", "title": "Performance" },
+            { "anchor": "troubleshooting", "title": "Troubleshooting" }
+          ]
+        },
+        {
           "id": "memory",
           "title": "Memory System",
           "sections": [

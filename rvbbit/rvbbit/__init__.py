@@ -76,7 +76,7 @@ def _register_all_traits():
     from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree, get_image_info, read_images, list_images, save_image, copy_image
     from .traits.image_gen import outpaint_image, generate_image, llm_outpaint, llm_generate
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
-    from .sql_tools.tools import sql_search, sql_rag_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
+    from .sql_tools.tools import sql_search, sql_rag_search, smart_sql_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
     from .traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
     from .traits.bash_substrate import bash_data
     from .traits.ui_components import lookup_ui_component, list_ui_components, get_ui_examples
@@ -146,6 +146,7 @@ def _register_all_traits():
     # SQL tools
     register_trait("sql_search", sql_search)
     register_trait("sql_rag_search", sql_rag_search)
+    register_trait("smart_sql_search", smart_sql_search)
     register_trait("sql_query", sql_run_sql)
     register_trait("list_sql_connections", list_sql_connections)
     register_trait("validate_sql", validate_sql)

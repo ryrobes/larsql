@@ -1595,6 +1595,16 @@ def get_semantic_operators_info() -> Dict[str, Any]:
                 'syntax': "trait('tool_name', json_object('arg', value))",
                 'rewrites_to': "read_json_auto(trait(...))",
                 'description': 'Call any registered trait/tool and return as table'
+            },
+            'trait::': {
+                'syntax': "trait::tool_name(args)",
+                'rewrites_to': "trait('tool_name', json_object(...))",
+                'description': 'Namespace syntax sugar for trait() calls'
+            },
+            'trait:: with dot accessor': {
+                'syntax': "trait::tool(x).field / trait::tool(x)[0] / trait::tool(x).a[0].b",
+                'rewrites_to': "json_extract_string(trait_json(...), '$.field')",
+                'description': 'Extract scalar value from trait result using JSON path (uses trait_json which returns content directly)'
             }
         },
         'annotation_support': {
@@ -1617,6 +1627,11 @@ def _get_trait_params(trait_name: str) -> List[str]:
     Returns empty list if trait not found or introspection fails.
     """
     try:
+        # Ensure traits are registered before looking them up
+        # This is needed because SQL rewriting happens before cascade execution
+        from .. import _register_all_traits
+        _register_all_traits()
+
         from ..trait_registry import get_trait
         import inspect
 
@@ -1643,18 +1658,96 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
     - Named args: trait::say(text := 'Hello') → trait('say', json_object('text', 'Hello'))
     - Mixed: trait::tool('first', other := 'val') → trait('tool', json_object('param1', 'first', 'other', 'val'))
     - No args: trait::list_traits() → trait('list_traits', '{}')
+    - Dot accessor: trait::local_sentiment(title).label → json_extract_string(trait(...), '$.label')
+    - Array accessor: trait::tool(x)[0] → json_extract_string(trait(...), '$[0]')
+    - Chained: trait::tool(x).results[0].name → json_extract_string(trait(...), '$.results[0].name')
 
     The rewriter introspects trait signatures to map positional args to param names.
+    When an accessor chain is present, the result is a scalar extraction rather than
+    a table (no read_json_auto wrapper needed).
     """
     # Quick check - if no trait:: in query, skip
     if 'trait::' not in query.lower():
         return query
 
-    def parse_trait_call(sql: str, start_pos: int) -> Optional[Tuple[int, str, str]]:
+    def parse_accessor_chain(sql: str, start_pos: int) -> Tuple[int, str]:
+        """
+        Parse accessor chain starting at start_pos (after the closing paren).
+
+        Handles:
+        - .field → $.field
+        - [0] → $[0]
+        - .results[0].name → $.results[0].name
+
+        Returns (end_pos, json_path) where json_path starts with '$'.
+        If no accessor found, returns (start_pos, '').
+        """
+        pos = start_pos
+        path_parts = []
+
+        while pos < len(sql):
+            ch = sql[pos]
+
+            if ch == '.':
+                # Dot accessor - parse field name
+                pos += 1
+                field_start = pos
+                while pos < len(sql) and (sql[pos].isalnum() or sql[pos] == '_'):
+                    pos += 1
+                if pos > field_start:
+                    field_name = sql[field_start:pos]
+                    path_parts.append(f'.{field_name}')
+                else:
+                    # Dot not followed by identifier - stop parsing
+                    pos -= 1  # Back up before the dot
+                    break
+
+            elif ch == '[':
+                # Array accessor - parse index or key
+                pos += 1
+                bracket_content = []
+                in_string = False
+                string_char = None
+
+                while pos < len(sql):
+                    c = sql[pos]
+                    if not in_string:
+                        if c == ']':
+                            pos += 1
+                            break
+                        elif c in ('"', "'"):
+                            in_string = True
+                            string_char = c
+                            bracket_content.append(c)
+                        else:
+                            bracket_content.append(c)
+                    else:
+                        bracket_content.append(c)
+                        if c == string_char:
+                            # Check for escaped quote
+                            if pos + 1 < len(sql) and sql[pos + 1] == string_char:
+                                bracket_content.append(sql[pos + 1])
+                                pos += 1
+                            else:
+                                in_string = False
+                    pos += 1
+
+                if bracket_content:
+                    path_parts.append(f'[{"".join(bracket_content)}]')
+            else:
+                # Not an accessor character - stop parsing
+                break
+
+        if path_parts:
+            return (pos, '$' + ''.join(path_parts))
+        return (start_pos, '')
+
+    def parse_trait_call(sql: str, start_pos: int) -> Optional[Tuple[int, str, str, str]]:
         """
         Parse a trait::name(...) call starting at start_pos.
 
-        Returns (end_pos, trait_name, json_object_expr) or None if parse fails.
+        Returns (end_pos, trait_name, json_object_expr, accessor_path) or None if parse fails.
+        accessor_path is a JSON path like '$.label' or '' if no accessor.
         """
         # Match trait::name pattern
         match = re.match(r'trait::(\w+)\s*\(', sql[start_pos:], re.IGNORECASE)
@@ -1692,7 +1785,12 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
         # Parse args into json_object expression
         json_obj_expr = _parse_trait_args(trait_name, args_str)
 
-        return (end_pos, trait_name, json_obj_expr)
+        # Check for accessor chain after the closing paren
+        accessor_end, accessor_path = parse_accessor_chain(sql, end_pos)
+        if accessor_path:
+            end_pos = accessor_end
+
+        return (end_pos, trait_name, json_obj_expr, accessor_path)
 
     def _parse_trait_args(trait_name: str, args_str: str) -> str:
         """
@@ -1803,13 +1901,21 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
         parsed = parse_trait_call(query, start)
 
         if parsed:
-            end_pos, trait_name, json_obj_expr = parsed
+            end_pos, trait_name, json_obj_expr, accessor_path = parsed
 
             # Add everything before this match
             result.append(query[last_end:start])
 
-            # Add the rewritten trait() call
-            result.append(f"trait('{trait_name}', {json_obj_expr})")
+            # Generate the rewritten expression
+            if accessor_path:
+                # Scalar extraction mode - use trait_json() which returns JSON content directly
+                # (trait() returns a file path for read_json_auto, which doesn't work with json_extract_string)
+                trait_call = f"trait_json('{trait_name}', {json_obj_expr})"
+                result.append(f"json_extract_string({trait_call}, '{accessor_path}')")
+            else:
+                # Table mode - use trait() which returns file path (read_json_auto added later by _rewrite_trait_function)
+                trait_call = f"trait('{trait_name}', {json_obj_expr})"
+                result.append(trait_call)
 
             last_end = end_pos
 
@@ -1913,114 +2019,60 @@ def _rewrite_trait_function(query: str) -> str:
         SELECT t.id, r.* FROM messages t, LATERAL read_json_auto(trait('say', json_object('text', t.content))) r
 
     The function detects trait() in FROM clauses and wraps appropriately.
-    Does NOT wrap if already inside read_json_auto().
+    Does NOT wrap if:
+    - Already inside read_json_auto()
+    - Already inside json_extract_string() (scalar extraction via dot accessor)
     """
     # Quick check - if no trait( in query, skip
     if 'trait(' not in query.lower():
         return query
 
-    # Pattern to match trait(...) in FROM context, not already wrapped
-    # This regex matches:
-    #   FROM trait(...)
-    #   , trait(...)  (in FROM list)
-    #   LATERAL trait(...)
-    #   JOIN trait(...)
-    # But NOT:
-    #   read_json_auto(trait(...))  (already wrapped)
-
-    def wrap_trait_call(match):
-        """Wrap a trait() call with read_json_auto()."""
-        prefix = match.group(1)  # FROM, LATERAL, comma, etc.
-        trait_call = match.group(2)  # The full trait(...) call
-        suffix = match.group(3)  # Alias or trailing content
-
-        # Don't double-wrap if read_json_auto is already there
-        # (checked in the negative lookbehind)
-
-        return f"{prefix}read_json_auto({trait_call}){suffix}"
-
-    # Pattern explanation:
-    # - Negative lookbehind: not preceded by read_json_auto(
-    # - Group 1: FROM|LATERAL|,|JOIN followed by whitespace
-    # - Group 2: trait(...) with balanced parentheses (up to 3 levels deep)
-    # - Group 3: Optional alias
-
-    # Match trait() calls in FROM context (not already wrapped)
-    # We use a simpler approach: find trait( and balance parens
-    result = query
-
-    # Pattern for FROM/LATERAL/JOIN/comma followed by trait(
-    from_pattern = re.compile(
-        r'((?:FROM|LATERAL|JOIN)\s+|,\s*)'  # Context keyword
-        r'(?<!read_json_auto\()'  # Not already wrapped (simple check)
-        r'(trait\s*\([^)]*(?:\([^)]*(?:\([^)]*\)[^)]*)*\)[^)]*)*\))'  # trait(...) with nesting
-        r'(\s+(?:AS\s+)?[a-zA-Z_]\w*)?',  # Optional alias
+    # Find all positions where we have FROM/LATERAL/JOIN/comma followed by trait(
+    # and wrap with read_json_auto() if not already wrapped
+    pattern = re.compile(
+        r'((?:FROM|LATERAL|JOIN)\s+|,\s*)(trait\s*\()',
         re.IGNORECASE
     )
 
-    # Simpler approach: find all occurrences of trait(...) after FROM-like keywords
-    # and wrap them if not already wrapped
+    result = []
+    last_end = 0
 
-    # Split by FROM, LATERAL, JOIN, comma (keeping delimiters)
-    # Actually, let's use a token-aware approach
+    for match in pattern.finditer(query):
+        start = match.start()
+        prefix = match.group(1)
 
-    # Simple regex replacement - match " trait(" or ",trait(" not preceded by "read_json_auto"
-    # This is a pragmatic approach that handles most cases
+        # Check if already wrapped (look back for read_json_auto or json_extract_string)
+        lookback = query[max(0, start - 25):start].lower()
+        if 'read_json_auto(' in lookback or 'json_extract_string(' in lookback:
+            continue
 
-    # Pattern: (FROM|LATERAL|,)\s*trait\(  ->  \1 read_json_auto(trait(
-    # Then we need to balance the closing paren
+        # Find the matching closing paren for trait(
+        paren_count = 1
+        pos = match.end()
 
-    def balance_and_wrap(sql: str) -> str:
-        """Find trait() in FROM context and wrap with read_json_auto()."""
-        # Find all positions where we have FROM/LATERAL/JOIN/comma followed by trait(
-        pattern = re.compile(
-            r'((?:FROM|LATERAL|JOIN)\s+|,\s*)(trait\s*\()',
-            re.IGNORECASE
-        )
+        while pos < len(query) and paren_count > 0:
+            if query[pos] == '(':
+                paren_count += 1
+            elif query[pos] == ')':
+                paren_count -= 1
+            pos += 1
 
-        result = []
-        last_end = 0
+        if paren_count != 0:
+            # Unbalanced - skip
+            continue
 
-        for match in pattern.finditer(sql):
-            start = match.start()
-            prefix = match.group(1)
-            trait_start = match.group(2)
+        # pos now points just after the closing )
+        trait_call = query[match.start(2):pos]
 
-            # Check if already wrapped (look back for read_json_auto)
-            lookback = sql[max(0, start - 20):start]
-            if 'read_json_auto(' in lookback.lower():
-                continue
+        # Add everything before this match
+        result.append(query[last_end:match.start()])
+        # Add the wrapped version
+        result.append(f"{prefix}read_json_auto({trait_call})")
+        last_end = pos
 
-            # Find the matching closing paren for trait(
-            paren_start = match.end() - 1  # Position of the (
-            paren_count = 1
-            pos = match.end()
-
-            while pos < len(sql) and paren_count > 0:
-                if sql[pos] == '(':
-                    paren_count += 1
-                elif sql[pos] == ')':
-                    paren_count -= 1
-                pos += 1
-
-            if paren_count != 0:
-                # Unbalanced - skip
-                continue
-
-            # pos now points just after the closing )
-            trait_call = sql[match.start(2):pos]
-
-            # Add everything before this match
-            result.append(sql[last_end:match.start()])
-            # Add the wrapped version
-            result.append(f"{prefix}read_json_auto({trait_call})")
-            last_end = pos
-
-        # Add remaining content
-        result.append(sql[last_end:])
-        return ''.join(result)
-
-    return balance_and_wrap(query)
+    # Add remaining content
+    result.append(query[last_end:])
+    return ''.join(result)
 
 
 # ============================================================================
@@ -2139,5 +2191,44 @@ WHERE title MEANS 'happened during the day'
   -- @ threshold: 0.3
   AND title ABOUT 'credible sighting'
 GROUP BY county
+```
+
+## trait:: Namespace Syntax
+
+```sql
+-- Table mode: returns all columns as a table
+SELECT * FROM trait::sql_search('bigfoot sightings')
+
+-- With named parameters
+SELECT * FROM trait::sql_search(query := 'bigfoot', use_smart := true)
+```
+
+## trait:: Dot Accessor (Scalar Extraction)
+
+```sql
+-- Extract single field from trait result
+SELECT
+  title,
+  trait::local_sentiment(title).label as sentiment,
+  trait::local_sentiment(title).score as confidence
+FROM articles
+
+-- Array index accessor
+SELECT trait::list_tables(schema := 'public')[0] as first_table
+
+-- Chained accessor for nested results
+SELECT trait::api_call(endpoint := '/users').data[0].name as first_user
+
+-- Use in WHERE clause
+SELECT * FROM products
+WHERE trait::local_sentiment(description).label = 'POSITIVE'
+
+-- Combine with other semantic operators
+SELECT
+  title,
+  trait::local_sentiment(title).label as sentiment
+FROM articles
+WHERE title MEANS 'technology news'
+ORDER BY title RELEVANCE TO 'AI breakthroughs'
 ```
 """

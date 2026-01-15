@@ -1,0 +1,408 @@
+<h1>trait:: SQL Syntax</h1>
+<p class="lead">
+  Call any registered tool directly from SQL using the <code>trait::</code> namespace syntax.
+  Extract scalar values with dot accessors or get full table results.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#table-mode">Table Mode</a></li>
+    <li><a href="#scalar-mode">Scalar Mode (Dot Accessor)</a></li>
+    <li><a href="#syntax-reference">Syntax Reference</a></li>
+    <li><a href="#common-patterns">Common Patterns</a></li>
+    <li><a href="#available-tools">Available Tools</a></li>
+    <li><a href="#performance">Performance</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  The <code>trait::</code> syntax provides a clean way to invoke tools from SQL.
+  Two modes are supported:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Mode</th>
+      <th>Syntax</th>
+      <th>Returns</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Table</strong></td>
+      <td><code>SELECT * FROM trait::tool(args)</code></td>
+      <td>Table (multiple columns/rows)</td>
+      <td>Full result exploration</td>
+    </tr>
+    <tr>
+      <td><strong>Scalar</strong></td>
+      <td><code>SELECT trait::tool(arg).field</code></td>
+      <td>Single value</td>
+      <td>Inline field extraction</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="table-mode">Table Mode</h2>
+
+<p>Use table mode to get all fields from a tool result as columns:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Table Mode Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Search for tables related to "bigfoot"</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::sql_search(<span class="str">'bigfoot sightings'</span>);
+
+<span class="cmt">-- Get all sentiment analysis fields</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::local_sentiment(<span class="str">'I love this product!'</span>);
+
+<span class="cmt">-- List all available traits</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::list_traits();</pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">How It Works</div>
+  <p>
+    Table mode rewrites to <code>read_json_auto(trait(...))</code>, which reads
+    the JSON result as a table with typed columns.
+  </p>
+</div>
+
+<h2 id="scalar-mode">Scalar Mode (Dot Accessor)</h2>
+
+<p>
+  Use dot accessors to extract specific fields inline without a full table scan:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Scalar Mode Examples</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Extract just the label from sentiment analysis</span>
+<span class="kw">SELECT</span>
+    title,
+    trait::local_sentiment(title)[<span class="num">0</span>].label <span class="kw">AS</span> sentiment
+<span class="kw">FROM</span> articles
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cmt">-- Multiple extractions in one query</span>
+<span class="kw">SELECT</span>
+    title,
+    trait::local_sentiment(title)[<span class="num">0</span>].label <span class="kw">AS</span> sentiment,
+    trait::local_sentiment(title)[<span class="num">0</span>].score <span class="kw">AS</span> confidence
+<span class="kw">FROM</span> products;
+
+<span class="cmt">-- Use in WHERE clause</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> reviews
+<span class="kw">WHERE</span> trait::local_sentiment(body)[<span class="num">0</span>].label = <span class="str">'POSITIVE'</span>;</pre>
+  </div>
+</div>
+
+<div class="info-box info-box-warning">
+  <div class="info-box-title">Array Index Required</div>
+  <p>
+    Most tools return an array of results. Use <code>[0]</code> to access the first result,
+    then <code>.field</code> to extract the field.
+  </p>
+</div>
+
+<h2 id="syntax-reference">Syntax Reference</h2>
+
+<h3>Parameter Styles</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Parameter Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Positional arguments (mapped automatically)</span>
+trait::local_sentiment(<span class="str">'analyze this text'</span>)
+
+<span class="cmt">-- Named arguments with :=</span>
+trait::sql_search(query := <span class="str">'bigfoot'</span>, use_smart := <span class="kw">true</span>)
+
+<span class="cmt">-- Named arguments with =></span>
+trait::sql_search(query => <span class="str">'UFO sightings'</span>)
+
+<span class="cmt">-- Mixed (positional first, then named)</span>
+trait::tool(<span class="str">'first_arg'</span>, optional_param := <span class="str">'value'</span>)
+
+<span class="cmt">-- No arguments</span>
+trait::list_traits()</pre>
+  </div>
+</div>
+
+<h3>Accessor Chains</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Accessor</th>
+      <th>JSON Path</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>.field</code></td>
+      <td><code>$.field</code></td>
+      <td><code>trait::fn(x)[0].label</code></td>
+    </tr>
+    <tr>
+      <td><code>[0]</code></td>
+      <td><code>$[0]</code></td>
+      <td><code>trait::fn(x)[0]</code></td>
+    </tr>
+    <tr>
+      <td><code>.a[0].b</code></td>
+      <td><code>$.a[0].b</code></td>
+      <td><code>trait::api(x).data[0].name</code></td>
+    </tr>
+    <tr>
+      <td><code>['key']</code></td>
+      <td><code>$['key']</code></td>
+      <td><code>trait::fn(x)['special-key']</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="common-patterns">Common Patterns</h2>
+
+<h3>Sentiment Analysis Per Row</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Sentiment Analysis</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    id,
+    title,
+    trait::local_sentiment(title)[<span class="num">0</span>].label <span class="kw">AS</span> sentiment,
+    trait::local_sentiment(title)[<span class="num">0</span>].score <span class="kw">AS</span> confidence
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> trait::local_sentiment(title)[<span class="num">0</span>].label = <span class="str">'POSITIVE'</span>
+<span class="kw">LIMIT</span> <span class="num">100</span>;</pre>
+  </div>
+</div>
+
+<h3>Combining with Semantic Operators</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Combined with MEANS and RELEVANCE TO</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span>
+    title,
+    trait::local_sentiment(title)[<span class="num">0</span>].label <span class="kw">AS</span> sentiment
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> title <span class="kw">MEANS</span> <span class="str">'technology news'</span>
+<span class="kw">ORDER BY</span> title <span class="kw">RELEVANCE TO</span> <span class="str">'AI breakthroughs'</span>
+<span class="kw">LIMIT</span> <span class="num">20</span>;</pre>
+  </div>
+</div>
+
+<h3>Mixed Table and Scalar Mode</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Table + Scalar in Same Query</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Table mode for FROM, scalar mode for SELECT</span>
+<span class="kw">SELECT</span>
+    r.*,
+    trait::local_sentiment(r.title)[<span class="num">0</span>].score <span class="kw">AS</span> sentiment_score
+<span class="kw">FROM</span> trait::sql_search(<span class="str">'customer data'</span>) r
+<span class="kw">LIMIT</span> <span class="num">5</span>;</pre>
+  </div>
+</div>
+
+<h2 id="available-tools">Available Tools</h2>
+
+<p>Any registered trait can be called via <code>trait::</code>. Common examples:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Description</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>local_sentiment</code></td>
+      <td>Sentiment analysis (local HF model)</td>
+      <td><code>trait::local_sentiment(text)[0].label</code></td>
+    </tr>
+    <tr>
+      <td><code>local_ner</code></td>
+      <td>Named entity recognition</td>
+      <td><code>trait::local_ner(text)</code></td>
+    </tr>
+    <tr>
+      <td><code>sql_search</code></td>
+      <td>Search table metadata</td>
+      <td><code>trait::sql_search('topic')</code></td>
+    </tr>
+    <tr>
+      <td><code>smart_sql_search</code></td>
+      <td>LLM-enhanced table search</td>
+      <td><code>trait::smart_sql_search('query')</code></td>
+    </tr>
+    <tr>
+      <td><code>list_traits</code></td>
+      <td>List all available traits</td>
+      <td><code>trait::list_traits()</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Discovering Available Tools</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">List All Tools</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- List all registered traits</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::list_traits();
+
+<span class="cmt">-- Search for specific capabilities</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::list_traits()
+<span class="kw">WHERE</span> name <span class="kw">LIKE</span> <span class="str">'%sentiment%'</span>;</pre>
+  </div>
+</div>
+
+<h2 id="performance">Performance</h2>
+
+<h3>Caching</h3>
+
+<p>Tool results are cached by input. Repeated calls with the same input are instant:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Caching Behavior</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- First call: executes model</span>
+<span class="kw">SELECT</span> trait::local_sentiment(<span class="str">'test'</span>)[<span class="num">0</span>].label;
+
+<span class="cmt">-- Second call: cache hit (instant)</span>
+<span class="kw">SELECT</span> trait::local_sentiment(<span class="str">'test'</span>)[<span class="num">0</span>].score;</pre>
+  </div>
+</div>
+
+<h3>Batch Processing</h3>
+
+<p>For large datasets, use <code>LIMIT</code> and process in batches:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Batch Processing</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Process in batches of 100</span>
+<span class="kw">SELECT</span> id, trait::local_sentiment(text)[<span class="num">0</span>].label
+<span class="kw">FROM</span> large_table
+<span class="kw">LIMIT</span> <span class="num">100</span> <span class="kw">OFFSET</span> <span class="num">0</span>;</pre>
+  </div>
+</div>
+
+<h3>Local vs Remote Models</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Speed</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Local HuggingFace</td>
+      <td>Fast (no network)</td>
+      <td><code>local_sentiment</code>, <code>local_ner</code></td>
+    </tr>
+    <tr>
+      <td>LLM-based</td>
+      <td>Slower (API call)</td>
+      <td><code>smart_sql_search</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>"Malformed JSON" Error</h3>
+
+<div class="info-box info-box-warning">
+  <div class="info-box-title">Cause</div>
+  <p>
+    This happens if you manually use <code>trait()</code> with <code>json_extract_string()</code>.
+    The <code>trait::</code> syntax handles this automatically.
+  </p>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Solution</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Wrong: manual trait() with json_extract_string</span>
+<span class="kw">SELECT</span> json_extract_string(trait(<span class="str">'fn'</span>, <span class="str">'{}'</span>), <span class="str">'$.field'</span>);  <span class="cmt">-- ERROR</span>
+
+<span class="cmt">-- Right: use trait:: syntax (rewriter handles it)</span>
+<span class="kw">SELECT</span> trait::fn()[<span class="num">0</span>].field;  <span class="cmt">-- Works!</span></pre>
+  </div>
+</div>
+
+<h3>Empty Results</h3>
+
+<p>Debug by viewing the raw result:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Debug Raw Output</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- See what the tool actually returns</span>
+<span class="kw">SELECT</span> trait_json(<span class="str">'tool_name'</span>, json_object(<span class="str">'arg'</span>, <span class="str">'value'</span>));</pre>
+  </div>
+</div>
+
+<h3>Tool Not Found</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">Find Available Tools</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- List all traits and search</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> trait::list_traits()
+<span class="kw">WHERE</span> name <span class="kw">LIKE</span> <span class="str">'%search%'</span>;</pre>
+  </div>
+</div>
+
+<hr>
+
+<h2>See Also</h2>
+<ul>
+  <li><a href="#tools" data-link>Tools (Traits)</a> - Tool registration and types</li>
+  <li><a href="#semantic-sql" data-link>Semantic SQL</a> - SQL operators and UDFs</li>
+  <li><a href="#operators" data-link>Built-in Operators</a> - Semantic operators reference</li>
+</ul>
