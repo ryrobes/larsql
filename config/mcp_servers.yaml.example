@@ -1,7 +1,7 @@
 # MCP Server Configuration
 #
 # Configure Model Context Protocol servers for RVBBIT.
-# Servers are auto-discovered at startup and their tools registered in trait_registry.
+# Servers are auto-discovered at startup and their tools registered in skill_registry.
 #
 # Copy this file to mcp_servers.yaml to activate.
 

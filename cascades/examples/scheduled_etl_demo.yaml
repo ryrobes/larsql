@@ -15,7 +15,7 @@ cells:
   tool: python:windlass.demo_tools.validate_sql
 - instructions: Log the validation error and notify the team.
   name: log_error
-  traits: []
+  skills: []
 - handoffs:
   - transform_data
   instructions: 'Extract data for {{ input.mode }} run on date {{ input.date | default(''today'')
@@ -24,7 +24,7 @@ cells:
 
     Simulate data extraction and return a sample dataset.'
   name: extract_data
-  traits: []
+  skills: []
 - handoffs:
   - load_data
   - log_empty
@@ -40,13 +40,13 @@ cells:
   tool: python:windlass.demo_tools.transform_data
 - instructions: No data to process. Log this and exit gracefully.
   name: log_empty
-  traits: []
+  skills: []
 - instructions: 'Transform failed: {{ state.last_deterministic_error.error }}
 
 
     Diagnose and suggest remediation.'
   name: handle_transform_error
-  traits:
+  skills:
   - linux_shell
 - instructions: 'Load the transformed data:
 
@@ -56,7 +56,7 @@ cells:
 
     Simulate loading to warehouse and confirm success.'
   name: load_data
-  traits: []
+  skills: []
 triggers:
 - description: Run every day at 6 AM Eastern
   inputs:

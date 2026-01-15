@@ -14,5 +14,5 @@ cells:
 
       Your response was too short. Please write a longer response (at least 100 characters).
       This is attempt {{ attempt }}/{{ max_attempts }}.'
-  traits:
+  skills:
   - set_state

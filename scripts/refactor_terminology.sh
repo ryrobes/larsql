@@ -26,8 +26,8 @@ find rvbbit -name "*.py" -type f -exec sed -i 's/\bCellConfig\b/CellConfig/g' {}
 # CandidatesConfig → CandidatesConfig
 find rvbbit -name "*.py" -type f -exec sed -i 's/\bCandidatesConfig\b/CandidatesConfig/g' {} +
 
-# ToolRegistry → TraitRegistry
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bToolRegistry\b/TraitRegistry/g' {} +
+# ToolRegistry → SkillRegistry
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bToolRegistry\b/SkillRegistry/g' {} +
 
 echo "✓ Class names updated"
 
@@ -36,14 +36,14 @@ echo "✓ Class names updated"
 # =============================================================================
 echo "[2/8] Updating function names..."
 
-# register_tackle → register_trait
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bregister_tackle\b/register_trait/g' {} +
+# register_tackle → register_skill
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bregister_tackle\b/register_skill/g' {} +
 
-# get_tackle → get_trait
-find rvbbit -name "*.py" -type f -exec sed -i 's/\bget_tackle\b/get_trait/g' {} +
+# get_tackle → get_skill
+find rvbbit -name "*.py" -type f -exec sed -i 's/\bget_tackle\b/get_skill/g' {} +
 
-# list_tackle → list_traits
-find rvbbit -name "*.py" -type f -exec sed -i 's/\blist_tackle\b/list_traits/g' {} +
+# list_tackle → list_skills
+find rvbbit -name "*.py" -type f -exec sed -i 's/\blist_tackle\b/list_skills/g' {} +
 
 # run_cell → run_cell
 find rvbbit -name "*.py" -type f -exec sed -i 's/\brun_cell\b/run_cell/g' {} +
@@ -70,9 +70,9 @@ find rvbbit -name "*.py" -type f -exec sed -i "s/'cell_name'/'cell_name'/g" {} +
 find rvbbit -name "*.py" -type f -exec sed -i 's/"cell_json"/"cell_json"/g' {} +
 find rvbbit -name "*.py" -type f -exec sed -i "s/'cell_json'/'cell_json'/g" {} +
 
-# "tackle": → "traits":
-find rvbbit -name "*.py" -type f -exec sed -i 's/"tackle":/"traits":/g' {} +
-find rvbbit -name "*.py" -type f -exec sed -i "s/'tackle':/'traits':/g" {} +
+# "tackle": → "skills":
+find rvbbit -name "*.py" -type f -exec sed -i 's/"tackle":/"skills":/g' {} +
+find rvbbit -name "*.py" -type f -exec sed -i "s/'tackle':/'skills':/g" {} +
 
 # "candidates": → "candidates":
 find rvbbit -name "*.py" -type f -exec sed -i 's/"candidates":/"candidates":/g' {} +
@@ -111,11 +111,11 @@ find rvbbit -name "*.py" -type f -exec sed -i 's/\bcurrent_cell\b/current_cell/g
 # next_cell → next_cell
 find rvbbit -name "*.py" -type f -exec sed -i 's/\bnext_cell\b/next_cell/g' {} +
 
-# tackle_name → trait_name
-find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_name\b/trait_name/g' {} +
+# tackle_name → skill_name
+find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_name\b/skill_name/g' {} +
 
-# tackle_list → trait_list
-find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_list\b/trait_list/g' {} +
+# tackle_list → skill_list
+find rvbbit -name "*.py" -type f -exec sed -i 's/\btackle_list\b/skill_list/g' {} +
 
 # candidate → candidate (for loop variables)
 find rvbbit -name "*.py" -type f -exec sed -i 's/for candidate in /for candidate in /g' {} +
@@ -179,7 +179,7 @@ echo "✓ All $total_py_files Python files processed"
 echo ""
 echo "Changes made:"
 echo "  - Cell → Cell (classes, variables, fields)"
-echo "  - Tackle → Traits (functions, variables, fields)"
+echo "  - Tackle → Skills (functions, variables, fields)"
 echo "  - Candidates → Candidates (classes, variables, fields)"
 echo "  - Rvbbit → RVBBIT (strings, comments)"
 echo "  - SQL column names updated"

@@ -100,7 +100,7 @@
     <span class="key">instructions</span>: |
       Help the user write SQL queries.
       Search your memory for similar patterns if helpful.
-    <span class="key">traits</span>:
+    <span class="key">skills</span>:
       - sql_data
       - sql_patterns_memory  <span class="cmt"># Agent can call this to search memories</span></pre>
   </div>
@@ -217,7 +217,7 @@ result = sql_patterns_memory(
   - <span class="key">name</span>: gather_data
     <span class="key">instructions</span>: |
       Research competitor pricing. Store findings in the database.
-    <span class="key">traits</span>:
+    <span class="key">skills</span>:
       - brave_web_search
       - research_execute  <span class="cmt"># CREATE/INSERT/UPDATE</span>
       - research_query    <span class="cmt"># SELECT queries</span></pre>
@@ -462,6 +462,6 @@ research_query(<span class="str">"SELECT * FROM competitors ORDER BY pricing"</s
 <ul>
   <li><a href="#auto-context" data-link>Auto-Context Deep Dive</a> - Intelligent context management including context cards</li>
   <li><a href="#context" data-link>Context Management</a> - Traditional explicit context configuration</li>
-  <li><a href="#tools" data-link>Tools (Traits)</a> - Tool system overview</li>
+  <li><a href="#tools" data-link>Tools (Skills)</a> - Tool system overview</li>
   <li><a href="#embedding" data-link>Vector Search & Embedding</a> - Embedding system used by memory</li>
 </ul>

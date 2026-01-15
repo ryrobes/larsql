@@ -9,7 +9,7 @@ cells:
     Call the tool with threshold=2, then summarize the results in a friendly way.
 
     '
-  traits:
+  skills:
   - data_cascade_test
   rules:
     max_turns: 3

@@ -14,7 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
 from .config import get_config
 from .db_adapter import get_db
-from .traits_manifest import get_trait_manifest
+from .skills_manifest import get_skill_manifest
 
 
 console = Console()
@@ -169,7 +169,7 @@ def sync_tools_to_db(force: bool = False):
     console.print("[cyan]Discovering tools from manifest...[/cyan]")
 
     try:
-        manifest = get_trait_manifest(refresh=True)
+        manifest = get_skill_manifest(refresh=True)
         console.print(f"[green]✓[/green] Discovered {len(manifest)} tools")
     except Exception as e:
         console.print(f"[red]✗ Failed to get manifest: {e}[/red]")

@@ -60,5 +60,5 @@ cells:
     Provide a meta-summary: How many validation attempts did each phase require, and
     what was learned from the feedback?'
   name: finalize
-  traits:
+  skills:
   - set_state

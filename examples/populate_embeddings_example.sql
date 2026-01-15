@@ -35,7 +35,7 @@ INSERT INTO products VALUES
 -- For now, use this Python script to populate embeddings:
 
 /*
-from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
+from rvbbit.skills.embedding_storage import agent_embed, clickhouse_store_embedding
 import duckdb
 
 # Connect to your database

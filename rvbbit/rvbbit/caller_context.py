@@ -329,7 +329,7 @@ def build_ui_metadata(component: str, action: str, source: str) -> Dict[str, Any
     Args:
         component: 'playground', 'notebook', 'sessions', etc.
         action: 'run', 're-run', 'fork', 'auto-fix'
-        source: 'trait', 'cascade', 'example', 'scratch'
+        source: 'skill', 'cascade', 'example', 'scratch'
 
     Returns:
         Metadata dict

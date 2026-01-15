@@ -145,7 +145,7 @@ class BrowserConfig(BaseModel):
                 "stability_detection": true
             },
             "instructions": "Find the pricing page",
-            "traits": ["control_browser", "extract_page_content"]
+            "skills": ["control_browser", "extract_page_content"]
         }
     """
     url: str  # Starting URL (supports Jinja2 templating: {{ input.url }})
@@ -1169,7 +1169,7 @@ class SqlMappingConfig(BaseModel):
     Example:
         for_each_row:
           table: _customers
-          cascade: "traits/process_customer.yaml"
+          cascade: "skills/process_customer.yaml"
           inputs:
             customer_id: "{{ row.id }}"
             customer_name: "{{ row.name }}"
@@ -1232,7 +1232,7 @@ class CellConfig(BaseModel):
     # ===== LLM Cell Fields (existing) =====
     # For LLM cells, instructions is required and defines the agent's task
     instructions: Optional[str] = None
-    traits: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
+    skills: Union[List[str], Literal["manifest"]] = Field(default_factory=list)
     manifest_context: Literal["current", "full"] = "current"
     manifest_limit: int = 30  # Max tools to send to Quartermaster (semantic pre-filtering if embeddings available)
 
@@ -1243,7 +1243,7 @@ class CellConfig(BaseModel):
     #   - "per_attempt": Re-select tools at each loop_until validation retry
     #
     # Use "per_turn" for long-running research loops where the conversation evolves
-    # and different tools become relevant. Only works when traits="manifest".
+    # and different tools become relevant. Only works when skills="manifest".
     #
     # Context efficiency:
     #   - Native tools (use_native_tools: true): No bloat - tools passed via API
@@ -1263,7 +1263,7 @@ class CellConfig(BaseModel):
     # ===== Deterministic Cell Fields (new) =====
     # For deterministic cells, tool is required and specifies what to execute directly
     # Supported formats:
-    #   - "tool_name" - registered tool from traits registry
+    #   - "tool_name" - registered tool from skills registry
     #   - "python:module.path.function" - direct Python function import
     #   - "sql:path/to/query.sql" - SQL query file
     tool: Optional[str] = None
@@ -1688,7 +1688,7 @@ class CascadeConfig(BaseModel):
     research_db: Optional[str] = None
 
     # Inline validators - cascade-scoped validator definitions
-    # These are checked before global traits/ directory when resolving validator names
+    # These are checked before global skills/ directory when resolving validator names
     validators: Optional[Dict[str, InlineValidatorConfig]] = None
 
     # Triggers - declarative scheduling and event-based execution
@@ -1730,7 +1730,7 @@ def _migrate_legacy_terminology(data: Dict) -> Dict:
 
     Renames:
     - phases → cells (top-level)
-    - tackle → traits (within each cell)
+    - tackle → skills (within each cell)
 
     This ensures backward compatibility with old cascade files.
     """
@@ -1741,14 +1741,14 @@ def _migrate_legacy_terminology(data: Dict) -> Dict:
     if "phases" in data and "cells" not in data:
         data["cells"] = data.pop("phases")
 
-    # tackle → traits (within each cell)
+    # tackle → skills (within each cell)
     if "cells" in data:
         migrated_cells = []
         for cell in data["cells"]:
             if isinstance(cell, dict):
                 cell = dict(cell)  # Copy
-                if "tackle" in cell and "traits" not in cell:
-                    cell["traits"] = cell.pop("tackle")
+                if "tackle" in cell and "skills" not in cell:
+                    cell["skills"] = cell.pop("tackle")
             migrated_cells.append(cell)
         data["cells"] = migrated_cells
 

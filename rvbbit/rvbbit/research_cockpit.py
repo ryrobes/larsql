@@ -365,7 +365,7 @@ def is_research_cockpit_mode(cell: CellConfig, env_override: bool | None = None)
     has_self_loop = hasattr(cell, 'handoffs') and cell.handoffs and cell.name in cell.handoffs
     has_high_max_turns = hasattr(cell, 'rules') and cell.rules and (getattr(cell.rules, 'max_turns', 0) or 0) >= 20
 
-    # We can't easily check if request_decision is in traits since it might be in manifest
+    # We can't easily check if request_decision is in skills since it might be in manifest
     # So we use self-loop + high max_turns as signal
     if has_self_loop and has_high_max_turns:
         return True

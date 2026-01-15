@@ -15,7 +15,7 @@ cells:
     loop_until: grammar_check
     max_attempts: 3
     max_turns: 1
-  traits:
+  skills:
   - route_to
 - context:
     from:

@@ -63,7 +63,7 @@ class RVBBITClient:
                 SELECT
                   product_name,
                   rvbbit_udf('Extract brand', product_name) as brand,
-                  rvbbit_cascade_udf('traits/fraud.yaml',
+                  rvbbit_cascade_udf('skills/fraud.yaml',
                                       json_object('id', product_id)) as fraud_check
                 FROM products
                 LIMIT 100

@@ -796,7 +796,7 @@ def main():
     # mcp manifest - Show all MCP tools
     mcp_manifest_parser = mcp_subparsers.add_parser(
         'manifest',
-        help='Show all MCP tools in the trait manifest'
+        help='Show all MCP tools in the skill manifest'
     )
     mcp_manifest_parser.add_argument('--json', action='store_true', help='Output as JSON')
 
@@ -5009,14 +5009,14 @@ def cmd_models_local_list(args):
         console.print(table)
     else:
         # Show available local model tools from manifest
-        from rvbbit.traits_manifest import get_trait_manifest
+        from rvbbit.skills_manifest import get_skill_manifest
 
-        manifest = get_trait_manifest(refresh=True)
+        manifest = get_skill_manifest(refresh=True)
         local_tools = {k: v for k, v in manifest.items() if 'local_model' in v.get('type', '')}
 
         if not local_tools:
             console.print("No local model tools found.")
-            console.print("\nCreate a .tool.yaml file with type: local_model in your traits/ directory.")
+            console.print("\nCreate a .tool.yaml file with type: local_model in your skills/ directory.")
             return
 
         table = Table(title="Local Model Tools")
@@ -6094,7 +6094,7 @@ def cmd_init(args):
     # Create directory structure
     dirs = [
         'cascades/examples',
-        'traits',
+        'skills',
         'cell_types',
         'config',
         'data',
@@ -6263,18 +6263,18 @@ def cmd_doctor(args):
         warnings.append("No .rvbbit marker file found. Run 'rvbbit init' to initialize workspace.")
 
     # Check directory structure
-    expected_dirs = ['cascades', 'traits', 'config', 'logs', 'states']
+    expected_dirs = ['cascades', 'skills', 'config', 'logs', 'states']
     missing_dirs = [d for d in expected_dirs if not (root_path / d).exists()]
     if missing_dirs:
         warnings.append(f"Missing directories: {', '.join(missing_dirs)}")
     else:
         print(f"  Structure:       OK (all expected directories present)")
 
-    # Count cascades and traits
+    # Count cascades and skills
     cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
-    traits_count = len(list((root_path / 'traits').rglob('*.yaml'))) + len(list((root_path / 'traits').rglob('*.json'))) + len(list((root_path / 'traits').rglob('*.py')))
+    skills_count = len(list((root_path / 'skills').rglob('*.yaml'))) + len(list((root_path / 'skills').rglob('*.json'))) + len(list((root_path / 'skills').rglob('*.py')))
     print(f"  Cascades:        {cascade_count} files")
-    print(f"  Traits:          {traits_count} files")
+    print(f"  Skills:          {skills_count} files")
 
     print()
 

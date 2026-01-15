@@ -14,5 +14,5 @@ template:
     Take a screenshot of the specified URL.
 
     URL: {{ input.url }}
-  traits:
+  skills:
     - take_screenshot

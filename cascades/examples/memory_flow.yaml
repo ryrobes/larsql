@@ -4,7 +4,7 @@ cells:
   - phase2
   instructions: The user's name is {{ input.user_name }}. Acknowledge this.
   name: phase1
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -12,4 +12,4 @@ cells:
   name: phase2
   rules:
     max_turns: 1
-  traits: []
+  skills: []

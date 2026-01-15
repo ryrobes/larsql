@@ -23,7 +23,7 @@ cells:
     pattern: <ideas>(.*?)</ideas>
     required: true
     store_as: research_angles
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -39,7 +39,7 @@ cells:
   name: research
   rules:
     max_turns: 4
-  traits:
+  skills:
   - sql_search
 - context:
     from:
@@ -60,7 +60,7 @@ cells:
   output_extraction:
     pattern: <analysis>(.*?)</analysis>
     store_as: final_analysis
-  traits: [manifest]
+  skills: [manifest]
 - context:
     from:
     - all
@@ -72,7 +72,7 @@ cells:
 
     </analysis>'
   name: summarize
-  traits: []
+  skills: []
 token_budget:
   max_total: 150000
   reserve_for_output: 30000

@@ -1,0 +1,35 @@
+cascade_id: skill
+internal: true
+description: 'Universal skill executor - call any registered skill from SQL.
+
+  Provides full observability through the cascade system.
+
+  '
+inputs_schema:
+  skill_name: Name of the skill to call (e.g., 'say', 'brave_web_search')
+  args: JSON object of arguments to pass to the skill
+sql_function:
+  name: skill
+  description: Call any registered skill and return results as a table
+  args:
+  - name: skill_name
+    type: VARCHAR
+  - name: args
+    type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - skill({{ skill_name }}, {{ args }})
+  cache: false
+  # test_cases:
+  # - sql: SELECT skill('The quick brown fox', 'word_count')
+  #   expect:
+  #     type: regex
+  #     pattern: .+
+  #   description: Text skill extracted
+cells:
+- name: call_skill
+  tool: skill_executor
+  inputs:
+    skill_name: '{{ input.skill_name }}'
+    args: '{{ input.args }}'

@@ -46,7 +46,7 @@ class CellInfo:
     has_candidates: bool
     candidate_factor: int
     handoffs: List[str]
-    traits: List[str]
+    skills: List[str]
     position: Optional[CellPosition] = None
 
 
@@ -89,14 +89,14 @@ def extract_cells(cascade: Dict[str, Any]) -> List[CellInfo]:
             elif isinstance(h, dict) and 'target' in h:
                 handoffs.append(h['target'])
 
-        # Extract traits
-        traits_raw = cell_def.get('traits', [])
-        if isinstance(traits_raw, list):
-            traits = traits_raw
-        elif traits_raw == 'manifest':
-            traits = ['manifest']
+        # Extract skills
+        skills_raw = cell_def.get('skills', [])
+        if isinstance(skills_raw, list):
+            skills = skills_raw
+        elif skills_raw == 'manifest':
+            skills = ['manifest']
         else:
-            traits = []
+            skills = []
 
         cells.append(CellInfo(
             name=name,
@@ -104,7 +104,7 @@ def extract_cells(cascade: Dict[str, Any]) -> List[CellInfo]:
             has_candidates=has_candidates,
             candidate_factor=candidate_factor,
             handoffs=handoffs,
-            traits=traits
+            skills=skills
         ))
 
     return cells
@@ -246,11 +246,11 @@ def generate_cell_block(cell: CellInfo, session_var: str = "{session_id}") -> Di
         cost_line,
     ]
 
-    if cell.traits:
-        traits_str = ", ".join(cell.traits[:3])
-        if len(cell.traits) > 3:
-            traits_str += "..."
-        content.append(f"[dim]Traits: {traits_str}[/dim]")
+    if cell.skills:
+        skills_str = ", ".join(cell.skills[:3])
+        if len(cell.skills) > 3:
+            skills_str += "..."
+        content.append(f"[dim]Skills: {skills_str}[/dim]")
 
     # Use gradient color based on completion status for overlay
     overlay_color = "{{gradient(" + status_ref + ".completed, 0, 1, '#2c3e50', '#27ae60')}}"

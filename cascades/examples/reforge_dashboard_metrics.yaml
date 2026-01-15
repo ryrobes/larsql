@@ -61,7 +61,7 @@ cells:
       threshold:
         mode: blocking
         validator: simple_validator
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -79,5 +79,5 @@ cells:
   name: finalize
   rules:
     max_turns: 1
-  traits:
+  skills:
   - set_state

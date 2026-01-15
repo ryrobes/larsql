@@ -432,7 +432,7 @@ def test_example_fraud_detection():
 def test_example_product_enrichment():
     """Example: Product catalog enrichment."""
     query = """
-        RVBBIT MAP 'traits/extract_brand.yaml'
+        RVBBIT MAP 'skills/extract_brand.yaml'
         USING (
             SELECT product_id, product_name, price
             FROM products
@@ -444,7 +444,7 @@ def test_example_product_enrichment():
     result = rewrite_rvbbit_syntax(query)
 
     assert 'SELECT product_id, product_name, price' in result
-    assert "rvbbit_run('traits/extract_brand.yaml'" in result
+    assert "rvbbit_run('skills/extract_brand.yaml'" in result
     assert 'AS result' in result  # default alias
 
 

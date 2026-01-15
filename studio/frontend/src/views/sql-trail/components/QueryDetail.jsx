@@ -284,7 +284,7 @@ const SpanMetricsPanel = ({ hoveredCall, spawnedSessions, cascadeExecutions }) =
     const matchingSessions = (spawnedSessions || []).filter(s => {
       if (cascadeId && s.cascade_id === cascadeId) return true;
       if (functionName && s.cascade_id === functionName) return true;
-      // Also check if cascade_id contains the function name (e.g., "semantic_matches" in "traits/semantic_sql/semantic_matches.cascade.yaml")
+      // Also check if cascade_id contains the function name (e.g., "semantic_matches" in "skills/semantic_sql/semantic_matches.cascade.yaml")
       if (functionName && s.cascade_id && s.cascade_id.includes(functionName)) return true;
       return false;
     });

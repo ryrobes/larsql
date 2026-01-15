@@ -166,7 +166,7 @@ cells:
   context:
     from:
     - previous
-  traits:
+  skills:
   - sql_search
   - sql_rag_search
   - list_sql_connections

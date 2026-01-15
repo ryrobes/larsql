@@ -1,11 +1,11 @@
 # Test: Manifest (Quartermaster Auto Tool Selection)
-# Tests: traits: manifest enables automatic tool selection
+# Tests: skills: manifest enables automatic tool selection
 # Expected: LLM can discover and use tools without explicit listing
 
 cascade_id: integration_test_manifest
 description: |
   Integration test verifying manifest/quartermaster feature:
-  - traits: manifest enables automatic tool discovery
+  - skills: manifest enables automatic tool discovery
   - LLM can select and use appropriate tools
   - Tools execute successfully when chosen
 
@@ -22,7 +22,7 @@ cells:
       - value: "success"
 
       After calling set_state, confirm you did it.
-    traits: manifest
+    skills: manifest
     manifest_context: current
     rules:
       max_turns: 3

@@ -15,7 +15,7 @@ cells:
   name: research
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - callouts: Quarterly Breakdown {{input.year}}
   handoffs:
   - recommendations
@@ -24,7 +24,7 @@ cells:
   name: detailed_analysis
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - callouts:
     output: Strategic Recommendations - {{input.company}}
   handoffs:
@@ -34,7 +34,7 @@ cells:
   name: recommendations
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - context:
     from:
     - all
@@ -42,4 +42,4 @@ cells:
   name: summary
   rules:
     max_turns: 1
-  traits: []
+  skills: []

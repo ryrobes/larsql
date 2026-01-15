@@ -40,7 +40,7 @@
 <span class="key">cells</span>:
   - <span class="key">name</span>: first_cell
     <span class="key">instructions</span>: <span class="str">"Do something with {{ input.param_name }}"</span>
-    <span class="key">traits</span>: [tool_name]
+    <span class="key">skills</span>: [tool_name]
     <span class="key">handoffs</span>: [second_cell]
 
   - <span class="key">name</span>: second_cell
@@ -127,7 +127,7 @@
     Research {{ input.topic }} using available search tools.
     Summarize the key findings in 3-5 bullet points.
   </span>
-  <span class="key">traits</span>:
+  <span class="key">skills</span>:
     - brave_web_search
     - take_screenshot
   <span class="key">model</span>: <span class="str">anthropic/claude-sonnet-4</span>
@@ -195,7 +195,7 @@
     Send welcome email to {{ row.email }}
     User ID: {{ row.id }}
   </span>
-  <span class="key">traits</span>: [send_email]</pre>
+  <span class="key">skills</span>: [send_email]</pre>
   </div>
 </div>
 
@@ -398,7 +398,7 @@
       <td>Individual execution stage (formerly "Phase")</td>
     </tr>
     <tr>
-      <td><strong>Traits</strong></td>
+      <td><strong>Skills</strong></td>
       <td>Tools and functions available to cells (formerly "Tackle")</td>
     </tr>
     <tr>

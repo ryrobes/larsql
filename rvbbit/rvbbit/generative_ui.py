@@ -152,7 +152,7 @@ def analyze_ui_intent(
     from .agent import Agent
     from .config import get_config
     from .unified_logs import log_unified
-    from .traits.state_tools import get_current_session_id, get_current_cell_name
+    from .skills.state_tools import get_current_session_id, get_current_cell_name
     from .tracing import get_current_trace
     import uuid
     from datetime import datetime
@@ -698,7 +698,7 @@ def _generate_complex_ui(
     from .agent import Agent
     from .config import get_config
     from .unified_logs import log_unified
-    from .traits.state_tools import get_current_session_id, get_current_cell_name
+    from .skills.state_tools import get_current_session_id, get_current_cell_name
     from .tracing import get_current_trace
     import uuid
     from datetime import datetime

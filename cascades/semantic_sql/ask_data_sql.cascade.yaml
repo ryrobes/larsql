@@ -52,7 +52,7 @@ sql_function:
 
 cells:
   - name: generate_query
-    traits:
+    skills:
       - sql_search
     rules:
       max_turns: 3

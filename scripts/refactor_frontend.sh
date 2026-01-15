@@ -40,11 +40,11 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bCandidatesLayer\b/CandidatesLayer/g
 ' {} +
 
-# Tackle* → Trait*
+# Tackle* → Skill*
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/\bTacklePills\b/TraitPills/g
-    s/\bTackleChips\b/TraitChips/g
-    s/\bTackleModal\b/TraitModal/g
+    s/\bTacklePills\b/SkillPills/g
+    s/\bTackleChips\b/SkillChips/g
+    s/\bTackleModal\b/SkillModal/g
 ' {} +
 
 echo "✓ Component names updated"
@@ -60,7 +60,7 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bcellData\b/cellData/g
     s/\bcurrentCell\b/currentCell/g
     s/\bselectedCell\b/selectedCell/g
-    s/\btackleList\b/traitList/g
+    s/\btackleList\b/skillList/g
     s/\bcandidateIndex\b/candidateIndex/g
     s/\bcandidateFactor\b/candidateFactor/g
 ' {} +
@@ -79,8 +79,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/'\''cell_name'\''/'\''cell_name'\''/g
     s/"cells"/"cells"/g
     s/'\''cells'\''/'\''cells'\''/g
-    s/"tackle"/"traits"/g
-    s/'\''tackle'\''/'\''traits'\''/g
+    s/"tackle"/"skills"/g
+    s/'\''tackle'\''/'\''skills'\''/g
     s/"candidates"/"candidates"/g
     s/'\''candidates'\''/'\''candidates'\''/g
 ' {} +
@@ -98,7 +98,7 @@ find src -type f -name "*.css" -exec sed -i '
     s/\.cell-detail/.cell-detail/g
     s/\.candidates-explorer/.candidates-explorer/g
     s/\.candidate-lane/.candidate-lane/g
-    s/\.tackle-pill/.trait-pill/g
+    s/\.tackle-pill/.skill-pill/g
 ' {} +
 
 # Update class names in JSX/JS files
@@ -106,7 +106,7 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/className="cell-/className="cell-/g
     s/className='\''cell-/className='\''cell-/g
     s/className="candidates-/className="candidates-/g
-    s/className="tackle-/className="trait-/g
+    s/className="tackle-/className="skill-/g
 ' {} +
 
 echo "✓ CSS class names updated"
@@ -120,7 +120,7 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/>Cell</>Cell</g
     s/>Cells</>Cells</g
     s/>Candidates</>Candidates</g
-    s/>Tackle</>Traits</g
+    s/>Tackle</>Skills</g
     s/"Cell "/"Cell "/g
     s/"Cells "/"Cells "/g
     s/'\''Cell '\''/'\''Cell '\''/g

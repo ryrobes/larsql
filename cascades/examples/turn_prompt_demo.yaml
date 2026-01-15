@@ -26,4 +26,4 @@ cells:
 
 
       This is turn {{ turn }} of {{ max_turns }}. Refine your post if needed.'
-  traits: []
+  skills: []

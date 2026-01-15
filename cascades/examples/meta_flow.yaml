@@ -5,5 +5,5 @@ cells:
   name: meta_step
   rules:
     max_turns: 2
-  traits:
+  skills:
   - run_code

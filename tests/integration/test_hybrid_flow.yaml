@@ -38,7 +38,7 @@ cells:
       - "analysis_done" = "true"
 
       Then respond with: "Analysis complete for {{ input.category }}."
-    traits:
+    skills:
       - set_state
     rules:
       max_turns: 2
@@ -71,7 +71,7 @@ cells:
       Use set_state to set "flow_complete" to "true".
 
       Then respond: "Hybrid flow complete."
-    traits:
+    skills:
       - set_state
     rules:
       max_turns: 1

@@ -16,7 +16,7 @@ Implementation Strategy:
 - Rewrites to collect values with LIST() or STRING_AGG()
 - Calls cascade-based SQL functions via the registry
 
-The actual implementations are RVBBIT cascades in traits/semantic_sql/.
+The actual implementations are RVBBIT cascades in skills/semantic_sql/.
 This module provides thin wrappers that execute those cascades.
 """
 
@@ -40,7 +40,7 @@ def _execute_cascade(
     Execute a semantic SQL function via its cascade definition.
 
     This is the primary execution path. Cascades are discovered from
-    RVBBIT_ROOT/traits/semantic_sql/*.cascade.yaml.
+    RVBBIT_ROOT/skills/semantic_sql/*.cascade.yaml.
 
     Args:
         function_name: The SQL function name (e.g., "semantic_consensus")
@@ -101,7 +101,7 @@ def _call_llm(
     Returns:
         LLM response text, or "ERROR: ..." on failure
     """
-    from ..traits.bodybuilder import bodybuilder
+    from ..skills.bodybuilder import bodybuilder
     from ..session_naming import generate_woodland_id
     from rich.console import Console
 
@@ -247,7 +247,7 @@ def llm_summarize_impl(
     """
     Summarize a collection of text values into a single summary.
 
-    Executes via cascade: traits/semantic_sql/summarize.cascade.yaml
+    Executes via cascade: skills/semantic_sql/summarize.cascade.yaml
 
     Args:
         values_json: JSON array of text values (from LIST() in SQL)
@@ -345,7 +345,7 @@ def llm_classify_impl(
     Classify a collection of values into one of the given categories.
 
     Useful for determining overall sentiment, category, or label for a group.
-    Executes via cascade: traits/semantic_sql/classify.cascade.yaml
+    Executes via cascade: skills/semantic_sql/classify.cascade.yaml
 
     Args:
         values_json: JSON array of text values
@@ -529,7 +529,7 @@ def llm_sentiment_impl(
     Calculate average sentiment score for a collection of texts.
 
     Returns a float between -1.0 (very negative) and 1.0 (very positive).
-    Executes via cascade: traits/semantic_sql/sentiment.cascade.yaml
+    Executes via cascade: skills/semantic_sql/sentiment.cascade.yaml
 
     Args:
         values_json: JSON array of text values
@@ -626,7 +626,7 @@ def llm_themes_impl(
     Extract common themes/topics from a collection of texts.
 
     Returns JSON array of theme strings.
-    Executes via cascade: traits/semantic_sql/themes.cascade.yaml
+    Executes via cascade: skills/semantic_sql/themes.cascade.yaml
 
     Args:
         values_json: JSON array of text values
@@ -1486,7 +1486,7 @@ def llm_dedupe_impl(
     Deduplicate values by semantic similarity.
 
     Returns JSON array of unique representatives (one per semantic cluster).
-    Executes via cascade: traits/semantic_sql/dedupe.cascade.yaml
+    Executes via cascade: skills/semantic_sql/dedupe.cascade.yaml
 
     Args:
         values_json: JSON array of text values to deduplicate
@@ -1600,7 +1600,7 @@ def llm_cluster_impl(
     Cluster values by semantic similarity.
 
     Returns JSON object mapping each value to its cluster label.
-    Executes via cascade: traits/semantic_sql/cluster.cascade.yaml
+    Executes via cascade: skills/semantic_sql/cluster.cascade.yaml
 
     Args:
         values_json: JSON array of text values to cluster
@@ -1760,7 +1760,7 @@ def llm_consensus_impl(
     Find the consensus or common ground among a collection of texts.
 
     Returns a summary of what most items agree on or have in common.
-    Executes via cascade: traits/semantic_sql/consensus.cascade.yaml
+    Executes via cascade: skills/semantic_sql/consensus.cascade.yaml
 
     Args:
         values_json: JSON array of text values
@@ -1873,7 +1873,7 @@ def llm_outliers_impl(
     Find outliers or unusual items in a collection.
 
     Returns JSON array of items that stand out from the norm.
-    Executes via cascade: traits/semantic_sql/outliers.cascade.yaml
+    Executes via cascade: skills/semantic_sql/outliers.cascade.yaml
 
     Args:
         values_json: JSON array of text values

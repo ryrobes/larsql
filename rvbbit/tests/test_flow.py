@@ -15,13 +15,13 @@ import pytest
 # Add root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from rvbbit import run_cascade, register_trait, set_provider
+from rvbbit import run_cascade, register_skill, set_provider
 
 # Register a tool
 def reverse_string(s: str) -> str:
     return s[::-1]
 
-register_trait("reverse_string", reverse_string)
+register_skill("reverse_string", reverse_string)
 
 
 @pytest.mark.integration

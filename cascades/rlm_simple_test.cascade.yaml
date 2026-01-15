@@ -74,7 +74,7 @@ cells:
 
       Now write your code and call rlm_exec. When done, the loop will exit.
 
-    traits: [rlm_exec, set_state]
+    skills: [rlm_exec, set_state]
     rules:
       max_turns: 5
       loop_until: "{{ state.final_answer }}"

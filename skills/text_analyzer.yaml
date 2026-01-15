@@ -1,0 +1,19 @@
+cascade_id: text_analyzer
+description: Analyzes text and provides insights on readability, tone, and structure
+inputs_schema:
+  text: The text to analyze
+cells:
+- name: analyze
+  instructions: |-
+    Analyze this text: {{ input.text }}
+
+    Provide insights on:
+    1. Readability (grade level, complexity)
+    2. Tone (formal, casual, technical, etc.)
+    3. Structure (organization, flow)
+    4. Key themes or topics
+
+    Be concise and actionable.
+  rules:
+    max_turns: 1
+  skills: []

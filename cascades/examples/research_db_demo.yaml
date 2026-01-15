@@ -32,7 +32,7 @@ cells:
   name: execute_action
   rules:
     max_turns: 5
-  traits:
+  skills:
   - research_query
   - research_execute
 - context:

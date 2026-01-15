@@ -16,4 +16,4 @@ cells:
         factor: 3
       x-ai/grok-4.1-fast:
         factor: 2
-  traits: []
+  skills: []

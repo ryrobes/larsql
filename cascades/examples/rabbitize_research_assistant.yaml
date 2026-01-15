@@ -39,7 +39,7 @@ cells:
     loop_until_prompt: 'Continue until you''ve gathered information from all websites
       about: {{ input.research_topic }}'
     max_turns: 10
-  traits:
+  skills:
   - web_navigator
   - route_to
 - instructions: 'Synthesize your research findings about {{ input.research_topic }}.

@@ -90,5 +90,5 @@ cells:
 
     Provide a brief confirmation that the catalog entry is ready.'
   name: summary
-  traits:
+  skills:
   - set_state

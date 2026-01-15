@@ -12,5 +12,5 @@ cells:
   name: process
   rules:
     max_turns: 3
-  traits:
+  skills:
   - demo_memory

@@ -16,7 +16,7 @@ cells:
   instructions: Use the await_signal tool to wait for a signal named 'roundtrip_demo'
     with a timeout of '30s'. Set description to 'Waiting for async producer signal'.
   name: wait_for_signal
-  traits:
+  skills:
   - await_signal
 - instructions: 'Report the result from the signal wait:
 

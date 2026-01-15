@@ -15,5 +15,5 @@ template:
     Generate an image based on the following description.
 
     Description: {{ input.prompt }}
-  traits:
+  skills:
     - create_image

@@ -320,7 +320,7 @@ def health_check():
         # Test cascade UDF
         cascade_result = conn.execute("""
             SELECT rvbbit_cascade_udf(
-                'traits/process_single_item.yaml',
+                'skills/process_single_item.yaml',
                 '{"item": "test"}'
             ) as test
         """).fetchone()

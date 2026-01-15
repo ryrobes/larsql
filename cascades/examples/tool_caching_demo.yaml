@@ -10,7 +10,7 @@ cells:
   name: explore
   rules:
     max_turns: 3
-  traits:
+  skills:
   - sql_search
 - handoffs:
   - analyze
@@ -19,11 +19,11 @@ cells:
   name: query
   rules:
     max_turns: 2
-  traits:
+  skills:
   - sql_query
 - instructions: Analyze the query results and provide insights.
   name: analyze
-  traits: []
+  skills: []
 tool_caching:
   enabled: true
   global_ttl: 3600

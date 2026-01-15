@@ -9,7 +9,7 @@ cells:
 
     After receiving the signal (or timeout), report what happened.'
   name: wait_for_signal
-  traits:
+  skills:
   - await_signal
 - instructions: 'Report the result from the signal wait:
 

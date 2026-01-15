@@ -10,7 +10,7 @@ cells:
   name: research
   rules:
     max_turns: 5
-  traits:
+  skills:
   - sql_search
 - context:
     from:
@@ -21,13 +21,13 @@ cells:
     input.topic }}. The context has been automatically pruned by token budget enforcement
     to stay within limits.
   name: analyze
-  traits: []
+  skills: []
 - context:
     from:
     - all
   instructions: Summarize the key findings from the analysis in a concise format.
   name: summarize
-  traits: []
+  skills: []
 token_budget:
   max_total: 10000
   reserve_for_output: 2000

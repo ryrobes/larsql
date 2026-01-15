@@ -262,7 +262,7 @@ def rvbbit_udf_impl(
 
     try:
         # Import bodybuilder tool and session naming
-        from ..traits.bodybuilder import bodybuilder
+        from ..skills.bodybuilder import bodybuilder
         from ..session_naming import generate_woodland_id
         from rich.console import Console
 
@@ -366,7 +366,7 @@ def rvbbit_cascade_udf_impl(
     - Tool usage per row (query other data, call APIs)
 
     Args:
-        cascade_path: Path to cascade file (e.g., "traits/fraud_check.yaml")
+        cascade_path: Path to cascade file (e.g., "skills/fraud_check.yaml")
         inputs_json: JSON string of cascade inputs (e.g., '{"customer_id": 123}')
         use_cache: Whether to use cache (default: True)
         return_field: Optional field to extract from result (e.g., "risk_score")
@@ -379,7 +379,7 @@ def rvbbit_cascade_udf_impl(
         SELECT
           customer_id,
           rvbbit_cascade_udf(
-            'traits/fraud_check.yaml',
+            'skills/fraud_check.yaml',
             json_object('customer_id', customer_id)
           ) as fraud_analysis
         FROM transactions;
@@ -388,7 +388,7 @@ def rvbbit_cascade_udf_impl(
         SELECT
           customer_id,
           rvbbit_cascade_udf(
-            'traits/fraud_check.yaml',
+            'skills/fraud_check.yaml',
             json_object('customer_id', customer_id),
             'risk_score'
           ) as risk_score
@@ -938,11 +938,11 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
     # This MUST happen before UDF registration so tools are available to cascades
     try:
         import rvbbit  # Force full initialization
-        import rvbbit.traits.embedding_storage  # noqa: F401
+        import rvbbit.skills.embedding_storage  # noqa: F401
 
         # Verify tools are registered
-        from rvbbit.trait_registry import get_trait
-        tool = get_trait("agent_embed")
+        from rvbbit.skill_registry import get_skill
+        tool = get_skill("agent_embed")
         if tool:
             logger.debug(f"✅ agent_embed tool found: {tool}")
         else:
@@ -1310,22 +1310,22 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
         logger.warning(f"Could not register vector_search_elastic: {e}")
 
     # =========================================================================
-    # UDF 5: trait(name, args) → VARCHAR (file path to JSON)
-    # Universal trait/tool caller - returns file path for read_json_auto()
-    # Usage: SELECT * FROM read_json_auto(trait('say', json_object('text', 'Hello')))
+    # UDF 5: skill(name, args) → VARCHAR (file path to JSON)
+    # Universal skill/tool caller - returns file path for read_json_auto()
+    # Usage: SELECT * FROM read_json_auto(skill('say', json_object('text', 'Hello')))
     # =========================================================================
 
-    def trait_udf(trait_name: str, args_json: str | None = None) -> str:
+    def skill_udf(skill_name: str, args_json: str | None = None) -> str:
         """
-        Call any registered trait and return path to JSON result file.
+        Call any registered skill and return path to JSON result file.
 
-        This UDF is the backend for the trait() SQL operator. It:
-        1. Calls the trait via the cascade system (for observability)
+        This UDF is the backend for the skill() SQL operator. It:
+        1. Calls the skill via the cascade system (for observability)
         2. Writes result to a temp JSON file
         3. Returns the file path for read_json_auto()
 
         Args:
-            trait_name: Name of trait to call (e.g., 'say', 'brave_web_search')
+            skill_name: Name of skill to call (e.g., 'say', 'brave_web_search')
             args_json: JSON string of arguments (e.g., '{"text": "Hello"}')
 
         Returns:
@@ -1340,13 +1340,13 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
 
             # Call via cascade system for observability
             result = execute_sql_function_sync(
-                "trait",
-                {"trait_name": trait_name, "args": json.dumps(args)}
+                "skill",
+                {"skill_name": skill_name, "args": json.dumps(args)}
             )
 
             # Normalize result to list for table output
             if result is None:
-                rows = [{"_trait": trait_name, "result": None}]
+                rows = [{"_skill": skill_name, "result": None}]
             elif isinstance(result, dict):
                 rows = [result]
             elif isinstance(result, list):
@@ -1360,11 +1360,11 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                     elif isinstance(parsed, list):
                         rows = parsed
                     else:
-                        rows = [{"_trait": trait_name, "result": parsed}]
+                        rows = [{"_skill": skill_name, "result": parsed}]
                 except json.JSONDecodeError:
-                    rows = [{"_trait": trait_name, "result": result}]
+                    rows = [{"_skill": skill_name, "result": result}]
             else:
-                rows = [{"_trait": trait_name, "result": result}]
+                rows = [{"_skill": skill_name, "result": result}]
 
             # Write to temp file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -1372,34 +1372,34 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                 return f.name
 
         except Exception as e:
-            logger.error(f"trait UDF failed: {e}")
+            logger.error(f"skill UDF failed: {e}")
             # Return error as JSON file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json.dump([{"_trait": trait_name, "error": str(e)}], f)
+                json.dump([{"_skill": skill_name, "error": str(e)}], f)
                 return f.name
 
     try:
-        connection.create_function("trait", trait_udf, return_type="VARCHAR", null_handling="special")
-        logger.debug("Registered trait UDF")
+        connection.create_function("skill", skill_udf, return_type="VARCHAR", null_handling="special")
+        logger.debug("Registered skill UDF")
     except Exception as e:
-        logger.warning(f"Could not register trait UDF: {e}")
+        logger.warning(f"Could not register skill UDF: {e}")
 
     # =========================================================================
-    # UDF 6: trait_json(name, args) → VARCHAR (JSON content directly)
+    # UDF 6: skill_json(name, args) → VARCHAR (JSON content directly)
     # For scalar extraction with json_extract_string()
-    # Usage: SELECT json_extract_string(trait_json('fn', '{}'), '$.label') FROM t
+    # Usage: SELECT json_extract_string(skill_json('fn', '{}'), '$.label') FROM t
     # =========================================================================
 
-    def trait_json_udf(trait_name: str, args_json: str | None = None) -> str:
+    def skill_json_udf(skill_name: str, args_json: str | None = None) -> str:
         """
-        Call any registered trait and return JSON content directly.
+        Call any registered skill and return JSON content directly.
 
-        Unlike trait() which returns a file path for read_json_auto(),
+        Unlike skill() which returns a file path for read_json_auto(),
         this UDF returns the JSON string directly for use with
         json_extract_string() in scalar extraction scenarios.
 
         Args:
-            trait_name: Name of trait to call (e.g., 'local_sentiment')
+            skill_name: Name of skill to call (e.g., 'local_sentiment')
             args_json: JSON string of arguments (e.g., '{"text": "Hello"}')
 
         Returns:
@@ -1413,13 +1413,13 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
 
             # Call via cascade system for observability
             result = execute_sql_function_sync(
-                "trait",
-                {"trait_name": trait_name, "args": json.dumps(args)}
+                "skill",
+                {"skill_name": skill_name, "args": json.dumps(args)}
             )
 
             # Normalize result to list for consistent structure
             if result is None:
-                rows = [{"_trait": trait_name, "result": None}]
+                rows = [{"_skill": skill_name, "result": None}]
             elif isinstance(result, dict):
                 rows = [result]
             elif isinstance(result, list):
@@ -1433,26 +1433,26 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                     elif isinstance(parsed, list):
                         rows = parsed
                     else:
-                        rows = [{"_trait": trait_name, "result": parsed}]
+                        rows = [{"_skill": skill_name, "result": parsed}]
                 except json.JSONDecodeError:
-                    rows = [{"_trait": trait_name, "result": result}]
+                    rows = [{"_skill": skill_name, "result": result}]
             else:
-                rows = [{"_trait": trait_name, "result": result}]
+                rows = [{"_skill": skill_name, "result": result}]
 
             # Return JSON string directly (not file path)
             return json.dumps(rows)
 
         except Exception as e:
-            logger.error(f"trait_json UDF failed: {e}")
-            return json.dumps([{"_trait": trait_name, "error": str(e)}])
+            logger.error(f"skill_json UDF failed: {e}")
+            return json.dumps([{"_skill": skill_name, "error": str(e)}])
 
     try:
-        connection.create_function("trait_json", trait_json_udf, return_type="VARCHAR", null_handling="special")
-        logger.debug("Registered trait_json UDF")
+        connection.create_function("skill_json", skill_json_udf, return_type="VARCHAR", null_handling="special")
+        logger.debug("Registered skill_json UDF")
     except Exception as e:
-        logger.warning(f"Could not register trait_json UDF: {e}")
+        logger.warning(f"Could not register skill_json UDF: {e}")
 
-    logger.info("Registered 8 embedding/trait UDFs for Semantic SQL")
+    logger.info("Registered 8 embedding/skill UDFs for Semantic SQL")
 
 
 def register_rvbbit_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, Any] | None = None):

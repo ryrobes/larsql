@@ -15,5 +15,5 @@ cells:
   name: show_data_table
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human_custom

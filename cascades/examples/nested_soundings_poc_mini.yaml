@@ -98,7 +98,7 @@ cells:
     [What could go wrong + how to handle]
 
     '
-  traits: []
+  skills: []
   candidates:
     factor: 3
     max_parallel: 3

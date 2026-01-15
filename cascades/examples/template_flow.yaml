@@ -5,7 +5,7 @@ cells:
   instructions: 'You are a helpful parrot. Repeat the following phrase exactly: ''{{
     input.phrase }}'''
   name: echo_phase
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -14,4 +14,4 @@ cells:
   name: analyze_phase
   rules:
     max_turns: 1
-  traits: []
+  skills: []

@@ -7,6 +7,6 @@ cells:
       Read the contents of the file at /tmp/test_mcp_file.txt
 
       Use the appropriate tool to read the file and tell me what it says.
-    traits: "manifest"  # Let Quartermaster pick the right tool
+    skills: "manifest"  # Let Quartermaster pick the right tool
     rules:
       max_turns: 3

@@ -286,7 +286,7 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
                         existing = config['cells'][i].get('context', {})
                         config['cells'][i]['context'] = _deep_merge(existing, value)
                         log.info(f"[cascade_udf] Cell '{cell_name}' context → {config['cells'][i]['context']}")
-                    elif key in ['traits', 'handoffs', 'use_native_tools', 'output_schema']:
+                    elif key in ['skills', 'handoffs', 'use_native_tools', 'output_schema']:
                         config['cells'][i][key] = value
                         log.info(f"[cascade_udf] Cell '{cell_name}' {key} → {value}")
 

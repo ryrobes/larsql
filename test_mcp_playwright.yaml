@@ -8,6 +8,6 @@ cells:
 
       First navigate to https://github.com/rvbbit and then take a screenshot.
       Use the appropriate browser automation tools.
-    traits: "manifest"  # Let Quartermaster pick Playwright tools
+    skills: "manifest"  # Let Quartermaster pick Playwright tools
     rules:
       max_turns: 5

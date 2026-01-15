@@ -28,7 +28,7 @@ sql_function:
 cells:
 - name: process
   model: google/gemini-3-flash-preview
-  traits:
+  skills:
   - fetch_url_with_browser
   instructions: "Extract URL from text, fetch it using Playwright browser, and summarize.\n\
     \nTEXT:\n{{ input.text }}\n\nSTEPS:\n1. Check if text contains a URL (http://,\

@@ -32,7 +32,7 @@ inputs_schema:
 cells:
   - name: interpret
     model: anthropic/claude-sonnet-4
-    traits: [validate_cascade_overrides]
+    skills: [validate_cascade_overrides]
     rules:
       max_turns: 3
       max_attempts: 3
@@ -48,7 +48,7 @@ cells:
               overrides = json.loads(content.strip())
               
               # Import and validate
-              from rvbbit.traits.cascade_validator import _validate_cascade_overrides_internal
+              from rvbbit.skills.cascade_validator import _validate_cascade_overrides_internal
               validation = _validate_cascade_overrides_internal(overrides)
               result = {
                   "valid": validation["valid"],

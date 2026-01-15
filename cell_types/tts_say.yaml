@@ -16,5 +16,5 @@ template:
     {{ input.text }}
 
     Keep it natural and conversational.
-  traits:
+  skills:
     - say

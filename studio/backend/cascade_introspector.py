@@ -256,7 +256,7 @@ def _classify_cell(cell: dict, cell_name: str) -> Tuple[str, dict]:
         # This includes:
         # - Regular LLM cells with instructions
         # - Tool-only (deterministic) cells like `tool: linux_shell`
-        # - Composite cells with traits + instructions
+        # - Composite cells with skills + instructions
         return 'cell', {
             'name': cell_name,
             'yaml': yaml.dump(cell, default_flow_style=False, sort_keys=False),

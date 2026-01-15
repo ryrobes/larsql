@@ -4,18 +4,18 @@ import { Icon } from '@iconify/react';
 import { Tooltip } from '../../components/RichTooltip';
 
 /**
- * ToolBrowserPalette - Draggable trait browser for cascade building
+ * ToolBrowserPalette - Draggable skill browser for cascade building
  *
  * Features:
- * - Fetches traits from tool_manifest_vectors and hf_spaces tables
- * - Groups by trait type (function, cascade, memory, validator, hf_space)
- * - Special "manifest" trait for dynamic trait selection
- * - Draggable trait pills
- * - Separate sections for built-in traits and HuggingFace Spaces
+ * - Fetches skills from tool_manifest_vectors and hf_spaces tables
+ * - Groups by skill type (function, cascade, memory, validator, hf_space)
+ * - Special "manifest" skill for dynamic skill selection
+ * - Draggable skill pills
+ * - Separate sections for built-in skills and HuggingFace Spaces
  */
 
-// Trait type metadata for icons and colors
-const TRAIT_TYPE_CONFIG = {
+// Skill type metadata for icons and colors
+const SKILL_TYPE_CONFIG = {
   function: { icon: 'mdi:function-variant', color: '#60a5fa', label: 'Function' },
   cascade: { icon: 'mdi:water', color: '#a78bfa', label: 'Cascade' },
   memory: { icon: 'mdi:database-outline', color: '#34d399', label: 'Memory' },
@@ -25,20 +25,20 @@ const TRAIT_TYPE_CONFIG = {
 };
 
 /**
- * Special Manifest pill - magic trait that auto-selects tools based on context
+ * Special Manifest pill - magic skill that auto-selects tools based on context
  */
 const ManifestPill = React.memo(() => {
-  const config = TRAIT_TYPE_CONFIG.manifest;
+  const config = SKILL_TYPE_CONFIG.manifest;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: 'trait-manifest',
+    id: 'skill-manifest',
     data: { type: 'tool', toolId: 'manifest', toolType: 'manifest' },
   });
 
   return (
     <Tooltip
       label="manifest (Quartermaster)"
-      description="Magic trait that analyzes your cell's instructions and conversation context to automatically inject the most relevant tools. The Quartermaster intelligently selects tools based on what the LLM is trying to accomplish."
+      description="Magic skill that analyzes your cell's instructions and conversation context to automatically inject the most relevant tools. The Quartermaster intelligently selects tools based on what the LLM is trying to accomplish."
       placement="right"
     >
       <div
@@ -77,18 +77,18 @@ const ManifestPill = React.memo(() => {
 ManifestPill.displayName = 'ManifestPill';
 
 /**
- * Draggable trait pill
+ * Draggable skill pill
  */
-function TraitPill({ tool, isHfSpace = false }) {
-  const traitType = isHfSpace ? 'hf_space' : tool.type;
-  const config = TRAIT_TYPE_CONFIG[traitType] || TRAIT_TYPE_CONFIG.function;
+function SkillPill({ tool, isHfSpace = false }) {
+  const skillType = isHfSpace ? 'hf_space' : tool.type;
+  const config = SKILL_TYPE_CONFIG[skillType] || SKILL_TYPE_CONFIG.function;
 
-  const traitName = isHfSpace ? tool.name : tool.name;
-  const traitId = isHfSpace ? tool.id : tool.name;
+  const skillName = isHfSpace ? tool.name : tool.name;
+  const skillId = isHfSpace ? tool.id : tool.name;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `trait-${traitId}`,
-    data: { type: 'tool', toolId: traitId, toolType: traitType },
+    id: `skill-${skillId}`,
+    data: { type: 'tool', toolId: skillId, toolType: skillType },
   });
 
   // Build tooltip content with proper label/description split
@@ -98,7 +98,7 @@ function TraitPill({ tool, isHfSpace = false }) {
     tooltipLabel = `${tool.author}/${tool.name}`;
     tooltipDescription = `HuggingFace Space • SDK: ${tool.sdk || 'unknown'} • Status: ${tool.status || 'unknown'}`;
   } else {
-    tooltipLabel = traitName;
+    tooltipLabel = skillName;
     tooltipDescription = tool.description || 'No description available';
   }
 
@@ -120,12 +120,12 @@ function TraitPill({ tool, isHfSpace = false }) {
         ref={setNodeRef}
         {...listeners}
         {...attributes}
-        className={`model-pill model-pill-${traitType} ${isDragging ? 'dragging' : ''}`}
+        className={`model-pill model-pill-${skillType} ${isDragging ? 'dragging' : ''}`}
         style={{ borderColor: config.color + '34' }}
       >
         <Icon icon={config.icon} width="12" style={{ color: config.color, opacity: 0.8 }} />
         <span className="model-pill-name" style={{ color: config.color }}>
-          {traitName}
+          {skillName}
         </span>
         {isHfSpace && (
           <span
@@ -146,9 +146,9 @@ function TraitPill({ tool, isHfSpace = false }) {
 }
 
 /**
- * Collapsible trait group
+ * Collapsible skill group
  */
-function TraitGroup({ title, iconName, iconImage, tools, isHfSpace = false, defaultOpen = true }) {
+function SkillGroup({ title, iconName, iconImage, tools, isHfSpace = false, defaultOpen = true }) {
   const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
   if (tools.length === 0) return null;
@@ -181,7 +181,7 @@ function TraitGroup({ title, iconName, iconImage, tools, isHfSpace = false, defa
       {isExpanded && (
         <div className="model-group-content">
           {tools.map(t => (
-            <TraitPill key={isHfSpace ? t.id : t.name} tool={t} isHfSpace={isHfSpace} />
+            <SkillPill key={isHfSpace ? t.id : t.name} tool={t} isHfSpace={isHfSpace} />
           ))}
         </div>
       )}
@@ -200,7 +200,7 @@ function ToolBrowserPalette() {
   const [searchText, setSearchText] = useState('');
   const [isExpanded, setIsExpanded] = useState(() => {
     try {
-      const saved = localStorage.getItem('studio-sidebar-traits-expanded');
+      const saved = localStorage.getItem('studio-sidebar-skills-expanded');
       return saved !== null ? saved === 'true' : false;
     } catch {
       return false;
@@ -210,7 +210,7 @@ function ToolBrowserPalette() {
   // Persist expanded state
   useEffect(() => {
     try {
-      localStorage.setItem('studio-sidebar-traits-expanded', String(isExpanded));
+      localStorage.setItem('studio-sidebar-skills-expanded', String(isExpanded));
     } catch (e) {
       console.warn('Failed to save sidebar state:', e);
     }
@@ -326,12 +326,12 @@ function ToolBrowserPalette() {
             className="nav-chevron"
           />
           <Icon icon="mdi:rabbit" className="nav-section-icon" />
-          <span className="nav-section-title">Traits</span>
+          <span className="nav-section-title">Skills</span>
         </div>
         {isExpanded && (
           <div className="model-browser-loading">
             <Icon icon="mdi:loading" className="spinning" width="16" />
-            <span>Loading traits...</span>
+            <span>Loading skills...</span>
           </div>
         )}
       </div>
@@ -350,7 +350,7 @@ function ToolBrowserPalette() {
             className="nav-chevron"
           />
           <Icon icon="mdi:rabbit" className="nav-section-icon" />
-          <span className="nav-section-title">Traits</span>
+          <span className="nav-section-title">Skills</span>
         </div>
         {isExpanded && (
           <div className="model-browser-error">
@@ -362,7 +362,7 @@ function ToolBrowserPalette() {
     );
   }
 
-  const totalTraits = filteredTools.length + filteredHfSpaces.length + 1; // +1 for manifest
+  const totalSkills = filteredTools.length + filteredHfSpaces.length + 1; // +1 for manifest
 
   return (
     <div className="nav-section model-browser-section">
@@ -375,8 +375,8 @@ function ToolBrowserPalette() {
           className="nav-chevron"
         />
         <Icon icon="mdi:rabbit" className="nav-section-icon" />
-        <span className="nav-section-title">Traits</span>
-        <span className="nav-section-count">{totalTraits}</span>
+        <span className="nav-section-title">Skills</span>
+        <span className="nav-section-count">{totalSkills}</span>
       </div>
 
       {isExpanded && (
@@ -386,7 +386,7 @@ function ToolBrowserPalette() {
             <Icon icon="mdi:magnify" width="14" className="model-search-icon" />
             <input
               type="text"
-              placeholder="Search traits..."
+              placeholder="Search skills..."
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               className="model-search-input"
@@ -401,7 +401,7 @@ function ToolBrowserPalette() {
             )}
           </div>
 
-          {/* Trait groups by type */}
+          {/* Skill groups by type */}
           <div className="model-groups-container">
             {/* Special Manifest pill - always at top */}
             {!searchText && (
@@ -413,16 +413,16 @@ function ToolBrowserPalette() {
             {groupedTools.length === 0 && filteredHfSpaces.length === 0 && searchText && (
               <div className="model-browser-empty">
                 <Icon icon="mdi:folder-open-outline" width="24" />
-                <span>No traits found</span>
+                <span>No skills found</span>
               </div>
             )}
 
-            {/* Built-in/Cascade traits grouped by type */}
+            {/* Built-in/Cascade skills grouped by type */}
             {groupedTools.map(({ type, tools }) => (
-              <TraitGroup
+              <SkillGroup
                 key={type}
-                title={TRAIT_TYPE_CONFIG[type]?.label || type}
-                iconName={TRAIT_TYPE_CONFIG[type]?.icon || 'mdi:function-variant'}
+                title={SKILL_TYPE_CONFIG[type]?.label || type}
+                iconName={SKILL_TYPE_CONFIG[type]?.icon || 'mdi:function-variant'}
                 tools={tools}
                 defaultOpen={type === 'function'}
               />
@@ -430,7 +430,7 @@ function ToolBrowserPalette() {
 
             {/* HuggingFace Spaces */}
             {filteredHfSpaces.length > 0 && (
-              <TraitGroup
+              <SkillGroup
                 title="HuggingFace Spaces"
                 iconImage="/huggingface_logo-noborder_greyscale.svg"
                 tools={filteredHfSpaces}

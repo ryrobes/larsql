@@ -20,7 +20,7 @@ def test_rewriter():
     # Test 1: Basic MAP
     print("\n1️⃣ Basic MAP:")
     query = """
-        RVBBIT MAP 'traits/extract_brand.yaml'
+        RVBBIT MAP 'skills/extract_brand.yaml'
         USING (
           SELECT * FROM (VALUES
             ('Apple iPhone 15'),
@@ -32,7 +32,7 @@ def test_rewriter():
     rewritten = rewrite_rvbbit_syntax(query)
     print(f"\nRewritten to:\n{rewritten}\n")
     assert 'WITH rvbbit_input AS' in rewritten
-    assert "rvbbit_run('traits/extract_brand.yaml'" in rewritten
+    assert "rvbbit_run('skills/extract_brand.yaml'" in rewritten
     print("✅ Basic MAP works!")
 
     # Test 2: With AS alias

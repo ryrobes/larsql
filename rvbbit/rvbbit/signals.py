@@ -917,7 +917,7 @@ def await_signal(
         if result:
             row_count = result.get("row_count")
     """
-    from .traits.state_tools import get_current_session_id, get_current_cascade_id, get_current_cell_name
+    from .skills.state_tools import get_current_session_id, get_current_cascade_id, get_current_cell_name
 
     session_id = get_current_session_id() or "unknown"
     cascade_id = get_current_cascade_id() or "unknown"

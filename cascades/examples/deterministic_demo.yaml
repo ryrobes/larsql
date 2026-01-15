@@ -27,7 +27,7 @@ cells:
 
     Provide the corrected SQL query.'
   name: fix_query
-  traits: []
+  skills: []
 - handoffs:
   - summarize_results
   inputs:
@@ -44,7 +44,7 @@ cells:
       Please diagnose the issue and suggest a fix.'
     rules:
       max_turns: 3
-    traits:
+    skills:
     - smart_sql_run
   tool: smart_sql_run
 - instructions: 'Summarize the query results:
@@ -57,4 +57,4 @@ cells:
 
     Provide a human-readable summary of what the data shows.'
   name: summarize_results
-  traits: []
+  skills: []

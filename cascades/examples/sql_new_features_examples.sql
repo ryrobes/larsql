@@ -52,13 +52,13 @@ WITH (infer_schema = true);
 -- ============================================================================
 
 -- Estimate cost BEFORE running
-EXPLAIN RVBBIT MAP 'traits/extract_brand.yaml'
+EXPLAIN RVBBIT MAP 'skills/extract_brand.yaml'
 USING (SELECT product_name FROM products LIMIT 100);
 
 -- Output shows:
 -- → Query Plan:
 --   ├─ Input Rows: 100
---   ├─ Cascade: traits/extract_brand.yaml
+--   ├─ Cascade: skills/extract_brand.yaml
 --   │  ├─ Cells: 1
 --   │  ├─ Model: google/gemini-2.5-flash-lite
 --   │  ├─ Cost Estimate: $0.000704 per row → $0.07 total
@@ -77,7 +77,7 @@ USING (SELECT product_name FROM products LIMIT 1000);
 
 
 -- EXPLAIN with DISTINCT (shows dedupe impact)
-EXPLAIN RVBBIT MAP DISTINCT 'traits/extract_brand.yaml'
+EXPLAIN RVBBIT MAP DISTINCT 'skills/extract_brand.yaml'
 USING (SELECT product_name FROM products);
 -- Shows how many unique rows will be processed
 
@@ -93,12 +93,12 @@ INSERT INTO products VALUES
   (103, 'Samsung Galaxy S24 Ultra 512GB Titanium Gray', 1299.99, 'Electronics', true);
 
 -- Without DISTINCT: Processes all rows (including duplicates)
-RVBBIT MAP 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP 'skills/extract_brand.yaml' AS brand
 USING (SELECT product_name FROM products WHERE product_id >= 101);
 -- Returns 3 rows (including 2 duplicates)
 
 -- With DISTINCT: Dedupes all columns
-RVBBIT MAP DISTINCT 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP DISTINCT 'skills/extract_brand.yaml' AS brand
 USING (SELECT product_name FROM products WHERE product_id >= 101);
 -- Returns 2 rows (duplicates removed!)
 
@@ -108,7 +108,7 @@ USING (SELECT product_name FROM products WHERE product_id >= 101);
 -- ============================================================================
 
 -- Dedupe by product_name only (keeps first occurrence)
-RVBBIT MAP 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP 'skills/extract_brand.yaml' AS brand
 USING (
     SELECT product_id, product_name, price
     FROM products
@@ -122,17 +122,17 @@ WITH (dedupe_by='product_name');
 -- ============================================================================
 
 -- Cache results for 1 hour
-RVBBIT MAP 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP 'skills/extract_brand.yaml' AS brand
 USING (SELECT product_name FROM products LIMIT 10)
 WITH (cache='1h');
 
 -- Cache for 1 day (good for stable reference data)
-RVBBIT MAP 'traits/classify_category.yaml' AS category
+RVBBIT MAP 'skills/classify_category.yaml' AS category
 USING (SELECT product_name FROM products)
 WITH (cache='1d');
 
 -- Short-lived cache (5 minutes for real-time data)
-RVBBIT MAP 'traits/sentiment.yaml' AS sentiment
+RVBBIT MAP 'skills/sentiment.yaml' AS sentiment
 USING (SELECT review_text FROM reviews_stream)
 WITH (cache='5m');
 
@@ -198,7 +198,7 @@ WITH enriched AS (
         p.product_id,
         p.product_name,
         p.price,
-        rvbbit_run('traits/extract_brand.yaml', json_object('product_name', p.product_name)) as brand_json
+        rvbbit_run('skills/extract_brand.yaml', json_object('product_name', p.product_name)) as brand_json
     FROM products p
     LIMIT 100
 )
@@ -291,5 +291,5 @@ USING (SELECT product_name FROM products LIMIT 5);
 -- (Check EXPLAIN again to see cache hit rate)
 
 -- 5. Try with DISTINCT:
-RVBBIT MAP DISTINCT 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP DISTINCT 'skills/extract_brand.yaml' AS brand
 USING (SELECT product_name FROM products);

@@ -218,7 +218,7 @@
         },
         {
           "id": "tools",
-          "title": "Tools (Traits)",
+          "title": "Tools (Skills)",
           "sections": [
             { "anchor": "overview", "title": "Tool System Overview" },
             { "anchor": "six-types", "title": "Six Tool Types" },
@@ -230,8 +230,8 @@
           ]
         },
         {
-          "id": "trait-sql",
-          "title": "trait:: SQL Syntax",
+          "id": "skill-sql",
+          "title": "skill:: SQL Syntax",
           "sections": [
             { "anchor": "overview", "title": "Overview" },
             { "anchor": "table-mode", "title": "Table Mode" },

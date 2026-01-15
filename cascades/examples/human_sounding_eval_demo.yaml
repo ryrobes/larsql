@@ -23,7 +23,7 @@ cells:
       show_metadata: true
       timeout_seconds: 300
     mutate: true
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -43,4 +43,4 @@ cells:
   name: refine_winner
   rules:
     max_turns: 1
-  traits: []
+  skills: []

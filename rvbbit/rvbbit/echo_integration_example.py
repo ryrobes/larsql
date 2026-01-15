@@ -325,7 +325,7 @@ def example_cell_lifecycle_integration():
         content=f"Starting cell: {cell.name}",
         metadata={
             "instructions": rendered_instruction,
-            "traits": cell.traits,
+            "skills": cell.skills,
             "max_turns": cell.rules.max_turns if cell.rules else None,
         }
     )

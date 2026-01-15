@@ -5,5 +5,5 @@ cells:
   name: charting
   rules:
     max_turns: 2
-  traits:
+  skills:
   - create_chart

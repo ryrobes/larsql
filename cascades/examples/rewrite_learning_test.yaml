@@ -15,4 +15,4 @@ cells:
     factor: 4
     mutate: true
     mutation_mode: rewrite
-  traits: []
+  skills: []

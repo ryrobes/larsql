@@ -18,7 +18,7 @@ cells:
       ideas.
     factor: 3
     mode: aggregate
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -32,4 +32,4 @@ cells:
   name: select_best
   rules:
     max_turns: 1
-  traits: []
+  skills: []

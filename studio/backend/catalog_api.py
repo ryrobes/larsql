@@ -2,7 +2,7 @@
 Catalog API - Unified browser for all RVBBIT system components
 
 Provides endpoints for browsing:
-- Tools (traits) - Python functions, cascade tools, memory tools, local models
+- Tools (skills) - Python functions, cascade tools, memory tools, local models
 - LLM Models - OpenRouter models, Ollama local models
 - Local Models - HuggingFace transformers
 - MCP Servers - Model Context Protocol servers and their tools
@@ -35,11 +35,11 @@ except ImportError as e:
     get_db = None
     get_config = None
 
-# Import traits manifest for local model tools
+# Import skills manifest for local model tools
 try:
-    from rvbbit.traits_manifest import get_trait_manifest
+    from rvbbit.skills_manifest import get_skill_manifest
 except ImportError:
-    get_trait_manifest = None
+    get_skill_manifest = None
 
 catalog_bp = Blueprint('catalog', __name__, url_prefix='/api/catalog')
 
@@ -209,12 +209,12 @@ def get_catalog():
             category_counts['ollama'] = 0
 
         # ==================================
-        # 2.5. LOCAL MODELS from trait manifest (HuggingFace Transformers)
+        # 2.5. LOCAL MODELS from skill manifest (HuggingFace Transformers)
         # ==================================
         try:
-            if get_trait_manifest:
+            if get_skill_manifest:
                 import yaml
-                manifest = get_trait_manifest(refresh=False)
+                manifest = get_skill_manifest(refresh=False)
                 local_tools = {k: v for k, v in manifest.items() if 'local_model' in v.get('type', '')}
 
                 for tool_id, tool_def in local_tools.items():
@@ -770,12 +770,12 @@ def get_catalog_item(item_id: str):
             }))
 
         elif category == 'local_model':
-            # Get local model (HuggingFace transformer) details from trait manifest
-            if not get_trait_manifest:
-                return jsonify({'error': 'Trait manifest not available'}), 500
+            # Get local model (HuggingFace transformer) details from skill manifest
+            if not get_skill_manifest:
+                return jsonify({'error': 'Skill manifest not available'}), 500
 
             import yaml
-            manifest = get_trait_manifest(refresh=False)
+            manifest = get_skill_manifest(refresh=False)
             local_tools = {k: v for k, v in manifest.items() if 'local_model' in v.get('type', '')}
 
             if raw_id not in local_tools:

@@ -23,7 +23,7 @@ cells:
     name: draft_opening
     rules:
       max_turns: 1
-    traits: []
+    skills: []
   - context:
       from:
         - previous
@@ -31,7 +31,7 @@ cells:
     name: develop_story
     rules:
       max_turns: 2
-    traits: []
+    skills: []
 description: Demonstrates soundings with REWRITE mutation mode - LLM rewrites the prompt to discover new formulations
 inputs_schema:
   theme: The theme for the story

@@ -12,7 +12,7 @@
 -- Example 1: Basic Product Enrichment
 -- ============================================================================
 
-RVBBIT MAP 'traits/extract_brand.yaml'
+RVBBIT MAP 'skills/extract_brand.yaml'
 USING (
   SELECT * FROM (VALUES
     ('Apple iPhone 15 Pro Max Space Black', 1199.99),
@@ -28,7 +28,7 @@ USING (
 -- Example 2: With AS Alias
 -- ============================================================================
 
-RVBBIT MAP 'traits/extract_brand.yaml' AS brand_info
+RVBBIT MAP 'skills/extract_brand.yaml' AS brand_info
 USING (
   SELECT product_name FROM (VALUES
     ('Levis 501 Original Fit Jeans Blue'),
@@ -46,7 +46,7 @@ USING (
 -- ============================================================================
 
 -- This query has NO explicit LIMIT
-RVBBIT MAP 'traits/classify_sentiment.yaml'
+RVBBIT MAP 'skills/classify_sentiment.yaml'
 USING (
   SELECT review_text FROM (VALUES
     ('This product is amazing! Best purchase ever.'),
@@ -110,7 +110,7 @@ WITH (
 -- Example 6: Real-World Use Case - E-commerce Analytics
 -- ============================================================================
 
-RVBBIT MAP 'traits/extract_product_attributes.yaml' AS attributes
+RVBBIT MAP 'skills/extract_product_attributes.yaml' AS attributes
 USING (
   WITH recent_products AS (
     SELECT
@@ -135,7 +135,7 @@ USING (
 -- ============================================================================
 
 -- Note: This works because each row gets processed independently
-RVBBIT MAP 'traits/enrich_contact.yaml' AS contact_data
+RVBBIT MAP 'skills/enrich_contact.yaml' AS contact_data
 USING (
   SELECT
     email,
@@ -169,7 +169,7 @@ USING (
 -- Example 9: Text Analysis Pipeline
 -- ============================================================================
 
-RVBBIT MAP 'traits/analyze_text_quality.yaml' AS quality_score
+RVBBIT MAP 'skills/analyze_text_quality.yaml' AS quality_score
 USING (
   SELECT
     post_id,
@@ -192,7 +192,7 @@ USING (
 
 -- Process 100 products with only 5 concurrent LLM calls
 -- Perfect for rate-limited APIs!
-RVBBIT MAP PARALLEL 5 'traits/extract_brand.yaml' AS brand
+RVBBIT MAP PARALLEL 5 'skills/extract_brand.yaml' AS brand
 USING (
   SELECT * FROM (VALUES
     ('Apple iPhone 15'),
@@ -205,7 +205,7 @@ USING (
 );
 
 -- High concurrency for fast/cheap models
-RVBBIT MAP PARALLEL 50 'traits/classify_sentiment.yaml' AS sentiment
+RVBBIT MAP PARALLEL 50 'skills/classify_sentiment.yaml' AS sentiment
 USING (
   SELECT review_text FROM reviews LIMIT 1000
 );
@@ -222,7 +222,7 @@ USING (
 -- ============================================================================
 
 -- Process entire dataset as ONE cascade (vs MAP = once per row)
-RVBBIT RUN 'traits/analyze_batch.yaml'
+RVBBIT RUN 'skills/analyze_batch.yaml'
 USING (
   SELECT * FROM (VALUES
     ('Apple iPhone 15', 1199.99),
@@ -249,7 +249,7 @@ WITH (as_table = 'products_batch');
 -- ============================================================================
 
 -- If you don't specify as_table, one is auto-generated
-RVBBIT RUN 'traits/analyze_batch.yaml'
+RVBBIT RUN 'skills/analyze_batch.yaml'
 USING (
   SELECT * FROM (VALUES
     ('Product A', 100),

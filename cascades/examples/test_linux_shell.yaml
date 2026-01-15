@@ -7,6 +7,6 @@ cells:
   name: execute_task
   rules:
     max_turns: 3
-  traits:
+  skills:
   - linux_shell
   use_native_tools: false

@@ -92,7 +92,7 @@ cells:
 
       Write Python code and call rlm_exec. When done, the loop exits.
 
-    traits: [rlm_exec, set_state]
+    skills: [rlm_exec, set_state]
     rules:
       max_turns: "{{ input.max_iterations | default(15) }}"
       loop_until: "{{ state.final_answer }}"

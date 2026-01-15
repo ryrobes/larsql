@@ -102,7 +102,7 @@ cells:
     [How we know this worked]
 
     '
-  traits:
+  skills:
   - create_artifact
   candidates:
     factor: 6
@@ -212,7 +212,7 @@ cells:
     \ This is cosmetic only.\n\nCreate the plan as an artifact when done please! \n\
     And when you make the artifact please make sure you tag it as the winner and perhaps\
     \ indicate that in the title briefly.\n"
-  traits:
+  skills:
   - create_artifact
   context:
     from:

@@ -34,7 +34,7 @@ cells:
 
       Please adjust your response length. This is attempt {{ attempt }}/{{ max_attempts
       }}.'
-  traits:
+  skills:
   - set_state
 - instructions: 'Success! You met the length constraints.
 

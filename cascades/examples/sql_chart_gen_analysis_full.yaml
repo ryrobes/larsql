@@ -118,7 +118,7 @@ cells:
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
-  traits:
+  skills:
   - sql_search
   - list_sql_connections
   - sql_rag_search
@@ -180,7 +180,7 @@ cells:
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
-  traits:
+  skills:
   - sql_search
   - list_sql_connections
   - sql_rag_search
@@ -265,7 +265,7 @@ cells:
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
-  traits:
+  skills:
   - sql_query
   - sql_rag_search
 - context:
@@ -320,7 +320,7 @@ cells:
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -383,7 +383,7 @@ cells:
         \ specific and actionable. Reference exact elements you see in the image."
       mutate: true
       steps: 2
-  traits:
+  skills:
   - sql_query
   - create_vega_lite
   - create_plotly
@@ -397,5 +397,5 @@ cells:
   name: say_summary_summarize
   rules:
     max_turns: 1
-  traits:
+  skills:
   - say

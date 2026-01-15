@@ -9,7 +9,7 @@ import importlib
 from typing import TYPE_CHECKING
 
 # Fast-loading modules that don't pull in heavy dependencies
-from .trait_registry import register_trait, register_cascade_as_tool
+from .skill_registry import register_skill, register_cascade_as_tool
 
 # Lazy-loaded module registry
 _LAZY_IMPORTS = {
@@ -22,7 +22,7 @@ _LAZY_IMPORTS = {
     "CheckpointStatus": (".checkpoints", "CheckpointStatus"),
     "CheckpointType": (".checkpoints", "CheckpointType"),
     "TraceContext": (".checkpoints", "TraceContext"),
-    "create_eddy": (".traits.base", "create_eddy"),
+    "create_eddy": (".skills.base", "create_eddy"),
     "get_echo": (".echo", "get_echo"),
     # Visualizer
     "generate_mermaid": (".visualizer", "generate_mermaid"),
@@ -40,139 +40,139 @@ _LAZY_IMPORTS = {
     "get_browser_manager": (".browser_manager", "get_browser_manager"),
     "BrowserConfig": (".cascade", "BrowserConfig"),
     # Bodybuilder
-    "bodybuilder": (".traits.bodybuilder", "bodybuilder"),
-    "execute_body": (".traits.bodybuilder", "execute_body"),
-    "plan_and_execute": (".traits.bodybuilder", "plan_and_execute"),
+    "bodybuilder": (".skills.bodybuilder", "bodybuilder"),
+    "execute_body": (".skills.bodybuilder", "execute_body"),
+    "plan_and_execute": (".skills.bodybuilder", "plan_and_execute"),
 }
 
 # Cache for lazy-loaded attributes
 _LOADED_ATTRS = {}
 
-# Deferred trait registration (happens once, on first trait access)
-_TRAITS_REGISTERED = False
+# Deferred skill registration (happens once, on first skill access)
+_SKILLS_REGISTERED = False
 
-def _register_all_traits():
-    """Register all built-in traits. Called lazily on first trait usage."""
-    global _TRAITS_REGISTERED
-    if _TRAITS_REGISTERED:
+def _register_all_skills():
+    """Register all built-in skills. Called lazily on first skill usage."""
+    global _SKILLS_REGISTERED
+    if _SKILLS_REGISTERED:
         return
-    _TRAITS_REGISTERED = True
+    _SKILLS_REGISTERED = True
 
-    # Import and register traits
-    from .traits.sql import run_sql
-    from .traits.extras import take_screenshot, linux_shell, curl_text, fetch_url_with_browser
-    from .traits.human import ask_human, ask_human_custom, request_decision
-    from .traits.display import show_ui
-    from .traits.artifacts import create_artifact, list_artifacts, get_artifact
-    from .traits.research_sessions import (
+    # Import and register skills
+    from .skills.sql import run_sql
+    from .skills.extras import take_screenshot, linux_shell, curl_text, fetch_url_with_browser
+    from .skills.human import ask_human, ask_human_custom, request_decision
+    from .skills.display import show_ui
+    from .skills.artifacts import create_artifact, list_artifacts, get_artifact
+    from .skills.research_sessions import (
         save_research_session, list_research_sessions, get_research_session
     )
-    from .traits.state_tools import set_state, append_state, get_state
-    from .traits.system import spawn_cascade, map_cascade
-    from .traits.cascade_builder import cascade_write, cascade_read
-    from .traits.bodybuilder import bodybuilder
-    from .traits.research_db import research_query, research_execute
-    from .traits.chart import create_chart, create_vega_lite, create_plotly
-    from .traits.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree, get_image_info, read_images, list_images, save_image, copy_image
-    from .traits.image_gen import outpaint_image, generate_image, llm_outpaint, llm_generate
+    from .skills.state_tools import set_state, append_state, get_state
+    from .skills.system import spawn_cascade, map_cascade
+    from .skills.cascade_builder import cascade_write, cascade_read
+    from .skills.bodybuilder import bodybuilder
+    from .skills.research_db import research_query, research_execute
+    from .skills.chart import create_chart, create_vega_lite, create_plotly
+    from .skills.filesystem import read_file, write_file, append_file, list_files, file_info, read_image, edit_file, search_files, tree, get_image_info, read_images, list_images, save_image, copy_image
+    from .skills.image_gen import outpaint_image, generate_image, llm_outpaint, llm_generate
     from .rag.tools import rag_search, rag_read_chunk, rag_list_sources
     from .sql_tools.tools import sql_search, sql_rag_search, smart_sql_search, run_sql as sql_run_sql, list_sql_connections, validate_sql
-    from .traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
-    from .traits.bash_substrate import bash_data
-    from .traits.ui_components import lookup_ui_component, list_ui_components, get_ui_examples
-    from .traits.rabbitize import (
+    from .skills.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
+    from .skills.bash_substrate import bash_data
+    from .skills.ui_components import lookup_ui_component, list_ui_components, get_ui_examples
+    from .skills.rabbitize import (
         rabbitize_start, rabbitize_close, control_browser, extract_page_content,
         get_browser_status, rabbitize_execute, rabbitize_extract, rabbitize_status
     )
-    from .traits.signal_tools import await_signal, fire_signal, list_signals as signal_list_signals
-    from .traits.rlm_tools import rlm_exec, llm_analyze, llm_batch_analyze, chunk_text
-    from .traits.trait_executor import trait_executor, list_available_traits
-    from .traits.cascade_validator import validate_cascade_overrides
+    from .skills.signal_tools import await_signal, fire_signal, list_signals as signal_list_signals
+    from .skills.rlm_tools import rlm_exec, llm_analyze, llm_batch_analyze, chunk_text
+    from .skills.skill_executor import skill_executor, list_available_skills
+    from .skills.cascade_validator import validate_cascade_overrides
 
     # Core tools
-    register_trait("smart_sql_run", run_sql)
-    register_trait("linux_shell", linux_shell)
-    register_trait("curl_text", curl_text)
-    register_trait("fetch_url_with_browser", fetch_url_with_browser)
-    register_trait("take_screenshot", take_screenshot)
-    register_trait("ask_human", ask_human)
-    register_trait("ask_human_custom", ask_human_custom)
-    register_trait("request_decision", request_decision)
-    register_trait("show_ui", show_ui)
-    register_trait("create_artifact", create_artifact)
-    register_trait("list_artifacts", list_artifacts)
-    register_trait("get_artifact", get_artifact)
-    register_trait("save_research_session", save_research_session)
-    register_trait("list_research_sessions", list_research_sessions)
-    register_trait("get_research_session", get_research_session)
-    register_trait("set_state", set_state)
-    register_trait("append_state", append_state)
-    register_trait("get_state", get_state)
-    register_trait("spawn_cascade", spawn_cascade)
-    register_trait("map_cascade", map_cascade)
-    register_trait("cascade_write", cascade_write)
-    register_trait("cascade_read", cascade_read)
-    register_trait("validate_cascade_overrides", validate_cascade_overrides)
-    register_trait("bodybuilder", bodybuilder)
-    register_trait("research_query", research_query)
-    register_trait("research_execute", research_execute)
-    register_trait("create_chart", create_chart)
-    register_trait("create_vega_lite", create_vega_lite)
-    register_trait("create_plotly", create_plotly)
-    register_trait("rag_search", rag_search)
-    register_trait("rag_read_chunk", rag_read_chunk)
-    register_trait("rag_list_sources", rag_list_sources)
+    register_skill("smart_sql_run", run_sql)
+    register_skill("linux_shell", linux_shell)
+    register_skill("curl_text", curl_text)
+    register_skill("fetch_url_with_browser", fetch_url_with_browser)
+    register_skill("take_screenshot", take_screenshot)
+    register_skill("ask_human", ask_human)
+    register_skill("ask_human_custom", ask_human_custom)
+    register_skill("request_decision", request_decision)
+    register_skill("show_ui", show_ui)
+    register_skill("create_artifact", create_artifact)
+    register_skill("list_artifacts", list_artifacts)
+    register_skill("get_artifact", get_artifact)
+    register_skill("save_research_session", save_research_session)
+    register_skill("list_research_sessions", list_research_sessions)
+    register_skill("get_research_session", get_research_session)
+    register_skill("set_state", set_state)
+    register_skill("append_state", append_state)
+    register_skill("get_state", get_state)
+    register_skill("spawn_cascade", spawn_cascade)
+    register_skill("map_cascade", map_cascade)
+    register_skill("cascade_write", cascade_write)
+    register_skill("cascade_read", cascade_read)
+    register_skill("validate_cascade_overrides", validate_cascade_overrides)
+    register_skill("bodybuilder", bodybuilder)
+    register_skill("research_query", research_query)
+    register_skill("research_execute", research_execute)
+    register_skill("create_chart", create_chart)
+    register_skill("create_vega_lite", create_vega_lite)
+    register_skill("create_plotly", create_plotly)
+    register_skill("rag_search", rag_search)
+    register_skill("rag_read_chunk", rag_read_chunk)
+    register_skill("rag_list_sources", rag_list_sources)
 
     # Filesystem operations
-    register_trait("read_file", read_file)
-    register_trait("write_file", write_file)
-    register_trait("edit_file", edit_file)
-    register_trait("append_file", append_file)
-    register_trait("list_files", list_files)
-    register_trait("file_info", file_info)
-    register_trait("read_image", read_image)
-    register_trait("read_images", read_images)
-    register_trait("get_image_info", get_image_info)
-    register_trait("list_images", list_images)
-    register_trait("save_image", save_image)
-    register_trait("copy_image", copy_image)
-    register_trait("outpaint_image", outpaint_image)
-    register_trait("generate_image", generate_image)
-    register_trait("llm_outpaint", llm_outpaint)
-    register_trait("llm_generate", llm_generate)
-    register_trait("search_files", search_files)
-    register_trait("tree", tree)
+    register_skill("read_file", read_file)
+    register_skill("write_file", write_file)
+    register_skill("edit_file", edit_file)
+    register_skill("append_file", append_file)
+    register_skill("list_files", list_files)
+    register_skill("file_info", file_info)
+    register_skill("read_image", read_image)
+    register_skill("read_images", read_images)
+    register_skill("get_image_info", get_image_info)
+    register_skill("list_images", list_images)
+    register_skill("save_image", save_image)
+    register_skill("copy_image", copy_image)
+    register_skill("outpaint_image", outpaint_image)
+    register_skill("generate_image", generate_image)
+    register_skill("llm_outpaint", llm_outpaint)
+    register_skill("llm_generate", llm_generate)
+    register_skill("search_files", search_files)
+    register_skill("tree", tree)
 
     # SQL tools
-    register_trait("sql_search", sql_search)
-    register_trait("sql_rag_search", sql_rag_search)
-    register_trait("smart_sql_search", smart_sql_search)
-    register_trait("sql_query", sql_run_sql)
-    register_trait("list_sql_connections", list_sql_connections)
-    register_trait("validate_sql", validate_sql)
+    register_skill("sql_search", sql_search)
+    register_skill("sql_rag_search", sql_rag_search)
+    register_skill("smart_sql_search", smart_sql_search)
+    register_skill("sql_query", sql_run_sql)
+    register_skill("list_sql_connections", list_sql_connections)
+    register_skill("validate_sql", validate_sql)
 
     # Data Cascade tools
-    register_trait("sql_data", sql_data)
-    register_trait("python_data", python_data)
-    register_trait("js_data", js_data)
-    register_trait("clojure_data", clojure_data)
-    register_trait("rvbbit_data", rvbbit_data)
-    register_trait("bash_data", bash_data)
+    register_skill("sql_data", sql_data)
+    register_skill("python_data", python_data)
+    register_skill("js_data", js_data)
+    register_skill("clojure_data", clojure_data)
+    register_skill("rvbbit_data", rvbbit_data)
+    register_skill("bash_data", bash_data)
 
     # UI Components
-    register_trait("lookup_ui_component", lookup_ui_component)
-    register_trait("list_ui_components", list_ui_components)
-    register_trait("get_ui_examples", get_ui_examples)
+    register_skill("lookup_ui_component", lookup_ui_component)
+    register_skill("list_ui_components", list_ui_components)
+    register_skill("get_ui_examples", get_ui_examples)
 
     # Browser automation
-    register_trait("control_browser", control_browser)
-    register_trait("extract_page_content", extract_page_content)
-    register_trait("get_browser_status", get_browser_status)
-    register_trait("rabbitize_start", rabbitize_start)
-    register_trait("rabbitize_close", rabbitize_close)
-    register_trait("rabbitize_execute", rabbitize_execute)
-    register_trait("rabbitize_extract", rabbitize_extract)
-    register_trait("rabbitize_status", rabbitize_status)
+    register_skill("control_browser", control_browser)
+    register_skill("extract_page_content", extract_page_content)
+    register_skill("get_browser_status", get_browser_status)
+    register_skill("rabbitize_start", rabbitize_start)
+    register_skill("rabbitize_close", rabbitize_close)
+    register_skill("rabbitize_execute", rabbitize_execute)
+    register_skill("rabbitize_extract", rabbitize_extract)
+    register_skill("rabbitize_status", rabbitize_status)
 
     # Native Python browser tools (browser, control_browser, etc.)
     try:
@@ -183,45 +183,45 @@ def _register_all_traits():
         pass
 
     # Signals
-    register_trait("await_signal", await_signal)
-    register_trait("fire_signal", fire_signal)
-    register_trait("list_signals", signal_list_signals)
+    register_skill("await_signal", await_signal)
+    register_skill("fire_signal", fire_signal)
+    register_skill("list_signals", signal_list_signals)
 
     # RLM tools
-    register_trait("rlm_exec", rlm_exec)
-    register_trait("llm_analyze", llm_analyze)
-    register_trait("llm_batch_analyze", llm_batch_analyze)
-    register_trait("chunk_text", chunk_text)
+    register_skill("rlm_exec", rlm_exec)
+    register_skill("llm_analyze", llm_analyze)
+    register_skill("llm_batch_analyze", llm_batch_analyze)
+    register_skill("chunk_text", chunk_text)
 
-    # Trait executor
-    register_trait("trait_executor", trait_executor)
-    register_trait("list_traits", list_available_traits)
+    # Skill executor
+    register_skill("skill_executor", skill_executor)
+    register_skill("list_skills", list_available_skills)
 
     # Backward compatibility
-    register_trait("run_sql", run_sql)
+    register_skill("run_sql", run_sql)
 
     # Conditional: ElevenLabs TTS
-    from .traits.tts import say as elevenlabs_say, is_available as elevenlabs_available
+    from .skills.tts import say as elevenlabs_say, is_available as elevenlabs_available
     if elevenlabs_available():
-        register_trait("say", elevenlabs_say)
+        register_skill("say", elevenlabs_say)
 
     # Conditional: Speech-to-Text
-    from .traits.stt import (
+    from .skills.stt import (
         transcribe_audio, listen as voice_listen, process_voice_recording,
         is_available as stt_available
     )
     if stt_available():
-        register_trait("transcribe_audio", transcribe_audio)
-        register_trait("listen", voice_listen)
-        register_trait("process_voice_recording", process_voice_recording)
+        register_skill("transcribe_audio", transcribe_audio)
+        register_skill("listen", voice_listen)
+        register_skill("process_voice_recording", process_voice_recording)
 
     # Conditional: Brave Search
-    from .traits.web_search import brave_web_search, is_available as brave_search_available
+    from .skills.web_search import brave_web_search, is_available as brave_search_available
     if brave_search_available():
-        register_trait("brave_web_search", brave_web_search)
+        register_skill("brave_web_search", brave_web_search)
 
     # Conditional: Embedding storage
-    from .traits.embedding_storage import (
+    from .skills.embedding_storage import (
         agent_embed, clickhouse_store_embedding, clickhouse_vector_search,
         cosine_similarity_texts, elasticsearch_hybrid_search, agent_embed_batch
     )
@@ -299,20 +299,20 @@ def __dir__():
     return list(__all__)
 
 
-# Ensure traits are registered when run_cascade is called
+# Ensure skills are registered when run_cascade is called
 _original_run_cascade = None
 
 def _lazy_run_cascade(*args, **kwargs):
-    """Wrapper that ensures traits are registered before running."""
+    """Wrapper that ensures skills are registered before running."""
     global _original_run_cascade
-    _register_all_traits()
+    _register_all_skills()
     if _original_run_cascade is None:
         from .runner import run_cascade as rc
         _original_run_cascade = rc
     return _original_run_cascade(*args, **kwargs)
 
 
-# Override the lazy loader for run_cascade to include trait registration
+# Override the lazy loader for run_cascade to include skill registration
 _LAZY_IMPORTS_BACKUP = _LAZY_IMPORTS.copy()
 del _LAZY_IMPORTS["run_cascade"]  # Remove from lazy registry
 _LOADED_ATTRS["run_cascade"] = _lazy_run_cascade  # Use our wrapper
@@ -321,7 +321,7 @@ _LOADED_ATTRS["run_cascade"] = _lazy_run_cascade  # Use our wrapper
 __all__ = [
     "run_cascade",
     "set_provider",
-    "register_trait",
+    "register_skill",
     "register_cascade_as_tool",
     "create_eddy",
     "get_echo",

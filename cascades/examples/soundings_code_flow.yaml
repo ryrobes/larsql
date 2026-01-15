@@ -19,7 +19,7 @@ cells:
       - what is the time/space complexity? 3) Code quality - is it readable and well-structured?
       4) Edge cases - does it handle corner cases? Select the BEST solution overall.'
     factor: 3
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -38,5 +38,5 @@ cells:
 
 
       Please provide more complete code. Attempt {{ attempt }}/{{ max_attempts }}'
-  traits:
+  skills:
   - run_code

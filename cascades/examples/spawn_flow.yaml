@@ -11,4 +11,4 @@ cells:
   name: main_task
   rules:
     max_turns: 1
-  traits: []
+  skills: []

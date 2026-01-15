@@ -22,4 +22,4 @@ cells:
     - x-ai/grok-4.1-fast
     - google/gemini-2.5-flash-lite
     mutate: false
-  traits: []
+  skills: []

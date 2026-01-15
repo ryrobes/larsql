@@ -14,5 +14,5 @@ template:
     Search the research database for relevant information.
 
     Query: {{ input.query }}
-  traits:
+  skills:
     - research_query

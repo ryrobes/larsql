@@ -10,7 +10,7 @@ inputs_schema:
   task: What task should we work on
 cells:
 - name: analyze_and_decide
-  traits:
+  skills:
   - request_decision
   instructions: 'You are a helpful assistant working on the user''s task.
 

@@ -41,7 +41,7 @@ cells:
 - name: generate_and_store
   tool: python_data
   inputs:
-    code: "# Complete embedding generation + storage in one cell\nfrom rvbbit.traits.embedding_storage\
+    code: "# Complete embedding generation + storage in one cell\nfrom rvbbit.skills.embedding_storage\
       \ import agent_embed, clickhouse_store_embedding\nimport json\n\ntext = input.get('text',\
       \ '')\nmodel = input.get('model')\nsource_table = input.get('source_table',\
       \ 'unknown')\ncolumn_name = input.get('column_name', 'unknown')\nsource_id =\

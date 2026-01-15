@@ -23,7 +23,7 @@ cells:
       2. Extract any named entities (use local_ner)
 
       Then provide a brief summary of your findings.
-    traits:
+    skills:
       - local_sentiment
       - local_ner
     rules:

@@ -1,0 +1,34 @@
+cascade_id: code_execution_validator
+description: Validates that code was executed successfully (no errors, has output)
+inputs_schema:
+  content: The phase output to validate
+cells:
+- name: validate
+  instructions: |-
+    Check if the following content shows that code was executed successfully:
+
+    ---
+    {{ input.content }}
+    ---
+
+    Look for:
+    1. Actual execution output (numbers, results, print statements)
+    2. NO error messages (Exit code, Traceback, Error:, etc.)
+    3. Evidence that the solution worked
+
+    Return JSON:
+    {"valid": true, "reason": "..."} if code executed successfully with output
+    {"valid": false, "reason": "..."} if errors present or no execution happened
+
+    Be strict: Only return valid=true if you see ACTUAL execution output without errors.
+  output_schema:
+    type: object
+    properties:
+      valid:
+        type: boolean
+      reason:
+        type: string
+    required:
+    - valid
+    - reason
+  skills: []

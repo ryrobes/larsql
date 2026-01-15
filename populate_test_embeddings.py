@@ -20,7 +20,7 @@ import os
 os.environ['RVBBIT_ROOT'] = '/home/ryanr/repos/rvbbit'
 
 import rvbbit
-from rvbbit.traits.embedding_storage import agent_embed, clickhouse_store_embedding
+from rvbbit.skills.embedding_storage import agent_embed, clickhouse_store_embedding
 
 print("="*70)
 print("Populating Embeddings for VECTOR_SEARCH Testing")

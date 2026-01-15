@@ -58,4 +58,4 @@ cells:
     - openai/gpt-4o
     - meta-llama/llama-3.1-8b-instruct
     - qwen/qwen3-8b
-  traits: []
+  skills: []

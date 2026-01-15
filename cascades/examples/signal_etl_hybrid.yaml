@@ -28,7 +28,7 @@ cells:
     Explain the issue and suggest a corrected query.
 
     '
-  traits: []
+  skills: []
 - name: wait_for_data
   instructions: 'Use await_signal to wait for signal ''etl_data_ready'' with timeout
     ''60s''.
@@ -36,7 +36,7 @@ cells:
     Description: ''Waiting for upstream data pipeline to complete''
 
     '
-  traits:
+  skills:
   - await_signal
   handoffs:
   - transform_data
@@ -51,7 +51,7 @@ cells:
     Suggest troubleshooting steps for the data pipeline.
 
     '
-  traits: []
+  skills: []
 - name: transform_data
   tool: python:windlass.demo_tools.transform_data
   inputs:
@@ -70,14 +70,14 @@ cells:
   instructions: 'The data transformation returned no results. Log this gracefully.
 
     '
-  traits: []
+  skills: []
 - name: handle_transform_error
   instructions: 'Transform failed: {{ state.last_deterministic_error }}
 
     Diagnose and suggest remediation.
 
     '
-  traits: []
+  skills: []
 - name: summarize_results
   instructions: 'The ETL pipeline completed successfully!
 
@@ -100,4 +100,4 @@ cells:
     3. Any notable patterns
 
     '
-  traits: []
+  skills: []

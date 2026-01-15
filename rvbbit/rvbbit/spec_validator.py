@@ -94,7 +94,7 @@ class ValidationResult:
 @dataclass
 class ValidationContext:
     """Optional context for contextual validations."""
-    trait_names: Optional[Set[str]] = None
+    skill_names: Optional[Set[str]] = None
     model_names: Optional[Set[str]] = None
     filesystem_root: Optional[Path] = None
 
@@ -102,14 +102,14 @@ class ValidationContext:
     def from_registry(cls) -> "ValidationContext":
         """Build context from live registry."""
         try:
-            from .traits_manifest import get_trait_manifest
-            manifest = get_trait_manifest()
-            trait_names = set(manifest.keys())
+            from .skills_manifest import get_skill_manifest
+            manifest = get_skill_manifest()
+            skill_names = set(manifest.keys())
         except Exception:
-            trait_names = None
+            skill_names = None
 
         return cls(
-            trait_names=trait_names,
+            skill_names=skill_names,
             filesystem_root=Path.cwd()
         )
 
@@ -147,8 +147,8 @@ def validate_cascade(
 
     # Contextual validations (only if context provided)
     if context:
-        if context.trait_names is not None:
-            issues.extend(_validate_traits_exist(cascade, context.trait_names))
+        if context.skill_names is not None:
+            issues.extend(_validate_skills_exist(cascade, context.skill_names))
         if context.filesystem_root:
             issues.extend(_validate_file_references(cascade, context.filesystem_root))
 
@@ -452,32 +452,32 @@ def _validate_graph(cascade: CascadeConfig) -> List[ValidationIssue]:
 # Contextual Validators
 # =============================================================================
 
-def _validate_traits_exist(cascade: CascadeConfig, trait_names: Set[str]) -> List[ValidationIssue]:
-    """W001: Trait names should exist in registry (warning, not error)."""
+def _validate_skills_exist(cascade: CascadeConfig, skill_names: Set[str]) -> List[ValidationIssue]:
+    """W001: Skill names should exist in registry (warning, not error)."""
     issues = []
 
     # Add special keywords that are always valid
-    valid_names = trait_names | {"manifest"}
+    valid_names = skill_names | {"manifest"}
 
     for idx, cell in enumerate(cascade.cells):
-        if not cell.traits:
+        if not cell.skills:
             continue
 
         # Handle "manifest" keyword
-        if cell.traits == "manifest":
+        if cell.skills == "manifest":
             continue
 
-        # Handle list of traits
-        if isinstance(cell.traits, list):
-            for t_idx, trait in enumerate(cell.traits):
-                if trait not in valid_names:
+        # Handle list of skills
+        if isinstance(cell.skills, list):
+            for t_idx, skill in enumerate(cell.skills):
+                if skill not in valid_names:
                     issues.append(ValidationIssue(
                         level="warning",
                         code="W001",
-                        message=f"Trait '{trait}' not found in registry (may be dynamically registered)",
-                        path=f"cells[{idx}].traits[{t_idx}]",
+                        message=f"Skill '{skill}' not found in registry (may be dynamically registered)",
+                        path=f"cells[{idx}].skills[{t_idx}]",
                         cell_name=cell.name,
-                        fix_hint="Check trait name spelling or ensure it's registered at runtime"
+                        fix_hint="Check skill name spelling or ensure it's registered at runtime"
                     ))
 
     return issues
@@ -491,7 +491,7 @@ def _validate_file_references(cascade: CascadeConfig, root: Path) -> List[Valida
     search_dirs = [
         root,
         root / "examples",
-        root / "traits",
+        root / "skills",
         root / "cascades",
     ]
 

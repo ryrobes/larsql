@@ -35,7 +35,7 @@ model: minimax/minimax-m2.1
 cells:
 - name: assistant_loop
   ui_mode: research_cockpit
-  traits: manifest
+  skills: manifest
   #model: x-ai/grok-4
   model: minimax/minimax-m2.1
   manifest_refresh: "per_turn"  # Re-assess tools each turn

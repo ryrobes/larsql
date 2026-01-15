@@ -14,7 +14,7 @@ cells:
     Take your time to think through all possibilities.
 
     '
-  traits: []
+  skills: []
 - name: solve_with_effort
   model: anthropic/claude-sonnet-4::high
   instructions: 'Provide an alternative interpretation of the riddle:
@@ -26,7 +26,7 @@ cells:
     Think deeply about other possible answers.
 
     '
-  traits: []
+  skills: []
   context:
     from:
     - solve_with_budget

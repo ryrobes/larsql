@@ -21,7 +21,7 @@ cells:
       1. Use set_state to set "flow_marker" to "INIT_COMPLETE"
       2. Use set_state to set "test_input" to "{{ input.test_value }}"
       3. Respond with exactly: "Initialization complete. Marker set."
-    traits:
+    skills:
       - set_state
     handoffs:
       - process
@@ -41,7 +41,7 @@ cells:
     context:
       from:
         - previous
-    traits:
+    skills:
       - set_state
     handoffs:
       - verify

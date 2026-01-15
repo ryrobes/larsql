@@ -10,5 +10,5 @@ cells:
     payload: {"source": "async_producer", "message": "Hello from the async producer!",
     "timestamp": "now"}'
   name: fire
-  traits:
+  skills:
   - fire_signal

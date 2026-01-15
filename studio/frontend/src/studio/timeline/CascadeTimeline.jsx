@@ -1629,7 +1629,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
                 color: '#64748b',
                 fontSize: '11px'
               }}>
-                Relative to RVBBIT root. Use <code style={{ color: '#a78bfa' }}>cascades/</code> for cascades or <code style={{ color: '#a78bfa' }}>traits/</code> for reusable tools.
+                Relative to RVBBIT root. Use <code style={{ color: '#a78bfa' }}>cascades/</code> for cascades or <code style={{ color: '#a78bfa' }}>skills/</code> for reusable tools.
               </p>
             </div>
 

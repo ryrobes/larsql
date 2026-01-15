@@ -24,7 +24,7 @@ cells:
     pattern: <scratchpad>(.*?)</scratchpad>
     required: true
     store_as: reasoning
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -39,7 +39,7 @@ cells:
     Generate a clean, polished solution to the problem. No scratchpad needed - just
     the final answer.'
   name: solve
-  traits: []
+  skills: []
 - context:
     from:
     - all
@@ -53,4 +53,4 @@ cells:
 
     Provide your verification.'
   name: verify
-  traits: []
+  skills: []

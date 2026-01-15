@@ -193,7 +193,7 @@ def execute_shell_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Di
     if use_sandbox:
         # Try to use the existing linux_shell tool for sandboxed execution
         try:
-            from .traits.extras import linux_shell
+            from .skills.extras import linux_shell
             result = linux_shell(command)
             return result
         except Exception as e:
@@ -389,7 +389,7 @@ def execute_python_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: D
 
 def execute_composite_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str, Any]) -> str:
     """Execute a composite-type tool by running steps in sequence."""
-    from .trait_registry import get_trait
+    from .skill_registry import get_skill
 
     results = []
     step_outputs = []
@@ -412,7 +412,7 @@ def execute_composite_tool(tool: ToolDefinition, inputs: Dict[str, Any], context
                 continue
 
         # Get the tool to execute
-        step_tool = get_trait(step.tool)
+        step_tool = get_skill(step.tool)
         if not step_tool:
             # Try to find it in declarative tools
             step_tool = get_declarative_tool_executor(step.tool)
@@ -747,11 +747,11 @@ def execute_tool(tool: ToolDefinition, inputs: Dict[str, Any], context: Dict[str
 
 def register_declarative_tool(tool: ToolDefinition, source_path: str | None = None):
     """
-    Register a declarative tool in the traits registry.
+    Register a declarative tool in the skills registry.
 
     Creates a wrapper function that can be called like any other tool.
     """
-    from .trait_registry import register_trait
+    from .skill_registry import register_skill
 
     # Store in cache
     _declarative_tools[tool.tool_id] = tool
@@ -784,33 +784,33 @@ def register_declarative_tool(tool: ToolDefinition, source_path: str | None = No
     tool_wrapper._tool_definition = tool
     tool_wrapper._source_path = source_path
 
-    # Register in traits registry
-    register_trait(tool.tool_id, tool_wrapper)
+    # Register in skills registry
+    register_skill(tool.tool_id, tool_wrapper)
 
 
 def discover_and_register_declarative_tools(directories: List[str] | None = None):
     """
     Discover all .tool.json files in the given directories and register them.
 
-    If directories is None, uses the default traits_dirs from config.
+    If directories is None, uses the default skills_dirs from config.
     """
     from .config import get_config
 
     if directories is None:
         config = get_config()
-        directories = config.traits_dirs
+        directories = config.skills_dirs
 
     registered = []
 
-    for traits_dir in directories:
+    for skills_dir in directories:
         # Support both absolute and relative paths
-        if not os.path.isabs(traits_dir):
-            search_path = os.path.join(os.getcwd(), traits_dir)
+        if not os.path.isabs(skills_dir):
+            search_path = os.path.join(os.getcwd(), skills_dir)
             if not os.path.exists(search_path):
                 package_dir = os.path.dirname(__file__)
-                search_path = os.path.join(package_dir, traits_dir)
+                search_path = os.path.join(package_dir, skills_dir)
         else:
-            search_path = traits_dir
+            search_path = skills_dir
 
         if not os.path.exists(search_path):
             continue

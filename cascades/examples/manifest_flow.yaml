@@ -1,5 +1,5 @@
 cascade_id: content_processor_with_manifest
-description: Demonstrates Quartermaster selecting appropriate traits based on task
+description: Demonstrates Quartermaster selecting appropriate skills based on task
 inputs_schema:
   content: The content to process
   task: Description of the content processing task
@@ -18,7 +18,7 @@ cells:
   name: process_content
   rules:
     max_turns: 5
-  traits: manifest
+  skills: manifest
 - context:
     from:
     - previous
@@ -27,4 +27,4 @@ cells:
   name: review
   rules:
     max_turns: 1
-  traits: []
+  skills: []

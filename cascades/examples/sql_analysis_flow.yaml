@@ -26,7 +26,7 @@ cells:
 
     Analyze the results and identify which table(s) would be most useful.'
   name: discover_schema
-  traits:
+  skills:
   - sql_search
   - list_sql_connections
 - context:
@@ -63,7 +63,7 @@ cells:
 
     Write a clear, efficient query based on this information.'
   name: write_query
-  traits:
+  skills:
   - sql_query
 - context:
     from:
@@ -83,4 +83,4 @@ cells:
 
     Be specific and reference actual numbers from the results.'
   name: analyze_results
-  traits: []
+  skills: []

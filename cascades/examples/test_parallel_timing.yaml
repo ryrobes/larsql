@@ -10,7 +10,7 @@ cells:
     Just return the uppercase version of the input.
 
     Input: {{ input.text }}
-  traits: []
+  skills: []
   output_schema:
     type: object
     properties:

@@ -68,7 +68,7 @@ cells:
 
       Use the route_to tool.
     handoffs: [no_images, process_images]
-    traits: []
+    skills: []
 
   # Dead-end for no images
   - name: no_images

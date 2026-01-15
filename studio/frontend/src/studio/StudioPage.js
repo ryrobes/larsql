@@ -253,27 +253,27 @@ function StudioPage() {
       }
     }
 
-    // Handle tool/trait drops
+    // Handle tool/skill drops
     if (dragType === 'tool') {
       const toolId = active.data.current.toolId;
       const dropTarget = over.data.current;
 
-      // Drop on cell card → Append to traits array
+      // Drop on cell card → Append to skills array
       if (dropTarget?.type === 'cell-card') {
         const cellIndex = dropTarget.cellIndex;
         const cascadeStore = useStudioCascadeStore.getState();
         const cellToUpdate = cascadeStore.cascade?.cells[cellIndex];
 
         if (cellToUpdate) {
-          const existingTraits = cellToUpdate.traits || [];
-          const updatedTraits = existingTraits.includes(toolId)
-            ? existingTraits // Don't add duplicate
-            : [...existingTraits, toolId];
+          const existingSkills = cellToUpdate.skills || [];
+          const updatedSkills = existingSkills.includes(toolId)
+            ? existingSkills // Don't add duplicate
+            : [...existingSkills, toolId];
 
           const updatedCells = [...cascadeStore.cascade.cells];
           updatedCells[cellIndex] = {
             ...cellToUpdate,
-            traits: updatedTraits
+            skills: updatedSkills
           };
 
           updateCascade({ cells: updatedCells });
@@ -281,7 +281,7 @@ function StudioPage() {
         return;
       }
 
-      // Drop on canvas → Create new llm_cell with this trait
+      // Drop on canvas → Create new llm_cell with this skill
       if (dropTarget?.type === 'canvas-background') {
         const cascadeStore = useStudioCascadeStore.getState();
         const existingCells = cascadeStore.cascade?.cells || [];
@@ -295,11 +295,11 @@ function StudioPage() {
           counter++;
         }
 
-        // Create llm_cell cell with trait
+        // Create llm_cell cell with skill
         const newCell = {
           name: cellName,
           instructions: "{{ input.prompt }}",
-          traits: [toolId],
+          skills: [toolId],
         };
 
         const updatedCells = [...existingCells, newCell];

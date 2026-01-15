@@ -248,7 +248,7 @@ blocks:
   - 'Status: {{status_extract_brand.completed == 1 ? ''[green]Complete[/green]'' :
     (status_extract_brand.started == 1 ? ''[yellow]Running...[/yellow]'' : ''[dim]Pending[/dim]'')}}'
   - 'Cost: ${{status_extract_brand.cost}}'
-  - '[dim]Traits: brave_web_search[/dim]'
+  - '[dim]Skills: brave_web_search[/dim]'
   block_map:
     title: extract_brand
     overlay_color: '{{gradient(status_extract_brand.completed, 0, 1, ''#2c3e50'',

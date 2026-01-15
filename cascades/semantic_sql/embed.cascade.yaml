@@ -33,7 +33,7 @@ cells:
   inputs:
     code: '# Generate embedding (no implicit storage; storage is explicit via semantic_embed_with_storage)
 
-      from rvbbit.traits.embedding_storage import agent_embed
+      from rvbbit.skills.embedding_storage import agent_embed
 
 
       text = input.get(''text'', '''')

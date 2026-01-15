@@ -11,7 +11,7 @@ cells:
   name: get_topic
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - handoffs:
   - write_article
@@ -20,7 +20,7 @@ cells:
   name: get_audience
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -36,4 +36,4 @@ cells:
   name: write_article
   rules:
     max_turns: 1
-  traits: []
+  skills: []

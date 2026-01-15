@@ -49,7 +49,7 @@ cells:
       For opinion/strategy questions, rely on your reasoning.
 
     # All tools available - advisors use research, aggregator uses request_decision
-    traits:
+    skills:
       - brave_web_search
       - sql_data
       - read_file

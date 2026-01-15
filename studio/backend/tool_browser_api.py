@@ -16,7 +16,7 @@ from flask import Blueprint, jsonify, request
 # Add rvbbit to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from rvbbit.traits_manifest import get_trait_manifest
+from rvbbit.skills_manifest import get_skill_manifest
 
 tool_browser_bp = Blueprint('tool_browser', __name__, url_prefix='/api/tools')
 
@@ -39,7 +39,7 @@ def get_tools_manifest():
         }
     """
     try:
-        manifest = get_trait_manifest(refresh=True)
+        manifest = get_skill_manifest(refresh=True)
         return jsonify({"tools": manifest})
     except Exception as e:
         return jsonify({"error": f"Failed to load tool manifest: {str(e)}"}), 500
@@ -93,7 +93,7 @@ def execute_tool():
                 {
                     "name": "execute_tool",
                     "instructions": f"Execute the {tool_name} tool with the provided parameters and return the result.",
-                    "traits": [tool_name],
+                    "skills": [tool_name],
                     "rules": {"max_turns": 1}
                 }
             ]

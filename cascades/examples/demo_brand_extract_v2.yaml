@@ -168,7 +168,7 @@ cells:
   # ============================================================
   - name: extract_brand
     model: anthropic/claude-opus-4.5
-    traits:
+    skills:
       - brave_web_search
     instructions: |
       Extract the brand from this product name.

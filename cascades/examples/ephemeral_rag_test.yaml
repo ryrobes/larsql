@@ -138,7 +138,7 @@ cells:
 
       If a search tool like `search_document()` or `search_generate_large_content_output()`
       is available, USE IT to find relevant sections.
-    traits:
+    skills:
       - manifest
     rules:
       max_turns: 5

@@ -519,7 +519,7 @@ def cmd_mcp_introspect(args):
 
 
 def cmd_mcp_manifest(args):
-    """Show all MCP tools in the trait manifest."""
+    """Show all MCP tools in the skill manifest."""
     from rvbbit.mcp_discovery import get_mcp_manifest
     from rich.syntax import Syntax
 
@@ -578,7 +578,7 @@ def cmd_mcp_refresh(args):
     """Re-discover tools from all MCP servers."""
     from rvbbit.config import get_config
     from rvbbit.mcp_discovery import discover_and_register_mcp_tools
-    from rvbbit.trait_registry import get_registry
+    from rvbbit.skill_registry import get_registry
 
     console = Console()
     config = get_config()
@@ -596,7 +596,7 @@ def cmd_mcp_refresh(args):
 
     # Get count before
     registry = get_registry()
-    before_count = len([t for t in registry.get_all_traits().keys() if t.startswith("mcp_") or hasattr(registry.get_trait(t), '_tool_type')])
+    before_count = len([t for t in registry.get_all_skills().keys() if t.startswith("mcp_") or hasattr(registry.get_skill(t), '_tool_type')])
 
     try:
         # Clear existing MCP tools from registry (optional - could skip this)
@@ -606,7 +606,7 @@ def cmd_mcp_refresh(args):
         discover_and_register_mcp_tools(servers)
 
         # Get count after
-        after_count = len([t for t in registry.get_all_traits().keys() if hasattr(registry.get_trait(t), '_tool_type')])
+        after_count = len([t for t in registry.get_all_skills().keys() if hasattr(registry.get_skill(t), '_tool_type')])
 
         console.print(f"[green]✓ Discovery complete[/green]")
         console.print(f"  MCP tools in registry: {after_count}")

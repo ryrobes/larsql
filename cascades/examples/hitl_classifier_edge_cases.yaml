@@ -12,7 +12,7 @@ cells:
   name: ambiguous_choice
   rules:
     max_turns: 1
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -30,7 +30,7 @@ cells:
   name: embedded_options
   rules:
     max_turns: 1
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -47,7 +47,7 @@ cells:
   name: indirect_rating
   rules:
     max_turns: 1
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -65,7 +65,7 @@ cells:
   name: context_dependent
   rules:
     max_turns: 1
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -83,7 +83,7 @@ cells:
   name: multi_choice_test
   rules:
     max_turns: 1
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -106,4 +106,4 @@ cells:
   name: final_summary
   rules:
     max_turns: 1
-  traits: []
+  skills: []

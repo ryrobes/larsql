@@ -61,9 +61,9 @@ def multi_cell_cascade():
 
 @pytest.fixture
 def mock_context():
-    """A mock validation context with some traits."""
+    """A mock validation context with some skills."""
     return ValidationContext(
-        trait_names={"linux_shell", "sql_data", "python_data", "ask_human"},
+        skill_names={"linux_shell", "sql_data", "python_data", "ask_human"},
         filesystem_root=Path("/tmp")
     )
 
@@ -325,21 +325,21 @@ class TestE004Jinja2Syntax:
 
 
 # =============================================================================
-# W001: Traits Exist
+# W001: Skills Exist
 # =============================================================================
 
-class TestW001TraitsExist:
-    """Test W001: Trait names should exist in registry (warning)."""
+class TestW001SkillsExist:
+    """Test W001: Skill names should exist in registry (warning)."""
 
-    def test_valid_traits_pass(self, mock_context):
-        """Valid trait names should pass."""
+    def test_valid_skills_pass(self, mock_context):
+        """Valid skill names should pass."""
         cascade = CascadeConfig(
             cascade_id="test",
             cells=[
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    traits=["linux_shell", "sql_data"]
+                    skills=["linux_shell", "sql_data"]
                 ),
             ]
         )
@@ -355,7 +355,7 @@ class TestW001TraitsExist:
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    traits="manifest"
+                    skills="manifest"
                 ),
             ]
         )
@@ -363,15 +363,15 @@ class TestW001TraitsExist:
         w001_issues = [i for i in result.issues if i.code == "W001"]
         assert len(w001_issues) == 0
 
-    def test_unknown_trait_warns(self, mock_context):
-        """Unknown trait should warn but not error."""
+    def test_unknown_skill_warns(self, mock_context):
+        """Unknown skill should warn but not error."""
         cascade = CascadeConfig(
             cascade_id="test",
             cells=[
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    traits=["linux_shell", "unknown_trait"]
+                    skills=["linux_shell", "unknown_skill"]
                 ),
             ]
         )
@@ -380,7 +380,7 @@ class TestW001TraitsExist:
 
         assert len(w001_issues) == 1
         assert w001_issues[0].level == "warning"
-        assert "unknown_trait" in w001_issues[0].message
+        assert "unknown_skill" in w001_issues[0].message
         # Should still be valid (warnings don't block)
         assert result.valid
 
@@ -547,7 +547,7 @@ class TestE007ForEachRowComplete:
                     name="mapper",
                     for_each_row=SqlMappingConfig(
                         table="_customers",
-                        cascade="traits/process.yaml"
+                        cascade="skills/process.yaml"
                     )
                 ),
             ]

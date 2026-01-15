@@ -28,7 +28,7 @@ cells:
   name: analyze_cascade
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -99,7 +99,7 @@ cells:
       threshold:
         mode: blocking
         validator: simple_validator
-  traits: []
+  skills: []
 - context:
     from:
     - all
@@ -129,5 +129,5 @@ cells:
   name: validate_json
   rules:
     max_turns: 1
-  traits:
+  skills:
   - set_state

@@ -366,15 +366,15 @@ class Config(BaseModel):
 
     # Content directories - cascade/tool definitions
     examples_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cascades", "examples"))
-    traits_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "traits"))
+    skills_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "skills"))
     cascades_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cascades"))
     cell_types_dir: str = Field(default=os.path.join(_RVBBIT_ROOT, "cell_types"))
 
-    # Traits search paths (for manifest/quartermaster)
-    traits_dirs: List[str] = Field(
+    # Skills search paths (for manifest/quartermaster)
+    skills_dirs: List[str] = Field(
         default=[
             os.path.join(_RVBBIT_ROOT, "cascades", "examples"),
-            os.path.join(_RVBBIT_ROOT, "traits"),
+            os.path.join(_RVBBIT_ROOT, "skills"),
             os.path.join(_RVBBIT_ROOT, "cascades"),
         ]
     )

@@ -7,7 +7,7 @@ cells:
   name: calc_phase
   rules:
     max_turns: 3
-  traits:
+  skills:
   - run_code
 - context:
     from:
@@ -19,5 +19,5 @@ cells:
   name: query_phase
   rules:
     max_turns: 3
-  traits:
+  skills:
   - smart_sql_run

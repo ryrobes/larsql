@@ -19,7 +19,7 @@ cells:
     \ Medium / Low\n- **Location**: Line number or code snippet\n- **Description**:\
     \ What the vulnerability is\n- **Fix**: How to remediate it\n\nIf no issues are\
     \ found, state that the code passes security review.\n"
-  traits: []
+  skills: []
   handoffs:
   - quality_review
 - name: quality_review
@@ -93,7 +93,7 @@ cells:
     4. **Refactoring Recommendations**: If any major changes are needed
 
     '
-  traits: []
+  skills: []
   context:
     from:
     - security_review

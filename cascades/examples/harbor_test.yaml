@@ -15,7 +15,7 @@ cells:
   name: ask_llama
   rules:
     max_turns: 3
-  traits:
+  skills:
   - llama_chat
 - context:
     from:

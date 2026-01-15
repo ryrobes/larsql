@@ -4,4 +4,4 @@ cells:
   instructions: You are a sub-process. Just say 'Hello from the sub-cascade!' and
     mention the weather.
   name: sub_greet
-  traits: []
+  skills: []

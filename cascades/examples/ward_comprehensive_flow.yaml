@@ -69,5 +69,5 @@ cells:
 
     Provide a brief summary of the final article.'
   name: finalize
-  traits:
+  skills:
   - set_state

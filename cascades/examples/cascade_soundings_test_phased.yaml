@@ -30,7 +30,7 @@ cells:
       Select the BEST complete solution.'
     factor: 3
     mutate: false
-  traits: []
+  skills: []
 - handoffs:
   - validate
   instructions: 'Based on your analysis, provide a complete solution to: {{ input.problem
@@ -41,7 +41,7 @@ cells:
   name: solve
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - instructions: 'Review your solution and validate it works correctly.
 
 
@@ -58,5 +58,5 @@ cells:
   name: validate
   rules:
     max_turns: 1
-  traits:
+  skills:
   - set_state

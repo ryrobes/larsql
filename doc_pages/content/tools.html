@@ -1,7 +1,7 @@
-<h1>Tools (Traits)</h1>
+<h1>Tools (Skills)</h1>
 <p class="lead">
   RVBBIT's unified tool system supports six types of tools, all registered in
-  a single trait registry. From Python functions to HuggingFace Spaces -
+  a single skill registry. From Python functions to HuggingFace Spaces -
   everything is a first-class tool.
 </p>
 
@@ -21,21 +21,21 @@
 <h2 id="overview">Tool System Overview</h2>
 
 <p>
-  The trait registry is a simple global dictionary that treats all tools identically:
+  The skill registry is a simple global dictionary that treats all tools identically:
 </p>
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang python">Trait Registry Pattern</span>
+    <span class="code-block-lang python">Skill Registry Pattern</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_trait, get_trait
+    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_skill, get_skill
 
 <span class="cmt"># Register a tool</span>
-register_trait(<span class="str">"my_tool"</span>, my_function)
+register_skill(<span class="str">"my_tool"</span>, my_function)
 
 <span class="cmt"># Get a tool</span>
-tool = get_trait(<span class="str">"my_tool"</span>)</pre>
+tool = get_skill(<span class="str">"my_tool"</span>)</pre>
   </div>
 </div>
 
@@ -99,7 +99,7 @@ tool = get_trait(<span class="str">"my_tool"</span>)</pre>
     <span class="code-block-lang python">Python Tool</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_trait
+    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_skill
 
 <span class="kw">def</span> <span class="fn">analyze_sentiment</span>(text: <span class="fn">str</span>) -> <span class="fn">dict</span>:
     <span class="str">"""
@@ -115,7 +115,7 @@ tool = get_trait(<span class="str">"my_tool"</span>)</pre>
     <span class="kw">return</span> {<span class="str">"sentiment"</span>: <span class="str">"positive"</span>, <span class="str">"confidence"</span>: <span class="num">0.85</span>}
 
 <span class="cmt"># Register the tool</span>
-register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)</pre>
+register_skill(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)</pre>
   </div>
 </div>
 
@@ -127,7 +127,7 @@ register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)<
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang yaml">traits/research.cascade.yaml</span>
+    <span class="code-block-lang yaml">skills/research.cascade.yaml</span>
   </div>
   <div class="code-block-content">
     <pre><span class="key">cascade_id</span>: research_tool
@@ -140,7 +140,7 @@ register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)<
 <span class="key">cells</span>:
   - <span class="key">name</span>: research
     <span class="key">instructions</span>: <span class="str">"Research {{ input.topic }}..."</span>
-    <span class="key">traits</span>: [brave_web_search]</pre>
+    <span class="key">skills</span>: [brave_web_search]</pre>
   </div>
 </div>
 
@@ -148,7 +148,7 @@ register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)<
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang yaml">traits/weather.tool.yaml</span>
+    <span class="code-block-lang yaml">skills/weather.tool.yaml</span>
   </div>
   <div class="code-block-content">
     <pre><span class="key">tool_id</span>: get_weather
@@ -172,7 +172,7 @@ register_trait(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)<
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang yaml">traits/local_sentiment.tool.yaml</span>
+    <span class="code-block-lang yaml">skills/local_sentiment.tool.yaml</span>
   </div>
   <div class="code-block-content">
     <pre><span class="key">tool_id</span>: local_sentiment

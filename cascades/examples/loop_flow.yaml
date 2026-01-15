@@ -5,7 +5,7 @@ cells:
   instructions: Draft a joke about a pirate who is learning Python programming. Do
     not output the final joke yet, just brainstorm concepts.
   name: draft_joke
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -15,4 +15,4 @@ cells:
   name: refine_joke
   rules:
     max_turns: 3
-  traits: []
+  skills: []

@@ -30,7 +30,7 @@ cells:
   model: google/gemini-2.5-flash
   rules:
     max_turns: 2
-  traits:
+  skills:
   - manifest
   output_schema:
     type: object
@@ -84,7 +84,7 @@ cells:
         \ \"reason\": \"Output meets minimum length\"}\n"
   rules:
     max_turns: 3
-  traits:
+  skills:
   - manifest
 - name: validated_refinement
   instructions: 'Take the winning brainstorm and refine it into a concrete proposal.
@@ -294,7 +294,7 @@ cells:
   - escalate_review
   rules:
     max_turns: 2
-  traits:
+  skills:
   - manifest
   callouts: 'Decision Point: Routing Next Action'
 - name: approve_proposal

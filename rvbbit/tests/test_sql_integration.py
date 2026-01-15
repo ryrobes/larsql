@@ -45,7 +45,7 @@ cells:
   instructions: |
     Extract brand from: {{ input.product_name }}
     Return JSON: {"brand": "extracted_brand", "confidence": 0.95}
-  traits: []
+  skills: []
   output_schema:
     type: object
     properties:
@@ -96,14 +96,14 @@ class TestDISTINCTIntegration:
         """Test that DISTINCT actually dedupes."""
         # Count without DISTINCT (should be 5 rows)
         query_no_distinct = """
-        RVBBIT MAP 'traits/extract_brand.yaml' AS brand
+        RVBBIT MAP 'skills/extract_brand.yaml' AS brand
         USING (SELECT product_name FROM products)
         """
         rewritten_no_distinct = rewrite_rvbbit_syntax(query_no_distinct)
 
         # Count with DISTINCT (should be 4 rows - one duplicate removed)
         query_distinct = """
-        RVBBIT MAP DISTINCT 'traits/extract_brand.yaml' AS brand
+        RVBBIT MAP DISTINCT 'skills/extract_brand.yaml' AS brand
         USING (SELECT product_name FROM products)
         """
         rewritten_distinct = rewrite_rvbbit_syntax(query_distinct)
@@ -132,7 +132,7 @@ class TestTableMaterializationIntegration:
         """Test CREATE TABLE AS rewriting."""
         query = """
         CREATE TABLE brands AS
-        RVBBIT MAP 'traits/extract_brand.yaml' AS brand
+        RVBBIT MAP 'skills/extract_brand.yaml' AS brand
         USING (SELECT product_name FROM products LIMIT 3)
         """
         rewritten = rewrite_rvbbit_syntax(query)
@@ -160,7 +160,7 @@ class TestEXPLAINIntegration:
     def test_explain_returns_plan(self, db_conn):
         """Test that EXPLAIN returns a query plan."""
         query = """
-        EXPLAIN RVBBIT MAP 'traits/extract_brand.yaml'
+        EXPLAIN RVBBIT MAP 'skills/extract_brand.yaml'
         USING (SELECT product_name FROM products LIMIT 10)
         """
         rewritten = rewrite_rvbbit_syntax(query, duckdb_conn=db_conn)

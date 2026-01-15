@@ -63,7 +63,7 @@ cells:
       \ str) else rows_json\n        except:\n            result = json.dumps({\"\
       error\": \"Invalid JSON in rows_json\"})\n        else:\n            if not\
       \ rows:\n                result = json.dumps({\"rows_embedded\": 0, \"message\"\
-      : \"No rows provided\"})\n            else:\n                from rvbbit.traits.embedding_storage\
+      : \"No rows provided\"})\n            else:\n                from rvbbit.skills.embedding_storage\
       \ import agent_embed_batch\n                from pinecone import Pinecone\n\n\
       \                # Initialize Pinecone client\n                pc = Pinecone(api_key=api_key)\n\
       \                index = pc.Index(\n                    pinecone_config['connection']['index_name'],\n\

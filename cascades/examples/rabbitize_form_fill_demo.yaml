@@ -12,7 +12,7 @@ cells:
   name: load_form
   rules:
     max_turns: 2
-  traits:
+  skills:
   - rabbitize_start
   - rabbitize_extract
 - handoffs:
@@ -41,7 +41,7 @@ cells:
     max_turns: 20
     retry_instructions: The form is not complete yet. Continue filling fields or submit
       if ready.
-  traits:
+  skills:
   - rabbitize_execute
   - rabbitize_extract
   - route_to
@@ -50,6 +50,6 @@ cells:
   name: verify_submission
   rules:
     max_turns: 2
-  traits:
+  skills:
   - rabbitize_extract
   - rabbitize_close

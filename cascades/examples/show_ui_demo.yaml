@@ -10,7 +10,7 @@ inputs_schema:
   topic: What to analyze and visualize
 cells:
 - name: progressive_analysis
-  traits:
+  skills:
   - show_ui
   instructions: "Perform a comprehensive analysis of: {{ input.topic }}\n\nBuild a\
     \ rich visual narrative by calling show_ui multiple times:\n\n1. **Introduction**:\

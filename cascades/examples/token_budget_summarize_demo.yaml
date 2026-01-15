@@ -12,7 +12,7 @@ cells:
   name: deep_research
   rules:
     max_turns: 8
-  traits:
+  skills:
   - sql_search
 - context:
     from:
@@ -21,7 +21,7 @@ cells:
     that old tool results have been compressed into concise summaries to fit within
     token budget.
   name: synthesize
-  traits: []
+  skills: []
 token_budget:
   max_total: 12000
   reserve_for_output: 3000

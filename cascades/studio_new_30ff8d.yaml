@@ -24,7 +24,7 @@ cells:
 
     '
   model: anthropic/claude-sonnet-4
-  traits: []
+  skills: []
   handoffs:
   - phase_3
 - name: phase_3
@@ -38,4 +38,4 @@ cells:
 
     '
   model: anthropic/claude-sonnet-4
-  traits: []
+  skills: []

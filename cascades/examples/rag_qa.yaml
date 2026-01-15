@@ -13,7 +13,7 @@ cells:
     model: qwen/qwen3-embedding-8b
   rules:
     max_turns: 1
-  traits:
+  skills:
   - rag_search
   - rag_read_chunk
   - rag_list_sources
@@ -23,7 +23,7 @@ cells:
   name: follow_up
   rules:
     max_turns: 1
-  traits:
+  skills:
   - rag_search
   - rag_read_chunk
   - rag_list_sources

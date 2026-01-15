@@ -12,7 +12,7 @@ cells:
   name: test_confirmation
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -30,7 +30,7 @@ cells:
   name: test_choice
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -48,7 +48,7 @@ cells:
   name: test_rating
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -66,7 +66,7 @@ cells:
   name: test_text
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -89,4 +89,4 @@ cells:
   name: summary
   rules:
     max_turns: 1
-  traits: []
+  skills: []

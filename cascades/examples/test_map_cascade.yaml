@@ -10,7 +10,7 @@ cells:
 - name: process_all_items
   tool: map_cascade
   inputs:
-    cascade: traits/process_single_item.yaml
+    cascade: skills/process_single_item.yaml
     map_over: '{{ outputs.list_items.result }}'
     input_key: item
     mode: aggregate
@@ -39,7 +39,7 @@ cells:
     Include total count and any interesting observations.
 
     '
-  traits: []
+  skills: []
   context:
     from:
     - process_all_items

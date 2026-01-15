@@ -32,7 +32,7 @@ def local_model_tool(
         device: Device to use ("auto", "cuda", "mps", "cpu")
         name: Tool name (defaults to function name)
         description: Tool description (defaults to function docstring)
-        auto_register: Whether to automatically register with trait registry
+        auto_register: Whether to automatically register with skill registry
 
     Example:
         @local_model_tool(
@@ -97,12 +97,12 @@ def local_model_tool(
             "device": device,
         }
 
-        # Auto-register with trait registry
+        # Auto-register with skill registry
         if auto_register:
             try:
-                from ..trait_registry import register_trait
+                from ..skill_registry import register_skill
 
-                register_trait(tool_name, wrapper)
+                register_skill(tool_name, wrapper)
             except ImportError:
                 pass  # Registry not available
 
@@ -168,7 +168,7 @@ def register_local_model_tool(
     description: Optional[str] = None,
 ) -> str:
     """
-    Register a simple local model tool with the trait registry.
+    Register a simple local model tool with the skill registry.
 
     Convenience function that creates and registers a tool in one call.
 
@@ -189,7 +189,7 @@ def register_local_model_tool(
             name="local_ner"
         )
     """
-    from ..trait_registry import register_trait
+    from ..skill_registry import register_skill
 
     tool = create_simple_local_model_tool(
         model_id=model_id,
@@ -200,6 +200,6 @@ def register_local_model_tool(
     )
 
     tool_name = tool.__name__
-    register_trait(tool_name, tool)
+    register_skill(tool_name, tool)
 
     return tool_name

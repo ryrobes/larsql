@@ -29,7 +29,7 @@ cells:
     Suggest what might have gone wrong and how to resolve it.
 
     '
-  traits: []
+  skills: []
 - name: parse_file
   tool: python:windlass.demo_tools.parse_json
   inputs:
@@ -51,7 +51,7 @@ cells:
     Diagnose the issue and suggest fixes.
 
     '
-  traits: []
+  skills: []
 - name: fire_ready_signal
   instructions: 'The file has been validated and parsed successfully!
 
@@ -68,7 +68,7 @@ cells:
     {{ state.output_parse_file }}
 
     '
-  traits:
+  skills:
   - fire_signal
   handoffs:
   - generate_report
@@ -86,4 +86,4 @@ cells:
     Summarize what was processed and what downstream systems were notified.
 
     '
-  traits: []
+  skills: []

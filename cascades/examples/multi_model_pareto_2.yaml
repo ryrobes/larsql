@@ -29,4 +29,4 @@ cells:
       policy: balanced
       quality_metric: evaluator_score
       show_frontier: true
-  traits: [manifest]
+  skills: [manifest]

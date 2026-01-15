@@ -1,13 +1,13 @@
 """
 MCP Tool Discovery and Registration
 
-Discovers tools from MCP servers and registers them in trait_registry.
+Discovers tools from MCP servers and registers them in skill_registry.
 
 Pattern: Same as Harbor (HuggingFace Spaces) discovery
 - Introspect MCP servers
 - Extract tool schemas
 - Create wrapper functions
-- Register in trait_registry
+- Register in skill_registry
 - Tools work like any other RVBBIT tool
 
 Progress messages are logged to unified_logs with role='mcp_progress'.
@@ -20,7 +20,7 @@ from .mcp_client import (
     MCPClient, MCPServerConfig, MCPTransport, MCPTool, MCPResource, MCPPrompt,
     get_mcp_client
 )
-from .trait_registry import register_trait
+from .skill_registry import register_skill
 from .config import get_config
 
 
@@ -223,7 +223,7 @@ def _create_mcp_resource_tools(
     list_resources_tool._mcp_server = server_config.name
     list_resources_tool._tool_type = "mcp_resource_list"
 
-    register_trait(list_resources_tool.__name__, list_resources_tool)
+    register_skill(list_resources_tool.__name__, list_resources_tool)
 
     # Tool 2: Read resource
     def read_resource_tool(uri: str) -> str:
@@ -236,7 +236,7 @@ def _create_mcp_resource_tools(
     read_resource_tool._mcp_server = server_config.name
     read_resource_tool._tool_type = "mcp_resource_read"
 
-    register_trait(read_resource_tool.__name__, read_resource_tool)
+    register_skill(read_resource_tool.__name__, read_resource_tool)
 
 
 # ============================================================================
@@ -291,7 +291,7 @@ def _create_mcp_prompt_tools(
                 params.append(param)
             get_prompt_tool.__signature__ = inspect.Signature(params)
 
-        register_trait(tool_name, get_prompt_tool)
+        register_skill(tool_name, get_prompt_tool)
 
 
 # ============================================================================
@@ -300,10 +300,10 @@ def _create_mcp_prompt_tools(
 
 def discover_and_register_mcp_tools(server_configs: Optional[List[MCPServerConfig]] = None):
     """
-    Discover tools from MCP servers and register in trait_registry.
+    Discover tools from MCP servers and register in skill_registry.
 
     This is the main entry point for MCP integration.
-    Called by traits_manifest.py during manifest building.
+    Called by skills_manifest.py during manifest building.
 
     Args:
         server_configs: Optional list of server configs. If None, loads from global config.
@@ -333,7 +333,7 @@ def discover_and_register_mcp_tools(server_configs: Optional[List[MCPServerConfi
             for tool in tools:
                 # Create and register wrapper
                 wrapper = _create_mcp_tool_wrapper(server_config, tool, progress_logger)
-                register_trait(tool.name, wrapper)
+                register_skill(tool.name, wrapper)
 
             # Discover resources (create resource access tools)
             try:
@@ -361,7 +361,7 @@ def discover_and_register_mcp_tools(server_configs: Optional[List[MCPServerConfi
 
 def get_mcp_manifest(refresh: bool = False) -> Dict[str, Any]:
     """
-    Get manifest of MCP tools (for traits_manifest integration).
+    Get manifest of MCP tools (for skills_manifest integration).
 
     Returns dict mapping tool_name -> {type, server, description, schema, ...}
 
@@ -371,13 +371,13 @@ def get_mcp_manifest(refresh: bool = False) -> Dict[str, Any]:
     Returns:
         Dict of MCP tools in manifest format
     """
-    from .trait_registry import get_registry
+    from .skill_registry import get_registry
     from .utils import get_tool_schema
 
     manifest = {}
 
-    # Get all registered traits
-    for name, func in get_registry().get_all_traits().items():
+    # Get all registered skills
+    for name, func in get_registry().get_all_skills().items():
         # Check if this is an MCP tool
         if hasattr(func, '_tool_type') and func._tool_type in ('mcp', 'mcp_resource_list', 'mcp_resource_read', 'mcp_prompt'):
             tool_type = func._tool_type

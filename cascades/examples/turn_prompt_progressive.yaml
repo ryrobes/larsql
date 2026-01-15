@@ -13,4 +13,4 @@ cells:
       your work. Improve clarity and structure.{% elif turn == 3 %}**Third Review**:
       Final refinement. Check grammar, formatting, and overall quality.{% else %}**Final
       Check**: Make any last improvements. Ensure everything is perfect.{% endif %}'
-  traits: []
+  skills: []

@@ -23,7 +23,7 @@ def test_map_via_http_api():
         # Test 1: Basic MAP syntax
         print("\n1️⃣ Basic MAP syntax:")
         query = """
-            RVBBIT MAP 'traits/extract_brand.yaml'
+            RVBBIT MAP 'skills/extract_brand.yaml'
             USING (
               SELECT * FROM (VALUES
                 ('Apple iPhone 15'),
@@ -46,7 +46,7 @@ def test_map_via_http_api():
         # Test 2: With AS alias
         print("\n2️⃣ With AS alias:")
         query = """
-            RVBBIT MAP 'traits/extract_brand.yaml' AS brand_info
+            RVBBIT MAP 'skills/extract_brand.yaml' AS brand_info
             USING (
               SELECT * FROM (VALUES ('Test Product')) AS t(product_name)
             )

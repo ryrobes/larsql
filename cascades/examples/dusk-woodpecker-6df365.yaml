@@ -5,7 +5,7 @@ cells:
   instructions: Use the 'set_state' tool to set a state variable 'secret_code' to
     'BLUE_OCEAN'.
   name: setup
-  traits:
+  skills:
   - set_state
 - context:
     from:
@@ -18,7 +18,7 @@ cells:
   - context_in: true
     context_out: true
     ref: context_demo_child.yaml
-  traits: []
+  skills: []
 - context:
     from:
     - all
@@ -27,4 +27,4 @@ cells:
   name: verify
   rules:
     max_turns: 1
-  traits: []
+  skills: []

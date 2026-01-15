@@ -64,5 +64,5 @@ cells:
 
     Provide a brief summary of the function you created.'
   name: summary
-  traits:
+  skills:
   - set_state

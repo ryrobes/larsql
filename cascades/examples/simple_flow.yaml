@@ -5,7 +5,7 @@ cells:
   instructions: You are a data ingest assistant. Receive the input data and confirm
     its structure.
   name: ingest
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -14,4 +14,4 @@ cells:
   name: summarize
   rules:
     max_turns: 1
-  traits: []
+  skills: []

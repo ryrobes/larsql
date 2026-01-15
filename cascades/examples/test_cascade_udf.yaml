@@ -13,7 +13,7 @@ cells:
   inputs:
     query: "SELECT\n  customer_id,\n  customer_name,\n  transaction_amount,\n\n  --\
       \ Run COMPLETE cascade per row (includes 3 soundings + validation!)\n  rvbbit_run(\n\
-      \    'traits/fraud_assessment_with_soundings.yaml',\n    json_object(\n    \
+      \    'skills/fraud_assessment_with_soundings.yaml',\n    json_object(\n    \
       \  'customer_id', customer_id,\n      'customer_name', customer_name,\n    \
       \  'transaction_amount', transaction_amount\n    )\n  ) as fraud_analysis_json\n\
       \nFROM _load_transactions\n"

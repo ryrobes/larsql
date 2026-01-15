@@ -72,7 +72,7 @@ cells:
         "pass_focus": "What this pass focused on"
       }
 
-    traits: [read_image]  # In case model needs to re-examine
+    skills: [read_image]  # In case model needs to re-examine
     models: 
       - google/gemini-3-pro-preview
       - openai/gpt-5.2

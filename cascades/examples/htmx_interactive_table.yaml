@@ -8,7 +8,7 @@ inputs_schema:
   data_topic: What kind of data to generate and review
 cells:
 - name: generate_and_review_data
-  traits:
+  skills:
   - request_decision
   - route_to
   handoffs:

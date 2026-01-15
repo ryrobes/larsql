@@ -112,7 +112,7 @@ cells:
     - Payload: {"cascade_id": "signal_etl_pipeline", "status": "success", "records_processed":
     "{{ state.output_transform_data.count }}"}'
   name: notify_downstream
-  traits:
+  skills:
   - fire_signal
 - instructions: 'ETL pipeline complete!
 

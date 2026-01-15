@@ -2,7 +2,7 @@
 Harbor - HuggingFace Spaces Discovery and Introspection
 
 Discovers user's running HF Spaces and provides introspection capabilities.
-Integrates with the traits manifest to make Spaces available as tools.
+Integrates with the skills manifest to make Spaces available as tools.
 
 Usage:
     from rvbbit.harbor import get_harbor_manifest, introspect_space, list_user_spaces
@@ -472,7 +472,7 @@ def get_harbor_manifest(refresh: bool = False) -> Dict[str, Any]:
     Get manifest of available HF Spaces as tools.
 
     Auto-discovers user's running Gradio spaces and returns them in
-    a format compatible with the traits manifest.
+    a format compatible with the skills manifest.
 
     Args:
         refresh: Force refresh of cached data.

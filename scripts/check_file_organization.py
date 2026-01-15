@@ -2,21 +2,21 @@
 """
 Check that user-space content is in canonical locations.
 
-This script prevents cascade/trait/example files from creeping into
+This script prevents cascade/skill/example files from creeping into
 the Python package directories where they don't belong.
 
 Canonical locations:
 - $RVBBIT_ROOT/cascades/         - User cascades (including cascades/examples/)
-- $RVBBIT_ROOT/traits/           - Trait definitions (JSON/YAML)
+- $RVBBIT_ROOT/skills/           - Skill definitions (JSON/YAML)
 
 NOT allowed:
 - $RVBBIT_ROOT/rvbbit/examples/  - Should not exist
-- $RVBBIT_ROOT/rvbbit/traits/*.yaml|json - Only Python code allowed here
+- $RVBBIT_ROOT/rvbbit/skills/*.yaml|json - Only Python code allowed here
 - $RVBBIT_ROOT/rvbbit/cascades/  - Should not exist
 - Any "tackle" terminology in config
 
 Exception:
-- rvbbit/rvbbit/traits/basecoat_components.json is allowed (bundled implementation data)
+- rvbbit/rvbbit/skills/basecoat_components.json is allowed (bundled implementation data)
 
 Usage:
     python scripts/check_file_organization.py
@@ -54,17 +54,17 @@ def check_file_organization():
         violations.append(f"Directory should not exist: {pkg_cascades}")
         violations.append("  -> Move contents to cascades/")
 
-    # Check 3: No user content (YAML/JSON) in rvbbit/traits/ (only Python allowed)
+    # Check 3: No user content (YAML/JSON) in rvbbit/skills/ (only Python allowed)
     # Exception: basecoat_components.json is bundled implementation data
-    allowed_in_pkg_traits = {"basecoat_components.json"}
-    pkg_traits = os.path.join(python_pkg, "traits")
-    if os.path.isdir(pkg_traits):
+    allowed_in_pkg_skills = {"basecoat_components.json"}
+    pkg_skills = os.path.join(python_pkg, "skills")
+    if os.path.isdir(pkg_skills):
         for pattern in ["*.yaml", "*.yml", "*.json"]:
-            for f in glob.glob(os.path.join(pkg_traits, pattern)):
+            for f in glob.glob(os.path.join(pkg_skills, pattern)):
                 basename = os.path.basename(f)
-                if basename not in allowed_in_pkg_traits:
+                if basename not in allowed_in_pkg_skills:
                     violations.append(f"User content in Python package: {f}")
-                    violations.append("  -> Move to $RVBBIT_ROOT/traits/")
+                    violations.append("  -> Move to $RVBBIT_ROOT/skills/")
 
     # Check 4: No rvbbit/rvbbit/examples or rvbbit/rvbbit/cascades
     inner_pkg = os.path.join(python_pkg, "rvbbit")
@@ -87,7 +87,7 @@ def check_file_organization():
             content = f.read()
             # Check for tackle_dir, tackle_dirs, TACKLE (but not in comments about backward compat)
             if "tackle_dir" in content or "tackle_dirs" in content:
-                violations.append(f"'tackle' terminology in config.py - use 'traits'")
+                violations.append(f"'tackle' terminology in config.py - use 'skills'")
 
     return violations
 
@@ -106,7 +106,7 @@ def main():
     print("✅ File organization OK")
     print("   - No user content in Python package")
     print("   - Examples in cascades/examples/")
-    print("   - Traits in traits/")
+    print("   - Skills in skills/")
     print("   - No 'tackle' terminology in config")
     return 0
 

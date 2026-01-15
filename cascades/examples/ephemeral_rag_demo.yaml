@@ -80,7 +80,7 @@ cells:
       4. Summarize the key policy recommendations
 
       Provide a concise executive summary (max 500 words) based on your analysis.
-    traits:
+    skills:
       - manifest  # Auto-inject any ephemeral RAG search tools
     rules:
       max_turns: 5

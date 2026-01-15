@@ -7,7 +7,7 @@ Provides a unified interface to MCP servers with:
 - Progress message logging to unified_logs
 - Automatic lifecycle management
 
-Follows Harbor pattern: MCP servers are introspected and tools registered in trait_registry.
+Follows Harbor pattern: MCP servers are introspected and tools registered in skill_registry.
 """
 
 import json

@@ -99,9 +99,9 @@ from .echo import get_echo, Echo
 from .checkpoints import get_checkpoint_manager, CheckpointType, CheckpointStatus, TraceContext
 from .human_ui import UIGenerator, normalize_human_input_config, generate_simple_ui
 from .config import get_config
-from .trait_registry import get_trait
+from .skill_registry import get_skill
 from .logs import log_message
-from .traits.base import create_eddy
+from .skills.base import create_eddy
 
 console = Console()
 
@@ -117,13 +117,13 @@ from .session_state import (
     update_session_status, session_heartbeat, is_session_cancelled,
     SessionStatus, BlockedType
 )
-from .traits.system import spawn_cascade
-from .traits.state_tools import (
+from .skills.system import spawn_cascade
+from .skills.state_tools import (
     set_current_session_id, set_current_cell_name, set_current_cascade_id,
     set_current_candidate_index, set_current_model, get_current_model,
     set_downstream_model, get_downstream_model
 )
-from .traits.research_db import set_current_research_db
+from .skills.research_db import set_current_research_db
 from .rag.indexer import ensure_rag_index
 from .rag.context import set_current_rag_context, clear_current_rag_context
 from .shadow_assessment import queue_shadow_assessment, is_shadow_assessment_enabled
@@ -5171,26 +5171,26 @@ Refinement directive: {reforge_config.honing_prompt}
 
             # Terminate bash session (cleanup persistent bash process)
             try:
-                from .traits.bash_session import cleanup_bash_session
+                from .skills.bash_session import cleanup_bash_session
                 cleanup_bash_session(self.session_id)
             except Exception:
                 pass  # Don't fail cascade if cleanup fails
 
     def _run_quartermaster(self, cell: CellConfig, input_data: dict, trace: TraceNode, cell_model: str | None = None) -> list[str]:
         """
-        Run the Quartermaster agent to select appropriate traits for this cell.
+        Run the Quartermaster agent to select appropriate skills for this cell.
 
         Returns list of tool names to make available.
         """
-        from .traits_manifest import get_trait_manifest, format_manifest_for_quartermaster
+        from .skills_manifest import get_skill_manifest, format_manifest_for_quartermaster
 
         indent = "  " * self.depth
 
         # Create quartermaster trace
         qm_trace = trace.create_child("quartermaster", "manifest_selection")
 
-        # Get full traits manifest
-        manifest = get_trait_manifest()
+        # Get full skills manifest
+        manifest = get_skill_manifest()
 
         # Semantic pre-filtering: Use vector search to reduce manifest size
         filtered_manifest = manifest
@@ -5269,7 +5269,7 @@ Refinement directive: {reforge_config.honing_prompt}
             context_text = f"## Mission Instructions:\n{cell.instructions}\n\n## Input Data:\n{json.dumps(input_data)}"
 
         # Build quartermaster prompt
-        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant traits (tools) for this specific mission cell.
+        qm_prompt = f"""You are the Quartermaster. Your job is to select the most relevant skills (tools) for this specific mission cell.
 
 {manifest_text}
 
@@ -5304,30 +5304,30 @@ If no tools are needed, return an empty array: []
         json_match = re.search(r'\[.*\]', response_content, re.DOTALL)
         if json_match:
             try:
-                selected_traits = json.loads(json_match.group(0))
-                if not isinstance(selected_traits, list):
-                    selected_traits = []
+                selected_skills = json.loads(json_match.group(0))
+                if not isinstance(selected_skills, list):
+                    selected_skills = []
             except Exception as e:
                 console.print(f"{indent}    [red]Failed to parse Quartermaster response: {e}[/red]")
                 console.print(f"{indent}    [dim]Response: {response_content}[/dim]")
-                selected_traits = []
+                selected_skills = []
         else:
             console.print(f"{indent}    [yellow]No JSON array found in response[/yellow]")
             console.print(f"{indent}    [dim]Response: {response_content}[/dim]")
-            selected_traits = []
+            selected_skills = []
 
         # Validate that selected tools exist
-        valid_traits = [t for t in selected_traits if t in manifest]
+        valid_skills = [t for t in selected_skills if t in manifest]
 
         # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
             "role": "quartermaster",
-            "content": f"Selected tools: {', '.join(valid_traits) if valid_traits else 'none'}",
+            "content": f"Selected tools: {', '.join(valid_skills) if valid_skills else 'none'}",
             "node_type": "quartermaster_result"
         }, trace_id=qm_trace.id, parent_id=trace.id, node_type="quartermaster_result",
            metadata=self._get_metadata({
                "cell_name": cell.name,
-               "selected_traits": valid_traits,
+               "selected_skills": valid_skills,
                "reasoning": response_content,  # Full content, no truncation
                "manifest_context": cell.manifest_context,
                "manifest_limit": cell.manifest_limit,
@@ -5339,23 +5339,23 @@ If no tools are needed, return an empty array: []
 
         console.print(f"{indent}    [dim]Reasoning: {response_content[:150]}...[/dim]")
 
-        return valid_traits
+        return valid_skills
 
-    def _build_tools_from_traits(
+    def _build_tools_from_skills(
         self,
-        trait_list: list[str],
+        skill_list: list[str],
         cell: "CellConfig",
         enable_routing_tool: bool = False,
         valid_handoff_targets: list[str] | None = None
     ) -> tuple[dict, list, list]:
         """
-        Build tool_map, tools_schema, and tool_descriptions from a list of trait names.
+        Build tool_map, tools_schema, and tool_descriptions from a list of skill names.
 
         This is extracted for reuse in per-turn manifest refresh scenarios where
         the Quartermaster re-selects tools mid-cell.
 
         Args:
-            trait_list: List of tool names to build
+            skill_list: List of tool names to build
             cell: Cell config (for memory_name, etc.)
             enable_routing_tool: Whether to add route_to tool
             valid_handoff_targets: Valid targets for route_to
@@ -5363,7 +5363,7 @@ If no tools are needed, return an empty array: []
         Returns:
             Tuple of (tool_map, tools_schema, tool_descriptions)
         """
-        from .trait_registry import get_trait
+        from .skill_registry import get_skill
         from .utils import get_tool_schema
         from .memory import get_memory_system
 
@@ -5371,8 +5371,8 @@ If no tools are needed, return an empty array: []
         tool_descriptions = []
         tool_map = {}
 
-        for t_name in trait_list:
-            t = get_trait(t_name)
+        for t_name in skill_list:
+            t = get_skill(t_name)
             if t:
                 tool_map[t_name] = t
                 tools_schema.append(get_tool_schema(t, name=t_name))
@@ -5387,10 +5387,10 @@ If no tools are needed, return an empty array: []
                     tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
                 else:
                     # Check if this is a cascade tool or MCP tool
-                    from .traits_manifest import get_trait_manifest
-                    manifest = get_trait_manifest()
+                    from .skills_manifest import get_skill_manifest
+                    manifest = get_skill_manifest()
                     if t_name in manifest:
-                        discovered_tool = get_trait(t_name)
+                        discovered_tool = get_skill(t_name)
                         if discovered_tool:
                             tool_map[t_name] = discovered_tool
                             tools_schema.append(get_tool_schema(discovered_tool, name=t_name))
@@ -5745,7 +5745,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
             tool_name, tool_inputs = validator_config.get_tool_and_inputs(content, original_input)
 
             # Get the polyglot tool
-            polyglot_tool = get_trait(tool_name)
+            polyglot_tool = get_skill(tool_name)
             if not polyglot_tool:
                 return {
                     "valid": False,
@@ -5948,13 +5948,13 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         ward_trace = trace.create_child(f"{ward_type}_ward", validator_name)
 
         # Try to get validator as Python function first
-        validator_tool = get_trait(validator_name)
+        validator_tool = get_skill(validator_name)
         validator_result = None
 
         # If not found as function, check if it's a cascade tool
         if not validator_tool:
-            from .traits_manifest import get_trait_manifest
-            manifest = get_trait_manifest()
+            from .skills_manifest import get_skill_manifest
+            manifest = get_skill_manifest()
 
             if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                 # It's a cascade validator
@@ -6100,13 +6100,13 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         validator_trace = trace.create_child("candidate_validator", f"{validator_name}_{candidate_index}")
 
         # Try to get validator as Python function first
-        validator_tool = get_trait(validator_name)
+        validator_tool = get_skill(validator_name)
         validator_result = None
 
         # If not found as function, check if it's a cascade tool
         if not validator_tool:
-            from .traits_manifest import get_trait_manifest
-            manifest = get_trait_manifest()
+            from .skills_manifest import get_skill_manifest
+            manifest = get_skill_manifest()
 
             if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                 # It's a cascade validator
@@ -6374,7 +6374,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # === PRIORITY 2: Try to get validator as Python function ===
         if validator_result is None:
-            validator_tool = get_trait(validator_name)
+            validator_tool = get_skill(validator_name)
 
             # Handle function validators first
             if validator_tool and callable(validator_tool):
@@ -6395,8 +6395,8 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
             # === PRIORITY 3: Check if it's a cascade tool ===
             elif not validator_tool:
-                from .traits_manifest import get_trait_manifest
-                manifest = get_trait_manifest()
+                from .skills_manifest import get_skill_manifest
+                manifest = get_skill_manifest()
 
                 if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                     # It's a cascade validator - invoke it as a sub-cascade
@@ -6602,12 +6602,12 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Get tool schemas (estimate token cost)
         tools_schema = []
-        if cell.traits:
+        if cell.skills:
             try:
-                from .trait_registry import get_trait
-                tool_map, tools_schema, tool_descriptions = get_trait(cell.traits)
+                from .skill_registry import get_skill
+                tool_map, tools_schema, tool_descriptions = get_skill(cell.skills)
             except Exception:
-                pass  # If traits fails, just skip tool token estimation
+                pass  # If skills fails, just skip tool token estimation
 
         # Estimate tokens for full request
         estimated_tokens = estimate_request_tokens(
@@ -10541,21 +10541,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 f"Cite sources as path#line_start-line_end."
             )
         else:
-            # No rag block on this cell - check if RAG tools are in traits list
+            # No rag block on this cell - check if RAG tools are in skills list
             # If so, reuse the existing RAG context from an earlier cell
             from .rag.context import get_current_rag_context
             existing_ctx = get_current_rag_context()
-            rag_tools_in_traits = {"rag_search", "rag_read_chunk", "rag_list_sources"}
+            rag_tools_in_skills = {"rag_search", "rag_read_chunk", "rag_list_sources"}
             cell_uses_rag_tools = bool(
-                cell.traits and
-                isinstance(cell.traits, list) and
-                rag_tools_in_traits.intersection(cell.traits)
+                cell.skills and
+                isinstance(cell.skills, list) and
+                rag_tools_in_skills.intersection(cell.skills)
             )
 
             if existing_ctx and cell_uses_rag_tools:
                 # Reuse existing RAG context - no rebuild needed
                 rag_context = existing_ctx
-                rag_tool_names = list(rag_tools_in_traits.intersection(cell.traits))
+                rag_tool_names = list(rag_tools_in_skills.intersection(cell.skills))
                 rag_prompt = (
                     f"\n\n## Retrieval Context\n"
                     f"A retrieval index is available for `{rag_context.directory}`, "
@@ -10741,8 +10741,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Try to get validator description from manifest (only for string validators)
                 validator_description = None
                 if isinstance(validator_spec, str):
-                    from .traits_manifest import get_trait_manifest
-                    manifest = get_trait_manifest()
+                    from .skills_manifest import get_skill_manifest
+                    manifest = get_skill_manifest()
                     if validator_spec in manifest:
                         validator_description = manifest[validator_spec].get("description", "")
 
@@ -10775,21 +10775,21 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                    species_hash=cell_species_hash, cell_config=cell.model_dump() if cell_species_hash else None)
 
         # Resolve tools (Tackle) - Check if Quartermaster needed
-        trait_list = cell.traits
-        # Handle manifest mode: traits can be "manifest" (string) or ["manifest"] (list)
+        skill_list = cell.skills
+        # Handle manifest mode: skills can be "manifest" (string) or ["manifest"] (list)
         is_manifest = (
-            cell.traits == "manifest" or
-            (isinstance(cell.traits, list) and "manifest" in cell.traits)
+            cell.skills == "manifest" or
+            (isinstance(cell.skills, list) and "manifest" in cell.skills)
         )
         if is_manifest:
-            console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting traits...[/bold cyan]")
-            trait_list = self._run_quartermaster(cell, input_data, trace, cell_model)
-            console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(trait_list)}[/bold cyan]")
+            console.print(f"{indent}  [bold cyan]🗺️  Quartermaster charting skills...[/bold cyan]")
+            skill_list = self._run_quartermaster(cell, input_data, trace, cell_model)
+            console.print(f"{indent}  [bold cyan]📋 Manifest: {', '.join(skill_list)}[/bold cyan]")
 
         if rag_tool_names:
             for rag_tool in rag_tool_names:
-                if rag_tool not in trait_list:
-                    trait_list.append(rag_tool)
+                if rag_tool not in skill_list:
+                    skill_list.append(rag_tool)
 
         tools_schema = []  # For native tool calling
         tool_descriptions = []  # For prompt-based tool calling
@@ -10798,8 +10798,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # Import memory system for dynamic tool registration
         from .memory import get_memory_system
 
-        for t_name in trait_list:
-            t = get_trait(t_name)
+        for t_name in skill_list:
+            t = get_skill(t_name)
             if t:
                 tool_map[t_name] = t
                 # Generate both formats
@@ -10816,11 +10816,11 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     tool_descriptions.append(self._generate_tool_description(memory_tool, t_name))
                 else:
                     # Check if this is a cascade tool or MCP tool (triggers discovery/registration if needed)
-                    from .traits_manifest import get_trait_manifest
-                    manifest = get_trait_manifest()
+                    from .skills_manifest import get_skill_manifest
+                    manifest = get_skill_manifest()
                     if t_name in manifest:
                         # Try to get the now-registered tool (works for cascade, MCP, declarative, etc.)
-                        discovered_tool = get_trait(t_name)
+                        discovered_tool = get_skill(t_name)
                         if discovered_tool:
                             tool_map[t_name] = discovered_tool
                             tools_schema.append(get_tool_schema(discovered_tool, name=t_name))
@@ -10829,7 +10829,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
         # Track currently active tools for per-turn manifest refresh
         # This enables incremental tool injection (only new tools added, removed noted)
-        current_trait_set: set[str] = set(tool_map.keys())
+        current_skill_set: set[str] = set(tool_map.keys())
         tool_descriptions_map: dict[str, str] = {
             name: self._generate_tool_description(func, name)
             for name, func in tool_map.items()
@@ -11196,27 +11196,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     is_manifest and
                     cell.manifest_refresh == "per_attempt"
                 ):
-                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting traits for attempt {attempt + 1}...[/bold cyan]")
+                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting skills for attempt {attempt + 1}...[/bold cyan]")
 
                     # Re-run Quartermaster with current context (includes validation errors)
-                    new_trait_list = self._run_quartermaster(cell, input_data, retry_trace, cell_model)
+                    new_skill_list = self._run_quartermaster(cell, input_data, retry_trace, cell_model)
 
                     # Add route_to back if routing is enabled
-                    if enable_routing_tool and "route_to" not in new_trait_list:
-                        new_trait_list.append("route_to")
+                    if enable_routing_tool and "route_to" not in new_skill_list:
+                        new_skill_list.append("route_to")
 
-                    new_trait_set = set(new_trait_list)
+                    new_skill_set = set(new_skill_list)
 
                     # Compute delta
-                    new_tools = new_trait_set - current_trait_set
-                    removed_tools = current_trait_set - new_trait_set
+                    new_tools = new_skill_set - current_skill_set
+                    removed_tools = current_skill_set - new_skill_set
 
                     if new_tools or removed_tools:
                         console.print(f"{indent}  [bold cyan]📋 Manifest update: +{len(new_tools)} -{len(removed_tools)} tools[/bold cyan]")
 
-                        # Build tools for new trait list
-                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_traits(
-                            new_trait_list, cell, enable_routing_tool=False
+                        # Build tools for new skill list
+                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_skills(
+                            new_skill_list, cell, enable_routing_tool=False
                         )
 
                         # Re-add route_to if needed
@@ -11232,7 +11232,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Update the active tool set
                         tool_map = new_tool_map
                         tools_schema = new_tools_schema
-                        current_trait_set = new_trait_set
+                        current_skill_set = new_skill_set
 
                         # For native tools: Update agent's tools
                         if use_native:
@@ -11298,27 +11298,27 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     cell.manifest_refresh == "per_turn" and
                     i > 0  # Skip turn 0, tools were just selected
                 ):
-                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting traits for turn {i+1}...[/bold cyan]")
+                    console.print(f"{indent}  [bold cyan]🗺️  Quartermaster re-charting skills for turn {i+1}...[/bold cyan]")
 
                     # Re-run Quartermaster with current context (full conversation history)
-                    new_trait_list = self._run_quartermaster(cell, input_data, turn_trace, cell_model)
+                    new_skill_list = self._run_quartermaster(cell, input_data, turn_trace, cell_model)
 
                     # Add route_to back if routing is enabled (Quartermaster doesn't know about it)
-                    if enable_routing_tool and "route_to" not in new_trait_list:
-                        new_trait_list.append("route_to")
+                    if enable_routing_tool and "route_to" not in new_skill_list:
+                        new_skill_list.append("route_to")
 
-                    new_trait_set = set(new_trait_list)
+                    new_skill_set = set(new_skill_list)
 
                     # Compute delta
-                    new_tools = new_trait_set - current_trait_set
-                    removed_tools = current_trait_set - new_trait_set
+                    new_tools = new_skill_set - current_skill_set
+                    removed_tools = current_skill_set - new_skill_set
 
                     if new_tools or removed_tools:
                         console.print(f"{indent}  [bold cyan]📋 Manifest update: +{len(new_tools)} -{len(removed_tools)} tools[/bold cyan]")
 
-                        # Build tools for new trait list
-                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_traits(
-                            new_trait_list, cell, enable_routing_tool=False
+                        # Build tools for new skill list
+                        new_tool_map, new_tools_schema, new_tool_descriptions = self._build_tools_from_skills(
+                            new_skill_list, cell, enable_routing_tool=False
                         )
 
                         # Re-add route_to if needed (it has closure state, can't use helper)
@@ -11334,7 +11334,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Update the active tool set
                         tool_map = new_tool_map
                         tools_schema = new_tools_schema
-                        current_trait_set = new_trait_set
+                        current_skill_set = new_skill_set
 
                         # For native tools: Update agent's tools
                         if use_native:
@@ -11796,8 +11796,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             # Find tool - first check cell tool_map, then fall back to global registry
                             tool_func = tool_map.get(func_name)
                             if not tool_func:
-                                # Fallback to global tool registry - cell traits only controls prompting
-                                tool_func = get_trait(func_name)
+                                # Fallback to global tool registry - cell skills only controls prompting
+                                tool_func = get_skill(func_name)
                             result = "Tool not found."
                         
                             # Check for route_to specifically to capture state
@@ -12127,7 +12127,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                         # Find and execute tool - check cell tool_map, then global registry
                                         tool_func = tool_map.get(func_name)
                                         if not tool_func:
-                                            tool_func = get_trait(func_name)
+                                            tool_func = get_skill(func_name)
                                         result = "Tool not found."
 
                                         # Check for route_to
@@ -12583,12 +12583,12 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     validator_name = validator_spec
 
                 # Try to get validator as Python function first (only for string validators)
-                validator_tool = get_trait(validator_name) if isinstance(validator_spec, str) else None
+                validator_tool = get_skill(validator_name) if isinstance(validator_spec, str) else None
 
                 # If not found as function, check if it's a cascade tool (skip for polyglot validators)
                 if not validator_tool and isinstance(validator_spec, str):
-                    from .traits_manifest import get_trait_manifest
-                    manifest = get_trait_manifest()
+                    from .skills_manifest import get_skill_manifest
+                    manifest = get_skill_manifest()
 
                     if validator_name in manifest and manifest[validator_name]["type"] == "cascade":
                         # It's a cascade validator - invoke it as a sub-cascade

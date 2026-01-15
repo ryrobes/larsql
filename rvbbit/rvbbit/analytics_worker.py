@@ -45,7 +45,7 @@ def _build_internal_cascade_lookup() -> Dict[str, bool]:
     scan_dirs = [
         os.path.join(RVBBIT_ROOT, 'cascades', 'semantic_sql'),
         os.path.join(RVBBIT_ROOT, 'cascades'),
-        os.path.join(RVBBIT_ROOT, 'traits'),
+        os.path.join(RVBBIT_ROOT, 'skills'),
     ]
 
     for scan_dir in scan_dirs:
@@ -1374,7 +1374,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
     """
     Analyze context message relevance using a cheap LLM.
 
-    Calls traits/analyze_context_relevance.yaml to score each context message
+    Calls skills/analyze_context_relevance.yaml to score each context message
     based on how much it contributed to the generated output.
 
     Updates cell_context_breakdown with relevance_score and relevance_reasoning.
@@ -1491,7 +1491,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             logger.warning(f"[analytics_worker] Could not look up parent caller context: {e}")
 
         runner = RVBBITRunner(
-            config_path='traits/analyze_context_relevance.yaml',
+            config_path='skills/analyze_context_relevance.yaml',
             session_id=analysis_session_id,
             depth=1,  # Mark as sub-cascade
             parent_session_id=session_id,  # Link back to session being analyzed

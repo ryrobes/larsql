@@ -278,7 +278,7 @@ Return ONLY the title, nothing else."""
             return
 
         try:
-            from .traits.research_sessions import _fetch_session_entries, _compute_session_metrics, _fetch_mermaid_graph, _fetch_checkpoints_for_session
+            from .skills.research_sessions import _fetch_session_entries, _compute_session_metrics, _fetch_mermaid_graph, _fetch_checkpoints_for_session
             from .config import get_config
             from .db_adapter import get_db
             from uuid import uuid4

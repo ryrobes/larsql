@@ -25,7 +25,7 @@ cells:
     - google/gemini-3-pro-preview
     mutate: true
     mutation_mode: rewrite
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -34,4 +34,4 @@ cells:
   name: develop_story
   rules:
     max_turns: 2
-  traits: []
+  skills: []

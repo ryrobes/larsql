@@ -64,7 +64,7 @@ sql_function:
 cells:
   - name: generate_query
     #model: google/gemini-2.5-flash
-    traits:
+    skills:
       - sql_search  # Tool for schema introspection
     rules:
       #max_turns: 2  # Allow 1-2 turns to discover schema via tools

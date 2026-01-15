@@ -123,7 +123,7 @@ class TestCellConfig:
         cell = CellConfig(name="test", instructions="Test")
 
         # Tackle defaults to empty list
-        assert cell.traits == []
+        assert cell.skills == []
 
         # Manifest context defaults
         assert cell.manifest_context == "current"
@@ -154,22 +154,22 @@ class TestCellConfig:
         assert cell.callouts is None
 
     def test_cell_with_tools(self):
-        """Cell with traits (tools) specified."""
+        """Cell with skills (tools) specified."""
         cell = CellConfig(
             name="with_tools",
             instructions="Use tools",
-            traits=["linux_shell", "run_code", "smart_sql_run"]
+            skills=["linux_shell", "run_code", "smart_sql_run"]
         )
-        assert cell.traits == ["linux_shell", "run_code", "smart_sql_run"]
+        assert cell.skills == ["linux_shell", "run_code", "smart_sql_run"]
 
-    def test_cell_with_manifest_traits(self):
+    def test_cell_with_manifest_skills(self):
         """Cell using manifest (Quartermaster) for tool selection."""
         cell = CellConfig(
             name="with_manifest",
             instructions="Auto-select tools",
-            traits="manifest"
+            skills="manifest"
         )
-        assert cell.traits == "manifest"
+        assert cell.skills == "manifest"
 
     def test_cell_with_model_override(self):
         """Cell overriding the default model."""
@@ -898,7 +898,7 @@ class TestFullCascadeConfig:
                 CellConfig(
                     name="research",
                     instructions="Research {{ input.topic }}",
-                    traits=["smart_sql_run"],
+                    skills=["smart_sql_run"],
                     rag=RagConfig(directory="knowledge"),
                     rules=RuleConfig(max_turns=5),
                     handoffs=["synthesize"]
@@ -1127,7 +1127,7 @@ class TestLoadingCascades:
                 {
                     "name": "research",
                     "instructions": "Research the topic",
-                    "traits": ["smart_sql_run"],
+                    "skills": ["smart_sql_run"],
                     "context": {
                         "from": ["all"],
                         "include_input": True

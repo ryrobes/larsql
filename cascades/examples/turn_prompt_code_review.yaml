@@ -29,4 +29,4 @@ cells:
 
 
       If you find issues, revise your solution. Turn {{ turn }}/{{ max_turns }}.'
-  traits: []
+  skills: []

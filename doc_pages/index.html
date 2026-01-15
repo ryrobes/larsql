@@ -4997,8 +4997,8 @@
         }
       }
 
-      /* ========== TRAITS IN SQL ========== */
-      .traits-callout {
+      /* ========== SKILLS IN SQL ========== */
+      .skills-callout {
         margin-top: 50px;
         padding: 40px;
         background: linear-gradient(135deg, rgba(255, 47, 168, 0.05) 0%, rgba(0, 0, 0, 0) 70%);
@@ -5006,32 +5006,32 @@
         border-radius: 16px;
       }
 
-      .traits-callout h3 {
+      .skills-callout h3 {
         font-size: 1.4rem;
         margin-bottom: 12px;
         color: var(--ink);
       }
 
-      .traits-callout > p {
+      .skills-callout > p {
         color: var(--muted);
         margin-bottom: 20px;
         font-size: 1rem;
       }
 
-      .traits-examples {
+      .skills-examples {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 16px;
       }
 
-      .trait-example {
+      .skill-example {
         background: rgba(0, 0, 0, 0.4);
         border: 1px solid rgba(255, 47, 168, 0.1);
         border-radius: 8px;
         padding: 16px;
       }
 
-      .trait-example-label {
+      .skill-example-label {
         font-size: 0.75rem;
         color: var(--magenta);
         text-transform: uppercase;
@@ -5039,23 +5039,23 @@
         margin-bottom: 8px;
       }
 
-      .trait-example code {
+      .skill-example code {
         font-size: 0.8rem;
         color: var(--ink);
         display: block;
         line-height: 1.5;
       }
 
-      .trait-example .trait-fn {
+      .skill-example .skill-fn {
         color: var(--cyan);
       }
 
-      .trait-example .trait-arg {
+      .skill-example .skill-arg {
         color: var(--green);
       }
 
       @media (max-width: 700px) {
-        .traits-examples {
+        .skills-examples {
           grid-template-columns: 1fr;
         }
       }
@@ -7036,33 +7036,33 @@
             </div>
           </div>
 
-          <!-- Traits callout -->
-          <div class="traits-callout reveal delay-4">
+          <!-- Skills callout -->
+          <div class="skills-callout reveal delay-4">
             <h3>Tools are cascades too. Call any of them from SQL.</h3>
             <p>
               Every RVBBIT tool—Python, JavaScript, Clojure, TTS, HuggingFace Spaces, even MCP tool servers—is
               callable directly from SQL. Tools are auto-discovered and indexed, so agents can find what they need without hardcoded lists.
             </p>
-            <div class="traits-examples">
-              <div class="trait-example">
-                <div class="trait-example-label">Run Python</div>
-                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::python_data</span>(<br>&nbsp;&nbsp;code := <span class="trait-arg">'[x**2 for x in range(10)]'</span><br>);</code>
+            <div class="skills-examples">
+              <div class="skill-example">
+                <div class="skill-example-label">Run Python</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="skill-fn">skill::python_data</span>(<br>&nbsp;&nbsp;code := <span class="skill-arg">'[x**2 for x in range(10)]'</span><br>);</code>
               </div>
-              <div class="trait-example">
-                <div class="trait-example-label">Call HuggingFace Space</div>
-                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::huggingface</span>(<br>&nbsp;&nbsp;space := <span class="trait-arg">'stabilityai/sdxl'</span>,<br>&nbsp;&nbsp;prompt := <span class="trait-arg">'data visualization rabbit'</span><br>);</code>
+              <div class="skill-example">
+                <div class="skill-example-label">Call HuggingFace Space</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="skill-fn">skill::huggingface</span>(<br>&nbsp;&nbsp;space := <span class="skill-arg">'stabilityai/sdxl'</span>,<br>&nbsp;&nbsp;prompt := <span class="skill-arg">'data visualization rabbit'</span><br>);</code>
               </div>
-              <div class="trait-example">
-                <div class="trait-example-label">MCP (Filesystem)</div>
-                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::list_directory</span>(<br>&nbsp;&nbsp;path := <span class="trait-arg">'/tmp'</span><br>);</code>
+              <div class="skill-example">
+                <div class="skill-example-label">MCP (Filesystem)</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="skill-fn">skill::list_directory</span>(<br>&nbsp;&nbsp;path := <span class="skill-arg">'/tmp'</span><br>);</code>
               </div>
-              <div class="trait-example">
-                <div class="trait-example-label">Text to Speech</div>
-                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait::say</span>(<br>&nbsp;&nbsp;text := <span class="trait-arg">'Query complete. 47 anomalies found.'</span><br>);</code>
+              <div class="skill-example">
+                <div class="skill-example-label">Text to Speech</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="skill-fn">skill::say</span>(<br>&nbsp;&nbsp;text := <span class="skill-arg">'Query complete. 47 anomalies found.'</span><br>);</code>
               </div>
-              <div class="trait-example">
-                <div class="trait-example-label">Browse Available Tools</div>
-                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="trait-fn">trait</span>(<span class="trait-arg">'list_traits'</span>, <span class="trait-arg">'{}'</span>);</code>
+              <div class="skill-example">
+                <div class="skill-example-label">Browse Available Tools</div>
+                <code><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="skill-fn">skill</span>(<span class="skill-arg">'list_skills'</span>, <span class="skill-arg">'{}'</span>);</code>
               </div>
             </div>
           </div>

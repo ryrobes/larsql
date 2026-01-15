@@ -132,7 +132,7 @@ cells:
       3. Market opportunity gaps
       4. Recommended product additions
 
-    traits: []
+    skills: []
 
 ---
 # How rvbbit() would work under the hood:

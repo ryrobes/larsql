@@ -10,7 +10,7 @@ inputs_schema:
   task: What to create a report about
 cells:
 - name: generate_and_request_approval
-  traits:
+  skills:
   - request_decision
   - route_to
   handoffs:

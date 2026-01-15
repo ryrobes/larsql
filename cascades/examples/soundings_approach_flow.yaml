@@ -19,7 +19,7 @@ cells:
     factor: 3
     mutate: true
     mutation_mode: approach
-  traits: []
+  skills: []
 - context:
     from:
     - previous
@@ -28,4 +28,4 @@ cells:
   name: develop_story
   rules:
     max_turns: 2
-  traits: []
+  skills: []

@@ -472,7 +472,7 @@ def test_await_signal_tool_timeout():
 
 def test_fire_signal_tool():
     """Test fire_signal tool."""
-    from rvbbit.traits.signal_tools import fire_signal
+    from rvbbit.skills.signal_tools import fire_signal
     from rvbbit.signals import get_signal_manager
 
     # Reset singleton
@@ -501,7 +501,7 @@ def test_fire_signal_tool():
 
 def test_list_signals_tool():
     """Test list_signals tool."""
-    from rvbbit.traits.signal_tools import list_signals
+    from rvbbit.skills.signal_tools import list_signals
     from rvbbit.signals import get_signal_manager
 
     # Reset singleton

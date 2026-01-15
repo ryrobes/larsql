@@ -18,7 +18,7 @@ from rich.console import Console
 
 from .cascade import CellConfig, RetryConfig
 from .prompts import render_instruction
-from .trait_registry import get_trait
+from .skill_registry import get_skill
 
 console = Console()
 
@@ -112,10 +112,10 @@ def resolve_tool_function(tool_spec: str, config_path: str | None = None) -> Cal
     tool_type, target, func_name = parse_tool_target(tool_spec)
 
     if tool_type == "registered":
-        # Look up in traits registry
-        func = get_trait(target)
+        # Look up in skills registry
+        func = get_skill(target)
         if func is None:
-            raise ValueError(f"Tool '{target}' not found in traits registry")
+            raise ValueError(f"Tool '{target}' not found in skills registry")
         return func
 
     elif tool_type == "python":

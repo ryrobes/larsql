@@ -401,7 +401,7 @@ _classified <span class="kw">AS</span> (
     <tr>
       <td><code>rvbbit_cascade_udf(path, inputs)</code></td>
       <td>Full cascade execution per row</td>
-      <td><code>SELECT rvbbit_cascade_udf('traits/analyze.yaml', json_object('text', desc))</code></td>
+      <td><code>SELECT rvbbit_cascade_udf('skills/analyze.yaml', json_object('text', desc))</code></td>
     </tr>
     <tr>
       <td><code>rvbbit_run_batch(path, rows, table)</code></td>
@@ -439,8 +439,8 @@ _classified <span class="kw">AS</span> (
       <td>Cosine similarity between two texts</td>
     </tr>
     <tr>
-      <td><code>trait(name, args_json)</code></td>
-      <td>Call any registered trait as a function</td>
+      <td><code>skill(name, args_json)</code></td>
+      <td>Call any registered skill as a function</td>
     </tr>
   </tbody>
 </table>
@@ -769,7 +769,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 
 <ul>
   <li><code>cascades/semantic_sql/*.cascade.yaml</code> - Built-in operators</li>
-  <li><code>traits/semantic_sql/*.cascade.yaml</code> - User overrides</li>
+  <li><code>skills/semantic_sql/*.cascade.yaml</code> - User overrides</li>
 </ul>
 
 <h3>Cascade Structure</h3>

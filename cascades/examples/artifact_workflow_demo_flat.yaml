@@ -16,7 +16,7 @@ inputs_schema:
 memory: artifact_test
 cells:
 - name: draft_and_iterate
-  traits:
+  skills:
   - request_decision
   - create_artifact
   - route_to
@@ -46,7 +46,7 @@ cells:
 
     '
 - name: finalize
-  traits:
+  skills:
   - create_artifact
   instructions: 'Artifact created: {{ outputs.draft_and_iterate.artifact_id }}
 

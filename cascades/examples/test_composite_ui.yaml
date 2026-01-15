@@ -27,6 +27,6 @@ cells:
   name: show_composite
   rules:
     max_turns: 3
-  traits:
+  skills:
   - create_plotly
   - ask_human_custom

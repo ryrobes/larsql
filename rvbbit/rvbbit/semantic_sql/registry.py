@@ -1,7 +1,7 @@
 """
 SQL Function Registry - discovers and manages cascade-based SQL functions.
 
-Scans cascades/ and traits/ directories for cascades with sql_function config,
+Scans cascades/ and skills/ directories for cascades with sql_function config,
 and provides execution interface for SQL queries.
 
 Built-in semantic SQL operators (MEANS, ABOUT, etc.) are now stored in
@@ -200,14 +200,14 @@ def _scan_directory(directory: Path) -> List[Tuple[Path, Dict[str, Any]]]:
     return results
 
 
-def _get_traits_dir() -> Path:
-    """Get the traits directory path (from config or default)."""
+def _get_skills_dir() -> Path:
+    """Get the skills directory path (from config or default)."""
     try:
         from ..config import get_config
         config = get_config()
-        return Path(config.root_dir) / "traits"
+        return Path(config.root_dir) / "skills"
     except Exception:
-        return Path.cwd() / "traits"
+        return Path.cwd() / "skills"
 
 
 def _get_cascades_dir() -> Path:
@@ -225,7 +225,7 @@ def initialize_registry(force: bool = False) -> None:
     Initialize the SQL function registry by scanning for cascade files.
 
     Scans in priority order (later overwrites earlier):
-    1. traits/ directory - For backwards compatibility and custom tools
+    1. skills/ directory - For backwards compatibility and custom tools
     2. cascades/ directory - Highest priority, includes built-in semantic_sql/
 
     Built-in operators (MEANS, ABOUT, SUMMARIZE, etc.) are now in
@@ -242,12 +242,12 @@ def initialize_registry(force: bool = False) -> None:
 
         _registry.clear()
 
-        # Scan traits directory first (lower priority)
+        # Scan skills directory first (lower priority)
         # For backwards compatibility and custom tools
-        traits_dir = _get_traits_dir()
-        if traits_dir.exists():
-            log.info(f"[sql_registry] Scanning traits: {traits_dir}")
-            for path, config in _scan_directory(traits_dir):
+        skills_dir = _get_skills_dir()
+        if skills_dir.exists():
+            log.info(f"[sql_registry] Scanning skills: {skills_dir}")
+            for path, config in _scan_directory(skills_dir):
                 sql_fn = config["sql_function"]
                 name = sql_fn.get("name") or config["cascade_id"]
 
@@ -261,7 +261,7 @@ def initialize_registry(force: bool = False) -> None:
                     config=config,
                     sql_function=sql_fn,
                 )
-                log.info(f"[sql_registry] Registered from traits: {name}")
+                log.info(f"[sql_registry] Registered from skills: {name}")
 
         # Scan cascades directory (highest priority)
         # Includes cascades/semantic_sql/ with built-in operators
@@ -639,11 +639,11 @@ async def execute_sql_function(
     # Import here to avoid circular imports
     from ..runner import RVBBITRunner
 
-    # Ensure traits are registered before running any cascade
+    # Ensure skills are registered before running any cascade
     # This is normally done by the run_cascade wrapper in __init__.py,
     # but SQL functions import RVBBITRunner directly
-    from .. import _register_all_traits
-    _register_all_traits()
+    from .. import _register_all_skills
+    _register_all_skills()
 
     # Prepare cascade inputs based on output mode
     cascade_inputs = cleaned_args

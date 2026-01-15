@@ -611,7 +611,7 @@ def _classify_question(question: str, context: str | None = None, session_id: st
     from .agent import Agent
     from .config import get_config
     from .unified_logs import log_unified
-    from .traits.state_tools import get_current_session_id, get_current_cell_name
+    from .skills.state_tools import get_current_session_id, get_current_cell_name
     from .tracing import get_current_trace
     import os
     import uuid
@@ -1009,7 +1009,7 @@ def generate_ask_human_ui(
         # Returns text input UI
     """
     from .unified_logs import log_unified
-    from .traits.state_tools import get_current_session_id, get_current_cell_name
+    from .skills.state_tools import get_current_session_id, get_current_cell_name
     from .tracing import get_current_trace
     import uuid
 

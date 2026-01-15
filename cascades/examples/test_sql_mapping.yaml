@@ -12,7 +12,7 @@ cells:
 - name: analyze_customers
   for_each_row:
     table: _load_customers
-    cascade: traits/analyze_customer.yaml
+    cascade: skills/analyze_customer.yaml
     inputs:
       customer_id: '{{ row.customer_id }}'
       customer_name: '{{ row.customer_name }}'

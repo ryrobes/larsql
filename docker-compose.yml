@@ -50,7 +50,7 @@ services:
       - rvbbit-data:/data
       # Development: mount local cascades
       # - ./cascades:/app/cascades
-      # - ./traits:/app/traits
+      # - ./skills:/app/skills
     networks:
       - rvbbit
     restart: unless-stopped

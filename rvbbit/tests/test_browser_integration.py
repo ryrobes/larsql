@@ -358,7 +358,7 @@ class TestBrowserCascadeLoading:
                         "stability_detection": True,
                         "stability_wait": 2.0
                     },
-                    "traits": ["control_browser"],
+                    "skills": ["control_browser"],
                     "rules": {"max_turns": 5}
                 }
             ]

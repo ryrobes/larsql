@@ -23,7 +23,7 @@ cells:
 
     Please suggest alternatives or explain what might have gone wrong.'
   name: handle_missing_file
-  traits:
+  skills:
   - linux_shell
 - handoffs:
   - parse_data
@@ -42,7 +42,7 @@ cells:
 
     Diagnose the issue and suggest a solution.'
   name: handle_load_error
-  traits:
+  skills:
   - linux_shell
 - handoffs:
   - transform_data
@@ -64,7 +64,7 @@ cells:
 
     Analyze the format and suggest how to fix the data or parse it differently.'
   name: handle_parse_error
-  traits:
+  skills:
   - run_code
 - handoffs:
   - summarize
@@ -81,7 +81,7 @@ cells:
   tool: python:windlass.demo_tools.transform_data
 - instructions: The data source was empty. Suggest next steps.
   name: handle_empty_data
-  traits: []
+  skills: []
 - instructions: 'Transform operation failed:
 
 
@@ -92,7 +92,7 @@ cells:
 
     Suggest an alternative approach.'
   name: handle_transform_error
-  traits: []
+  skills: []
 - instructions: 'Provide a summary of the ETL pipeline results:
 
 
@@ -107,4 +107,4 @@ cells:
 
     Explain what the data shows and any insights.'
   name: summarize
-  traits: []
+  skills: []

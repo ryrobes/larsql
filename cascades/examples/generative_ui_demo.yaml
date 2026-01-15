@@ -27,7 +27,7 @@ cells:
   name: generate_content
   rules:
     max_turns: 5
-  traits:
+  skills:
   - create_chart
   - ask_human_custom
   - set_state

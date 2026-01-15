@@ -16,7 +16,7 @@ cells:
   name: transcribe
   rules:
     max_turns: 3
-  traits:
+  skills:
   - whisper_youtube
 - context:
     from:

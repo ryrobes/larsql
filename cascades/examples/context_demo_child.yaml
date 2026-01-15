@@ -5,5 +5,5 @@ cells:
   name: child_step
   rules:
     max_turns: 1
-  traits:
+  skills:
   - set_state

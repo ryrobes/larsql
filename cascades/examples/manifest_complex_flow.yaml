@@ -1,5 +1,5 @@
 cascade_id: research_assistant_with_manifest
-description: Adaptive research assistant that manifests traits based on full conversation
+description: Adaptive research assistant that manifests skills based on full conversation
   context
 inputs_schema:
   research_topic: The topic to research and analyze
@@ -14,7 +14,7 @@ cells:
   name: initial_analysis
   rules:
     max_turns: 2
-  traits: manifest
+  skills: manifest
 - context:
     from:
     - previous
@@ -26,7 +26,7 @@ cells:
   name: deep_dive
   rules:
     max_turns: 3
-  traits: manifest
+  skills: manifest
 - context:
     from:
     - all
@@ -35,4 +35,4 @@ cells:
   name: synthesize
   rules:
     max_turns: 2
-  traits: []
+  skills: []

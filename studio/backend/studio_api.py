@@ -36,7 +36,7 @@ except ImportError as e:
 # Notebook imports
 try:
     from rvbbit import run_cascade
-    from rvbbit.traits.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
+    from rvbbit.skills.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
     from rvbbit.sql_tools.session_db import get_session_db, cleanup_session_db
     from rvbbit.agent import Agent
     from rvbbit.unified_logs import log_unified
@@ -58,7 +58,7 @@ _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
 DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
-TRAITS_DIR = os.path.join(RVBBIT_ROOT, "traits")
+SKILLS_DIR = os.path.join(RVBBIT_ROOT, "skills")
 CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
 EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "cascades", "examples")
 CELL_TYPES_DIR = os.path.join(RVBBIT_ROOT, "cell_types")
@@ -920,7 +920,7 @@ def list_notebooks():
     """
     List all available data cascade notebooks.
 
-    Scans traits/, cascades/, and examples/ directories for YAML/JSON files
+    Scans skills/, cascades/, and examples/ directories for YAML/JSON files
     that only contain deterministic cells.
 
     Returns:
@@ -930,7 +930,7 @@ def list_notebooks():
         notebooks = []
 
         for base_dir, prefix in [
-            (TRAITS_DIR, 'traits/'),
+            (SKILLS_DIR, 'skills/'),
             (CASCADES_DIR, 'cascades/'),
             (EXAMPLES_DIR, 'examples/'),
             (PLAYGROUND_SCRATCHPAD_DIR, 'playground/'),
@@ -956,7 +956,7 @@ def load_notebook():
     Load a notebook by path.
 
     Args:
-        path: Relative path to the notebook (e.g., 'traits/my_notebook.yaml')
+        path: Relative path to the notebook (e.g., 'skills/my_notebook.yaml')
 
     Returns:
         JSON with notebook content AND raw YAML text (preserves comments/formatting)
@@ -1000,7 +1000,7 @@ def save_notebook():
     Save a notebook to a file.
 
     Request body:
-        - path: Relative path to save (e.g., 'traits/my_notebook.yaml')
+        - path: Relative path to save (e.g., 'skills/my_notebook.yaml')
         - notebook: Notebook content (cascade definition) - used as fallback
         - raw_yaml: (Optional) Raw YAML text - preserves comments/formatting if provided
 

@@ -3,7 +3,7 @@ Spec Validator API - Validate cascade YAML specifications
 
 Endpoints:
     POST /api/spec/validate - Validate cascade YAML and return issues
-    GET /api/spec/context - Get validation context (available traits, models)
+    GET /api/spec/context - Get validation context (available skills, models)
 """
 
 from flask import Blueprint, request, jsonify
@@ -89,7 +89,7 @@ def get_context():
 
     Response:
         {
-            "traits": [
+            "skills": [
                 {"name": "linux_shell", "type": "function", "description": "..."},
                 ...
             ],
@@ -98,23 +98,23 @@ def get_context():
         }
     """
     try:
-        from rvbbit.traits_manifest import get_trait_manifest
+        from rvbbit.skills_manifest import get_skill_manifest
 
-        manifest = get_trait_manifest()
+        manifest = get_skill_manifest()
 
-        traits = []
+        skills = []
         for name, info in manifest.items():
-            traits.append({
+            skills.append({
                 "name": name,
                 "type": info.get("type", "unknown"),
                 "description": info.get("description", "")[:200],  # Truncate long descriptions
             })
 
         # Sort by name for consistent ordering
-        traits.sort(key=lambda x: x["name"])
+        skills.sort(key=lambda x: x["name"])
 
         return jsonify({
-            "traits": traits,
+            "skills": skills,
             "keywords": ["previous", "first", "all", "manifest"],
             "context_keywords": ["previous", "prev", "first", "all"],
         })
@@ -123,7 +123,7 @@ def get_context():
         traceback.print_exc()
         return jsonify({
             "error": str(e),
-            "traits": [],
+            "skills": [],
             "keywords": ["previous", "first", "all", "manifest"],
             "context_keywords": ["previous", "prev", "first", "all"],
         }), 500

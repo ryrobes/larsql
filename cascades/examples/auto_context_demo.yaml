@@ -30,5 +30,5 @@ cells:
   name: research
   rules:
     max_turns: 8
-  traits:
+  skills:
   - linux_shell

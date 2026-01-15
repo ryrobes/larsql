@@ -43,7 +43,7 @@ cells:
     - Create a simple, clean chart with minimal decoration.
     - Create a colorful, visually striking chart with rich detail.
     - Create an informative chart with comprehensive annotations and labels.
-  traits:
+  skills:
   - create_chart
   - create_vega_lite
   - create_plotly

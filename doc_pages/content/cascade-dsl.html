@@ -85,7 +85,7 @@
   - <span class="key">name</span>: cell_name           <span class="cmt"># Required: unique identifier</span>
     <span class="key">instructions</span>: <span class="str">"..."</span>       <span class="cmt"># LLM cells: system prompt</span>
     <span class="key">tool</span>: tool_name            <span class="cmt"># Deterministic cells: direct tool</span>
-    <span class="key">traits</span>: [tool1, tool2]     <span class="cmt"># Available tools for this cell</span>
+    <span class="key">skills</span>: [tool1, tool2]     <span class="cmt"># Available tools for this cell</span>
     <span class="key">model</span>: <span class="str">"provider/model"</span>   <span class="cmt"># Override default model</span>
     <span class="key">handoffs</span>: [next1, next2]   <span class="cmt"># Possible next cells</span>
     <span class="key">rules</span>:                     <span class="cmt"># Execution constraints</span>
@@ -115,7 +115,7 @@
       <td>Jinja2-templated system prompt</td>
     </tr>
     <tr>
-      <td><code>traits</code></td>
+      <td><code>skills</code></td>
       <td>array | "manifest"</td>
       <td>Tools available or dynamic selection</td>
     </tr>

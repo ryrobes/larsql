@@ -58,7 +58,7 @@ cells:
       \     threshold = input.get('threshold') or 0.0\n        namespace = input.get('namespace')\
       \ or pinecone_config['defaults']['namespace']\n\n        if not query or not\
       \ query.strip():\n            result = []\n        else:\n            try:\n\
-      \                # Step 1: Embed the query\n                from rvbbit.traits.embedding_storage\
+      \                # Step 1: Embed the query\n                from rvbbit.skills.embedding_storage\
       \ import agent_embed\n\n                embed_result = agent_embed(\n      \
       \              text=query,\n                    _session_id=input.get('_session_id'),\n\
       \                    _caller_id=input.get('_caller_id'),\n                 \

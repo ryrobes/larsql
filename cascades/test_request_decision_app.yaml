@@ -30,7 +30,7 @@ cells:
 
   # This cell uses an LLM that MUST call request_decision
   - name: ask_decision
-    traits:
+    skills:
       - request_decision
     instructions: |
       You MUST call the request_decision tool immediately with this exact call:

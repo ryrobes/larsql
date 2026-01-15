@@ -5,7 +5,7 @@ cells:
   instructions: Use await_signal to wait for signal named 'e2e_test' with timeout
     '30s'.
   name: wait_for_signal
-  traits:
+  skills:
   - await_signal
 - instructions: 'Report what happened:
 

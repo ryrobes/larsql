@@ -364,7 +364,7 @@ def extract_metadata(entry: Dict) -> Dict:
         'valid': meta.get('valid'),
         'reason': meta.get('reason'),
         # Quartermaster-specific
-        'selected_traits': meta.get('selected_traits', []),
+        'selected_skills': meta.get('selected_skills', []),
         'reasoning': meta.get('reasoning'),
         # Reforge-specific
         'reforge_step': meta.get('reforge_step'),
@@ -579,11 +579,11 @@ def extract_quartermaster_selections(history: List[Dict]) -> Dict[str, Dict]:
         if node_type == "quartermaster_result":
             meta = extract_metadata(entry)
             cell_name = meta.get("cell_name", "unknown")
-            selected_traits = meta.get("selected_traits", [])
+            selected_skills = meta.get("selected_skills", [])
             reasoning = meta.get("reasoning", "")
 
             selections[cell_name] = {
-                'selected_tools': selected_traits,
+                'selected_tools': selected_skills,
                 'reasoning': reasoning[:100] if len(reasoning) > 100 else reasoning
             }
 
@@ -2127,12 +2127,12 @@ def generate_mermaid_string(echo: Echo) -> str:
                     all_node_ids.append(qm_id)
                     qm_content = qm_entry.get("content", "")
                     qm_meta = extract_metadata(qm_entry)
-                    selected_traits = qm_meta.get("selected_traits", [])
+                    selected_skills = qm_meta.get("selected_skills", [])
                     # Format as comma-separated list of tools
-                    if selected_traits:
-                        tools_preview = ", ".join(selected_traits[:3])
-                        if len(selected_traits) > 3:
-                            tools_preview += f" +{len(selected_traits) - 3}"
+                    if selected_skills:
+                        tools_preview = ", ".join(selected_skills[:3])
+                        if len(selected_skills) > 3:
+                            tools_preview += f" +{len(selected_skills) - 3}"
                         qm_label = f"Tackle: {tools_preview}"
                     else:
                         qm_label = "No tools"
@@ -3647,7 +3647,7 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
             node_map[qm_id] = {
                 "node_id": qm_id,
                 "cell_name": cell_name,
-                "selected_tools": meta.get("selected_traits", []),
+                "selected_tools": meta.get("selected_skills", []),
                 "reasoning": meta.get("reasoning", ""),
                 "trace_id": trace_id,
                 "parent_id": entry.get("parent_id"),
@@ -3848,13 +3848,13 @@ def generate_mermaid_string_from_config(config: Any) -> str:
                 routes = ", ".join(f"{k}→{v}" for k, v in cell.routing.items())
                 details.append(f"Routes: {routes}")
         else:
-            if cell.traits:
-                if cell.traits == "manifest":
-                    details.append("Traits: Auto (Quartermaster)")
+            if cell.skills:
+                if cell.skills == "manifest":
+                    details.append("Skills: Auto (Quartermaster)")
                 else:
-                    tools = ", ".join(cell.traits[:3])
-                    if len(cell.traits) > 3:
-                        tools += f"... (+{len(cell.traits) - 3})"
+                    tools = ", ".join(cell.skills[:3])
+                    if len(cell.skills) > 3:
+                        tools += f"... (+{len(cell.skills) - 3})"
                     details.append(f"Tools: {tools}")
 
         if cell.rules and cell.rules.max_turns:

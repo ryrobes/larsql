@@ -16,5 +16,5 @@ template:
     {{ input.query }}
 
     Summarize the key findings.
-  traits:
+  skills:
     - brave_web_search

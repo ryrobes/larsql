@@ -18,7 +18,7 @@ cells:
   name: showcase_image_section
   rules:
     max_turns: 3
-  traits:
+  skills:
   - create_chart
   - ask_human_custom
   - set_state
@@ -41,7 +41,7 @@ cells:
   name: showcase_data_table
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human_custom
   - set_state
 - context:
@@ -66,7 +66,7 @@ cells:
   name: showcase_comparison
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human_custom
   - set_state
 - context:
@@ -87,7 +87,7 @@ cells:
   name: showcase_layout
   rules:
     max_turns: 3
-  traits:
+  skills:
   - create_chart
   - ask_human_custom
   - set_state
@@ -110,5 +110,5 @@ cells:
 
     Present the final summary to the user.'
   name: finalize
-  traits:
+  skills:
   - set_state

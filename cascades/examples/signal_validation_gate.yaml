@@ -30,7 +30,7 @@ cells:
     Explain why this request was rejected and what needs to be fixed.
 
     '
-  traits: []
+  skills: []
 - name: request_approval
   instructions: 'The request has been validated successfully:
 
@@ -52,7 +52,7 @@ cells:
     good"}''
 
     '
-  traits:
+  skills:
   - await_signal
   handoffs:
   - process_approved
@@ -69,7 +69,7 @@ cells:
     Suggest next steps (retry, escalate, etc.).
 
     '
-  traits: []
+  skills: []
 - name: process_approved
   tool: python:windlass.demo_tools.transform_data
   inputs:
@@ -86,7 +86,7 @@ cells:
   - handle_error
 - name: handle_empty
   instructions: No data to process after approval. Log and exit gracefully.
-  traits: []
+  skills: []
 - name: handle_error
   instructions: 'Processing failed after approval: {{ state.last_deterministic_error
     }}
@@ -94,7 +94,7 @@ cells:
     This is unexpected - the request was approved but processing failed.
 
     '
-  traits: []
+  skills: []
 - name: generate_completion_report
   instructions: 'Generate a completion report for this approved workflow:
 
@@ -125,4 +125,4 @@ cells:
     4. Final results
 
     '
-  traits: []
+  skills: []

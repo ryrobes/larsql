@@ -8,6 +8,6 @@ cells:
 
       This tool is from the MCP filesystem server. Use it to read the file
       and tell me what it contains.
-    traits: [read_text_file]  # Explicitly use MCP-specific tool
+    skills: [read_text_file]  # Explicitly use MCP-specific tool
     rules:
       max_turns: 3

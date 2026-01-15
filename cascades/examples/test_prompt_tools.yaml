@@ -9,7 +9,7 @@ cells:
   name: solve_and_test
   rules:
     max_turns: 3
-  traits:
+  skills:
   - run_code
   - set_state
   use_native_tools: false

@@ -8,5 +8,5 @@ cells:
   name: speak
   rules:
     max_turns: 2
-  traits:
+  skills:
   - say

@@ -10,7 +10,7 @@ cells:
 
     Use the sql_patterns_memory tool to find relevant examples.'
   name: search_memory
-  traits:
+  skills:
   - sql_patterns_memory
 - context:
     from:
@@ -23,4 +23,4 @@ cells:
 
     If you found similar queries in memory, explain how they informed your approach.'
   name: generate_query
-  traits: []
+  skills: []

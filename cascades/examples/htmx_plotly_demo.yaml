@@ -9,7 +9,7 @@ inputs_schema:
 cells:
 - name: analyze_and_visualize
   model: anthropic/claude-sonnet-4.5
-  traits:
+  skills:
   - request_decision
   - route_to
   handoffs:

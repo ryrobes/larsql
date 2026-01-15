@@ -81,7 +81,7 @@ cells:
   training_strategy: recent
   training_min_confidence: 0.8
   training_format: xml
-  traits:
+  skills:
   - brave_web_search
   instructions: 'Apply this instruction/question to the given text.
 

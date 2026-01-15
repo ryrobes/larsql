@@ -16,7 +16,7 @@ cells:
     Provide a well-reasoned answer.
 
     '
-  traits: []
+  skills: []
 - name: think_medium_budget
   model: anthropic/claude-sonnet-4::medium(4000)
   instructions: 'Based on the previous analysis, synthesize the key insights.
@@ -28,7 +28,7 @@ cells:
     Provide a concise summary of the main conclusion.
 
     '
-  traits: []
+  skills: []
   context:
     from:
     - think_high

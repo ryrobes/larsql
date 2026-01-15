@@ -19,7 +19,7 @@
 
 <p>
   MCP (Model Context Protocol) allows RVBBIT to connect to external tool servers.
-  Tools from MCP servers are automatically discovered and registered in the trait registry.
+  Tools from MCP servers are automatically discovered and registered in the skill registry.
 </p>
 
 <div class="feature-grid">
@@ -179,7 +179,7 @@ rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/te
   <div class="code-block-content">
     <pre>- <span class="key">name</span>: file_operations
   <span class="key">instructions</span>: <span class="str">"Read the config file and update settings"</span>
-  <span class="key">traits</span>:
+  <span class="key">skills</span>:
     - filesystem:read_file    <span class="cmt"># server_name:tool_name</span>
     - filesystem:write_file
     - filesystem:list_directory</pre>
@@ -200,5 +200,5 @@ rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/te
 <ul>
   <li><a href="https://modelcontextprotocol.io" target="_blank">MCP Specification</a></li>
   <li><a href="https://github.com/modelcontextprotocol/servers" target="_blank">Official MCP Servers</a></li>
-  <li><a href="#tools" data-link>Tools (Traits)</a> - Overview of RVBBIT's tool system</li>
+  <li><a href="#tools" data-link>Tools (Skills)</a> - Overview of RVBBIT's tool system</li>
 </ul>

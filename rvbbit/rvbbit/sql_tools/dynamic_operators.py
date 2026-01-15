@@ -302,7 +302,7 @@ Function Operators ({len(function_list)}):
 {chr(10).join(f'  - {op}' for op in function_list)}
 
 Total: {len(patterns['all_keywords'])} unique operators
-Source: cascades/semantic_sql/*.cascade.yaml + traits/semantic_sql/*.cascade.yaml
+Source: cascades/semantic_sql/*.cascade.yaml + skills/semantic_sql/*.cascade.yaml
 """
 
 

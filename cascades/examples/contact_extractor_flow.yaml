@@ -54,5 +54,5 @@ cells:
 
     Provide a brief confirmation message.'
   name: confirm
-  traits:
+  skills:
   - set_state

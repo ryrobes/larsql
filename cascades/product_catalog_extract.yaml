@@ -74,7 +74,7 @@ cells:
 
       Ensure ALL products are included. It's better to include a duplicate
       than to miss a product.
-    traits: []  # No tools needed - pure synthesis
+    skills: []  # No tools needed - pure synthesis
     model: anthropic/claude-sonnet-4
     rules:
       max_turns: 1

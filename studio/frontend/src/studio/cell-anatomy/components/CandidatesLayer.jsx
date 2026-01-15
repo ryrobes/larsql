@@ -48,13 +48,13 @@ const formatValidatorDisplay = (validator) => {
 const CandidatesLayer = ({ config, execution, isLLMCell }) => {
   const factor = config.factor || 1;
   const maxTurns = config.maxTurns || 1;
-  const traits = config.traits || [];
+  const skills = config.skills || [];
   const loopUntil = config.loopUntil;
   const mutate = config.mutate;
   const models = config.models;
 
   // Check if manifest/quartermaster was used for tool selection
-  const isManifestMode = traits === 'manifest' || (Array.isArray(traits) && traits.includes('manifest'));
+  const isManifestMode = skills === 'manifest' || (Array.isArray(skills) && skills.includes('manifest'));
   const manifestSelection = execution?.manifestSelection;
 
   // Check if there's a winner (evaluation complete)
@@ -157,7 +157,7 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
           );
         })()}
 
-        {/* Traits (tools available) - show quartermaster selection if manifest mode */}
+        {/* Skills (tools available) - show quartermaster selection if manifest mode */}
         {isManifestMode && manifestSelection && manifestSelection.selectedTools.length > 0 ? (
           <div className="layer-candidates-manifest">
             <div className="layer-candidates-manifest-header">
@@ -169,9 +169,9 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
                 </span>
               )}
             </div>
-            <div className="layer-candidates-traits-list">
+            <div className="layer-candidates-skills-list">
               {manifestSelection.selectedTools.map((tool, idx) => (
-                <span key={idx} className="layer-candidates-traits-item manifest-selected">
+                <span key={idx} className="layer-candidates-skills-item manifest-selected">
                   {tool}
                 </span>
               ))}
@@ -185,15 +185,15 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
               <span className="layer-candidates-manifest-pending">(Quartermaster will select tools)</span>
             </div>
           </div>
-        ) : traits.length > 0 && (
-          <div className="layer-candidates-traits">
-            <span className="layer-candidates-traits-label">
+        ) : skills.length > 0 && (
+          <div className="layer-candidates-skills">
+            <span className="layer-candidates-skills-label">
               <Icon icon="mdi:tools" width="12" />
-              Traits:
+              Skills:
             </span>
-            <div className="layer-candidates-traits-list">
-              {(Array.isArray(traits) ? traits : [traits]).map((tool, idx) => (
-                <span key={idx} className="layer-candidates-traits-item">
+            <div className="layer-candidates-skills-list">
+              {(Array.isArray(skills) ? skills : [skills]).map((tool, idx) => (
+                <span key={idx} className="layer-candidates-skills-item">
                   {tool}
                 </span>
               ))}

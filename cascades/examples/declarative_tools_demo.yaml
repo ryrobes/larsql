@@ -17,7 +17,7 @@ cells:
   name: explore_directory
   rules:
     max_turns: 2
-  traits:
+  skills:
   - list_directory
 - context:
     from:
@@ -38,7 +38,7 @@ cells:
   name: search_codebase
   rules:
     max_turns: 2
-  traits:
+  skills:
   - search_files
 - instructions: 'Let''s also grab some network context using the HTTP-based get_public_ip
     tool.
@@ -51,7 +51,7 @@ cells:
   name: get_network_info
   rules:
     max_turns: 1
-  traits:
+  skills:
   - get_public_ip
 - context:
     from:

@@ -789,7 +789,7 @@ cells:
       Now, begin the conversation. Be warm, be creative, and help them build something beautiful.
       **Start by calling request_decision to ask what they want to build!**
 
-    traits:
+    skills:
       - cascade_write
       - cascade_read
       - spawn_cascade

@@ -16,5 +16,5 @@ template:
     Context: {{ outputs.prior_cell }}
 
     Ask a clear, specific question.
-  traits:
+  skills:
     - ask_human

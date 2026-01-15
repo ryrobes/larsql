@@ -311,9 +311,9 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
 
       // Track quartermaster/manifest selection (role='quartermaster', node_type='quartermaster_result')
       if (log.role === 'quartermaster' || log.node_type === 'quartermaster_result') {
-        // Manifest data is in metadata_json: selected_traits, model, manifest_context
+        // Manifest data is in metadata_json: selected_skills, model, manifest_context
         manifestSelection = {
-          selectedTools: metadata.selected_traits || metadata.selected_tackle || [],
+          selectedTools: metadata.selected_skills || metadata.selected_tackle || [],
           model: metadata.model || log.model || null,
           context: metadata.manifest_context || 'current',
           timestamp: log.timestamp_iso
@@ -418,8 +418,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
     maxAttempts: cell?.rules?.max_attempts || 1,
     loopUntil: cell?.rules?.loop_until || null,
 
-    // Traits (tools)
-    traits: cell?.traits || [],
+    // Skills (tools)
+    skills: cell?.skills || [],
 
     // Output configuration
     outputSchema: cell?.output_schema || null,

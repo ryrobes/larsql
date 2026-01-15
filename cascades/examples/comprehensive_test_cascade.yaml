@@ -152,7 +152,7 @@ cells:
       '
     factor: 3
     mode: evaluate
-  traits:
+  skills:
   - set_state
 - handoffs:
   - request_approval
@@ -179,7 +179,7 @@ cells:
       validation succeeded
     max_attempts: 3
     max_turns: 1
-  traits:
+  skills:
   - set_state
 - decision_points:
     enabled: true
@@ -200,7 +200,7 @@ cells:
     ,\n      \"description\": \"Complete without artifact\",\n      \"style\": \"\
     secondary\"\n    }\n  ]\n}\n</decision>\n"
   name: request_approval
-  traits:
+  skills:
   - route_to
 - handoffs:
   - finalize
@@ -228,7 +228,7 @@ cells:
 
     '
   name: create_dashboard
-  traits:
+  skills:
   - create_artifact
   - set_state
 - instructions: 'Cascade complete! Summarize what was accomplished.
@@ -249,5 +249,5 @@ cells:
 
     '
   name: finalize
-  traits:
+  skills:
   - set_state

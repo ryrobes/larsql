@@ -74,7 +74,7 @@ cells:
         the image.'
       mutate: true
       steps: 2
-  traits:
+  skills:
   - create_vega_lite
   - create_plotly
 - handoffs:
@@ -101,11 +101,11 @@ cells:
   name: summarize
   rules:
     max_turns: 1
-  traits: []
+  skills: []
 - instructions: Use the `say` tool to speak to the user and give a VERY short summary
     of the findings.
   name: say_summary_summarize
   rules:
     max_turns: 1
-  traits:
+  skills:
   - say

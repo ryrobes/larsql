@@ -21,7 +21,7 @@ cells:
       - "shared_counter" to "1"
 
       Then respond: "Parent setup complete."
-    traits:
+    skills:
       - set_state
     rules:
       max_turns: 2
@@ -65,7 +65,7 @@ cells:
     context:
       from:
         - all
-    traits:
+    skills:
       - set_state
     rules:
       max_turns: 2

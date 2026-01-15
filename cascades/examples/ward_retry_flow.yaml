@@ -30,5 +30,5 @@ cells:
 
     Summarize what you did.'
   name: done
-  traits:
+  skills:
   - set_state

@@ -48,7 +48,7 @@ Cascade Integration:
     When USE_CASCADE_FUNCTIONS is True, operators resolve through the cascade
     registry instead of direct UDF calls. This enables:
     - Full RVBBIT observability (logging, tracing, cost tracking)
-    - User-defined overrides (put your own cascade in traits/)
+    - User-defined overrides (put your own cascade in skills/)
     - Wards, retries, multi-modal - all RVBBIT features available
 """
 
@@ -656,7 +656,7 @@ def has_semantic_operators(query: str) -> bool:
 
     Dynamically checks against operators loaded from cascade registry.
     Operators are discovered from cascades/semantic_sql/*.cascade.yaml
-    and traits/semantic_sql/*.cascade.yaml on server startup.
+    and skills/semantic_sql/*.cascade.yaml on server startup.
 
     This means user-created cascades automatically work without code changes!
     """
@@ -691,10 +691,10 @@ def rewrite_semantic_operators(query: str, session_id: Optional[str] = None) -> 
     Returns:
         Rewritten SQL with UDF calls
     """
-    # Check for semantic operators OR trait syntax
+    # Check for semantic operators OR skill syntax
     query_lower = query.lower()
-    has_trait = 'trait(' in query_lower or 'trait::' in query_lower or re.search(r'\btrait\s+\w+', query_lower)
-    if not has_semantic_operators(query) and not has_trait:
+    has_skill = 'skill(' in query_lower or 'skill::' in query_lower or re.search(r'\bskill\s+\w+', query_lower)
+    if not has_semantic_operators(query) and not has_skill:
         return query
 
     # =========================================================================
@@ -712,11 +712,11 @@ def rewrite_semantic_operators(query: str, session_id: Optional[str] = None) -> 
             # Strip -- @@ lines from query (they've been processed)
             query = _strip_nl_annotation_lines(query)
 
-    # Rewrite trait::name() syntax first (before other rewrites)
-    query = _rewrite_trait_namespace_syntax(query)
+    # Rewrite skill::name() syntax first (before other rewrites)
+    query = _rewrite_skill_namespace_syntax(query)
 
-    # Rewrite TRAIT name ... END block syntax
-    query = _rewrite_trait_block_syntax(query)
+    # Rewrite SKILL name ... END block syntax
+    query = _rewrite_skill_block_syntax(query)
 
     # Parse keyword-based annotations (-- @)
     annotations = _parse_annotations(query)
@@ -799,8 +799,8 @@ def rewrite_semantic_operators(query: str, session_id: Optional[str] = None) -> 
     # GROUP BY TOPICS(col, n): Group by extracted themes
     result = _rewrite_group_by_topics(result, annotation_prefix)
 
-    # TRAIT(): Universal trait caller - wrap in read_json_auto for table output
-    result = _rewrite_trait_function(result)
+    # SKILL(): Universal skill caller - wrap in read_json_auto for table output
+    result = _rewrite_skill_function(result)
 
     return result
 
@@ -1591,20 +1591,20 @@ def get_semantic_operators_info() -> Dict[str, Any]:
                 'rewrites_to': "contradicts(a, b)",
                 'description': 'Check if statements contradict each other'
             },
-            'trait()': {
-                'syntax': "trait('tool_name', json_object('arg', value))",
-                'rewrites_to': "read_json_auto(trait(...))",
-                'description': 'Call any registered trait/tool and return as table'
+            'skill()': {
+                'syntax': "skill('tool_name', json_object('arg', value))",
+                'rewrites_to': "read_json_auto(skill(...))",
+                'description': 'Call any registered skill/tool and return as table'
             },
-            'trait::': {
-                'syntax': "trait::tool_name(args)",
-                'rewrites_to': "trait('tool_name', json_object(...))",
-                'description': 'Namespace syntax sugar for trait() calls'
+            'skill::': {
+                'syntax': "skill::tool_name(args)",
+                'rewrites_to': "skill('tool_name', json_object(...))",
+                'description': 'Namespace syntax sugar for skill() calls'
             },
-            'trait:: with dot accessor': {
-                'syntax': "trait::tool(x).field / trait::tool(x)[0] / trait::tool(x).a[0].b",
-                'rewrites_to': "json_extract_string(trait_json(...), '$.field')",
-                'description': 'Extract scalar value from trait result using JSON path (uses trait_json which returns content directly)'
+            'skill:: with dot accessor': {
+                'syntax': "skill::tool(x).field / skill::tool(x)[0] / skill::tool(x).a[0].b",
+                'rewrites_to': "json_extract_string(skill_json(...), '$.field')",
+                'description': 'Extract scalar value from skill result using JSON path (uses skill_json which returns content directly)'
             }
         },
         'annotation_support': {
@@ -1616,30 +1616,30 @@ def get_semantic_operators_info() -> Dict[str, Any]:
 
 
 # ============================================================================
-# Trait Syntax Sugar Rewriters
+# Skill Syntax Sugar Rewriters
 # ============================================================================
 
-def _get_trait_params(trait_name: str) -> List[str]:
+def _get_skill_params(skill_name: str) -> List[str]:
     """
-    Get parameter names for a trait by introspecting its signature.
+    Get parameter names for a skill by introspecting its signature.
 
     Returns list of parameter names (excluding internal _params).
-    Returns empty list if trait not found or introspection fails.
+    Returns empty list if skill not found or introspection fails.
     """
     try:
-        # Ensure traits are registered before looking them up
+        # Ensure skills are registered before looking them up
         # This is needed because SQL rewriting happens before cascade execution
-        from .. import _register_all_traits
-        _register_all_traits()
+        from .. import _register_all_skills
+        _register_all_skills()
 
-        from ..trait_registry import get_trait
+        from ..skill_registry import get_skill
         import inspect
 
-        trait_func = get_trait(trait_name)
-        if not trait_func:
+        skill_func = get_skill(skill_name)
+        if not skill_func:
             return []
 
-        sig = inspect.signature(trait_func)
+        sig = inspect.signature(skill_func)
         params = []
         for name, param in sig.parameters.items():
             if not name.startswith('_'):  # Skip internal params
@@ -1649,25 +1649,25 @@ def _get_trait_params(trait_name: str) -> List[str]:
         return []
 
 
-def _rewrite_trait_namespace_syntax(query: str) -> str:
+def _rewrite_skill_namespace_syntax(query: str) -> str:
     """
-    Rewrite trait::name() namespace syntax to trait() function calls.
+    Rewrite skill::name() namespace syntax to skill() function calls.
 
     Supports:
-    - Positional args: trait::say('Hello') → trait('say', json_object('text', 'Hello'))
-    - Named args: trait::say(text := 'Hello') → trait('say', json_object('text', 'Hello'))
-    - Mixed: trait::tool('first', other := 'val') → trait('tool', json_object('param1', 'first', 'other', 'val'))
-    - No args: trait::list_traits() → trait('list_traits', '{}')
-    - Dot accessor: trait::local_sentiment(title).label → json_extract_string(trait(...), '$.label')
-    - Array accessor: trait::tool(x)[0] → json_extract_string(trait(...), '$[0]')
-    - Chained: trait::tool(x).results[0].name → json_extract_string(trait(...), '$.results[0].name')
+    - Positional args: skill::say('Hello') → skill('say', json_object('text', 'Hello'))
+    - Named args: skill::say(text := 'Hello') → skill('say', json_object('text', 'Hello'))
+    - Mixed: skill::tool('first', other := 'val') → skill('tool', json_object('param1', 'first', 'other', 'val'))
+    - No args: skill::list_skills() → skill('list_skills', '{}')
+    - Dot accessor: skill::local_sentiment(title).label → json_extract_string(skill(...), '$.label')
+    - Array accessor: skill::tool(x)[0] → json_extract_string(skill(...), '$[0]')
+    - Chained: skill::tool(x).results[0].name → json_extract_string(skill(...), '$.results[0].name')
 
-    The rewriter introspects trait signatures to map positional args to param names.
+    The rewriter introspects skill signatures to map positional args to param names.
     When an accessor chain is present, the result is a scalar extraction rather than
     a table (no read_json_auto wrapper needed).
     """
-    # Quick check - if no trait:: in query, skip
-    if 'trait::' not in query.lower():
+    # Quick check - if no skill:: in query, skip
+    if 'skill::' not in query.lower():
         return query
 
     def parse_accessor_chain(sql: str, start_pos: int) -> Tuple[int, str]:
@@ -1742,19 +1742,19 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
             return (pos, '$' + ''.join(path_parts))
         return (start_pos, '')
 
-    def parse_trait_call(sql: str, start_pos: int) -> Optional[Tuple[int, str, str, str]]:
+    def parse_skill_call(sql: str, start_pos: int) -> Optional[Tuple[int, str, str, str]]:
         """
-        Parse a trait::name(...) call starting at start_pos.
+        Parse a skill::name(...) call starting at start_pos.
 
-        Returns (end_pos, trait_name, json_object_expr, accessor_path) or None if parse fails.
+        Returns (end_pos, skill_name, json_object_expr, accessor_path) or None if parse fails.
         accessor_path is a JSON path like '$.label' or '' if no accessor.
         """
-        # Match trait::name pattern
-        match = re.match(r'trait::(\w+)\s*\(', sql[start_pos:], re.IGNORECASE)
+        # Match skill::name pattern
+        match = re.match(r'skill::(\w+)\s*\(', sql[start_pos:], re.IGNORECASE)
         if not match:
             return None
 
-        trait_name = match.group(1)
+        skill_name = match.group(1)
         paren_start = start_pos + match.end() - 1  # Position of (
 
         # Find matching closing paren
@@ -1783,18 +1783,18 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
         end_pos = pos
 
         # Parse args into json_object expression
-        json_obj_expr = _parse_trait_args(trait_name, args_str)
+        json_obj_expr = _parse_skill_args(skill_name, args_str)
 
         # Check for accessor chain after the closing paren
         accessor_end, accessor_path = parse_accessor_chain(sql, end_pos)
         if accessor_path:
             end_pos = accessor_end
 
-        return (end_pos, trait_name, json_obj_expr, accessor_path)
+        return (end_pos, skill_name, json_obj_expr, accessor_path)
 
-    def _parse_trait_args(trait_name: str, args_str: str) -> str:
+    def _parse_skill_args(skill_name: str, args_str: str) -> str:
         """
-        Parse trait arguments and generate json_object() expression.
+        Parse skill arguments and generate json_object() expression.
 
         Handles:
         - Empty: '' → '{}'
@@ -1805,8 +1805,8 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
         if not args_str:
             return "'{}'"
 
-        # Get trait's parameter names for positional mapping
-        param_names = _get_trait_params(trait_name)
+        # Get skill's parameter names for positional mapping
+        param_names = _get_skill_params(skill_name)
 
         # Parse arguments (handle nested parens and strings)
         args = _split_args(args_str)
@@ -1887,35 +1887,35 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
 
         return args
 
-    # Find and replace all trait::name() patterns
+    # Find and replace all skill::name() patterns
     result = []
     last_end = 0
 
-    # Find all occurrences of trait::
-    pattern = re.compile(r'trait::', re.IGNORECASE)
+    # Find all occurrences of skill::
+    pattern = re.compile(r'skill::', re.IGNORECASE)
 
     for match in pattern.finditer(query):
         start = match.start()
 
-        # Try to parse the full trait::name(...) call
-        parsed = parse_trait_call(query, start)
+        # Try to parse the full skill::name(...) call
+        parsed = parse_skill_call(query, start)
 
         if parsed:
-            end_pos, trait_name, json_obj_expr, accessor_path = parsed
+            end_pos, skill_name, json_obj_expr, accessor_path = parsed
 
             # Add everything before this match
             result.append(query[last_end:start])
 
             # Generate the rewritten expression
             if accessor_path:
-                # Scalar extraction mode - use trait_json() which returns JSON content directly
-                # (trait() returns a file path for read_json_auto, which doesn't work with json_extract_string)
-                trait_call = f"trait_json('{trait_name}', {json_obj_expr})"
-                result.append(f"json_extract_string({trait_call}, '{accessor_path}')")
+                # Scalar extraction mode - use skill_json() which returns JSON content directly
+                # (skill() returns a file path for read_json_auto, which doesn't work with json_extract_string)
+                skill_call = f"skill_json('{skill_name}', {json_obj_expr})"
+                result.append(f"json_extract_string({skill_call}, '{accessor_path}')")
             else:
-                # Table mode - use trait() which returns file path (read_json_auto added later by _rewrite_trait_function)
-                trait_call = f"trait('{trait_name}', {json_obj_expr})"
-                result.append(trait_call)
+                # Table mode - use skill() which returns file path (read_json_auto added later by _rewrite_skill_function)
+                skill_call = f"skill('{skill_name}', {json_obj_expr})"
+                result.append(skill_call)
 
             last_end = end_pos
 
@@ -1925,30 +1925,30 @@ def _rewrite_trait_namespace_syntax(query: str) -> str:
     return ''.join(result)
 
 
-def _rewrite_trait_block_syntax(query: str) -> str:
+def _rewrite_skill_block_syntax(query: str) -> str:
     """
-    Rewrite TRAIT name ... END block syntax to trait() function calls.
+    Rewrite SKILL name ... END block syntax to skill() function calls.
 
     Supports multi-line parameter specification:
-        SELECT * FROM TRAIT say
+        SELECT * FROM SKILL say
           text = 'Hello from SQL'
           voice_id = 'abc123'
         END
 
     Becomes:
-        SELECT * FROM trait('say', json_object('text', 'Hello from SQL', 'voice_id', 'abc123'))
+        SELECT * FROM skill('say', json_object('text', 'Hello from SQL', 'voice_id', 'abc123'))
 
     Also supports single-line:
-        SELECT * FROM TRAIT list_traits END
+        SELECT * FROM SKILL list_skills END
     """
-    # Quick check - if no TRAIT keyword, skip
-    if 'TRAIT ' not in query.upper():
+    # Quick check - if no SKILL keyword, skip
+    if 'SKILL ' not in query.upper():
         return query
 
-    # Pattern to match TRAIT name ... END blocks
-    # TRAIT followed by trait name, then params until END
+    # Pattern to match SKILL name ... END blocks
+    # SKILL followed by skill name, then params until END
     pattern = re.compile(
-        r'\bTRAIT\s+(\w+)\s*(.*?)\s*\bEND\b',
+        r'\bSKILL\s+(\w+)\s*(.*?)\s*\bEND\b',
         re.IGNORECASE | re.DOTALL
     )
 
@@ -1990,47 +1990,47 @@ def _rewrite_trait_block_syntax(query: str) -> str:
         return f"json_object({', '.join(json_parts)})"
 
     def replacer(match):
-        trait_name = match.group(1)
+        skill_name = match.group(1)
         params_str = match.group(2)
 
         json_obj_expr = parse_block_params(params_str)
-        return f"trait('{trait_name}', {json_obj_expr})"
+        return f"skill('{skill_name}', {json_obj_expr})"
 
     return pattern.sub(replacer, query)
 
 
-def _rewrite_trait_function(query: str) -> str:
+def _rewrite_skill_function(query: str) -> str:
     """
-    Rewrite trait() function calls to wrap in read_json_auto() for table output.
+    Rewrite skill() function calls to wrap in read_json_auto() for table output.
 
-    The trait() function is a universal caller for any registered trait/tool.
+    The skill() function is a universal caller for any registered skill/tool.
     It returns JSON that needs read_json_auto() to become a table.
 
     SQL Usage:
-        SELECT * FROM trait('say', json_object('text', 'Hello world'))
+        SELECT * FROM skill('say', json_object('text', 'Hello world'))
 
     Becomes:
-        SELECT * FROM read_json_auto(trait('say', json_object('text', 'Hello world')))
+        SELECT * FROM read_json_auto(skill('say', json_object('text', 'Hello world')))
 
     With LATERAL:
-        SELECT t.id, r.* FROM messages t, LATERAL trait('say', json_object('text', t.content)) r
+        SELECT t.id, r.* FROM messages t, LATERAL skill('say', json_object('text', t.content)) r
 
     Becomes:
-        SELECT t.id, r.* FROM messages t, LATERAL read_json_auto(trait('say', json_object('text', t.content))) r
+        SELECT t.id, r.* FROM messages t, LATERAL read_json_auto(skill('say', json_object('text', t.content))) r
 
-    The function detects trait() in FROM clauses and wraps appropriately.
+    The function detects skill() in FROM clauses and wraps appropriately.
     Does NOT wrap if:
     - Already inside read_json_auto()
     - Already inside json_extract_string() (scalar extraction via dot accessor)
     """
-    # Quick check - if no trait( in query, skip
-    if 'trait(' not in query.lower():
+    # Quick check - if no skill( in query, skip
+    if 'skill(' not in query.lower():
         return query
 
-    # Find all positions where we have FROM/LATERAL/JOIN/comma followed by trait(
+    # Find all positions where we have FROM/LATERAL/JOIN/comma followed by skill(
     # and wrap with read_json_auto() if not already wrapped
     pattern = re.compile(
-        r'((?:FROM|LATERAL|JOIN)\s+|,\s*)(trait\s*\()',
+        r'((?:FROM|LATERAL|JOIN)\s+|,\s*)(skill\s*\()',
         re.IGNORECASE
     )
 
@@ -2046,7 +2046,7 @@ def _rewrite_trait_function(query: str) -> str:
         if 'read_json_auto(' in lookback or 'json_extract_string(' in lookback:
             continue
 
-        # Find the matching closing paren for trait(
+        # Find the matching closing paren for skill(
         paren_count = 1
         pos = match.end()
 
@@ -2062,12 +2062,12 @@ def _rewrite_trait_function(query: str) -> str:
             continue
 
         # pos now points just after the closing )
-        trait_call = query[match.start(2):pos]
+        skill_call = query[match.start(2):pos]
 
         # Add everything before this match
         result.append(query[last_end:match.start()])
         # Add the wrapped version
-        result.append(f"{prefix}read_json_auto({trait_call})")
+        result.append(f"{prefix}read_json_auto({skill_call})")
         last_end = pos
 
     # Add remaining content
@@ -2193,40 +2193,40 @@ WHERE title MEANS 'happened during the day'
 GROUP BY county
 ```
 
-## trait:: Namespace Syntax
+## skill:: Namespace Syntax
 
 ```sql
 -- Table mode: returns all columns as a table
-SELECT * FROM trait::sql_search('bigfoot sightings')
+SELECT * FROM skill::sql_search('bigfoot sightings')
 
 -- With named parameters
-SELECT * FROM trait::sql_search(query := 'bigfoot', use_smart := true)
+SELECT * FROM skill::sql_search(query := 'bigfoot', use_smart := true)
 ```
 
-## trait:: Dot Accessor (Scalar Extraction)
+## skill:: Dot Accessor (Scalar Extraction)
 
 ```sql
--- Extract single field from trait result
+-- Extract single field from skill result
 SELECT
   title,
-  trait::local_sentiment(title).label as sentiment,
-  trait::local_sentiment(title).score as confidence
+  skill::local_sentiment(title).label as sentiment,
+  skill::local_sentiment(title).score as confidence
 FROM articles
 
 -- Array index accessor
-SELECT trait::list_tables(schema := 'public')[0] as first_table
+SELECT skill::list_tables(schema := 'public')[0] as first_table
 
 -- Chained accessor for nested results
-SELECT trait::api_call(endpoint := '/users').data[0].name as first_user
+SELECT skill::api_call(endpoint := '/users').data[0].name as first_user
 
 -- Use in WHERE clause
 SELECT * FROM products
-WHERE trait::local_sentiment(description).label = 'POSITIVE'
+WHERE skill::local_sentiment(description).label = 'POSITIVE'
 
 -- Combine with other semantic operators
 SELECT
   title,
-  trait::local_sentiment(title).label as sentiment
+  skill::local_sentiment(title).label as sentiment
 FROM articles
 WHERE title MEANS 'technology news'
 ORDER BY title RELEVANCE TO 'AI breakthroughs'

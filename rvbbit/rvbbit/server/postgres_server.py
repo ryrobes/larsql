@@ -5943,15 +5943,15 @@ class ClientConnection:
                 # Format data for LLM
                 formatted_data = format_for_llm(result_df, max_rows=100)
 
-                # Call analysis via trait (uses sql_analyze cascade)
+                # Call analysis via skill (uses sql_analyze cascade)
                 print(f"[{session_id}] 🤖 Analysis job {job_id} calling cascade...")
                 try:
-                    from ..trait_registry import get_trait
-                    analyze_trait = get_trait('sql_analyze')
+                    from ..skill_registry import get_skill
+                    analyze_skill = get_skill('sql_analyze')
 
-                    if analyze_trait:
+                    if analyze_skill:
                         # Pass session/caller context for proper observability
-                        analysis_result = analyze_trait(
+                        analysis_result = analyze_skill(
                             prompt=prompt,
                             query=query,
                             data=formatted_data,
@@ -5965,14 +5965,14 @@ class ClientConnection:
                         else:
                             analysis_text = str(analysis_result)
                     else:
-                        # Fallback: run cascade directly if trait not registered
+                        # Fallback: run cascade directly if skill not registered
                         from ..runner import run_cascade
                         from ..config import get_config
                         import os as os_module
                         cfg = get_config()
                         cascade_path = os_module.path.join(cfg.root_dir, 'cascades', 'sql_analyze.yaml')
 
-                        print(f"[{session_id}] ⚠️  sql_analyze trait not found, running cascade directly")
+                        print(f"[{session_id}] ⚠️  sql_analyze skill not found, running cascade directly")
 
                         cascade_result = run_cascade(
                             cascade_path,

@@ -19,7 +19,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
     - Current path (if absolute or exists)
     - RVBBIT_ROOT/path (if relative)
     - RVBBIT_ROOT/examples/path
-    - RVBBIT_ROOT/traits/path
+    - RVBBIT_ROOT/skills/path
     - RVBBIT_ROOT/cascades/path
 
     Args:
@@ -46,7 +46,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
         search_dirs = [
             Path(config.root_dir),  # RVBBIT_ROOT
             Path(config.examples_dir),  # RVBBIT_ROOT/examples
-            Path(config.traits_dir),  # RVBBIT_ROOT/traits
+            Path(config.skills_dir),  # RVBBIT_ROOT/skills
             Path(config.cascades_dir),  # RVBBIT_ROOT/cascades
         ]
 
@@ -58,7 +58,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
                 break
 
         if not resolved_path:
-            # Also try just joining with RVBBIT_ROOT for paths like "traits/foo.yaml"
+            # Also try just joining with RVBBIT_ROOT for paths like "skills/foo.yaml"
             candidate = Path(config.root_dir) / path
             if candidate.exists():
                 resolved_path = candidate

@@ -32,5 +32,5 @@ cells:
 
     Confirm it''s ready for publication.'
   name: publish
-  traits:
+  skills:
   - set_state

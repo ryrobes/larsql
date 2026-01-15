@@ -24,7 +24,7 @@ cells:
     Suggest a valid query format.
 
     '
-  traits: []
+  skills: []
 - name: spawn_and_wait
   instructions: 'Input validated successfully!
 
@@ -39,7 +39,7 @@ cells:
     Description: ''Waiting for async producer to complete processing''
 
     '
-  traits:
+  skills:
   - await_signal
   async_cascades:
   - ref: signal_producer_delayed.json
@@ -54,7 +54,7 @@ cells:
     The async producer may have encountered issues. Suggest troubleshooting steps.
 
     '
-  traits: []
+  skills: []
 - name: process_signal_data
   tool: python:windlass.demo_tools.transform_data
   inputs:
@@ -71,14 +71,14 @@ cells:
   - handle_process_error
 - name: handle_empty
   instructions: No data to process from signal. This is unexpected.
-  traits: []
+  skills: []
 - name: handle_process_error
   instructions: 'Processing failed: {{ state.last_deterministic_error }}
 
     Diagnose the issue.
 
     '
-  traits: []
+  skills: []
 - name: generate_report
   instructions: 'Generate a comprehensive report of this hybrid signal roundtrip:
 
@@ -109,4 +109,4 @@ cells:
     4. Overall workflow status
 
     '
-  traits: []
+  skills: []

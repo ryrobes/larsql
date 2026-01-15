@@ -59,7 +59,7 @@ cells:
         - Suggest chart type alternatives if appropriate'
       mutate: true
       steps: 2
-  traits:
+  skills:
   - create_vega_lite
   - create_plotly
 - context:
@@ -79,4 +79,4 @@ cells:
   name: finalize
   rules:
     max_turns: 1
-  traits: []
+  skills: []

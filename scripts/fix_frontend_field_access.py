@@ -19,18 +19,18 @@ def fix_field_accesses(content: str) -> str:
         # .candidates → .candidates
         (r'(\w+)\.candidates\b', r'\1.candidates'),
 
-        # .tackle → .traits
-        (r'(\w+)\.tackle\b', r'\1.traits'),
+        # .tackle → .skills
+        (r'(\w+)\.tackle\b', r'\1.skills'),
 
         # String literals in object keys
         (r'["\']cells["\']\s*:', '"cells":'),
         (r'["\']candidates["\']\s*:', '"candidates":'),
-        (r'["\']tackle["\']\s*:', '"traits":'),
+        (r'["\']tackle["\']\s*:', '"skills":'),
 
         # Object destructuring with quotes
         (r'\["cells"\]', '["cells"]'),
         (r'\["candidates"\]', '["candidates"]'),
-        (r'\["tackle"\]', '["traits"]'),
+        (r'\["tackle"\]', '["skills"]'),
 
         # Common patterns
         (r'cell_name', 'cell_name'),

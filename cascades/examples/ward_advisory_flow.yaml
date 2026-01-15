@@ -27,5 +27,5 @@ cells:
     Review what you wrote and note any improvements that could be made based on the
     ward feedback.'
   name: review
-  traits:
+  skills:
   - set_state

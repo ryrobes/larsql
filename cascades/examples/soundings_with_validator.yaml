@@ -17,5 +17,5 @@ cells:
     factor: 3
     mutate: false
     validator: code_execution_validator
-  traits:
+  skills:
   - run_code

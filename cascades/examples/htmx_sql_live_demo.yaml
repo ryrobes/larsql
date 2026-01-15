@@ -10,7 +10,7 @@ inputs_schema:
 cells:
 - name: discover_and_create
   model: anthropic/claude-sonnet-4.5
-  traits:
+  skills:
   - sql_search
   - list_sql_connections
   - create_artifact

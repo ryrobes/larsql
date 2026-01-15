@@ -14,4 +14,4 @@ cells:
   name: research
   rules:
     max_turns: 1
-  traits: []
+  skills: []

@@ -13,7 +13,7 @@ cells:
   name: start_session
   rules:
     max_turns: 1
-  traits:
+  skills:
   - rabbitize_start
 - handoffs:
   - complete_goal
@@ -38,7 +38,7 @@ cells:
     max_turns: 15
     retry_instructions: 'The goal was not accomplished yet. Keep navigating to achieve:
       {{ input.goal }}'
-  traits:
+  skills:
   - rabbitize_execute
   - rabbitize_extract
   - route_to
@@ -46,5 +46,5 @@ cells:
   name: complete_goal
   rules:
     max_turns: 1
-  traits:
+  skills:
   - rabbitize_close

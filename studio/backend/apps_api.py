@@ -1348,7 +1348,7 @@ def get_cascade_dirs() -> List[Path]:
     root = Path(get_config().root_dir)
 
     dirs = []
-    for subdir in ['cascades', 'examples', 'traits']:
+    for subdir in ['cascades', 'examples', 'skills']:
         path = root / subdir
         if path.exists():
             dirs.append(path)

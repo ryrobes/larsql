@@ -12,7 +12,7 @@ cells:
   name: explicit_confirmation
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -30,7 +30,7 @@ cells:
   name: explicit_rating
   rules:
     max_turns: 2
-  traits:
+  skills:
   - ask_human
 - context:
     from:
@@ -48,4 +48,4 @@ cells:
   name: result
   rules:
     max_turns: 1
-  traits: []
+  skills: []

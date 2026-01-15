@@ -6,7 +6,7 @@ and generates rewrite tests for each operator pattern. No LLM calls - pure synta
 
 Test Coverage:
 - All built-in operators in cascades/semantic_sql/
-- User-defined operators in traits/ with sql_function metadata
+- User-defined operators in skills/ with sql_function metadata
 - Multiple calling shapes per operator (infix, function, aggregate)
 - Argument variations (optional params, different arities)
 
@@ -32,7 +32,7 @@ def discover_sql_cascades() -> List[Dict[str, Any]]:
 
     Scans:
     - cascades/semantic_sql/ (built-in operators)
-    - traits/**/*.cascade.yaml (user-defined operators)
+    - skills/**/*.cascade.yaml (user-defined operators)
 
     Returns:
         List of cascade metadata dicts with:
@@ -52,7 +52,7 @@ def discover_sql_cascades() -> List[Dict[str, Any]]:
     # Scan directories
     search_paths = [
         Path(config.cascades_dir) / "semantic_sql",
-        Path(config.traits_dir),
+        Path(config.skills_dir),
     ]
 
     for base_path in search_paths:

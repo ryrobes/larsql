@@ -36,6 +36,6 @@ cells:
     evaluator_instructions: You are an expert Data Viz engineer - please evaluate
       this chart - if it might be useful, does it say anything, does it tell a story?
     factor: 3
-  traits:
+  skills:
   - create_vega_lite
   - create_plotly

@@ -7,7 +7,7 @@ import './CascadeBrowserModal.css';
  *
  * Displays files from multiple directories:
  * - Examples
- * - Tools (Traits)
+ * - Tools (Skills)
  * - Cascades
  * - Playground (scratchpad)
  *
@@ -18,7 +18,7 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState(new Set(['examples', 'traits']));
+  const [expandedCategories, setExpandedCategories] = useState(new Set(['examples', 'skills']));
   const [selectedFile, setSelectedFile] = useState(null);
 
   // Fetch file list on mount - use Studio's /list endpoint

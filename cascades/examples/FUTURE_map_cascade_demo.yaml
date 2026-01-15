@@ -35,7 +35,7 @@ cells:
   - name: process_customers
     tool: map_cascade  # NEW: Dedicated mapping tool
     inputs:
-      cascade: "traits/customer_analytics.yaml"
+      cascade: "skills/customer_analytics.yaml"
 
       # Array to map over - each item spawns one cascade
       map_over: |
@@ -116,10 +116,10 @@ cells:
       - Churn risk insights
       - Recommended actions
 
-    traits: []
+    skills: []
 
 ---
-# traits/customer_analytics.yaml (referenced above)
+# skills/customer_analytics.yaml (referenced above)
 cascade_id: customer_analytics
 description: Analyze single customer metrics
 
@@ -159,4 +159,4 @@ cells:
         "recommendations": ["action1", "action2"]
       }
 
-    traits: []
+    skills: []

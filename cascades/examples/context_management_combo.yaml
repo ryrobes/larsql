@@ -21,7 +21,7 @@ cells:
   name: research_with_ttl
   rules:
     max_turns: 3
-  traits:
+  skills:
   - sql_search
 - context:
     from:
@@ -35,7 +35,7 @@ cells:
     What exactly do you see from the previous phase? Be specific about the context
     you have access to.'
   name: build_query
-  traits:
+  skills:
   - sql_query
 - context:
     from:
@@ -50,4 +50,4 @@ cells:
 
     Describe your full context visibility.'
   name: analyze
-  traits: []
+  skills: []

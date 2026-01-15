@@ -18,4 +18,4 @@ cells:
     - moonshotai/kimi-linear-48b-a3b-instruct
     - google/gemini-2.5-flash-lite
     - qwen/qwen-plus-2025-07-28
-  traits: []
+  skills: []

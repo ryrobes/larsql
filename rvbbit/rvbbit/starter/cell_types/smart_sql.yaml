@@ -16,5 +16,5 @@ template:
     {{ input.question }}
 
     Use the available schema to write correct SQL.
-  traits:
+  skills:
     - smart_sql_run

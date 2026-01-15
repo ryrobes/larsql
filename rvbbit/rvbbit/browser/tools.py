@@ -1,5 +1,5 @@
 """
-RVBBIT trait (tool) registration for browser automation.
+RVBBIT skill (tool) registration for browser automation.
 
 These tools integrate with RVBBIT's cascade system, providing
 browser automation capabilities to LLM agents.
@@ -132,12 +132,12 @@ class HTTPSessionProxy:
 def register_browser_tools():
     """Register browser automation tools with RVBBIT."""
     try:
-        from rvbbit import register_trait
+        from rvbbit import register_skill
     except ImportError:
-        logger.warning("Could not import register_trait - tools not registered")
+        logger.warning("Could not import register_skill - tools not registered")
         return
 
-    @register_trait("rabbitize_start")
+    @register_skill("rabbitize_start")
     async def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
         """
         Start a browser session and navigate to URL.
@@ -218,7 +218,7 @@ def register_browser_tools():
             "artifacts": result["artifacts"],
         }
 
-    @register_trait("control_browser")
+    @register_skill("control_browser")
     async def control_browser(command: Union[str, list], include_metadata: bool = False) -> dict:
         """
         Execute a browser command (click, type, scroll, navigate).
@@ -325,7 +325,7 @@ def register_browser_tools():
 
         return response
 
-    @register_trait("rabbitize_extract")
+    @register_skill("rabbitize_extract")
     async def rabbitize_extract() -> dict:
         """
         Extract page content as markdown and element coordinates.
@@ -390,7 +390,7 @@ def register_browser_tools():
             "images": [screenshot] if screenshot else [],
         }
 
-    @register_trait("rabbitize_screenshot")
+    @register_skill("rabbitize_screenshot")
     async def rabbitize_screenshot() -> dict:
         """
         Take a screenshot of the current browser state.
@@ -420,7 +420,7 @@ def register_browser_tools():
             "images": [screenshot] if screenshot else [],
         }
 
-    @register_trait("rabbitize_close")
+    @register_skill("rabbitize_close")
     async def rabbitize_close() -> dict:
         """
         Close the browser session and finalize recordings.
@@ -470,7 +470,7 @@ def register_browser_tools():
             "metrics": metadata,
         }
 
-    @register_trait("browser")
+    @register_skill("browser")
     async def browser(
         url: str,
         commands: Optional[list] = None,

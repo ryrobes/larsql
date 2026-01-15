@@ -8,7 +8,7 @@ inputs_schema:
   task_description: What task to monitor
 cells:
 - name: setup_monitoring
-  traits:
+  skills:
   - request_decision
   - route_to
   handoffs:
