@@ -4903,7 +4903,7 @@ def hotornot_take_group(session_id, cell_name):
         result = get_take_group(session_id, cell_name)
 
         if not result:
-            return jsonify({'error': 'Sounding group not found'}), 404
+            return jsonify({'error': 'Take group not found'}), 404
 
         return jsonify(result)
 

@@ -34,7 +34,7 @@ class ExecutionNode:
     parent_id: Optional[str] = None
     children: List['ExecutionNode'] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    # Sounding/Reforge specific
+    # Take/Reforge specific
     take_index: Optional[int] = None
     is_winner: bool = False
     reforge_step: Optional[int] = None
@@ -816,7 +816,7 @@ def format_cell_progress_indicator(cell_progress: dict) -> str:
     - Stage: pre_ward, main, post_ward
     - Turn: T1/3 (turn 1 of 3)
     - Attempt: A2/5 (attempt 2 of 5 for validation)
-    - Sounding: S2/5⚖ (take 2 of 5, currently evaluating)
+    - Take: S2/5⚖ (take 2 of 5, currently evaluating)
     - Reforge: R1/3 (reforge step 1 of 3)
     - Ward: 🛡️grammar_check (current ward being run)
     - Tool: 🔧run_code (current tool being called)
@@ -849,7 +849,7 @@ def format_cell_progress_indicator(cell_progress: dict) -> str:
     if current_attempt > 0 and max_attempts > 1:
         parts.append(f"A{current_attempt}/{max_attempts}")
 
-    # Sounding info
+    # Take info
     take_info = cell_progress.get("take")
     if take_info:
         take_idx = take_info.get("index")
@@ -3433,7 +3433,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
                 # Show checkpoint type indicator
                 if checkpoint_type == "take_eval":
-                    cp_label = "⏸️ HITL Sounding Eval"
+                    cp_label = "⏸️ HITL Take Eval"
                 else:
                     cp_label = "⏸️ HITL Input"
 

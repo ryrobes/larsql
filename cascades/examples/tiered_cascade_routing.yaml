@@ -23,9 +23,9 @@ cells:
       \  -- Reuse existing cascade\n        json_object(\n          'customer_id',\
       \ CAST(customer_id AS VARCHAR),\n          'customer_name', customer_name,\n\
       \          'email', customer_name || '@example.com'\n        )\n      )\n\n\
-      \    -- Enterprise tier: Premium cascade with soundings!\n    WHEN 'enterprise'\
-      \ THEN\n      rvbbit_run(\n        'skills/fraud_assessment_with_soundings.yaml',\
-      \  -- 3 soundings!\n        json_object(\n          'customer_id', customer_id,\n\
+      \    -- Enterprise tier: Premium cascade with takes!\n    WHEN 'enterprise'\
+      \ THEN\n      rvbbit_run(\n        'skills/fraud_assessment_with_takes.yaml',\
+      \  -- 3 takes!\n        json_object(\n          'customer_id', customer_id,\n\
       \          'customer_name', customer_name,\n          'transaction_amount',\
       \ transaction_amount\n        )\n      )\n\n  END as analysis_json\n\nFROM _load_customers\n"
     materialize: 'true'

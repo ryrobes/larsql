@@ -1,11 +1,11 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     RVBBIT QUICKSTART GUIDE
+     LARS QUICKSTART GUIDE
      Complete end-to-end setup in 10 minutes
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h1 id="top">Quickstart Guide</h1>
 <p class="section-intro">
-  Get RVBBIT running with a working database, sample data, and both the Web UI and SQL server in under 10 minutes.
+  Get LARS running with a working database, sample data, and both the Web UI and SQL server in under 10 minutes.
   This guide assumes you have <strong>Docker</strong> and <strong>Python 3.10+</strong> installed.
 </p>
 
@@ -13,7 +13,7 @@
   <strong>On This Page</strong>
   <ul>
     <li><a href="#prerequisites">Prerequisites</a></li>
-    <li><a href="#installation">Step 1: Install RVBBIT</a></li>
+    <li><a href="#installation">Step 1: Install LARS</a></li>
     <li><a href="#clickhouse">Step 2: Start ClickHouse</a></li>
     <li><a href="#workspace">Step 3: Initialize Workspace</a></li>
     <li><a href="#environment">Step 4: Configure Environment</a></li>
@@ -78,18 +78,18 @@ source venv/bin/activate  <span class="cmt"># On Windows: venv\Scripts\activate<
      STEP 1: INSTALLATION
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="installation">Step 1: Install RVBBIT</h2>
+<h2 id="installation">Step 1: Install LARS</h2>
 
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Install RVBBIT</span>
-pip install rvbbit
+    <pre><span class="cmt"># Install LARS</span>
+pip install larsql
 
 <span class="cmt"># Verify installation</span>
-rvbbit --version</pre>
+lars --version</pre>
   </div>
 </div>
 
@@ -101,17 +101,17 @@ rvbbit --version</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># With local HuggingFace model support</span>
-pip install rvbbit[local-models]
+pip install larsql[local-models]
 
 <span class="cmt"># With browser automation (Playwright)</span>
-pip install rvbbit[browser]
+pip install larsql[browser]
 
 <span class="cmt"># Everything</span>
-pip install rvbbit[all]
+pip install larsql[all]
 
 <span class="cmt"># From source (for development)</span>
-git clone https://github.com/ryrobes/rvbbit
-cd rvbbit/rvbbit
+git clone https://github.com/ryrobes/lars
+cd lars/lars
 pip install -e .</pre>
   </div>
 </div>
@@ -123,7 +123,7 @@ pip install -e .</pre>
 <h2 id="clickhouse">Step 2: Start ClickHouse</h2>
 
 <p>
-  RVBBIT requires <strong>ClickHouse</strong> for logging, analytics, and vector search.
+  LARS requires <strong>ClickHouse</strong> for logging, analytics, and vector search.
   There is no embedded fallback - this is a required dependency.
 </p>
 
@@ -135,17 +135,17 @@ pip install -e .</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start ClickHouse with persistent storage</span>
-docker run -d --name rvbbit-clickhouse \
+docker run -d --name lars-clickhouse \
   -p 9000:9000 \
   -p 8123:8123 \
-  -e CLICKHOUSE_USER=rvbbit \
-  -e CLICKHOUSE_PASSWORD=rvbbit \
+  -e CLICKHOUSE_USER=lars \
+  -e CLICKHOUSE_PASSWORD=lars \
   -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
-  -v rvbbit-clickhouse-data:/var/lib/clickhouse \
+  -v lars-clickhouse-data:/var/lib/clickhouse \
   clickhouse/clickhouse-server:latest
 
 <span class="cmt"># Verify it's running</span>
-docker ps | grep rvbbit-clickhouse</pre>
+docker ps | grep lars-clickhouse</pre>
   </div>
 </div>
 
@@ -163,14 +163,14 @@ docker ps | grep rvbbit-clickhouse</pre>
 <span class="key">services</span>:
   <span class="key">clickhouse</span>:
     <span class="key">image</span>: <span class="str">clickhouse/clickhouse-server:24.3-alpine</span>
-    <span class="key">container_name</span>: <span class="str">rvbbit-clickhouse</span>
+    <span class="key">container_name</span>: <span class="str">lars-clickhouse</span>
     <span class="key">ports</span>:
       - <span class="str">"8123:8123"</span>   <span class="cmt"># HTTP interface</span>
       - <span class="str">"9000:9000"</span>   <span class="cmt"># Native protocol</span>
     <span class="key">environment</span>:
-      - <span class="str">CLICKHOUSE_DB=rvbbit</span>
-      - <span class="str">CLICKHOUSE_USER=rvbbit</span>
-      - <span class="str">CLICKHOUSE_PASSWORD=rvbbit</span>
+      - <span class="str">CLICKHOUSE_DB=lars</span>
+      - <span class="str">CLICKHOUSE_USER=lars</span>
+      - <span class="str">CLICKHOUSE_PASSWORD=lars</span>
       - <span class="str">CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1</span>
     <span class="key">volumes</span>:
       - <span class="str">clickhouse-data:/var/lib/clickhouse</span>
@@ -201,7 +201,7 @@ docker compose ps</pre>
 <div class="info-box note">
   <div class="info-box-title">ClickHouse Ports</div>
   <ul>
-    <li><strong>9000</strong>: Native protocol (used by RVBBIT)</li>
+    <li><strong>9000</strong>: Native protocol (used by LARS)</li>
     <li><strong>8123</strong>: HTTP interface (useful for debugging)</li>
   </ul>
 </div>
@@ -212,7 +212,7 @@ docker compose ps</pre>
 
 <h2 id="workspace">Step 3: Initialize Workspace</h2>
 
-<p>Create a new RVBBIT workspace with starter files and examples:</p>
+<p>Create a new LARS workspace with starter files and examples:</p>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -220,14 +220,14 @@ docker compose ps</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Create and enter your project directory</span>
-mkdir my-rvbbit-project
-cd my-rvbbit-project
+mkdir my-lars-project
+cd my-lars-project
 
-<span class="cmt"># Initialize RVBBIT workspace</span>
-rvbbit init .
+<span class="cmt"># Initialize LARS workspace</span>
+lars init .
 
 <span class="cmt"># Or create in a new directory</span>
-rvbbit init my-project</pre>
+lars init my-project</pre>
   </div>
 </div>
 
@@ -238,7 +238,7 @@ rvbbit init my-project</pre>
     <span class="code-block-lang">Directory Structure</span>
   </div>
   <div class="code-block-content">
-    <pre>my-rvbbit-project/
+    <pre>my-lars-project/
 ├── .env.example          <span class="cmt"># Environment template</span>
 ├── .gitignore            <span class="cmt"># Git ignore patterns</span>
 ├── README.md             <span class="cmt"># Quick reference</span>
@@ -293,8 +293,8 @@ nano .env  <span class="cmt"># or: code .env, vim .env</span></pre>
 <span class="cmt"># REQUIRED: Workspace Root</span>
 <span class="cmt"># =============================================================================</span>
 <span class="cmt"># IMPORTANT: Set this to your project directory's absolute path!</span>
-<span class="cmt"># All RVBBIT data (logs, states, databases) is stored relative to this path.</span>
-<span class="key">RVBBIT_ROOT</span>=<span class="str">/home/user/my-rvbbit-project</span>
+<span class="cmt"># All LARS data (logs, states, databases) is stored relative to this path.</span>
+<span class="key">LARS_ROOT</span>=<span class="str">/home/user/my-lars-project</span>
 
 <span class="cmt"># =============================================================================</span>
 <span class="cmt"># REQUIRED: LLM Provider</span>
@@ -306,34 +306,34 @@ nano .env  <span class="cmt"># or: code .env, vim .env</span></pre>
 <span class="cmt"># REQUIRED: ClickHouse Database</span>
 <span class="cmt"># =============================================================================</span>
 <span class="cmt"># These match the Docker setup from Step 2</span>
-<span class="key">RVBBIT_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
-<span class="key">RVBBIT_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
-<span class="key">RVBBIT_CLICKHOUSE_DATABASE</span>=<span class="str">rvbbit</span>
-<span class="key">RVBBIT_CLICKHOUSE_USER</span>=<span class="str">rvbbit</span>
-<span class="key">RVBBIT_CLICKHOUSE_PASSWORD</span>=<span class="str">rvbbit</span>
+<span class="key">LARS_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
+<span class="key">LARS_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
+<span class="key">LARS_CLICKHOUSE_DATABASE</span>=<span class="str">lars</span>
+<span class="key">LARS_CLICKHOUSE_USER</span>=<span class="str">lars</span>
+<span class="key">LARS_CLICKHOUSE_PASSWORD</span>=<span class="str">lars</span>
 
 <span class="cmt"># =============================================================================</span>
 <span class="cmt"># OPTIONAL: Model Customization</span>
 <span class="cmt"># =============================================================================</span>
-<span class="cmt"># RVBBIT_DEFAULT_MODEL=anthropic/claude-sonnet-4</span>
-<span class="cmt"># RVBBIT_DEFAULT_EMBED_MODEL=qwen/qwen3-embedding-8b</span></pre>
+<span class="cmt"># LARS_DEFAULT_MODEL=anthropic/claude-sonnet-4</span>
+<span class="cmt"># LARS_DEFAULT_EMBED_MODEL=qwen/qwen3-embedding-8b</span></pre>
   </div>
 </div>
 
 <div class="info-box warning">
-  <div class="info-box-title">RVBBIT_ROOT is Important!</div>
+  <div class="info-box-title">LARS_ROOT is Important!</div>
   <p>
-    <code>RVBBIT_ROOT</code> should point to your project directory's <strong>absolute path</strong>.
+    <code>LARS_ROOT</code> should point to your project directory's <strong>absolute path</strong>.
     All data files (logs, session databases, states) are stored relative to this path.
-    If you run RVBBIT from different directories without setting this, your data may end up scattered.
+    If you run LARS from different directories without setting this, your data may end up scattered.
   </p>
 </div>
 
 <div class="info-box tip">
   <div class="info-box-title">Automatic Setup</div>
   <p>
-    When you run <code>rvbbit init</code>, it automatically creates a <code>.env</code> file with
-    <code>RVBBIT_ROOT</code> set to the workspace's absolute path. Just add your API key!
+    When you run <code>lars init</code>, it automatically creates a <code>.env</code> file with
+    <code>LARS_ROOT</code> set to the workspace's absolute path. Just add your API key!
   </p>
 </div>
 
@@ -341,7 +341,7 @@ nano .env  <span class="cmt"># or: code .env, vim .env</span></pre>
   <div class="info-box-title">Keep Your API Key Secret</div>
   <p>
     Never commit your <code>.env</code> file to version control. The <code>.gitignore</code>
-    created by <code>rvbbit init</code> already excludes it.
+    created by <code>lars init</code> already excludes it.
   </p>
 </div>
 
@@ -359,7 +359,7 @@ nano .env  <span class="cmt"># or: code .env, vim .env</span></pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Initialize the database schema</span>
-rvbbit db init</pre>
+lars db init</pre>
   </div>
 </div>
 
@@ -374,9 +374,9 @@ rvbbit db init</pre>
 CLICKHOUSE SCHEMA INITIALIZATION
 ============================================================
 
-Connection: clickhouse://rvbbit:***@localhost:9000/rvbbit
+Connection: clickhouse://lars:***@localhost:9000/lars
 
-Creating database 'rvbbit' if not exists...
+Creating database 'lars' if not exists...
 ✓ Database ready
 
 Running migrations...
@@ -403,7 +403,7 @@ Running migrations...
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Run diagnostics</span>
-rvbbit doctor</pre>
+lars doctor</pre>
   </div>
 </div>
 
@@ -414,12 +414,12 @@ rvbbit doctor</pre>
     <span class="code-block-lang">Output</span>
   </div>
   <div class="code-block-content">
-    <pre>RVBBIT Health Check
+    <pre>LARS Health Check
 ==================
 
 ✓ Python version: 3.12.0
-✓ RVBBIT version: 0.9.0
-✓ Workspace: /home/user/my-rvbbit-project
+✓ LARS version: 0.9.0
+✓ Workspace: /home/user/my-lars-project
 ✓ ClickHouse connection: OK
 ✓ OpenRouter API key: configured
 ✓ Default model: x-ai/grok-4.1-fast
@@ -442,10 +442,10 @@ All checks passed!</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Run with default input</span>
-rvbbit run cascades/examples/hello_world.yaml
+lars run cascades/examples/hello_world.yaml
 
 <span class="cmt"># Run with custom input</span>
-rvbbit run cascades/examples/hello_world.yaml --input '{"name": "Alice"}'</pre>
+lars run cascades/examples/hello_world.yaml --input '{"name": "Alice"}'</pre>
   </div>
 </div>
 
@@ -494,7 +494,7 @@ rvbbit run cascades/examples/hello_world.yaml --input '{"name": "Alice"}'</pre>
 <h2 id="sample-data">Step 8: Connect Sample Data</h2>
 
 <p>
-  RVBBIT can query any database through SQL connections. Let's set up a sample DuckDB
+  LARS can query any database through SQL connections. Let's set up a sample DuckDB
   database with data you can immediately query.
 </p>
 
@@ -622,7 +622,7 @@ EOF</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Crawl and index all connected databases</span>
-rvbbit sql crawl</pre>
+lars sql crawl</pre>
   </div>
 </div>
 
@@ -643,10 +643,10 @@ rvbbit sql crawl</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Query the sample database</span>
-rvbbit sql query "SELECT * FROM sample_data.customers"
+lars sql query "SELECT * FROM sample_data.customers"
 
 <span class="cmt"># Join tables</span>
-rvbbit sql query "
+lars sql query "
 SELECT
   c.name,
   c.company,
@@ -659,7 +659,7 @@ ORDER BY total_spent DESC
 "
 
 <span class="cmt"># Use semantic SQL (if you have embedding model configured)</span>
-rvbbit sql query "
+lars sql query "
 SELECT * FROM sample_data.products
 WHERE description ABOUT 'enterprise features'
 "</pre>
@@ -672,7 +672,7 @@ WHERE description ABOUT 'enterprise features'
 
 <h2 id="studio">Step 9: Launch Studio Web UI</h2>
 
-<p>Start the RVBBIT Studio web interface:</p>
+<p>Start the LARS Studio web interface:</p>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -680,10 +680,10 @@ WHERE description ABOUT 'enterprise features'
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start Studio (production mode)</span>
-rvbbit serve studio --port 5050
+lars serve studio --port 5050
 
 <span class="cmt"># Or development mode (hot reload)</span>
-rvbbit serve studio --dev</pre>
+lars serve studio --dev</pre>
   </div>
 </div>
 
@@ -736,7 +736,7 @@ rvbbit serve studio --dev</pre>
 <h2 id="sql-server">Step 10: Start SQL Server</h2>
 
 <p>
-  RVBBIT includes a PostgreSQL wire-protocol server that lets you connect any SQL client
+  LARS includes a PostgreSQL wire-protocol server that lets you connect any SQL client
   (DBeaver, DataGrip, psql, etc.) and use Semantic SQL operators.
 </p>
 
@@ -746,10 +746,10 @@ rvbbit serve studio --dev</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start the PostgreSQL-compatible SQL server</span>
-rvbbit serve sql --port 15432
+lars serve sql --port 15432
 
 <span class="cmt"># Or shorter alias</span>
-rvbbit sql server --port 15432</pre>
+lars sql server --port 15432</pre>
   </div>
 </div>
 
@@ -761,7 +761,7 @@ rvbbit sql server --port 15432</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Connect with psql</span>
-psql -h localhost -p 15432 -U rvbbit -d rvbbit
+psql -h localhost -p 15432 -U lars -d lars
 
 <span class="cmt"># Run a query</span>
 SELECT * FROM sample_data.customers LIMIT 5;</pre>
@@ -790,15 +790,15 @@ SELECT * FROM sample_data.customers LIMIT 5;</pre>
     </tr>
     <tr>
       <td>Database</td>
-      <td><code>rvbbit</code></td>
+      <td><code>lars</code></td>
     </tr>
     <tr>
       <td>Username</td>
-      <td><code>rvbbit</code></td>
+      <td><code>lars</code></td>
     </tr>
     <tr>
       <td>Password</td>
-      <td><code>rvbbit</code></td>
+      <td><code>lars</code></td>
     </tr>
   </tbody>
 </table>
@@ -806,7 +806,7 @@ SELECT * FROM sample_data.customers LIMIT 5;</pre>
 <div class="info-box tip">
   <div class="info-box-title">Semantic SQL in Any Client</div>
   <p>
-    Once connected, you can use RVBBIT's semantic operators directly in your favorite SQL client:
+    Once connected, you can use LARS's semantic operators directly in your favorite SQL client:
   </p>
   <div class="code-block">
     <div class="code-block-content">
@@ -853,8 +853,8 @@ SELECT * FROM sample_data.customers LIMIT 5;</pre>
 <div class="info-box note">
   <div class="info-box-title">Persistent Sessions</div>
   <p>
-    When you use a custom database name, RVBBIT creates a DuckDB file at
-    <code>$RVBBIT_ROOT/session_dbs/{database_name}.duckdb</code>.
+    When you use a custom database name, LARS creates a DuckDB file at
+    <code>$LARS_ROOT/session_dbs/{database_name}.duckdb</code>.
     Any tables you create will persist across connections and server restarts.
   </p>
 </div>
@@ -865,13 +865,13 @@ SELECT * FROM sample_data.customers LIMIT 5;</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Ephemeral session - tables lost on disconnect</span>
-psql -h localhost -p 15432 -U rvbbit -d memory
+psql -h localhost -p 15432 -U lars -d memory
 
 <span class="cmt"># Persistent session - tables saved to session_dbs/myproject.duckdb</span>
-psql -h localhost -p 15432 -U rvbbit -d myproject
+psql -h localhost -p 15432 -U lars -d myproject
 
 <span class="cmt"># Another persistent session - tables saved to session_dbs/analytics.duckdb</span>
-psql -h localhost -p 15432 -U rvbbit -d analytics
+psql -h localhost -p 15432 -U lars -d analytics
 
 <span class="cmt"># In persistent sessions, tables survive across connections:</span>
 CREATE TABLE metrics (id INT, value FLOAT);
@@ -886,7 +886,7 @@ INSERT INTO metrics VALUES (1, 42.5);
 
 <h2 id="next-steps">Next Steps</h2>
 
-<p>You now have a fully working RVBBIT installation. Here's what to explore next:</p>
+<p>You now have a fully working LARS installation. Here's what to explore next:</p>
 
 <div class="feature-grid">
   <div class="feature-item">
@@ -943,7 +943,7 @@ INSERT INTO metrics VALUES (1, 42.5);
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># SQL analysis cascade</span>
-rvbbit run cascades/examples/sql_demo.yaml
+lars run cascades/examples/sql_demo.yaml
 
 <span class="cmt"># List all examples</span>
 ls cascades/examples/</pre>
@@ -966,10 +966,10 @@ ls cascades/examples/</pre>
 docker ps | grep clickhouse
 
 <span class="cmt"># Check logs</span>
-docker logs rvbbit-clickhouse
+docker logs lars-clickhouse
 
 <span class="cmt"># Restart if needed</span>
-docker restart rvbbit-clickhouse</pre>
+docker restart lars-clickhouse</pre>
     </div>
   </div>
 </div>
@@ -979,7 +979,7 @@ docker restart rvbbit-clickhouse</pre>
   <p>Run database initialization:</p>
   <div class="code-block">
     <div class="code-block-content">
-      <pre>rvbbit db init</pre>
+      <pre>lars db init</pre>
     </div>
   </div>
 </div>
@@ -998,7 +998,7 @@ cat .env | grep OPENROUTER
 export OPENROUTER_API_KEY=sk-or-v1-your-key
 
 <span class="cmt"># Verify</span>
-rvbbit doctor</pre>
+lars doctor</pre>
     </div>
   </div>
 </div>
@@ -1014,13 +1014,13 @@ rvbbit doctor</pre>
 lsof -i :9000
 
 <span class="cmt"># Use a different port for ClickHouse</span>
-docker run -d --name rvbbit-ch \
+docker run -d --name lars-ch \
   -p 9001:9000 \
-  -e RVBBIT_CLICKHOUSE_PORT=9001 \
+  -e LARS_CLICKHOUSE_PORT=9001 \
   clickhouse/clickhouse-server:latest
 
 <span class="cmt"># Use a different port for Studio</span>
-rvbbit serve studio --port 5051</pre>
+lars serve studio --port 5051</pre>
     </div>
   </div>
 </div>
@@ -1033,20 +1033,20 @@ rvbbit serve studio --port 5051</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Health check</span>
-rvbbit doctor
+lars doctor
 
 <span class="cmt"># Database status</span>
-rvbbit db status
+lars db status
 
 <span class="cmt"># List sessions</span>
-rvbbit sessions list
+lars sessions list
 
 <span class="cmt"># Query ClickHouse directly</span>
-rvbbit sql query "SELECT COUNT(*) FROM all_data"
+lars sql query "SELECT COUNT(*) FROM all_data"
 
 <span class="cmt"># View help</span>
-rvbbit --help
-rvbbit run --help</pre>
+lars --help
+lars run --help</pre>
   </div>
 </div>
 
@@ -1054,6 +1054,6 @@ rvbbit run --help</pre>
   <div class="info-box-title">Need More Help?</div>
   <p>
     Check out the full documentation or open an issue on
-    <a href="https://github.com/ryrobes/rvbbit/issues" target="_blank">GitHub</a>.
+    <a href="https://github.com/ryrobes/lars/issues" target="_blank">GitHub</a>.
   </p>
 </div>

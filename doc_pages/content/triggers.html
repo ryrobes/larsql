@@ -246,16 +246,16 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># List triggers for a cascade</span>
-rvbbit triggers list cascades/etl.yaml
+lars triggers list cascades/etl.yaml
 
 <span class="cmt"># Export as cron format (for external schedulers)</span>
-rvbbit triggers export cascades/etl.yaml --format cron
+lars triggers export cascades/etl.yaml --format cron
 
 <span class="cmt"># Export as Kubernetes CronJob</span>
-rvbbit triggers export cascades/etl.yaml --format kubernetes --image rvbbit:latest
+lars triggers export cascades/etl.yaml --format kubernetes --image lars:latest
 
 <span class="cmt"># Check a specific trigger</span>
-rvbbit triggers check cascades/etl.yaml on_data_ready</pre>
+lars triggers check cascades/etl.yaml on_data_ready</pre>
   </div>
 </div>
 
@@ -270,10 +270,10 @@ rvbbit triggers check cascades/etl.yaml on_data_ready</pre>
     <span class="code-block-lang bash">Cron Export</span>
   </div>
   <div class="code-block-content">
-    <pre>$ rvbbit triggers export cascades/daily_report.yaml --format cron
+    <pre>$ lars triggers export cascades/daily_report.yaml --format cron
 
 <span class="cmt"># Output:</span>
-0 6 * * * cd /path/to/project && rvbbit run cascades/daily_report.yaml --input '{"mode": "full"}'</pre>
+0 6 * * * cd /path/to/project && lars run cascades/daily_report.yaml --input '{"mode": "full"}'</pre>
   </div>
 </div>
 
@@ -293,18 +293,18 @@ spec:
       template:
         spec:
           containers:
-          - name: rvbbit
-            image: rvbbit:latest
-            command: [<span class="str">"rvbbit"</span>, <span class="str">"run"</span>, <span class="str">"cascades/daily_report.yaml"</span>]</pre>
+          - name: lars
+            image: lars:latest
+            command: [<span class="str">"lars"</span>, <span class="str">"run"</span>, <span class="str">"cascades/daily_report.yaml"</span>]</pre>
   </div>
 </div>
 
 <div class="info-box">
   <div class="info-box-title">Trigger Execution</div>
   <p>
-    Triggers define <em>when</em> to run, but RVBBIT doesn't include a built-in scheduler daemon.
+    Triggers define <em>when</em> to run, but LARS doesn't include a built-in scheduler daemon.
     Use the CLI exports to integrate with your existing scheduler (cron, Kubernetes, Airflow, etc.)
-    or run <code>rvbbit serve watcher</code> for polling-based sensors.
+    or run <code>lars serve watcher</code> for polling-based sensors.
   </p>
 </div>
 

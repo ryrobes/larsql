@@ -1,10 +1,10 @@
-cascade_id: soundings_fanout_demo
-description: 'Demonstrates fan-out pattern: each sounding processes a different item
+cascade_id: takes_fanout_demo
+description: 'Demonstrates fan-out pattern: each take processes a different item
   from an array, then aggregates results'
 inputs_schema:
   topics: Array of topics to research in parallel
 cells:
-- instructions: 'You are researching the topic: **{{ input.topics[sounding_index]
+- instructions: 'You are researching the topic: **{{ input.topics[take_index]
     }}**
 
 

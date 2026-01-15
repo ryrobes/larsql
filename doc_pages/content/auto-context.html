@@ -1,6 +1,6 @@
 <h1>Auto-Context Deep Dive</h1>
 <p class="lead">
-  A comprehensive guide to RVBBIT's intelligent context management system.
+  A comprehensive guide to LARS's intelligent context management system.
   Understand exactly how context is selected, compressed, and optimized at every level.
 </p>
 
@@ -8,7 +8,7 @@
   <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Key Design Principle</div>
   <p>
     <strong>NEVER drop information</strong> - originals are always stored and available for injection.
-    Auto-context compresses what the LLM <em>sees</em>, not what RVBBIT <em>stores</em>.
+    Auto-context compresses what the LLM <em>sees</em>, not what LARS <em>stores</em>.
     This means you can always retrieve full history if needed. A message that might get culled in one turn might be fully re-included in a subsequent turn if it seems relevant.
   </p>
 </div>
@@ -29,7 +29,7 @@
 <h2 id="overview">System Overview</h2>
 
 <p>
-  RVBBIT's auto-context system operates at two distinct levels, each solving different problems:
+  LARS's auto-context system operates at two distinct levels, each solving different problems:
 </p>
 
 <div class="feature-grid">
@@ -663,7 +663,7 @@ for r in results:
     <li><strong>Long-running cells</strong> with many turns (research, iteration)</li>
     <li><strong>loop_until patterns</strong> with multiple retry attempts</li>
     <li><strong>Tool-heavy workflows</strong> with large result payloads</li>
-    <li><strong>Takes/soundings</strong> that multiply context across branches</li>
+    <li><strong>Takes/takes</strong> that multiply context across branches</li>
   </ul>
   <p>
     For simple, short cascades, overhead may exceed savings. The system is disabled by default

@@ -1,5 +1,5 @@
 cascade_id: multi_model_cost_aware
-description: Phase 2 Multi-Model Soundings - Cost-aware evaluation balancing quality
+description: Phase 2 Multi-Model Takes - Cost-aware evaluation balancing quality
   and cost
 inputs_schema:
   task: The task to complete with cost-quality tradeoff

@@ -1,6 +1,6 @@
 <h1>Memory System</h1>
 <p class="lead">
-  Understanding RVBBIT's distinctive approach to agent memory: retrieval is an explicit tool call,
+  Understanding LARS's distinctive approach to agent memory: retrieval is an explicit tool call,
   not automatic context injection.
 </p>
 
@@ -29,20 +29,20 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  RVBBIT implements a distinctive approach to agent memory: <strong>memory retrieval is an explicit tool call</strong>,
+  LARS implements a distinctive approach to agent memory: <strong>memory retrieval is an explicit tool call</strong>,
   not automatic context injection. This philosophy provides control, transparency, and cost management while
   enabling agents to access persistent knowledge when needed.
 </p>
 
 <p>
   Unlike frameworks that automatically inject "relevant" memories into every prompt (often flooding context
-  with marginally useful information), RVBBIT treats memory as a resource the agent can query when it
+  with marginally useful information), LARS treats memory as a resource the agent can query when it
   determines memory would be helpful.
 </p>
 
 <h2 id="three-tiers">The Three Memory Tiers</h2>
 
-<p>RVBBIT provides three distinct memory systems, each serving different persistence and access patterns:</p>
+<p>LARS provides three distinct memory systems, each serving different persistence and access patterns:</p>
 
 <div class="feature-grid">
   <div class="feature-card">
@@ -157,7 +157,7 @@ result = sql_patterns_memory(
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang">$RVBBIT_ROOT/memories/</span>
+    <span class="code-block-lang">$LARS_ROOT/memories/</span>
   </div>
   <div class="code-block-content">
     <pre>memories/
@@ -288,7 +288,7 @@ research_query(<span class="str">"SELECT * FROM competitors ORDER BY pricing"</s
     <tr>
       <th>Aspect</th>
       <th>Auto-Injection (Other Frameworks)</th>
-      <th>Tool-Based (RVBBIT)</th>
+      <th>Tool-Based (LARS)</th>
     </tr>
   </thead>
   <tbody>
@@ -385,7 +385,7 @@ research_query(<span class="str">"SELECT * FROM competitors ORDER BY pricing"</s
 <h2 id="rag">RAG System (Document Memory)</h2>
 
 <p>
-  For static document collections, RVBBIT provides cell-level RAG configuration:
+  For static document collections, LARS provides cell-level RAG configuration:
 </p>
 
 <div class="code-block">

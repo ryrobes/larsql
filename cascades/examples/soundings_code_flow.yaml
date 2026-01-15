@@ -1,5 +1,5 @@
-cascade_id: code_solution_with_soundings
-description: Uses soundings to generate multiple code solutions and pick the best
+cascade_id: code_solution_with_takes
+description: Uses takes to generate multiple code solutions and pick the best
   one
 inputs_schema:
   problem: Description of the coding problem to solve

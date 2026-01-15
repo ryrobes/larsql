@@ -32,6 +32,6 @@ cells:
     rules:
       max_turns: 2
     skills: []
-description: Demonstrates soundings with REWRITE mutation mode - LLM rewrites the prompt to discover new formulations
+description: Demonstrates takes with REWRITE mutation mode - LLM rewrites the prompt to discover new formulations
 inputs_schema:
   theme: The theme for the story

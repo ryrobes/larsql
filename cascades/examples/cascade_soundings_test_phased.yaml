@@ -1,5 +1,5 @@
 cascade_id: multi_approach_problem_solver_phased
-description: Demonstrates cascade-level soundings - runs entire cascade multiple times
+description: Demonstrates cascade-level takes - runs entire cascade multiple times
   with different approaches and picks best
 inputs_schema:
   problem: The problem to solve

@@ -23,13 +23,13 @@ cells:
       1. A title (on its own line, prefixed with "Title:")
       2. A one-sentence description
 
-      Be creative and unique. This is take {{ sounding_index + 1 }} of {{ sounding_factor }}.
+      Be creative and unique. This is take {{ take_index + 1 }} of {{ take_factor }}.
     rules:
       max_turns: 1
     takes:
       factor: 3
       evaluator_instructions: |
-        Evaluate these {{ soundings | length }} ideas about "{{ input.topic }}".
+        Evaluate these {{ takes | length }} ideas about "{{ input.topic }}".
 
         Pick the MOST creative and well-structured idea.
 

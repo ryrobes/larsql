@@ -1,5 +1,5 @@
-cascade_id: soundings_aggregate_demo
-description: Demonstrates aggregate mode for soundings - combines all outputs instead
+cascade_id: takes_aggregate_demo
+description: Demonstrates aggregate mode for takes - combines all outputs instead
   of picking one winner
 inputs_schema:
   topic: The topic to brainstorm ideas about

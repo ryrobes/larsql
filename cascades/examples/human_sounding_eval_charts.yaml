@@ -1,6 +1,6 @@
-cascade_id: human_sounding_eval_charts
-description: Test cascade for human evaluation of soundings with chart generation
-  - each sounding creates a different chart visualization
+cascade_id: human_take_eval_charts
+description: Test cascade for human evaluation of takes with chart generation
+  - each take creates a different chart visualization
 inputs_schema:
   data_topic: A topic to visualize with data (e.g. 'monthly sales', 'user growth')
 cells:

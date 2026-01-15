@@ -222,14 +222,14 @@ cells:
     Document: {{ outputs.reforged_synthesis }}
 
 
-    Sounding {{ sounding_index }} of {{ sounding_factor }}:
+    Take {{ take_index }} of {{ take_factor }}:
 
-    {% if sounding_index == 0 %}
+    {% if take_index == 0 %}
 
     Review from a TECHNICAL perspective - focus on feasibility and implementation
     details.
 
-    {% elif sounding_index == 1 %}
+    {% elif take_index == 1 %}
 
     Review from a BUSINESS perspective - focus on ROI, market fit, and scalability.
 

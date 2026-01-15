@@ -13,7 +13,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 
-class SoundingAnalyzer:
+class TakeAnalyzer:
     """Analyzes take winners to suggest prompt improvements."""
 
     def __init__(self, data_dir: str | None = None):
@@ -459,7 +459,7 @@ def analyze_and_suggest(
     Returns:
         Full analysis with suggestions
     """
-    analyzer = SoundingAnalyzer()
+    analyzer = TakeAnalyzer()
     analysis = analyzer.analyze_cascade(cascade_file, min_runs=min_runs)
 
     if not analysis["suggestions"]:

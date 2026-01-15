@@ -1055,7 +1055,7 @@ def _request_decision_via_checkpoint(
             pass
 
     if take_index is not None:
-        console.print(f"[cyan]Creating checkpoint for Sounding {take_index}[/cyan]")
+        console.print(f"[cyan]Creating checkpoint for Take {take_index}[/cyan]")
     else:
         console.print(f"[dim]Creating checkpoint (no take context detected)[/dim]")
 
@@ -1099,7 +1099,7 @@ def _request_decision_via_checkpoint(
         timeout_seconds=timeout_seconds
     )
 
-    take_label = f" [cyan](Sounding {take_index})[/cyan]" if take_index is not None else ""
+    take_label = f" [cyan](Take {take_index})[/cyan]" if take_index is not None else ""
     console.print(f"\n[bold magenta]🔀 Decision point{take_label}:[/bold magenta] {question}")
     if context:
         console.print(f"[dim]{context[:200]}{'...' if len(context) > 200 else ''}[/dim]")

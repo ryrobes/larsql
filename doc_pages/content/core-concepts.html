@@ -1,6 +1,6 @@
 <h1>Core Concepts</h1>
 <p class="lead">
-  Understanding the fundamental building blocks of RVBBIT: Cascades, Cells,
+  Understanding the fundamental building blocks of LARS: Cascades, Cells,
   State, Context, and the execution model.
 </p>
 
@@ -211,7 +211,7 @@
 
 <h2 id="state-echo">State & Echo</h2>
 <p>
-  RVBBIT maintains execution state through the <strong>Echo</strong> object,
+  LARS maintains execution state through the <strong>Echo</strong> object,
   which tracks state, history, lineage, and metadata throughout a session.
 </p>
 
@@ -264,7 +264,7 @@
 
 <h2 id="context">Context System</h2>
 <p>
-  RVBBIT implements a two-level context management system to balance
+  LARS implements a two-level context management system to balance
   information availability with token efficiency.
 </p>
 
@@ -329,7 +329,7 @@
 
 <h2 id="execution">Execution Flow</h2>
 <p>
-  Understanding how RVBBIT executes a cascade is key to building effective workflows.
+  Understanding how LARS executes a cascade is key to building effective workflows.
 </p>
 
 <h3>Execution Phases</h3>
@@ -369,7 +369,7 @@
   <li><strong>Trace ID</strong>: Unique per execution node, includes take/reforge suffixes:
     <ul>
       <li><code>session_123</code> - Main session</li>
-      <li><code>session_123_sounding_0</code> - First take</li>
+      <li><code>session_123_take_0</code> - First take</li>
       <li><code>session_123_reforge1_0</code> - First reforge attempt</li>
       <li><code>session_123_subcascade_analyze</code> - Sub-cascade named "analyze"</li>
     </ul>
@@ -378,7 +378,7 @@
 
 <h2 id="terminology">Nautical Terminology</h2>
 <p>
-  RVBBIT uses a nautical theme for core concepts. Here's a quick reference:
+  LARS uses a nautical theme for core concepts. Here's a quick reference:
 </p>
 
 <table>
@@ -407,7 +407,7 @@
     </tr>
     <tr>
       <td><strong>Takes</strong></td>
-      <td>Parallel execution attempts (formerly "Soundings")</td>
+      <td>Parallel execution attempts (formerly "Takes")</td>
     </tr>
     <tr>
       <td><strong>Reforge</strong></td>
@@ -443,9 +443,9 @@
 <div class="info-box tip">
   <div class="info-box-title">Why Nautical Terms?</div>
   <p>
-    The nautical theme reflects RVBBIT's philosophy: workflows are journeys through
+    The nautical theme reflects LARS's philosophy: workflows are journeys through
     uncertain waters, with tools as tackle, validation as protective wards,
-    and parallel attempts as soundings to find the best route.
+    and parallel attempts as takes to find the best route.
   </p>
 </div>
 

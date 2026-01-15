@@ -4,7 +4,7 @@ Human-in-the-Loop (HITL) Checkpoint Management for RVBBIT.
 This module handles cascade suspension and resume for human input.
 Checkpoints can be:
 1. Cell-level input: Pause after a cell for human confirmation/input
-2. Sounding evaluation: Present multiple take attempts for human selection
+2. Take evaluation: Present multiple take attempts for human selection
 
 Key features:
 - Persistent storage (survives server restart)
@@ -36,7 +36,7 @@ class CheckpointStatus(str, Enum):
 class CheckpointType(str, Enum):
     """Type of checkpoint."""
     CELL_INPUT = "cell_input"      # Cell-level HITL config
-    TAKE_EVAL = "take_eval"  # Sounding evaluation
+    TAKE_EVAL = "take_eval"  # Take evaluation
     FREE_TEXT = "free_text"          # Free-form text input (ask_human tool)
     CHOICE = "choice"                # Single choice selection (radio buttons)
     MULTI_CHOICE = "multi_choice"    # Multiple choice selection (checkboxes)

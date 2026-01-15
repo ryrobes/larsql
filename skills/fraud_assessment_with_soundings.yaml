@@ -1,9 +1,9 @@
-# Fraud Assessment with Soundings
+# Fraud Assessment with Takes
 # This cascade runs 3 parallel fraud analyses and picks the best one
 # Perfect for windlass_cascade_udf() testing!
 
-cascade_id: fraud_assessment_with_soundings
-description: Multi-step fraud assessment with soundings (best of 3)
+cascade_id: fraud_assessment_with_takes
+description: Multi-step fraud assessment with takes (best of 3)
 
 inputs_schema:
   customer_id: "Customer ID to assess"
@@ -34,7 +34,7 @@ cells:
 
       Be thorough in your analysis. Return ONLY valid JSON.
 
-    soundings:
+    takes:
       factor: 3  # Run 3 parallel analyses
       mode: evaluate
       evaluator_instructions: |

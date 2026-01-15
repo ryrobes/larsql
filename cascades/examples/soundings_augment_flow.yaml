@@ -1,5 +1,5 @@
 cascade_id: creative_writing_augment_mutations
-description: Demonstrates soundings with AUGMENT mutation mode - prepends known text
+description: Demonstrates takes with AUGMENT mutation mode - prepends known text
   patterns to test specific approaches
 inputs_schema:
   theme: The theme for the story

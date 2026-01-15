@@ -1,6 +1,6 @@
 <h1>Tools (Skills)</h1>
 <p class="lead">
-  RVBBIT's unified tool system supports six types of tools, all registered in
+  LARS's unified tool system supports six types of tools, all registered in
   a single skill registry. From Python functions to HuggingFace Spaces -
   everything is a first-class tool.
 </p>
@@ -29,7 +29,7 @@
     <span class="code-block-lang python">Skill Registry Pattern</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_skill, get_skill
+    <pre><span class="kw">from</span> lars <span class="kw">import</span> register_skill, get_skill
 
 <span class="cmt"># Register a tool</span>
 register_skill(<span class="str">"my_tool"</span>, my_function)
@@ -99,7 +99,7 @@ tool = get_skill(<span class="str">"my_tool"</span>)</pre>
     <span class="code-block-lang python">Python Tool</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="kw">from</span> rvbbit <span class="kw">import</span> register_skill
+    <pre><span class="kw">from</span> lars <span class="kw">import</span> register_skill
 
 <span class="kw">def</span> <span class="fn">analyze_sentiment</span>(text: <span class="fn">str</span>) -> <span class="fn">dict</span>:
     <span class="str">"""
@@ -194,13 +194,13 @@ register_skill(<span class="str">"analyze_sentiment"</span>, analyze_sentiment)<
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Check status and loaded models</span>
-rvbbit models local status
+lars models local status
 
 <span class="cmt"># Preload a model</span>
-rvbbit models local load distilbert/distilbert-base-uncased-finetuned-sst-2-english --task text-classification
+lars models local load distilbert/distilbert-base-uncased-finetuned-sst-2-english --task text-classification
 
 <span class="cmt"># Export tool definition</span>
-rvbbit models local export MODEL --task TASK -o tool.yaml</pre>
+lars models local export MODEL --task TASK -o tool.yaml</pre>
   </div>
 </div>
 
@@ -254,19 +254,19 @@ rvbbit models local export MODEL --task TASK -o tool.yaml</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># List all tools</span>
-rvbbit tools list
+lars tools list
 
 <span class="cmt"># Search tools by keyword</span>
-rvbbit tools search <span class="str">"sql query"</span>
+lars tools search <span class="str">"sql query"</span>
 
 <span class="cmt"># Semantic tool search</span>
-rvbbit tools find <span class="str">"parse PDF documents"</span>
+lars tools find <span class="str">"parse PDF documents"</span>
 
 <span class="cmt"># View tool usage stats</span>
-rvbbit tools usage --days <span class="num">7</span>
+lars tools usage --days <span class="num">7</span>
 
 <span class="cmt"># Sync tool registry</span>
-rvbbit tools sync --force</pre>
+lars tools sync --force</pre>
   </div>
 </div>
 

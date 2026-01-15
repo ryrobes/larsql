@@ -82,7 +82,7 @@ class HumanEvalSelectionMode(str, Enum):
     TOURNAMENT = "tournament"  # Pairwise elimination
 
 
-class HumanSoundingEvalConfig(BaseModel):
+class HumanTakeEvalConfig(BaseModel):
     """
     Configuration for human evaluation of takes.
 
@@ -277,7 +277,7 @@ class TakesConfig(BaseModel):
 
     # Human evaluation options (HITL)
     evaluator: Optional[Literal["human", "hybrid"]] = None  # Use human or hybrid (LLM prefilter + human) evaluation
-    human_eval: Optional[HumanSoundingEvalConfig] = None  # Human eval configuration
+    human_eval: Optional[HumanTakeEvalConfig] = None  # Human eval configuration
     llm_prefilter: Optional[int] = None  # For hybrid mode: LLM picks top N, human picks winner
     llm_prefilter_instructions: Optional[str] = None  # Instructions for LLM prefilter
 

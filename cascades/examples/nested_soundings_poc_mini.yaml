@@ -1,7 +1,7 @@
-cascade_id: nested_soundings_poc_mini
-description: 'Mini version of nested soundings POC for quick testing.
+cascade_id: nested_takes_poc_mini
+description: 'Mini version of nested takes POC for quick testing.
 
-  Demonstrates cascade-level soundings containing phase-level soundings
+  Demonstrates cascade-level takes containing phase-level takes
 
   with multi-model execution and iterative reforge.
 
@@ -68,9 +68,9 @@ cells:
     Create a comprehensive plan to address this challenge.
 
 
-    {% if is_sounding %}
+    {% if is_take %}
 
-    (Sounding {{ sounding_index }}/{{ sounding_factor }} - explore a unique angle!)
+    (Take {{ take_index }}/{{ take_factor }} - explore a unique angle!)
 
     {% endif %}
 

@@ -1,5 +1,5 @@
 cascade_id: comprehensive_test
-description: 'Comprehensive test: deterministic data, LLM soundings, validation, decision
+description: 'Comprehensive test: deterministic data, LLM takes, validation, decision
   points, artifacts'
 inputs_schema:
   analysis_type: Type of analysis (sales/customer/product)
@@ -69,9 +69,9 @@ cells:
       \ 2000, 5000, float('inf')],\n                    labels=['Low', 'Medium', 'High'])\n\
       \nresult = df\n# Auto-creates temp table: _enrich_data\n"
   handoffs:
-    - analyze_with_soundings
+    - analyze_with_takes
 # LLM analysis with progress display (non-blocking during takes)
-- name: analyze_with_soundings
+- name: analyze_with_takes
   await_input: false  # Don't block - this is a progress display
   hitl: |
     <div class="card">
@@ -156,7 +156,7 @@ cells:
   - set_state
 - handoffs:
   - request_approval
-  instructions: "Validate and refine the business analysis.\n\nAnalysis: {{ outputs.analyze_with_soundings\
+  instructions: "Validate and refine the business analysis.\n\nAnalysis: {{ outputs.analyze_with_takes\
     \ }}\n\nCheck:\n1. Do insights reference actual products from our data? (Laptop,\
     \ Phone, Jacket, Chair, Tablet, Shoes, Desk, Headphones)\n2. Are recommendations\
     \ specific and achievable?\n3. Is the confidence score reasonable given depth\

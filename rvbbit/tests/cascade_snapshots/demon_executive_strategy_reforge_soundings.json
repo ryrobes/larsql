@@ -1,8 +1,8 @@
 {
-  "snapshot_name": "demon_executive_strategy_reforge_soundings",
+  "snapshot_name": "demon_executive_strategy_reforge_takes",
   "description": "Explains itself!",
   "captured_at": "2025-12-02T07:09:13.740249",
-  "session_id": "debug_ui_ae9a0f8f_sounding_0",
+  "session_id": "debug_ui_ae9a0f8f_take_0",
   "cascade_file": "examples/reforge_cascade_strategy.json",
   "input": {},
   "execution": {

@@ -1,5 +1,5 @@
 cascade_id: multi_model_simple
-description: Phase 1 Multi-Model Soundings - Simple round-robin across multiple models
+description: Phase 1 Multi-Model Takes - Simple round-robin across multiple models
 inputs_schema:
   task: The task to complete with multiple models
 cells:

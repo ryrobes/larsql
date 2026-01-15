@@ -1,13 +1,13 @@
 <h1>SQL Connections</h1>
 <p class="lead">
-  Connect RVBBIT to 18+ data sources through DuckDB's federation capabilities. Query PostgreSQL,
+  Connect LARS to 18+ data sources through DuckDB's federation capabilities. Query PostgreSQL,
   BigQuery, Snowflake, S3, MongoDB, and more with a unified SQL interface.
 </p>
 
 <div class="callout callout-info">
   <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Federation, Not ETL</div>
   <p>
-    RVBBIT federates queries across data sources using DuckDB's ATTACH capability. For most sources,
+    LARS federates queries across data sources using DuckDB's ATTACH capability. For most sources,
     data stays where it is—queries are pushed down. For document databases (MongoDB, Cassandra),
     data is materialized into DuckDB for SQL compatibility.
   </p>
@@ -71,7 +71,7 @@
     <span class="code-block-lang bash">CLI</span>
   </div>
   <div class="code-block-content">
-    <pre>rvbbit sql crawl</pre>
+    <pre>lars sql crawl</pre>
   </div>
 </div>
 
@@ -82,7 +82,7 @@
     <span class="code-block-lang bash">CLI</span>
   </div>
   <div class="code-block-content">
-    <pre>rvbbit sql query <span class="str">"SELECT * FROM my_postgres.public.users LIMIT 10"</span></pre>
+    <pre>lars sql query <span class="str">"SELECT * FROM my_postgres.public.users LIMIT 10"</span></pre>
   </div>
 </div>
 
@@ -980,16 +980,16 @@ pip install pymongo pandas</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Basic discovery</span>
-rvbbit sql crawl
+lars sql crawl
 
 <span class="cmt"># With custom session ID</span>
-rvbbit sql crawl --session my_discovery
+lars sql crawl --session my_discovery
 
 <span class="cmt"># With all environment variables</span>
 MONGODB_URI=<span class="str">"mongodb://..."</span> \
 AWS_ACCESS_KEY_ID=<span class="str">"..."</span> \
 AWS_SECRET_ACCESS_KEY=<span class="str">"..."</span> \
-rvbbit sql crawl</pre>
+lars sql crawl</pre>
   </div>
 </div>
 

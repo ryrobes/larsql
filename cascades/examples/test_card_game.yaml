@@ -66,7 +66,7 @@ _playground:
       width: 496
       height: 576
       yaml: "name: llm_phase\ninstructions: |\n  {{ input.prompt }}\nmodel: x-ai/grok-4.1-fast\n\
-        soundings:\n  factor: 3\n  max_parallel: 3\n\n  models:\n    \"anthropic/claude-sonnet-4\"\
+        takes:\n  factor: 3\n  max_parallel: 3\n\n  models:\n    \"anthropic/claude-sonnet-4\"\
         : { factor: 1 }\n    \"openai/gpt-4.1\": { factor: 1 }\n    \"google/gemini-2.5-flash\"\
         : { factor: 1 }\n\n  model_strategy: round_robin\n  mutate: true\n  mutation_mode:\
         \ approach\n\n  evaluator_instructions: |\n    Evaluate these 3 responses.\

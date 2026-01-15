@@ -34,7 +34,7 @@ cells:
   rules:
     max_turns: 10
   instructions: "Analyze / find dataset: {{ input.dataset_name }}\n\n## Workflow (Each\
-    \ Sounding Explores Different Visualizations):\n\n1. **Get Data (you have many\
+    \ Take Explores Different Visualizations):\n\n1. **Get Data (you have many\
     \ tools at your command)\n\n2. **Create a professional and data-dense Dashboard**\n\
     \n3. **Request approval** using request_decision with HTMX:\n   - Show your unique\
     \ visualization\n   - Ask: \"Does this visualization effectively show the data?\"\

@@ -1,6 +1,6 @@
 <h1>AI Providers</h1>
 <p class="lead">
-  RVBBIT supports multiple AI providers out of the box. Use OpenRouter for the broadest model selection,
+  LARS supports multiple AI providers out of the box. Use OpenRouter for the broadest model selection,
   or connect directly to enterprise cloud providers like Google Vertex AI, AWS Bedrock, and Azure OpenAI.
 </p>
 
@@ -21,7 +21,7 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  RVBBIT routes inference requests based on model ID prefixes. Each provider has its own authentication
+  LARS routes inference requests based on model ID prefixes. Each provider has its own authentication
   method and configuration, but the usage pattern is consistent across all providers.
 </p>
 
@@ -94,7 +94,7 @@ ollama/qwen2.5-coder:32b</pre>
 <div class="info-box tip">
   <div class="info-box-title">Why OpenRouter?</div>
   <p>
-    OpenRouter provides the most accurate cost information, which RVBBIT uses for detailed cost analytics.
+    OpenRouter provides the most accurate cost information, which LARS uses for detailed cost analytics.
     It also offers automatic fallbacks and load balancing across providers.
   </p>
 </div>
@@ -110,10 +110,10 @@ ollama/qwen2.5-coder:32b</pre>
 <span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-v1-xxxxxxxxxxxx</span>
 
 <span class="cmt"># Optional: Override default model</span>
-<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span>
+<span class="key">LARS_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span>
 
 <span class="cmt"># Optional: Override base URL (rarely needed)</span>
-<span class="key">RVBBIT_PROVIDER_BASE_URL</span>=<span class="str">https://openrouter.ai/api/v1</span></pre>
+<span class="key">LARS_PROVIDER_BASE_URL</span>=<span class="str">https://openrouter.ai/api/v1</span></pre>
   </div>
 </div>
 
@@ -123,7 +123,7 @@ ollama/qwen2.5-coder:32b</pre>
   <li>Sign up at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></li>
   <li>Create an API key in your dashboard</li>
   <li>Set the <code>OPENROUTER_API_KEY</code> environment variable</li>
-  <li>Run <code>rvbbit models refresh</code> to populate the model catalog</li>
+  <li>Run <code>lars models refresh</code> to populate the model catalog</li>
 </ol>
 
 <h3>Usage</h3>
@@ -170,14 +170,14 @@ ollama/qwen2.5-coder:32b</pre>
   <div class="code-block-content">
     <pre><span class="cmt"># Required: Google Cloud project ID</span>
 <span class="cmt"># Can use any of these (checked in order):</span>
-<span class="key">RVBBIT_VERTEX_PROJECT</span>=<span class="str">my-project-id</span>
+<span class="key">LARS_VERTEX_PROJECT</span>=<span class="str">my-project-id</span>
 <span class="cmt"># or</span>
 <span class="key">VERTEXAI_PROJECT</span>=<span class="str">my-project-id</span>
 <span class="cmt"># or</span>
 <span class="key">GOOGLE_CLOUD_PROJECT</span>=<span class="str">my-project-id</span>
 
 <span class="cmt"># Optional: Region (default: us-central1)</span>
-<span class="key">RVBBIT_VERTEX_LOCATION</span>=<span class="str">us-central1</span>
+<span class="key">LARS_VERTEX_LOCATION</span>=<span class="str">us-central1</span>
 
 <span class="cmt"># Authentication: Service account credentials</span>
 <span class="cmt"># Option 1: Path to JSON file</span>
@@ -191,7 +191,7 @@ ollama/qwen2.5-coder:32b</pre>
 <div class="info-box note">
   <div class="info-box-title">ADC Authentication</div>
   <p>
-    If <code>GOOGLE_APPLICATION_CREDENTIALS</code> is not set, RVBBIT will attempt to use
+    If <code>GOOGLE_APPLICATION_CREDENTIALS</code> is not set, LARS will attempt to use
     Application Default Credentials (ADC). Run <code>gcloud auth application-default login</code>
     to set up ADC locally.
   </p>
@@ -217,7 +217,7 @@ ollama/qwen2.5-coder:32b</pre>
 
 <h3>Available Models</h3>
 
-<p>Run <code>rvbbit models refresh</code> to discover all available Vertex AI models. Common models include:</p>
+<p>Run <code>lars models refresh</code> to discover all available Vertex AI models. Common models include:</p>
 
 <ul>
   <li><code>vertex_ai/gemini-2.5-pro</code> - Flagship model with 1M context</li>
@@ -265,10 +265,10 @@ ollama/qwen2.5-coder:32b</pre>
 <span class="cmt"># or</span>
 <span class="key">AWS_DEFAULT_REGION</span>=<span class="str">us-east-1</span>
 <span class="cmt"># or</span>
-<span class="key">RVBBIT_BEDROCK_REGION</span>=<span class="str">us-east-1</span>
+<span class="key">LARS_BEDROCK_REGION</span>=<span class="str">us-east-1</span>
 
 <span class="cmt"># Optional: Explicitly enable Bedrock</span>
-<span class="key">RVBBIT_BEDROCK_ENABLED</span>=<span class="str">true</span></pre>
+<span class="key">LARS_BEDROCK_ENABLED</span>=<span class="str">true</span></pre>
   </div>
 </div>
 
@@ -307,7 +307,7 @@ ollama/qwen2.5-coder:32b</pre>
 <h3>Available Models</h3>
 
 <p>
-  Bedrock models are discovered dynamically. Run <code>rvbbit models refresh</code> to populate the catalog.
+  Bedrock models are discovered dynamically. Run <code>lars models refresh</code> to populate the catalog.
   Common model families include:
 </p>
 
@@ -346,13 +346,13 @@ ollama/qwen2.5-coder:32b</pre>
     <pre><span class="cmt"># Required: Azure OpenAI API key</span>
 <span class="key">AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
 <span class="cmt"># or</span>
-<span class="key">RVBBIT_AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
+<span class="key">LARS_AZURE_API_KEY</span>=<span class="str">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span>
 
 <span class="cmt"># Required: Azure OpenAI endpoint</span>
 <span class="cmt"># Format: https://&lt;resource-name&gt;.openai.azure.com</span>
 <span class="key">AZURE_API_BASE</span>=<span class="str">https://my-openai-resource.openai.azure.com</span>
 <span class="cmt"># or</span>
-<span class="key">RVBBIT_AZURE_API_BASE</span>=<span class="str">https://my-openai-resource.openai.azure.com</span>
+<span class="key">LARS_AZURE_API_BASE</span>=<span class="str">https://my-openai-resource.openai.azure.com</span>
 
 <span class="cmt"># Optional: API version (default: 2024-10-21)</span>
 <span class="key">AZURE_API_VERSION</span>=<span class="str">2024-10-21</span></pre>
@@ -414,7 +414,7 @@ ollama/qwen2.5-coder:32b</pre>
 <h3>Configuration</h3>
 
 <p>
-  No environment variables required. RVBBIT auto-detects Ollama at <code>localhost:11434</code>.
+  No environment variables required. LARS auto-detects Ollama at <code>localhost:11434</code>.
 </p>
 
 <div class="code-block">
@@ -433,8 +433,8 @@ ollama pull llama3.3:70b
 ollama pull qwen2.5-coder:32b
 ollama pull deepseek-r1:32b
 
-<span class="cmt"># Refresh RVBBIT model catalog</span>
-rvbbit models refresh</pre>
+<span class="cmt"># Refresh LARS model catalog</span>
+lars models refresh</pre>
   </div>
 </div>
 
@@ -469,7 +469,7 @@ rvbbit models refresh</pre>
 <h2 id="model-selection">Model Selection</h2>
 
 <p>
-  RVBBIT provides multiple ways to specify which model to use:
+  LARS provides multiple ways to specify which model to use:
 </p>
 
 <h3>Default Model</h3>
@@ -479,8 +479,8 @@ rvbbit models refresh</pre>
     <span class="code-block-lang bash">Setting Default Model</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Set default for all RVBBIT operations</span>
-<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span></pre>
+    <pre><span class="cmt"># Set default for all LARS operations</span>
+<span class="key">LARS_DEFAULT_MODEL</span>=<span class="str">anthropic/claude-sonnet-4</span></pre>
   </div>
 </div>
 
@@ -533,22 +533,22 @@ rvbbit models refresh</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Refresh model catalog from all providers</span>
-rvbbit models refresh
+lars models refresh
 
 <span class="cmt"># Refresh with parallel verification (faster)</span>
-rvbbit models refresh --workers 20
+lars models refresh --workers 20
 
 <span class="cmt"># List available models</span>
-rvbbit models list
-rvbbit models list --provider vertex_ai
-rvbbit models list --provider bedrock
-rvbbit models list --type text
+lars models list
+lars models list --provider vertex_ai
+lars models list --provider bedrock
+lars models list --type text
 
 <span class="cmt"># Verify a specific model is active</span>
-rvbbit models verify --model-id anthropic/claude-sonnet-4
+lars models verify --model-id anthropic/claude-sonnet-4
 
 <span class="cmt"># Show model statistics</span>
-rvbbit models stats</pre>
+lars models stats</pre>
   </div>
 </div>
 
@@ -573,7 +573,7 @@ rvbbit models stats</pre>
     <tr>
       <td><strong>Vertex AI</strong></td>
       <td><code>vertex_ai/</code></td>
-      <td><code>RVBBIT_VERTEX_PROJECT</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
+      <td><code>LARS_VERTEX_PROJECT</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code></td>
     </tr>
     <tr>
       <td><strong>Bedrock</strong></td>

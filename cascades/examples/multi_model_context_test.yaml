@@ -1,5 +1,5 @@
 cascade_id: multi_model_context_test
-description: Test multi-model soundings with automatic context-based filtering. This
+description: Test multi-model takes with automatic context-based filtering. This
   cascade uses models with different context limits to demonstrate automatic filtering
   of models with insufficient context windows.
 inputs_schema:

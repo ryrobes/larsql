@@ -80,7 +80,7 @@ class ExecutionNode:
     content: str = ""  # Full content for messages
     role: str = ""  # Message role (system, user, assistant, tool)
 
-    # Sounding metadata
+    # Take metadata
     take_index: Optional[int] = None
     is_winner: Optional[bool] = None
 

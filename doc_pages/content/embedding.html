@@ -1,7 +1,7 @@
 <h1>Vector Search & Embedding</h1>
 <p class="lead">
   Index your data with embeddings and perform semantic similarity search.
-  RVBBIT integrates vector search directly into SQL queries.
+  LARS integrates vector search directly into SQL queries.
 </p>
 
 <div class="toc">
@@ -18,7 +18,7 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  RVBBIT's embedding system allows you to:
+  LARS's embedding system allows you to:
 </p>
 
 <ul>
@@ -38,12 +38,12 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt">-- Index a column for vector search</span>
-<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">LARS EMBED</span> articles.content
 <span class="kw">FROM</span> articles
 <span class="kw">WHERE</span> published = <span class="kw">true</span>;
 
 <span class="cmt">-- With custom model and batch size</span>
-<span class="kw">RVBBIT EMBED</span> documents.summary
+<span class="kw">LARS EMBED</span> documents.summary
 <span class="kw">FROM</span> documents
 <span class="kw">WITH</span> (
   model = <span class="str">'qwen/qwen3-embedding-8b'</span>,
@@ -60,16 +60,16 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Check embedding status</span>
-rvbbit embed status
+lars embed status
 
 <span class="cmt"># Run embedding job</span>
-rvbbit embed run --batch-size <span class="num">50</span>
+lars embed run --batch-size <span class="num">50</span>
 
 <span class="cmt"># Preview without executing</span>
-rvbbit embed run --dry-run
+lars embed run --dry-run
 
 <span class="cmt"># Check costs</span>
-rvbbit embed costs</pre>
+lars embed costs</pre>
   </div>
 </div>
 
@@ -139,17 +139,17 @@ rvbbit embed costs</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># View embedding status and statistics</span>
-rvbbit embed status
+lars embed status
 
 <span class="cmt"># Run embedding jobs</span>
-rvbbit embed run --batch-size <span class="num">50</span> --dry-run
-rvbbit embed run
+lars embed run --batch-size <span class="num">50</span> --dry-run
+lars embed run
 
 <span class="cmt"># View embedding costs</span>
-rvbbit embed costs
+lars embed costs
 
 <span class="cmt"># Clear embeddings for a table</span>
-rvbbit embed clear --table articles</pre>
+lars embed clear --table articles</pre>
   </div>
 </div>
 
@@ -161,10 +161,10 @@ rvbbit embed clear --table articles</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Default embedding model</span>
-<span class="key">RVBBIT_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span>
+<span class="key">LARS_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span>
 
 <span class="cmt"># Batch size for embedding jobs</span>
-<span class="key">RVBBIT_EMBED_BATCH_SIZE</span>=<span class="num">50</span></pre>
+<span class="key">LARS_EMBED_BATCH_SIZE</span>=<span class="num">50</span></pre>
   </div>
 </div>
 

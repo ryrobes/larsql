@@ -1,6 +1,6 @@
-cascade_id: map_with_soundings_demo
-description: 'Demonstrates dynamic mapping pattern using soundings with aggregate
-  mode. Three files are processed in parallel, each by a different sounding.
+cascade_id: map_with_takes_demo
+description: 'Demonstrates dynamic mapping pattern using takes with aggregate
+  mode. Three files are processed in parallel, each by a different take.
 
   '
 cells:
@@ -12,11 +12,11 @@ cells:
       ,\n    \"/tmp/sales_mar.csv\"\n  ],\n  \"metadata\": {\n    \"total_files\"\
       : 3,\n    \"file_type\": \"sales_data\"\n  }\n}\n"
 - name: process_file
-  instructions: 'You are processing file {{ sounding_index + 1 }} of {{ sounding_factor
+  instructions: 'You are processing file {{ take_index + 1 }} of {{ take_factor
     }}.
 
 
-    File path: {{ state.output_list_files.files[sounding_index] }}
+    File path: {{ state.output_list_files.files[take_index] }}
 
 
     Your task:
@@ -46,10 +46,10 @@ cells:
     factor: 3
     mode: aggregate
     max_parallel: 3
-    aggregator_instructions: "You have {{ soundings | length }} results from processing\
-      \ files in parallel.\n\nResults:\n{% for sounding in soundings %}\n- Sounding\
-      \ {{ loop.index }}: {{ sounding.output }}\n{% endfor %}\n\nYour task:\n1. Parse\
-      \ each sounding's JSON output\n2. Calculate total sales across all files\n3.\
+    aggregator_instructions: "You have {{ takes | length }} results from processing\
+      \ files in parallel.\n\nResults:\n{% for take in takes %}\n- Take\
+      \ {{ loop.index }}: {{ take.output }}\n{% endfor %}\n\nYour task:\n1. Parse\
+      \ each take's JSON output\n2. Calculate total sales across all files\n3.\
       \ Calculate total row count across all files\n4. Return summary report as JSON:\n\
       {\n  \"total_sales\": sum_of_all,\n  \"total_rows\": sum_of_all_rows,\n  \"\
       files_processed\": 3,\n  \"breakdown\": [\n    {\"file\": \"jan\", \"sales\"\

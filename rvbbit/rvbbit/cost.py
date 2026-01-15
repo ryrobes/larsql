@@ -30,7 +30,7 @@ class CostTracker:
             parent_id: Parent trace node ID
             cell_name: Current cell name
             cascade_id: Cascade identifier
-            take_index: Sounding attempt index (if applicable)
+            take_index: Take attempt index (if applicable)
             pending_message: Optional dict of message data to hold until cost arrives.
                             If provided, message will be logged WITH cost merged in.
                             If None, falls back to old behavior (separate cost_update).

@@ -1,5 +1,5 @@
-cascade_id: creative_writing_with_soundings2
-description: Demonstrates soundings (Tree of Thought) for creative writing
+cascade_id: creative_writing_with_takes2
+description: Demonstrates takes (Tree of Thought) for creative writing
 inputs_schema:
   theme: The theme for the story
 cells:

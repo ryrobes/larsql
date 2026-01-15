@@ -11,7 +11,7 @@
 cascade_id: map_cascade_demo
 description: >
   PROPOSED: Dynamic mapping using dedicated map_cascade tool.
-  This is cleaner than soundings for pure data fan-out.
+  This is cleaner than takes for pure data fan-out.
 
 cells:
   # Phase 1: List work items (could be files, customers, URLs, etc.)

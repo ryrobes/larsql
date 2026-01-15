@@ -6,8 +6,8 @@
 <div class="info-box tip">
   <div class="info-box-title">Quick Start</div>
   <p>
-    Install with <code>pip install rvbbit</code> and run your first cascade
-    with <code>rvbbit run examples/simple_flow.json --input '{"data": "test"}'</code>
+    Install with <code>pip install larsql</code> and run your first cascade
+    with <code>lars run examples/simple_flow.json --input '{"data": "test"}'</code>
   </p>
 </div>
 
@@ -84,12 +84,12 @@
 
 <p>
   Instead of fighting errors serially, <strong>run multiple attempts in parallel and filter errors
-  out naturally</strong>. This is the core insight behind RVBBIT.
+  out naturally</strong>. This is the core insight behind LARS.
 </p>
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang json">RVBBIT Solution</span>
+    <span class="code-block-lang json">LARS Solution</span>
   </div>
   <div class="code-block-content">
     <pre>{
@@ -170,14 +170,14 @@
 </p>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     WHAT IS RVBBIT
+     WHAT IS LARS
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="what-is-rvbbit">What is RVBBIT?</h2>
+<h2 id="what-is-lars">What is LARS?</h2>
 
 <p>
-  RVBBIT is a Python framework for building multi-step LLM workflows called <strong>Cascades</strong>.
-  Unlike traditional agentic frameworks, RVBBIT treats workflows as <strong>declarative configurations</strong>
+  LARS is a Python framework for building multi-step LLM workflows called <strong>Cascades</strong>.
+  Unlike traditional agentic frameworks, LARS treats workflows as <strong>declarative configurations</strong>
   that can mix LLM-powered intelligence with deterministic execution, human-in-the-loop checkpoints,
   and polyglot code cells.
 </p>
@@ -187,7 +187,7 @@
 <p>
   The complexity of agent orchestration is inevitable. The question is where it lives.
   Traditional approaches spread complexity across your codebase - retry loops, error handlers,
-  context managers, state machines. RVBBIT <em>encapsulates</em> that complexity inside
+  context managers, state machines. LARS <em>encapsulates</em> that complexity inside
   declarative cells.
 </p>
 
@@ -209,7 +209,7 @@
 <h3>Built for Iterative Artifact Generation</h3>
 
 <p>
-  Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), RVBBIT is designed
+  Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), LARS is designed
   for <strong>monolithic context agents</strong> that iterate on complex tasks:
 </p>
 
@@ -241,7 +241,7 @@
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h2 id="five-properties">The Five Self-* Properties</h2>
-<p>RVBBIT implements five self-improving capabilities:</p>
+<p>LARS implements five self-improving capabilities:</p>
 
 <div class="feature-grid">
   <div class="feature-card">
@@ -339,7 +339,7 @@
 
 <h3>Cell Types</h3>
 <p>
-  Cells are the atomic units of execution. RVBBIT supports four primary cell types:
+  Cells are the atomic units of execution. LARS supports four primary cell types:
 </p>
 
 <table>
@@ -386,14 +386,14 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Basic installation</span>
-pip install rvbbit
+pip install larsql
 
 <span class="cmt"># With local models support</span>
-pip install rvbbit[local-models]
+pip install larsql[local-models]
 
 <span class="cmt"># From source</span>
-git clone https://github.com/ryrobes/rvbbit
-cd rvbbit/rvbbit
+git clone https://github.com/ryrobes/lars
+cd lars/lars
 pip install -e .</pre>
   </div>
 </div>
@@ -408,22 +408,22 @@ pip install -e .</pre>
 <span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-...</span>
 
 <span class="cmt"># ClickHouse (Required for logging and SQL features)</span>
-<span class="key">RVBBIT_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
-<span class="key">RVBBIT_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
-<span class="key">RVBBIT_CLICKHOUSE_DATABASE</span>=<span class="str">rvbbit</span>
-<span class="key">RVBBIT_CLICKHOUSE_USER</span>=<span class="str">rvbbit</span>      <span class="cmt"># Default: rvbbit</span>
-<span class="key">RVBBIT_CLICKHOUSE_PASSWORD</span>=<span class="str">rvbbit</span>  <span class="cmt"># Default: rvbbit</span>
+<span class="key">LARS_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
+<span class="key">LARS_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
+<span class="key">LARS_CLICKHOUSE_DATABASE</span>=<span class="str">lars</span>
+<span class="key">LARS_CLICKHOUSE_USER</span>=<span class="str">lars</span>      <span class="cmt"># Default: lars</span>
+<span class="key">LARS_CLICKHOUSE_PASSWORD</span>=<span class="str">lars</span>  <span class="cmt"># Default: lars</span>
 
 <span class="cmt"># Optional: Customize models</span>
-<span class="key">RVBBIT_DEFAULT_MODEL</span>=<span class="str">x-ai/grok-4.1-fast</span>
-<span class="key">RVBBIT_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span></pre>
+<span class="key">LARS_DEFAULT_MODEL</span>=<span class="str">x-ai/grok-4.1-fast</span>
+<span class="key">LARS_DEFAULT_EMBED_MODEL</span>=<span class="str">qwen/qwen3-embedding-8b</span></pre>
   </div>
 </div>
 
 <div class="info-box warning">
   <div class="info-box-title">Required Infrastructure</div>
   <p>
-    RVBBIT requires a running ClickHouse instance. There is no embedded fallback.
+    LARS requires a running ClickHouse instance. There is no embedded fallback.
     See the <a href="https://clickhouse.com/docs/en/getting-started/install" target="_blank">ClickHouse installation guide</a>
     to set up locally.
   </p>
@@ -442,13 +442,13 @@ pip install -e .</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Run with inline JSON input</span>
-rvbbit run examples/simple_flow.json --input <span class="str">'{"data": "test"}'</span>
+lars run examples/simple_flow.json --input <span class="str">'{"data": "test"}'</span>
 
 <span class="cmt"># Run with input file</span>
-rvbbit run examples/simple_flow.json --input input.json
+lars run examples/simple_flow.json --input input.json
 
 <span class="cmt"># Run with specific session ID</span>
-rvbbit run examples/simple_flow.json \
+lars run examples/simple_flow.json \
   --input <span class="str">'{"key": "value"}'</span> \
   --session my_session_123</pre>
   </div>
@@ -461,16 +461,16 @@ rvbbit run examples/simple_flow.json \
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Query ClickHouse via CLI</span>
-rvbbit sql query <span class="str">"SELECT COUNT(*) FROM all_data"</span>
+lars sql query <span class="str">"SELECT COUNT(*) FROM all_data"</span>
 
 <span class="cmt"># View recent sessions with costs</span>
-rvbbit sql query <span class="str">"SELECT session_id, phase_name, cost
+lars sql query <span class="str">"SELECT session_id, phase_name, cost
   FROM all_data
   WHERE cost > 0
   LIMIT 10"</span>
 
 <span class="cmt"># Export to JSON</span>
-rvbbit sql query <span class="str">"SELECT * FROM all_data LIMIT 5"</span> --format json</pre>
+lars sql query <span class="str">"SELECT * FROM all_data LIMIT 5"</span> --format json</pre>
   </div>
 </div>
 
@@ -481,10 +481,10 @@ rvbbit sql query <span class="str">"SELECT * FROM all_data LIMIT 5"</span> --for
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Production mode</span>
-rvbbit serve studio --port 5050
+lars serve studio --port 5050
 
 <span class="cmt"># Development mode (hot reload)</span>
-rvbbit serve studio --dev
+lars serve studio --dev
 
 <span class="cmt"># Access at http://localhost:5050</span>
 <span class="cmt"># Features:</span>
@@ -501,7 +501,7 @@ rvbbit serve studio --dev
 
 <h2 id="semantic-sql">Semantic SQL</h2>
 <p>
-  One of RVBBIT's most powerful features is <strong>Semantic SQL</strong> -
+  One of LARS's most powerful features is <strong>Semantic SQL</strong> -
   the ability to use natural language and LLM-powered functions directly in SQL queries.
 </p>
 

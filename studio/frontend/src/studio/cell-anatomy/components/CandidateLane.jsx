@@ -4,7 +4,7 @@ import ModelIcon, { getProviderColor, getProvider } from '../../../components/Mo
 import './layers.css';
 
 /**
- * SoundingLane - A single parallel execution track
+ * TakeLane - A single parallel execution track
  *
  * Shows:
  * - Mutation type (rewrite/augment/approach/original)
@@ -13,7 +13,7 @@ import './layers.css';
  * - Loop-until validation markers
  * - Cost/duration footer
  */
-const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
+const TakeLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
   const { index, mutation, model, turns, toolCalls, cost, duration, status, isWinner, isLoser } = lane;
 
   // Format duration
@@ -202,4 +202,4 @@ const SoundingLane = ({ lane, maxTurns, loopUntil, hasExecution }) => {
   );
 };
 
-export default SoundingLane;
+export default TakeLane;

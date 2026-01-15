@@ -187,16 +187,16 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># List signals for a cascade</span>
-rvbbit signals list --cascade my_cascade
+lars signals list --cascade my_cascade
 
 <span class="cmt"># Fire a signal manually</span>
-rvbbit signals fire daily_data_ready --payload <span class="str">'{"row_count": 1000}'</span>
+lars signals fire daily_data_ready --payload <span class="str">'{"row_count": 1000}'</span>
 
 <span class="cmt"># Check signal status</span>
-rvbbit signals status signal_abc123
+lars signals status signal_abc123
 
 <span class="cmt"># Cancel a pending signal</span>
-rvbbit signals cancel signal_abc123 --reason <span class="str">"timeout"</span></pre>
+lars signals cancel signal_abc123 --reason <span class="str">"timeout"</span></pre>
   </div>
 </div>
 

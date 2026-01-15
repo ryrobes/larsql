@@ -8,7 +8,7 @@
 <div class="callout callout-info">
   <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Beyond Traditional Triggers</div>
   <p>
-    Traditional triggers fire on row-level INSERT/UPDATE/DELETE. RVBBIT watches poll arbitrary
+    Traditional triggers fire on row-level INSERT/UPDATE/DELETE. LARS watches poll arbitrary
     queries and detect <em>semantic changes</em> - alert when error messages become <em>similar to</em>
     a pattern, or when customer feedback <em>themes</em> shift. This is intelligent monitoring.
   </p>
@@ -301,10 +301,10 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start with defaults</span>
-rvbbit serve watcher
+lars serve watcher
 
 <span class="cmt"># With custom settings</span>
-rvbbit serve watcher \
+lars serve watcher \
   --poll-interval <span class="num">10</span> \     <span class="cmt"># Check due watches every 10s</span>
   --max-concurrent <span class="num">5</span>       <span class="cmt"># Max parallel watch evaluations</span></pre>
   </div>
@@ -572,7 +572,7 @@ rvbbit serve watcher \
   </div>
   <div class="code-block-content">
     <pre><span class="cmt">-- Watch statistics view</span>
-<span class="kw">SELECT</span> * <span class="kw">FROM</span> rvbbit.mv_watch_stats;
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> lars.mv_watch_stats;
 
 <span class="cmt">-- Recent executions for a watch</span>
 <span class="kw">SELECT</span>
@@ -581,13 +581,13 @@ rvbbit serve watcher \
   duration_ms,
   row_count,
   error_message
-<span class="kw">FROM</span> rvbbit.watch_executions
+<span class="kw">FROM</span> lars.watch_executions
 <span class="kw">WHERE</span> watch_name = <span class="str">'error_spike'</span>
 <span class="kw">ORDER BY</span> triggered_at <span class="kw">DESC</span>
 <span class="kw">LIMIT</span> <span class="num">20</span>;
 
 <span class="cmt">-- Watch state</span>
-<span class="kw">SELECT</span> * <span class="kw">FROM</span> rvbbit.watches <span class="kw">FINAL</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> lars.watches <span class="kw">FINAL</span>
 <span class="kw">WHERE</span> name = <span class="str">'error_spike'</span>;</pre>
   </div>
 </div>
@@ -608,7 +608,7 @@ rvbbit serve watcher \
   consecutive_errors,
   last_error,
   last_checked_at
-<span class="kw">FROM</span> rvbbit.watches <span class="kw">FINAL</span>
+<span class="kw">FROM</span> lars.watches <span class="kw">FINAL</span>
 <span class="kw">WHERE</span> consecutive_errors > <span class="num">0</span>;</pre>
   </div>
 </div>
@@ -631,8 +631,8 @@ rvbbit serve watcher \
     <tr>
       <th>Feature</th>
       <th>Traditional DB Triggers</th>
-      <th>RVBBIT Watches</th>
-      <th>RVBBIT Signals</th>
+      <th>LARS Watches</th>
+      <th>LARS Signals</th>
     </tr>
   </thead>
   <tbody>
@@ -673,5 +673,5 @@ rvbbit serve watcher \
 
 <h2>Next: Competitive Analysis</h2>
 <p>
-  See how RVBBIT compares to other tools: <a href="#competitive-analysis" data-link>Competitive Landscape</a>.
+  See how LARS compares to other tools: <a href="#competitive-analysis" data-link>Competitive Landscape</a>.
 </p>

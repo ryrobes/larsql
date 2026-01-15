@@ -37,7 +37,7 @@ from rvbbit.cascade import (
     HumanInputConfig,
     HumanInputType,
     HumanInputOption,
-    HumanSoundingEvalConfig,
+    HumanTakeEvalConfig,
     HumanEvalPresentation,
     HumanEvalSelectionMode,
     # Advanced features
@@ -453,7 +453,7 @@ class TestTakesConfig:
         takes = TakesConfig(
             factor=3,
             evaluator="human",
-            human_eval=HumanSoundingEvalConfig(
+            human_eval=HumanTakeEvalConfig(
                 presentation=HumanEvalPresentation.SIDE_BY_SIDE,
                 selection_mode=HumanEvalSelectionMode.PICK_ONE,
                 require_reasoning=True

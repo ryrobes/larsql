@@ -131,7 +131,7 @@ const WarrenView = () => {
             takeIndex = metadata.take_index;
           } else if (metadata.is_take) {
             isTake = true;
-            takeIndex = metadata.sounding_index ?? 0;
+            takeIndex = metadata.take_index ?? 0;
           }
         } catch (e) {}
       }

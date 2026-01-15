@@ -2,14 +2,14 @@
 #
 # This builds on v1 with an additional feature:
 #   - Web search for low-confidence extractions
-#   - Multi-turn sounding loops visible in the UI
+#   - Multi-turn take loops visible in the UI
 #
 # WHAT'S NEW IN v2:
 #   - brave_web_search tool for additional context
 #   - loop_until with is_satisfied validator (per-turn early exit)
 #   - loop_until_silent: true (impartial - model doesn't game the check)
-#   - Each sounding exits early when confident, continues if unsure
-#   - Creates visible multi-turn conversation in each sounding
+#   - Each take exits early when confident, continues if unsure
+#   - Creates visible multi-turn conversation in each take
 #
 # THE DEMO STORY:
 #   For clear brands like "Sony", extraction is instant (1 turn).
@@ -17,7 +17,7 @@
 #     1. Realizes confidence is low
 #     2. Calls brave_web_search for more context
 #     3. Makes a refined extraction with the new info
-#   This multi-turn pattern is visible in the sounding visualizer.
+#   This multi-turn pattern is visible in the take visualizer.
 #
 # REQUIREMENTS:
 #   Set BRAVE_SEARCH_API_KEY in your environment
@@ -30,7 +30,7 @@
 cascade_id: demo_brand_extract_v2
 description: |
   Brand extraction with web search augmentation for low-confidence cases.
-  Demonstrates multi-turn tool use within soundings.
+  Demonstrates multi-turn tool use within takes.
 
 model: anthropic/claude-opus-4.5
 
@@ -164,7 +164,7 @@ cells:
   #   - brave_web_search tool for additional context
   #   - loop_until with is_satisfied validator (per-turn early exit)
   #   - loop_until_silent: true (impartial - model doesn't game it)
-  #   - Each sounding exits early when confident, continues if unsure
+  #   - Each take exits early when confident, continues if unsure
   # ============================================================
   - name: extract_brand
     model: anthropic/claude-opus-4.5

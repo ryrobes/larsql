@@ -738,7 +738,7 @@ class RVBBITRunner:
             - refinement: Reforge honing prompt
             - validation_input: What's being validated
             - validation_output: Pass/fail verdict
-            - evaluation_input: Sounding attempts being compared
+            - evaluation_input: Take attempts being compared
             - evaluation_output: Winner selection decision
             - winner_selection: Selected winning output marked
             - lifecycle: Start/complete markers
@@ -4058,7 +4058,7 @@ To call this tool, output a JSON code block:
             take_session_id = f"{self.session_id}_take_{i}"
             take_echo = Echo(take_session_id, parent_session_id=self.session_id)
 
-            console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
+            console.print(f"{indent}  [cyan]🌊 Cascade Take {i+1}/{factor} starting...[/cyan]")
 
             # Create session state in ClickHouse for the sub-cascade take
             # This ensures the UI can track sub-cascade sessions correctly
@@ -4106,7 +4106,7 @@ To call this tool, output a JSON code block:
                 # Extract final result from echo
                 final_output = result.get("final_output", str(result))
 
-                console.print(f"{indent}    [green]✓ Cascade Sounding {i+1} complete[/green]")
+                console.print(f"{indent}    [green]✓ Cascade Take {i+1} complete[/green]")
 
                 return {
                     "index": i,
@@ -4118,7 +4118,7 @@ To call this tool, output a JSON code block:
                 }
 
             except Exception as e:
-                console.print(f"{indent}    [red]✗ Cascade Sounding {i+1} failed: {e}[/red]")
+                console.print(f"{indent}    [red]✗ Cascade Take {i+1} failed: {e}[/red]")
 
                 # Update session status to ERROR in ClickHouse
                 try:
@@ -4283,7 +4283,7 @@ To call this tool, output a JSON code block:
 
         winner = take_results[winner_index]
 
-        console.print(f"{indent}[bold green]🏆 Winner: Cascade Sounding {winner_index + 1}[/bold green]")
+        console.print(f"{indent}[bold green]🏆 Winner: Cascade Take {winner_index + 1}[/bold green]")
 
         # Merge winner's echo into our main echo (this becomes the "canon" result)
         if winner['echo']:
@@ -6152,7 +6152,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                     validator_result = {"valid": False, "reason": f"Validator execution error: {str(e)}"}
             else:
                 # Validator not found - skip validation (don't block)
-                console.print(f"{indent}    [yellow]Warning: Sounding validator '{validator_name}' not found - skipping validation[/yellow]")
+                console.print(f"{indent}    [yellow]Warning: Take validator '{validator_name}' not found - skipping validation[/yellow]")
                 validator_result = {"valid": True, "reason": "Validator not found - skipping"}
 
         # Handle function validators
@@ -7441,7 +7441,7 @@ Use only numbers 0-100 for scores."""
             take_trace = take_traces[i]
             take_model = assigned_models[i]
 
-            console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" +
+            console.print(f"{indent}  [cyan]🌊 Take {i+1}/{factor}[/cyan]" +
                          (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
                          f" [dim]({take_model})[/dim]")
 
@@ -7489,7 +7489,7 @@ Use only numbers 0-100 for scores."""
                     cell.takes.downstream_model if cell.takes else False
                 )
 
-                print(f"[Sounding {i}] Set context vars: session={take_runner.session_id}, cell={cell.name}, take_index={i}, model={take_model}, downstream={cell.takes.downstream_model if cell.takes else False}")
+                print(f"[Take {i}] Set context vars: session={take_runner.session_id}, cell={cell.name}, take_index={i}, model={take_model}, downstream={cell.takes.downstream_model if cell.takes else False}")
 
                 # Execute the cell on isolated runner
                 result = take_runner._execute_cell_internal(
@@ -7506,7 +7506,7 @@ Use only numbers 0-100 for scores."""
                 from .utils import extract_images_from_messages
                 take_images = extract_images_from_messages(take_context)
 
-                console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
+                console.print(f"{indent}    [green]✓ Take {i+1} complete[/green]")
 
                 return {
                     "index": i,
@@ -7522,7 +7522,7 @@ Use only numbers 0-100 for scores."""
                 }
 
             except Exception as e:
-                console.print(f"{indent}    [red]✗ Sounding {i+1} failed: {e}[/red]")
+                console.print(f"{indent}    [red]✗ Take {i+1} failed: {e}[/red]")
 
                 return {
                     "index": i,
@@ -7590,9 +7590,9 @@ Use only numbers 0-100 for scores."""
                 validation_results.append(validation)
 
                 if validation["valid"]:
-                    console.print(f"{indent}  [green]✓ Sounding {sr['index']+1}: VALID[/green] - {validation['reason'][:60]}...")
+                    console.print(f"{indent}  [green]✓ Take {sr['index']+1}: VALID[/green] - {validation['reason'][:60]}...")
                 else:
-                    console.print(f"{indent}  [red]✗ Sounding {sr['index']+1}: INVALID[/red] - {validation['reason'][:60]}...")
+                    console.print(f"{indent}  [red]✗ Take {sr['index']+1}: INVALID[/red] - {validation['reason'][:60]}...")
 
             # Filter to only valid takes
             valid_take_results = [sr for sr in take_results if sr.get("validation", {}).get("valid", True)]
@@ -7862,7 +7862,7 @@ Use only numbers 0-100 for scores."""
                     eval_content += f"\nReasoning: {reasoning}"
                 eval_prompt = f"[Human Evaluation] {len(eval_takes)} takes presented to human evaluator"
 
-                console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_take['index'] + 1}[/bold green]")
+                console.print(f"{indent}[bold green]✓ Human selected: Take {winner_take['index'] + 1}[/bold green]")
                 if reasoning:
                     console.print(f"{indent}  [dim]Reasoning: {reasoning[:100]}...[/dim]")
 
@@ -7968,7 +7968,7 @@ Use only numbers 0-100 for scores."""
                     model = valid_take_results[idx].get("model", "unknown")
                     quality = quality_scores[idx]
                     cost = take_costs[idx]
-                    console.print(f"{indent}    • Sounding {valid_take_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+                    console.print(f"{indent}    • Take {valid_take_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
 
                 # Select winner from frontier
                 winner_index = self._select_from_pareto_frontier(
@@ -8234,7 +8234,7 @@ Use only numbers 0-100 for scores."""
         if winner.get("is_aggregated"):
             console.print(f"{indent}[bold green]📦 Aggregated: {winner.get('aggregated_count', 0)} outputs combined[/bold green]")
         else:
-            console.print(f"{indent}[bold green]🏆 Winner: Sounding {winner['index'] + 1}[/bold green]")
+            console.print(f"{indent}[bold green]🏆 Winner: Take {winner['index'] + 1}[/bold green]")
 
         # Now apply ONLY the winner's context to the main snowball
         self.context_messages = context_snapshot + winner['context']
@@ -10511,7 +10511,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "history": self.echo.history,
             "outputs": outputs,
             "lineage": self.echo.lineage,
-            # Sounding context - enables fan-out patterns like {{ state.items[take_index] }}
+            # Take context - enables fan-out patterns like {{ state.items[take_index] }}
             "take_index": self.current_cell_take_index if self.current_cell_take_index is not None else 0,
             "take_factor": getattr(self, '_current_take_factor', 1),  # Total takes in this cell
             "is_take": self.current_cell_take_index is not None,

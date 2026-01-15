@@ -1,9 +1,9 @@
 {
-  "snapshot_name": "test_soundings_snapshot",
-  "description": "Test soundings migration",
+  "snapshot_name": "test_takes_snapshot",
+  "description": "Test takes migration",
   "captured_at": "2025-12-09T18:05:42.224925",
-  "session_id": "test_soundings_migration",
-  "cascade_file": "examples/soundings_flow.json",
+  "session_id": "test_takes_migration",
+  "cascade_file": "examples/takes_flow.json",
   "input": {},
   "execution": {
     "phases": [

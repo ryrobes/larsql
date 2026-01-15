@@ -3,7 +3,7 @@
 -- Date: 2026-01-14
 --
 -- Background:
--- The parallel execution feature was originally called "soundings" (nautical term),
+-- The parallel execution feature was originally called "takes" (nautical term),
 -- then renamed to "candidates" (clinical, bureaucratic feel). After brainstorming,
 -- "takes" (film industry metaphor) was chosen:
 --   - Single syllable, punchy, easy to say

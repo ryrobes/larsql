@@ -30,7 +30,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
         - 'quartermaster': Tool selection reasoning
         - 'ward': Validation checks (pre/post wards)
         - 'lifecycle': Cascade/cell/turn start/complete events
-        - 'metadata': Sounding attempts, cost updates, context injection, etc.
+        - 'metadata': Take attempts, cost updates, context injection, etc.
         - 'error': Error messages
 
     is_internal: True if this message is never sent to an LLM (just internal logging)

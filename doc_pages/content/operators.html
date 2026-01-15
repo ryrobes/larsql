@@ -1,6 +1,6 @@
 <h1>Built-in Operators</h1>
 <p class="lead">
-  RVBBIT ships with 50+ semantic SQL operators out of the box. From semantic filtering
+  LARS ships with 50+ semantic SQL operators out of the box. From semantic filtering
   to logic checking, text aggregation to data quality scoring - all callable as SQL functions.
 </p>
 
@@ -24,7 +24,7 @@
   <p>
     Operators come in three shapes: <strong>SCALAR</strong> (per-row),
     <strong>AGGREGATE</strong> (per-group), and <strong>DIMENSION</strong>
-    (semantic GROUP BY). Dimension functions are unique to RVBBIT - they process
+    (semantic GROUP BY). Dimension functions are unique to LARS - they process
     all values in a single LLM call for efficient batch classification.
   </p>
 </div>
@@ -127,7 +127,7 @@
 <!-- ==================== LOGIC OPERATORS ==================== -->
 <h2 id="logic-operators">Logic Operators</h2>
 <p>
-  Semantic logic checking - unique to RVBBIT. Find contradictions, implications, and alignments.
+  Semantic logic checking - unique to LARS. Find contradictions, implications, and alignments.
 </p>
 
 <h3>CONTRADICTS</h3>
@@ -413,7 +413,7 @@
 <!-- ==================== DIMENSION FUNCTIONS ==================== -->
 <h2 id="dimension-functions">Dimension Functions</h2>
 <p>
-  <strong>Unique to RVBBIT.</strong> Semantic GROUP BY - one LLM call processes all values and assigns
+  <strong>Unique to LARS.</strong> Semantic GROUP BY - one LLM call processes all values and assigns
   each to a bucket. Much more efficient than per-row classification.
 </p>
 
@@ -945,7 +945,7 @@
 <span class="kw">FROM</span> products;
 
 <span class="cmt">-- Index a column for vector search</span>
-<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">LARS EMBED</span> articles.content
 <span class="kw">FROM</span> articles;</pre>
   </div>
 </div>

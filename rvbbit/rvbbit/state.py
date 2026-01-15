@@ -28,7 +28,7 @@ class CellProgress:
         self.current_attempt = 0
         self.max_attempts = 1
 
-        # Sounding tracking
+        # Take tracking
         self.take_index: Optional[int] = None
         self.take_factor: Optional[int] = None
         self.take_stage: Optional[str] = None  # executing, evaluating, complete

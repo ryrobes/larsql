@@ -1,5 +1,5 @@
 cascade_id: multi_model_per_model_factors
-description: Phase 1 Multi-Model Soundings - Per-model factor configuration
+description: Phase 1 Multi-Model Takes - Per-model factor configuration
 inputs_schema:
   task: The task to complete with multiple models
 cells:

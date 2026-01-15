@@ -14,7 +14,7 @@ import json
 
 from .cascade import (
     HumanInputConfig, HumanInputType,
-    HumanSoundingEvalConfig, HumanEvalPresentation, HumanEvalSelectionMode
+    HumanTakeEvalConfig, HumanEvalPresentation, HumanEvalSelectionMode
 )
 
 
@@ -412,7 +412,7 @@ Return the HTML template only, no explanation."""
         self,
         outputs: List[str],
         metadata: List[Dict[str, Any]],
-        config: Optional[HumanSoundingEvalConfig] = None
+        config: Optional[HumanTakeEvalConfig] = None
     ) -> Dict[str, Any]:
         """
         Generate UI for comparing take attempts.
@@ -426,7 +426,7 @@ Return the HTML template only, no explanation."""
             UI specification for take comparison
         """
         if config is None:
-            config = HumanSoundingEvalConfig()
+            config = HumanTakeEvalConfig()
 
         attempts = []
         for i, (output, meta) in enumerate(zip(outputs, metadata or [{}] * len(outputs))):

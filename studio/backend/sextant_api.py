@@ -802,16 +802,16 @@ def get_suggestions(cascade_id):
     """
     Generate improvement suggestions for a cascade.
 
-    Uses the SoundingAnalyzer to generate actual prompt improvements.
+    Uses the TakeAnalyzer to generate actual prompt improvements.
     """
-    from rvbbit.analyzer import SoundingAnalyzer, analyze_and_suggest
+    from rvbbit.analyzer import TakeAnalyzer, analyze_and_suggest
 
     cell_name = request.args.get('cell')
     min_runs = request.args.get('min_runs', 5, type=int)
     generate = request.args.get('generate', 'false').lower() == 'true'
 
     try:
-        analyzer = SoundingAnalyzer()
+        analyzer = TakeAnalyzer()
 
         # Basic analysis first
         analysis = analyzer.analyze_cascade(cascade_id, min_runs=min_runs, min_confidence=0.4)
@@ -1781,7 +1781,7 @@ def prompt_heatmap(cascade_id, cell_name):
         if target_take_idx is not None:
             target = next((r for r in results if r['take_index'] == target_take_idx), None)
             if not target:
-                return jsonify({'error': f'Sounding index {target_take_idx} not found'})
+                return jsonify({'error': f'Take index {target_take_idx} not found'})
         else:
             # Default to first winner for interesting visualization
             target = winners[0] if winners else results[0]

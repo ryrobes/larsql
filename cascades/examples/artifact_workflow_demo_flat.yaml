@@ -36,7 +36,7 @@ cells:
   instructions: 'Analyze / find dataset: {{ input.dataset_name }}
 
 
-    ## Workflow (Each Sounding Explores Different Visualizations):
+    ## Workflow (Each Take Explores Different Visualizations):
 
 
     1. **Get Data (you have many tools at your command)

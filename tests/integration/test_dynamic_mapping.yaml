@@ -39,7 +39,7 @@ cells:
       max_parallel: 3
       mutate: false
       aggregator_instructions: |
-        You have {{ soundings | length }} processed items.
+        You have {{ takes | length }} processed items.
 
         Combine them into a single response listing all the fruits processed.
 

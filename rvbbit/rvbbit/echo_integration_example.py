@@ -230,7 +230,7 @@ def example_takes_integration():
         # Run take attempt
         output = self._run_cell_logic(...)
 
-        log_message(session_id, "take_complete", f"Sounding {i+1} completed",
+        log_message(session_id, "take_complete", f"Take {i+1} completed",
                    {"attempt": i}, take_trace.id, takes_trace.id, "take",
                    take_index=i, is_winner=False)
 
@@ -244,7 +244,7 @@ def example_takes_integration():
             output = self._run_cell_logic(...)
 
         # Existing logging (keep as-is)
-        log_message(session_id, "take_complete", f"Sounding {i+1} completed",
+        log_message(session_id, "take_complete", f"Take {i+1} completed",
                    {"attempt": i}, take_trace.id, takes_trace.id, "take",
                    take_index=i, is_winner=False)
 
@@ -276,7 +276,7 @@ def example_takes_integration():
         trace_id=winner_trace.id,
         take_index=winner_index,
         is_winner=True,  # Mark as winner
-        content=f"Winner: Sounding #{winner_index + 1}",
+        content=f"Winner: Take #{winner_index + 1}",
         metadata={"evaluation_reasoning": eval_content}
     )
 

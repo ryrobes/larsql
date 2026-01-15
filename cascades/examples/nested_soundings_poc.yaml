@@ -1,7 +1,7 @@
-cascade_id: nested_soundings_poc
-description: 'Proof of concept for nested soundings - cascade-level soundings containing
+cascade_id: nested_takes_poc
+description: 'Proof of concept for nested takes - cascade-level takes containing
 
-  phase-level soundings with multi-model parallel execution and iterative reforge.
+  phase-level takes with multi-model parallel execution and iterative reforge.
 
 
   Tests: Can we get better outputs by running the entire "parallel plans + evaluate"
@@ -65,9 +65,9 @@ cells:
     4. **Risk-aware** - Note potential issues and mitigations
 
 
-    {% if is_sounding %}
+    {% if is_take %}
 
-    This is sounding {{ sounding_index }} of {{ sounding_factor }}.
+    This is take {{ take_index }} of {{ take_factor }}.
 
     Be creative and explore a UNIQUE approach - don''t play it safe.
 

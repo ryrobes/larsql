@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RVBBIT - AI that speaks SQL</title>
+    <title>LARS - AI that speaks SQL</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -11,7 +11,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cascadia+Code:ital,wght@0,200..700;1,200..700&family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/iconify-icon@2.1.0/dist/iconify-icon.min.js"></script>
-<script async data-id="101499518" src="//static.getclicky.com/js"></script>
+
+<script async data-id="101499746" src="//static.getclicky.com/js"></script>
     <style>
       :root {
         --bg: #05070c;
@@ -3371,6 +3372,8 @@
         height: 100vh;
         overflow-y: auto;
         padding: 24px 0 24px 20px;
+        margin-top: 20px;
+        margin-bottom: 20px;
         background: linear-gradient(90deg, rgba(5, 7, 12, 0.98), rgba(5, 7, 12, 0.95));
         border-right: 1px solid rgba(28, 246, 255, 0.1);
         z-index: 100;
@@ -3415,11 +3418,13 @@
         letter-spacing: 0.25em;
         text-transform: uppercase;
         font-weight: 600; */
+        
         font-family: "Outrun future";
         color: #d9f7ff;
       }
 
       .toc-group {
+        
         margin-bottom: 24px;
       }
 
@@ -5882,6 +5887,152 @@
           padding: 16px 24px;
         }
       }
+
+
+      /* @font-face {
+  font-family: "OutrunFuture";
+  src: url("/fonts/Outrun-future.otf") format("opentype");
+  font-display: swap;
+} */
+
+.larsql-hero{
+  /* sizing */
+  width: 100%;
+  height: 390px;
+  position:relative;
+  overflow: hidden;
+  margin-bottom: 15px;
+  margin-top: 15px;
+  border-radius: 18px;
+  /* background: */
+    /* hot highlight (top-right) */
+    /* radial-gradient(900px 500px at 78% 20%, cyan, transparent 60%),
+    radial-gradient(700px 420px at 55% 35%, #eeeeee, transparent 62%), */
+    /* base */
+    /* linear-gradient(180deg, #07060a 0%, #040308 100%); */
+}
+
+/* 
+.larsql-hero::before{
+  content:"";
+  position:absolute; inset:-40% -20%;
+  background:
+    repeating-linear-gradient(
+      -24deg,
+      rgba(0, 255, 255, .14) 0px,
+      rgba(0, 255, 255, .14) 14px,
+      rgba(0, 0, 0, 0) 14px,
+      rgba(0, 0, 0, 0) 28px,
+      rgba(255, 0, 190, .12) 28px,
+      rgba(255, 0, 190, .12) 40px,
+      rgba(0, 0, 0, 0) 40px,
+      rgba(0, 0, 0, 0) 56px
+    );
+  transform: rotate(0deg);
+  filter: blur(.2px);
+  opacity: .95;
+  pointer-events:none;
+}
+
+.larsql-hero::after{
+  content:"";
+  position:absolute; inset:0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,.06) 0px,
+      rgba(255,255,255,.06) 1px,
+      rgba(0,0,0,0) 3px,
+      rgba(0,0,0,0) 6px
+    );
+  mix-blend-mode: overlay;
+  opacity: .22;
+  pointer-events:none;
+} */
+
+/* the long underline accent */
+.larsql-rule{
+  position:absolute;
+  left: 12%;
+  top: 58%;
+  width: 58%;
+  height: 6px;
+  border-radius: 10%;
+  background: linear-gradient(30deg, #21f6ff 0 52%, #ff2bd6 52% 100%);
+  box-shadow:
+    0 0 14px rgba(33, 246, 255, .38),
+    0 0 18px rgba(255, 43, 214, .28);
+  opacity: .5;
+}
+
+/* tagline (light + slightly hazy) */
+.larsql-tagline{
+  position:absolute;
+  left: 6%;
+  top: 62%;
+  font-family: 'Quicksand';
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: rgba(235, 238, 245, .70);
+  text-shadow:
+    0 0 18px rgba(120, 120, 255, .16),
+    0 2px 0 rgba(0,0,0,.25);
+  filter: blur(.15px);
+  user-select:none;
+  white-space: nowrap;
+}
+
+/* wordmark area (right aligned like your sample) */
+.larsql-wordwrap{
+  position:absolute;
+  right: 7%;
+  top: 44%;
+  transform: translateY(-10%);
+  text-align: right;
+}
+
+/* main word */
+.larsql-word{
+  font-family: "Outrun future", system-ui, sans-serif;
+  font-size: 47px;
+  line-height: .9;
+  letter-spacing: .02em;
+
+  /* gray-ish fill like your render */
+  color: linear-gradient(90deg, #21f6ff 0 52%, #ff2bd6 52% 100%);
+
+  /* cyan outline (Chrome/Safari) */
+  -webkit-text-stroke: 2px rgba(35, 240, 255, .88);
+
+  /* glow + tiny magenta kick */
+  text-shadow:
+    0 0 10px rgba(35, 240, 255, .55),
+    0 0 22px rgba(35, 240, 255, .25),
+    2px 2px 0 rgba(255, 43, 214, .10),
+    0 14px 40px rgba(0,0,0,.55);
+  filter: drop-shadow(0 0 10px rgba(35, 240, 255, .20));
+}
+
+/* reflection: flipped copy, blurred and faded */
+.larsql-reflect{
+  font-family: "Outrun future", system-ui, sans-serif;
+  font-size: 47px; 
+  line-height: .9;
+  letter-spacing: .02em;
+  transform: scaleY(-1) translateY(-14px);
+  transform-origin: top;
+  color: rgba(210, 120, 255, .18);
+  -webkit-text-stroke: 6px rgba(35, 240, 255, .18);
+  filter: blur(6px);
+  opacity: .95;
+
+  /* fade-out mask */
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.55), transparent 72%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.55), transparent 72%);
+}
+
+
+
     </style>
   </head>
   <body>
@@ -5889,10 +6040,23 @@
       <!-- ========== STICKY SIDEBAR TOC ========== -->
       <nav class="toc-sidebar">
         <a href="#" class="toc-brand">
-          <img src="rvbbit-logo-square.png" alt="RVBBIT logo">
-          <span>RVBBIT</span>
+
+          <!-- <img src="lars-logo-square.png" alt="LARS logo">
+          <span>LarsqL</span> -->
+
+          <div class="larsql-hero">
+            <div class="larsql-rule" aria-hidden="true"></div>
+            <div class="larsql-tagline">Language-Augmented Relational SQL</div>
+            <div class="larsql-wordwrap">
+              <div class="larsql-word">LARsqL</div>
+              <div class="larsql-reflect" aria-hidden="true">LARsqL</div>
+            </div>
+          </div>
+
+
         </a>
 
+        <div style="height:30px;"> </div>
         <div class="toc-group" data-group="sql">
           <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:layout-list"></iconify-icon></span> Getting Started</div>
           <a href="#how-it-works" class="toc-link">One Line Change</a>
@@ -5947,8 +6111,8 @@
         <header>
           <div class="container nav">
             <div class="brand">
-              <img src="rvbbit-logo-square.png" alt="RVBBIT logo">
-              <span>RVBBIT</span>
+              <img src="lars-logo-square.png" alt="LARS logo">
+              <span>LARS</span>
             </div>
             <div class="nav-actions">
               <a href="#how-it-works">How It Works</a>
@@ -6255,7 +6419,7 @@
         </div>
 
         <div class="integrations-footer reveal delay-1">
-          <p style="font-size: 14px">Powered by <code>DuckDB</code> federated engine. If DuckDB can <i>read</i> it, RVBBIT can <i>analyze</i> it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.</p>
+          <p style="font-size: 14px">Powered by <code>DuckDB</code> federated engine. If DuckDB can <i>read</i> it, LARS can <i>analyze</i> it. Connects via PostgreSQL wire protocol&mdash;use DataGrip, DBeaver, Tableau, or any SQL client.</p>
         </div>
       </section>
 
@@ -6399,7 +6563,7 @@
             <div class="federated-content reveal">
               <h2>Your data never moves. The intelligence comes to it.</h2>
               <p>
-                Add AI to any database without copying a single row. RVBBIT is a query layer, not a data store.
+                Add AI to any database without copying a single row. LARS is a query layer, not a data store.
               </p>
               <div class="federated-points">
                 <div class="federated-point">
@@ -6436,9 +6600,9 @@
                   <span class="arrow-head">▶</span>
                 </div>
 
-                <!-- Center: RVBBIT -->
+                <!-- Center: LARS -->
                 <div class="diagram-hub">
-                  <div class="diagram-hub-label">RVBBIT</div>
+                  <div class="diagram-hub-label">LARS</div>
                   <div class="diagram-hub-sub">Routes your query</div>
                 </div>
 
@@ -6489,7 +6653,7 @@
             <div class="pgwire-content reveal">
               <h2>Use your existing SQL client. <span style="color: var(--green)">Seriously.</span></h2>
               <p>
-                RVBBIT speaks PostgreSQL wire protocol. That means your existing tools just work.
+                LARS speaks PostgreSQL wire protocol. That means your existing tools just work.
                 No plugins. No extensions. No new software to learn.
               </p>
               <div class="pgwire-clients">
@@ -6525,8 +6689,8 @@
                 <span class="terminal-title">Two commands</span>
               </div>
               <div class="terminal-body">
-<pre><span style="color: var(--muted);"># Start RVBBIT</span>
-<span style="color: var(--green);">$</span> rvbbit serve sql --port 15432
+<pre><span style="color: var(--muted);"># Start LARS</span>
+<span style="color: var(--green);">$</span> lars serve sql --port 15432
 
 <span style="color: var(--muted);"># Connect with any PostgreSQL client</span>
 <span style="color: var(--green);">$</span> psql postgresql://localhost:15432/default
@@ -6726,12 +6890,12 @@
             <div class="askdata-content reveal">
               <h2>The query you <span style="color: var(--green)">don't have to write.</span></h2>
               <p>
-                You know what you want. Just not which tables. Ask in English—RVBBIT already mapped your schema.
+                You know what you want. Just not which tables. Ask in English—LARS already mapped your schema.
               </p>
               <div class="askdata-how">
                 <div class="askdata-step">
                   <span class="askdata-step-num">1</span>
-                  <span>RVBBIT discovers all connected databases, tables, and files</span>
+                  <span>LARS discovers all connected databases, tables, and files</span>
                 </div>
                 <div class="askdata-step">
                   <span class="askdata-step-num">2</span>
@@ -6807,7 +6971,7 @@
               <div class="watch-points">
                 <div class="watch-point">
                   <iconify-icon icon="lucide:check"></iconify-icon>
-                  <span>Queries any source RVBBIT can reach—not just one table</span>
+                  <span>Queries any source LARS can reach—not just one table</span>
                 </div>
                 <div class="watch-point">
                   <iconify-icon icon="lucide:check"></iconify-icon>
@@ -7173,7 +7337,7 @@
         <div class="container">
           <div class="self-header reveal">
             <h2>Code that writes code. Tests that write tests.</h2>
-            <p>Five properties that make RVBBIT fundamentally different.</p>
+            <p>Five properties that make LARS fundamentally different.</p>
           </div>
 
           <div class="self-grid reveal delay-1">
@@ -7349,7 +7513,7 @@
                 <div class="semantic-hint-content" data-for="contradicts">
                   <h4>CONTRADICTS</h4>
                   <p class="prompt-style">"Does this contradict the management guidance?"</p>
-                  <p>Semantic logic check. Finds conflicts between text and a reference claim. Unique to RVBBIT.</p>
+                  <p>Semantic logic check. Finds conflicts between text and a reference claim. Unique to LARS.</p>
                   <div class="transform-viz">
                     <div class="transform-flow">
                       <div class="transform-in">
@@ -7786,7 +7950,7 @@
           </div>
 
           <div class="cascade-reveal-summary reveal delay-3">
-            <p><strong>This is why RVBBIT scales:</strong> Start with one-liners. Evolve to workflows. Never switch tools.</p>
+            <p><strong>This is why LARS scales:</strong> Start with one-liners. Evolve to workflows. Never switch tools.</p>
             <div class="cascade-depth-table">
               <div class="depth-item">
                 <span class="depth-item-op">MEANS</span>
@@ -7863,7 +8027,7 @@
           <div class="skills-callout reveal delay-4">
             <h3>Tools are cascades too. Call any of them from SQL.</h3>
             <p>
-              Every RVBBIT tool—Python, JavaScript, Clojure, TTS, HuggingFace Spaces, even MCP tool servers—is
+              Every LARS tool—Python, JavaScript, Clojure, TTS, HuggingFace Spaces, even MCP tool servers—is
               callable directly from SQL. Tools are auto-discovered and indexed, so agents can find what they need without hardcoded lists.
             </p>
             <div class="skills-examples">
@@ -8064,7 +8228,7 @@
               <a class="btn secondary" href="docs.html">Read the Docs</a>
             </div>
             <p class="cta-note">
-              <code>pip install rvbbit</code>
+              <code>pip install larsql</code>
             </p>
           </div>
         </div>
@@ -8072,7 +8236,7 @@
 
       <footer>
         <div class="container">
-          <p>RVBBIT &mdash; AI that speaks SQL</p>
+          <p>LARS &mdash; AI that speaks SQL</p>
         </div>
       </footer>
       </div><!-- /.main-content -->
@@ -8889,15 +9053,15 @@
             </div>
             <div class="deck-start">
               <div class="deck-start-cmd">
-                <code>pip install rvbbit && rvbbit serve sql</code>
-                <button class="deck-copy-btn" onclick="navigator.clipboard.writeText('pip install rvbbit && rvbbit serve sql')">
+                <code>pip install larsql && lars serve sql</code>
+                <button class="deck-copy-btn" onclick="navigator.clipboard.writeText('pip install larsql && lars serve sql')">
                   <iconify-icon icon="lucide:copy"></iconify-icon>
                   Copy
                 </button>
               </div>
               <div class="deck-start-cta">
                 <a class="btn" href="docs.html">Read the Docs</a>
-                <a class="btn secondary" href="https://github.com/ryrobes/rvbbit" target="_blank">GitHub</a>
+                <a class="btn secondary" href="https://github.com/ryrobes/lars" target="_blank">GitHub</a>
               </div>
             </div>
           </div>

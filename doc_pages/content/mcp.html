@@ -1,7 +1,7 @@
 <h1>MCP Integration</h1>
 <p class="lead">
   Connect to external tool servers using the Model Context Protocol (MCP).
-  RVBBIT supports both stdio and HTTP transports with automatic tool discovery.
+  LARS supports both stdio and HTTP transports with automatic tool discovery.
 </p>
 
 <div class="toc">
@@ -18,7 +18,7 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  MCP (Model Context Protocol) allows RVBBIT to connect to external tool servers.
+  MCP (Model Context Protocol) allows LARS to connect to external tool servers.
   Tools from MCP servers are automatically discovered and registered in the skill registry.
 </p>
 
@@ -75,7 +75,7 @@
 <h2 id="stdio">Stdio Servers</h2>
 
 <p>
-  Stdio servers run as child processes. RVBBIT manages their lifecycle:
+  Stdio servers run as child processes. LARS manages their lifecycle:
 </p>
 
 <div class="code-block">
@@ -127,22 +127,22 @@
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># List configured servers</span>
-rvbbit mcp list
+lars mcp list
 
 <span class="cmt"># Check server status</span>
-rvbbit mcp status
+lars mcp status
 
 <span class="cmt"># List tools from a specific server</span>
-rvbbit mcp introspect filesystem
+lars mcp introspect filesystem
 
 <span class="cmt"># Show all MCP tools in manifest</span>
-rvbbit mcp manifest
+lars mcp manifest
 
 <span class="cmt"># Re-discover tools from all servers</span>
-rvbbit mcp refresh
+lars mcp refresh
 
 <span class="cmt"># Test a specific tool</span>
-rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/test.txt"}'</span></pre>
+lars mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/test.txt"}'</span></pre>
   </div>
 </div>
 
@@ -154,10 +154,10 @@ rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/te
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Enable/disable MCP integration</span>
-<span class="key">RVBBIT_MCP_ENABLED</span>=<span class="kw">true</span>
+<span class="key">LARS_MCP_ENABLED</span>=<span class="kw">true</span>
 
 <span class="cmt"># Alternative: inline YAML config</span>
-<span class="key">RVBBIT_MCP_SERVERS_YAML</span>=<span class="str">'
+<span class="key">LARS_MCP_SERVERS_YAML</span>=<span class="str">'
 - name: my-server
   transport: stdio
   command: my-tool
@@ -189,7 +189,7 @@ rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/te
 <div class="info-box tip">
   <div class="info-box-title">Tool Discovery</div>
   <p>
-    Use <code>rvbbit mcp introspect &lt;server&gt;</code> to see all available tools
+    Use <code>lars mcp introspect &lt;server&gt;</code> to see all available tools
     from a server, including their parameters and descriptions.
   </p>
 </div>
@@ -200,5 +200,5 @@ rvbbit mcp test filesystem read_file --args <span class="str">'{"path": "/tmp/te
 <ul>
   <li><a href="https://modelcontextprotocol.io" target="_blank">MCP Specification</a></li>
   <li><a href="https://github.com/modelcontextprotocol/servers" target="_blank">Official MCP Servers</a></li>
-  <li><a href="#tools" data-link>Tools (Skills)</a> - Overview of RVBBIT's tool system</li>
+  <li><a href="#tools" data-link>Tools (Skills)</a> - Overview of LARS's tool system</li>
 </ul>

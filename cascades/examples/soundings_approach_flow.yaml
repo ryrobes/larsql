@@ -1,5 +1,5 @@
 cascade_id: creative_writing_approach_mutations
-description: Demonstrates soundings with APPROACH mutation mode - appends thinking
+description: Demonstrates takes with APPROACH mutation mode - appends thinking
   strategy hints for Tree of Thought diversity sampling
 inputs_schema:
   theme: The theme for the story

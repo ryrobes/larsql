@@ -247,12 +247,12 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
       // Track tool calls globally
       if (log.role === 'tool_call' || log.node_type === 'tool_call') {
         const toolName = metadata.tool_name || 'unknown';
-        const toolSoundingIdx = (log.take_index !== null && log.take_index !== undefined)
+        const toolTakeIdx = (log.take_index !== null && log.take_index !== undefined)
           ? log.take_index
           : metadata.take_index;
         toolCalls.push({
           name: toolName,
-          take: toolSoundingIdx,
+          take: toolTakeIdx,
           turn: metadata.turn_number,
           duration: log.duration_ms
         });

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     output_text Nullable(String),       -- The output being evaluated
     mutation_applied Nullable(String),  -- What mutation was applied (if any)
 
-    -- Sounding context (for A/B comparisons)
+    -- Take context (for A/B comparisons)
     take_outputs_json Nullable(String),  -- JSON: All take outputs for comparison
 
     -- Flags and notes

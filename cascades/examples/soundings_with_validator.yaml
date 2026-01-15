@@ -1,5 +1,5 @@
-cascade_id: soundings_with_validator
-description: Demonstrates pre-evaluation validation for soundings - only code that
+cascade_id: takes_with_validator
+description: Demonstrates pre-evaluation validation for takes - only code that
   runs successfully gets evaluated
 inputs_schema:
   problem: The coding problem to solve

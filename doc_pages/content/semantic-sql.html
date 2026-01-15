@@ -1,13 +1,13 @@
 <h1>Semantic SQL</h1>
 <p class="lead">
   Extend SQL with natural language understanding, LLM-powered functions, and semantic operators.
-  RVBBIT transforms your queries through intelligent rewriting - no database modifications needed.
+  LARS transforms your queries through intelligent rewriting - no database modifications needed.
 </p>
 
 <div class="callout callout-info">
   <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Design Philosophy</div>
   <p>
-    <strong>Cascades All The Way Down.</strong> Every semantic operator in RVBBIT is backed by a cascade
+    <strong>Cascades All The Way Down.</strong> Every semantic operator in LARS is backed by a cascade
     definition. This means operators are declarative YAML files, not compiled code. You can inspect,
     modify, or create new operators without touching Python - just add a cascade file and restart.
   </p>
@@ -24,7 +24,7 @@
     <li><a href="#annotations">Annotation System</a></li>
     <li><a href="#caching">Caching Strategies</a></li>
     <li><a href="#custom-operators">Creating Custom Operators</a></li>
-    <li><a href="#map-run">RVBBIT MAP/RUN Statements</a></li>
+    <li><a href="#map-run">LARS MAP/RUN Statements</a></li>
     <li><a href="#best-practices">Best Practices</a></li>
   </ul>
 </div>
@@ -32,7 +32,7 @@
 <h2 id="architecture">Architecture Overview</h2>
 
 <p>
-  RVBBIT's semantic SQL doesn't modify your database engine. Instead, it uses <strong>query rewriting</strong>
+  LARS's semantic SQL doesn't modify your database engine. Instead, it uses <strong>query rewriting</strong>
   to transform semantic operators into standard SQL + UDF calls that execute on DuckDB (in-process) or
   ClickHouse (persistence layer).
 </p>
@@ -120,9 +120,9 @@ stateDiagram-v2
 
     state "Stage 1: Syntax Detection" as Stage1 {
         direction LR
-        S1_Check --> S1_MAP: RVBBIT MAP?
-        S1_Check --> S1_RUN: RVBBIT RUN?
-        S1_Check --> S1_EMBED: RVBBIT EMBED?
+        S1_Check --> S1_MAP: LARS MAP?
+        S1_Check --> S1_RUN: LARS RUN?
+        S1_Check --> S1_EMBED: LARS EMBED?
         S1_Check --> S1_Normal: Standard Query
         S1_MAP --> S1_Transform: Batch cascade
         S1_RUN --> S1_Transform: Single cascade
@@ -176,7 +176,7 @@ stateDiagram-v2
 
 <div class="callout callout-tip">
   <div class="callout-title"><iconify-icon icon="mdi:information-outline"></iconify-icon> Pipeline Stages</div>
-  <p><strong>Stage 1 (Syntax Detection):</strong> Identifies RVBBIT-specific statements (MAP, RUN, EMBED) and handles them specially.</p>
+  <p><strong>Stage 1 (Syntax Detection):</strong> Identifies LARS-specific statements (MAP, RUN, EMBED) and handles them specially.</p>
   <p><strong>Stage 2 (Annotation Parsing):</strong> Extracts <code>-- @</code> annotations and injects hints into criteria strings.</p>
   <p><strong>Stage 3 (Operator Rewriting):</strong> Token-aware transformation of semantic operators to UDF calls. Avoids matching inside strings/comments.</p>
   <p><strong>Stage 4 (Execution):</strong> DuckDB executes the rewritten query, invoking cascade-backed UDFs with multi-level caching.</p>
@@ -283,7 +283,7 @@ _classified <span class="kw">AS</span> (
 <h2 id="operators">Semantic Operators</h2>
 
 <p>
-  RVBBIT ships with 50+ built-in operators organized into categories. Each is backed by a cascade
+  LARS ships with 50+ built-in operators organized into categories. Each is backed by a cascade
   in <code>cascades/semantic_sql/</code>.
 </p>
 
@@ -394,24 +394,24 @@ _classified <span class="kw">AS</span> (
   </thead>
   <tbody>
     <tr>
-      <td><code>rvbbit_udf(instructions, value)</code></td>
+      <td><code>lars_udf(instructions, value)</code></td>
       <td>Simple LLM transformation per row</td>
-      <td><code>SELECT rvbbit_udf('Extract brand', name) FROM products</code></td>
+      <td><code>SELECT lars_udf('Extract brand', name) FROM products</code></td>
     </tr>
     <tr>
-      <td><code>rvbbit_cascade_udf(path, inputs)</code></td>
+      <td><code>lars_cascade_udf(path, inputs)</code></td>
       <td>Full cascade execution per row</td>
-      <td><code>SELECT rvbbit_cascade_udf('skills/analyze.yaml', json_object('text', desc))</code></td>
+      <td><code>SELECT lars_cascade_udf('skills/analyze.yaml', json_object('text', desc))</code></td>
     </tr>
     <tr>
-      <td><code>rvbbit_run_batch(path, rows, table)</code></td>
+      <td><code>lars_run_batch(path, rows, table)</code></td>
       <td>Batch cascade with temp table</td>
-      <td>Used by <code>RVBBIT RUN</code> statements</td>
+      <td>Used by <code>LARS RUN</code> statements</td>
     </tr>
     <tr>
-      <td><code>rvbbit_map_parallel(path, rows, workers)</code></td>
+      <td><code>lars_map_parallel(path, rows, workers)</code></td>
       <td>Parallel cascade execution</td>
-      <td>Used by <code>RVBBIT MAP</code> with <code>PARALLEL</code></td>
+      <td>Used by <code>LARS MAP</code> with <code>PARALLEL</code></td>
     </tr>
   </tbody>
 </table>
@@ -474,7 +474,7 @@ classify_single(text, opts)   <span class="cmt">-- Classify into options</span>
 
 <p>
   When a DuckDB connection is created (either for PostgreSQL wire protocol or direct access),
-  <code>register_rvbbit_udf(conn)</code> is called to register all UDFs:
+  <code>register_lars_udf(conn)</code> is called to register all UDFs:
 </p>
 
 <div class="code-block">
@@ -482,10 +482,10 @@ classify_single(text, opts)   <span class="cmt">-- Classify into options</span>
     <span class="code-block-lang python">UDF Registration (Simplified)</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="kw">def</span> register_rvbbit_udf(conn):
+    <pre><span class="kw">def</span> register_lars_udf(conn):
     <span class="cmt"># Core UDFs</span>
-    conn.create_function(<span class="str">"rvbbit"</span>, rvbbit_impl, [...], <span class="str">"VARCHAR"</span>)
-    conn.create_function(<span class="str">"rvbbit_cascade_udf"</span>, cascade_impl, [...], <span class="str">"VARCHAR"</span>)
+    conn.create_function(<span class="str">"lars"</span>, lars_impl, [...], <span class="str">"VARCHAR"</span>)
+    conn.create_function(<span class="str">"lars_cascade_udf"</span>, cascade_impl, [...], <span class="str">"VARCHAR"</span>)
 
     <span class="cmt"># Embedding UDFs</span>
     conn.create_function(<span class="str">"semantic_embed"</span>, embed_impl, [...], <span class="str">"DOUBLE[]"</span>)
@@ -503,7 +503,7 @@ classify_single(text, opts)   <span class="cmt">-- Classify into options</span>
 <h2 id="sql-server">PostgreSQL Wire Protocol Server</h2>
 
 <p>
-  RVBBIT includes a PostgreSQL wire protocol server that lets you connect with any PostgreSQL
+  LARS includes a PostgreSQL wire protocol server that lets you connect with any PostgreSQL
   client (DataGrip, DBeaver, psql, Python's psycopg2, etc.). Queries are processed through the
   full semantic SQL pipeline.
 </p>
@@ -516,17 +516,17 @@ classify_single(text, opts)   <span class="cmt">-- Classify into options</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start the SQL server</span>
-rvbbit serve sql --port <span class="num">15432</span>
+lars serve sql --port <span class="num">15432</span>
 
 <span class="cmt"># Or shorter alias</span>
-rvbbit sql server --port <span class="num">15432</span>
+lars sql server --port <span class="num">15432</span>
 
 <span class="cmt"># Connect with psql</span>
-psql -h localhost -p <span class="num">15432</span> -U rvbbit -d rvbbit
+psql -h localhost -p <span class="num">15432</span> -U lars -d lars
 
 <span class="cmt"># Connect with Python</span>
 <span class="kw">import</span> psycopg2
-conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span class="num">15432</span>, user=<span class="str">"rvbbit"</span>, dbname=<span class="str">"rvbbit"</span>)</pre>
+conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span class="num">15432</span>, user=<span class="str">"lars"</span>, dbname=<span class="str">"lars"</span>)</pre>
   </div>
 </div>
 
@@ -574,7 +574,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 <h3>Magic Tables</h3>
 
 <p>
-  The server provides access to RVBBIT's execution data through magic tables:
+  The server provides access to LARS's execution data through magic tables:
 </p>
 
 <div class="code-block">
@@ -683,7 +683,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 <h2 id="caching">Caching Strategies</h2>
 
 <p>
-  RVBBIT uses multiple caching layers to minimize LLM calls and maximize performance.
+  LARS uses multiple caching layers to minimize LLM calls and maximize performance.
 </p>
 
 <h3>Multi-Level Cache</h3>
@@ -764,7 +764,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 <h3>Operator Discovery</h3>
 
 <p>
-  At startup, RVBBIT scans these directories for cascade files with <code>sql_function</code> blocks:
+  At startup, LARS scans these directories for cascade files with <code>sql_function</code> blocks:
 </p>
 
 <ul>
@@ -920,13 +920,13 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
   </div>
 </div>
 
-<h2 id="map-run">RVBBIT MAP/RUN Statements</h2>
+<h2 id="map-run">LARS MAP/RUN Statements</h2>
 
 <p>
   Execute cascades directly in SQL, either mapping over rows or running once with all data.
 </p>
 
-<h3>RVBBIT MAP</h3>
+<h3>LARS MAP</h3>
 
 <p>
   Execute a cascade once per row in the result set:
@@ -934,11 +934,11 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang">RVBBIT MAP Syntax</span>
+    <span class="code-block-lang">LARS MAP Syntax</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt">-- Basic MAP: run cascade for each row</span>
-<span class="kw">RVBBIT MAP</span> process_order(<span class="str">'{{ order_id }}'</span>, <span class="str">'{{ email }}'</span>)
+<span class="kw">LARS MAP</span> process_order(<span class="str">'{{ order_id }}'</span>, <span class="str">'{{ email }}'</span>)
 <span class="kw">FROM</span> (
   <span class="kw">SELECT</span> order_id, email
   <span class="kw">FROM</span> orders
@@ -947,13 +947,13 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 );
 
 <span class="cmt">-- With output column selection</span>
-<span class="kw">RVBBIT MAP</span> enrich_customer(<span class="str">'{{ customer_id }}'</span>)
+<span class="kw">LARS MAP</span> enrich_customer(<span class="str">'{{ customer_id }}'</span>)
 <span class="kw">RETURNING</span> enriched_data, confidence_score
 <span class="kw">FROM</span> customers;</pre>
   </div>
 </div>
 
-<h3>RVBBIT RUN</h3>
+<h3>LARS RUN</h3>
 
 <p>
   Execute a cascade once with the entire result set as JSON:
@@ -961,11 +961,11 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang">RVBBIT RUN Syntax</span>
+    <span class="code-block-lang">LARS RUN Syntax</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt">-- Basic RUN: cascade receives all rows as JSON</span>
-<span class="kw">RVBBIT RUN</span> analyze_trends(<span class="str">'{{ results }}'</span>)
+<span class="kw">LARS RUN</span> analyze_trends(<span class="str">'{{ results }}'</span>)
 <span class="kw">FROM</span> (
   <span class="kw">SELECT</span> date, revenue, region
   <span class="kw">FROM</span> sales
@@ -973,7 +973,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 );
 
 <span class="cmt">-- With temp table (cascade can query it)</span>
-<span class="kw">RVBBIT RUN</span> complex_analysis
+<span class="kw">LARS RUN</span> complex_analysis
 <span class="kw">USING</span> <span class="kw">SELECT</span> * <span class="kw">FROM</span> metrics <span class="kw">WHERE</span> date > <span class="str">'2024-01-01'</span>
 <span class="kw">INTO</span> results_table;</pre>
   </div>
@@ -992,13 +992,13 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
   </thead>
   <tbody>
     <tr>
-      <td><code>RVBBIT MAP</code></td>
+      <td><code>LARS MAP</code></td>
       <td>Once per row</td>
       <td>Row values via Jinja2</td>
       <td>Per-row enrichment, notifications, processing</td>
     </tr>
     <tr>
-      <td><code>RVBBIT RUN</code></td>
+      <td><code>LARS RUN</code></td>
       <td>Once total</td>
       <td>All rows as JSON or temp table</td>
       <td>Aggregate analysis, trend detection, reporting</td>
@@ -1006,7 +1006,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
   </tbody>
 </table>
 
-<h3>RVBBIT EMBED</h3>
+<h3>LARS EMBED</h3>
 
 <p>
   Create embeddings for vector search:
@@ -1014,16 +1014,16 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang">RVBBIT EMBED Syntax</span>
+    <span class="code-block-lang">LARS EMBED Syntax</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt">-- Index a column for vector search</span>
-<span class="kw">RVBBIT EMBED</span> articles.content
+<span class="kw">LARS EMBED</span> articles.content
 <span class="kw">FROM</span> articles
 <span class="kw">WHERE</span> published = <span class="kw">true</span>;
 
 <span class="cmt">-- With options</span>
-<span class="kw">RVBBIT EMBED</span> documents.summary
+<span class="kw">LARS EMBED</span> documents.summary
 <span class="kw">FROM</span> documents
 <span class="kw">WITH</span> (
   model = <span class="str">'qwen/qwen3-embedding-8b'</span>,

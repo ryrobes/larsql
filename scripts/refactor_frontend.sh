@@ -35,8 +35,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
 # Takes* → Takes*
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bTakesExplorer\b/TakesExplorer/g
-    s/\bSoundingComparison\b/TakeComparison/g
-    s/\bSoundingLane\b/TakeLane/g
+    s/\bTakeComparison\b/TakeComparison/g
+    s/\bTakeLane\b/TakeLane/g
     s/\bTakesLayer\b/TakesLayer/g
 ' {} +
 

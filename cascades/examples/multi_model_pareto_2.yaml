@@ -1,5 +1,5 @@
 cascade_id: multi_model_pareto_2
-description: Phase 3 Multi-Model Soundings - Pareto frontier analysis for optimal
+description: Phase 3 Multi-Model Takes - Pareto frontier analysis for optimal
   cost/quality tradeoff
 inputs_schema:
   task: The task to complete with Pareto optimization

@@ -3731,7 +3731,7 @@ def cmd_hotornot_rate(args):
 
         if winner_take:
             print("-"*60)
-            print(f"System picked: Sounding #{winner_idx + 1}")
+            print(f"System picked: Take #{winner_idx + 1}")
             if winner_take.get('mutation_applied'):
                 print(f"Mutation: {winner_take['mutation_applied'][:60]}...")
             print("-"*60)
