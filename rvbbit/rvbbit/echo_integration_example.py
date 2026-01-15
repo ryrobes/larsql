@@ -214,58 +214,58 @@ def example_image_injection_integration():
 
 
 # ============================================================================
-# EXAMPLE 4: Candidates with Index Tracking
+# EXAMPLE 4: Takes with Index Tracking
 # ============================================================================
 
-def example_candidates_integration():
+def example_takes_integration():
     """
-    Shows how to log candidates with index tracking.
+    Shows how to log takes with index tracking.
 
-    Location in runner.py: Around line 885 (cell candidates)
+    Location in runner.py: Around line 885 (cell takes)
     """
 
     # BEFORE (existing code):
     # ----------------------
     for i in range(factor):
-        # Run candidate attempt
+        # Run take attempt
         output = self._run_cell_logic(...)
 
-        log_message(session_id, "candidate_complete", f"Sounding {i+1} completed",
-                   {"attempt": i}, candidate_trace.id, candidates_trace.id, "candidate",
-                   candidate_index=i, is_winner=False)
+        log_message(session_id, "take_complete", f"Sounding {i+1} completed",
+                   {"attempt": i}, take_trace.id, takes_trace.id, "take",
+                   take_index=i, is_winner=False)
 
 
     # AFTER (with echo logging):
     # -------------------------
 
     for i in range(factor):
-        # Run candidate attempt with timing
+        # Run take attempt with timing
         with TimingContext() as timer:
             output = self._run_cell_logic(...)
 
         # Existing logging (keep as-is)
-        log_message(session_id, "candidate_complete", f"Sounding {i+1} completed",
-                   {"attempt": i}, candidate_trace.id, candidates_trace.id, "candidate",
-                   candidate_index=i, is_winner=False)
+        log_message(session_id, "take_complete", f"Sounding {i+1} completed",
+                   {"attempt": i}, take_trace.id, takes_trace.id, "take",
+                   take_index=i, is_winner=False)
 
         # NEW: Comprehensive echo logging
         log_echo(
-            session_id=candidate_session_id,  # Sub-session ID
-            trace_id=candidate_trace.id,
-            parent_id=candidates_trace.id,
-            node_type="candidate_attempt",
-            role="candidate",
+            session_id=take_session_id,  # Sub-session ID
+            trace_id=take_trace.id,
+            parent_id=takes_trace.id,
+            node_type="take_attempt",
+            role="take",
             depth=depth,
-            candidate_index=i,  # Track which attempt
+            take_index=i,  # Track which attempt
             is_winner=False,   # Updated later when winner selected
             cell_name=cell.name,
             cascade_id=cascade_config.cascade_id,
             duration_ms=timer.get_duration_ms(),
-            content=output,  # Full candidate output
+            content=output,  # Full take output
             metadata={
                 "attempt": i,
                 "factor": factor,
-                "candidate_session_id": candidate_session_id,
+                "take_session_id": take_session_id,
             }
         )
 
@@ -274,7 +274,7 @@ def example_candidates_integration():
     log_echo(
         session_id=session_id,
         trace_id=winner_trace.id,
-        candidate_index=winner_index,
+        take_index=winner_index,
         is_winner=True,  # Mark as winner
         content=f"Winner: Sounding #{winner_index + 1}",
         metadata={"evaluation_reasoning": eval_content}

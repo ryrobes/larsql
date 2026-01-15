@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     -- Type classification
     checkpoint_type Enum8(
         'cell_input' = 1,
-        'candidate_eval' = 2,
+        'take_eval' = 2,
         'free_text' = 3,
         'choice' = 4,
         'multi_choice' = 5,
@@ -37,9 +37,9 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     cell_output Nullable(String),
     trace_context Nullable(String),
 
-    -- For candidate evaluation
-    candidate_outputs Nullable(String),
-    candidate_metadata Nullable(String),
+    -- For take evaluation
+    take_outputs Nullable(String),
+    take_metadata Nullable(String),
 
     -- Human response
     response Nullable(String),

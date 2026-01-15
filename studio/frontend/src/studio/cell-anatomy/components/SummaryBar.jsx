@@ -14,17 +14,17 @@ const SummaryBar = ({ cellState = {}, executionData, config, cascadeAnalytics, c
 
   // Calculate totals from execution data if available
   const totalToolCalls = executionData?.toolCalls?.length || 0;
-  const totalTurns = executionData?.candidates?.reduce(
+  const totalTurns = executionData?.takes?.reduce(
     (sum, c) => sum + (c.turns?.filter(t => t.status !== 'pending').length || 0),
     0
   ) || 0;
 
-  // Calculate total duration from candidates if cellState.duration isn't available
-  const candidatesDuration = executionData?.candidates?.reduce(
+  // Calculate total duration from takes if cellState.duration isn't available
+  const takesDuration = executionData?.takes?.reduce(
     (max, c) => Math.max(max, c.duration || 0),
     0
   ) || 0;
-  const duration = cellDuration || candidatesDuration;
+  const duration = cellDuration || takesDuration;
 
   // Format duration
   const formatDuration = (ms) => {

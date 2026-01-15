@@ -29,7 +29,7 @@ cells:
   name: create_initial_chart
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate based on:
 
       1. Accuracy of visual observations about the chart

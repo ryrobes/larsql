@@ -39,7 +39,7 @@ def _validate_cascade_overrides_internal(overrides: Dict[str, Any]) -> Dict[str,
     Returns:
         {"valid": bool, "reason": str, "errors": list, "sanitized": dict}
     """
-    from ..cascade import CascadeConfig, CellConfig, CandidatesConfig
+    from ..cascade import CascadeConfig, CellConfig, TakesConfig
     from pydantic import ValidationError
     
     errors = []
@@ -50,16 +50,16 @@ def _validate_cascade_overrides_internal(overrides: Dict[str, Any]) -> Dict[str,
     if cascade_overrides:
         sanitized["cascade_overrides"] = {}
         
-        # Validate candidates config if present
-        if "candidates" in cascade_overrides:
+        # Validate takes config if present
+        if "takes" in cascade_overrides:
             try:
-                # Try to create a CandidatesConfig to validate
-                CandidatesConfig(**cascade_overrides["candidates"])
-                sanitized["cascade_overrides"]["candidates"] = cascade_overrides["candidates"]
+                # Try to create a TakesConfig to validate
+                TakesConfig(**cascade_overrides["takes"])
+                sanitized["cascade_overrides"]["takes"] = cascade_overrides["takes"]
             except ValidationError as e:
-                errors.append(f"cascade_overrides.candidates: {e}")
+                errors.append(f"cascade_overrides.takes: {e}")
             except Exception as e:
-                errors.append(f"cascade_overrides.candidates: {str(e)}")
+                errors.append(f"cascade_overrides.takes: {str(e)}")
         
         # Validate token_budget if present
         if "token_budget" in cascade_overrides:
@@ -108,15 +108,15 @@ def _validate_cascade_overrides_internal(overrides: Dict[str, Any]) -> Dict[str,
                 else:
                     errors.append(f"cell_overrides.{cell_name}.model: must be a valid model ID (e.g., 'anthropic/claude-sonnet-4')")
             
-            # Validate candidates config
-            if "candidates" in cell_config:
+            # Validate takes config
+            if "takes" in cell_config:
                 try:
-                    CandidatesConfig(**cell_config["candidates"])
-                    sanitized["cell_overrides"][cell_name]["candidates"] = cell_config["candidates"]
+                    TakesConfig(**cell_config["takes"])
+                    sanitized["cell_overrides"][cell_name]["takes"] = cell_config["takes"]
                 except ValidationError as e:
-                    errors.append(f"cell_overrides.{cell_name}.candidates: {e}")
+                    errors.append(f"cell_overrides.{cell_name}.takes: {e}")
                 except Exception as e:
-                    errors.append(f"cell_overrides.{cell_name}.candidates: {str(e)}")
+                    errors.append(f"cell_overrides.{cell_name}.takes: {str(e)}")
             
             # Validate rules config
             if "rules" in cell_config:
@@ -190,14 +190,14 @@ def validate_cascade_overrides(overrides_json: str) -> str:
         overrides_json: JSON string containing override configuration with structure:
             {
                 "cascade_overrides": {
-                    "candidates": {...},
+                    "takes": {...},
                     "token_budget": {...},
                     ...
                 },
                 "cell_overrides": {
                     "cell_name": {
                         "model": "...",
-                        "candidates": {...},
+                        "takes": {...},
                         "rules": {...},
                         ...
                     }
@@ -214,7 +214,7 @@ def validate_cascade_overrides(overrides_json: str) -> str:
             }
     
     Example:
-        result = validate_cascade_overrides('{"cascade_overrides": {"candidates": {"factor": 3}}}')
+        result = validate_cascade_overrides('{"cascade_overrides": {"takes": {"factor": 3}}}')
         # Returns: {"valid": true, "reason": "Valid cascade overrides", "errors": [], "sanitized": {...}}
     """
     try:

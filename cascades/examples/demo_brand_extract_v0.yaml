@@ -2,7 +2,7 @@
 #
 # This cascade demonstrates:
 #   - Deterministic cells (Python, SQL) alongside LLM cells
-#   - Candidates (best-of-3 extraction with evaluator)
+#   - Takes (best-of-3 extraction with evaluator)
 #   - Wards (output validation with retry)
 #   - Context control (deliberately leaky in v0)
 #   - Receipts (cost tracking to identify outliers)
@@ -169,9 +169,9 @@ cells:
       - extract_brand
 
   # ============================================================
-  # Cell 4: EXTRACT - LLM extraction with Candidates
+  # Cell 4: EXTRACT - LLM extraction with Takes
   # ============================================================
-  # Demonstrates: Candidates (best-of-3), output_schema, context
+  # Demonstrates: Takes (best-of-3), output_schema, context
   #
   # Runs 3 parallel extraction attempts. Evaluator picks best.
   #
@@ -202,7 +202,7 @@ cells:
         "confidence": 0.0 to 1.0,
         "evidence": "Why you chose this brand (cite product name tokens or DB match)"
       }
-    candidates:
+    takes:
       factor: 3
       mode: evaluate
       evaluator_instructions: |

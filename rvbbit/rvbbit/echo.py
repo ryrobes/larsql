@@ -8,8 +8,8 @@ class Echo:
     The history entries contain rich metadata for visualization:
     - trace_id: Unique ID for this entry
     - parent_id: Parent trace ID for tree structure
-    - node_type: cascade, cell, turn, tool, candidates, reforge, etc.
-    - metadata: Dict with additional context (cell_name, candidate_index, etc.)
+    - node_type: cascade, cell, turn, tool, takes, reforge, etc.
+    - metadata: Dict with additional context (cell_name, take_index, etc.)
     """
     def __init__(self, session_id: str, initial_state: Dict[str, Any] | None = None, parent_session_id: str | None = None,
                  caller_id: str | None = None, invocation_metadata: Dict | None = None):
@@ -76,7 +76,7 @@ class Echo:
         # Generate for substantive content
         return node_type in ("agent", "tool", "tool_result", "tool_call",
                              "user", "message", "turn_input", "evaluator",
-                             "candidate_attempt")
+                             "take_attempt")
 
     def update_state(self, key: str, value: Any):
         self.state[key] = value
@@ -91,7 +91,7 @@ class Echo:
             trace_id: Unique trace ID for this entry
             parent_id: Parent trace ID for tree structure
             node_type: Type of node (cascade, cell, turn, tool, etc.)
-            metadata: Additional metadata dict (candidate_index, is_winner, cell_name, etc.)
+            metadata: Additional metadata dict (take_index, is_winner, cell_name, etc.)
             skip_unified_log: If True, skip automatic logging to unified_logs (caller already logged)
         """
         # CRITICAL: Create a COPY of the entry dict to avoid mutating the original
@@ -137,13 +137,13 @@ class Echo:
             audio = extract_audio_paths_from_tool_result(content) if isinstance(content, dict) else None
 
             # Extract enrichment data from metadata
-            candidate_index = meta.get("candidate_index")
+            take_index = meta.get("take_index")
             is_winner = meta.get("is_winner")
             reforge_step = meta.get("reforge_step")
             cell_name = meta.get("cell_name")
             cascade_id = meta.get("cascade_id")
             model = meta.get("model")  # Extract model from metadata
-            mutation_applied = meta.get("mutation_applied")  # Extract mutation for candidates
+            mutation_applied = meta.get("mutation_applied")  # Extract mutation for takes
             mutation_type = meta.get("mutation_type")  # 'augment', 'rewrite', or None
             mutation_template = meta.get("mutation_template")  # For rewrite: the instruction used
 
@@ -196,7 +196,7 @@ class Echo:
                 content=content,  # Full content (NOT stringified!)
                 tool_calls=tool_calls,
                 metadata=meta,
-                candidate_index=candidate_index,
+                take_index=take_index,
                 is_winner=is_winner,
                 reforge_step=reforge_step,
                 cell_name=cell_name,
@@ -206,7 +206,7 @@ class Echo:
                 has_base64=has_base64,
                 audio=audio,
                 mermaid_content=mermaid_content,
-                mutation_applied=mutation_applied,  # Pass mutation for candidates
+                mutation_applied=mutation_applied,  # Pass mutation for takes
                 mutation_type=mutation_type,
                 mutation_template=mutation_template,
                 is_callout=is_callout,  # Pass callout info

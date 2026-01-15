@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS prompt_lineage (
     species_hash String,
 
     -- Evolution tracking
-    candidate_index Int32,
+    take_index Int32,
     generation Int32 DEFAULT 0,     -- 0 = base, 1+ = mutations/reforges
     parent_lineage_id Nullable(UUID),
     mutation_type LowCardinality(Nullable(String)),  -- 'rewrite', 'augment', 'approach'

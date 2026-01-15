@@ -46,7 +46,7 @@ TASK_INPUT_MAPPINGS = {
     # Text classification tasks
     "text-classification": ["text", "texts"],
     "sentiment-analysis": ["text", "texts"],
-    "zero-shot-classification": ["text", "candidate_labels"],
+    "zero-shot-classification": ["text", "take_labels"],
 
     # Token classification
     "token-classification": ["text", "texts"],
@@ -154,11 +154,11 @@ class TransformersExecutor:
         # Special handling for zero-shot-classification
         if task == "zero-shot-classification":
             text = inputs.get("text", inputs.get("texts", ""))
-            labels = inputs.get("candidate_labels", inputs.get("labels", []))
+            labels = inputs.get("take_labels", inputs.get("labels", []))
             if isinstance(labels, str):
                 # Parse comma-separated labels
                 labels = [l.strip() for l in labels.split(",")]
-            return {"sequences": text, "candidate_labels": labels}
+            return {"sequences": text, "take_labels": labels}
 
         # For most tasks, find the primary input
         for param in expected_params:

@@ -243,9 +243,9 @@ def get_screenshot_list(session_path: str, cell_name: Optional[str] = None) -> L
 
         cell_path = None
         for entry in os.listdir(session_path):
-            candidate = os.path.join(session_path, entry)
-            if os.path.isdir(candidate) and os.path.exists(os.path.join(candidate, 'commands.json')):
-                cell_path = candidate
+            take = os.path.join(session_path, entry)
+            if os.path.isdir(take) and os.path.exists(os.path.join(take, 'commands.json')):
+                cell_path = take
                 break
 
         if not cell_path:

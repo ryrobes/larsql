@@ -52,7 +52,7 @@ ORDER BY id;
 */
 
 -- Query 2: Full cascade UDF (v0 - leaky)
--- This runs the full cascade with candidates + validation
+-- This runs the full cascade with takes + validation
 -- Watch the receipts - row 6 (USB-C Cable) will spike!
 /*
 SELECT

@@ -1,9 +1,9 @@
 """
 Hot or Not - Human Evaluation System for RVBBIT
 
-A simple, fast human evaluation system for rating candidate outputs.
+A simple, fast human evaluation system for rating take outputs.
 Binary ratings (good/bad) for quick labeling, with optional preferences
-for A/B comparison between candidate variants.
+for A/B comparison between take variants.
 
 The goal: Collect human preference data that can later be used to:
 1. Validate evaluator quality (does the judge pick what humans prefer?)
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     rating Nullable(Int8),              -- 1-5 scale, null = not a rating
 
     -- Preference evaluation (A/B comparison)
-    preferred_candidate_index Nullable(Int32),   -- Human's preferred candidate
+    preferred_take_index Nullable(Int32),   -- Human's preferred take
     system_winner_index Nullable(Int32),        -- What the evaluator picked
     agreement Nullable(Bool),                   -- Did human agree with system?
 
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     mutation_applied Nullable(String),  -- What mutation was applied (if any)
 
     -- Sounding context (for A/B comparisons)
-    candidate_outputs_json Nullable(String),  -- JSON: All candidate outputs for comparison
+    take_outputs_json Nullable(String),  -- JSON: All take outputs for comparison
 
     -- Flags and notes
     flagged Bool DEFAULT false,         -- User flagged for review
@@ -106,7 +106,7 @@ class EvaluationsLogger:
         prompt_text: str | None = None,
         output_text: str | None = None,
         mutation_applied: str | None = None,
-        candidate_index: int | None = None,
+        take_index: int | None = None,
         notes: str = "",
         evaluator: str = "human",
         metadata: dict | None = None
@@ -126,13 +126,13 @@ class EvaluationsLogger:
             "evaluation_type": "binary",
             "is_good": is_good,
             "rating": None,
-            "preferred_candidate_index": candidate_index if candidate_index is not None else None,
+            "preferred_take_index": take_index if take_index is not None else None,
             "system_winner_index": None,
             "agreement": None,
             "prompt_text": prompt_text,
             "output_text": output_text,
             "mutation_applied": mutation_applied,
-            "candidate_outputs_json": None,
+            "take_outputs_json": None,
             "flagged": False,
             "flag_reason": None,
             "notes": notes,
@@ -151,7 +151,7 @@ class EvaluationsLogger:
         cell_name: str,
         preferred_index: int,
         system_winner_index: int,
-        candidate_outputs: List[Dict],
+        take_outputs: List[Dict],
         cascade_id: str | None = None,
         cascade_file: str | None = None,
         prompt_text: str | None = None,
@@ -176,13 +176,13 @@ class EvaluationsLogger:
             "evaluation_type": "preference",
             "is_good": None,
             "rating": None,
-            "preferred_candidate_index": preferred_index,
+            "preferred_take_index": preferred_index,
             "system_winner_index": system_winner_index,
             "agreement": agreement,
             "prompt_text": prompt_text,
             "output_text": None,
             "mutation_applied": None,
-            "candidate_outputs_json": json.dumps(candidate_outputs),
+            "take_outputs_json": json.dumps(take_outputs),
             "flagged": False,
             "flag_reason": None,
             "notes": notes,
@@ -221,13 +221,13 @@ class EvaluationsLogger:
             "evaluation_type": "flag",
             "is_good": None,
             "rating": None,
-            "preferred_candidate_index": None,
+            "preferred_take_index": None,
             "system_winner_index": None,
             "agreement": None,
             "prompt_text": None,
             "output_text": output_text,
             "mutation_applied": None,
-            "candidate_outputs_json": None,
+            "take_outputs_json": None,
             "flagged": True,
             "flag_reason": flag_reason,
             "notes": notes,
@@ -288,14 +288,14 @@ def log_preference_eval(
     cell_name: str,
     preferred_index: int,
     system_winner_index: int,
-    candidate_outputs: List[Dict],
+    take_outputs: List[Dict],
     **kwargs
 ) -> str:
     """Convenience function to log a preference evaluation."""
     logger = get_evaluations_logger()
     return logger.log_preference(
         session_id, cell_name, preferred_index,
-        system_winner_index, candidate_outputs, **kwargs
+        system_winner_index, take_outputs, **kwargs
     )
 
 
@@ -412,11 +412,11 @@ def get_evaluation_stats() -> Dict:
         }
 
 
-def get_unevaluated_candidates(limit: int = 50) -> pd.DataFrame:
+def get_unevaluated_takes(limit: int = 50) -> pd.DataFrame:
     """
-    Get candidate outputs that haven't been evaluated yet.
+    Get take outputs that haven't been evaluated yet.
 
-    Finds sessions with candidates that don't have corresponding evaluations.
+    Finds sessions with takes that don't have corresponding evaluations.
     Returns data needed for the Hot or Not UI.
     """
     db = _get_db()
@@ -434,13 +434,13 @@ def get_unevaluated_candidates(limit: int = 50) -> pd.DataFrame:
     except:
         pass
 
-    # Get candidate attempts from unified_logs
+    # Get take attempts from unified_logs
     try:
-        candidates_df = db.query_df(f"""
+        takes_df = db.query_df(f"""
             SELECT
                 session_id,
                 cell_name,
-                candidate_index,
+                take_index,
                 is_winner,
                 content_json,
                 cascade_id,
@@ -449,7 +449,7 @@ def get_unevaluated_candidates(limit: int = 50) -> pd.DataFrame:
                 cost,
                 tokens_out
             FROM unified_logs
-            WHERE candidate_index IS NOT NULL
+            WHERE take_index IS NOT NULL
               AND role = 'assistant'
               AND content_json IS NOT NULL
               AND content_json != ''
@@ -457,63 +457,63 @@ def get_unevaluated_candidates(limit: int = 50) -> pd.DataFrame:
             LIMIT {limit * 5}
         """)
 
-        if candidates_df.empty:
+        if takes_df.empty:
             return pd.DataFrame()
 
         # Filter out already evaluated
-        mask = candidates_df.apply(
+        mask = takes_df.apply(
             lambda row: (row['session_id'], row['cell_name']) not in evaluated_set,
             axis=1
         )
-        unevaluated = candidates_df[mask]
+        unevaluated = takes_df[mask]
 
         return unevaluated.head(limit)
 
     except Exception as e:
-        print(f"[Hot or Not] Error getting unevaluated candidates: {e}")
+        print(f"[Hot or Not] Error getting unevaluated takes: {e}")
         return pd.DataFrame()
 
 
 def get_cell_images(session_id: str, cell_name: str) -> Dict[int, List[Dict]]:
     """
-    Get all images for a session/cell from the filesystem, grouped by candidate index.
+    Get all images for a session/cell from the filesystem, grouped by take index.
 
-    Returns dict mapping candidate_index -> list of image info dicts.
-    Images without candidate prefix go under key -1 (or None).
+    Returns dict mapping take_index -> list of image info dicts.
+    Images without take prefix go under key -1 (or None).
     """
     import re
     config = get_config()
     image_dir = config.image_dir
     cell_dir = os.path.join(image_dir, session_id, cell_name)
 
-    # Group images by candidate index
-    images_by_candidate = {}
+    # Group images by take index
+    images_by_take = {}
 
     if os.path.exists(cell_dir):
         for filename in sorted(os.listdir(cell_dir)):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                # Check for candidate prefix: candidate_N_image_M.ext
-                match = re.match(r'candidate_(\d+)_image_\d+\.\w+$', filename)
+                # Check for take prefix: take_N_image_M.ext
+                match = re.match(r'take_(\d+)_image_\d+\.\w+$', filename)
                 if match:
-                    candidate_idx = int(match.group(1))
+                    take_idx = int(match.group(1))
                 else:
-                    # No candidate prefix - use None as key
-                    candidate_idx = None
+                    # No take prefix - use None as key
+                    take_idx = None
 
-                if candidate_idx not in images_by_candidate:
-                    images_by_candidate[candidate_idx] = []
+                if take_idx not in images_by_take:
+                    images_by_take[take_idx] = []
 
-                images_by_candidate[candidate_idx].append({
+                images_by_take[take_idx].append({
                     'filename': filename,
                     'url': f'/api/images/{session_id}/{cell_name}/{filename}'
                 })
 
-    return images_by_candidate
+    return images_by_take
 
 
-def get_candidate_group(session_id: str, cell_name: str) -> Dict:
+def get_take_group(session_id: str, cell_name: str) -> Dict:
     """
-    Get all candidate attempts for a specific session+cell.
+    Get all take attempts for a specific session+cell.
 
     Returns:
         Dict with:
@@ -521,7 +521,7 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
         - cell_name
         - cascade_id
         - cascade_file
-        - candidates: List of candidate outputs with index, content, is_winner, etc.
+        - takes: List of take outputs with index, content, is_winner, etc.
         - images: List of image URLs from filesystem for this cell
         - system_winner_index: Which one the evaluator picked
     """
@@ -529,10 +529,10 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
     db = _get_db()
 
     try:
-        # Get assistant messages (candidate outputs) from unified_logs
+        # Get assistant messages (take outputs) from unified_logs
         df = db.query_df(f"""
             SELECT
-                candidate_index,
+                take_index,
                 is_winner,
                 content_json,
                 cascade_id,
@@ -545,9 +545,9 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
-              AND candidate_index IS NOT NULL
+              AND take_index IS NOT NULL
               AND role = 'assistant'
-            ORDER BY candidate_index
+            ORDER BY take_index
         """)
 
         if df.empty:
@@ -556,7 +556,7 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
         # Get images from filesystem for this cell
         cell_images = get_cell_images(session_id, cell_name)
 
-        candidates = []
+        takes = []
         system_winner = None
         cascade_id = None
         cascade_file = None
@@ -569,8 +569,8 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
                 except:
                     pass
 
-            # Extract realized instructions from full_request_json for THIS candidate
-            # Each candidate may have a different mutated prompt
+            # Extract realized instructions from full_request_json for THIS take
+            # Each take may have a different mutated prompt
             instructions = None
             full_request = row.get('full_request_json')
             if full_request and isinstance(full_request, str) and not pd.isna(full_request):
@@ -592,29 +592,29 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
             except (TypeError, ValueError):
                 is_winner = False
 
-            candidate_idx = int(row['candidate_index'])
+            take_idx = int(row['take_index'])
 
-            # Get images for this specific candidate
-            candidate_images = cell_images.get(candidate_idx, [])
-            # Also include non-candidate images (legacy) if no candidate-specific ones
-            if not candidate_images and None in cell_images:
-                candidate_images = cell_images.get(None, [])
+            # Get images for this specific take
+            take_images = cell_images.get(take_idx, [])
+            # Also include non-take images (legacy) if no take-specific ones
+            if not take_images and None in cell_images:
+                take_images = cell_images.get(None, [])
 
-            candidate_data = {
-                "index": candidate_idx,
+            take_data = {
+                "index": take_idx,
                 "content": content,
-                "instructions": instructions,  # Per-candidate instructions (may be mutated)
+                "instructions": instructions,  # Per-take instructions (may be mutated)
                 "is_winner": is_winner,
                 "cost": float(row['cost']) if row['cost'] is not None and not pd.isna(row['cost']) else None,
                 "tokens": int(row['tokens_out']) if row['tokens_out'] is not None and not pd.isna(row['tokens_out']) else None,
                 "model": row['model'] if row['model'] is not None and not pd.isna(row['model']) else None,
                 "mutation_applied": row.get('mutation_applied') if row.get('mutation_applied') is not None and not pd.isna(row.get('mutation_applied')) else None,
-                "images": candidate_images,  # Images specific to this candidate
+                "images": take_images,  # Images specific to this take
             }
-            candidates.append(candidate_data)
+            takes.append(take_data)
 
-            if candidate_data["is_winner"]:
-                system_winner = candidate_data["index"]
+            if take_data["is_winner"]:
+                system_winner = take_data["index"]
 
             if not cascade_id:
                 cascade_id = row['cascade_id']
@@ -625,12 +625,12 @@ def get_candidate_group(session_id: str, cell_name: str) -> Dict:
             "cell_name": cell_name,
             "cascade_id": cascade_id,
             "cascade_file": cascade_file,
-            "candidates": candidates,  # Each candidate has its own "images" array
+            "takes": takes,  # Each take has its own "images" array
             "system_winner_index": system_winner
         }
 
     except Exception as e:
-        print(f"[Hot or Not] Error getting candidate group: {e}")
+        print(f"[Hot or Not] Error getting take group: {e}")
         return None
 
 

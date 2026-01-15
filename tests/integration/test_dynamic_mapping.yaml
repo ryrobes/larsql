@@ -1,13 +1,13 @@
-# Test: Dynamic Mapping (Candidates with Dynamic Factor)
-# Tests: Candidates factor determined at runtime via Jinja2 template
-# Expected: Number of candidates matches array length, aggregate mode combines all
+# Test: Dynamic Mapping (Takes with Dynamic Factor)
+# Tests: Takes factor determined at runtime via Jinja2 template
+# Expected: Number of takes matches array length, aggregate mode combines all
 
 cascade_id: integration_test_dynamic_mapping
 description: |
-  Integration test verifying dynamic candidates factor:
+  Integration test verifying dynamic takes factor:
   - First cell generates a list of items
-  - Second cell runs N candidates where N = list length
-  - Each candidate processes one item
+  - Second cell runs N takes where N = list length
+  - Each take processes one item
   - Aggregate mode combines all results
 
 inputs_schema: {}
@@ -21,7 +21,7 @@ cells:
         # Generate a simple list (not nested dict) - this works with outputs namespace
         result = ["apple", "banana", "cherry"]
 
-  # Cell 2: Process each item (dynamic candidates)
+  # Cell 2: Process each item (dynamic takes)
   - name: process_items
     instructions: |
       Process a fruit item. Just respond with the fruit name in uppercase.
@@ -33,7 +33,7 @@ cells:
     context:
       from:
         - generate_items
-    candidates:
+    takes:
       factor: "{{ outputs.generate_items.result | length }}"
       mode: aggregate
       max_parallel: 3

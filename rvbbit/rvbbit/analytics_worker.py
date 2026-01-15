@@ -247,8 +247,8 @@ def analyze_cascade_execution(session_id: str) -> Dict:
             'message_count': session_data['message_count'],
             'cell_count': session_data['cell_count'],
             'error_count': session_data['error_count'],
-            'candidate_count': session_data.get('candidate_count', 0),
-            'winner_candidate_index': session_data.get('winner_candidate_index'),
+            'take_count': session_data.get('take_count', 0),
+            'winner_take_index': session_data.get('winner_take_index'),
 
             # Baselines
             'global_avg_cost': baselines['global'].get('avg_cost', 0),
@@ -418,8 +418,8 @@ def _fetch_session_data(session_id: str, db) -> Optional[Dict]:
                 COUNT(*) as message_count,
                 COUNT(DISTINCT cell_name) as cell_count,
                 countIf(node_type LIKE '%%error%%') as error_count,
-                uniqExactIf(candidate_index, candidate_index IS NOT NULL) as candidate_count,
-                anyIf(candidate_index, is_winner = 1) as winner_candidate_index
+                uniqExactIf(take_index, take_index IS NOT NULL) as take_count,
+                anyIf(take_index, is_winner = 1) as winner_take_index
             FROM unified_logs
             WHERE session_id = '{session_id}'
         """
@@ -470,8 +470,8 @@ def _fetch_session_data(session_id: str, db) -> Optional[Dict]:
             'message_count': int(metrics.get('message_count', 0) or 0),
             'cell_count': int(metrics.get('cell_count', 0) or 0),
             'error_count': int(metrics.get('error_count', 0) or 0),
-            'candidate_count': int(metrics.get('candidate_count', 0) or 0),
-            'winner_candidate_index': metrics.get('winner_candidate_index'),
+            'take_count': int(metrics.get('take_count', 0) or 0),
+            'winner_take_index': metrics.get('winner_take_index'),
         }
 
     except Exception as e:
@@ -932,7 +932,7 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
                 SUM(tokens_out) as tokens_out,
                 COUNT(*) as message_count,
                 COUNT(DISTINCT turn_number) as turn_count,
-                uniqExactIf(candidate_index, candidate_index IS NOT NULL) as candidate_count,
+                uniqExactIf(take_index, take_index IS NOT NULL) as take_count,
                 countIf(node_type LIKE '%%error%%') > 0 as error_occurred
             FROM unified_logs
             WHERE session_id = '{session_id}'
@@ -996,7 +996,7 @@ def _analyze_cells(session_id: str, db, cascade_id: str, genus_hash: str,
                 'cell_tokens': cell_tokens,
                 'message_count': int(cell['message_count'] or 0),
                 'turn_count': int(turn_count),
-                'candidate_count': int(cell['candidate_count'] or 0),
+                'take_count': int(cell['take_count'] or 0),
                 'error_occurred': bool(cell['error_occurred']),
 
                 # Baselines
@@ -1386,7 +1386,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
         import json as json_module
 
         # Get the assistant output for this cell
-        # Prefer the winner candidate, or the last message if no winner marked
+        # Prefer the winner take, or the last message if no winner marked
         output_query = f"""
             SELECT content_json, content_hash
             FROM unified_logs
@@ -1651,7 +1651,7 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                 tokens_out,
                 cost,
                 model_requested,
-                candidate_index
+                take_index
             FROM unified_logs
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
@@ -1748,7 +1748,7 @@ def _create_context_breakdown(session_id: str, cell_name: str, cell_index: int,
                     'cell_name': cell_name,
                     'cell_index': cell_index,
                     'model_requested': model_requested or '',  # Default to empty string for ClickHouse
-                    'candidate_index': msg.get('candidate_index'),
+                    'take_index': msg.get('take_index'),
                     'context_message_hash': ctx_hash,
                     'context_message_cell': ctx_info['source_cell'] or 'unknown',
                     'context_message_role': ctx_info['role'] or 'unknown',

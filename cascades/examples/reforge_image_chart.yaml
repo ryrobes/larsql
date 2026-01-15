@@ -18,7 +18,7 @@ cells:
   name: create_and_refine_chart
   rules:
     max_turns: 2
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate the chart descriptions and suggested improvements
       based on:
 

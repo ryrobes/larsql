@@ -84,7 +84,7 @@ class LLMAnnotation:
     max_tokens: Optional[int] = None      # Token limit
     start_pos: int = 0                    # Start position in query
     end_pos: int = 0                      # End position in query
-    candidates: Optional[Dict[str, Any]] = None  # Cascade-level candidates config
+    takes: Optional[Dict[str, Any]] = None  # Cascade-level takes config
 
 
 def _parse_annotations(query: str) -> List[Tuple[int, LLMAnnotation]]:
@@ -142,33 +142,33 @@ def _parse_annotations(query: str) -> List[Tuple[int, LLMAnnotation]]:
                 elif key == 'prompt':
                     # Explicit prompt key
                     prompt_lines.append(value)
-                elif key.startswith('candidates.'):
-                    # Candidates config for cascade-level sampling
-                    subkey = key[11:]  # Remove 'candidates.' prefix
-                    if current_annotation.candidates is None:
-                        current_annotation.candidates = {}
+                elif key.startswith('takes.'):
+                    # Takes config for cascade-level sampling
+                    subkey = key[11:]  # Remove 'takes.' prefix
+                    if current_annotation.takes is None:
+                        current_annotation.takes = {}
                     if subkey in ('factor', 'max_parallel', 'reforge'):
                         try:
-                            current_annotation.candidates[subkey] = int(value)
+                            current_annotation.takes[subkey] = int(value)
                         except ValueError:
-                            current_annotation.candidates[subkey] = value
+                            current_annotation.takes[subkey] = value
                     elif subkey == 'mutate':
-                        current_annotation.candidates[subkey] = value.lower() in ('true', 'yes', '1')
+                        current_annotation.takes[subkey] = value.lower() in ('true', 'yes', '1')
                     else:
                         # evaluator, mode, evaluator_model, etc.
-                        current_annotation.candidates[subkey] = value
+                        current_annotation.takes[subkey] = value
                 elif key == 'models':
                     # Multi-model shorthand: models: [a, b, c]
                     import json
-                    if current_annotation.candidates is None:
-                        current_annotation.candidates = {}
+                    if current_annotation.takes is None:
+                        current_annotation.takes = {}
                     try:
                         models = json.loads(value)
                     except (json.JSONDecodeError, ValueError):
                         # Try comma-separated
                         models = [m.strip() for m in value.strip('[]').split(',')]
-                    current_annotation.candidates['multi_model'] = models
-                    current_annotation.candidates['factor'] = len(models)
+                    current_annotation.takes['multi_model'] = models
+                    current_annotation.takes['factor'] = len(models)
                 else:
                     # Unknown key, treat as prompt text
                     prompt_lines.append(content)
@@ -551,7 +551,7 @@ def _build_replacement(
     Model hints from annotations are prepended to prompts so bodybuilder's
     request mode can pick the appropriate model.
 
-    Candidates config from annotations is injected as a special prefix
+    Takes config from annotations is injected as a special prefix
     to enable cascade-level sampling (tree-of-thought, multi-model, etc).
     """
     import json
@@ -562,21 +562,21 @@ def _build_replacement(
         escaped = s.replace("'", "''")
         return f"'{escaped}'"
 
-    def build_prompt_with_candidates_and_model(prompt: str) -> str:
+    def build_prompt_with_takes_and_model(prompt: str) -> str:
         """
-        Prepend candidates prefix and model hint to prompt if annotation specifies them.
+        Prepend takes prefix and model hint to prompt if annotation specifies them.
 
-        Format: __RVBBIT_CANDIDATES:{"factor":3}__Use model - prompt
+        Format: __RVBBIT_TAKES:{"factor":3}__Use model - prompt
         """
         result = prompt
         # First add model hint (innermost)
         if annotation and annotation.model:
             result = f"Use {annotation.model} - {result}"
-        # Then add candidates prefix (outermost)
-        if annotation and annotation.candidates:
-            candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(annotation.candidates)}__"
-            result = f"{candidates_prefix}{result}"
-            print(f"[llm_agg_rewriter] 💉 Injecting candidates prefix: {candidates_prefix}")
+        # Then add takes prefix (outermost)
+        if annotation and annotation.takes:
+            takes_prefix = f"__RVBBIT_TAKES:{json.dumps(annotation.takes)}__"
+            result = f"{takes_prefix}{result}"
+            print(f"[llm_agg_rewriter] 💉 Injecting takes prefix: {takes_prefix}")
         return result
 
     def build_prompt_with_model_hint(prompt: str) -> str:

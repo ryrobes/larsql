@@ -10,7 +10,7 @@ import './WarrenView.css';
 const STORAGE_KEY = 'warren_last_session';
 const STORAGE_TIME_KEY = 'warren_last_session_time';
 
-// Personas mapped by candidate_index (0-4)
+// Personas mapped by take_index (0-4)
 const PERSONAS = [
   { name: 'Skeptic', icon: 'mdi:shield-alert', color: '#f87171' },
   { name: 'Visionary', icon: 'mdi:lightbulb', color: '#fbbf24' },
@@ -97,41 +97,41 @@ const WarrenView = () => {
 
   /**
    * Parse logs into:
-   * 1. columns: { 0: [...], 1: [...], 2: [...], 3: [...], 4: [...] } - messages grouped by candidate_index
-   * 2. hazelMessages: [...] - User messages + aggregator/synthesis messages (NOT candidates)
+   * 1. columns: { 0: [...], 1: [...], 2: [...], 3: [...], 4: [...] } - messages grouped by take_index
+   * 2. hazelMessages: [...] - User messages + aggregator/synthesis messages (NOT takes)
    */
   const { columns, hazelMessages } = useMemo(() => {
-    // Group candidate messages by their index (0-4)
+    // Group take messages by their index (0-4)
     const cols = { 0: [], 1: [], 2: [], 3: [], 4: [] };
     const hazel = [];
 
     for (const log of logs) {
-      // Check if this is a candidate message
-      // The candidate_index field is returned directly from the query (more reliable)
+      // Check if this is a take message
+      // The take_index field is returned directly from the query (more reliable)
       // Also check metadata_json as fallback
       let metadata = null;
-      let isCandidate = false;
-      let candidateIndex = null;
+      let isTake = false;
+      let takeIndex = null;
 
       // First try the direct field (from ClickHouse unified_logs schema)
-      if (log.candidate_index !== null && log.candidate_index !== undefined) {
-        isCandidate = true;
-        candidateIndex = log.candidate_index;
+      if (log.take_index !== null && log.take_index !== undefined) {
+        isTake = true;
+        takeIndex = log.take_index;
       }
 
       // Fallback: check metadata_json
-      if (!isCandidate && log.metadata_json) {
+      if (!isTake && log.metadata_json) {
         try {
           metadata = typeof log.metadata_json === 'string'
             ? JSON.parse(log.metadata_json)
             : log.metadata_json;
 
-          if (metadata.candidate_index !== undefined && metadata.candidate_index !== null) {
-            isCandidate = true;
-            candidateIndex = metadata.candidate_index;
-          } else if (metadata.is_candidate) {
-            isCandidate = true;
-            candidateIndex = metadata.sounding_index ?? 0;
+          if (metadata.take_index !== undefined && metadata.take_index !== null) {
+            isTake = true;
+            takeIndex = metadata.take_index;
+          } else if (metadata.is_take) {
+            isTake = true;
+            takeIndex = metadata.sounding_index ?? 0;
           }
         } catch (e) {}
       }
@@ -184,13 +184,13 @@ const WarrenView = () => {
       );
       if (isSystemMessage) continue;
 
-      // If it's a candidate message, add to the appropriate column
-      if (isCandidate && candidateIndex !== null && candidateIndex >= 0 && candidateIndex <= 4) {
+      // If it's a take message, add to the appropriate column
+      if (isTake && takeIndex !== null && takeIndex >= 0 && takeIndex <= 4) {
         // Skip tool results (role: 'tool')
         if (log.role === 'tool') continue;
 
         // Skip tool calls from assistants
-        const isCandidateToolCall = (
+        const isTakeToolCall = (
           content.includes('"tool"') ||
           content.includes('"function"') ||
           content.includes('brave_web_search') ||
@@ -201,12 +201,12 @@ const WarrenView = () => {
           content.startsWith('Calling ') ||
           content.startsWith('Tool Result')
         );
-        if (isCandidateToolCall) continue;
+        if (isTakeToolCall) continue;
 
         // Use direct model field from query, fallback to metadata
         const model = log.model || metadata?.model || metadata?.model_id || 'unknown';
-        cols[candidateIndex].push({
-          id: log.message_id || `c${candidateIndex}_${cols[candidateIndex].length}`,
+        cols[takeIndex].push({
+          id: log.message_id || `c${takeIndex}_${cols[takeIndex].length}`,
           content: content,
           model: model.split('/').pop(),
           timestamp: log.timestamp,
@@ -263,7 +263,7 @@ const WarrenView = () => {
         continue;
       }
 
-      // Not a candidate - check if it's a user message or Hazel's response
+      // Not a take - check if it's a user message or Hazel's response
       if (log.role === 'user') {
         // Skip internal turn prompts
         if (content.includes('The user responded:') ||

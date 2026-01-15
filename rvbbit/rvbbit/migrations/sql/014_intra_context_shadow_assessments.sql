@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     session_id String,
     cascade_id String,
     cell_name String,
-    candidate_index Nullable(Int16),
+    take_index Nullable(Int16),
     turn_number UInt16,
     is_loop_retry Bool DEFAULT false,
 
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
-    INDEX idx_candidate candidate_index TYPE set(100) GRANULARITY 1,
+    INDEX idx_take take_index TYPE set(100) GRANULARITY 1,
     INDEX idx_turn turn_number TYPE set(100) GRANULARITY 1,
     INDEX idx_batch assessment_batch_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,

@@ -10,7 +10,7 @@ import useStudioCascadeStore from '../stores/studioCascadeStore';
  * - input.* (from inputs_schema)
  * - outputs.* (from previous cells)
  * - state.* (from state usage)
- * - Built-ins (lineage, history, candidate_index, etc.)
+ * - Built-ins (lineage, history, take_index, etc.)
  */
 
 // Variable type metadata
@@ -25,9 +25,9 @@ const VARIABLE_TYPES = {
 const BUILTIN_VARIABLES = [
   { path: 'lineage', description: 'Execution path through cells' },
   { path: 'history', description: 'Full conversation history' },
-  { path: 'candidate_index', description: 'Current candidate index (0, 1, 2...)' },
-  { path: 'candidate_factor', description: 'Total number of candidates' },
-  { path: 'is_candidate', description: 'True when running as candidate' },
+  { path: 'take_index', description: 'Current take index (0, 1, 2...)' },
+  { path: 'take_factor', description: 'Total number of takes' },
+  { path: 'is_take', description: 'True when running as take' },
 ];
 
 /**

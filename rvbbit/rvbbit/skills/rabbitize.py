@@ -128,16 +128,16 @@ def _find_browsers_dir():
 
     # Search parents first (prefer project root over nested directories)
     for parent in list(current.parents):
-        candidate = parent / "browsers"
-        if candidate.exists() and candidate.is_dir():
-            subdirs = list(candidate.glob("*/*"))
+        take = parent / "browsers"
+        if take.exists() and take.is_dir():
+            subdirs = list(take.glob("*/*"))
             if subdirs:
-                return str(candidate)
+                return str(take)
 
     # Then check current directory
-    candidate = current / "browsers"
-    if candidate.exists() and candidate.is_dir():
-        return str(candidate)
+    take = current / "browsers"
+    if take.exists() and take.is_dir():
+        return str(take)
 
     # Final fallback: use cwd
     return str(current / "browsers")

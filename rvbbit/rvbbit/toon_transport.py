@@ -96,10 +96,10 @@ def _find_json_structures_in_text(text: str) -> List[Tuple[int, int, str, str]]:
                 j += 1
 
             if depth == 0:
-                candidate = text[i:j]
+                take = text[i:j]
                 # Try to parse as JSON
                 try:
-                    parsed = json.loads(candidate)
+                    parsed = json.loads(take)
 
                     # Classify the structure
                     if isinstance(parsed, list):
@@ -114,7 +114,7 @@ def _find_json_structures_in_text(text: str) -> List[Tuple[int, int, str, str]]:
                     else:
                         structure_type = "other"
 
-                    structures.append((i, j, candidate, structure_type))
+                    structures.append((i, j, take, structure_type))
                     # Skip past this structure to avoid finding nested ones
                     i = j - 1
                 except json.JSONDecodeError:
@@ -127,7 +127,7 @@ def _find_json_structures_in_text(text: str) -> List[Tuple[int, int, str, str]]:
 
 def _find_json_arrays_in_text(text: str) -> List[Tuple[int, int, str]]:
     """
-    Find JSON array-of-objects candidates in text content (TOON-eligible).
+    Find JSON array-of-objects takes in text content (TOON-eligible).
 
     Returns list of (start_pos, end_pos, json_str) tuples.
     """

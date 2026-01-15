@@ -38,11 +38,11 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     semantic_actor LowCardinality(Nullable(String)),
     semantic_purpose LowCardinality(Nullable(String)),
 
-    -- Execution Context (Candidates/Reforge)
-    candidate_index Nullable(Int32),
+    -- Execution Context (Takes/Reforge)
+    take_index Nullable(Int32),
     is_winner Nullable(Bool),
     reforge_step Nullable(Int32),
-    winning_candidate_index Nullable(Int32),
+    winning_take_index Nullable(Int32),
     attempt_number Nullable(Int32),
     turn_number Nullable(Int32),
     mutation_applied Nullable(String),

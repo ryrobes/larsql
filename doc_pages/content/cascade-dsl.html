@@ -94,7 +94,7 @@
     <span class="key">context</span>:                   <span class="cmt"># Inter-cell context</span>
       <span class="key">from</span>: [other_cell]
     <span class="key">wards</span>: []                  <span class="cmt"># Validation rules</span>
-    <span class="key">candidates</span>: {}             <span class="cmt"># Parallel execution config</span></pre>
+    <span class="key">takes</span>: {}             <span class="cmt"># Parallel execution config</span></pre>
   </div>
 </div>
 
@@ -211,10 +211,10 @@
 {{ lineage }}
 {{ history }}
 
-<span class="cmt"># Candidate context</span>
-{{ sounding_index }}      <span class="cmt"># Current candidate (0, 1, 2...)</span>
-{{ sounding_factor }}     <span class="cmt"># Total candidates</span>
-{{ is_sounding }}         <span class="cmt"># True when running as candidate</span>
+<span class="cmt"># Take context</span>
+{{ sounding_index }}      <span class="cmt"># Current take (0, 1, 2...)</span>
+{{ sounding_factor }}     <span class="cmt"># Total takes</span>
+{{ is_sounding }}         <span class="cmt"># True when running as take</span>
 
 <span class="cmt"># HITL context</span>
 {{ checkpoint_id }}</pre>

@@ -2731,23 +2731,23 @@
         }
       }
 
-      /* ========== CANDIDATES SECTION ========== */
-      .candidates-section {
+      /* ========== TAKES SECTION ========== */
+      .takes-section {
         padding: 100px 0;
         background: linear-gradient(180deg, rgba(122, 92, 255, 0.03), rgba(255, 47, 168, 0.04), transparent);
       }
 
-      .candidates-header {
+      .takes-header {
         text-align: center;
         margin-bottom: 56px;
       }
 
-      .candidates-header h2 {
+      .takes-header h2 {
         font-size: clamp(1.8rem, 3vw, 2.4rem);
         margin: 0 0 16px;
       }
 
-      .candidates-header p {
+      .takes-header p {
         color: var(--muted);
         font-size: 1.1rem;
         margin: 0;
@@ -2757,7 +2757,7 @@
         line-height: 1.6;
       }
 
-      .candidates-visual {
+      .takes-visual {
         display: grid;
         grid-template-columns: 1fr 340px;
         gap: 48px;
@@ -2766,7 +2766,7 @@
         margin: 0 auto 48px;
       }
 
-      .candidates-diagram {
+      .takes-diagram {
         background: linear-gradient(150deg, rgba(11, 15, 26, 0.98), rgba(15, 19, 34, 0.95));
         border-radius: var(--radius-lg);
         border: 1px solid rgba(122, 92, 255, 0.3);
@@ -2774,7 +2774,7 @@
         position: relative;
       }
 
-      .candidates-input {
+      .takes-input {
         text-align: center;
         padding: 12px 20px;
         background: rgba(0, 0, 0, 0.3);
@@ -2785,18 +2785,18 @@
         margin-bottom: 20px;
       }
 
-      .candidates-input strong {
+      .takes-input strong {
         color: var(--ink);
       }
 
-      .candidates-lanes {
+      .takes-lanes {
         display: flex;
         justify-content: center;
         gap: 12px;
         margin-bottom: 16px;
       }
 
-      .candidates-lanes::before {
+      .takes-lanes::before {
         content: "";
         position: absolute;
         left: 50%;
@@ -2807,7 +2807,7 @@
         background: rgba(122, 92, 255, 0.4);
       }
 
-      .candidate-card {
+      .take-card {
         width: 72px;
         padding: 16px 8px;
         background: rgba(0, 0, 0, 0.4);
@@ -2818,25 +2818,25 @@
         position: relative;
       }
 
-      .candidate-card.success {
+      .take-card.success {
         border-color: rgba(0, 255, 136, 0.4);
         background: rgba(0, 255, 136, 0.08);
       }
 
-      .candidate-card.error {
+      .take-card.error {
         border-color: rgba(255, 90, 90, 0.3);
         background: rgba(255, 90, 90, 0.05);
         opacity: 0.6;
       }
 
-      .candidate-card.winner {
+      .take-card.winner {
         border-color: rgba(122, 92, 255, 0.8);
         background: rgba(122, 92, 255, 0.15);
         box-shadow: 0 0 24px rgba(122, 92, 255, 0.3);
         transform: scale(1.05);
       }
 
-      .candidate-card .model-badge {
+      .take-card .model-badge {
         font-size: 0.6rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -2844,27 +2844,27 @@
         margin-bottom: 8px;
       }
 
-      .candidate-card .status-icon {
+      .take-card .status-icon {
         font-size: 1.4rem;
         margin-bottom: 4px;
       }
 
-      .candidate-card.success .status-icon { color: var(--green); }
-      .candidate-card.error .status-icon { color: rgba(255, 90, 90, 0.7); }
-      .candidate-card.winner .status-icon { color: var(--purple); }
+      .take-card.success .status-icon { color: var(--green); }
+      .take-card.error .status-icon { color: rgba(255, 90, 90, 0.7); }
+      .take-card.winner .status-icon { color: var(--purple); }
 
-      .candidate-card .score {
+      .take-card .score {
         font-family: "Google Sans Code", "JetBrains Mono", monospace;
         font-size: 0.7rem;
         color: var(--muted);
       }
 
-      .candidate-card.winner .score {
+      .take-card.winner .score {
         color: var(--purple);
         font-weight: 600;
       }
 
-      .candidates-evaluator {
+      .takes-evaluator {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2891,7 +2891,7 @@
         color: var(--purple);
       }
 
-      .candidates-output {
+      .takes-output {
         text-align: center;
         padding: 14px 20px;
         background: rgba(0, 255, 136, 0.1);
@@ -2899,7 +2899,7 @@
         border-radius: 8px;
       }
 
-      .candidates-output .output-label {
+      .takes-output .output-label {
         font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -2907,14 +2907,14 @@
         margin-bottom: 4px;
       }
 
-      .candidates-output .output-value {
+      .takes-output .output-value {
         font-family: "Google Sans Code", "JetBrains Mono", monospace;
         font-size: 0.95rem;
         color: var(--green);
         font-weight: 500;
       }
 
-      .candidates-benefits {
+      .takes-benefits {
         display: flex;
         flex-direction: column;
         gap: 20px;
@@ -2952,7 +2952,7 @@
         line-height: 1.5;
       }
 
-      .candidates-yaml {
+      .takes-yaml {
         max-width: 600px;
         margin: 0 auto 40px;
         background: #0a0d14;
@@ -2963,15 +2963,15 @@
         overflow: hidden;
       }
 
-      .candidates-yaml .code-header {
+      .takes-yaml .code-header {
         border-color: rgba(122, 92, 255, 0.1);
       }
 
-      .candidates-yaml .code-content {
+      .takes-yaml .code-content {
         padding: 20px 24px;
       }
 
-	      .candidates-yaml pre {
+	      .takes-yaml pre {
 	        margin: 0;
 	        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
 	        font-size: 0.85rem;
@@ -2979,7 +2979,7 @@
 	        color: #cde7ff;
 	      }
 
-      .candidates-modes {
+      .takes-modes {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 16px;
@@ -3016,24 +3016,24 @@
       }
 
       @media (max-width: 900px) {
-        .candidates-visual {
+        .takes-visual {
           grid-template-columns: 1fr;
           gap: 32px;
         }
-        .candidates-modes {
+        .takes-modes {
           grid-template-columns: repeat(2, 1fr);
         }
       }
 
       @media (max-width: 500px) {
-        .candidates-lanes {
+        .takes-lanes {
           gap: 8px;
         }
-        .candidate-card {
+        .take-card {
           width: 56px;
           padding: 12px 6px;
         }
-        .candidates-modes {
+        .takes-modes {
           grid-template-columns: 1fr;
         }
       }
@@ -4920,29 +4920,29 @@
         }
       }
 
-      /* ========== INLINE CANDIDATES ========== */
-      .inline-candidates {
+      /* ========== INLINE TAKES ========== */
+      .inline-takes {
         margin-top: 40px;
         padding-top: 40px;
         border-top: 1px solid rgba(0, 255, 209, 0.1);
       }
 
-      .inline-candidates-header {
+      .inline-takes-header {
         text-align: center;
         margin-bottom: 30px;
       }
 
-      .inline-candidates-header h3 {
+      .inline-takes-header h3 {
         font-size: 1.5rem;
         margin-bottom: 8px;
       }
 
-      .inline-candidates-header p {
+      .inline-takes-header p {
         color: var(--muted);
         font-size: 1rem;
       }
 
-      .inline-candidates-examples {
+      .inline-takes-examples {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 24px;
@@ -4980,19 +4980,19 @@
         color: var(--magenta);
       }
 
-      .inline-candidates-tagline {
+      .inline-takes-tagline {
         text-align: center;
         margin-top: 24px;
         font-size: 1.1rem;
         color: var(--ink);
       }
 
-      .inline-candidates-tagline strong {
+      .inline-takes-tagline strong {
         color: var(--cyan);
       }
 
       @media (max-width: 800px) {
-        .inline-candidates-examples {
+        .inline-takes-examples {
           grid-template-columns: 1fr;
         }
       }
@@ -5059,6 +5059,829 @@
           grid-template-columns: 1fr;
         }
       }
+
+      /* ========== SLIDE DECK MODAL ========== */
+      .deck-trigger {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: linear-gradient(135deg, rgba(28, 246, 255, 0.015), rgba(255, 47, 168, 0.01));
+        /* border: 1px solid rgba(28, 246, 255, 0.4); */
+        border: none;
+        outline: none;
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: var(--cyan);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        font-family: "Quicksand", "Space Grotesk", sans-serif;
+      }
+      .deck-trigger iconify-icon {
+        font-size: 1.2rem;
+      }
+      .deck-trigger:hover {
+        background: linear-gradient(135deg, rgba(28, 246, 255, 0.25), rgba(255, 47, 168, 0.15));
+        border-color: var(--cyan);
+        box-shadow: 0 0 25px rgba(28, 246, 255, 0.3), 0 4px 20px rgba(0, 0, 0, 0.4);
+        transform: translateY(-2px);
+      }
+
+      @media (max-width: 600px) {
+        .deck-trigger span {
+          display: none;
+        }
+        .deck-trigger {
+          padding: 12px;
+          border-radius: 50%;
+        }
+      }
+
+      /* Modal overlay */
+      .deck-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .deck-modal.open {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .deck-modal.visible {
+        opacity: 1;
+      }
+
+      /* Backdrop */
+      .deck-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 4, 8, 0.96);
+        backdrop-filter: blur(12px);
+      }
+
+      /* Container - larger, more dramatic */
+      .deck-container {
+        position: relative;
+        width: min(1100px, 96vw);
+        max-height: 92vh;
+        background: radial-gradient(ellipse at top, rgba(28, 246, 255, 0.03) 0%, transparent 50%),
+                    linear-gradient(180deg, rgba(8, 12, 20, 0.99), rgba(6, 9, 16, 0.99));
+        border: 1px solid rgba(28, 246, 255, 0.2);
+        border-radius: 20px;
+        box-shadow: 0 0 120px rgba(28, 246, 255, 0.08), 0 40px 100px rgba(0, 0, 0, 0.7);
+        transform: translateY(30px) scale(0.98);
+        transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+      }
+      .deck-modal.visible .deck-container {
+        transform: translateY(0) scale(1);
+      }
+
+      /* Close button */
+      .deck-close {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 10px;
+        color: rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .deck-close:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.8);
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+      .deck-close iconify-icon {
+        font-size: 1.3rem;
+      }
+
+      /* Slide content area - centered, spacious */
+      .deck-slides {
+        padding: 70px 80px 50px;
+        min-height: 520px;
+        display: flex;
+        flex-direction: column;
+      }
+      .deck-slide {
+        display: none;
+        flex: 1;
+      }
+      .deck-slide.active {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        animation: deckSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      @keyframes deckSlideIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* Premium slide typography */
+      .deck-slide h2 {
+        font-size: 2.6rem;
+        font-weight: 600;
+        margin: 0 0 16px;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        text-align: center;
+      }
+      .deck-slide h2 .gradient-text {
+        display: block;
+        background: linear-gradient(135deg, var(--cyan) 0%, var(--magenta) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .deck-slide h2 .accent {
+        color: var(--cyan);
+      }
+      .deck-slide .deck-subtitle {
+        font-size: 1.25rem;
+        color: rgba(255, 255, 255, 0.5);
+        text-align: center;
+        margin: 0 0 40px;
+        font-weight: 400;
+      }
+
+      /* Hero slide - big statement */
+      .deck-hero-statement {
+        text-align: center;
+        margin: 20px 0;
+      }
+      .deck-hero-statement .big-code {
+        display: inline-block;
+        background: rgba(28, 246, 255, 0.08);
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        border-radius: 12px;
+        padding: 24px 48px;
+        font-family: "Cascadia Code", "JetBrains Mono", monospace;
+        font-size: 1.5rem;
+        color: var(--cyan);
+        margin: 24px 0;
+        box-shadow: 0 0 40px rgba(28, 246, 255, 0.1);
+      }
+      .deck-hero-statement .big-code .keyword {
+        color: var(--magenta);
+      }
+      .deck-hero-statement .big-code .string {
+        color: var(--green);
+      }
+
+      /* Before/After transformation - dramatic */
+      .deck-transform {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 40px;
+        margin: 30px 0;
+      }
+      .deck-transform-card {
+        flex: 1;
+        max-width: 380px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        transition: all 0.3s ease;
+      }
+      .deck-transform-card.after {
+        border-color: rgba(28, 246, 255, 0.4);
+        box-shadow: 0 0 60px rgba(28, 246, 255, 0.12);
+        transform: scale(1.02);
+      }
+      .deck-transform-header {
+        padding: 14px 20px;
+        background: rgba(0, 0, 0, 0.4);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .deck-transform-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: rgba(255, 255, 255, 0.35);
+      }
+      .deck-transform-card.after .deck-transform-label {
+        color: var(--cyan);
+      }
+      .deck-transform-badge {
+        font-size: 0.65rem;
+        padding: 4px 10px;
+        background: rgba(28, 246, 255, 0.15);
+        border: 1px solid rgba(28, 246, 255, 0.3);
+        border-radius: 20px;
+        color: var(--cyan);
+      }
+      .deck-transform-body {
+        padding: 24px;
+      }
+      .deck-transform-body pre {
+        margin: 0;
+        font-family: "Cascadia Code", "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        line-height: 1.7;
+        color: rgba(200, 220, 255, 0.9);
+      }
+      .deck-transform-body .hl {
+        background: rgba(28, 246, 255, 0.15);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(28, 246, 255, 0.3);
+      }
+      .deck-transform-arrow {
+        font-size: 2rem;
+        color: var(--cyan);
+        opacity: 0.5;
+        flex-shrink: 0;
+      }
+
+      /* Discovery slide - the wow moment */
+      .deck-discovery {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        align-items: center;
+        margin: 20px 0;
+      }
+      .deck-discovery-query {
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 47, 168, 0.25);
+      }
+      .deck-discovery-query-header {
+        padding: 12px 20px;
+        background: rgba(255, 47, 168, 0.08);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.15);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--magenta);
+      }
+      .deck-discovery-query pre {
+        padding: 20px 24px;
+        margin: 0;
+        font-family: "Cascadia Code", "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: rgba(200, 220, 255, 0.9);
+      }
+      .deck-discovery-result {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .deck-discovery-result-header {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--green);
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .deck-discovery-result-header iconify-icon {
+        font-size: 1rem;
+      }
+      .deck-bucket {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(0, 255, 136, 0.04);
+        border: 1px solid rgba(0, 255, 136, 0.15);
+        border-radius: 10px;
+        font-size: 0.85rem;
+      }
+      .deck-bucket-num {
+        width: 24px;
+        height: 24px;
+        background: rgba(0, 255, 136, 0.15);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--green);
+      }
+      .deck-bucket-label {
+        flex: 1;
+        color: rgba(255, 255, 255, 0.85);
+      }
+      .deck-bucket-count {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.4);
+        font-family: "Cascadia Code", monospace;
+      }
+
+      /* Trust signals - clean grid */
+      .deck-trust-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        margin: 30px 0;
+      }
+      .deck-trust-item {
+        text-align: center;
+        padding: 32px 24px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 16px;
+        transition: all 0.3s ease;
+      }
+      .deck-trust-item:hover {
+        border-color: rgba(28, 246, 255, 0.2);
+        background: rgba(28, 246, 255, 0.03);
+      }
+      .deck-trust-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 16px;
+        background: rgba(28, 246, 255, 0.08);
+        border: 1px solid rgba(28, 246, 255, 0.2);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .deck-trust-icon iconify-icon {
+        font-size: 1.6rem;
+        color: var(--cyan);
+      }
+      .deck-trust-item:nth-child(2) .deck-trust-icon {
+        background: rgba(255, 47, 168, 0.08);
+        border-color: rgba(255, 47, 168, 0.2);
+      }
+      .deck-trust-item:nth-child(2) .deck-trust-icon iconify-icon {
+        color: var(--magenta);
+      }
+      .deck-trust-item:nth-child(3) .deck-trust-icon {
+        background: rgba(0, 255, 136, 0.08);
+        border-color: rgba(0, 255, 136, 0.2);
+      }
+      .deck-trust-item:nth-child(3) .deck-trust-icon iconify-icon {
+        color: var(--green);
+      }
+      .deck-trust-title {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--ink);
+        margin: 0 0 8px;
+      }
+      .deck-trust-desc {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.5);
+        line-height: 1.5;
+        margin: 0;
+      }
+
+      /* Operators showcase - floating badges */
+      .deck-ops-showcase {
+        position: relative;
+        padding: 40px 0;
+        text-align: center;
+      }
+      .deck-ops-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .deck-op {
+        padding: 10px 18px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 8px;
+        font-family: "Cascadia Code", monospace;
+        font-size: 0.8rem;
+        transition: all 0.2s ease;
+      }
+      .deck-op.cyan {
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        color: var(--cyan);
+      }
+      .deck-op.cyan:hover {
+        border-color: rgba(28, 246, 255, 0.5);
+        box-shadow: 0 0 20px rgba(28, 246, 255, 0.15);
+      }
+      .deck-op.magenta {
+        border: 1px solid rgba(255, 47, 168, 0.25);
+        color: var(--magenta);
+      }
+      .deck-op.magenta:hover {
+        border-color: rgba(255, 47, 168, 0.5);
+        box-shadow: 0 0 20px rgba(255, 47, 168, 0.15);
+      }
+      .deck-op.green {
+        border: 1px solid rgba(0, 255, 136, 0.25);
+        color: var(--green);
+      }
+      .deck-op.green:hover {
+        border-color: rgba(0, 255, 136, 0.5);
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.15);
+      }
+      .deck-ops-count {
+        margin-top: 24px;
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.4);
+      }
+      .deck-ops-count strong {
+        color: var(--cyan);
+      }
+
+      /* Get started - ultra clean */
+      .deck-start {
+        text-align: center;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .deck-start-cmd {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(28, 246, 255, 0.2);
+        border-radius: 12px;
+        padding: 20px 32px;
+        margin: 32px 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+      }
+      .deck-start-cmd code {
+        font-family: "Cascadia Code", monospace;
+        font-size: 1.1rem;
+        color: var(--cyan);
+      }
+      .deck-start-cmd .deck-copy-btn {
+        background: rgba(28, 246, 255, 0.1);
+        border: 1px solid rgba(28, 246, 255, 0.3);
+        border-radius: 6px;
+        padding: 6px 10px;
+        color: var(--cyan);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+      }
+      .deck-start-cmd .deck-copy-btn:hover {
+        background: rgba(28, 246, 255, 0.2);
+      }
+      .deck-start-note {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.45);
+        margin: 0 0 32px;
+      }
+      .deck-start-cta {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+      }
+      .deck-start-cta .btn {
+        min-width: 160px;
+        justify-content: center;
+      }
+
+      /* Takes slide - parallel execution visualization */
+      .deck-takes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        align-items: center;
+        margin: 24px 0;
+      }
+      .deck-takes-visual {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .deck-takes-header {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: rgba(255, 255, 255, 0.4);
+        margin-bottom: 4px;
+      }
+      .deck-takes-lanes {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .deck-takes-lane {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: all 0.3s ease;
+      }
+      .deck-takes-lane.success {
+        border-color: rgba(0, 255, 136, 0.3);
+        background: rgba(0, 255, 136, 0.05);
+      }
+      .deck-takes-lane.winner {
+        border-color: rgba(28, 246, 255, 0.5);
+        background: rgba(28, 246, 255, 0.08);
+        box-shadow: 0 0 30px rgba(28, 246, 255, 0.1);
+      }
+      .deck-takes-lane.fail {
+        border-color: rgba(255, 100, 100, 0.2);
+        opacity: 0.5;
+      }
+      .deck-takes-lane-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .deck-takes-lane.success .deck-takes-lane-num,
+      .deck-takes-lane.winner .deck-takes-lane-num {
+        background: rgba(0, 255, 136, 0.15);
+        color: var(--green);
+      }
+      .deck-takes-lane.winner .deck-takes-lane-num {
+        background: rgba(28, 246, 255, 0.2);
+        color: var(--cyan);
+      }
+      .deck-takes-lane.fail .deck-takes-lane-num {
+        background: rgba(255, 100, 100, 0.15);
+        color: rgba(255, 100, 100, 0.7);
+      }
+      .deck-takes-lane-content {
+        flex: 1;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .deck-takes-lane.winner .deck-takes-lane-content {
+        color: var(--ink);
+      }
+      .deck-takes-lane.fail .deck-takes-lane-content {
+        text-decoration: line-through;
+        color: rgba(255, 255, 255, 0.4);
+      }
+      .deck-takes-lane-status {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-weight: 500;
+      }
+      .deck-takes-lane.success .deck-takes-lane-status {
+        background: rgba(0, 255, 136, 0.12);
+        color: var(--green);
+      }
+      .deck-takes-lane.winner .deck-takes-lane-status {
+        background: rgba(28, 246, 255, 0.15);
+        color: var(--cyan);
+      }
+      .deck-takes-lane.fail .deck-takes-lane-status {
+        background: rgba(255, 100, 100, 0.12);
+        color: rgba(255, 100, 100, 0.7);
+      }
+      .deck-takes-arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 0;
+      }
+      .deck-takes-arrow iconify-icon {
+        font-size: 1.4rem;
+        color: var(--cyan);
+        opacity: 0.6;
+      }
+      .deck-takes-result {
+        padding: 16px 20px;
+        background: rgba(28, 246, 255, 0.06);
+        border: 1px solid rgba(28, 246, 255, 0.25);
+        border-radius: 12px;
+        text-align: center;
+      }
+      .deck-takes-result-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--cyan);
+        margin-bottom: 6px;
+      }
+      .deck-takes-result-text {
+        font-size: 0.95rem;
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      .deck-takes-benefits {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .deck-takes-config {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 47, 168, 0.25);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+      .deck-takes-config-header {
+        padding: 10px 16px;
+        background: rgba(255, 47, 168, 0.08);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.15);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--magenta);
+      }
+      .deck-takes-config pre {
+        padding: 16px 20px;
+        margin: 0;
+        font-family: "Cascadia Code", monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: rgba(200, 220, 255, 0.9);
+      }
+      .deck-takes-benefit {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .deck-takes-benefit-icon {
+        width: 32px;
+        height: 32px;
+        background: rgba(0, 255, 136, 0.1);
+        border: 1px solid rgba(0, 255, 136, 0.25);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .deck-takes-benefit-icon iconify-icon {
+        font-size: 1rem;
+        color: var(--green);
+      }
+      .deck-takes-benefit:nth-child(2) .deck-takes-benefit-icon {
+        background: rgba(28, 246, 255, 0.1);
+        border-color: rgba(28, 246, 255, 0.25);
+      }
+      .deck-takes-benefit:nth-child(2) .deck-takes-benefit-icon iconify-icon {
+        color: var(--cyan);
+      }
+      .deck-takes-benefit:nth-child(3) .deck-takes-benefit-icon {
+        background: rgba(255, 47, 168, 0.1);
+        border-color: rgba(255, 47, 168, 0.25);
+      }
+      .deck-takes-benefit:nth-child(3) .deck-takes-benefit-icon iconify-icon {
+        color: var(--magenta);
+      }
+      .deck-takes-benefit-text {
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.7);
+        line-height: 1.4;
+      }
+      .deck-takes-benefit-text strong {
+        color: var(--ink);
+      }
+
+      @media (max-width: 800px) {
+        .deck-takes {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+      }
+
+      /* Tagline at bottom of slides */
+      .deck-tagline {
+        margin-top: auto;
+        padding-top: 30px;
+        text-align: center;
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.4);
+      }
+      .deck-tagline strong {
+        color: var(--cyan);
+      }
+
+      /* Navigation */
+      .deck-nav {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        padding: 24px;
+        border-top: 1px solid rgba(255, 255, 255, 0.04);
+        background: rgba(0, 0, 0, 0.3);
+      }
+      .deck-nav-btn {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .deck-nav-btn:hover:not(:disabled) {
+        border-color: var(--cyan);
+        color: var(--cyan);
+        background: rgba(28, 246, 255, 0.08);
+      }
+      .deck-nav-btn:disabled {
+        opacity: 0.25;
+        cursor: not-allowed;
+      }
+      .deck-nav-btn iconify-icon {
+        font-size: 1.3rem;
+      }
+      .deck-dots {
+        display: flex;
+        gap: 10px;
+      }
+      .deck-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1.5px solid rgba(28, 246, 255, 0.3);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.25s ease;
+        padding: 0;
+      }
+      .deck-dot:hover {
+        border-color: var(--cyan);
+        transform: scale(1.1);
+      }
+      .deck-dot.active {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        box-shadow: 0 0 12px var(--cyan);
+      }
+
+      @media (max-width: 800px) {
+        .deck-slides {
+          padding: 50px 32px 40px;
+          min-height: 450px;
+        }
+        .deck-slide h2 {
+          font-size: 1.8rem;
+        }
+        .deck-transform {
+          flex-direction: column;
+          gap: 20px;
+        }
+        .deck-transform-arrow {
+          transform: rotate(90deg);
+        }
+        .deck-transform-card {
+          max-width: 100%;
+        }
+        .deck-discovery {
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        .deck-trust-grid {
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+        .deck-trust-item {
+          padding: 24px 20px;
+        }
+        .deck-hero-statement .big-code {
+          font-size: 1rem;
+          padding: 16px 24px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -5085,7 +5908,7 @@
 
         <div class="toc-group" data-group="reliability">
           <div class="toc-group-label"><span class="group-icon"><iconify-icon icon="lucide:shield-check"></iconify-icon></span> Production Ready</div>
-          <a href="#candidates" class="toc-link">Candidates</a>
+          <a href="#takes" class="toc-link">Takes</a>
           <a href="#champion" class="toc-link">Champion Mode</a>
           <a href="#self-properties" class="toc-link">Self-* Properties</a>
           <a href="#training" class="toc-link">Universal Training</a>
@@ -5129,7 +5952,7 @@
             </div>
             <div class="nav-actions">
               <a href="#how-it-works">How It Works</a>
-              <a href="#candidates">Candidates</a>
+              <a href="#takes">Takes</a>
               <a href="#operators">Operators</a>
               <a href="#observability">Observability</a>
               <a class="btn" href="#get-started">Get Started</a>
@@ -5766,16 +6589,16 @@
             <p>
               Vector search is fast but imprecise. LLM judgment is precise but expensive. Combine them.
             </p>
-<pre><span class="sql-keyword">WITH</span> candidates <span class="sql-keyword">AS</span> (
+<pre><span class="sql-keyword">WITH</span> takes <span class="sql-keyword">AS</span> (
   <span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> <span class="sql-function">VECTOR_SEARCH</span>(<span class="sql-string">'affordable eco products'</span>, <span class="sql-string">'products'</span>, 100)
 )
-<span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> candidates
+<span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> takes
 <span class="sql-keyword">WHERE</span> description <span class="sql-function">MEANS</span> <span class="sql-string">'genuinely eco-friendly, not greenwashing'</span>
 <span class="sql-keyword">LIMIT</span> 10;</pre>
             <div class="vector-hybrid-stats">
               <div class="vector-stat">
                 <span class="vector-stat-icon"><iconify-icon icon="lucide:search"></iconify-icon></span>
-                <span class="vector-stat-text"><strong>Vector search:</strong> 1M rows &rarr; 100 candidates (fast, cheap)</span>
+                <span class="vector-stat-text"><strong>Vector search:</strong> 1M rows &rarr; 100 takes (fast, cheap)</span>
               </div>
               <div class="vector-stat">
                 <span class="vector-stat-icon"><iconify-icon icon="lucide:brain"></iconify-icon></span>
@@ -6101,10 +6924,10 @@
         </div>
       </section>
 
-      <!-- ========== THE CANDIDATE PRIMITIVE ========== -->
-      <section id="candidates" class="candidates-section">
+      <!-- ========== THE TAKE PRIMITIVE ========== -->
+      <section id="takes" class="takes-section">
         <div class="container">
-          <div class="candidates-header reveal">
+          <div class="takes-header reveal">
             <h2>LLMs are unpredictable. <span class="gradient-text">So run them all.</span> Bad outputs don't need handling - they just don't win.</h2>
             <p>
               Same prompt, wildly different results. Instead of hoping for the best, run 5 variations
@@ -6113,57 +6936,57 @@
             </p>
           </div>
 
-          <div class="candidates-visual">
-            <div class="candidates-diagram reveal delay-1">
-              <div class="candidates-input">
+          <div class="takes-visual">
+            <div class="takes-diagram reveal delay-1">
+              <div class="takes-input">
                 <strong>Input:</strong> "Summarize this contract..."
               </div>
 
-              <div class="candidates-lanes">
-                <div class="candidate-card success">
+              <div class="takes-lanes">
+                <div class="take-card success">
                   <div class="model-badge">Claude</div>
                   <div class="status-icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <div class="score">0.82</div>
                 </div>
-                <div class="candidate-card error">
+                <div class="take-card error">
                   <div class="model-badge">GPT-4</div>
                   <div class="status-icon"><iconify-icon icon="lucide:x"></iconify-icon></div>
                   <div class="score">err</div>
                 </div>
-                <div class="candidate-card winner">
+                <div class="take-card winner">
                   <div class="model-badge">Gemini</div>
                   <div class="status-icon"><iconify-icon icon="lucide:star"></iconify-icon></div>
                   <div class="score">0.94</div>
                 </div>
-                <div class="candidate-card success">
+                <div class="take-card success">
                   <div class="model-badge">Claude</div>
                   <div class="status-icon"><iconify-icon icon="lucide:check"></iconify-icon></div>
                   <div class="score">0.78</div>
                 </div>
-                <div class="candidate-card error">
+                <div class="take-card error">
                   <div class="model-badge">Llama</div>
                   <div class="status-icon"><iconify-icon icon="lucide:x"></iconify-icon></div>
                   <div class="score">err</div>
                 </div>
               </div>
 
-              <div class="candidates-evaluator">
+              <div class="takes-evaluator">
                 <span class="evaluator-label">Evaluator</span>
                 <span class="evaluator-badge">LLM picks best</span>
               </div>
 
-              <div class="candidates-output">
+              <div class="takes-output">
                 <div class="output-label">Winner</div>
-                <div class="output-value">Candidate #3 (Gemini) &rarr; 0.94</div>
+                <div class="output-value">Take #3 (Gemini) &rarr; 0.94</div>
               </div>
             </div>
 
-            <div class="candidates-benefits reveal delay-2">
+            <div class="takes-benefits reveal delay-2">
               <div class="benefit-item">
                 <div class="benefit-icon"><iconify-icon icon="lucide:refresh-cw"></iconify-icon></div>
                 <div class="benefit-content">
                   <h4>Simpler error handling</h4>
-                  <p>Failures filter out naturally. Retries still exist when you need them—but candidates handle most cases.</p>
+                  <p>Failures filter out naturally. Retries still exist when you need them—but takes handle most cases.</p>
                 </div>
               </div>
               <div class="benefit-item">
@@ -6190,28 +7013,28 @@
             </div>
           </div>
 
-          <div class="candidates-yaml reveal delay-3">
+          <div class="takes-yaml reveal delay-3">
             <div class="code-header">
               <span class="code-type-badge config">CONFIG</span>
               <span class="code-title">That's 3 lines</span>
             </div>
             <div class="code-content">
-<pre><span class="yaml-key">candidates:</span>
+<pre><span class="yaml-key">takes:</span>
   <span class="yaml-key">factor:</span> <span class="yaml-value">5</span>                              <span class="sql-comment"># Run 5 variations</span>
   <span class="yaml-key">evaluator_instructions:</span> <span class="yaml-value">"Pick the most accurate and complete summary"</span></pre>
             </div>
           </div>
 
-          <!-- Inline Candidates -->
-          <div class="inline-candidates reveal delay-3">
-            <div class="inline-candidates-header">
+          <!-- Inline Takes -->
+          <div class="inline-takes reveal delay-3">
+            <div class="inline-takes-header">
               <h3>For ad-hoc queries? <span style="color: var(--cyan)">A SQL comment.</span></h3>
               <p>No config files. Just annotate your query.</p>
             </div>
-            <div class="inline-candidates-examples">
+            <div class="inline-takes-examples">
               <div class="inline-example">
                 <div class="inline-example-header">3 variations, best wins</div>
-<pre><span class="inline-comment">-- @ candidates.factor: 3</span>
+<pre><span class="inline-comment">-- @ takes.factor: 3</span>
 <span class="sql-keyword">SELECT</span> description <span class="sql-operator">MEANS</span> <span class="sql-string">'eco-friendly'</span>
 <span class="sql-keyword">FROM</span> products;</pre>
               </div>
@@ -6222,12 +7045,12 @@
 <span class="sql-keyword">FROM</span> reviews;</pre>
               </div>
             </div>
-            <p class="inline-candidates-tagline">
+            <p class="inline-takes-tagline">
               Three frontier models. <strong>One SQL comment.</strong> Best answer wins.
             </p>
           </div>
 
-          <div class="candidates-modes reveal delay-4">
+          <div class="takes-modes reveal delay-4">
             <div class="mode-card">
               <h4>LLM Evaluator</h4>
               <p>AI judge picks best output based on your criteria</p>
@@ -6311,14 +7134,14 @@
           <div class="screenshot-carousel reveal delay-2" id="evolutionCarousel">
             <div class="carousel-track">
               <div class="carousel-slide">
-                <img src="screenshot-2026-01-05_17-30-24.png" alt="Candidates running">
+                <img src="screenshot-2026-01-05_17-30-24.png" alt="Takes running">
                 <!-- <div class="screenshot-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="2" y="3" width="20" height="14" rx="2"/>
                     <path d="M8 21h8M12 17v4"/>
                   </svg>
-                  <span>evolution-candidates.png</span>
-                  <span class="screenshot-size">Candidates running with mutations</span>
+                  <span>evolution-takes.png</span>
+                  <span class="screenshot-size">Takes running with mutations</span>
                 </div> -->
               </div>
               <div class="carousel-slide">
@@ -6474,8 +7297,8 @@
 
             <div class="journey-step reveal delay-3">
               <div class="journey-step-time">Week 1</div>
-              <h3>Candidates enabled</h3>
-              <div class="journey-step-code">candidates: { factor: 3 }</div>
+              <h3>Takes enabled</h3>
+              <div class="journey-step-code">takes: { factor: 3 }</div>
               <p>Run 3 variations, best wins. Errors filter out. Production-grade reliability.</p>
             </div>
 
@@ -6790,7 +7613,7 @@
             <div class="depth-panel" data-panel="cascade">
               <div class="depth-panel-header">
                 <h3>Cascade Execution</h3>
-                <p>Watch workflows unfold. See candidates race. Pick winners.</p>
+                <p>Watch workflows unfold. See takes race. Pick winners.</p>
               </div>
               <!-- <div class="depth-panel-placeholder">
                 Screenshot: Cascade detail view with execution graph    screenshot-2026-01-11_17-39-40
@@ -6949,7 +7772,7 @@
             <div class="cascade-reveal-points reveal delay-2">
               <div class="cascade-reveal-point">
                 <h4>Every operator is a file.</h4>
-                <p>Want to change the model? Edit the file. Want stricter validation? Add a ward. Want three models to compete? Add candidates.</p>
+                <p>Want to change the model? Edit the file. Want stricter validation? Add a ward. Want three models to compete? Add takes.</p>
               </div>
               <div class="cascade-reveal-point">
                 <h4>The same system powers everything.</h4>
@@ -7790,6 +8613,322 @@
           });
         });
       })();
+
+      // ========== SLIDE DECK MODAL ==========
+      document.addEventListener('DOMContentLoaded', function() {
+        const modal = document.getElementById('deckModal');
+        if (!modal) return;
+
+        let currentSlide = 1;
+        const totalSlides = 6;
+
+        window.openDeckModal = function() {
+          // Calculate scrollbar width before hiding it
+          const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+          document.body.style.paddingRight = scrollbarWidth + 'px';
+          document.body.style.overflow = 'hidden';
+
+          modal.classList.add('open');
+          requestAnimationFrame(() => {
+            modal.classList.add('visible');
+          });
+          goToDeckSlide(1);
+        };
+
+        window.closeDeckModal = function() {
+          modal.classList.remove('visible');
+          setTimeout(() => {
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+          }, 300);
+        };
+
+        window.goToDeckSlide = function(n) {
+          currentSlide = n;
+          document.querySelectorAll('.deck-slide').forEach((slide, i) => {
+            slide.classList.toggle('active', i + 1 === n);
+          });
+          document.querySelectorAll('.deck-dot').forEach((dot, i) => {
+            dot.classList.toggle('active', i + 1 === n);
+          });
+          updateDeckNavButtons();
+        };
+
+        window.nextDeckSlide = function() {
+          if (currentSlide < totalSlides) goToDeckSlide(currentSlide + 1);
+        };
+
+        window.prevDeckSlide = function() {
+          if (currentSlide > 1) goToDeckSlide(currentSlide - 1);
+        };
+
+        function updateDeckNavButtons() {
+          const prevBtn = document.querySelector('.deck-nav-btn.prev');
+          const nextBtn = document.querySelector('.deck-nav-btn.next');
+          if (prevBtn) prevBtn.disabled = currentSlide === 1;
+          if (nextBtn) nextBtn.disabled = currentSlide === totalSlides;
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+          if (!modal.classList.contains('open')) return;
+          if (e.key === 'Escape') closeDeckModal();
+          if (e.key === 'ArrowRight') nextDeckSlide();
+          if (e.key === 'ArrowLeft') prevDeckSlide();
+        });
+      });
     </script>
+
+    <!-- ========== SLIDE DECK MODAL ========== -->
+    <div class="deck-modal" id="deckModal">
+      <div class="deck-backdrop" onclick="closeDeckModal()"></div>
+      <div class="deck-container">
+        <button class="deck-close" onclick="closeDeckModal()" aria-label="Close">
+          <iconify-icon icon="lucide:x"></iconify-icon>
+        </button>
+
+        <div class="deck-slides">
+          <!-- Slide 1: The Promise -->
+          <div class="deck-slide active" data-slide="1">
+            <h2>AI for your data.<br><span class="gradient-text">Just SQL.</span></h2>
+            <p class="deck-subtitle">No Python. No notebooks. No orchestration code.</p>
+            <div class="deck-hero-statement">
+              <div class="big-code">
+                <span class="keyword">WHERE</span> description <span class="sql-function">MEANS</span> <span class="string">'urgent'</span>
+              </div>
+            </div>
+            <p class="deck-tagline">Use your existing SQL client. Query your existing database. <strong>Add intelligence.</strong></p>
+          </div>
+
+          <!-- Slide 2: The Transformation -->
+          <div class="deck-slide" data-slide="2">
+            <h2>Same query.<br><span class="gradient-text">Now it understands meaning.</span></h2>
+            <div class="deck-transform">
+              <div class="deck-transform-card">
+                <div class="deck-transform-header">
+                  <span class="deck-transform-label">Before</span>
+                </div>
+                <div class="deck-transform-body">
+                  <pre><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> tickets
+<span class="sql-keyword">WHERE</span> priority = <span class="sql-string">'high'</span></pre>
+                </div>
+              </div>
+              <div class="deck-transform-arrow">→</div>
+              <div class="deck-transform-card after">
+                <div class="deck-transform-header">
+                  <span class="deck-transform-label">After</span>
+                  <span class="deck-transform-badge">+ AI</span>
+                </div>
+                <div class="deck-transform-body">
+                  <pre><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> tickets
+<span class="sql-keyword">WHERE</span> <span class="hl">description <span class="sql-function">MEANS</span> <span class="sql-string">'urgent'</span></span></pre>
+                </div>
+              </div>
+            </div>
+            <p class="deck-tagline">One operator. Semantic understanding. <strong>That's all it takes.</strong></p>
+          </div>
+
+          <!-- Slide 3: The Mind-Blowing Moment -->
+          <div class="deck-slide" data-slide="3">
+            <h2>Now it gets wild.<br><span class="gradient-text">AI discovers dimensions you didn't define.</span></h2>
+            <div class="deck-discovery">
+              <div class="deck-discovery-query">
+                <div class="deck-discovery-query-header">Your Query</div>
+                <pre><span class="sql-keyword">SELECT</span> <span class="sql-function">TOPICS</span>(tweet, <span class="sql-string">4</span>) <span class="sql-keyword">AS</span> topic,
+       <span class="sql-keyword">COUNT</span>(*) <span class="sql-keyword">AS</span> tweets
+<span class="sql-keyword">FROM</span> twitter_archive
+<span class="sql-keyword">GROUP BY</span> topic</pre>
+              </div>
+              <div class="deck-discovery-result">
+                <div class="deck-discovery-result-header">
+                  <iconify-icon icon="lucide:sparkles"></iconify-icon>
+                  AI-Discovered Topics
+                </div>
+                <div class="deck-bucket">
+                  <div class="deck-bucket-num">1</div>
+                  <span class="deck-bucket-label">Tech Industry Commentary</span>
+                  <span class="deck-bucket-count">2,341</span>
+                </div>
+                <div class="deck-bucket">
+                  <div class="deck-bucket-num">2</div>
+                  <span class="deck-bucket-label">Hot Takes &amp; Opinions</span>
+                  <span class="deck-bucket-count">1,654</span>
+                </div>
+                <div class="deck-bucket">
+                  <div class="deck-bucket-num">3</div>
+                  <span class="deck-bucket-label">Personal Updates</span>
+                  <span class="deck-bucket-count">1,892</span>
+                </div>
+                <div class="deck-bucket">
+                  <div class="deck-bucket-num">4</div>
+                  <span class="deck-bucket-label">Link Sharing</span>
+                  <span class="deck-bucket-count">812</span>
+                </div>
+              </div>
+            </div>
+            <p class="deck-tagline">You describe what you want. <strong>AI figures out what fits.</strong></p>
+          </div>
+
+          <!-- Slide 4: Takes - Reliability -->
+          <div class="deck-slide" data-slide="4">
+            <h2>Run 3 attempts. Pick the best.<br><span class="gradient-text">Errors filter themselves out.</span></h2>
+            <div class="deck-takes">
+              <div class="deck-takes-visual">
+                <div class="deck-takes-header">Parallel Execution</div>
+                <div class="deck-takes-lanes">
+                  <div class="deck-takes-lane winner">
+                    <div class="deck-takes-lane-num">1</div>
+                    <span class="deck-takes-lane-content">Comprehensive analysis with citations</span>
+                    <span class="deck-takes-lane-status">Best</span>
+                  </div>
+                  <div class="deck-takes-lane success">
+                    <div class="deck-takes-lane-num">2</div>
+                    <span class="deck-takes-lane-content">Good response, less detail</span>
+                    <span class="deck-takes-lane-status">OK</span>
+                  </div>
+                  <div class="deck-takes-lane fail">
+                    <div class="deck-takes-lane-num">3</div>
+                    <span class="deck-takes-lane-content">JSON parse error</span>
+                    <span class="deck-takes-lane-status">Failed</span>
+                  </div>
+                </div>
+                <div class="deck-takes-arrow">
+                  <iconify-icon icon="lucide:arrow-down"></iconify-icon>
+                </div>
+                <div class="deck-takes-result">
+                  <div class="deck-takes-result-label">Evaluator Picks</div>
+                  <div class="deck-takes-result-text">Attempt #1 — highest quality response</div>
+                </div>
+              </div>
+              <div class="deck-takes-benefits">
+                <div class="deck-takes-config">
+                  <div class="deck-takes-config-header">Configuration</div>
+                  <pre><span class="sql-string">"takes"</span>: {
+  <span class="sql-string">"factor"</span>: <span class="sql-function">3</span>,
+  <span class="sql-string">"evaluator"</span>: <span class="sql-string">"Pick the most thorough"</span>
+}</pre>
+                </div>
+                <div class="deck-takes-benefit">
+                  <div class="deck-takes-benefit-icon">
+                    <iconify-icon icon="lucide:zap"></iconify-icon>
+                  </div>
+                  <span class="deck-takes-benefit-text"><strong>Faster</strong> — parallel execution, not sequential retries</span>
+                </div>
+                <div class="deck-takes-benefit">
+                  <div class="deck-takes-benefit-icon">
+                    <iconify-icon icon="lucide:trophy"></iconify-icon>
+                  </div>
+                  <span class="deck-takes-benefit-text"><strong>Higher quality</strong> — best of N, not "first that worked"</span>
+                </div>
+                <div class="deck-takes-benefit">
+                  <div class="deck-takes-benefit-icon">
+                    <iconify-icon icon="lucide:trash-2"></iconify-icon>
+                  </div>
+                  <span class="deck-takes-benefit-text"><strong>Zero error handling</strong> — failures become noise to filter</span>
+                </div>
+              </div>
+            </div>
+            <p class="deck-tagline">LLMs fail randomly. <strong>Plan for it.</strong></p>
+          </div>
+
+          <!-- Slide 5: Operators Showcase -->
+          <div class="deck-slide" data-slide="5">
+            <h2><span class="accent">50+</span> semantic operators</h2>
+            <p class="deck-subtitle">Filter, classify, summarize, extract, dedupe — all in pure SQL</p>
+            <div class="deck-ops-showcase">
+              <div class="deck-ops-cloud">
+                <span class="deck-op cyan">MEANS</span>
+                <span class="deck-op cyan">SIMILAR_TO</span>
+                <span class="deck-op cyan">ABOUT</span>
+                <span class="deck-op magenta">CLASSIFY</span>
+                <span class="deck-op magenta">TOPICS</span>
+                <span class="deck-op magenta">SENTIMENT</span>
+                <span class="deck-op green">SUMMARIZE</span>
+                <span class="deck-op green">THEMES</span>
+                <span class="deck-op green">CONSENSUS</span>
+                <span class="deck-op cyan">ASK</span>
+                <span class="deck-op cyan">EXTRACTS</span>
+                <span class="deck-op cyan">PARSE</span>
+                <span class="deck-op magenta">CONTRADICTS</span>
+                <span class="deck-op magenta">IMPLIES</span>
+                <span class="deck-op green">DEDUPE</span>
+                <span class="deck-op green">OUTLIERS</span>
+                <span class="deck-op cyan">NORMALIZE</span>
+                <span class="deck-op cyan">EMBED</span>
+              </div>
+              <p class="deck-ops-count">Use them in <strong>WHERE</strong>, <strong>SELECT</strong>, <strong>GROUP BY</strong>, <strong>ORDER BY</strong> — they're just SQL functions.</p>
+            </div>
+          </div>
+
+          <!-- Slide 6: Production Trust + Get Started -->
+          <div class="deck-slide" data-slide="6">
+            <h2>Production ready.<br><span class="gradient-text">Start in seconds.</span></h2>
+            <div class="deck-trust-grid">
+              <div class="deck-trust-item">
+                <div class="deck-trust-icon">
+                  <iconify-icon icon="lucide:plug"></iconify-icon>
+                </div>
+                <h4 class="deck-trust-title">Any SQL Client</h4>
+                <p class="deck-trust-desc">PostgreSQL wire protocol. DataGrip, DBeaver, Tableau, psql — just connect.</p>
+              </div>
+              <div class="deck-trust-item">
+                <div class="deck-trust-icon">
+                  <iconify-icon icon="lucide:bar-chart-2"></iconify-icon>
+                </div>
+                <h4 class="deck-trust-title">Cost Tracking</h4>
+                <p class="deck-trust-desc">Per-query observability. Know exactly what every AI operation costs.</p>
+              </div>
+              <div class="deck-trust-item">
+                <div class="deck-trust-icon">
+                  <iconify-icon icon="lucide:shield-check"></iconify-icon>
+                </div>
+                <h4 class="deck-trust-title">Self-Healing</h4>
+                <p class="deck-trust-desc">Failed queries auto-debug and repair themselves with LLM assistance.</p>
+              </div>
+            </div>
+            <div class="deck-start">
+              <div class="deck-start-cmd">
+                <code>pip install rvbbit && rvbbit serve sql</code>
+                <button class="deck-copy-btn" onclick="navigator.clipboard.writeText('pip install rvbbit && rvbbit serve sql')">
+                  <iconify-icon icon="lucide:copy"></iconify-icon>
+                  Copy
+                </button>
+              </div>
+              <div class="deck-start-cta">
+                <a class="btn" href="docs.html">Read the Docs</a>
+                <a class="btn secondary" href="https://github.com/ryrobes/rvbbit" target="_blank">GitHub</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="deck-nav">
+          <button class="deck-nav-btn prev" onclick="prevDeckSlide()" disabled>
+            <iconify-icon icon="lucide:chevron-left"></iconify-icon>
+          </button>
+          <div class="deck-dots">
+            <button class="deck-dot active" onclick="goToDeckSlide(1)"></button>
+            <button class="deck-dot" onclick="goToDeckSlide(2)"></button>
+            <button class="deck-dot" onclick="goToDeckSlide(3)"></button>
+            <button class="deck-dot" onclick="goToDeckSlide(4)"></button>
+            <button class="deck-dot" onclick="goToDeckSlide(5)"></button>
+            <button class="deck-dot" onclick="goToDeckSlide(6)"></button>
+          </div>
+          <button class="deck-nav-btn next" onclick="nextDeckSlide()">
+            <iconify-icon icon="lucide:chevron-right"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating trigger button -->
+    <button class="deck-trigger" 
+    onclick="openDeckModal()" 
+    aria-label="Watch overview">
+      <!-- <iconify-icon icon="lucide:presentation"></iconify-icon> -->
+      <span style="font-family: 'Outrun future'; font-size: 25px;">TLDR</span>
+    </button>
   </body>
 </html>

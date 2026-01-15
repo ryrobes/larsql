@@ -12,7 +12,7 @@ import { Icon } from '@iconify/react';
 import './layers.css';
 
 /**
- * ParetoLayer - Visualizes Pareto frontier for multi-model candidates
+ * ParetoLayer - Visualizes Pareto frontier for multi-model takes
  *
  * Shows cost vs quality trade-offs with frontier curve and winner highlighting.
  * Only rendered when pareto frontier analysis was performed.
@@ -22,12 +22,12 @@ const ParetoLayer = ({ paretoData }) => {
 
   // Process data for visualization
   const { frontierData, dominatedData, winnerData, frontierLine, modelColors, stats } = useMemo(() => {
-    if (!paretoData || !paretoData.all_candidates) {
+    if (!paretoData || !paretoData.all_takes) {
       return { frontierData: [], dominatedData: [], winnerData: [], frontierLine: [], modelColors: {}, stats: null };
     }
 
     // Generate consistent colors for each model
-    const uniqueModels = [...new Set(paretoData.all_candidates.map(s => s.model))];
+    const uniqueModels = [...new Set(paretoData.all_takes.map(s => s.model))];
     const colorPalette = [
       '#a78bfa', // purple
       '#60a5fa', // blue
@@ -46,20 +46,20 @@ const ParetoLayer = ({ paretoData }) => {
     const dominated = [];
     let winner = null;
 
-    paretoData.all_candidates.forEach((candidate) => {
+    paretoData.all_takes.forEach((take) => {
       const point = {
-        ...candidate,
+        ...take,
         // Scale cost to be visible (multiply by 1000 for display in millicents)
-        displayCost: candidate.cost * 1000,
-        color: colors[candidate.model],
-        shortModel: candidate.model.split('/').pop(),
+        displayCost: take.cost * 1000,
+        color: colors[take.model],
+        shortModel: take.model.split('/').pop(),
       };
 
-      if (candidate.is_winner) {
+      if (take.is_winner) {
         winner = point;
       }
 
-      if (candidate.is_pareto_optimal) {
+      if (take.is_pareto_optimal) {
         frontier.push(point);
       } else {
         dominated.push(point);
@@ -70,8 +70,8 @@ const ParetoLayer = ({ paretoData }) => {
     const sortedFrontier = [...frontier].sort((a, b) => a.cost - b.cost);
 
     // Calculate stats
-    const allCosts = paretoData.all_candidates.map(s => s.cost);
-    const allQualities = paretoData.all_candidates.map(s => s.quality);
+    const allCosts = paretoData.all_takes.map(s => s.cost);
+    const allQualities = paretoData.all_takes.map(s => s.quality);
     const calculatedStats = {
       minCost: Math.min(...allCosts),
       maxCost: Math.max(...allCosts),
@@ -79,7 +79,7 @@ const ParetoLayer = ({ paretoData }) => {
       maxQuality: Math.max(...allQualities),
       frontierSize: frontier.length,
       dominatedSize: dominated.length,
-      totalCandidates: paretoData.all_candidates.length,
+      totalTakes: paretoData.all_takes.length,
     };
 
     return {
@@ -117,7 +117,7 @@ const ParetoLayer = ({ paretoData }) => {
         </div>
         <div className="pareto-tooltip-row">
           <Icon icon="mdi:identifier" width="10" />
-          <span>Candidate #{point.index}</span>
+          <span>Take #{point.index}</span>
         </div>
         {point.is_pareto_optimal && (
           <div className="pareto-tooltip-badge frontier">Optimal</div>
@@ -195,7 +195,7 @@ const ParetoLayer = ({ paretoData }) => {
     return `$${(value / 1000).toFixed(3)}`;
   };
 
-  if (!paretoData || !paretoData.all_candidates || paretoData.all_candidates.length === 0) {
+  if (!paretoData || !paretoData.all_takes || paretoData.all_takes.length === 0) {
     return null; // Don't render empty state in anatomy panel
   }
 

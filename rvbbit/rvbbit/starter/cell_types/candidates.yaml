@@ -1,9 +1,9 @@
-# Candidates Cell - Best-of-N selection
-type_id: candidates
-display_name: Candidates
+# Takes Cell - Best-of-N selection
+type_id: takes
+display_name: Takes
 icon: mdi:source-branch
 color: "#ec4899"
-name_prefix: candidates
+name_prefix: takes
 description: "Run multiple LLM attempts and select the best result"
 category: ai
 tags:
@@ -17,8 +17,8 @@ template:
     {{ input.task }}
 
     Be thorough and accurate in your response.
-  candidates:
+  takes:
     factor: 3
     evaluator_instructions: |
-      Select the candidate that best completes the task.
+      Select the take that best completes the task.
       Consider accuracy, completeness, and clarity.

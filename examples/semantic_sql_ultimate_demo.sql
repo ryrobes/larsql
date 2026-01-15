@@ -201,7 +201,7 @@ LIMIT 20;
 -- ============================================================================
 
 -- Pre-filter with vector search (fast!), then analyze with LLMs (precise!)
-WITH candidates AS (
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH('urgent customer complaints', 'customer_interactions', 50)
     WHERE similarity > 0.7
 )
@@ -226,7 +226,7 @@ SELECT
     -- Vector score
     c.similarity as vector_relevance
 
-FROM candidates c
+FROM takes c
 JOIN customer_interactions i ON i.interaction_id = c.id
 
 WHERE
@@ -240,7 +240,7 @@ ORDER BY
 LIMIT 10;
 
 -- Performance:
--- - Vector search: 1M rows → 50 candidates in ~50ms ($0)
+-- - Vector search: 1M rows → 50 takes in ~50ms ($0)
 -- - LLM analysis: 50 rows × 10 operators = 500 calls (~$0.05, ~30s)
 -- - Total: ~$0.05, ~30 seconds
 -- vs. Pure LLM on 1M rows: ~$500, ~55 hours ❌

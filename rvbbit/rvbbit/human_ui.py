@@ -408,22 +408,22 @@ Return the HTML template only, no explanation."""
                 "_meta": {"type": "htmx", "fallback": True, "error": str(e)}
             }
 
-    def generate_candidate_comparison_ui(
+    def generate_take_comparison_ui(
         self,
         outputs: List[str],
         metadata: List[Dict[str, Any]],
         config: Optional[HumanSoundingEvalConfig] = None
     ) -> Dict[str, Any]:
         """
-        Generate UI for comparing candidate attempts.
+        Generate UI for comparing take attempts.
 
         Args:
-            outputs: List of candidate output strings
+            outputs: List of take output strings
             metadata: List of metadata dicts (cost, model, mutation, etc.)
             config: Human eval configuration
 
         Returns:
-            UI specification for candidate comparison
+            UI specification for take comparison
         """
         if config is None:
             config = HumanSoundingEvalConfig()
@@ -454,7 +454,7 @@ Return the HTML template only, no explanation."""
             attempts.append(attempt)
 
         return {
-            "type": "candidate_comparison",
+            "type": "take_comparison",
             "presentation": config.presentation.value,
             "selection_mode": config.selection_mode.value,
             "attempts": attempts,

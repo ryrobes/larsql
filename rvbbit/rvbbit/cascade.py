@@ -66,7 +66,7 @@ class HumanInputConfig(BaseModel):
 
 
 class HumanEvalPresentation(str, Enum):
-    """How to display candidate attempts to human."""
+    """How to display take attempts to human."""
     SIDE_BY_SIDE = "side_by_side"  # Cards in a row/grid
     TABBED = "tabbed"              # Tab per attempt
     CAROUSEL = "carousel"          # Swipe through
@@ -84,11 +84,11 @@ class HumanEvalSelectionMode(str, Enum):
 
 class HumanSoundingEvalConfig(BaseModel):
     """
-    Configuration for human evaluation of candidates.
+    Configuration for human evaluation of takes.
 
     Usage:
     {
-        "candidates": {
+        "takes": {
             "factor": 5,
             "evaluator": "human",
             "human_eval": {
@@ -200,24 +200,24 @@ class WardsConfig(BaseModel):
 class ReforgeConfig(BaseModel):
     steps: int = 1  # Number of refinement iterations
     honing_prompt: str  # Additional refinement instructions
-    factor_per_step: int = 2  # Candidates per reforge step
+    factor_per_step: int = 2  # Takes per reforge step
     mutate: bool = False  # Apply built-in variation strategies
     evaluator_override: Optional[str] = None  # Custom evaluator for refinement steps
     threshold: Optional[WardConfig] = None  # Early stopping validation (ward-like)
 
 class ModelConfig(BaseModel):
-    """Per-model configuration for multi-model candidates."""
-    factor: int = 1  # How many candidates for this model
+    """Per-model configuration for multi-model takes."""
+    factor: int = 1  # How many takes for this model
     temperature: Optional[float] = None  # Model-specific temperature override
     max_tokens: Optional[int] = None  # Model-specific max_tokens override
 
 
 class CostAwareEvaluation(BaseModel):
     """
-    Cost-aware evaluation settings for multi-model candidates.
+    Cost-aware evaluation settings for multi-model takes.
 
     When enabled, the evaluator considers both output quality and cost
-    when selecting the winning candidate.
+    when selecting the winning take.
     """
     enabled: bool = True
     quality_weight: float = 0.7  # Weight for quality (0-1)
@@ -228,7 +228,7 @@ class CostAwareEvaluation(BaseModel):
 
 class ParetoFrontier(BaseModel):
     """
-    Pareto frontier analysis settings for multi-model candidates.
+    Pareto frontier analysis settings for multi-model takes.
 
     When enabled, computes the Pareto frontier of cost vs quality,
     identifies non-dominated solutions, and selects winner from the frontier
@@ -244,9 +244,9 @@ class ParetoFrontier(BaseModel):
     quality_metric: str = "evaluator_score"  # "evaluator_score" | "validator:<name>" | "custom"
     include_dominated: bool = True  # Log dominated solutions for analysis
 
-class CandidatesConfig(BaseModel):
+class TakesConfig(BaseModel):
     factor: Union[int, str] = 1  # Can be static int or Jinja2 template string (e.g., "{{ outputs.list_files | length }}")
-    max_parallel: int = 3  # Max concurrent candidate executions (default: 3, set to 1 for sequential)
+    max_parallel: int = 3  # Max concurrent take executions (default: 3, set to 1 for sequential)
     evaluator_instructions: Optional[str] = None  # Required unless evaluator="human" or mode="aggregate"
     reforge: Optional[ReforgeConfig] = None  # Optional refinement loop
     mutate: bool = True  # Apply mutations to generate prompt variations (default: True for learning)
@@ -258,19 +258,19 @@ class CandidatesConfig(BaseModel):
     aggregator_instructions: Optional[str] = None  # LLM instructions for combining outputs (if None, simple concatenation)
     aggregator_model: Optional[str] = None  # Model to use for aggregation (defaults to cell model)
 
-    # Pre-evaluation validator - filters candidates before evaluator sees them
+    # Pre-evaluation validator - filters takes before evaluator sees them
     # Useful for code execution (only evaluate code that runs) or format validation
     # Can be:
     #   - string: Name of validator tool/cascade (e.g., "my_validator")
     #   - dict: Inline polyglot validator (e.g., {"python": "result = {...}"})
     validator: Optional[Union[str, "PolyglotValidatorConfig"]] = None
 
-    # Multi-model candidates (Cell 1: Simple Model Pool)
+    # Multi-model takes (Cell 1: Simple Model Pool)
     models: Optional[Union[List[str], Dict[str, ModelConfig]]] = None  # List of model names or dict with per-model config
-    model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across candidates
+    model_strategy: str = "round_robin"  # "round_robin" | "random" | "weighted" - how to distribute models across takes
 
     # Cost-aware evaluation (Cell 2: Cost-Aware Evaluation)
-    cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model candidates
+    cost_aware_evaluation: Optional[CostAwareEvaluation] = None  # Enable cost-aware evaluation for multi-model takes
 
     # Pareto frontier analysis (Cell 3: Pareto Frontier Analysis)
     pareto_frontier: Optional[ParetoFrontier] = None  # Enable Pareto frontier computation and selection
@@ -282,8 +282,8 @@ class CandidatesConfig(BaseModel):
     llm_prefilter_instructions: Optional[str] = None  # Instructions for LLM prefilter
 
     # Model propagation to downstream cascade tools
-    # When True, any cascade-based tool called from within this candidate
-    # will use the candidate's resolved model instead of its own default.
+    # When True, any cascade-based tool called from within this take
+    # will use the take's resolved model instead of its own default.
     # Perfect for fair benchmarking - each model's tool calls use that same model.
     downstream_model: bool = False
 
@@ -1254,7 +1254,7 @@ class CellConfig(BaseModel):
     image_config: Optional[ImageConfig] = None  # Config for image generation models (FLUX, SDXL, etc.)
     use_native_tools: bool = False  # Use provider native tool calling (False = prompt-based, more compatible)
     rules: RuleConfig = Field(default_factory=RuleConfig)
-    candidates: Optional[CandidatesConfig] = None
+    takes: Optional[TakesConfig] = None
     output_schema: Optional[Dict[str, Any]] = None
     wards: Optional[WardsConfig] = None
     rag: Optional[RagConfig] = None
@@ -1656,7 +1656,7 @@ class CascadeConfig(BaseModel):
     cells: List[CellConfig]
     description: Optional[str] = None
     inputs_schema: Optional[Dict[str, str]] = None # name -> description
-    candidates: Optional[CandidatesConfig] = None  # Cascade-level candidates (Tree of Thought)
+    takes: Optional[TakesConfig] = None  # Cascade-level takes (Tree of Thought)
     memory: Optional[str] = None  # Memory bank name for persistent conversational memory
     token_budget: Optional[TokenBudgetConfig] = None  # Token budget enforcement
     tool_caching: Optional[ToolCachingConfig] = None  # Tool result caching
@@ -1721,7 +1721,7 @@ class CascadeConfig(BaseModel):
 # Rebuild models to resolve forward references for PolyglotValidatorConfig
 WardConfig.model_rebuild()
 RuleConfig.model_rebuild()
-CandidatesConfig.model_rebuild()
+TakesConfig.model_rebuild()
 
 
 def _migrate_legacy_terminology(data: Dict) -> Dict:

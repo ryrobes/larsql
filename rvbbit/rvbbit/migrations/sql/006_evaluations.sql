@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     -- Source context
     session_id String,
     cell_name String,
-    candidate_index Int32,
+    take_index Int32,
 
     -- Evaluation
     evaluation_type Enum8('rating' = 0, 'preference' = 1, 'flag' = 2),

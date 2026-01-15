@@ -126,7 +126,7 @@ class SemanticAnnotation:
     end_pos: int = 0                      # End position in query
     line_start: int = 0                   # Line number where annotation starts
     line_end: int = 0                     # Line number where annotation ends
-    candidates: Optional[Dict[str, Any]] = None  # Candidates config for cascade-level sampling
+    takes: Optional[Dict[str, Any]] = None  # Takes config for cascade-level sampling
 
 
 def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
@@ -203,28 +203,28 @@ def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
                         current_annotation.parallel_scope = value.lower()
                 elif key == 'prompt':
                     prompt_lines.append(value)
-                elif key.startswith('candidates.'):
-                    # Candidates config for cascade-level sampling
-                    # e.g., candidates.factor: 3, candidates.evaluator: ..., candidates.mode: aggregate
-                    if current_annotation.candidates is None:
-                        current_annotation.candidates = {}
-                    subkey = key[11:]  # Remove 'candidates.' prefix
+                elif key.startswith('takes.'):
+                    # Takes config for cascade-level sampling
+                    # e.g., takes.factor: 3, takes.evaluator: ..., takes.mode: aggregate
+                    if current_annotation.takes is None:
+                        current_annotation.takes = {}
+                    subkey = key[11:]  # Remove 'takes.' prefix
                     # Parse value type
                     if subkey in ('factor', 'max_parallel', 'reforge'):
                         try:
-                            current_annotation.candidates[subkey] = int(value)
+                            current_annotation.takes[subkey] = int(value)
                         except ValueError:
-                            current_annotation.candidates[subkey] = value
+                            current_annotation.takes[subkey] = value
                     elif subkey == 'mutate':
-                        current_annotation.candidates[subkey] = value.lower() in ('true', 'yes', '1')
+                        current_annotation.takes[subkey] = value.lower() in ('true', 'yes', '1')
                     else:
                         # evaluator, mode, evaluator_model, etc.
-                        current_annotation.candidates[subkey] = value
+                        current_annotation.takes[subkey] = value
                 elif key == 'models':
-                    # Shorthand for multi-model candidates
+                    # Shorthand for multi-model takes
                     # models: [claude-sonnet, gpt-4o, gemini-pro]
-                    if current_annotation.candidates is None:
-                        current_annotation.candidates = {}
+                    if current_annotation.takes is None:
+                        current_annotation.takes = {}
                     # Parse as list (JSON or comma-separated)
                     try:
                         import json
@@ -232,10 +232,10 @@ def _parse_annotations(query: str) -> List[Tuple[int, int, SemanticAnnotation]]:
                     except (json.JSONDecodeError, ValueError):
                         # Try comma-separated
                         models = [m.strip() for m in value.strip('[]').split(',')]
-                    current_annotation.candidates['multi_model'] = models
+                    current_annotation.takes['multi_model'] = models
                     # Set factor to match number of models if not explicitly set
-                    if 'factor' not in current_annotation.candidates:
-                        current_annotation.candidates['factor'] = len(models)
+                    if 'factor' not in current_annotation.takes:
+                        current_annotation.takes['factor'] = len(models)
                 else:
                     # Unknown key or natural language with colon
                     prompt_lines.append(content)
@@ -468,34 +468,34 @@ def _validate_nl_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and sanitize NL-interpreted config."""
     validated = {}
 
-    candidates = config.get("candidates", {})
-    if candidates and isinstance(candidates, dict):
-        validated["candidates"] = {}
+    takes = config.get("takes", {})
+    if takes and isinstance(takes, dict):
+        validated["takes"] = {}
 
-        if "factor" in candidates:
-            factor = candidates["factor"]
+        if "factor" in takes:
+            factor = takes["factor"]
             if isinstance(factor, int) and 1 <= factor <= 20:
-                validated["candidates"]["factor"] = factor
+                validated["takes"]["factor"] = factor
 
-        if "max_parallel" in candidates:
-            mp = candidates["max_parallel"]
+        if "max_parallel" in takes:
+            mp = takes["max_parallel"]
             if isinstance(mp, int) and 1 <= mp <= 10:
-                validated["candidates"]["max_parallel"] = mp
+                validated["takes"]["max_parallel"] = mp
 
-        if "mode" in candidates and candidates["mode"] in ("evaluate", "aggregate"):
-            validated["candidates"]["mode"] = candidates["mode"]
+        if "mode" in takes and takes["mode"] in ("evaluate", "aggregate"):
+            validated["takes"]["mode"] = takes["mode"]
 
-        if "evaluator_instructions" in candidates and isinstance(candidates["evaluator_instructions"], str):
-            validated["candidates"]["evaluator"] = candidates["evaluator_instructions"]
+        if "evaluator_instructions" in takes and isinstance(takes["evaluator_instructions"], str):
+            validated["takes"]["evaluator"] = takes["evaluator_instructions"]
 
-        if "mutate" in candidates and isinstance(candidates["mutate"], bool):
-            validated["candidates"]["mutate"] = candidates["mutate"]
+        if "mutate" in takes and isinstance(takes["mutate"], bool):
+            validated["takes"]["mutate"] = takes["mutate"]
 
-        if "model_override" in candidates and isinstance(candidates["model_override"], str):
-            validated["candidates"]["model_override"] = candidates["model_override"]
+        if "model_override" in takes and isinstance(takes["model_override"], str):
+            validated["takes"]["model_override"] = takes["model_override"]
 
-        if "multi_model" in candidates and isinstance(candidates["multi_model"], list):
-            validated["candidates"]["multi_model"] = candidates["multi_model"]
+        if "multi_model" in takes and isinstance(takes["multi_model"], list):
+            validated["takes"]["multi_model"] = takes["multi_model"]
 
     if "model" in config and isinstance(config["model"], str):
         validated["model"] = config["model"]
@@ -574,7 +574,7 @@ def _apply_nl_config_to_annotation(ann: SemanticAnnotation, config: Dict[str, An
     1. New structured format (from NL interpreter with full DSL knowledge):
        {
          "cascade_overrides": {
-           "candidates": {"factor": 3, ...},
+           "takes": {"factor": 3, ...},
            "token_budget": {...},
            "narrator": {...}
          },
@@ -585,21 +585,21 @@ def _apply_nl_config_to_annotation(ann: SemanticAnnotation, config: Dict[str, An
        }
 
     2. Legacy flat format (backwards compatibility):
-       {"model": "...", "threshold": 0.7, "candidates": {"factor": 3}}
+       {"model": "...", "threshold": 0.7, "takes": {"factor": 3}}
 
-    The annotation.candidates field stores the full override config for injection
-    into the cascade via __RVBBIT_CANDIDATES:{...}__ prefix.
+    The annotation.takes field stores the full override config for injection
+    into the cascade via __RVBBIT_TAKES:{...}__ prefix.
     """
     # Detect format: new structured vs legacy flat
     is_new_format = 'cascade_overrides' in config or 'cell_overrides' in config
 
     if is_new_format:
         # New structured format - store entire config for cascade injection
-        if ann.candidates is None:
-            ann.candidates = {}
+        if ann.takes is None:
+            ann.takes = {}
 
         # Deep merge the override structure
-        ann.candidates = _deep_merge_dict(ann.candidates, config)
+        ann.takes = _deep_merge_dict(ann.takes, config)
 
         # Also extract model for the annotation-level model hint (used by some rewriters)
         cell_overrides = config.get('cell_overrides', {})
@@ -614,7 +614,7 @@ def _apply_nl_config_to_annotation(ann: SemanticAnnotation, config: Dict[str, An
 
     else:
         # Legacy flat format for backwards compatibility
-        # Model override (from top-level or candidates.model_override)
+        # Model override (from top-level or takes.model_override)
         if config.get("model"):
             ann.model = config["model"]
 
@@ -622,28 +622,28 @@ def _apply_nl_config_to_annotation(ann: SemanticAnnotation, config: Dict[str, An
         if config.get("threshold") is not None:
             ann.threshold = config["threshold"]
 
-        # Candidates config
-        candidates_config = config.get("candidates", {})
-        if candidates_config:
-            if ann.candidates is None:
-                ann.candidates = {}
+        # Takes config
+        takes_config = config.get("takes", {})
+        if takes_config:
+            if ann.takes is None:
+                ann.takes = {}
 
-            # Map NL fields to candidates config
-            if candidates_config.get("factor"):
-                ann.candidates["factor"] = candidates_config["factor"]
-            if candidates_config.get("max_parallel"):
-                ann.candidates["max_parallel"] = candidates_config["max_parallel"]
-            if candidates_config.get("mode"):
-                ann.candidates["mode"] = candidates_config["mode"]
-            if candidates_config.get("evaluator"):
-                ann.candidates["evaluator"] = candidates_config["evaluator"]
-            if candidates_config.get("mutate") is not None:
-                ann.candidates["mutate"] = candidates_config["mutate"]
-            if candidates_config.get("model_override"):
-                # Model override from candidates goes to annotation model
-                ann.model = candidates_config["model_override"]
-            if candidates_config.get("multi_model"):
-                ann.candidates["multi_model"] = candidates_config["multi_model"]
+            # Map NL fields to takes config
+            if takes_config.get("factor"):
+                ann.takes["factor"] = takes_config["factor"]
+            if takes_config.get("max_parallel"):
+                ann.takes["max_parallel"] = takes_config["max_parallel"]
+            if takes_config.get("mode"):
+                ann.takes["mode"] = takes_config["mode"]
+            if takes_config.get("evaluator"):
+                ann.takes["evaluator"] = takes_config["evaluator"]
+            if takes_config.get("mutate") is not None:
+                ann.takes["mutate"] = takes_config["mutate"]
+            if takes_config.get("model_override"):
+                # Model override from takes goes to annotation model
+                ann.model = takes_config["model_override"]
+            if takes_config.get("multi_model"):
+                ann.takes["multi_model"] = takes_config["multi_model"]
 
 
 # ============================================================================
@@ -773,12 +773,12 @@ def rewrite_semantic_operators(query: str, session_id: Optional[str] = None) -> 
         first_annotation = annotations[0][2]  # (line_num, end_pos, annotation)
         if first_annotation.prompt:
             annotation_prefix = first_annotation.prompt + " - "
-        # Inject candidates prefix if present (for cascade-level sampling)
-        if first_annotation.candidates:
+        # Inject takes prefix if present (for cascade-level sampling)
+        if first_annotation.takes:
             import json
-            candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(first_annotation.candidates)}__"
-            annotation_prefix = candidates_prefix + annotation_prefix
-            print(f"[semantic_operators] 💉 Injecting candidates prefix for query-level rewrite: {candidates_prefix}")
+            takes_prefix = f"__RVBBIT_TAKES:{json.dumps(first_annotation.takes)}__"
+            annotation_prefix = takes_prefix + annotation_prefix
+            print(f"[semantic_operators] 💉 Injecting takes prefix for query-level rewrite: {takes_prefix}")
 
     # Query-level rewrites (these transform the entire query structure)
     #
@@ -1012,12 +1012,12 @@ def _rewrite_line(line: str, annotation: Optional[SemanticAnnotation]) -> str:
         annotation_prefix = annotation.prompt + " - "
     elif annotation and annotation.model:
         annotation_prefix = f"Use {annotation.model} - "
-    # Inject candidates prefix if present (for cascade-level sampling)
-    if annotation and annotation.candidates:
+    # Inject takes prefix if present (for cascade-level sampling)
+    if annotation and annotation.takes:
         import json
-        candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(annotation.candidates)}__"
-        annotation_prefix = candidates_prefix + annotation_prefix
-        print(f"[semantic_operators] 💉 Injecting candidates prefix for line-level rewrite: {candidates_prefix}")
+        takes_prefix = f"__RVBBIT_TAKES:{json.dumps(annotation.takes)}__"
+        annotation_prefix = takes_prefix + annotation_prefix
+        print(f"[semantic_operators] 💉 Injecting takes prefix for line-level rewrite: {takes_prefix}")
 
     # Get threshold from annotation or use default
     default_threshold = 0.5

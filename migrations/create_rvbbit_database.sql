@@ -31,11 +31,11 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     semantic_actor LowCardinality(Nullable(String)),
     semantic_purpose LowCardinality(Nullable(String)),
 
-    -- Execution Context (Candidates/Reforge) - UPDATED TERMINOLOGY
-    candidate_index Nullable(Int32),
+    -- Execution Context (Takes/Reforge) - UPDATED TERMINOLOGY
+    take_index Nullable(Int32),
     is_winner Nullable(Bool),
     reforge_step Nullable(Int32),
-    winning_candidate_index Nullable(Int32),
+    winning_take_index Nullable(Int32),
     attempt_number Nullable(Int32),
     turn_number Nullable(Int32),
     mutation_applied Nullable(String),
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     -- Type classification
     checkpoint_type Enum8(
         'cell_input' = 1,
-        'candidate_eval' = 2,
+        'take_eval' = 2,
         'free_text' = 3,
         'choice' = 4,
         'multi_choice' = 5,
@@ -160,9 +160,9 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     cell_output Nullable(String),
     trace_context Nullable(String),
 
-    -- For candidate evaluation
-    candidate_outputs Nullable(String),
-    candidate_metadata Nullable(String),
+    -- For take evaluation
+    take_outputs Nullable(String),
+    take_metadata Nullable(String),
 
     -- Human response
     response Nullable(String),
@@ -317,7 +317,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     -- Source context
     session_id String,
     cell_name String,
-    candidate_index Int32,
+    take_index Int32,
 
     -- Evaluation
     evaluation_type Enum8('rating' = 0, 'preference' = 1, 'flag' = 2),

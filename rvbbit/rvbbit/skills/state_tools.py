@@ -11,8 +11,8 @@ current_cell_context = ContextVar("current_cell_context", default=None)
 # ContextVar to track current cascade ID
 current_cascade_context = ContextVar("current_cascade_context", default=None)
 
-# ContextVar to track current candidate index (for parallel candidate decisions)
-current_candidate_context = ContextVar("current_candidate_context", default=None)
+# ContextVar to track current take index (for parallel take decisions)
+current_take_context = ContextVar("current_take_context", default=None)
 
 # ContextVar to track resolved model for current execution context (for downstream_model)
 current_model_context = ContextVar("current_model_context", default=None)
@@ -38,11 +38,11 @@ def set_current_cascade_id(cascade_id):
 def get_current_cascade_id():
     return current_cascade_context.get()
 
-def set_current_candidate_index(candidate_index):
-    return current_candidate_context.set(candidate_index)
+def set_current_take_index(take_index):
+    return current_take_context.set(take_index)
 
-def get_current_candidate_index():
-    return current_candidate_context.get()
+def get_current_take_index():
+    return current_take_context.get()
 
 def set_current_model(model):
     """Set the resolved model for current execution context."""

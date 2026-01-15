@@ -18,7 +18,7 @@ class CostTracker:
         t.start()
 
     def track(self, session_id: str, request_id: str, trace_id: str, parent_id: str,
-              cell_name: str | None = None, cascade_id: str | None = None, candidate_index: int | None = None,
+              cell_name: str | None = None, cascade_id: str | None = None, take_index: int | None = None,
               pending_message: dict | None = None):
         """
         Track a request and optionally hold a message until cost data is available.
@@ -30,7 +30,7 @@ class CostTracker:
             parent_id: Parent trace node ID
             cell_name: Current cell name
             cascade_id: Cascade identifier
-            candidate_index: Sounding attempt index (if applicable)
+            take_index: Sounding attempt index (if applicable)
             pending_message: Optional dict of message data to hold until cost arrives.
                             If provided, message will be logged WITH cost merged in.
                             If None, falls back to old behavior (separate cost_update).
@@ -43,7 +43,7 @@ class CostTracker:
                 "parent_id": parent_id,
                 "cell_name": cell_name,
                 "cascade_id": cascade_id,
-                "candidate_index": candidate_index,
+                "take_index": take_index,
                 "timestamp": time.time(),
                 "pending_message": pending_message  # NEW: Hold message until cost arrives
             })
@@ -159,7 +159,7 @@ class CostTracker:
                     "provider_id": item["request_id"],
                     "cell_name": item.get("cell_name"),
                     "cascade_id": item.get("cascade_id"),
-                    "candidate_index": item.get("candidate_index")
+                    "take_index": item.get("take_index")
                 },
                 trace_id=item["trace_id"],
                 parent_id=item["parent_id"],
@@ -167,7 +167,7 @@ class CostTracker:
                 cost=cost,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
-                candidate_index=item.get("candidate_index"),
+                take_index=item.get("take_index"),
                 model=model  # Now includes model from OpenRouter response
             )
 
@@ -175,7 +175,7 @@ _tracker = CostTracker()
 _tracker.start()
 
 def track_request(session_id: str, request_id: str, trace_id: str, parent_id: str,
-                  cell_name: str | None = None, cascade_id: str | None = None, candidate_index: int | None = None,
+                  cell_name: str | None = None, cascade_id: str | None = None, take_index: int | None = None,
                   pending_message: dict | None = None):
     """
     Track an LLM request for cost data.
@@ -185,4 +185,4 @@ def track_request(session_id: str, request_id: str, trace_id: str, parent_id: st
                         Should contain all fields needed for log_echo().
                         If provided, the message will be logged WITH cost merged in (no separate cost_update).
     """
-    _tracker.track(session_id, request_id, trace_id, parent_id, cell_name, cascade_id, candidate_index, pending_message)
+    _tracker.track(session_id, request_id, trace_id, parent_id, cell_name, cascade_id, take_index, pending_message)

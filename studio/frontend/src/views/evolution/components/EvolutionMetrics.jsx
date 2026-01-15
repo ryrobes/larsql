@@ -45,19 +45,19 @@ const EvolutionMetrics = ({ nodes, metadata }) => {
       const gen = node.data.generation;
       if (!generations[gen]) {
         generations[gen] = {
-          candidates: [],
+          takes: [],
           winner: null,
           totalCost: 0,
         };
       }
-      generations[gen].candidates.push(node.data);
+      generations[gen].takes.push(node.data);
       generations[gen].totalCost += node.data.cost || 0;
       if (node.data.is_winner) {
         generations[gen].winner = node.data;
       }
     });
 
-    const genArray = Object.values(generations).sort((a, b) => a.candidates[0].generation - b.candidates[0].generation);
+    const genArray = Object.values(generations).sort((a, b) => a.takes[0].generation - b.takes[0].generation);
     const totalGenerations = genArray.length;
 
     // Total cost
@@ -90,8 +90,8 @@ const EvolutionMetrics = ({ nodes, metadata }) => {
     // Training set members (marked as in_training_set)
     const trainingSetSize = nodes.filter(n => n.data.in_training_set).length;
 
-    // Average candidates per generation
-    const avgCandidatesPerGen = nodes.length / totalGenerations;
+    // Average takes per generation
+    const avgTakesPerGen = nodes.length / totalGenerations;
 
     // Best generation (lowest cost with winner)
     const bestGen = genArray.reduce((best, g) => {
@@ -114,8 +114,8 @@ const EvolutionMetrics = ({ nodes, metadata }) => {
       uniqueModels,
       mutationPct,
       mutatedWinnerPct,
-      avgCandidatesPerGen,
-      bestGeneration: bestGen?.candidates[0]?.generation,
+      avgTakesPerGen,
+      bestGeneration: bestGen?.takes[0]?.generation,
       bestGenCost: bestGen?.totalCost,
     };
   }, [nodes]);
@@ -130,7 +130,7 @@ const EvolutionMetrics = ({ nodes, metadata }) => {
         icon="mdi:counter"
         label="Generations"
         value={metrics.totalGenerations}
-        subvalue={`${metrics.avgCandidatesPerGen.toFixed(1)} avg candidates`}
+        subvalue={`${metrics.avgTakesPerGen.toFixed(1)} avg takes`}
         color="#00e5ff"
       />
       <MetricCard

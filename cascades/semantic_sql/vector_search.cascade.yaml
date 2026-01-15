@@ -7,9 +7,9 @@ description: "Semantic search using ClickHouse cosineDistance.\n\nReturns table 
   \ 10));\n  SELECT * FROM read_json_auto(vector_search_json_4('query', 'table', 10,\
   \ 0.7));  -- with threshold\n\nPerformance:\n  - Vector search: ~50ms for 1M vectors\
   \ (ClickHouse native)\n  - No LLM calls (pure vector similarity)\n  - Results cached\
-  \ by query hash\n\nHybrid Pattern (Vector + LLM):\n  WITH candidates AS (\n    SELECT\
+  \ by query hash\n\nHybrid Pattern (Vector + LLM):\n  WITH takes AS (\n    SELECT\
   \ * FROM VECTOR_SEARCH('eco products', 'products', 100)\n  )\n  SELECT *\n  FROM\
-  \ candidates c\n  JOIN products p ON p.id = c.id\n  WHERE p.description MEANS 'eco-friendly\
+  \ takes c\n  JOIN products p ON p.id = c.id\n  WHERE p.description MEANS 'eco-friendly\
   \ AND affordable'\n  ORDER BY c.similarity DESC;\n"
 inputs_schema:
   query: Search query text (required)

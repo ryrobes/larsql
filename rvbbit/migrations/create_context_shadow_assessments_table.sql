@@ -1,6 +1,6 @@
 -- Migration: Create context_shadow_assessments table
 -- Date: 2025-12-30
--- Purpose: Shadow assessment of auto-context relevance for all context candidates
+-- Purpose: Shadow assessment of auto-context relevance for all context takes
 --
 -- Background:
 -- When running cascades with explicit context (mode: "explicit"), we still want to
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     target_cell_instructions String,      -- First 500 chars of cell instructions (for debugging)
 
     -- ============================================
-    -- CANDIDATE MESSAGE BEING ASSESSED
+    -- TAKE MESSAGE BEING ASSESSED
     -- ============================================
     source_cell_name String,              -- Cell that produced this message
     content_hash String,                  -- FK to unified_logs.content_hash
@@ -70,11 +70,11 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     would_include_llm Bool,               -- Would LLM strategy include?
     would_include_hybrid Bool,            -- Would hybrid strategy include?
 
-    -- Ranking among all candidates for this target cell
+    -- Ranking among all takes for this target cell
     rank_heuristic UInt16,
     rank_semantic Nullable(UInt16),
     rank_composite UInt16,
-    total_candidates UInt16,
+    total_takes UInt16,
 
     -- ============================================
     -- BUDGET CONTEXT

@@ -8,7 +8,7 @@ cells:
 
     '
   model: x-ai/grok-4.1-fast
-  candidates:
+  takes:
     factor: 3
     max_parallel: 3
     models:

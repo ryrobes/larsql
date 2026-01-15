@@ -16,12 +16,12 @@ def _ensure_mmdc() -> str:
     repo_root = Path(__file__).resolve().parents[1]
     frontend_mmdc = repo_root / "extras" / "ui" / "frontend" / "node_modules" / ".bin" / "mmdc"
 
-    candidates = [
+    takes = [
         str(frontend_mmdc),
         shutil.which("mmdc"),
     ]
 
-    mmdc_path = next((c for c in candidates if c and os.path.exists(c)), None)
+    mmdc_path = next((c for c in takes if c and os.path.exists(c)), None)
     if not mmdc_path:
         raise MermaidRenderError(
             "Mermaid CLI (`mmdc`) not found. Install with `npm --prefix dashboard/frontend install @mermaid-js/mermaid-cli` (or add it to PATH)."

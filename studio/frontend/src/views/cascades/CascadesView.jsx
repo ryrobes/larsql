@@ -229,7 +229,7 @@ const CascadesView = () => {
     runCount: new Set(),     // '0', '1-10', '11-50', '50+'
     costRange: new Set(),    // '$0', '$0-$1', '$1-$10', '$10+'
     status: new Set(),       // For instances: 'completed', 'error', 'running', etc.
-    hasCandidates: null,     // null | true | false
+    hasTakes: null,     // null | true | false
     hasSubCascades: null,    // null | true | false
   });
 
@@ -751,10 +751,10 @@ const CascadesView = () => {
         if (!matches) return false;
       }
 
-      // Has Candidates toggle
-      if (filters.hasCandidates !== null) {
-        const hasCandidates = cascade.graph_complexity?.has_candidates || false;
-        if (hasCandidates !== filters.hasCandidates) return false;
+      // Has Takes toggle
+      if (filters.hasTakes !== null) {
+        const hasTakes = cascade.graph_complexity?.has_takes || false;
+        if (hasTakes !== filters.hasTakes) return false;
       }
 
       // Has Sub-Cascades toggle
@@ -805,7 +805,7 @@ const CascadesView = () => {
       filters.runCount.size > 0 ||
       filters.costRange.size > 0 ||
       filters.status.size > 0 ||
-      filters.hasCandidates !== null ||
+      filters.hasTakes !== null ||
       filters.hasSubCascades !== null;
   }, [filters]);
 
@@ -850,7 +850,7 @@ const CascadesView = () => {
       runCount: new Set(),
       costRange: new Set(),
       status: new Set(),
-      hasCandidates: null,
+      hasTakes: null,
       hasSubCascades: null,
     });
   };
@@ -1189,12 +1189,12 @@ const CascadesView = () => {
               <span className="filter-label">Features</span>
               <div className="filter-chips">
                 <button
-                  className={`filter-toggle ${filters.hasCandidates === true ? 'active' : ''} ${filters.hasCandidates === false ? 'inactive' : ''}`}
-                  onClick={() => toggleBooleanFilter('hasCandidates')}
-                  title={filters.hasCandidates === null ? 'Show all' : filters.hasCandidates ? 'With candidates' : 'Without candidates'}
+                  className={`filter-toggle ${filters.hasTakes === true ? 'active' : ''} ${filters.hasTakes === false ? 'inactive' : ''}`}
+                  onClick={() => toggleBooleanFilter('hasTakes')}
+                  title={filters.hasTakes === null ? 'Show all' : filters.hasTakes ? 'With takes' : 'Without takes'}
                 >
                   <Icon icon="mdi:routes" width="12" />
-                  Candidates
+                  Takes
                 </button>
                 <button
                   className={`filter-toggle ${filters.hasSubCascades === true ? 'active' : ''} ${filters.hasSubCascades === false ? 'inactive' : ''}`}

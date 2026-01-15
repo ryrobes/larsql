@@ -1,20 +1,20 @@
-# Test: Candidates with Evaluator
-# Tests: Multiple candidates generated, evaluator selects winner, outputs propagate
-# Expected: N candidates run, evaluator picks one, winner output available
+# Test: Takes with Evaluator
+# Tests: Multiple takes generated, evaluator selects winner, outputs propagate
+# Expected: N takes run, evaluator picks one, winner output available
 
-cascade_id: integration_test_candidates
+cascade_id: integration_test_takes
 description: |
-  Integration test verifying candidates (Tree of Thought) feature:
-  - Multiple candidate attempts are generated
+  Integration test verifying takes (Tree of Thought) feature:
+  - Multiple take attempts are generated
   - Evaluator cell runs and selects a winner
   - Winner output is propagated to next cell
-  - Candidate metadata is accessible
+  - Take metadata is accessible
 
 inputs_schema:
-  topic: Topic for candidate generation
+  topic: Topic for take generation
 
 cells:
-  # Cell 1: Generate candidates
+  # Cell 1: Generate takes
   - name: generate_ideas
     instructions: |
       Generate a creative idea about: {{ input.topic }}
@@ -23,10 +23,10 @@ cells:
       1. A title (on its own line, prefixed with "Title:")
       2. A one-sentence description
 
-      Be creative and unique. This is candidate {{ sounding_index + 1 }} of {{ sounding_factor }}.
+      Be creative and unique. This is take {{ sounding_index + 1 }} of {{ sounding_factor }}.
     rules:
       max_turns: 1
-    candidates:
+    takes:
       factor: 3
       evaluator_instructions: |
         Evaluate these {{ soundings | length }} ideas about "{{ input.topic }}".

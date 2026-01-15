@@ -115,8 +115,8 @@ blocks:
     OR role='"'"'phase_complete'"'"' THEN 1 ELSE 0 END) as completed,     MAX(CASE
     WHEN node_type='"'"'phase_start'"'"' OR role='"'"'phase_start'"'"' THEN 1 ELSE
     0 END) as started,     COALESCE(SUM(cost), 0) as cost,     COALESCE(SUM(total_tokens),
-    0) as tokens,     MAX(candidate_index) as max_candidate,     MAX(CASE WHEN is_winner=1
-    THEN candidate_index END) as winner FROM all_data WHERE session_id = '"'"'{session_id}'"'"'
+    0) as tokens,     MAX(take_index) as max_take,     MAX(CASE WHEN is_winner=1
+    THEN take_index END) as winner FROM all_data WHERE session_id = '"'"'{session_id}'"'"'
     GROUP BY cell_name ' --format json 2>/dev/null || echo '[]'; sleep 0.5; done
   x: 0
   y: 0

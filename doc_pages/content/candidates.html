@@ -1,4 +1,4 @@
-<h1>Candidates & Evaluation</h1>
+<h1>Takes & Evaluation</h1>
 <p class="lead">
   Run cells multiple times in parallel to find the best output.
   Use LLM evaluators, human evaluation, or aggregate all results.
@@ -19,13 +19,13 @@
 <h2 id="overview">Overview</h2>
 
 <p>
-  The candidates system (formerly "soundings") allows you to:
+  The takes system (formerly "soundings") allows you to:
 </p>
 
 <ul>
   <li>Run a cell N times in parallel</li>
   <li>Evaluate outputs to pick the best one</li>
-  <li>Use different models per candidate</li>
+  <li>Use different models per take</li>
   <li>Collect human feedback</li>
   <li>Aggregate results instead of picking a winner</li>
 </ul>
@@ -34,12 +34,12 @@
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang yaml">Basic Candidates</span>
+    <span class="code-block-lang yaml">Basic Takes</span>
   </div>
   <div class="code-block-content">
     <pre>- <span class="key">name</span>: generate_copy
   <span class="key">instructions</span>: <span class="str">"Write marketing copy for {{ input.product }}"</span>
-  <span class="key">candidates</span>:
+  <span class="key">takes</span>:
     <span class="key">factor</span>: <span class="num">5</span>  <span class="cmt"># Run 5 times</span>
     <span class="key">evaluator_instructions</span>: <span class="str">|
       Evaluate these marketing copies. Consider:
@@ -51,7 +51,7 @@
   </div>
 </div>
 
-<h3>Multi-Model Candidates</h3>
+<h3>Multi-Model Takes</h3>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -60,7 +60,7 @@
   <div class="code-block-content">
     <pre>- <span class="key">name</span>: analyze_data
   <span class="key">instructions</span>: <span class="str">"Analyze the sales data..."</span>
-  <span class="key">candidates</span>:
+  <span class="key">takes</span>:
     <span class="key">models</span>:
       - <span class="str">anthropic/claude-sonnet-4</span>
       - <span class="str">openai/gpt-4o</span>
@@ -86,7 +86,7 @@
     <span class="code-block-lang yaml">LLM Evaluator</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">5</span>
   <span class="cmt"># No 'evaluator' field = LLM evaluation (default)</span>
   <span class="key">evaluator_instructions</span>: <span class="str">|
@@ -108,8 +108,8 @@
 <h3>Pre-Evaluation Validator</h3>
 
 <p>
-  Use a <code>validator</code> to filter candidates <em>before</em> the LLM evaluator sees them.
-  This is useful for filtering out candidates that fail basic requirements (e.g., code that doesn't run):
+  Use a <code>validator</code> to filter takes <em>before</em> the LLM evaluator sees them.
+  This is useful for filtering out takes that fail basic requirements (e.g., code that doesn't run):
 </p>
 
 <div class="code-block">
@@ -117,12 +117,12 @@
     <span class="code-block-lang yaml">Pre-Evaluation Validator</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">5</span>
   <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best valid output"</span>
   <span class="key">validator</span>:                <span class="cmt"># Filters before LLM evaluation</span>
     <span class="key">python</span>: <span class="str">|
-      # Return valid=True for candidates that should be evaluated
+      # Return valid=True for takes that should be evaluated
       has_analysis = bool(output.get('analysis'))
       return {"valid": has_analysis, "reason": "Has analysis" if has_analysis else "Missing analysis"}
     </span></pre>
@@ -132,8 +132,8 @@
 <div class="info-box">
   <div class="info-box-title">Validator vs Evaluator</div>
   <p>
-    The <code>validator</code> filters candidates (pass/fail), then the LLM evaluator picks the
-    winner from the remaining candidates. Validators use the standard ward format:
+    The <code>validator</code> filters takes (pass/fail), then the LLM evaluator picks the
+    winner from the remaining takes. Validators use the standard ward format:
     <code>{"valid": bool, "reason": str}</code>.
   </p>
 </div>
@@ -141,7 +141,7 @@
 <h2 id="human-eval">Human Evaluation</h2>
 
 <p>
-  Present candidates to humans for selection:
+  Present takes to humans for selection:
 </p>
 
 <div class="code-block">
@@ -149,7 +149,7 @@
     <span class="code-block-lang yaml">Human Evaluation</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">5</span>
   <span class="key">evaluator</span>: human
   <span class="key">human_eval</span>:
@@ -174,7 +174,7 @@
     <span class="code-block-lang yaml">Hybrid</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">10</span>
   <span class="key">evaluator</span>: hybrid
   <span class="key">llm_prefilter</span>: <span class="num">3</span>  <span class="cmt"># LLM picks top 3</span>
@@ -197,7 +197,7 @@
   <div class="code-block-content">
     <pre>- <span class="key">name</span>: brainstorm
   <span class="key">instructions</span>: <span class="str">"Generate ideas for {{ input.topic }}"</span>
-  <span class="key">candidates</span>:
+  <span class="key">takes</span>:
     <span class="key">factor</span>: <span class="num">5</span>
     <span class="key">mode</span>: aggregate  <span class="cmt"># Combine all outputs</span>
     <span class="key">aggregator_instructions</span>: <span class="str">|
@@ -210,7 +210,7 @@
 <h2 id="reforge">Reforge</h2>
 
 <p>
-  Iteratively refine the winning candidate:
+  Iteratively refine the winning take:
 </p>
 
 <div class="code-block">
@@ -218,7 +218,7 @@
     <span class="code-block-lang yaml">Reforge</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">3</span>
   <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best draft"</span>
   <span class="key">reforge</span>:
@@ -227,7 +227,7 @@
       Improve this output. Address any weaknesses
       and enhance clarity and completeness.
     </span>
-    <span class="key">factor_per_step</span>: <span class="num">2</span>         <span class="cmt"># Candidates per reforge step</span>
+    <span class="key">factor_per_step</span>: <span class="num">2</span>         <span class="cmt"># Takes per reforge step</span>
     <span class="key">mutate</span>: <span class="kw">true</span>               <span class="cmt"># Apply variation strategies</span></pre>
   </div>
 </div>
@@ -243,7 +243,7 @@
     <span class="code-block-lang yaml">Reforge with Threshold</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="key">candidates</span>:
+    <pre><span class="key">takes</span>:
   <span class="key">factor</span>: <span class="num">3</span>
   <span class="key">evaluator_instructions</span>: <span class="str">"Pick the best draft"</span>
   <span class="key">reforge</span>:
@@ -262,7 +262,7 @@
 <div class="info-box">
   <div class="info-box-title">Cost Considerations</div>
   <p>
-    Candidates multiply token usage. A <code>factor: 5</code> with reforge can
+    Takes multiply token usage. A <code>factor: 5</code> with reforge can
     use 5-15x the tokens of a single run. Use wisely for high-value tasks.
   </p>
 </div>

@@ -4,7 +4,7 @@ display_name: RVBBIT Data
 icon: mdi:sail-boat
 color: "#2dd4bf"
 name_prefix: rvbbit
-description: "Embedded LLM cell with full RVBBIT power: candidates, reforge, wards, model selection"
+description: "Embedded LLM cell with full RVBBIT power: takes, reforge, wards, model selection"
 category: ai
 tags:
   - ai-ml

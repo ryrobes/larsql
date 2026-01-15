@@ -5,7 +5,7 @@ inputs_schema:
 cells:
 - instructions: 'Complete this task: {{ input.task }}'
   name: generate
-  candidates:
+  takes:
     evaluator_instructions: Pick the best response. Consider quality and completeness.
       The model name is shown for reference but should not bias your decision.
     factor: 7

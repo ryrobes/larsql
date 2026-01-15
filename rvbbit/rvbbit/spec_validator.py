@@ -28,7 +28,7 @@ import re
 
 from jinja2 import Environment, TemplateSyntaxError, UndefinedError
 
-from .cascade import CascadeConfig, CellConfig, ContextConfig, CandidatesConfig
+from .cascade import CascadeConfig, CellConfig, ContextConfig, TakesConfig
 
 
 # =============================================================================
@@ -139,7 +139,7 @@ def validate_cascade(
     issues.extend(_validate_handoff_targets(cascade))
     issues.extend(_validate_context_references(cascade))
     issues.extend(_validate_jinja2_syntax(cascade))
-    issues.extend(_validate_candidates_config(cascade))
+    issues.extend(_validate_takes_config(cascade))
     issues.extend(_validate_for_each_row(cascade))
 
     # Graph analysis
@@ -303,62 +303,62 @@ def _validate_jinja2_syntax(cascade: CascadeConfig) -> List[ValidationIssue]:
             if cell.rules.loop_until_prompt:
                 check_template(cell.rules.loop_until_prompt, f"{cell_path}.rules.loop_until_prompt", cell.name)
 
-        # Candidates
-        if cell.candidates:
-            if cell.candidates.evaluator_instructions:
+        # Takes
+        if cell.takes:
+            if cell.takes.evaluator_instructions:
                 check_template(
-                    cell.candidates.evaluator_instructions,
-                    f"{cell_path}.candidates.evaluator_instructions",
+                    cell.takes.evaluator_instructions,
+                    f"{cell_path}.takes.evaluator_instructions",
                     cell.name
                 )
-            if cell.candidates.aggregator_instructions:
+            if cell.takes.aggregator_instructions:
                 check_template(
-                    cell.candidates.aggregator_instructions,
-                    f"{cell_path}.candidates.aggregator_instructions",
+                    cell.takes.aggregator_instructions,
+                    f"{cell_path}.takes.aggregator_instructions",
                     cell.name
                 )
             # Dynamic factor template
-            if isinstance(cell.candidates.factor, str):
+            if isinstance(cell.takes.factor, str):
                 check_template(
-                    cell.candidates.factor,
-                    f"{cell_path}.candidates.factor",
+                    cell.takes.factor,
+                    f"{cell_path}.takes.factor",
                     cell.name
                 )
 
     return issues
 
 
-def _validate_candidates_config(cascade: CascadeConfig) -> List[ValidationIssue]:
-    """W005: Candidates should have evaluator_instructions unless mode is aggregate."""
+def _validate_takes_config(cascade: CascadeConfig) -> List[ValidationIssue]:
+    """W005: Takes should have evaluator_instructions unless mode is aggregate."""
     issues = []
 
-    def check_candidates(candidates: Optional[CandidatesConfig], path: str, cell_name: Optional[str] = None):
-        if not candidates:
+    def check_takes(takes: Optional[TakesConfig], path: str, cell_name: Optional[str] = None):
+        if not takes:
             return
 
-        mode = getattr(candidates, 'mode', 'evaluate')
-        has_evaluator = bool(candidates.evaluator_instructions)
-        evaluator_type = getattr(candidates, 'evaluator', None)
+        mode = getattr(takes, 'mode', 'evaluate')
+        has_evaluator = bool(takes.evaluator_instructions)
+        evaluator_type = getattr(takes, 'evaluator', None)
 
         # If mode is evaluate (default) and no evaluator_instructions and not human evaluator
         if mode != "aggregate" and not has_evaluator and evaluator_type != "human":
             issues.append(ValidationIssue(
                 level="warning",
                 code="W005",
-                message="Candidates configured without evaluator_instructions (mode is not 'aggregate')",
+                message="Takes configured without evaluator_instructions (mode is not 'aggregate')",
                 path=path,
                 cell_name=cell_name,
                 fix_hint="Add 'evaluator_instructions' or set 'mode: aggregate'"
             ))
 
-    # Check cascade-level candidates
-    if cascade.candidates:
-        check_candidates(cascade.candidates, "candidates")
+    # Check cascade-level takes
+    if cascade.takes:
+        check_takes(cascade.takes, "takes")
 
-    # Check cell-level candidates
+    # Check cell-level takes
     for idx, cell in enumerate(cascade.cells):
-        if cell.candidates:
-            check_candidates(cell.candidates, f"cells[{idx}].candidates", cell.name)
+        if cell.takes:
+            check_takes(cell.takes, f"cells[{idx}].takes", cell.name)
 
     return issues
 

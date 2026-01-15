@@ -54,14 +54,14 @@ def _doc_id_for_path(rag_id: str, rel_path: str) -> str:
     return digest[:12]
 
 
-def _list_candidate_files(base_dir: str, recursive: bool, include: List[str], exclude: List[str]) -> List[Path]:
-    """Return candidate files respecting include/exclude globs."""
+def _list_take_files(base_dir: str, recursive: bool, include: List[str], exclude: List[str]) -> List[Path]:
+    """Return take files respecting include/exclude globs."""
     base = Path(base_dir)
     patterns_include = include or ["*"]
     patterns_exclude = exclude or []
 
     paths = base.rglob("*") if recursive else base.glob("*")
-    candidates = []
+    takes = []
 
     for path in paths:
         if path.is_dir():
@@ -75,9 +75,9 @@ def _list_candidate_files(base_dir: str, recursive: bool, include: List[str], ex
         if not any(fnmatch(rel, pat) or fnmatch(name, pat) for pat in patterns_include):
             continue
 
-        candidates.append(path)
+        takes.append(path)
 
-    return candidates
+    return takes
 
 
 def _is_probably_binary(sample: bytes) -> bool:
@@ -230,9 +230,9 @@ def ensure_rag_index(
     )
     expected_dim = existing_dim_result[0]['embedding_dim'] if existing_dim_result else None
 
-    # Scan directory for candidate files
-    candidates = _list_candidate_files(abs_dir, rag_config.recursive, include, exclude)
-    console.print(f"[dim]Found {len(candidates)} candidate files for RAG indexing[/dim]")
+    # Scan directory for take files
+    takes = _list_take_files(abs_dir, rag_config.recursive, include, exclude)
+    console.print(f"[dim]Found {len(takes)} take files for RAG indexing[/dim]")
 
     # Track stats
     indexed_files = 0
@@ -247,7 +247,7 @@ def ensure_rag_index(
     manifests_to_insert = []
     current_rel_paths = set()
 
-    for path in candidates:
+    for path in takes:
         rel_path = path.relative_to(abs_dir).as_posix()
         current_rel_paths.add(rel_path)
 

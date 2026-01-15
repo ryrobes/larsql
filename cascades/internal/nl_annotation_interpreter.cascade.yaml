@@ -18,7 +18,7 @@ internal: true
 description: |
   Internal cascade for interpreting natural language annotation hints.
   
-  Parses free-form hints like "run 3 candidates with a cheap model" or 
+  Parses free-form hints like "run 3 takes with a cheap model" or 
   "add a ward that validates JSON output" and produces structured cascade
   configuration overrides that get applied at runtime.
   
@@ -96,12 +96,12 @@ cells:
       }
       ```
       
-      ## CandidatesConfig (Parallel Execution)
+      ## TakesConfig (Parallel Execution)
       
       ```json
       {
         "cascade_overrides": {
-          "candidates": {
+          "takes": {
             "factor": 3,                    // Number of parallel attempts (1-20)
             "max_parallel": 3,              // Max concurrent (1-10)
             "mode": "evaluate",             // "evaluate" (pick best) or "aggregate" (combine all)
@@ -194,14 +194,14 @@ cells:
       ## Natural Language Mappings
       
       Common phrases to config:
-      - "run N candidates" → cascade_overrides.candidates.factor: N
-      - "pick the best" → cascade_overrides.candidates.mode: "evaluate"
-      - "combine/aggregate all" → cascade_overrides.candidates.mode: "aggregate"
+      - "run N takes" → cascade_overrides.takes.factor: N
+      - "pick the best" → cascade_overrides.takes.mode: "evaluate"
+      - "combine/aggregate all" → cascade_overrides.takes.mode: "aggregate"
       - "cheap/fast model" → cell_overrides.default.model: "google/gemini-2.5-flash-lite"
       - "claude haiku" → cell_overrides.default.model: "anthropic/claude-3-5-haiku-latest"
       - "claude sonnet" → cell_overrides.default.model: "anthropic/claude-sonnet-4"
       - "gpt-4o" → cell_overrides.default.model: "openai/gpt-4o"
-      - "try multiple models" → cascade_overrides.candidates.models: [list]
+      - "try multiple models" → cascade_overrides.takes.models: [list]
       - "threshold X" → (not in overrides, handled separately)
       - "add a ward" → cell_overrides.default.wards: {...}
       - "loop until X" → cell_overrides.default.rules.loop_until: "X"

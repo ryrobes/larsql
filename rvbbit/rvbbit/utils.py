@@ -22,7 +22,7 @@ def compute_species_hash(cell_config: Optional[Dict[str, Any]], input_data: Opti
     Species identity includes:
     - instructions (LLM cells) OR tool+code (deterministic cells)
     - input_data: Template parameters that affect the rendered prompt/code
-    - candidates: Full config (factor, evaluator_instructions, mutations, reforge)
+    - takes: Full config (factor, evaluator_instructions, mutations, reforge)
     - rules: max_turns, loop_until, etc.
     - output_schema, wards: Validation and output requirements
 
@@ -39,7 +39,7 @@ def compute_species_hash(cell_config: Optional[Dict[str, Any]], input_data: Opti
         16-character hex hash, or "unknown_species" if cell_config is invalid
 
     Example:
-        >>> config = {"instructions": "Write a poem about {{topic}}", "candidates": {"factor": 3}}
+        >>> config = {"instructions": "Write a poem about {{topic}}", "takes": {"factor": 3}}
         >>> compute_species_hash(config, {"topic": "cats"})
         'a1b2c3d4e5f6g7h8'
     """
@@ -68,8 +68,8 @@ def compute_species_hash(cell_config: Optional[Dict[str, Any]], input_data: Opti
             # Input data - template parameters that affect rendered prompt
             'input_data': input_data or {},
 
-            # Candidates config affects prompt generation strategy
-            'candidates': cell_config.get('candidates') or cell_config.get('candidates'),
+            # Takes config affects prompt generation strategy
+            'takes': cell_config.get('takes') or cell_config.get('takes'),
 
             # Rules affect execution behavior
             'rules': cell_config.get('rules'),
@@ -457,11 +457,11 @@ def cull_old_conversation_history(messages: List[Dict], keep_recent_turns: int =
 
     return culled_messages
 
-def get_next_image_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
+def get_next_image_index(session_id: str, cell_name: str, take_index: int | None = None) -> int:
     """
     Find the next available image index for a session/cell directory.
     Scans existing files to avoid overwriting.
-    If candidate_index is provided, only considers images for that candidate.
+    If take_index is provided, only considers images for that take.
     """
     from .config import get_config
     config = get_config()
@@ -475,11 +475,11 @@ def get_next_image_index(session_id: str, cell_name: str, candidate_index: int |
     # Find all existing image files and extract their indices
     existing_indices = set()
     for filename in os.listdir(cell_dir):
-        if candidate_index is not None:
-            # Match pattern: candidate_N_image_M.ext
-            match = re.match(rf'candidate_{candidate_index}_image_(\d+)\.\w+$', filename)
+        if take_index is not None:
+            # Match pattern: take_N_image_M.ext
+            match = re.match(rf'take_{take_index}_image_(\d+)\.\w+$', filename)
         else:
-            # Match pattern: image_N.ext (without candidate prefix)
+            # Match pattern: image_N.ext (without take prefix)
             match = re.match(r'image_(\d+)\.\w+$', filename)
         if match:
             existing_indices.add(int(match.group(1)))
@@ -490,11 +490,11 @@ def get_next_image_index(session_id: str, cell_name: str, candidate_index: int |
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_image_save_path(session_id: str, cell_name: str, image_index: int, extension: str = "png", candidate_index: int | None = None) -> str:
+def get_image_save_path(session_id: str, cell_name: str, image_index: int, extension: str = "png", take_index: int | None = None) -> str:
     """
     Generate standardized path for saving images.
     Format: images/{session_id}/{cell_name}/image_{index}.{ext}
-    Or with candidate: images/{session_id}/{cell_name}/candidate_{s}_image_{index}.{ext}
+    Or with take: images/{session_id}/{cell_name}/take_{s}_image_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -502,19 +502,19 @@ def get_image_save_path(session_id: str, cell_name: str, image_index: int, exten
     # Use configured image_dir
     images_dir = config.image_dir
 
-    if candidate_index is not None:
-        filename = f"candidate_{candidate_index}_image_{image_index}.{extension}"
+    if take_index is not None:
+        filename = f"take_{take_index}_image_{image_index}.{extension}"
     else:
         filename = f"image_{image_index}.{extension}"
 
     path = os.path.join(images_dir, session_id, cell_name, filename)
     return path
 
-def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
+def get_next_audio_index(session_id: str, cell_name: str, take_index: int | None = None) -> int:
     """
     Find the next available audio index for a session/cell directory.
     Scans existing files to avoid overwriting.
-    If candidate_index is provided, only considers audio for that candidate.
+    If take_index is provided, only considers audio for that take.
     """
     from .config import get_config
     config = get_config()
@@ -528,11 +528,11 @@ def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int |
     # Find all existing audio files and extract their indices
     existing_indices = set()
     for filename in os.listdir(cell_dir):
-        if candidate_index is not None:
-            # Match pattern: candidate_N_audio_M.ext
-            match = re.match(rf'candidate_{candidate_index}_audio_(\d+)\.\w+$', filename)
+        if take_index is not None:
+            # Match pattern: take_N_audio_M.ext
+            match = re.match(rf'take_{take_index}_audio_(\d+)\.\w+$', filename)
         else:
-            # Match pattern: audio_N.ext (without candidate prefix)
+            # Match pattern: audio_N.ext (without take prefix)
             match = re.match(r'audio_(\d+)\.\w+$', filename)
         if match:
             existing_indices.add(int(match.group(1)))
@@ -543,11 +543,11 @@ def get_next_audio_index(session_id: str, cell_name: str, candidate_index: int |
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, extension: str = "mp3", candidate_index: int | None = None) -> str:
+def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, extension: str = "mp3", take_index: int | None = None) -> str:
     """
     Generate standardized path for saving audio files.
     Format: audio/{session_id}/{cell_name}/audio_{index}.{ext}
-    Or with candidate: audio/{session_id}/{cell_name}/candidate_{s}_audio_{index}.{ext}
+    Or with take: audio/{session_id}/{cell_name}/take_{s}_audio_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -555,8 +555,8 @@ def get_audio_save_path(session_id: str, cell_name: str, audio_index: int, exten
     # Use configured audio_dir
     audio_dir = config.audio_dir
 
-    if candidate_index is not None:
-        filename = f"candidate_{candidate_index}_audio_{audio_index}.{extension}"
+    if take_index is not None:
+        filename = f"take_{take_index}_audio_{audio_index}.{extension}"
     else:
         filename = f"audio_{audio_index}.{extension}"
 
@@ -651,11 +651,11 @@ def get_video_extension_from_data_url(data_url: str) -> str:
     except (IndexError, ValueError):
         return "mp4"
 
-def get_next_video_index(session_id: str, cell_name: str, candidate_index: int | None = None) -> int:
+def get_next_video_index(session_id: str, cell_name: str, take_index: int | None = None) -> int:
     """
     Find the next available video index for a session/cell directory.
     Scans existing files to avoid overwriting.
-    If candidate_index is provided, only considers videos for that candidate.
+    If take_index is provided, only considers videos for that take.
     """
     from .config import get_config
     config = get_config()
@@ -669,11 +669,11 @@ def get_next_video_index(session_id: str, cell_name: str, candidate_index: int |
     # Find all existing video files and extract their indices
     existing_indices = set()
     for filename in os.listdir(cell_dir):
-        if candidate_index is not None:
-            # Match pattern: candidate_N_video_M.ext
-            match = re.match(rf'candidate_{candidate_index}_video_(\d+)\.\w+$', filename)
+        if take_index is not None:
+            # Match pattern: take_N_video_M.ext
+            match = re.match(rf'take_{take_index}_video_(\d+)\.\w+$', filename)
         else:
-            # Match pattern: video_N.ext (without candidate prefix)
+            # Match pattern: video_N.ext (without take prefix)
             match = re.match(r'video_(\d+)\.\w+$', filename)
         if match:
             existing_indices.add(int(match.group(1)))
@@ -684,11 +684,11 @@ def get_next_video_index(session_id: str, cell_name: str, candidate_index: int |
     # Return next index after the highest existing one
     return max(existing_indices) + 1
 
-def get_video_save_path(session_id: str, cell_name: str, video_index: int, extension: str = "mp4", candidate_index: int | None = None) -> str:
+def get_video_save_path(session_id: str, cell_name: str, video_index: int, extension: str = "mp4", take_index: int | None = None) -> str:
     """
     Generate standardized path for saving videos.
     Format: videos/{session_id}/{cell_name}/video_{index}.{ext}
-    Or with candidate: videos/{session_id}/{cell_name}/candidate_{s}_video_{index}.{ext}
+    Or with take: videos/{session_id}/{cell_name}/take_{s}_video_{index}.{ext}
     """
     from .config import get_config
     config = get_config()
@@ -696,8 +696,8 @@ def get_video_save_path(session_id: str, cell_name: str, video_index: int, exten
     # Use configured video_dir
     video_dir = config.video_dir
 
-    if candidate_index is not None:
-        filename = f"candidate_{candidate_index}_video_{video_index}.{extension}"
+    if take_index is not None:
+        filename = f"take_{take_index}_video_{video_index}.{extension}"
     else:
         filename = f"video_{video_index}.{extension}"
 

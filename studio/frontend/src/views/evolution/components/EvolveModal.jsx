@@ -53,7 +53,7 @@ const EvolveModal = ({ isOpen, onClose, generation, currentBaseline, cascadeId, 
 
   if (!isOpen || !generation) return null;
 
-  const winner = generation.candidates.find(c => c.is_winner) || generation.candidates[0];
+  const winner = generation.takes.find(c => c.is_winner) || generation.takes[0];
   const newPrompt = winner?.prompt || '';
 
   const handleEvolve = async () => {
@@ -71,7 +71,7 @@ const EvolveModal = ({ isOpen, onClose, generation, currentBaseline, cascadeId, 
           promoted_from: {
             session_id: generation.session_id,
             generation: generation.generation,
-            candidate_index: winner.candidate_index,
+            take_index: winner.take_index,
             old_species_hash: generation.parent_winners?.[0]?.session_id || null, // Track lineage
           }
         })

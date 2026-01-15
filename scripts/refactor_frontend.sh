@@ -32,12 +32,12 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bCellsRail\b/CellsRail/g
 ' {} +
 
-# Candidates* → Candidates*
+# Takes* → Takes*
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
-    s/\bCandidatesExplorer\b/CandidatesExplorer/g
-    s/\bSoundingComparison\b/CandidateComparison/g
-    s/\bSoundingLane\b/CandidateLane/g
-    s/\bCandidatesLayer\b/CandidatesLayer/g
+    s/\bTakesExplorer\b/TakesExplorer/g
+    s/\bSoundingComparison\b/TakeComparison/g
+    s/\bSoundingLane\b/TakeLane/g
+    s/\bTakesLayer\b/TakesLayer/g
 ' {} +
 
 # Tackle* → Skill*
@@ -61,8 +61,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/\bcurrentCell\b/currentCell/g
     s/\bselectedCell\b/selectedCell/g
     s/\btackleList\b/skillList/g
-    s/\bcandidateIndex\b/candidateIndex/g
-    s/\bcandidateFactor\b/candidateFactor/g
+    s/\btakeIndex\b/takeIndex/g
+    s/\btakeFactor\b/takeFactor/g
 ' {} +
 
 echo "✓ Props and variables updated"
@@ -81,8 +81,8 @@ find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/'\''cells'\''/'\''cells'\''/g
     s/"tackle"/"skills"/g
     s/'\''tackle'\''/'\''skills'\''/g
-    s/"candidates"/"candidates"/g
-    s/'\''candidates'\''/'\''candidates'\''/g
+    s/"takes"/"takes"/g
+    s/'\''takes'\''/'\''takes'\''/g
 ' {} +
 
 echo "✓ API field names updated"
@@ -96,8 +96,8 @@ find src -type f -name "*.css" -exec sed -i '
     s/\.cell-card/.cell-card/g
     s/\.cell-anatomy/.cell-anatomy/g
     s/\.cell-detail/.cell-detail/g
-    s/\.candidates-explorer/.candidates-explorer/g
-    s/\.candidate-lane/.candidate-lane/g
+    s/\.takes-explorer/.takes-explorer/g
+    s/\.take-lane/.take-lane/g
     s/\.tackle-pill/.skill-pill/g
 ' {} +
 
@@ -105,7 +105,7 @@ find src -type f -name "*.css" -exec sed -i '
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/className="cell-/className="cell-/g
     s/className='\''cell-/className='\''cell-/g
-    s/className="candidates-/className="candidates-/g
+    s/className="takes-/className="takes-/g
     s/className="tackle-/className="skill-/g
 ' {} +
 
@@ -119,7 +119,7 @@ echo "[5/5] Updating UI text strings..."
 find src -type f \( -name "*.js" -o -name "*.jsx" \) -exec sed -i '
     s/>Cell</>Cell</g
     s/>Cells</>Cells</g
-    s/>Candidates</>Candidates</g
+    s/>Takes</>Takes</g
     s/>Tackle</>Skills</g
     s/"Cell "/"Cell "/g
     s/"Cells "/"Cells "/g

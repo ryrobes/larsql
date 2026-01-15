@@ -487,7 +487,7 @@ class InterCellSelectionStats:
     """
     strategy: str = "heuristic"
     anchor_count: int = 0
-    candidate_count: int = 0
+    take_count: int = 0
     selected_count: int = 0
     tokens_budget: int = 0
     tokens_used: int = 0
@@ -497,7 +497,7 @@ class InterCellSelectionStats:
         return {
             "strategy": self.strategy,
             "anchor_count": self.anchor_count,
-            "candidate_count": self.candidate_count,
+            "take_count": self.take_count,
             "selected_count": self.selected_count,
             "tokens_budget": self.tokens_budget,
             "tokens_used": self.tokens_used,
@@ -586,11 +586,11 @@ class InterCellContextBuilder:
         stats.anchor_count = len(anchor_messages)
         anchor_tokens = self._estimate_tokens_list(anchor_messages)
 
-        # STEP 2: Get candidate messages from context cards
-        candidates = self._get_candidate_cards(executed_cells, anchor_hashes)
-        stats.candidate_count = len(candidates)
+        # STEP 2: Get take messages from context cards
+        takes = self._get_take_cards(executed_cells, anchor_hashes)
+        stats.take_count = len(takes)
 
-        if not candidates:
+        if not takes:
             stats.tokens_used = anchor_tokens
             stats.selection_time_ms = int((time.time() - start_time) * 1000)
             self._last_stats = stats
@@ -600,7 +600,7 @@ class InterCellContextBuilder:
         remaining_budget = selection_config.max_tokens - anchor_tokens
 
         selected_hashes = self._select_messages(
-            candidates=candidates,
+            takes=takes,
             current_task=current_cell.instructions or "",
             budget=remaining_budget,
             selection_config=selection_config
@@ -766,12 +766,12 @@ class InterCellContextBuilder:
                 })
         return errors[:5]  # Limit to 5 most recent errors
 
-    def _get_candidate_cards(
+    def _get_take_cards(
         self,
         executed_cells: List[str],
         exclude_hashes: set
     ) -> List[Dict]:
-        """Get context cards as candidates for selection."""
+        """Get context cards as takes for selection."""
         if self._context_cards_cache is not None:
             cards = self._context_cards_cache
         else:
@@ -785,17 +785,17 @@ class InterCellContextBuilder:
                 return []
 
         # Filter to executed cells and exclude anchor hashes
-        candidates = []
+        takes = []
         for card in cards:
             if card.get("cell_name") in executed_cells:
                 if card.get("content_hash") not in exclude_hashes:
-                    candidates.append(card)
+                    takes.append(card)
 
-        return candidates
+        return takes
 
     def _select_messages(
         self,
-        candidates: List[Dict],
+        takes: List[Dict],
         current_task: str,
         budget: int,
         selection_config: 'SelectionConfig'
@@ -804,30 +804,30 @@ class InterCellContextBuilder:
         strategy = selection_config.strategy
 
         if strategy == "heuristic":
-            return self._heuristic_selection(candidates, current_task, budget, selection_config)
+            return self._heuristic_selection(takes, current_task, budget, selection_config)
         elif strategy == "semantic":
-            return self._semantic_selection(candidates, current_task, budget, selection_config)
+            return self._semantic_selection(takes, current_task, budget, selection_config)
         elif strategy == "llm":
-            return self._llm_selection(candidates, current_task, budget, selection_config)
+            return self._llm_selection(takes, current_task, budget, selection_config)
         elif strategy == "hybrid":
             # Heuristic prefilter, then LLM final selection
             prefiltered_hashes = self._heuristic_selection(
-                candidates,
+                takes,
                 current_task,
                 budget * 2,  # Larger pool for LLM
                 selection_config
             )
-            prefiltered_cards = [c for c in candidates if c["content_hash"] in prefiltered_hashes]
+            prefiltered_cards = [c for c in takes if c["content_hash"] in prefiltered_hashes]
             if len(prefiltered_cards) <= 5:
                 # Too few for LLM, just use heuristic result
                 return prefiltered_hashes
             return self._llm_selection(prefiltered_cards, current_task, budget, selection_config)
         else:
-            return self._heuristic_selection(candidates, current_task, budget, selection_config)
+            return self._heuristic_selection(takes, current_task, budget, selection_config)
 
     def _heuristic_selection(
         self,
-        candidates: List[Dict],
+        takes: List[Dict],
         current_task: str,
         budget: int,
         config: 'SelectionConfig'
@@ -842,7 +842,7 @@ class InterCellContextBuilder:
         scored = []
         now = datetime.now()
 
-        for card in candidates:
+        for card in takes:
             score = 0.0
 
             # Keyword overlap
@@ -892,7 +892,7 @@ class InterCellContextBuilder:
 
     def _semantic_selection(
         self,
-        candidates: List[Dict],
+        takes: List[Dict],
         current_task: str,
         budget: int,
         config: 'SelectionConfig'
@@ -932,11 +932,11 @@ class InterCellContextBuilder:
 
         except Exception as e:
             logger.warning(f"Semantic selection failed: {e}, falling back to heuristic")
-            return self._heuristic_selection(candidates, current_task, budget, config)
+            return self._heuristic_selection(takes, current_task, budget, config)
 
     def _llm_selection(
         self,
-        candidates: List[Dict],
+        takes: List[Dict],
         current_task: str,
         budget: int,
         config: 'SelectionConfig'
@@ -948,7 +948,7 @@ class InterCellContextBuilder:
 
             # Build "menu" of summaries
             menu_lines = []
-            for card in candidates[:100]:  # Limit menu size
+            for card in takes[:100]:  # Limit menu size
                 hash_short = card["content_hash"][:8]
                 role = card.get("role", "?")
                 cell = card.get("cell_name", "?")
@@ -1000,7 +1000,7 @@ Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "
                 # Expand short hashes to full hashes
                 full_hashes = []
                 for short_hash in short_hashes:
-                    for card in candidates:
+                    for card in takes:
                         if card["content_hash"].startswith(short_hash):
                             full_hashes.append(card["content_hash"])
                             break
@@ -1009,11 +1009,11 @@ Return ONLY a JSON object: {{"selected": ["hash1", "hash2", ...], "reasoning": "
                 return full_hashes
 
             logger.warning("Failed to parse LLM selection response")
-            return self._heuristic_selection(candidates, current_task, budget, config)
+            return self._heuristic_selection(takes, current_task, budget, config)
 
         except Exception as e:
             logger.warning(f"LLM selection failed: {e}, falling back to heuristic")
-            return self._heuristic_selection(candidates, current_task, budget, config)
+            return self._heuristic_selection(takes, current_task, budget, config)
 
     def _get_messages_by_hash(self, content_hashes: List[str]) -> List[Dict]:
         """Get original messages from unified_logs by content hash."""

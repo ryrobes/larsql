@@ -6,7 +6,7 @@ any LLM calls or external dependencies. They ensure:
 1. Valid configurations parse correctly
 2. Invalid configurations raise ValidationError with helpful messages
 3. Optional fields have correct defaults
-4. Nested configs (candidates, wards, context) parse correctly
+4. Nested configs (takes, wards, context) parse correctly
 5. Edge cases are handled appropriately
 
 These tests can be used as part of the cascade execution process
@@ -24,8 +24,8 @@ from rvbbit.cascade import (
     # Context system
     ContextConfig,
     ContextSourceConfig,
-    # Candidates
-    CandidatesConfig,
+    # Takes
+    TakesConfig,
     ReforgeConfig,
     ModelConfig,
     CostAwareEvaluation,
@@ -144,7 +144,7 @@ class TestCellConfig:
         assert cell.async_cascades == []
 
         # Optional configs default to None
-        assert cell.candidates is None
+        assert cell.takes is None
         assert cell.output_schema is None
         assert cell.wards is None
         assert cell.rag is None
@@ -333,35 +333,35 @@ class TestContextConfig:
 
 
 # =============================================================================
-# CANDIDATES (Tree of Thought) VALIDATION
+# TAKES (Tree of Thought) VALIDATION
 # =============================================================================
 
-class TestCandidatesConfig:
-    """Test candidates/Tree-of-Thought configuration."""
+class TestTakesConfig:
+    """Test takes/Tree-of-Thought configuration."""
 
-    def test_basic_candidates(self):
-        """Basic candidates with evaluator."""
-        candidates = CandidatesConfig(
+    def test_basic_takes(self):
+        """Basic takes with evaluator."""
+        takes = TakesConfig(
             factor=3,
             evaluator_instructions="Pick the most creative response."
         )
-        assert candidates.factor == 3
-        assert candidates.mutate is True  # Default
-        assert candidates.max_parallel == 3  # Default
+        assert takes.factor == 3
+        assert takes.mutate is True  # Default
+        assert takes.max_parallel == 3  # Default
 
-    def test_candidates_defaults(self):
-        """Verify candidates defaults."""
-        candidates = CandidatesConfig()
-        assert candidates.factor == 1
-        assert candidates.max_parallel == 3
-        assert candidates.evaluator_instructions is None
-        assert candidates.mutate is True
-        assert candidates.mutation_mode == "rewrite"
-        assert candidates.mutations is None
+    def test_takes_defaults(self):
+        """Verify takes defaults."""
+        takes = TakesConfig()
+        assert takes.factor == 1
+        assert takes.max_parallel == 3
+        assert takes.evaluator_instructions is None
+        assert takes.mutate is True
+        assert takes.mutation_mode == "rewrite"
+        assert takes.mutations is None
 
-    def test_candidates_with_mutations(self):
+    def test_takes_with_mutations(self):
         """Custom mutations for prompt variation."""
-        candidates = CandidatesConfig(
+        takes = TakesConfig(
             factor=5,
             mutate=True,
             mutation_mode="augment",
@@ -371,17 +371,17 @@ class TestCandidatesConfig:
                 "Be concise and direct."
             ]
         )
-        assert candidates.mutation_mode == "augment"
-        assert len(candidates.mutations) == 3
+        assert takes.mutation_mode == "augment"
+        assert len(takes.mutations) == 3
 
-    def test_candidates_with_validator(self):
-        """Pre-evaluation validator to filter candidates."""
-        candidates = CandidatesConfig(
+    def test_takes_with_validator(self):
+        """Pre-evaluation validator to filter takes."""
+        takes = TakesConfig(
             factor=5,
             validator="code_executes",
             evaluator_instructions="Pick the cleanest code that runs."
         )
-        assert candidates.validator == "code_executes"
+        assert takes.validator == "code_executes"
 
     def test_reforge_config(self):
         """Reforge (iterative refinement) configuration."""
@@ -394,9 +394,9 @@ class TestCandidatesConfig:
         assert reforge.steps == 3
         assert reforge.factor_per_step == 2
 
-    def test_candidates_with_reforge(self):
-        """Candidates with reforge loop."""
-        candidates = CandidatesConfig(
+    def test_takes_with_reforge(self):
+        """Takes with reforge loop."""
+        takes = TakesConfig(
             factor=3,
             evaluator_instructions="Pick best approach.",
             reforge=ReforgeConfig(
@@ -404,29 +404,29 @@ class TestCandidatesConfig:
                 honing_prompt="Refine and polish."
             )
         )
-        assert candidates.reforge.steps == 2
+        assert takes.reforge.steps == 2
 
-    def test_multi_model_candidates_list(self):
-        """Multi-model candidates with list of models."""
-        candidates = CandidatesConfig(
+    def test_multi_model_takes_list(self):
+        """Multi-model takes with list of models."""
+        takes = TakesConfig(
             factor=6,
             models=["openai/gpt-4o", "anthropic/claude-sonnet-4", "google/gemini-2.5-flash"],
             model_strategy="round_robin"
         )
-        assert len(candidates.models) == 3
-        assert candidates.model_strategy == "round_robin"
+        assert len(takes.models) == 3
+        assert takes.model_strategy == "round_robin"
 
-    def test_multi_model_candidates_dict(self):
-        """Multi-model candidates with per-model config."""
-        candidates = CandidatesConfig(
+    def test_multi_model_takes_dict(self):
+        """Multi-model takes with per-model config."""
+        takes = TakesConfig(
             models={
                 "openai/gpt-4o": ModelConfig(factor=2, temperature=0.7),
                 "anthropic/claude-sonnet-4": ModelConfig(factor=3, temperature=0.5),
             },
             model_strategy="weighted"
         )
-        assert candidates.models["openai/gpt-4o"].factor == 2
-        assert candidates.models["anthropic/claude-sonnet-4"].temperature == 0.5
+        assert takes.models["openai/gpt-4o"].factor == 2
+        assert takes.models["anthropic/claude-sonnet-4"].temperature == 0.5
 
     def test_cost_aware_evaluation(self):
         """Cost-aware evaluation settings."""
@@ -449,8 +449,8 @@ class TestCandidatesConfig:
         assert pareto.policy == "balanced"
 
     def test_human_evaluation(self):
-        """Human evaluation of candidates."""
-        candidates = CandidatesConfig(
+        """Human evaluation of takes."""
+        takes = TakesConfig(
             factor=3,
             evaluator="human",
             human_eval=HumanSoundingEvalConfig(
@@ -459,8 +459,8 @@ class TestCandidatesConfig:
                 require_reasoning=True
             )
         )
-        assert candidates.evaluator == "human"
-        assert candidates.human_eval.require_reasoning is True
+        assert takes.evaluator == "human"
+        assert takes.human_eval.require_reasoning is True
 
 
 # =============================================================================
@@ -870,11 +870,11 @@ class TestFullCascadeConfig:
         )
         assert config.memory == "conversation_history"
 
-    def test_cascade_level_candidates(self):
-        """Cascade-level candidates (Tree of Thought)."""
+    def test_cascade_level_takes(self):
+        """Cascade-level takes (Tree of Thought)."""
         config = CascadeConfig(
             cascade_id="parallel_approaches",
-            candidates=CandidatesConfig(
+            takes=TakesConfig(
                 factor=3,
                 evaluator_instructions="Pick the best overall approach."
             ),
@@ -883,7 +883,7 @@ class TestFullCascadeConfig:
                 CellConfig(name="solve", instructions="Solve it", context=ContextConfig(from_=["previous"]))
             ]
         )
-        assert config.candidates.factor == 3
+        assert config.takes.factor == 3
 
     def test_cascade_with_all_features(self):
         """Cascade exercising many features together."""
@@ -907,7 +907,7 @@ class TestFullCascadeConfig:
                     name="synthesize",
                     instructions="Synthesize findings",
                     context=ContextConfig(from_=["research"]),
-                    candidates=CandidatesConfig(
+                    takes=TakesConfig(
                         factor=3,
                         evaluator_instructions="Pick most insightful synthesis."
                     ),
@@ -921,7 +921,7 @@ class TestFullCascadeConfig:
         assert config.cascade_id == "feature_rich"
         assert config.token_budget.max_total == 50000
         assert config.cells[0].rag.directory == "knowledge"
-        assert config.cells[1].candidates.factor == 3
+        assert config.cells[1].takes.factor == 3
 
 
 # =============================================================================
@@ -1132,7 +1132,7 @@ class TestLoadingCascades:
                         "from": ["all"],
                         "include_input": True
                     },
-                    "candidates": {
+                    "takes": {
                         "factor": 3,
                         "evaluator_instructions": "Pick best",
                         "reforge": {
@@ -1149,8 +1149,8 @@ class TestLoadingCascades:
             ]
         }
         config = load_cascade_config(data)
-        assert config.cells[0].candidates.factor == 3
-        assert config.cells[0].candidates.reforge.steps == 2
+        assert config.cells[0].takes.factor == 3
+        assert config.cells[0].takes.reforge.steps == 2
         assert config.cells[0].wards.post[0].mode == "retry"
 
     def test_load_preserves_jinja_templates(self):

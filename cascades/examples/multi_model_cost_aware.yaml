@@ -6,7 +6,7 @@ inputs_schema:
 cells:
 - instructions: 'Complete this task: {{ input.task }}'
   name: generate
-  candidates:
+  takes:
     cost_aware_evaluation:
       cost_normalization: min_max
       cost_weight: 0.3

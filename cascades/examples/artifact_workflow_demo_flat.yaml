@@ -26,7 +26,7 @@ cells:
   - sql_query
   handoffs:
   - finalize
-  candidates:
+  takes:
     factor: 3
     models:
     - x-ai/grok-4.1-fast

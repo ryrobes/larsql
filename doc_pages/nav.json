@@ -205,8 +205,8 @@
           ]
         },
         {
-          "id": "candidates",
-          "title": "Candidates & Evaluation",
+          "id": "takes",
+          "title": "Takes & Evaluation",
           "sections": [
             { "anchor": "overview", "title": "Overview" },
             { "anchor": "configuration", "title": "Configuration" },

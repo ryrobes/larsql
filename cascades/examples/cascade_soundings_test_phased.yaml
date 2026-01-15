@@ -14,7 +14,7 @@ cells:
   name: analyze
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'You are an expert problem-solving evaluator. Compare
       these three complete solution approaches based on:
 

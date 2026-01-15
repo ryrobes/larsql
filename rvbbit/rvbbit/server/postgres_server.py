@@ -1052,7 +1052,7 @@ class ClientConnection:
                 return query
 
             table_ref_end = m.end(1)
-            alias_candidate = m.group(2)
+            alias_take = m.group(2)
             reserved = {
                 'where',
                 'order',
@@ -1070,7 +1070,7 @@ class ClientConnection:
                 'cross',
             }
 
-            alias = alias_candidate if alias_candidate and alias_candidate.lower() not in reserved else None
+            alias = alias_take if alias_take and alias_take.lower() not in reserved else None
             from_end = m.end(0) if alias else table_ref_end
 
             qualifier = f"{alias}.{catalog_col}" if alias else catalog_col
@@ -8160,7 +8160,7 @@ class RVBBITPostgresServer:
         print("     → Simple LLM extraction/classification")
         print()
         print("   • rvbbit_cascade_udf(cascade_path, json_inputs)")
-        print("     → Full multi-cell cascade per row (with candidates!)")
+        print("     → Full multi-cell cascade per row (with takes!)")
         print()
         print("📚 Connect from:")
         print(f"   • psql:      psql postgresql://localhost:{self.port}/default")

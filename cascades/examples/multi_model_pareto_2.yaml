@@ -6,7 +6,7 @@ inputs_schema:
 cells:
 - instructions: 'Complete this task: {{ input.task }}'
   name: generate
-  candidates:
+  takes:
     evaluator_instructions: Evaluate the quality of each response for clarity, accuracy,
       and usefulness.
     factor: 3
@@ -22,7 +22,7 @@ cells:
       x-ai/grok-4.1-fast:
         factor: 3
     mutate: false
-    downstream_model: true  # Cascade tools use each candidate's model for fair benchmarking
+    downstream_model: true  # Cascade tools use each take's model for fair benchmarking
     pareto_frontier:
       enabled: true
       include_dominated: true

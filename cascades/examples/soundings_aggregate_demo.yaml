@@ -11,7 +11,7 @@ cells:
   name: brainstorm
   rules:
     max_turns: 1
-  candidates:
+  takes:
     aggregator_instructions: You have received brainstorming outputs from multiple
       AI models. Synthesize these into a comprehensive list of unique ideas. Remove
       duplicates, organize by theme, and create a final consolidated list of the best

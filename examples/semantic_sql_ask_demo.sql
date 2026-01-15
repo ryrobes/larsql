@@ -213,14 +213,14 @@ WHERE review_text MEANS 'negative experience'  -- Filter with fast operator
 LIMIT 10;
 
 -- Pre-filter with vector search, analyze with ASK
-WITH candidates AS (
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH('battery complaints', 'product_reviews', 20)
 )
 SELECT
     p.review_text,
     p.review_text ASK 'what is the battery complaint?' as complaint,
     p.review_text ASK 'how severe? low/medium/high' as severity
-FROM candidates c
+FROM takes c
 JOIN product_reviews p ON p.review_id = c.id;
 
 

@@ -8,7 +8,7 @@ description: 'Mini version of nested soundings POC for quick testing.
   '
 inputs_schema:
   challenge: The design challenge to solve
-candidates:
+takes:
   factor: 2
   max_parallel: 2
   mutate: true
@@ -99,7 +99,7 @@ cells:
 
     '
   skills: []
-  candidates:
+  takes:
     factor: 3
     max_parallel: 3
     models:

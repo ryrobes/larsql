@@ -55,7 +55,7 @@ TEST_IDS = [f.stem for f in TEST_CASCADES]
 # Test inputs for each cascade
 TEST_INPUTS = {
     "test_basic_flow": {"test_value": "hello_world"},
-    "test_candidates_eval": {"topic": "future of AI"},
+    "test_takes_eval": {"topic": "future of AI"},
     "test_ward_validation": {},
     "test_loop_until": {},
     "test_deterministic": {},

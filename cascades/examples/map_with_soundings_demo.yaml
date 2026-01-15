@@ -42,7 +42,7 @@ cells:
     Return ONLY valid JSON, no markdown fences.
 
     '
-  candidates:
+  takes:
     factor: 3
     mode: aggregate
     max_parallel: 3

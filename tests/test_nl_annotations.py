@@ -20,7 +20,7 @@ class TestHasNLAnnotations:
 
     def test_detects_double_at(self):
         """-- @@ is detected."""
-        query = "-- @@ run 3 candidates\nSELECT * FROM t"
+        query = "-- @@ run 3 takes\nSELECT * FROM t"
         assert _has_nl_annotations(query) is True
 
     def test_ignores_single_at(self):
@@ -49,14 +49,14 @@ class TestParseNLAnnotations:
 
     def test_global_scope_at_top(self):
         """-- @@ at top of query is global scope."""
-        query = """-- @@ Run 3 candidates with cheap model
+        query = """-- @@ Run 3 takes with cheap model
 SELECT summarize(col) FROM t"""
 
         annotations = _parse_nl_annotations(query)
         assert len(annotations) == 1
         target_line, ann = annotations[0]
         assert ann.scope == "global"
-        assert "3 candidates" in ann.hints
+        assert "3 takes" in ann.hints
         assert "cheap model" in ann.hints
 
     def test_local_scope_before_operator(self):
@@ -74,7 +74,7 @@ WHERE title MEANS 'interesting'"""
 
     def test_multiple_consecutive_lines_merge(self):
         """Multiple -- @@ lines merge into single hint."""
-        query = """-- @@ Run 3 candidates
+        query = """-- @@ Run 3 takes
 -- @@ Pick the best one
 -- @@ Use claude haiku
 SELECT * FROM t"""
@@ -82,7 +82,7 @@ SELECT * FROM t"""
         annotations = _parse_nl_annotations(query)
         assert len(annotations) == 1
         target_line, ann = annotations[0]
-        assert "3 candidates" in ann.hints
+        assert "3 takes" in ann.hints
         assert "best one" in ann.hints
         assert "claude haiku" in ann.hints
 

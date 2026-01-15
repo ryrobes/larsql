@@ -173,7 +173,7 @@ cells:
   - sql_query
   - create_vega_lite
   - create_plotly
-  candidates:
+  takes:
     factor: 10
     evaluator_instructions: 'Evaluate chart building attempts based on:
 

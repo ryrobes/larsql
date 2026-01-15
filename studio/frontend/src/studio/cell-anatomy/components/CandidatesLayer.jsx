@@ -1,6 +1,6 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
-import CandidateLane from './CandidateLane';
+import TakeLane from './TakeLane';
 import './layers.css';
 
 /**
@@ -37,15 +37,15 @@ const formatValidatorDisplay = (validator) => {
 };
 
 /**
- * CandidatesLayer - The main execution chamber with parallel lanes
+ * TakesLayer - The main execution chamber with parallel lanes
  *
  * Shows:
- * - Parallel candidate lanes (factor N)
+ * - Parallel take lanes (factor N)
  * - Each lane has mutation, model, turns stack
  * - Tools called per turn
  * - Loop-until validation per turn
  */
-const CandidatesLayer = ({ config, execution, isLLMCell }) => {
+const TakesLayer = ({ config, execution, isLLMCell }) => {
   const factor = config.factor || 1;
   const maxTurns = config.maxTurns || 1;
   const skills = config.skills || [];
@@ -62,9 +62,9 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
 
   // Generate lane data - spec or execution
   const lanes = React.useMemo(() => {
-    if (execution?.candidates && execution.candidates.length > 0) {
+    if (execution?.takes && execution.takes.length > 0) {
       // Execution mode - use actual data from logs (no placeholders)
-      return execution.candidates.map((c, idx) => ({
+      return execution.takes.map((c, idx) => ({
         index: idx,
         mutation: c.mutation || null,  // Only show mutation if we have it from logs
         model: c.model,
@@ -99,34 +99,34 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
     }));
   }, [factor, maxTurns, mutate, models, execution, hasWinner]);
 
-  const hasCandidates = factor > 1;
+  const hasTakes = factor > 1;
 
   return (
-    <div className="cell-anatomy-layer cell-anatomy-layer-candidates">
+    <div className="cell-anatomy-layer cell-anatomy-layer-takes">
       <div className="cell-anatomy-layer-header">
-        <div className="cell-anatomy-layer-icon layer-icon-candidates">
+        <div className="cell-anatomy-layer-icon layer-icon-takes">
           <Icon icon="mdi:animation-play" width="14" />
         </div>
         <span className="cell-anatomy-layer-title">
-          {hasCandidates ? `Candidates (factor: ${factor})` : 'Execution'}
+          {hasTakes ? `Takes (factor: ${factor})` : 'Execution'}
         </span>
 
         {/* Config badges */}
-        <div className="layer-candidates-badges">
+        <div className="layer-takes-badges">
           {mutate && (
-            <span className="layer-candidates-badge badge-mutate">
+            <span className="layer-takes-badge badge-mutate">
               <Icon icon="mdi:shuffle-variant" width="10" />
               Mutate
             </span>
           )}
           {models && (
-            <span className="layer-candidates-badge badge-multimodel">
+            <span className="layer-takes-badge badge-multimodel">
               <Icon icon="mdi:robot" width="10" />
               Multi-Model
             </span>
           )}
           {loopUntil && (
-            <span className="layer-candidates-badge badge-loop">
+            <span className="layer-takes-badge badge-loop">
               <Icon icon="mdi:sync" width="10" />
               Loop-Until
             </span>
@@ -142,15 +142,15 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
           const truncatedPreview = previewText.length > 150 ? previewText.substring(0, 150) + '...' : previewText;
 
           return (
-            <div className="layer-candidates-loop-until">
+            <div className="layer-takes-loop-until">
               <Icon icon="mdi:sync" width="12" />
-              <span className="layer-candidates-loop-until-label">Loop Until:</span>
+              <span className="layer-takes-loop-until-label">Loop Until:</span>
               {validatorInfo?.type !== 'cascade' && (
-                <span className={`layer-candidates-loop-until-type type-${validatorInfo?.type}`}>
+                <span className={`layer-takes-loop-until-type type-${validatorInfo?.type}`}>
                   {validatorInfo?.name}
                 </span>
               )}
-              <span className="layer-candidates-loop-until-preview">
+              <span className="layer-takes-loop-until-preview">
                 {truncatedPreview}
               </span>
             </div>
@@ -159,41 +159,41 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
 
         {/* Skills (tools available) - show quartermaster selection if manifest mode */}
         {isManifestMode && manifestSelection && manifestSelection.selectedTools.length > 0 ? (
-          <div className="layer-candidates-manifest">
-            <div className="layer-candidates-manifest-header">
+          <div className="layer-takes-manifest">
+            <div className="layer-takes-manifest-header">
               <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
-              <span className="layer-candidates-manifest-label">Quartermaster Selected:</span>
+              <span className="layer-takes-manifest-label">Quartermaster Selected:</span>
               {manifestSelection.model && (
-                <span className="layer-candidates-manifest-model" title={manifestSelection.model}>
+                <span className="layer-takes-manifest-model" title={manifestSelection.model}>
                   via {manifestSelection.model.split('/').pop()}
                 </span>
               )}
             </div>
-            <div className="layer-candidates-skills-list">
+            <div className="layer-takes-skills-list">
               {manifestSelection.selectedTools.map((tool, idx) => (
-                <span key={idx} className="layer-candidates-skills-item manifest-selected">
+                <span key={idx} className="layer-takes-skills-item manifest-selected">
                   {tool}
                 </span>
               ))}
             </div>
           </div>
         ) : isManifestMode ? (
-          <div className="layer-candidates-manifest">
-            <div className="layer-candidates-manifest-header">
+          <div className="layer-takes-manifest">
+            <div className="layer-takes-manifest-header">
               <Icon icon="mdi:auto-fix" width="14" className="manifest-icon" />
-              <span className="layer-candidates-manifest-label">Manifest Mode</span>
-              <span className="layer-candidates-manifest-pending">(Quartermaster will select tools)</span>
+              <span className="layer-takes-manifest-label">Manifest Mode</span>
+              <span className="layer-takes-manifest-pending">(Quartermaster will select tools)</span>
             </div>
           </div>
         ) : skills.length > 0 && (
-          <div className="layer-candidates-skills">
-            <span className="layer-candidates-skills-label">
+          <div className="layer-takes-skills">
+            <span className="layer-takes-skills-label">
               <Icon icon="mdi:tools" width="12" />
               Skills:
             </span>
-            <div className="layer-candidates-skills-list">
+            <div className="layer-takes-skills-list">
               {(Array.isArray(skills) ? skills : [skills]).map((tool, idx) => (
-                <span key={idx} className="layer-candidates-skills-item">
+                <span key={idx} className="layer-takes-skills-item">
                   {tool}
                 </span>
               ))}
@@ -202,9 +202,9 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
         )}
 
         {/* Lanes container */}
-        <div className="layer-candidates-lanes">
+        <div className="layer-takes-lanes">
           {lanes.map((lane) => (
-            <CandidateLane
+            <TakeLane
               key={lane.index}
               lane={lane}
               maxTurns={maxTurns}
@@ -218,4 +218,4 @@ const CandidatesLayer = ({ config, execution, isLLMCell }) => {
   );
 };
 
-export default CandidatesLayer;
+export default TakesLayer;

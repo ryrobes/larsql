@@ -9,7 +9,7 @@ cascade_id: product_catalog_extract
 description: |
   Extract products and prices from multiple product images.
   Uses map_cascade to process each image independently, then aggregates results.
-  Each image is analyzed with multiple candidate passes using aggregate mode
+  Each image is analyzed with multiple take passes using aggregate mode
   to maximize extraction recall on busy/complex images.
 
 inputs_schema:

@@ -67,7 +67,7 @@ const ROLE_CONFIG = {
  * @param {String} currentSessionId - Current session ID for child session highlighting
  * @param {Boolean} showFilters - Show filter panel (default: true)
  * @param {String} filterByCell - Pre-filter to specific cell name (optional)
- * @param {Number|String} filterByCandidate - Pre-filter to specific candidate_index (optional)
+ * @param {Number|String} filterByTake - Pre-filter to specific take_index (optional)
  * @param {Boolean} showCellColumn - Show cell name column (default: true)
  * @param {Boolean} compact - Compact mode for tab view (default: false)
  * @param {String} className - Additional CSS class names
@@ -84,7 +84,7 @@ const SessionMessagesLog = ({
   currentSessionId = null,
   showFilters = true,
   filterByCell = null,
-  filterByCandidate = null,
+  filterByTake = null,
   showCellColumn = true,
   compact = false,
   className = '',
@@ -133,7 +133,7 @@ const SessionMessagesLog = ({
     searchText: '',
     showToolCalls: true,
     showErrors: true,
-    winnersOnly: false, // Only show winning candidates (or main flow)
+    winnersOnly: false, // Only show winning takes (or main flow)
   });
 
   // Notify parent when filters change
@@ -168,25 +168,25 @@ const SessionMessagesLog = ({
       result = result.filter(log => log.cell_name === filterByCell);
     }
 
-    // Pre-filter by candidate if specified (for candidate tabs)
-    if (filterByCandidate !== null && filterByCandidate !== undefined) {
-      const candidateStr = String(filterByCandidate);
+    // Pre-filter by take if specified (for take tabs)
+    if (filterByTake !== null && filterByTake !== undefined) {
+      const takeStr = String(filterByTake);
       result = result.filter(log => {
-        const logCandidate = log.candidate_index !== null && log.candidate_index !== undefined
-          ? String(log.candidate_index)
+        const logTake = log.take_index !== null && log.take_index !== undefined
+          ? String(log.take_index)
           : 'main';
-        return logCandidate === candidateStr;
+        return logTake === takeStr;
       });
     }
 
-    // Filter to winners only (main flow or winning candidates)
+    // Filter to winners only (main flow or winning takes)
     if (filters.winnersOnly) {
       result = result.filter(log => {
-        // Main flow messages (no candidate index) always pass
-        if (log.candidate_index === null || log.candidate_index === undefined) {
+        // Main flow messages (no take index) always pass
+        if (log.take_index === null || log.take_index === undefined) {
           return true;
         }
-        // Candidate messages only pass if they're winners
+        // Take messages only pass if they're winners
         return log.is_winner === true;
       });
     }
@@ -225,18 +225,18 @@ const SessionMessagesLog = ({
     });
 
     return result;
-  }, [logs, filters, filterByCell, filterByCandidate]);
+  }, [logs, filters, filterByCell, filterByTake]);
 
   // Cell renderers
   const RoleCellRenderer = useCallback(({ value, data }) => {
     const config = ROLE_CONFIG[value] || { icon: 'mdi:help-circle-outline', color: '#64748b', label: value };
-    const candidateIdx = data.candidate_index;
+    const takeIdx = data.take_index;
     const reforgeStep = data.reforge_step;
     const turnNumber = data.turn_number;
 
     let prefix = '';
-    if (candidateIdx !== null && candidateIdx !== undefined) {
-      prefix = `C${candidateIdx} `;
+    if (takeIdx !== null && takeIdx !== undefined) {
+      prefix = `C${takeIdx} `;
     }
     if (reforgeStep !== null && reforgeStep !== undefined && reforgeStep > 0) {
       prefix += `R${reforgeStep} `;
@@ -1116,7 +1116,7 @@ const SessionMessagesLog = ({
           <button
             className={`sml-filter-toggle ${filters.winnersOnly ? 'active' : ''}`}
             onClick={() => setFilters(prev => ({ ...prev, winnersOnly: !prev.winnersOnly }))}
-            title="Only show winning candidates (hide losing candidate paths)"
+            title="Only show winning takes (hide losing take paths)"
           >
             <Icon icon={filters.winnersOnly ? 'mdi:trophy' : 'mdi:trophy-outline'} width="14" />
             <span>Winners Only</span>

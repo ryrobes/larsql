@@ -1,6 +1,6 @@
 cascade_id: creative_writing_rewrite_mutations
 cells:
-  - candidates:
+  - takes:
       evaluator_instructions: "You are an expert creative writing instructor. Evaluate the following story openings based on: 1) Hook strength - does it grab attention? 2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear and compelling? Select the BEST opening."
       factor: 6
       model_strategy: random

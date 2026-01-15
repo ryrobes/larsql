@@ -124,10 +124,10 @@ const TopExpensiveList = ({
                   <Icon icon="mdi:clock-outline" width={12} />
                   {formatDuration(session.duration_ms)}
                 </span>
-                {session.candidates > 0 && (
+                {session.takes > 0 && (
                   <span className="meta-item">
                     <Icon icon="mdi:source-branch" width={12} />
-                    {session.candidates} candidates
+                    {session.takes} takes
                   </span>
                 )}
               </div>

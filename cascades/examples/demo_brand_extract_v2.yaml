@@ -158,7 +158,7 @@ cells:
       - extract_brand
 
   # ============================================================
-  # Cell 4: EXTRACT - LLM extraction with Web Search + Candidates
+  # Cell 4: EXTRACT - LLM extraction with Web Search + Takes
   # ============================================================
   # NEW IN v2:
   #   - brave_web_search tool for additional context
@@ -220,7 +220,7 @@ cells:
           except Exception as e:
             result = {"valid": False, "reason": f"Could not parse output: {e}"}
       loop_until_silent: true
-    candidates:
+    takes:
       factor: 3
       mode: evaluate
       model: google/gemini-2.0-flash-001

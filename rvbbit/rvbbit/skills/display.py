@@ -162,17 +162,17 @@ def show_ui(
     try:
         from ..screenshot_service import get_screenshot_service
         from ..skills.human import _build_screenshot_html
-        from .state_tools import get_current_candidate_index
+        from .state_tools import get_current_take_index
 
         screenshot_service = get_screenshot_service()
         complete_html = _build_screenshot_html(html)
-        candidate_idx = get_current_candidate_index()
+        take_idx = get_current_take_index()
 
         screenshot_service.capture_htmx_render(
             html=complete_html,
             session_id=session_id,
             cell_name=trace.name if trace else "show_ui",
-            candidate_index=candidate_idx,
+            take_index=take_idx,
             render_type="display"
         )
         print(f"[Screenshots] 📸 show_ui screenshot queued (overwrites)")

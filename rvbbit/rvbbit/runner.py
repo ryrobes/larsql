@@ -120,7 +120,7 @@ from .session_state import (
 from .skills.system import spawn_cascade
 from .skills.state_tools import (
     set_current_session_id, set_current_cell_name, set_current_cascade_id,
-    set_current_candidate_index, set_current_model, get_current_model,
+    set_current_take_index, set_current_model, get_current_model,
     set_downstream_model, get_downstream_model
 )
 from .skills.research_db import set_current_research_db
@@ -214,7 +214,7 @@ class RVBBITHooks:
 class RVBBITRunner:
     def __init__(self, config_path: str | dict, session_id: str = "default", overrides: dict | None = None,
                  depth: int = 0, parent_trace: TraceNode | None = None, hooks: RVBBITHooks | None = None,
-                 candidate_index: int | None = None, parent_session_id: str | None = None,
+                 take_index: int | None = None, parent_session_id: str | None = None,
                  caller_id: str | None = None, invocation_metadata: dict | None = None):
         self.config_path = config_path
         self.config = load_cascade_config(config_path)
@@ -233,13 +233,13 @@ class RVBBITRunner:
         self.max_depth = 5
         self.hooks = hooks or RVBBITHooks()
         self.context_messages: List[Dict[str, str]] = []
-        self.candidate_index = candidate_index  # Track which candidate attempt this is (for cascade-level candidates)
-        self.current_cell_candidate_index = None  # Track candidate index within current cell
+        self.take_index = take_index  # Track which take attempt this is (for cascade-level takes)
+        self.current_cell_take_index = None  # Track take index within current cell
         self.current_reforge_step = None  # Track which reforge step we're in
-        self.current_winning_candidate_index = None  # Track which initial candidate won (for reforge)
+        self.current_winning_take_index = None  # Track which initial take won (for reforge)
         self.current_retry_attempt = None  # Track retry/validation attempt index
         self.current_turn_number = None  # Track turn number within cell (for max_turns)
-        self.current_mutation_applied = None  # Track mutation applied to current candidate
+        self.current_mutation_applied = None  # Track mutation applied to current take
         self.current_mutation_type = None  # Track mutation type: 'rewrite', 'augment', 'approach'
         self.current_mutation_template = None  # Track mutation template (for rewrite: instruction used)
         self.parent_session_id = parent_session_id  # Track parent session for sub-cascades
@@ -320,13 +320,13 @@ class RVBBITRunner:
         Args:
             message: Message dict with role, content, etc.
         """
-        # Only save if memory is configured and we're not in a candidate (non-winners aren't canon)
+        # Only save if memory is configured and we're not in a take (non-winners aren't canon)
         if not self.memory_name or not self.memory_system:
             return
 
-        # Skip saving losing candidates (they're alternate universes, not canon)
-        if self.current_cell_candidate_index is not None or self.candidate_index is not None:
-            # We're inside candidates - don't save until we know if we're a winner
+        # Skip saving losing takes (they're alternate universes, not canon)
+        if self.current_cell_take_index is not None or self.take_index is not None:
+            # We're inside takes - don't save until we know if we're a winner
             return
 
         # NOTE: No longer filtering system messages - we want to see ALL messages
@@ -491,16 +491,16 @@ class RVBBITRunner:
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
 
-            # 3. Check candidates.factor for template variable references (for dynamic factors)
-            if cell.candidates and isinstance(cell.candidates.factor, str):
-                # Find {{ outputs.X }} references in candidates.factor
-                for match in outputs_pattern.finditer(cell.candidates.factor):
+            # 3. Check takes.factor for template variable references (for dynamic factors)
+            if cell.takes and isinstance(cell.takes.factor, str):
+                # Find {{ outputs.X }} references in takes.factor
+                for match in outputs_pattern.finditer(cell.takes.factor):
                     ref_cell = match.group(1)
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
 
-                # Find {{ state.output_X }} references in candidates.factor
-                for match in state_output_pattern.finditer(cell.candidates.factor):
+                # Find {{ state.output_X }} references in takes.factor
+                for match in state_output_pattern.finditer(cell.takes.factor):
                     ref_cell = match.group(1)
                     if ref_cell in cell_names and ref_cell != cell.name:
                         deps.add(ref_cell)
@@ -714,14 +714,14 @@ class RVBBITRunner:
 
     def _get_metadata(self, extra: dict | None = None, semantic_actor: str | None = None, semantic_purpose: str | None = None) -> dict:
         """
-        Helper to build metadata dict with candidate_index and semantic fields automatically included.
+        Helper to build metadata dict with take_index and semantic fields automatically included.
         Use this in all echo.add_history() calls to ensure consistent tagging.
 
         Semantic Actors (WHO is speaking):
             - main_agent: Primary LLM doing cell work
-            - candidate_agent: Main agent in a candidate attempt
+            - take_agent: Main agent in a take attempt
             - reforge_agent: Main agent in a reforge iteration
-            - evaluator: LLM judging candidates/reforge quality
+            - evaluator: LLM judging takes/reforge quality
             - quartermaster: LLM selecting tools
             - validator: LLM/function checking output (wards, loop_until)
             - mutator: LLM rewriting prompts for mutation
@@ -746,19 +746,19 @@ class RVBBITRunner:
         """
         meta = extra.copy() if extra else {}
 
-        # Auto-inject candidate_index if we're in a candidate
-        if self.current_cell_candidate_index is not None:
-            meta.setdefault("candidate_index", self.current_cell_candidate_index)
-        elif self.candidate_index is not None:
-            meta.setdefault("candidate_index", self.candidate_index)
+        # Auto-inject take_index if we're in a take
+        if self.current_cell_take_index is not None:
+            meta.setdefault("take_index", self.current_cell_take_index)
+        elif self.take_index is not None:
+            meta.setdefault("take_index", self.take_index)
 
         # Auto-inject reforge_step if we're in reforge
         if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
             meta.setdefault("reforge_step", self.current_reforge_step)
 
-        # Auto-inject winning_candidate_index if we're in reforge
-        if hasattr(self, 'current_winning_candidate_index') and self.current_winning_candidate_index is not None:
-            meta.setdefault("winning_candidate_index", self.current_winning_candidate_index)
+        # Auto-inject winning_take_index if we're in reforge
+        if hasattr(self, 'current_winning_take_index') and self.current_winning_take_index is not None:
+            meta.setdefault("winning_take_index", self.current_winning_take_index)
 
         # Add semantic classification if provided
         if semantic_actor:
@@ -770,8 +770,8 @@ class RVBBITRunner:
         if "semantic_actor" not in meta:
             if hasattr(self, 'current_reforge_step') and self.current_reforge_step is not None:
                 meta["semantic_actor"] = "reforge_agent"
-            elif self.current_cell_candidate_index is not None or self.candidate_index is not None:
-                meta["semantic_actor"] = "candidate_agent"
+            elif self.current_cell_take_index is not None or self.take_index is not None:
+                meta["semantic_actor"] = "take_agent"
 
         return meta
 
@@ -985,10 +985,10 @@ class RVBBITRunner:
             from .shadow_assessment import queue_intra_cell_shadow_assessment, is_shadow_assessment_enabled
 
             if is_shadow_assessment_enabled(self.config.cascade_id) and self.context_messages:
-                # Get candidate index (cell-level or cascade-level)
-                candidate_index = self.current_cell_candidate_index
-                if candidate_index is None:
-                    candidate_index = self.candidate_index
+                # Get take index (cell-level or cascade-level)
+                take_index = self.current_cell_take_index
+                if take_index is None:
+                    take_index = self.take_index
 
                 # Determine if intra-context was actually enabled
                 intra_config = cell.intra_context
@@ -1003,7 +1003,7 @@ class RVBBITRunner:
                     cell_name=cell.name,
                     full_history=self.context_messages,
                     turn_number=turn_number,
-                    candidate_index=candidate_index,
+                    take_index=take_index,
                     is_loop_retry=is_loop_retry,
                     actual_config_enabled=actual_enabled,
                     actual_tokens_after=actual_tokens_after
@@ -1741,7 +1741,7 @@ class RVBBITRunner:
                 role = entry.get('role')
                 content = entry.get('content')
 
-                if not content or role in ['cascade_candidates', 'cascade_candidate_attempt', 'evaluator']:
+                if not content or role in ['cascade_takes', 'cascade_take_attempt', 'evaluator']:
                     continue
 
                 # Apply message filtering
@@ -2047,8 +2047,8 @@ class RVBBITRunner:
                 elif msg.get("content_hash"):
                     actual_included_hashes.add(msg["content_hash"])
 
-            # Gather candidate messages from echo.history
-            candidates = []
+            # Gather take messages from echo.history
+            takes = []
             for entry in self.echo.history:
                 meta = entry.get("metadata", {})
                 entry_cell = meta.get("cell_name") or entry.get("cell_name")
@@ -2086,7 +2086,7 @@ class RVBBITRunner:
                     else:
                         message_category = "task_definition"
 
-                # Build candidate dict
+                # Build take dict
                 content_hash = entry.get("content_hash") or entry.get("_content_hash", "")
                 if not content_hash:
                     # Generate a hash if not present
@@ -2094,7 +2094,7 @@ class RVBBITRunner:
                     content_str = str(content)[:2000]
                     content_hash = hashlib.sha256(content_str.encode()).hexdigest()[:16]
 
-                candidates.append({
+                takes.append({
                     "content_hash": content_hash,
                     "source_cell_name": entry_cell,
                     "role": role,
@@ -2110,8 +2110,8 @@ class RVBBITRunner:
                     "summary": entry.get("summary"),
                 })
 
-            if not candidates:
-                return  # No candidates to assess
+            if not takes:
+                return  # No takes to assess
 
             # Get budget from config or default
             budget_total = 30000
@@ -2125,13 +2125,13 @@ class RVBBITRunner:
                 cascade_id=self.config.cascade_id,
                 target_cell_name=cell.name,
                 target_cell_instructions=cell.instructions or "",
-                candidates=candidates,
+                takes=takes,
                 actual_included_hashes=actual_included_hashes,
                 actual_mode=actual_mode,
                 budget_total=budget_total,
             )
 
-            console.print(f"  [dim magenta]👻 Queued shadow assessment: {len(candidates)} candidates[/dim magenta]")
+            console.print(f"  [dim magenta]👻 Queued shadow assessment: {len(takes)} takes[/dim magenta]")
 
         except Exception as e:
             # Don't let shadow assessment errors affect main execution
@@ -2227,7 +2227,7 @@ class RVBBITRunner:
         strategy = stats.strategy
         console.print(f"  [dim cyan]Strategy: {strategy} | "
                      f"Anchors: {stats.anchor_count} | "
-                     f"Selected: {stats.selected_count}/{stats.candidate_count} | "
+                     f"Selected: {stats.selected_count}/{stats.take_count} | "
                      f"Tokens: ~{stats.tokens_used} | "
                      f"Time: {stats.selection_time_ms}ms[/dim cyan]")
 
@@ -2238,7 +2238,7 @@ class RVBBITRunner:
                 f"✅ Auto-Context Selection Complete\n"
                 f"   Strategy: {stats.strategy}\n"
                 f"   Anchors: {stats.anchor_count} messages\n"
-                f"   Candidates: {stats.candidate_count} from context cards\n"
+                f"   Takes: {stats.take_count} from context cards\n"
                 f"   Selected: {stats.selected_count} messages\n"
                 f"   Tokens: ~{stats.tokens_used}/{stats.tokens_budget} budget\n"
                 f"   Time: {stats.selection_time_ms}ms"
@@ -2250,7 +2250,7 @@ class RVBBITRunner:
                "cascade_id": self.config.cascade_id,
                "strategy": stats.strategy,
                "anchor_count": stats.anchor_count,
-               "candidate_count": stats.candidate_count,
+               "take_count": stats.take_count,
                "selected_count": stats.selected_count,
                "tokens_budget": stats.tokens_budget,
                "tokens_used": stats.tokens_used,
@@ -3991,19 +3991,19 @@ To call this tool, output a JSON code block:
 
         return auto_calls
 
-    def _run_with_cascade_candidates(self, input_data: dict | None = None) -> dict:
+    def _run_with_cascade_takes(self, input_data: dict | None = None) -> dict:
         """
-        Execute cascade with candidates (Tree of Thought at cascade level).
+        Execute cascade with takes (Tree of Thought at cascade level).
         Spawns N complete cascade executions in parallel, evaluates them, and returns only the winner.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        assert self.config.candidates is not None, "candidates must be configured"
+        assert self.config.takes is not None, "takes must be configured"
         indent = "  " * self.depth
 
-        # Resolve candidates factor (may be Jinja2 template string)
-        if isinstance(self.config.candidates.factor, str):
+        # Resolve takes factor (may be Jinja2 template string)
+        if isinstance(self.config.takes.factor, str):
             from .prompts import render_instruction
-            # For cascade-level candidates, we have limited context (just inputs)
+            # For cascade-level takes, we have limited context (just inputs)
             render_context = {
                 "input": input_data or {},
                 "state": {},
@@ -4011,29 +4011,29 @@ To call this tool, output a JSON code block:
                 "outputs": {},
                 "lineage": [],
             }
-            rendered_factor = render_instruction(self.config.candidates.factor, render_context)
+            rendered_factor = render_instruction(self.config.takes.factor, render_context)
             try:
                 factor = int(rendered_factor.strip())
             except ValueError:
-                console.print(f"{indent}[red]⚠ Warning: Could not parse cascade candidates factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                console.print(f"{indent}[red]⚠ Warning: Could not parse cascade takes factor '{rendered_factor}' as integer, defaulting to 1[/red]")
                 factor = 1
         else:
-            factor = self.config.candidates.factor
+            factor = self.config.takes.factor
 
-        max_parallel = self.config.candidates.max_parallel or 3
+        max_parallel = self.config.takes.max_parallel or 3
         max_workers = min(factor, max_parallel)
 
-        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Candidates (Parallel: {max_workers} workers)...[/bold blue]")
+        console.print(f"{indent}[bold blue]🔱 Taking {factor} CASCADE Takes (Parallel: {max_workers} workers)...[/bold blue]")
 
-        # Create candidates trace node
-        candidates_trace = self.trace.create_child("cascade_candidates", f"{self.config.cascade_id}_candidates")
+        # Create takes trace node
+        takes_trace = self.trace.create_child("cascade_takes", f"{self.config.cascade_id}_takes")
 
         # Add to echo history for visualization (auto-logs via unified_logs)
         self.echo.add_history({
-            "role": "cascade_candidates",
-            "content": f"🔱 Running {factor} cascade candidates",
-            "node_type": "cascade_candidates"
-        }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cascade_candidates",
+            "role": "cascade_takes",
+            "content": f"🔱 Running {factor} cascade takes",
+            "node_type": "cascade_takes"
+        }, trace_id=takes_trace.id, parent_id=self.trace.id, node_type="cascade_takes",
            metadata={
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",  # Ensure UI can query this
@@ -4043,60 +4043,60 @@ To call this tool, output a JSON code block:
                "semantic_purpose": "lifecycle"
            })
 
-        # Pre-create traces for all candidates (must be done sequentially for proper hierarchy)
-        candidate_traces = []
+        # Pre-create traces for all takes (must be done sequentially for proper hierarchy)
+        take_traces = []
         for i in range(factor):
-            trace = candidates_trace.create_child("cascade_candidate_attempt", f"attempt_{i+1}")
-            candidate_traces.append(trace)
+            trace = takes_trace.create_child("cascade_take_attempt", f"attempt_{i+1}")
+            take_traces.append(trace)
 
         # Define the worker function for parallel execution
-        def run_single_cascade_candidate(i: int) -> dict:
-            """Execute a single cascade candidate. Returns result dict."""
+        def run_single_cascade_take(i: int) -> dict:
+            """Execute a single cascade take. Returns result dict."""
             from .echo import Echo
 
-            candidate_trace = candidate_traces[i]
-            candidate_session_id = f"{self.session_id}_candidate_{i}"
-            candidate_echo = Echo(candidate_session_id, parent_session_id=self.session_id)
+            take_trace = take_traces[i]
+            take_session_id = f"{self.session_id}_take_{i}"
+            take_echo = Echo(take_session_id, parent_session_id=self.session_id)
 
             console.print(f"{indent}  [cyan]🌊 Cascade Sounding {i+1}/{factor} starting...[/cyan]")
 
-            # Create session state in ClickHouse for the sub-cascade candidate
+            # Create session state in ClickHouse for the sub-cascade take
             # This ensures the UI can track sub-cascade sessions correctly
             try:
                 create_session_state(
-                    session_id=candidate_session_id,
+                    session_id=take_session_id,
                     cascade_id=self.config.cascade_id,
                     parent_session_id=self.session_id,
                     depth=self.depth,
-                    metadata={"cascade_candidate": True, "candidate_index": i, "factor": factor}
+                    metadata={"cascade_take": True, "take_index": i, "factor": factor}
                 )
-                update_session_status(candidate_session_id, SessionStatus.RUNNING)
+                update_session_status(take_session_id, SessionStatus.RUNNING)
             except Exception as state_err:
-                # Don't fail the candidate if session state creation fails
+                # Don't fail the take if session state creation fails
                 import logging
-                logging.getLogger(__name__).debug(f"Could not create session state for cascade candidate: {state_err}")
+                logging.getLogger(__name__).debug(f"Could not create session state for cascade take: {state_err}")
 
             try:
-                # Create a new runner for this candidate with candidate_index set
-                candidate_runner = RVBBITRunner(
+                # Create a new runner for this take with take_index set
+                take_runner = RVBBITRunner(
                     config_path=self.config_path,
-                    session_id=candidate_session_id,
+                    session_id=take_session_id,
                     overrides=self.overrides,
                     depth=self.depth,
-                    parent_trace=candidate_trace,
+                    parent_trace=take_trace,
                     hooks=self.hooks,
-                    candidate_index=i,  # Mark this runner as part of a candidate
+                    take_index=i,  # Mark this runner as part of a take
                     parent_session_id=self.session_id  # Link child to parent session
                 )
 
-                # Run the cascade with candidate metadata
-                result = candidate_runner._run_cascade_internal(input_data)
+                # Run the cascade with take metadata
+                result = take_runner._run_cascade_internal(input_data)
 
                 # Update session status to COMPLETED in ClickHouse
                 try:
                     final_status = SessionStatus.ERROR if result.get("has_errors") else SessionStatus.COMPLETED
                     update_session_status(
-                        candidate_session_id,
+                        take_session_id,
                         final_status,
                         error_message=str(result.get("errors", [])[:1]) if result.get("has_errors") else None
                     )
@@ -4111,10 +4111,10 @@ To call this tool, output a JSON code block:
                 return {
                     "index": i,
                     "result": final_output,
-                    "echo": candidate_echo,
-                    "trace_id": candidate_trace.id,
+                    "echo": take_echo,
+                    "trace_id": take_trace.id,
                     "full_result": result,
-                    "session_id": candidate_session_id
+                    "session_id": take_session_id
                 }
 
             except Exception as e:
@@ -4123,7 +4123,7 @@ To call this tool, output a JSON code block:
                 # Update session status to ERROR in ClickHouse
                 try:
                     update_session_status(
-                        candidate_session_id,
+                        take_session_id,
                         SessionStatus.ERROR,
                         error_message=str(e)[:500]
                     )
@@ -4134,66 +4134,66 @@ To call this tool, output a JSON code block:
                     "index": i,
                     "result": f"[ERROR: {str(e)}]",
                     "echo": None,
-                    "trace_id": candidate_trace.id,
+                    "trace_id": take_trace.id,
                     "full_result": {},
-                    "session_id": candidate_session_id,
+                    "session_id": take_session_id,
                     "failed": True,
                     "error": str(e)
                 }
 
-        # Execute candidates in parallel
-        candidate_results = []
+        # Execute takes in parallel
+        take_results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(run_single_cascade_candidate, i): i for i in range(factor)}
+            futures = {executor.submit(run_single_cascade_take, i): i for i in range(factor)}
 
             for future in as_completed(futures):
                 result = future.result()
-                candidate_results.append(result)
+                take_results.append(result)
 
         # Sort results by index to maintain consistent ordering
-        candidate_results.sort(key=lambda x: x['index'])
+        take_results.sort(key=lambda x: x['index'])
 
         # Log results to echo history (must be done sequentially after parallel execution)
-        for sr in candidate_results:
+        for sr in take_results:
             i = sr['index']
             if sr.get('failed'):
-                log_message(self.session_id, "cascade_candidate_error", sr.get('error', 'Unknown error'),
-                           trace_id=sr['trace_id'], parent_id=candidates_trace.id,
-                           node_type="candidate_error", depth=self.depth,
-                           candidate_index=i, is_winner=False,
-                           metadata={"cell_name": "_orchestration", "error": sr.get('error'), "cascade_candidate": True})
+                log_message(self.session_id, "cascade_take_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=takes_trace.id,
+                           node_type="take_error", depth=self.depth,
+                           take_index=i, is_winner=False,
+                           metadata={"cell_name": "_orchestration", "error": sr.get('error'), "cascade_take": True})
             else:
                 self.echo.add_history({
-                    "role": "cascade_candidate_attempt",
+                    "role": "cascade_take_attempt",
                     "content": str(sr['result'])[:150] if sr['result'] else "Completed",
-                    "node_type": "cascade_candidate_attempt"
-                }, trace_id=sr['trace_id'], parent_id=candidates_trace.id, node_type="cascade_candidate_attempt",
+                    "node_type": "cascade_take_attempt"
+                }, trace_id=sr['trace_id'], parent_id=takes_trace.id, node_type="cascade_take_attempt",
                    metadata={
                        "cascade_id": self.config.cascade_id,
                        "cell_name": "_orchestration",
-                       "candidate_index": i,
+                       "take_index": i,
                        "sub_session_id": sr['session_id'],
                        "is_winner": False,  # Updated later when winner is selected
                        "result_preview": str(sr['result'])[:200],
-                       "semantic_actor": "candidate_agent",
+                       "semantic_actor": "take_agent",
                        "semantic_purpose": "generation"
                    })
 
-        # Now evaluate all candidates
-        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(candidate_results)} cascade executions...[/bold yellow]")
+        # Now evaluate all takes
+        console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(take_results)} cascade executions...[/bold yellow]")
 
         # Create evaluator trace
-        evaluator_trace = candidates_trace.create_child("evaluator", "cascade_evaluation")
+        evaluator_trace = takes_trace.create_child("evaluator", "cascade_evaluation")
 
         # Build evaluation prompt
-        eval_prompt = f"{self.config.candidates.evaluator_instructions}\n\n"
+        eval_prompt = f"{self.config.takes.evaluator_instructions}\n\n"
         eval_prompt += "Please evaluate the following complete cascade executions and select the best one.\n\n"
 
-        for i, candidate in enumerate(candidate_results):
+        for i, take in enumerate(take_results):
             eval_prompt += f"## Cascade Execution {i+1}\n"
-            eval_prompt += f"Result: {candidate['result']}\n\n"
+            eval_prompt += f"Result: {take['result']}\n\n"
 
-        eval_prompt += f"\nRespond with ONLY the number of the best execution (1-{len(candidate_results)}) and a brief explanation."
+        eval_prompt += f"\nRespond with ONLY the number of the best execution (1-{len(take_results)}) and a brief explanation."
 
         # Create evaluator agent
         evaluator_agent = Agent(
@@ -4231,7 +4231,7 @@ To call this tool, output a JSON code block:
             session_id=self.session_id,
             parent_session_id=getattr(self, 'parent_session_id', None),
             trace_id=evaluator_trace.id,
-            parent_id=candidates_trace.id,
+            parent_id=takes_trace.id,
             node_type="cascade_evaluator",
             role="assistant",
             depth=self.depth,
@@ -4263,7 +4263,7 @@ To call this tool, output a JSON code block:
             "role": "cascade_evaluator",
             "content": eval_content if eval_content else "Evaluating...",
             "node_type": "cascade_evaluator"
-        }, trace_id=evaluator_trace.id, parent_id=candidates_trace.id, node_type="cascade_evaluator",
+        }, trace_id=evaluator_trace.id, parent_id=takes_trace.id, node_type="cascade_evaluator",
            metadata=self._get_metadata({
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",
@@ -4278,10 +4278,10 @@ To call this tool, output a JSON code block:
         match = re.search(r'\b([1-9]\d*)\b', eval_content)
         if match:
             winner_index = int(match.group(1)) - 1  # Convert to 0-indexed
-            if winner_index >= len(candidate_results):
+            if winner_index >= len(take_results):
                 winner_index = 0
 
-        winner = candidate_results[winner_index]
+        winner = take_results[winner_index]
 
         console.print(f"{indent}[bold green]🏆 Winner: Cascade Sounding {winner_index + 1}[/bold green]")
 
@@ -4302,33 +4302,33 @@ To call this tool, output a JSON code block:
                 # Log cell completion to parent session
                 self.echo.add_history({
                     "role": "cell_result",
-                    "content": f"Cell {cell_name} completed (from candidate #{winner_index})",
+                    "content": f"Cell {cell_name} completed (from take #{winner_index})",
                     "node_type": "cell_result"
-                }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cell_result",
+                }, trace_id=takes_trace.id, parent_id=self.trace.id, node_type="cell_result",
                    metadata={
                        "cascade_id": self.config.cascade_id,
                        "cell_name": cell_name,
-                       "source_candidate": winner_index,
+                       "source_take": winner_index,
                        "output_preview": str(output_content)[:200] if output_content else "",
                        "semantic_actor": "framework",
                        "semantic_purpose": "lifecycle"
                    })
 
-        # Add candidates result to history (auto-logs via unified_logs)
+        # Add takes result to history (auto-logs via unified_logs)
         self.echo.add_history({
-            "role": "cascade_candidates_result",
+            "role": "cascade_takes_result",
             "content": f"🏆 Winner: Cascade #{winner_index + 1}",
-            "node_type": "cascade_candidates_result"
-        }, trace_id=candidates_trace.id, parent_id=self.trace.id, node_type="cascade_candidates_result",
+            "node_type": "cascade_takes_result"
+        }, trace_id=takes_trace.id, parent_id=self.trace.id, node_type="cascade_takes_result",
            metadata={
                "cascade_id": self.config.cascade_id,
                "cell_name": "_orchestration",  # Ensure UI can query this
                "winner_index": winner_index,
-               "winner_session_id": f"{self.session_id}_candidate_{winner_index}",
+               "winner_session_id": f"{self.session_id}_take_{winner_index}",
                "factor": factor,
                "evaluation": eval_content,  # Full content, no truncation
                "winner_trace_id": winner['trace_id'],
-               "candidate_index": winner_index,
+               "take_index": winner_index,
                "is_winner": True,
                "semantic_actor": "framework",
                "semantic_purpose": "lifecycle"
@@ -4336,32 +4336,32 @@ To call this tool, output a JSON code block:
 
         self._update_graph()
 
-        # Check if reforge is configured for cascade candidates
-        if self.config.candidates.reforge:
-            # Track which candidate won so reforge messages can reference it
-            self.current_winning_candidate_index = winner_index
+        # Check if reforge is configured for cascade takes
+        if self.config.takes.reforge:
+            # Track which take won so reforge messages can reference it
+            self.current_winning_take_index = winner_index
 
             winner = self._reforge_cascade_winner(
                 winner=winner,
                 input_data=input_data,
-                trace=candidates_trace,
-                reforge_step=0  # Initial candidates = step 0
+                trace=takes_trace,
+                reforge_step=0  # Initial takes = step 0
             )
 
             # Reset after reforge completes
-            self.current_winning_candidate_index = None
+            self.current_winning_take_index = None
 
         return winner['full_result']
 
     def _reforge_cascade_winner(self, winner: dict, input_data: dict, trace: TraceNode, reforge_step: int) -> dict:
         """
-        Reforge (refine) the winning cascade execution through iterative candidates.
+        Reforge (refine) the winning cascade execution through iterative takes.
         Each step runs complete cascade executions with honing prompt to progressively improve quality.
         """
-        assert self.config.candidates is not None, "candidates must be configured"
-        assert self.config.candidates.reforge is not None, "candidates.reforge must be configured"
+        assert self.config.takes is not None, "takes must be configured"
+        assert self.config.takes.reforge is not None, "takes.reforge must be configured"
         indent = "  " * self.depth
-        reforge_config = self.config.candidates.reforge
+        reforge_config = self.config.takes.reforge
         current_output = winner['result']
 
         # Build refinement context from original cascade config
@@ -4397,11 +4397,11 @@ Refinement directive: {reforge_config.honing_prompt}
                        trace_id=reforge_trace.id, parent_id=trace.id,
                        node_type="cascade_reforge", depth=self.depth, reforge_step=step)
 
-            # Run mini-candidates for this reforge step (complete cascade executions) - IN PARALLEL
+            # Run mini-takes for this reforge step (complete cascade executions) - IN PARALLEL
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
             factor_per_step = reforge_config.factor_per_step
-            max_parallel = self.config.candidates.max_parallel or 3
+            max_parallel = self.config.takes.max_parallel or 3
             max_workers = min(factor_per_step, max_parallel)
 
             console.print(f"{indent}    [cyan]Running {factor_per_step} cascade refinements (Parallel: {max_workers} workers)[/cyan]")
@@ -4492,7 +4492,7 @@ Refinement directive: {reforge_config.honing_prompt}
             evaluator_trace = reforge_trace.create_child("evaluator", "cascade_reforge_evaluation")
 
             # Use custom evaluator or default
-            eval_instructions = reforge_config.evaluator_override or self.config.candidates.evaluator_instructions
+            eval_instructions = reforge_config.evaluator_override or self.config.takes.evaluator_instructions
 
             eval_prompt = f"{eval_instructions}\n\n"
             eval_prompt += "Please evaluate the following refined cascade executions and select the best one.\n\n"
@@ -4576,8 +4576,8 @@ Refinement directive: {reforge_config.honing_prompt}
             current_output = refined_winner['result']
             winner = refined_winner
 
-        # Reset candidate index and reforge step after cascade reforge completes
-        self.current_cell_candidate_index = None
+        # Reset take index and reforge step after cascade reforge completes
+        self.current_cell_take_index = None
         self.current_reforge_step = None
 
         # Merge final winner's echo into main echo
@@ -4591,7 +4591,7 @@ Refinement directive: {reforge_config.honing_prompt}
         return winner
 
     def _run_cascade_internal(self, input_data: dict | None = None) -> dict:
-        """Internal cascade execution (separated to allow candidates wrapper)."""
+        """Internal cascade execution (separated to allow takes wrapper)."""
         # Set context for tools
         session_context_token = set_current_session_id(self.session_id)
         cascade_context_token = set_current_cascade_id(self.config.cascade_id)
@@ -4607,7 +4607,7 @@ Refinement directive: {reforge_config.honing_prompt}
         if self.depth > self.max_depth:
             log_message(self.session_id, "error", "Max recursion depth reached.",
                        trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="error", depth=self.depth,
-                       candidate_index=self.candidate_index)
+                       take_index=self.take_index)
             console.print("[bold red]Max recursion depth reached.[/bold red]")
             return self.echo.get_full_echo()
 
@@ -4623,12 +4623,12 @@ Refinement directive: {reforge_config.honing_prompt}
             "depth": self.depth,
             "input": input_data,
             "parent_session_id": getattr(self, 'parent_session_id', None),
-            "candidate_index": self.candidate_index,
+            "take_index": self.take_index,
         })
 
         log_message(self.session_id, "system", f"Starting cascade {self.config.cascade_id}", input_data,
                    trace_id=self.trace.id, parent_id=self.trace.parent_id, node_type="cascade", depth=self.depth,
-                   candidate_index=self.candidate_index, parent_session_id=self.parent_session_id,
+                   take_index=self.take_index, parent_session_id=self.parent_session_id,
                    caller_id=self.caller_id, invocation_metadata=self.invocation_metadata,
                    genus_hash=getattr(self, 'genus_hash', None))
 
@@ -4687,7 +4687,7 @@ Refinement directive: {reforge_config.honing_prompt}
             hook_result = self.hooks.on_cell_start(cell.name, {
                 "echo": self.echo,
                 "input": input_data,
-                "candidate_index": self.current_cell_candidate_index or self.candidate_index,
+                "take_index": self.current_cell_take_index or self.take_index,
             })
 
             # Cell Trace
@@ -4696,7 +4696,7 @@ Refinement directive: {reforge_config.honing_prompt}
             # Log Cell Structure with rich metadata
             cell_meta = {
                 "cell_name": cell.name,
-                "has_candidates": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1),
+                "has_takes": cell.takes is not None and (isinstance(cell.takes.factor, str) or cell.takes.factor > 1),
                 "has_wards": cell.wards is not None,
                 "has_sub_cascades": len(cell.sub_cascades) > 0 if cell.sub_cascades else False,
                 "handoffs": [h.target if hasattr(h, 'target') else h for h in cell.handoffs] if cell.handoffs else []
@@ -4813,7 +4813,7 @@ Refinement directive: {reforge_config.honing_prompt}
     def run(self, input_data: dict | None = None) -> dict:
         """
         Main entry point for cascade execution.
-        Checks if cascade-level candidates are configured and delegates appropriately.
+        Checks if cascade-level takes are configured and delegates appropriately.
 
         Manages durable execution via:
         - Session state creation in ClickHouse
@@ -4935,11 +4935,11 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Don't fail if status update fails
 
-            # Check if cascade has candidates configured
-            if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):
-                result = self._run_with_cascade_candidates(input_data)
+            # Check if cascade has takes configured
+            if self.config.takes and (isinstance(self.config.takes.factor, str) or self.config.takes.factor > 1):
+                result = self._run_with_cascade_takes(input_data)
             else:
-                # Normal execution (no cascade candidates)
+                # Normal execution (no cascade takes)
                 result = self._run_cascade_internal(input_data)
 
             # Update final status in ClickHouse
@@ -5084,9 +5084,9 @@ Refinement directive: {reforge_config.honing_prompt}
             except Exception:
                 pass  # Credit tracking is optional, never fail cascade
 
-            # For cascade candidates, emit cascade_complete event here since
-            # _run_with_cascade_candidates doesn't call _run_cascade_internal for the parent
-            if self.config.candidates and (isinstance(self.config.candidates.factor, str) or self.config.candidates.factor > 1):
+            # For cascade takes, emit cascade_complete event here since
+            # _run_with_cascade_takes doesn't call _run_cascade_internal for the parent
+            if self.config.takes and (isinstance(self.config.takes.factor, str) or self.config.takes.factor > 1):
                 final_status_str = "error" if result.get("has_errors") else "completed"
 
                 # Hook: Cascade Complete
@@ -5633,7 +5633,7 @@ Use them as inspiration for effective patterns, but stay creative - find novel v
 ## Rewritten Prompt:"""
 
         # Use the cascade's base model for rewriting to ensure consistency
-        # All rewrites within a cascade should use the same model (not per-candidate models)
+        # All rewrites within a cascade should use the same model (not per-take models)
         # This can be overridden via RVBBIT_REWRITE_MODEL env var
         rewrite_model = os.environ.get("RVBBIT_REWRITE_MODEL", self.model)
 
@@ -5961,14 +5961,14 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 cascade_path = manifest[validator_name]["path"]
                 validator_input = {"content": content}
 
-                # Generate unique ward session ID (include candidate index if inside candidates)
-                ward_candidate_index = None
-                if self.current_cell_candidate_index is not None:
-                    ward_session_id = f"{self.session_id}_ward_{self.current_cell_candidate_index}"
-                    ward_candidate_index = self.current_cell_candidate_index
-                elif self.candidate_index is not None:
-                    ward_session_id = f"{self.session_id}_ward_{self.candidate_index}"
-                    ward_candidate_index = self.candidate_index
+                # Generate unique ward session ID (include take index if inside takes)
+                ward_take_index = None
+                if self.current_cell_take_index is not None:
+                    ward_session_id = f"{self.session_id}_ward_{self.current_cell_take_index}"
+                    ward_take_index = self.current_cell_take_index
+                elif self.take_index is not None:
+                    ward_session_id = f"{self.session_id}_ward_{self.take_index}"
+                    ward_take_index = self.take_index
                 else:
                     ward_session_id = f"{self.session_id}_ward"
 
@@ -5983,7 +5983,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                         parent_trace=ward_trace,
                         hooks=self.hooks,
                         parent_session_id=self.session_id,  # Link child to parent session
-                        candidate_index=ward_candidate_index
+                        take_index=ward_take_index
                     )
 
                     # Extract result from lineage
@@ -6061,12 +6061,12 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _run_candidate_validator(self, validator_spec: Union[str, PolyglotValidatorConfig], content: str, candidate_index: int, trace: TraceNode) -> dict:
+    def _run_take_validator(self, validator_spec: Union[str, PolyglotValidatorConfig], content: str, take_index: int, trace: TraceNode) -> dict:
         """
-        Run a validator on a candidate result to determine if it should be evaluated.
+        Run a validator on a take result to determine if it should be evaluated.
 
         This is a simplified version of _run_ward for pre-evaluation filtering.
-        Validators that return {"valid": false} will exclude the candidate from evaluation.
+        Validators that return {"valid": false} will exclude the take from evaluation.
 
         Returns dict with:
         - valid: bool
@@ -6076,28 +6076,28 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
         # Check if validator is a PolyglotValidatorConfig (inline polyglot code)
         if isinstance(validator_spec, PolyglotValidatorConfig):
-            validator_trace = trace.create_child("candidate_validator", f"polyglot_{candidate_index}")
+            validator_trace = trace.create_child("take_validator", f"polyglot_{take_index}")
 
             result = self._run_polyglot_validator(
                 validator_spec,
                 content,
                 self.echo.input if hasattr(self.echo, 'input') else {},
                 validator_trace,
-                validator_name=f"polyglot_{candidate_index}"
+                validator_name=f"polyglot_{take_index}"
             )
 
             return {
                 "valid": result.get("valid", False),
                 "reason": result.get("reason", "No reason provided"),
                 "validator": "polyglot",
-                "candidate_index": candidate_index
+                "take_index": take_index
             }
 
         # String validator - existing behavior
         validator_name = validator_spec
 
         # Create validator trace
-        validator_trace = trace.create_child("candidate_validator", f"{validator_name}_{candidate_index}")
+        validator_trace = trace.create_child("take_validator", f"{validator_name}_{take_index}")
 
         # Try to get validator as Python function first
         validator_tool = get_skill(validator_name)
@@ -6114,7 +6114,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 validator_input = {"content": content}
 
                 # Generate unique validator session ID
-                validator_session_id = f"{self.session_id}_candidate_validator_{candidate_index}"
+                validator_session_id = f"{self.session_id}_take_validator_{take_index}"
 
                 try:
                     # Run the validator cascade
@@ -6127,7 +6127,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                         parent_trace=validator_trace,
                         hooks=self.hooks,
                         parent_session_id=self.session_id,
-                        candidate_index=candidate_index
+                        take_index=take_index
                     )
 
                     # Extract result from lineage
@@ -6182,7 +6182,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "valid": is_valid,
             "reason": reason,
             "validator": validator_name,
-            "candidate_index": candidate_index
+            "take_index": take_index
         }
 
     def _run_loop_until_validator(
@@ -6280,13 +6280,13 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             }
 
             # Generate unique validator session ID
-            validator_candidate_index = None
-            if self.current_cell_candidate_index is not None:
-                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.current_cell_candidate_index}"
-                validator_candidate_index = self.current_cell_candidate_index
-            elif self.candidate_index is not None:
-                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.candidate_index}"
-                validator_candidate_index = self.candidate_index
+            validator_take_index = None
+            if self.current_cell_take_index is not None:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.current_cell_take_index}"
+                validator_take_index = self.current_cell_take_index
+            elif self.take_index is not None:
+                validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}_{self.take_index}"
+                validator_take_index = self.take_index
             else:
                 validator_session_id = f"{self.session_id}_inline_validator_{attempt}_t{turn}"
 
@@ -6330,7 +6330,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                     parent_trace=validation_trace,
                     hooks=self.hooks,
                     parent_session_id=self.session_id,
-                    candidate_index=validator_candidate_index
+                    take_index=validator_take_index
                 )
 
                 # Inject images into validator context if available (multi-modal validation)
@@ -6408,13 +6408,13 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                     }
 
                     # Generate unique validator session ID
-                    validator_candidate_index = None
-                    if self.current_cell_candidate_index is not None:
-                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.current_cell_candidate_index}"
-                        validator_candidate_index = self.current_cell_candidate_index
-                    elif self.candidate_index is not None:
-                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.candidate_index}"
-                        validator_candidate_index = self.candidate_index
+                    validator_take_index = None
+                    if self.current_cell_take_index is not None:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.current_cell_take_index}"
+                        validator_take_index = self.current_cell_take_index
+                    elif self.take_index is not None:
+                        validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}_{self.take_index}"
+                        validator_take_index = self.take_index
                     else:
                         validator_session_id = f"{self.session_id}_validator_{attempt}_t{turn}"
 
@@ -6429,7 +6429,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                             parent_trace=validation_trace,
                             hooks=self.hooks,
                             parent_session_id=self.session_id,
-                            candidate_index=validator_candidate_index
+                            take_index=validator_take_index
                         )
 
                         # Extract the result - look in lineage for last cell output
@@ -6477,46 +6477,46 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
             "validator": validator_name
         }
 
-    def _assign_models(self, candidates_config, resolved_factor: int | None = None) -> List[str]:
+    def _assign_models(self, takes_config, resolved_factor: int | None = None) -> List[str]:
         """
-        Assign models to candidate attempts based on configuration.
+        Assign models to take attempts based on configuration.
 
-        Returns a list of model names, one per candidate attempt.
+        Returns a list of model names, one per take attempt.
 
         Args:
-            candidates_config: CandidatesConfig with optional multi-model settings
-            resolved_factor: Resolved factor value (optional, overrides candidates_config.factor)
+            takes_config: TakesConfig with optional multi-model settings
+            resolved_factor: Resolved factor value (optional, overrides takes_config.factor)
 
         Returns:
-            List of model names to use for each candidate
+            List of model names to use for each take
         """
         import random
 
         # Use resolved_factor if provided, otherwise get from config (and handle string/int)
         if resolved_factor is not None:
             factor = resolved_factor
-        elif isinstance(candidates_config.factor, str):
+        elif isinstance(takes_config.factor, str):
             # If factor is still a string template, we can't resolve it here
             # This shouldn't happen if caller passes resolved_factor
-            raise ValueError(f"Cannot assign models with unresolved factor template: {candidates_config.factor}")
+            raise ValueError(f"Cannot assign models with unresolved factor template: {takes_config.factor}")
         else:
-            factor = candidates_config.factor
+            factor = takes_config.factor
 
         # Case 1: No multi-model configuration - use default model for all
-        if candidates_config.models is None:
+        if takes_config.models is None:
             return [self.model] * factor
 
         # Case 2: List of models - apply strategy (round-robin, random, etc.)
-        if isinstance(candidates_config.models, list):
-            models = candidates_config.models
-            strategy = candidates_config.model_strategy
+        if isinstance(takes_config.models, list):
+            models = takes_config.models
+            strategy = takes_config.model_strategy
 
             if strategy == "round_robin":
                 # Cycle through models in order
                 return [models[i % len(models)] for i in range(factor)]
 
             elif strategy == "random":
-                # Random selection for each candidate
+                # Random selection for each take
                 return [random.choice(models) for _ in range(factor)]
 
             else:
@@ -6524,9 +6524,9 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
                 return [models[i % len(models)] for i in range(factor)]
 
         # Case 3: Dict with per-model factors - expand based on each model's factor
-        elif isinstance(candidates_config.models, dict):
+        elif isinstance(takes_config.models, dict):
             assigned = []
-            for model_name, config in candidates_config.models.items():
+            for model_name, config in takes_config.models.items():
                 # Add this model N times based on its factor
                 assigned.extend([model_name] * config.factor)
             return assigned
@@ -6547,7 +6547,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
         with insufficient context limits.
 
         Args:
-            models: List of candidate model IDs
+            models: List of take model IDs
             cell: Cell configuration
             input_data: Input data for rendering
 
@@ -6652,7 +6652,7 @@ export ORIGINAL_INPUT='{json.dumps(original_input)}'
 
     def _aggregate_with_llm(self, outputs: List[Dict], instructions: str, model: str, trace: TraceNode) -> str:
         """
-        Use an LLM to aggregate/merge multiple candidate outputs into a single coherent output.
+        Use an LLM to aggregate/merge multiple take outputs into a single coherent output.
 
         Args:
             outputs: List of output dicts with "index", "output", "model", "mutation_applied", "images"
@@ -6748,19 +6748,19 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
         return aggregated_content
 
-    def _get_candidate_costs(self, candidate_results: List[Dict], timeout: float = 5.0) -> List[float]:
+    def _get_take_costs(self, take_results: List[Dict], timeout: float = 5.0) -> List[float]:
         """
-        Get costs for each candidate attempt from unified logs.
+        Get costs for each take attempt from unified logs.
 
         Waits briefly for async cost tracking to complete, then queries logs.
         Falls back to cost estimation if costs aren't available.
 
         Args:
-            candidate_results: List of candidate result dicts with trace_id
+            take_results: List of take result dicts with trace_id
             timeout: Max seconds to wait for costs
 
         Returns:
-            List of costs, one per candidate
+            List of costs, one per take
         """
         import time
 
@@ -6768,12 +6768,12 @@ Please combine/synthesize these outputs according to the instructions above. Pro
         time.sleep(min(timeout, 2.0))
 
         costs = []
-        for sr in candidate_results:
+        for sr in take_results:
             trace_id = sr.get("trace_id")
             model = sr.get("model", self.model)
 
             # Try to get cost from logs
-            cost = self._query_candidate_cost(trace_id)
+            cost = self._query_take_cost(trace_id)
 
             if cost is None or cost == 0:
                 # Estimate cost based on model and typical token usage
@@ -6783,7 +6783,7 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
         return costs
 
-    def _query_candidate_cost(self, trace_id: str) -> Optional[float]:
+    def _query_take_cost(self, trace_id: str) -> Optional[float]:
         """Query unified logs for cost of a specific trace."""
         try:
             from .unified_logs import query_unified
@@ -6862,24 +6862,24 @@ Please combine/synthesize these outputs according to the instructions above. Pro
 
     def _build_cost_aware_eval_prompt(
         self,
-        candidate_results: List[Dict],
+        take_results: List[Dict],
         costs: List[float],
-        candidates_config,
+        takes_config,
         base_instructions: str
     ) -> str:
         """
         Build an evaluation prompt that includes cost information.
 
         Args:
-            candidate_results: List of candidate result dicts
-            costs: List of costs per candidate
-            candidates_config: CandidatesConfig with cost_aware_evaluation settings
+            take_results: List of take result dicts
+            costs: List of costs per take
+            takes_config: TakesConfig with cost_aware_evaluation settings
             base_instructions: Original evaluator instructions
 
         Returns:
             Complete evaluation prompt with cost context
         """
-        cost_config = candidates_config.cost_aware_evaluation
+        cost_config = takes_config.cost_aware_evaluation
 
         eval_prompt = f"{base_instructions}\n\n"
 
@@ -6896,35 +6896,35 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
         eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
-        for i, candidate in enumerate(candidate_results):
+        for i, take in enumerate(take_results):
             eval_prompt += f"## Attempt {i+1}\n"
 
             if cost_config.show_costs_to_evaluator:
-                model = candidate.get("model", "unknown")
+                model = take.get("model", "unknown")
                 cost = costs[i]
                 eval_prompt += f"Model: {model}\n"
                 eval_prompt += f"Cost: ${cost:.6f}\n"
 
-            eval_prompt += f"Result: {candidate['result']}\n\n"
+            eval_prompt += f"Result: {take['result']}\n\n"
 
-        eval_prompt += f"\nRespond with ONLY the number of the best attempt (1-{len(candidate_results)}) and a brief explanation."
+        eval_prompt += f"\nRespond with ONLY the number of the best attempt (1-{len(take_results)}) and a brief explanation."
 
         return eval_prompt
 
     def _compute_pareto_frontier(
         self,
-        candidate_results: List[Dict],
+        take_results: List[Dict],
         quality_scores: List[float],
         costs: List[float]
     ) -> tuple:
         """
         Compute the Pareto frontier for cost vs quality.
 
-        A candidate is Pareto-optimal (non-dominated) if no other candidate is
+        A take is Pareto-optimal (non-dominated) if no other take is
         both cheaper AND higher quality.
 
         Args:
-            candidate_results: List of candidate result dicts
+            take_results: List of take result dicts
             quality_scores: List of quality scores (higher is better)
             costs: List of costs (lower is better)
 
@@ -6934,7 +6934,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
             - dominated_map: Dict mapping dominated index -> dominating index
             - pareto_ranks: Dict mapping index -> rank (1 = frontier, 2+ = dominated)
         """
-        n = len(candidate_results)
+        n = len(take_results)
         frontier_indices = []
         dominated_map = {}
 
@@ -6975,7 +6975,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
     def _select_from_pareto_frontier(
         self,
-        candidate_results: List[Dict],
+        take_results: List[Dict],
         frontier_indices: List[int],
         quality_scores: List[float],
         costs: List[float],
@@ -6985,10 +6985,10 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
         Select winner from Pareto frontier based on policy.
 
         Args:
-            candidate_results: List of candidate result dicts
+            take_results: List of take result dicts
             frontier_indices: Indices of frontier members
-            quality_scores: Quality scores for all candidates
-            costs: Costs for all candidates
+            quality_scores: Quality scores for all takes
+            costs: Costs for all takes
             policy: Selection policy
 
         Returns:
@@ -7020,7 +7020,7 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
             # Show options and prompt user (dev/research mode)
             console.print(f"\n{indent}[bold yellow]Pareto Frontier (non-dominated solutions):[/bold yellow]")
             for i, idx in enumerate(frontier_indices):
-                model = candidate_results[idx].get("model", "unknown")
+                model = take_results[idx].get("model", "unknown")
                 quality = quality_scores[idx]
                 cost = costs[idx]
                 console.print(f"{indent}  [{i+1}] Model: {model}, Quality: {quality:.2f}, Cost: ${cost:.6f}")
@@ -7043,14 +7043,14 @@ Consider quality ({quality_pct}%) and cost ({cost_pct}%) when selecting the winn
 
     def _get_quality_scores_from_evaluator(
         self,
-        candidate_results: List[Dict],
+        take_results: List[Dict],
         evaluator_instructions: str,
         evaluator_trace
     ) -> tuple:
         """
-        Get quality scores for each candidate from the evaluator.
+        Get quality scores for each take from the evaluator.
 
-        Uses LLM to assign numeric quality scores to each candidate.
+        Uses LLM to assign numeric quality scores to each take.
 
         Returns:
             Tuple of (
@@ -7072,12 +7072,12 @@ Rate each of the following attempts on a scale of 0-100 for quality.
 Consider clarity, completeness, accuracy, and usefulness.
 
 """
-        for i, candidate in enumerate(candidate_results):
+        for i, take in enumerate(take_results):
             score_prompt += f"## Attempt {i+1}\n"
             # Include model info if available for multi-model comparison
-            if candidate.get("model"):
-                score_prompt += f"Model: {candidate['model']}\n"
-            score_prompt += f"Result: {candidate['result']}\n\n"
+            if take.get("model"):
+                score_prompt += f"Model: {take['model']}\n"
+            score_prompt += f"Result: {take['result']}\n\n"
 
         score_prompt += """
 For each attempt, provide:
@@ -7121,7 +7121,7 @@ Use only numbers 0-100 for scores."""
 
         # Build score list in order
         score_map = {int(m[0]): float(m[1]) for m in matches}
-        for i in range(len(candidate_results)):
+        for i in range(len(take_results)):
             scores.append(score_map.get(i + 1, 50.0))  # Default to 50 if not found
 
         return scores, score_content, score_cost, score_tokens_in, score_tokens_out, score_request_id, score_model
@@ -7130,7 +7130,7 @@ Use only numbers 0-100 for scores."""
         self,
         session_id: str,
         cell_name: str,
-        candidate_results: List[Dict],
+        take_results: List[Dict],
         frontier_indices: List[int],
         dominated_map: Dict[int, int],
         quality_scores: List[float],
@@ -7150,8 +7150,8 @@ Use only numbers 0-100 for scores."""
             "cell_name": cell_name,
             "frontier": [
                 {
-                    "candidate_index": idx,
-                    "model": candidate_results[idx].get("model", "unknown"),
+                    "take_index": idx,
+                    "model": take_results[idx].get("model", "unknown"),
                     "quality": quality_scores[idx],
                     "cost": costs[idx],
                     "is_winner": idx == winner_index
@@ -7160,15 +7160,15 @@ Use only numbers 0-100 for scores."""
             ],
             "dominated": [
                 {
-                    "candidate_index": idx,
+                    "take_index": idx,
                     "dominated_by": dom_idx,
-                    "model": candidate_results[idx].get("model", "unknown"),
+                    "model": take_results[idx].get("model", "unknown"),
                     "quality": quality_scores[idx],
                     "cost": costs[idx]
                 }
                 for idx, dom_idx in dominated_map.items()
             ],
-            "all_candidates": [
+            "all_takes": [
                 {
                     "index": i,
                     "model": sr.get("model", "unknown"),
@@ -7177,7 +7177,7 @@ Use only numbers 0-100 for scores."""
                     "is_pareto_optimal": i in frontier_indices,
                     "is_winner": i == winner_index
                 }
-                for i, sr in enumerate(candidate_results)
+                for i, sr in enumerate(take_results)
             ]
         }
 
@@ -7189,17 +7189,17 @@ Use only numbers 0-100 for scores."""
 
         console.print(f"  [dim]Pareto frontier data saved to: {pareto_file}[/dim]")
 
-    def _execute_cell_with_candidates(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None) -> Any:
+    def _execute_cell_with_takes(self, cell: CellConfig, input_data: dict, trace: TraceNode, initial_injection: dict | None = None) -> Any:
         """
-        Execute a cell with candidates (Tree of Thought).
+        Execute a cell with takes (Tree of Thought).
         Spawns N parallel attempts, evaluates them, and returns only the winner.
         """
         from .unified_logs import log_unified
-        assert cell.candidates is not None, "candidates must be configured"
+        assert cell.takes is not None, "takes must be configured"
 
         indent = "  " * self.depth
 
-        # Resolve candidates factor FIRST (may be Jinja2 template string)
+        # Resolve takes factor FIRST (may be Jinja2 template string)
         # Build context for rendering
         outputs = {item['cell']: item['output'] for item in self.echo.lineage}
         render_context = {
@@ -7211,22 +7211,22 @@ Use only numbers 0-100 for scores."""
         }
 
         # Render factor if it's a string (Jinja2 template)
-        if isinstance(cell.candidates.factor, str):
+        if isinstance(cell.takes.factor, str):
             from .prompts import render_instruction
-            rendered_factor = render_instruction(cell.candidates.factor, render_context)
+            rendered_factor = render_instruction(cell.takes.factor, render_context)
             try:
                 resolved_factor = int(rendered_factor.strip())
             except ValueError:
-                console.print(f"{indent}[red]⚠ Warning: Could not parse candidates factor '{rendered_factor}' as integer, defaulting to 1[/red]")
+                console.print(f"{indent}[red]⚠ Warning: Could not parse takes factor '{rendered_factor}' as integer, defaulting to 1[/red]")
                 resolved_factor = 1
         else:
-            resolved_factor = cell.candidates.factor
+            resolved_factor = cell.takes.factor
 
         # Assign models using resolved factor
-        assigned_models = self._assign_models(cell.candidates, resolved_factor)
+        assigned_models = self._assign_models(cell.takes, resolved_factor)
 
-        # Filter models by context window if multi-model candidates
-        if cell.candidates.models and len(set(assigned_models)) > 1:
+        # Filter models by context window if multi-model takes
+        if cell.takes.models and len(set(assigned_models)) > 1:
             filter_result = self._filter_models_by_context(
                 models=assigned_models,
                 cell=cell,
@@ -7271,7 +7271,7 @@ Use only numbers 0-100 for scores."""
                 # Log filtering event to unified logs
                 filter_event_data = {
                     "cell_name": cell.name,
-                    "original_models": list(set(self._assign_models(cell.candidates))),
+                    "original_models": list(set(self._assign_models(cell.takes))),
                     "filtered_models": filter_result["filtered_models"],
                     "viable_models": list(set(assigned_models)),
                     "filter_details": filter_result["filter_details"],
@@ -7295,47 +7295,47 @@ Use only numbers 0-100 for scores."""
                     metadata=filter_event_data
                 )
 
-        # When using dict-based models with per-model factors, the actual number of candidates
+        # When using dict-based models with per-model factors, the actual number of takes
         # is determined by the model assignments, not the top-level factor
-        if isinstance(cell.candidates.models, dict):
+        if isinstance(cell.takes.models, dict):
             factor = len(assigned_models)
             if resolved_factor != factor:
-                console.print(f"{indent}[yellow]Note: Using {factor} candidates from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
+                console.print(f"{indent}[yellow]Note: Using {factor} takes from per-model factors (top-level factor: {resolved_factor} ignored)[/yellow]")
         else:
             factor = resolved_factor
 
-        console.print(f"{indent}[bold blue]🔱 Taking {factor} Candidates (Parallel Attempts)...[/bold blue]")
+        console.print(f"{indent}[bold blue]🔱 Taking {factor} Takes (Parallel Attempts)...[/bold blue]")
 
-        # Create candidates trace node
-        candidates_trace = trace.create_child("candidates", f"{cell.name}_candidates")
+        # Create takes trace node
+        takes_trace = trace.create_child("takes", f"{cell.name}_takes")
 
-        # Add candidates structure to Echo for visualization (auto-logs via unified_logs)
-        candidates_meta = {
+        # Add takes structure to Echo for visualization (auto-logs via unified_logs)
+        takes_meta = {
             "cell_name": cell.name,
             "factor": factor,
-            "has_reforge": cell.candidates.reforge is not None,
+            "has_reforge": cell.takes.reforge is not None,
             "semantic_actor": "framework",
             "semantic_purpose": "lifecycle"
         }
         self.echo.add_history({
             "role": "structure",
-            "content": f"Candidates: {cell.name}",
-            "node_type": "candidates"
-        }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates",
-           metadata=candidates_meta)
+            "content": f"Takes: {cell.name}",
+            "node_type": "takes"
+        }, trace_id=takes_trace.id, parent_id=trace.id, node_type="takes",
+           metadata=takes_meta)
 
-        # Snapshot current context state (before any candidates)
+        # Snapshot current context state (before any takes)
         context_snapshot = self.context_messages.copy()
         echo_state_snapshot = self.echo.state.copy()
         echo_history_snapshot = self.echo.history.copy()
         echo_lineage_snapshot = self.echo.lineage.copy()
 
-        # Store all candidate results
-        candidate_results = []
+        # Store all take results
+        take_results = []
 
         # Determine mutations to apply
         mutations_to_use = []
-        mutation_mode = cell.candidates.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
+        mutation_mode = cell.takes.mutation_mode  # "rewrite", "rewrite_free", "augment", or "approach"
 
         # Compute species hash ONLY for rewrite mode (for winner learning)
         # Species hash is used to compare similar prompt rewrites, not needed for other mutation modes
@@ -7343,10 +7343,10 @@ Use only numbers 0-100 for scores."""
         if mutation_mode == 'rewrite':
             cell_species_hash = compute_species_hash(cell.model_dump(), input_data)
 
-        if cell.candidates.mutate:
-            if cell.candidates.mutations:
+        if cell.takes.mutate:
+            if cell.takes.mutations:
                 # Use custom mutations/templates
-                mutations_to_use = cell.candidates.mutations
+                mutations_to_use = cell.takes.mutations
             elif mutation_mode in ("rewrite", "rewrite_free"):
                 # Rewrite templates: LLM will rewrite the prompt using these instructions
                 # These are META-instructions for how to transform the prompt
@@ -7394,20 +7394,20 @@ Use only numbers 0-100 for scores."""
         # Show which models will be used (already assigned earlier)
         console.print(f"{indent}  [dim]Models: {', '.join(set(assigned_models))}[/dim]")
 
-        # Pre-create traces for all candidates (must be done sequentially for proper hierarchy)
-        candidate_traces = []
+        # Pre-create traces for all takes (must be done sequentially for proper hierarchy)
+        take_traces = []
         for i in range(factor):
-            trace_node = candidates_trace.create_child("candidate_attempt", f"attempt_{i+1}")
-            candidate_traces.append(trace_node)
+            trace_node = takes_trace.create_child("take_attempt", f"attempt_{i+1}")
+            take_traces.append(trace_node)
 
-        # Pre-compute mutations for all candidates (some need LLM calls)
-        candidate_mutations = []
+        # Pre-compute mutations for all takes (some need LLM calls)
+        take_mutations = []
         for i in range(factor):
             mutation_template = None
             mutation_applied = None
             mutation_type = None
 
-            if mutations_to_use and i > 0:  # First candidate (i=0) uses original prompt (baseline)
+            if mutations_to_use and i > 0:  # First take (i=0) uses original prompt (baseline)
                 mutation_template = mutations_to_use[(i - 1) % len(mutations_to_use)]
                 mutation_type = mutation_mode
 
@@ -7415,13 +7415,13 @@ Use only numbers 0-100 for scores."""
                     # For rewrite modes: use LLM to rewrite the prompt
                     console.print(f"{indent}  [dim]Pre-computing mutation {i+1}: rewriting prompt...[/dim]")
                     mutation_applied = self._rewrite_prompt_with_llm(
-                        cell, input_data, mutation_template, candidates_trace,
+                        cell, input_data, mutation_template, takes_trace,
                         mutation_mode=mutation_mode, species_hash=cell_species_hash
                     )
                 else:
                     mutation_applied = mutation_template
 
-            candidate_mutations.append({
+            take_mutations.append({
                 "template": mutation_template,
                 "applied": mutation_applied,
                 "type": mutation_type
@@ -7430,95 +7430,95 @@ Use only numbers 0-100 for scores."""
         # Parallel execution setup
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from .echo import Echo
-        max_parallel = cell.candidates.max_parallel or 3
+        max_parallel = cell.takes.max_parallel or 3
         max_workers = min(factor, max_parallel)
         console.print(f"{indent}  [dim]Parallel workers: {max_workers}[/dim]")
 
         # Define worker function that creates isolated runner with SAME session_id
-        def run_single_candidate(i: int) -> dict:
-            """Execute a single candidate with isolated state but same session for logging."""
-            mutation_info = candidate_mutations[i]
-            candidate_trace = candidate_traces[i]
-            candidate_model = assigned_models[i]
+        def run_single_take(i: int) -> dict:
+            """Execute a single take with isolated state but same session for logging."""
+            mutation_info = take_mutations[i]
+            take_trace = take_traces[i]
+            take_model = assigned_models[i]
 
             console.print(f"{indent}  [cyan]🌊 Sounding {i+1}/{factor}[/cyan]" +
                          (f" [yellow]🧬 {mutation_info['type']}[/yellow]" if mutation_info['type'] else " [dim](baseline)[/dim]") +
-                         f" [dim]({candidate_model})[/dim]")
+                         f" [dim]({take_model})[/dim]")
 
             try:
                 # Create isolated runner with SAME session_id (logs go to same session)
-                candidate_runner = RVBBITRunner(
+                take_runner = RVBBITRunner(
                     config_path=self.config_path,
                     session_id=self.session_id,  # SAME session_id - all logs go here
                     overrides=self.overrides,
                     depth=self.depth,
-                    parent_trace=candidate_trace,
+                    parent_trace=take_trace,
                     hooks=self.hooks,
-                    candidate_index=i,
+                    take_index=i,
                     parent_session_id=self.parent_session_id
                 )
 
                 # Replace echo with fresh ISOLATED instance (bypasses SessionManager singleton)
                 # Same session_id means logs still go to the same session in DB
-                candidate_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
-                candidate_runner.echo.state = echo_state_snapshot.copy()
-                candidate_runner.echo.history = echo_history_snapshot.copy()
-                candidate_runner.echo.lineage = echo_lineage_snapshot.copy()
+                take_runner.echo = Echo(self.session_id, parent_session_id=self.parent_session_id)
+                take_runner.echo.state = echo_state_snapshot.copy()
+                take_runner.echo.history = echo_history_snapshot.copy()
+                take_runner.echo.lineage = echo_lineage_snapshot.copy()
 
                 # Copy context and model
-                candidate_runner.context_messages = context_snapshot.copy()
-                candidate_runner.model = candidate_model
+                take_runner.context_messages = context_snapshot.copy()
+                take_runner.model = take_model
 
-                # Set candidate tracking state
-                candidate_runner.current_cell_candidate_index = i
-                candidate_runner._current_candidate_factor = factor  # For Jinja2 templates
-                candidate_runner.current_mutation_applied = mutation_info['applied']
-                candidate_runner.current_mutation_type = mutation_info['type']
-                candidate_runner.current_mutation_template = mutation_info['template']
+                # Set take tracking state
+                take_runner.current_cell_take_index = i
+                take_runner._current_take_factor = factor  # For Jinja2 templates
+                take_runner.current_mutation_applied = mutation_info['applied']
+                take_runner.current_mutation_type = mutation_info['type']
+                take_runner.current_mutation_template = mutation_info['template']
 
-                # CRITICAL: Set context vars IN THIS THREAD (candidate thread)
-                # Context vars are thread-local, must be set in each candidate thread
-                session_token = set_current_session_id(candidate_runner.session_id)
+                # CRITICAL: Set context vars IN THIS THREAD (take thread)
+                # Context vars are thread-local, must be set in each take thread
+                session_token = set_current_session_id(take_runner.session_id)
                 cell_token = set_current_cell_name(cell.name)
-                cascade_token = set_current_cascade_id(candidate_runner.config.cascade_id)
-                candidate_token = set_current_candidate_index(i)
+                cascade_token = set_current_cascade_id(take_runner.config.cascade_id)
+                take_token = set_current_take_index(i)
 
                 # Set model context for downstream_model propagation
-                model_token = set_current_model(candidate_model)
+                model_token = set_current_model(take_model)
                 downstream_token = set_downstream_model(
-                    cell.candidates.downstream_model if cell.candidates else False
+                    cell.takes.downstream_model if cell.takes else False
                 )
 
-                print(f"[Sounding {i}] Set context vars: session={candidate_runner.session_id}, cell={cell.name}, candidate_index={i}, model={candidate_model}, downstream={cell.candidates.downstream_model if cell.candidates else False}")
+                print(f"[Sounding {i}] Set context vars: session={take_runner.session_id}, cell={cell.name}, take_index={i}, model={take_model}, downstream={cell.takes.downstream_model if cell.takes else False}")
 
                 # Execute the cell on isolated runner
-                result = candidate_runner._execute_cell_internal(
-                    cell, input_data, candidate_trace,
+                result = take_runner._execute_cell_internal(
+                    cell, input_data, take_trace,
                     initial_injection=initial_injection,
                     mutation=mutation_info['applied'],
                     mutation_mode=mutation_mode
                 )
 
-                # Capture context generated during this candidate
-                candidate_context = candidate_runner.context_messages[len(context_snapshot):]
+                # Capture context generated during this take
+                take_context = take_runner.context_messages[len(context_snapshot):]
 
                 # Extract images for evaluator
                 from .utils import extract_images_from_messages
-                candidate_images = extract_images_from_messages(candidate_context)
+                take_images = extract_images_from_messages(take_context)
 
                 console.print(f"{indent}    [green]✓ Sounding {i+1} complete[/green]")
 
                 return {
                     "index": i,
                     "result": result,
-                    "context": candidate_context,
-                    "images": candidate_images,
-                    "trace_id": candidate_trace.id,
-                    "final_state": candidate_runner.echo.state.copy(),
+                    "context": take_context,
+                    "images": take_images,
+                    "trace_id": take_trace.id,
+                    "final_state": take_runner.echo.state.copy(),
                     "mutation_applied": mutation_info['applied'],
                     "mutation_type": mutation_info['type'],
                     "mutation_template": mutation_info['template'],
-                    "model": candidate_model
+                    "model": take_model
                 }
 
             except Exception as e:
@@ -7529,34 +7529,34 @@ Use only numbers 0-100 for scores."""
                     "result": f"[ERROR: {str(e)}]",
                     "context": [],
                     "images": [],
-                    "trace_id": candidate_trace.id,
+                    "trace_id": take_trace.id,
                     "final_state": {},
                     "mutation_applied": mutation_info['applied'],
                     "mutation_type": mutation_info['type'],
                     "mutation_template": mutation_info['template'],
-                    "model": candidate_model,
+                    "model": take_model,
                     "failed": True,
                     "error": str(e)
                 }
 
-        # Execute candidates in parallel - all logs go to same session
-        candidate_results = []
+        # Execute takes in parallel - all logs go to same session
+        take_results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(run_single_candidate, i): i for i in range(factor)}
+            futures = {executor.submit(run_single_take, i): i for i in range(factor)}
 
             for future in as_completed(futures):
                 result = future.result()
-                candidate_results.append(result)
+                take_results.append(result)
 
         # Sort results by index to maintain consistent ordering for evaluator
-        candidate_results.sort(key=lambda x: x['index'])
+        take_results.sort(key=lambda x: x['index'])
 
         # Log errors after parallel completion
-        for sr in candidate_results:
+        for sr in take_results:
             if sr.get('failed'):
-                log_message(self.session_id, "candidate_error", sr.get('error', 'Unknown error'),
-                           trace_id=sr['trace_id'], parent_id=candidates_trace.id, node_type="candidate_error", depth=self.depth,
-                           candidate_index=sr['index'], metadata={"cell_name": cell.name, "error": sr.get('error'), "model": sr.get('model')})
+                log_message(self.session_id, "take_error", sr.get('error', 'Unknown error'),
+                           trace_id=sr['trace_id'], parent_id=takes_trace.id, node_type="take_error", depth=self.depth,
+                           take_index=sr['index'], metadata={"cell_name": cell.name, "error": sr.get('error'), "model": sr.get('model')})
 
         # Clear mutation tracking
         self.current_mutation_applied = None
@@ -7570,21 +7570,21 @@ Use only numbers 0-100 for scores."""
         self.echo.lineage = echo_lineage_snapshot.copy()
 
         # Pre-evaluation validation (if configured)
-        # Filters out candidates that fail validation before sending to evaluator
-        valid_candidate_results = candidate_results
-        if cell.candidates.validator:
-            validator_spec = cell.candidates.validator
+        # Filters out takes that fail validation before sending to evaluator
+        valid_take_results = take_results
+        if cell.takes.validator:
+            validator_spec = cell.takes.validator
             validator_display_name = _format_validator_name(validator_spec)
             console.print(f"{indent}[bold cyan]🔍 Pre-evaluation validation with '{validator_display_name}'...[/bold cyan]")
 
             validation_results = []
-            for sr in candidate_results:
+            for sr in take_results:
                 result_content = str(sr.get("result", ""))
-                validation = self._run_candidate_validator(
+                validation = self._run_take_validator(
                     validator_spec,
                     result_content,
                     sr["index"],
-                    candidates_trace
+                    takes_trace
                 )
                 sr["validation"] = validation
                 validation_results.append(validation)
@@ -7594,31 +7594,31 @@ Use only numbers 0-100 for scores."""
                 else:
                     console.print(f"{indent}  [red]✗ Sounding {sr['index']+1}: INVALID[/red] - {validation['reason'][:60]}...")
 
-            # Filter to only valid candidates
-            valid_candidate_results = [sr for sr in candidate_results if sr.get("validation", {}).get("valid", True)]
+            # Filter to only valid takes
+            valid_take_results = [sr for sr in take_results if sr.get("validation", {}).get("valid", True)]
 
-            # Handle edge case: all candidates failed validation
-            if not valid_candidate_results:
-                console.print(f"{indent}[bold red]⚠️  All {len(candidate_results)} candidates failed validation![/bold red]")
-                console.print(f"{indent}[yellow]Falling back to evaluating all candidates (validation results will be shown to evaluator)[/yellow]")
+            # Handle edge case: all takes failed validation
+            if not valid_take_results:
+                console.print(f"{indent}[bold red]⚠️  All {len(take_results)} takes failed validation![/bold red]")
+                console.print(f"{indent}[yellow]Falling back to evaluating all takes (validation results will be shown to evaluator)[/yellow]")
                 # Fall back to all results, but evaluator will see validation info
-                valid_candidate_results = candidate_results
+                valid_take_results = take_results
             else:
-                console.print(f"{indent}[bold green]✓ {len(valid_candidate_results)}/{len(candidate_results)} candidates passed validation[/bold green]")
+                console.print(f"{indent}[bold green]✓ {len(valid_take_results)}/{len(take_results)} takes passed validation[/bold green]")
 
         # AGGREGATE MODE: Combine all outputs instead of picking one winner
-        if cell.candidates.mode == "aggregate":
-            console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_candidate_results)} outputs...[/bold cyan]")
+        if cell.takes.mode == "aggregate":
+            console.print(f"{indent}[bold cyan]📦 Aggregate mode: Combining {len(valid_take_results)} outputs...[/bold cyan]")
 
             # Update cell progress
             update_cell_progress(
                 self.session_id, self.config.cascade_id, cell.name, self.depth,
-                candidate_stage="aggregating"
+                take_stage="aggregating"
             )
 
             # Gather all successful outputs
             all_outputs = []
-            for sr in valid_candidate_results:
+            for sr in valid_take_results:
                 output = str(sr.get("result", ""))
                 if output.strip():
                     all_outputs.append({
@@ -7630,19 +7630,19 @@ Use only numbers 0-100 for scores."""
                     })
 
             if not all_outputs:
-                raise ValueError("All candidate outputs were empty or failed")
+                raise ValueError("All take outputs were empty or failed")
 
             # Create aggregator trace
-            aggregator_trace = candidates_trace.create_child("aggregator", "candidate_aggregation")
+            aggregator_trace = takes_trace.create_child("aggregator", "take_aggregation")
 
             # Aggregate the outputs
-            if cell.candidates.aggregator_instructions:
+            if cell.takes.aggregator_instructions:
                 # Use LLM to aggregate/merge outputs
                 console.print(f"{indent}  [dim]Using LLM aggregator...[/dim]")
                 aggregated_output = self._aggregate_with_llm(
                     all_outputs,
-                    cell.candidates.aggregator_instructions,
-                    cell.candidates.aggregator_model or self.model,
+                    cell.takes.aggregator_instructions,
+                    cell.takes.aggregator_model or self.model,
                     aggregator_trace
                 )
             else:
@@ -7663,11 +7663,11 @@ Use only numbers 0-100 for scores."""
 
             # Create synthetic "winner" with aggregated output
             # Use the first valid result's context as the base
-            winner = valid_candidate_results[0].copy()
+            winner = valid_take_results[0].copy()
             winner["result"] = aggregated_output
             winner["is_aggregated"] = True
             winner["aggregated_count"] = len(all_outputs)
-            winner["aggregated_indices"] = [o["index"] for o in all_outputs]  # Store which candidates contributed
+            winner["aggregated_indices"] = [o["index"] for o in all_outputs]  # Store which takes contributed
             winner["images"] = all_images  # Combine all images
             winner_index = 0  # synthetic index
 
@@ -7676,13 +7676,13 @@ Use only numbers 0-100 for scores."""
             # Log aggregation to echo (for visualization)
             self.echo.add_history({
                 "role": "aggregator",
-                "content": f"Aggregated {len(all_outputs)} candidate outputs"
-            }, trace_id=aggregator_trace.id, parent_id=candidates_trace.id, node_type="aggregator",
+                "content": f"Aggregated {len(all_outputs)} take outputs"
+            }, trace_id=aggregator_trace.id, parent_id=takes_trace.id, node_type="aggregator",
                metadata={
                    "cell_name": cell.name,
                    "aggregated_count": len(all_outputs),
                    "output_indices": [o["index"] for o in all_outputs],
-                   "used_llm": cell.candidates.aggregator_instructions is not None,
+                   "used_llm": cell.takes.aggregator_instructions is not None,
                    "semantic_actor": "aggregator",
                    "semantic_purpose": "aggregation",
                })
@@ -7691,7 +7691,7 @@ Use only numbers 0-100 for scores."""
             # Set variables needed by post-evaluation code
             eval_prompt = None
             eval_content = f"[Aggregate mode] Combined {len(all_outputs)} outputs"
-            candidate_costs = None
+            take_costs = None
             quality_scores = None
             frontier_indices = None
             dominated_map = None
@@ -7704,50 +7704,50 @@ Use only numbers 0-100 for scores."""
 
             # Skip directly to winner processing (below)
         else:
-            # Now evaluate candidates (only valid ones, unless all failed)
+            # Now evaluate takes (only valid ones, unless all failed)
             # Update cell progress for evaluation stage
             update_cell_progress(
                 self.session_id, self.config.cascade_id, cell.name, self.depth,
-                candidate_stage="evaluating"
+                take_stage="evaluating"
             )
 
             # Create evaluator trace
-            evaluator_trace = candidates_trace.create_child("evaluator", "candidate_evaluation")
+            evaluator_trace = takes_trace.create_child("evaluator", "take_evaluation")
 
             # Check for human evaluation mode
-            use_human_eval = cell.candidates.evaluator == "human"
-            use_hybrid_eval = cell.candidates.evaluator == "hybrid"
+            use_human_eval = cell.takes.evaluator == "human"
+            use_hybrid_eval = cell.takes.evaluator == "hybrid"
             winner_already_set = False  # Evaluation will determine winner
 
         # Human evaluation: block for human to pick winner via UI
         if use_human_eval or use_hybrid_eval:
             # For hybrid: first do LLM prefilter, then human picks from top N
-            eval_candidates = valid_candidate_results
-            if use_hybrid_eval and cell.candidates.llm_prefilter:
-                prefilter_n = cell.candidates.llm_prefilter
+            eval_takes = valid_take_results
+            if use_hybrid_eval and cell.takes.llm_prefilter:
+                prefilter_n = cell.takes.llm_prefilter
                 console.print(f"{indent}[bold cyan]🔀 Hybrid mode: LLM prefiltering to top {prefilter_n}...[/bold cyan]")
-                eval_candidates = self._llm_prefilter_candidates(
-                    valid_candidate_results,
+                eval_takes = self._llm_prefilter_takes(
+                    valid_take_results,
                     prefilter_n,
-                    cell.candidates.llm_prefilter_instructions or cell.candidates.evaluator_instructions,
+                    cell.takes.llm_prefilter_instructions or cell.takes.evaluator_instructions,
                     evaluator_trace
                 )
-                console.print(f"{indent}  [dim]Filtered to {len(eval_candidates)} candidates for human evaluation[/dim]")
+                console.print(f"{indent}  [dim]Filtered to {len(eval_takes)} takes for human evaluation[/dim]")
 
             console.print(f"{indent}[bold yellow]👤 Human Evaluation: Waiting for human to pick winner...[/bold yellow]")
 
-            # Get costs for each candidate from unified logs
-            candidate_costs = self._get_candidate_costs(eval_candidates)
+            # Get costs for each take from unified logs
+            take_costs = self._get_take_costs(eval_takes)
 
-            # Build candidate outputs and metadata for the UI
-            candidate_outputs = [str(sr.get("result", "")) for sr in eval_candidates]
-            candidate_metadata = []
-            for idx, sr in enumerate(eval_candidates):
-                # Extract images from candidate results
+            # Build take outputs and metadata for the UI
+            take_outputs = [str(sr.get("result", "")) for sr in eval_takes]
+            take_metadata = []
+            for idx, sr in enumerate(eval_takes):
+                # Extract images from take results
                 # Images are stored as (base64_data_url, description) tuples
-                candidate_images = sr.get("images", [])
+                take_images = sr.get("images", [])
                 image_urls = []
-                for img_data in candidate_images:
+                for img_data in take_images:
                     if isinstance(img_data, tuple) and len(img_data) >= 1:
                         # First element is base64 data URL
                         image_urls.append(img_data[0])
@@ -7757,7 +7757,7 @@ Use only numbers 0-100 for scores."""
 
                 meta = {
                     "index": sr["index"],
-                    "cost": candidate_costs[idx] if idx < len(candidate_costs) else None,
+                    "cost": take_costs[idx] if idx < len(take_costs) else None,
                     "tokens": None,  # Could extract from trace
                     "model": sr.get("model"),
                     "mutation_applied": sr.get("mutation_applied"),
@@ -7765,12 +7765,12 @@ Use only numbers 0-100 for scores."""
                     "validation": sr.get("validation"),
                     "images": image_urls,
                 }
-                candidate_metadata.append(meta)
+                take_metadata.append(meta)
 
             # Build UI spec from human_eval config
-            human_eval_config = cell.candidates.human_eval
+            human_eval_config = cell.takes.human_eval
             ui_spec = {
-                "type": "candidate_comparison",
+                "type": "take_comparison",
                 "presentation": human_eval_config.presentation.value if human_eval_config else "side_by_side",
                 "selection_mode": human_eval_config.selection_mode.value if human_eval_config else "pick_one",
                 "attempts": [
@@ -7779,7 +7779,7 @@ Use only numbers 0-100 for scores."""
                         "output": output,
                         "metadata": meta,
                     }
-                    for i, (output, meta) in enumerate(zip(candidate_outputs, candidate_metadata))
+                    for i, (output, meta) in enumerate(zip(take_outputs, take_metadata))
                 ],
                 "options": {
                     "show_index": human_eval_config.show_index if human_eval_config else False,
@@ -7799,12 +7799,12 @@ Use only numbers 0-100 for scores."""
                 session_id=self.session_id,
                 cascade_id=self.config.cascade_id,
                 cell_name=cell.name,
-                checkpoint_type=CheckpointType.CANDIDATE_EVAL,
+                checkpoint_type=CheckpointType.TAKE_EVAL,
                 ui_spec=ui_spec,
                 echo_snapshot=self.echo.get_full_echo(),
-                cell_output=f"Comparing {len(eval_candidates)} candidate attempts",
-                candidate_outputs=candidate_outputs,
-                candidate_metadata=candidate_metadata,
+                cell_output=f"Comparing {len(eval_takes)} take attempts",
+                take_outputs=take_outputs,
+                take_metadata=take_metadata,
                 timeout_seconds=human_eval_config.timeout_seconds if human_eval_config else None
             )
 
@@ -7826,7 +7826,7 @@ Use only numbers 0-100 for scores."""
                     raise TimeoutError(f"Human evaluation timed out for checkpoint {checkpoint.id}")
                 elif on_timeout == "random":
                     import random
-                    winner_index = random.randint(0, len(eval_candidates) - 1)
+                    winner_index = random.randint(0, len(eval_takes) - 1)
                     eval_content = f"[Timeout: Random selection] Selected attempt {winner_index + 1}"
                     eval_prompt = f"[Human Evaluation Timeout] Random selection fallback"
                 elif on_timeout == "first":
@@ -7842,27 +7842,27 @@ Use only numbers 0-100 for scores."""
                 # Got human response
                 if response.get("reject_all"):
                     # Human rejected all - could retry or abort
-                    console.print(f"{indent}[yellow]⚠ Human rejected all candidates[/yellow]")
-                    raise ValueError("Human rejected all candidate attempts")
+                    console.print(f"{indent}[yellow]⚠ Human rejected all takes[/yellow]")
+                    raise ValueError("Human rejected all take attempts")
 
-                # Get winner index (relative to eval_candidates)
+                # Get winner index (relative to eval_takes)
                 relative_winner_index = response.get("winner_index", 0)
 
-                # Map back to original index in valid_candidate_results
-                winner_candidate = eval_candidates[relative_winner_index]
+                # Map back to original index in valid_take_results
+                winner_take = eval_takes[relative_winner_index]
                 winner_index = next(
-                    i for i, sr in enumerate(valid_candidate_results)
-                    if sr["index"] == winner_candidate["index"]
+                    i for i, sr in enumerate(valid_take_results)
+                    if sr["index"] == winner_take["index"]
                 )
 
                 # Build eval_content and eval_prompt for logging
                 reasoning = response.get("reasoning", "")
-                eval_content = f"[Human selection] Selected attempt {winner_candidate['index'] + 1}"
+                eval_content = f"[Human selection] Selected attempt {winner_take['index'] + 1}"
                 if reasoning:
                     eval_content += f"\nReasoning: {reasoning}"
-                eval_prompt = f"[Human Evaluation] {len(eval_candidates)} candidates presented to human evaluator"
+                eval_prompt = f"[Human Evaluation] {len(eval_takes)} takes presented to human evaluator"
 
-                console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_candidate['index'] + 1}[/bold green]")
+                console.print(f"{indent}[bold green]✓ Human selected: Sounding {winner_take['index'] + 1}[/bold green]")
                 if reasoning:
                     console.print(f"{indent}  [dim]Reasoning: {reasoning[:100]}...[/dim]")
 
@@ -7871,11 +7871,11 @@ Use only numbers 0-100 for scores."""
                 log_preference_eval(
                     session_id=self.session_id,
                     cell_name=cell.name,
-                    preferred_index=winner_candidate["index"],
+                    preferred_index=winner_take["index"],
                     system_winner_index=-1,  # No system winner in pure human eval
-                    candidate_outputs=[
+                    take_outputs=[
                         {"index": sr["index"], "content": str(sr.get("result", "")), "metadata": sr}
-                        for sr in eval_candidates
+                        for sr in eval_takes
                     ],
                     cascade_id=self.config.cascade_id,
                     notes=reasoning,
@@ -7888,41 +7888,41 @@ Use only numbers 0-100 for scores."""
                 )
 
         # Initialize variables used in both human eval and LLM eval paths
-        candidate_costs = None
+        take_costs = None
         quality_scores = None
         frontier_indices = None
         dominated_map = None
         pareto_ranks = None
         eval_prompt = None  # Initialize for all paths (used in metadata logging)
-        use_cost_aware = cell.candidates.cost_aware_evaluation and cell.candidates.cost_aware_evaluation.enabled
-        use_pareto = cell.candidates.pareto_frontier and cell.candidates.pareto_frontier.enabled
+        use_cost_aware = cell.takes.cost_aware_evaluation and cell.takes.cost_aware_evaluation.enabled
+        use_pareto = cell.takes.pareto_frontier and cell.takes.pareto_frontier.enabled
 
         # Only run LLM evaluation if we didn't do human eval (or fell back from timeout)
         # Also skip if winner_already_set (aggregate mode)
         if not (use_human_eval or use_hybrid_eval or winner_already_set):
-            console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_candidate_results)} candidates...[/bold yellow]")
+            console.print(f"{indent}[bold yellow]⚖️  Evaluating {len(valid_take_results)} takes...[/bold yellow]")
 
             # Cell 3: Pareto Frontier Analysis
             if use_pareto:
-                assert cell.candidates.pareto_frontier is not None  # Guarded by use_pareto check
+                assert cell.takes.pareto_frontier is not None  # Guarded by use_pareto check
                 console.print(f"{indent}  [bold cyan]📊 Computing Pareto Frontier...[/bold cyan]")
 
                 # Initialize eval_prompt for metadata logging (Pareto uses quality scoring, not traditional eval)
-                eval_prompt = f"{cell.candidates.evaluator_instructions}\n\nPareto Frontier Analysis: Quality scoring + cost-based frontier computation."
+                eval_prompt = f"{cell.takes.evaluator_instructions}\n\nPareto Frontier Analysis: Quality scoring + cost-based frontier computation."
 
                 # Get costs
                 console.print(f"{indent}  [dim]Gathering cost data...[/dim]")
-                candidate_costs = self._get_candidate_costs(valid_candidate_results)
-                for i, sr in enumerate(valid_candidate_results):
-                    sr["cost"] = candidate_costs[i]
-                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in candidate_costs)}[/dim]")
+                take_costs = self._get_take_costs(valid_take_results)
+                for i, sr in enumerate(valid_take_results):
+                    sr["cost"] = take_costs[i]
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in take_costs)}[/dim]")
 
                 # Get quality scores
                 console.print(f"{indent}  [dim]Getting quality scores from evaluator...[/dim]")
                 (quality_scores, evaluator_reasoning, eval_cost, eval_tokens_in,
                  eval_tokens_out, eval_request_id, eval_model) = self._get_quality_scores_from_evaluator(
-                    valid_candidate_results,
-                    cell.candidates.evaluator_instructions,
+                    valid_take_results,
+                    cell.takes.evaluator_instructions,
                     evaluator_trace
                 )
 
@@ -7931,7 +7931,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=candidates_trace.id,
+                    parent_id=takes_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -7947,17 +7947,17 @@ Use only numbers 0-100 for scores."""
                     request_id=eval_request_id,
                 )
 
-                for i, sr in enumerate(valid_candidate_results):
+                for i, sr in enumerate(valid_take_results):
                     sr["quality_score"] = quality_scores[i]
                 console.print(f"{indent}  [dim]Qualities: {', '.join(f'{q:.1f}' for q in quality_scores)}[/dim]")
 
                 # Compute Pareto frontier
                 frontier_indices, dominated_map, pareto_ranks = self._compute_pareto_frontier(
-                    valid_candidate_results, quality_scores, candidate_costs
+                    valid_take_results, quality_scores, take_costs
                 )
 
-                # Store Pareto data in candidate results
-                for i, sr in enumerate(valid_candidate_results):
+                # Store Pareto data in take results
+                for i, sr in enumerate(valid_take_results):
                     sr["is_pareto_optimal"] = i in frontier_indices
                     sr["dominated_by"] = dominated_map.get(i)
                     sr["pareto_rank"] = pareto_ranks.get(i, 2)
@@ -7965,24 +7965,24 @@ Use only numbers 0-100 for scores."""
                 # Display frontier
                 console.print(f"{indent}  [bold green]Pareto Frontier ({len(frontier_indices)} non-dominated solutions):[/bold green]")
                 for idx in frontier_indices:
-                    model = valid_candidate_results[idx].get("model", "unknown")
+                    model = valid_take_results[idx].get("model", "unknown")
                     quality = quality_scores[idx]
-                    cost = candidate_costs[idx]
-                    console.print(f"{indent}    • Sounding {valid_candidate_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
+                    cost = take_costs[idx]
+                    console.print(f"{indent}    • Sounding {valid_take_results[idx]['index']+1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f}")
 
                 # Select winner from frontier
                 winner_index = self._select_from_pareto_frontier(
-                    valid_candidate_results,
+                    valid_take_results,
                     frontier_indices,
                     quality_scores,
-                    candidate_costs,
-                    cell.candidates.pareto_frontier.policy
+                    take_costs,
+                    cell.takes.pareto_frontier.policy
                 )
 
                 # Build comprehensive eval_content with quality reasoning + Pareto selection
-                winner_model = valid_candidate_results[winner_index].get("model", "unknown")
+                winner_model = valid_take_results[winner_index].get("model", "unknown")
                 winner_quality = quality_scores[winner_index]
-                winner_cost = candidate_costs[winner_index]
+                winner_cost = take_costs[winner_index]
 
                 eval_content = f"""## Quality Assessment
 
@@ -7990,71 +7990,71 @@ Use only numbers 0-100 for scores."""
 
 ## Pareto Frontier Analysis
 
-- **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_candidate_results)} total
-- **Selection policy:** `{cell.candidates.pareto_frontier.policy}`
+- **Frontier size:** {len(frontier_indices)} non-dominated solutions out of {len(valid_take_results)} total
+- **Selection policy:** `{cell.takes.pareto_frontier.policy}`
 - **Winner:** Attempt {winner_index + 1} ({winner_model}) - Quality: {winner_quality:.1f}, Cost: ${winner_cost:.6f}
 
 ### Frontier Members:
 """
                 for idx in frontier_indices:
-                    model = valid_candidate_results[idx].get("model", "unknown")
+                    model = valid_take_results[idx].get("model", "unknown")
                     quality = quality_scores[idx]
-                    cost = candidate_costs[idx]
+                    cost = take_costs[idx]
                     is_winner = "**WINNER**" if idx == winner_index else ""
                     eval_content += f"- Attempt {idx + 1} ({model}): Quality={quality:.1f}, Cost=${cost:.6f} {is_winner}\n"
 
                 # Log Pareto data for visualization
-                if cell.candidates.pareto_frontier.show_frontier:
+                if cell.takes.pareto_frontier.show_frontier:
                     self._log_pareto_frontier(
                         self.session_id,
                         cell.name,
-                        valid_candidate_results,
+                        valid_take_results,
                         frontier_indices,
                         dominated_map,
                         quality_scores,
-                        candidate_costs,
+                        take_costs,
                         winner_index
                     )
 
             # Cell 2: Cost-Aware Evaluation
             elif use_cost_aware:
-                assert cell.candidates.cost_aware_evaluation is not None  # Guarded by use_cost_aware
+                assert cell.takes.cost_aware_evaluation is not None  # Guarded by use_cost_aware
                 console.print(f"{indent}  [dim]Gathering cost data for cost-aware evaluation...[/dim]")
-                candidate_costs = self._get_candidate_costs(valid_candidate_results)
+                take_costs = self._get_take_costs(valid_take_results)
                 normalized_costs = self._normalize_costs(
-                    candidate_costs,
-                    cell.candidates.cost_aware_evaluation.cost_normalization
+                    take_costs,
+                    cell.takes.cost_aware_evaluation.cost_normalization
                 )
-                # Store costs in candidate results for logging
-                for i, sr in enumerate(valid_candidate_results):
-                    sr["cost"] = candidate_costs[i]
+                # Store costs in take results for logging
+                for i, sr in enumerate(valid_take_results):
+                    sr["cost"] = take_costs[i]
                     sr["normalized_cost"] = normalized_costs[i]
 
                 # Build cost-aware evaluation prompt
                 eval_prompt = self._build_cost_aware_eval_prompt(
-                    valid_candidate_results,
-                    candidate_costs,
-                    cell.candidates,
-                    cell.candidates.evaluator_instructions
+                    valid_take_results,
+                    take_costs,
+                    cell.takes,
+                    cell.takes.evaluator_instructions
                 )
-                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in candidate_costs)}[/dim]")
+                console.print(f"{indent}  [dim]Costs: {', '.join(f'${c:.6f}' for c in take_costs)}[/dim]")
 
-                # Check if any candidates have images for multi-modal evaluation
-                any_images = any(candidate.get('images') for candidate in valid_candidate_results)
+                # Check if any takes have images for multi-modal evaluation
+                any_images = any(take.get('images') for take in valid_take_results)
                 eval_context_messages = []
 
                 if any_images:
                     # Build multi-modal context messages with images
                     # Images are shown with clear attempt labels for association
-                    for i, candidate in enumerate(valid_candidate_results):
-                        candidate_images = candidate.get('images', [])
-                        if candidate_images:
-                            num_images = len(candidate_images)
+                    for i, take in enumerate(valid_take_results):
+                        take_images = take.get('images', [])
+                        if take_images:
+                            num_images = len(take_images)
                             attempt_content = [{
                                 "type": "text",
                                 "text": f"═══ ATTEMPT {i+1} VISUAL OUTPUT ({num_images} image{'s' if num_images > 1 else ''}) ═══"
                             }]
-                            for img_idx, (img_data, desc) in enumerate(candidate_images):
+                            for img_idx, (img_data, desc) in enumerate(take_images):
                                 attempt_content.append({
                                     "type": "image_url",
                                     "image_url": {"url": img_data}
@@ -8067,7 +8067,7 @@ Use only numbers 0-100 for scores."""
                                 "role": "user",
                                 "content": attempt_content
                             })
-                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_candidate_results)} total images[/cyan]")
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_take_results)} total images[/cyan]")
 
                 # Create evaluator agent and run
                 evaluator_agent = Agent(
@@ -8092,7 +8092,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=candidates_trace.id,
+                    parent_id=takes_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -8114,31 +8114,31 @@ Use only numbers 0-100 for scores."""
                 match = re.search(r'\b([1-9]\d*)\b', eval_content)
                 if match:
                     winner_index = int(match.group(1)) - 1
-                    if winner_index >= len(valid_candidate_results):
+                    if winner_index >= len(valid_take_results):
                         winner_index = 0
 
             # Cell 1: Standard quality-only evaluation
             else:
-                eval_prompt = f"{cell.candidates.evaluator_instructions}\n\n"
+                eval_prompt = f"{cell.takes.evaluator_instructions}\n\n"
                 eval_prompt += "Please evaluate the following attempts and select the best one.\n\n"
 
-                # Check if any candidates have images
-                any_images = any(candidate.get('images') for candidate in valid_candidate_results)
+                # Check if any takes have images
+                any_images = any(take.get('images') for take in valid_take_results)
 
                 if any_images:
                     # Multi-modal evaluation: build context with images
                     # Each attempt gets its own message with clear labeling: text result + images together
                     eval_context_messages = []
 
-                    for i, candidate in enumerate(valid_candidate_results):
-                        candidate_images = candidate.get('images', [])
-                        num_images = len(candidate_images)
+                    for i, take in enumerate(valid_take_results):
+                        take_images = take.get('images', [])
+                        num_images = len(take_images)
 
                         # Build content block with clear attempt identification
                         header = f"═══════════════════════════════════════\n"
-                        header += f"ATTEMPT {i+1} OF {len(valid_candidate_results)}\n"
+                        header += f"ATTEMPT {i+1} OF {len(valid_take_results)}\n"
                         header += f"═══════════════════════════════════════\n\n"
-                        header += f"Text Result:\n{candidate['result']}"
+                        header += f"Text Result:\n{take['result']}"
 
                         if num_images > 0:
                             header += f"\n\n📸 Visual Output ({num_images} image{'s' if num_images > 1 else ''} follow):"
@@ -8146,7 +8146,7 @@ Use only numbers 0-100 for scores."""
                         attempt_content = [{"type": "text", "text": header}]
 
                         # Add images immediately after the header (same message = clear association)
-                        for img_idx, (img_data, desc) in enumerate(candidate_images):
+                        for img_idx, (img_data, desc) in enumerate(take_images):
                             attempt_content.append({
                                 "type": "image_url",
                                 "image_url": {"url": img_data}
@@ -8163,19 +8163,19 @@ Use only numbers 0-100 for scores."""
                         })
 
                     # Add final evaluation instruction
-                    eval_prompt += f"\n\nI've shown you {len(valid_candidate_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
+                    eval_prompt += f"\n\nI've shown you {len(valid_take_results)} attempts above. Each attempt is clearly labeled with 'ATTEMPT N' followed by its text result and any images it produced. "
                     eval_prompt += f"Compare both the text quality AND visual output quality. "
-                    eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_candidate_results)}) and a brief explanation."
+                    eval_prompt += f"Respond with ONLY the number of the best attempt (1-{len(valid_take_results)}) and a brief explanation."
 
-                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_candidate_results)} total images[/cyan]")
+                    console.print(f"{indent}  [cyan]📸 Multi-modal evaluation: {sum(len(s.get('images', [])) for s in valid_take_results)} total images[/cyan]")
                 else:
                     # Text-only evaluation (original behavior)
                     eval_context_messages = []
-                    for i, candidate in enumerate(valid_candidate_results):
+                    for i, take in enumerate(valid_take_results):
                         eval_prompt += f"## Attempt {i+1}\n"
-                        eval_prompt += f"Result: {candidate['result']}\n\n"
+                        eval_prompt += f"Result: {take['result']}\n\n"
 
-                    eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_candidate_results))
+                    eval_prompt += "\nRespond with ONLY the number of the best attempt (1-{0}) and a brief explanation.".format(len(valid_take_results))
 
                 # Create evaluator agent and run
                 evaluator_agent = Agent(
@@ -8200,7 +8200,7 @@ Use only numbers 0-100 for scores."""
                     session_id=self.session_id,
                     parent_session_id=getattr(self, 'parent_session_id', None),
                     trace_id=evaluator_trace.id,
-                    parent_id=candidates_trace.id,
+                    parent_id=takes_trace.id,
                     node_type="evaluator",
                     role="assistant",
                     depth=self.depth,
@@ -8222,13 +8222,13 @@ Use only numbers 0-100 for scores."""
                 match = re.search(r'\b([1-9]\d*)\b', eval_content)
                 if match:
                     winner_index = int(match.group(1)) - 1
-                    if winner_index >= len(valid_candidate_results):
+                    if winner_index >= len(valid_take_results):
                         winner_index = 0
 
-        # Get winner from valid_candidate_results (winner_index is relative to this filtered list)
+        # Get winner from valid_take_results (winner_index is relative to this filtered list)
         # Skip if winner was already set by aggregate mode
         if not winner_already_set:
-            winner = valid_candidate_results[winner_index]
+            winner = valid_take_results[winner_index]
 
         # Display winner with original index for clarity
         if winner.get("is_aggregated"):
@@ -8240,11 +8240,11 @@ Use only numbers 0-100 for scores."""
         self.context_messages = context_snapshot + winner['context']
         self.echo.state = winner['final_state']
 
-        # Reset candidate index (no longer in candidate context)
-        self.current_cell_candidate_index = None
+        # Reset take index (no longer in take context)
+        self.current_cell_take_index = None
 
         # Track original winner index for metadata logging
-        # In aggregate mode, all valid candidates contribute (no single winner)
+        # In aggregate mode, all valid takes contribute (no single winner)
         is_aggregated = winner.get("is_aggregated", False)
         if is_aggregated:
             original_winner_index = -1  # Sentinel value for aggregate mode
@@ -8253,53 +8253,53 @@ Use only numbers 0-100 for scores."""
             original_winner_index = winner['index']
             aggregated_indices = set()
 
-        # Compute species hash for prompt evolution tracking (once for all candidates in this cell)
-        # NOTE: This should match the species_hash computed at the start of candidates (line 3374)
+        # Compute species hash for prompt evolution tracking (once for all takes in this cell)
+        # NOTE: This should match the species_hash computed at the start of takes (line 3374)
         # We re-compute here instead of passing it through to avoid coupling
         cell_config_dict = cell.model_dump() if hasattr(cell, 'model_dump') else None
         cell_species_hash = compute_species_hash(cell_config_dict, input_data)
 
-        # Add all candidate attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
-        for sr in candidate_results:
-            # In aggregate mode, all contributing candidates are "winners"
+        # Add all take attempts to Echo history with metadata for visualization (auto-logs via unified_logs)
+        for sr in take_results:
+            # In aggregate mode, all contributing takes are "winners"
             if is_aggregated:
                 is_winner = sr["index"] in aggregated_indices
             else:
                 is_winner = sr["index"] == original_winner_index
-            candidate_metadata = {
+            take_metadata = {
                 "cell_name": cell.name,
-                "candidate_index": sr["index"],
+                "take_index": sr["index"],
                 "is_winner": is_winner,
                 "factor": factor,
                 "mutation_applied": sr.get("mutation_applied"),  # Log what mutation was used
                 "mutation_type": sr.get("mutation_type"),  # Log mutation type: rewrite, augment, approach
                 "mutation_template": sr.get("mutation_template"),  # Log mutation template/instruction
-                "model": sr.get("model"),  # Log which model was used (Cell 1: Multi-Model Candidates)
+                "model": sr.get("model"),  # Log which model was used (Cell 1: Multi-Model Takes)
                 "validation": sr.get("validation"),  # Log validation result if validator was used
                 "species_hash": cell_species_hash,  # Track prompt template DNA for evolution analysis
             }
             # Add cost data if available (Cell 2: Cost-Aware Evaluation)
             if sr.get("cost") is not None:
-                candidate_metadata["cost"] = sr["cost"]
-                candidate_metadata["normalized_cost"] = sr.get("normalized_cost")
+                take_metadata["cost"] = sr["cost"]
+                take_metadata["normalized_cost"] = sr.get("normalized_cost")
             # Add Pareto data if available (Cell 3: Pareto Frontier Analysis)
             if sr.get("quality_score") is not None:
-                candidate_metadata["quality_score"] = sr["quality_score"]
+                take_metadata["quality_score"] = sr["quality_score"]
             if sr.get("is_pareto_optimal") is not None:
-                candidate_metadata["is_pareto_optimal"] = sr["is_pareto_optimal"]
-                candidate_metadata["dominated_by"] = sr.get("dominated_by")
-                candidate_metadata["pareto_rank"] = sr.get("pareto_rank")
+                take_metadata["is_pareto_optimal"] = sr["is_pareto_optimal"]
+                take_metadata["dominated_by"] = sr.get("dominated_by")
+                take_metadata["pareto_rank"] = sr.get("pareto_rank")
 
             # Add semantic classification
-            candidate_metadata["semantic_actor"] = "candidate_agent"
-            candidate_metadata["semantic_purpose"] = "generation"
+            take_metadata["semantic_actor"] = "take_agent"
+            take_metadata["semantic_purpose"] = "generation"
 
             self.echo.add_history({
-                "role": "candidate_attempt",
+                "role": "take_attempt",
                 "content": str(sr["result"])[:200] if sr["result"] else "",
-                "node_type": "candidate_attempt"
-            }, trace_id=sr["trace_id"], parent_id=candidates_trace.id, node_type="candidate_attempt",
-               metadata=candidate_metadata)
+                "node_type": "take_attempt"
+            }, trace_id=sr["trace_id"], parent_id=takes_trace.id, node_type="take_attempt",
+               metadata=take_metadata)
 
         # Log evaluator entry (skip in aggregate mode - there's no evaluator)
         if not is_aggregated:
@@ -8310,27 +8310,27 @@ Use only numbers 0-100 for scores."""
             # Build per-attempt summary
             attempt_summaries = []
             total_images_evaluated = 0
-            for i, candidate in enumerate(valid_candidate_results):
-                candidate_images = candidate.get('images', [])
-                num_images = len(candidate_images)
+            for i, take in enumerate(valid_take_results):
+                take_images = take.get('images', [])
+                num_images = len(take_images)
                 total_images_evaluated += num_images
                 attempt_summaries.append({
                     "attempt_number": i + 1,
-                    "original_candidate_index": candidate.get('index', i),
+                    "original_take_index": take.get('index', i),
                     "has_images": num_images > 0,
                     "image_count": num_images,
-                    "result_length": len(str(candidate.get('result', ''))) if candidate.get('result') else 0,
-                    "model": candidate.get('model'),
-                    "mutation_applied": candidate.get('mutation_applied'),
-                    "validation": candidate.get('validation'),
-                    "cost": candidate.get('cost'),
+                    "result_length": len(str(take.get('result', ''))) if take.get('result') else 0,
+                    "model": take.get('model'),
+                    "mutation_applied": take.get('mutation_applied'),
+                    "validation": take.get('validation'),
+                    "cost": take.get('cost'),
                 })
 
             evaluator_input_summary = {
                 "is_multimodal": total_images_evaluated > 0,
-                "total_attempts_shown": len(valid_candidate_results),
-                "total_candidates_run": len(candidate_results),
-                "filtered_count": len(candidate_results) - len(valid_candidate_results),
+                "total_attempts_shown": len(valid_take_results),
+                "total_takes_run": len(take_results),
+                "filtered_count": len(take_results) - len(valid_take_results),
                 "total_images": total_images_evaluated,
                 "attempts": attempt_summaries,
                 "evaluation_mode": "cost_aware" if use_cost_aware else ("pareto" if use_pareto else "quality_only"),
@@ -8343,31 +8343,31 @@ Use only numbers 0-100 for scores."""
                 "winner_trace_id": winner['trace_id'],
                 "evaluation": eval_content,
                 "model": self.model,
-                "total_candidates": len(candidate_results),
-                "valid_candidates": len(valid_candidate_results),
+                "total_takes": len(take_results),
+                "valid_takes": len(valid_take_results),
                 # NEW: Full evaluator input observability
                 "evaluator_prompt": eval_prompt,  # The full text prompt sent to evaluator
                 "evaluator_system_prompt": evaluator_system_prompt,  # System prompt used
                 "evaluator_input_summary": evaluator_input_summary,  # Structured summary of what was evaluated
             }
-            # Add cost-aware evaluation info (Cell 2: Multi-Model Candidates)
-            if use_cost_aware and cell.candidates.cost_aware_evaluation:
+            # Add cost-aware evaluation info (Cell 2: Multi-Model Takes)
+            if use_cost_aware and cell.takes.cost_aware_evaluation:
                 evaluator_metadata["cost_aware"] = True
-                evaluator_metadata["quality_weight"] = cell.candidates.cost_aware_evaluation.quality_weight
-                evaluator_metadata["cost_weight"] = cell.candidates.cost_aware_evaluation.cost_weight
-                if candidate_costs:
-                    evaluator_metadata["candidate_costs"] = candidate_costs
+                evaluator_metadata["quality_weight"] = cell.takes.cost_aware_evaluation.quality_weight
+                evaluator_metadata["cost_weight"] = cell.takes.cost_aware_evaluation.cost_weight
+                if take_costs:
+                    evaluator_metadata["take_costs"] = take_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
             # Add Pareto frontier info (Cell 3: Pareto Frontier Analysis)
-            if use_pareto and cell.candidates.pareto_frontier:
+            if use_pareto and cell.takes.pareto_frontier:
                 evaluator_metadata["pareto_enabled"] = True
-                evaluator_metadata["pareto_policy"] = cell.candidates.pareto_frontier.policy
+                evaluator_metadata["pareto_policy"] = cell.takes.pareto_frontier.policy
                 evaluator_metadata["frontier_size"] = len(frontier_indices) if frontier_indices else 0
                 if quality_scores:
                     evaluator_metadata["quality_scores"] = quality_scores
                     evaluator_metadata["winner_quality"] = winner.get("quality_score")
-                if candidate_costs:
-                    evaluator_metadata["candidate_costs"] = candidate_costs
+                if take_costs:
+                    evaluator_metadata["take_costs"] = take_costs
                     evaluator_metadata["winner_cost"] = winner.get("cost")
 
             # Add semantic classification to evaluator metadata
@@ -8382,72 +8382,72 @@ Use only numbers 0-100 for scores."""
                 "role": "evaluator",
                 "content": eval_content,  # Full content, no truncation
                 "node_type": "evaluator"
-            }, trace_id=evaluator_trace.id, parent_id=candidates_trace.id, node_type="evaluator",
+            }, trace_id=evaluator_trace.id, parent_id=takes_trace.id, node_type="evaluator",
                metadata=evaluator_metadata, skip_unified_log=skip_auto_log)
 
         # Add winning result to history
-        # IMPORTANT: Include candidate_index and is_winner so UI can identify winning model
+        # IMPORTANT: Include take_index and is_winner so UI can identify winning model
         # CRITICAL: Store actual winner output in "content" for fallback extraction
         if is_aggregated:
-            # Aggregate mode: all contributing candidates are "winners"
+            # Aggregate mode: all contributing takes are "winners"
             self.echo.add_history({
-                "role": "candidates_result",
+                "role": "takes_result",
                 "content": winner.get('result'),  # Actual aggregated output
                 "winner_index": -1,  # No single winner
                 "evaluation": eval_content,
                 "is_aggregated": True,
                 "aggregated_indices": list(aggregated_indices)
-            }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates_result",
+            }, trace_id=takes_trace.id, parent_id=trace.id, node_type="takes_result",
                metadata={"cell_name": cell.name, "winner_index": -1, "factor": factor,
                          "is_aggregated": True, "aggregated_count": winner.get('aggregated_count', 0),
                          "aggregated_indices": list(aggregated_indices),
                          "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
-            # Mark all contributing candidates as winners in database
-            from .unified_logs import mark_candidate_winner
+            # Mark all contributing takes as winners in database
+            from .unified_logs import mark_take_winner
             for idx in aggregated_indices:
-                mark_candidate_winner(self.session_id, cell.name, idx)
+                mark_take_winner(self.session_id, cell.name, idx)
         else:
             # Single winner mode
             self.echo.add_history({
-                "role": "candidates_result",
+                "role": "takes_result",
                 "content": winner.get('result'),  # Actual winner output
                 "winner_index": winner_index + 1,
                 "evaluation": eval_content
-            }, trace_id=candidates_trace.id, parent_id=trace.id, node_type="candidates_result",
+            }, trace_id=takes_trace.id, parent_id=trace.id, node_type="takes_result",
                metadata={"cell_name": cell.name, "winner_index": winner_index, "factor": factor,
-                         "candidate_index": original_winner_index, "is_winner": True,
+                         "take_index": original_winner_index, "is_winner": True,
                          "model": winner.get('model'),  # Track winning model for UI highlighting
                          "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
-            # Mark winning candidate in database for prompt evolution learning
-            # This updates all rows in the winning candidate thread with is_winner=True
+            # Mark winning take in database for prompt evolution learning
+            # This updates all rows in the winning take thread with is_winner=True
             # so _fetch_winning_mutations() can find them for rewrite mode learning
-            from .unified_logs import mark_candidate_winner
-            mark_candidate_winner(self.session_id, cell.name, original_winner_index)
+            from .unified_logs import mark_take_winner
+            mark_take_winner(self.session_id, cell.name, original_winner_index)
 
         self._update_graph()
 
         # Check if reforge is configured
-        if cell.candidates.reforge:
+        if cell.takes.reforge:
             # Reforge doesn't make sense in aggregate mode (no single winner to refine)
             if is_aggregated:
                 console.print(f"{indent}[yellow]⚠️  Reforge skipped: Not compatible with aggregate mode[/yellow]")
             else:
-                # Track which candidate won so reforge messages can reference it
-                self.current_winning_candidate_index = original_winner_index
+                # Track which take won so reforge messages can reference it
+                self.current_winning_take_index = original_winner_index
 
                 winner = self._reforge_winner(
                     winner=winner,
                     cell=cell,
                     input_data=input_data,
-                    trace=candidates_trace,
+                    trace=takes_trace,
                     context_snapshot=context_snapshot,
-                    reforge_step=0  # Initial candidates = step 0
+                    reforge_step=0  # Initial takes = step 0
                 )
 
                 # Reset after reforge completes
-                self.current_winning_candidate_index = None
+                self.current_winning_take_index = None
 
         return winner['result']
 
@@ -8702,13 +8702,13 @@ Use only numbers 0-100 for scores."""
     def _reforge_winner(self, winner: dict, cell: CellConfig, input_data: dict, trace: TraceNode,
                         context_snapshot: list, reforge_step: int) -> dict:
         """
-        Reforge (refine) the winning output through iterative candidates.
-        Each step runs mini-candidates with honing prompt to progressively improve quality.
+        Reforge (refine) the winning output through iterative takes.
+        Each step runs mini-takes with honing prompt to progressively improve quality.
         """
-        assert cell.candidates is not None, "candidates must be configured"
-        assert cell.candidates.reforge is not None, "candidates.reforge must be configured"
+        assert cell.takes is not None, "takes must be configured"
+        assert cell.takes.reforge is not None, "takes.reforge must be configured"
         indent = "  " * self.depth
-        reforge_config = cell.candidates.reforge
+        reforge_config = cell.takes.reforge
         current_output = winner['result']
         original_instructions = cell.instructions
 
@@ -8763,7 +8763,7 @@ Refinement directive: {reforge_config.honing_prompt}
             refine_cell = deepcopy(cell)
             refine_cell.instructions = refinement_instructions
 
-            # Snapshot state before reforge candidates
+            # Snapshot state before reforge takes
             echo_state_snapshot = self.echo.state.copy()
             echo_history_snapshot = self.echo.history.copy()
             echo_lineage_snapshot = self.echo.lineage.copy()
@@ -8778,7 +8778,7 @@ Refinement directive: {reforge_config.honing_prompt}
             from concurrent.futures import ThreadPoolExecutor, as_completed
             from .echo import Echo
             factor_per_step = reforge_config.factor_per_step
-            max_parallel = cell.candidates.max_parallel or 3
+            max_parallel = cell.takes.max_parallel or 3
             max_workers = min(factor_per_step, max_parallel)
             console.print(f"{indent}    [dim]Parallel workers: {max_workers}[/dim]")
 
@@ -8804,7 +8804,7 @@ Refinement directive: {reforge_config.honing_prompt}
                         depth=self.depth,
                         parent_trace=refinement_trace,
                         hooks=self.hooks,
-                        candidate_index=i,
+                        take_index=i,
                         parent_session_id=self.parent_session_id
                     )
 
@@ -8818,8 +8818,8 @@ Refinement directive: {reforge_config.honing_prompt}
                     refinement_runner.context_messages = context_snapshot.copy()
 
                     # Set tracking state
-                    refinement_runner.current_cell_candidate_index = i
-                    refinement_runner._current_candidate_factor = factor_per_step  # For Jinja2 templates
+                    refinement_runner.current_cell_take_index = i
+                    refinement_runner._current_take_factor = factor_per_step  # For Jinja2 templates
                     refinement_runner.current_reforge_step = step
 
                     # Execute the cell on isolated runner
@@ -8902,12 +8902,12 @@ Refinement directive: {reforge_config.honing_prompt}
             evaluator_trace = reforge_trace.create_child("evaluator", "reforge_evaluation")
 
             # Use custom evaluator or default
-            eval_instructions = reforge_config.evaluator_override or cell.candidates.evaluator_instructions
+            eval_instructions = reforge_config.evaluator_override or cell.takes.evaluator_instructions
 
             eval_prompt = f"{eval_instructions}\n\n"
             eval_prompt += "Please evaluate the following refinements and select the best one.\n\n"
 
-            # Check if any refinements have images (multi-modal evaluation like candidates)
+            # Check if any refinements have images (multi-modal evaluation like takes)
             any_images = any(refinement.get('images') for refinement in reforge_results)
 
             if any_images:
@@ -8989,7 +8989,7 @@ Refinement directive: {reforge_config.honing_prompt}
                        tokens_out=eval_tokens_out, request_id=eval_request_id,
                        cell_name=cell.name)
 
-            # Build evaluator input summary for observability (like candidates)
+            # Build evaluator input summary for observability (like takes)
             total_images_evaluated = sum(len(r.get('images', [])) for r in reforge_results)
             refinement_summaries = []
             for i, refinement in enumerate(reforge_results):
@@ -9058,8 +9058,8 @@ Refinement directive: {reforge_config.honing_prompt}
                })
 
             # Mark reforge winner in database for prompt evolution learning
-            from .unified_logs import mark_candidate_winner
-            mark_candidate_winner(self.session_id, cell.name, winner_index)
+            from .unified_logs import mark_take_winner
+            mark_take_winner(self.session_id, cell.name, winner_index)
 
             # Check threshold ward if configured
             if reforge_config.threshold:
@@ -9089,8 +9089,8 @@ Refinement directive: {reforge_config.honing_prompt}
             current_output = refined_winner['result']
             winner = refined_winner
 
-        # Reset candidate index and reforge step after reforge completes
-        self.current_cell_candidate_index = None
+        # Reset take index and reforge step after reforge completes
+        self.current_cell_take_index = None
         self.current_reforge_step = None
 
         # Apply final winner's context
@@ -9141,9 +9141,9 @@ Refinement directive: {reforge_config.honing_prompt}
             if Agent.is_image_generation_model(cell_model):
                 return self._execute_image_generation_cell(cell, input_data, trace)
 
-            # Check if candidates (Tree of Thought) is enabled
-            if cell.candidates and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1):
-                return self._execute_cell_with_candidates(cell, input_data, trace, initial_injection)
+            # Check if takes (Tree of Thought) is enabled
+            if cell.takes and (isinstance(cell.takes.factor, str) or cell.takes.factor > 1):
+                return self._execute_cell_with_takes(cell, input_data, trace, initial_injection)
 
             return self._execute_cell_internal(cell, input_data, trace, initial_injection)
 
@@ -9179,7 +9179,7 @@ Refinement directive: {reforge_config.honing_prompt}
                     "error_message": display_msg,
                     "cell_name": cell.name,
                     "cell_type": "deterministic" if cell.is_deterministic() else "llm",
-                    "has_candidates": cell.candidates is not None and (isinstance(cell.candidates.factor, str) or cell.candidates.factor > 1) if cell.candidates else False,
+                    "has_takes": cell.takes is not None and (isinstance(cell.takes.factor, str) or cell.takes.factor > 1) if cell.takes else False,
                 }
             )
 
@@ -10450,9 +10450,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         # Reset auto-context loop tracking for this cell
         self._loop_validation_failures = []
 
-        # Set current candidate index if we're in a candidate (for parallel candidate decisions)
-        if self.current_cell_candidate_index is not None:
-            set_current_candidate_index(self.current_cell_candidate_index)
+        # Set current take index if we're in a take (for parallel take decisions)
+        if self.current_cell_take_index is not None:
+            set_current_take_index(self.current_cell_take_index)
 
         def _cleanup_rag():
             if rag_context:
@@ -10511,10 +10511,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
             "history": self.echo.history,
             "outputs": outputs,
             "lineage": self.echo.lineage,
-            # Sounding context - enables fan-out patterns like {{ state.items[candidate_index] }}
-            "candidate_index": self.current_cell_candidate_index if self.current_cell_candidate_index is not None else 0,
-            "candidate_factor": getattr(self, '_current_candidate_factor', 1),  # Total candidates in this cell
-            "is_candidate": self.current_cell_candidate_index is not None,
+            # Sounding context - enables fan-out patterns like {{ state.items[take_index] }}
+            "take_index": self.current_cell_take_index if self.current_cell_take_index is not None else 0,
+            "take_factor": getattr(self, '_current_take_factor', 1),  # Total takes in this cell
+            "is_take": self.current_cell_take_index is not None,
         }
 
         # Build/update RAG index if configured for this cell
@@ -10642,7 +10642,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 console.print(f"{indent}[yellow]⚠️  Training example injection failed: {e}[/yellow]")
                 log.warning(f"[training] Failed to inject examples for {cell.name}: {e}")
 
-        # Apply mutation if provided (for candidate variations)
+        # Apply mutation if provided (for take variations)
         # Three modes:
         #   - rewrite: mutation IS the complete rewritten prompt (replace entirely)
         #   - augment: mutation is prepended to original prompt (test specific patterns)
@@ -11043,16 +11043,16 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         elif isinstance(self.config_path, str): # Otherwise, relative to current config file
                             ref_path = os.path.join(os.path.dirname(self.config_path), ref_path)
 
-                    # Determine candidate_index to pass to spawned cascade
-                    async_candidate_index = None
-                    if self.current_cell_candidate_index is not None:
-                        async_candidate_index = self.current_cell_candidate_index
-                    elif self.candidate_index is not None:
-                        async_candidate_index = self.candidate_index
+                    # Determine take_index to pass to spawned cascade
+                    async_take_index = None
+                    if self.current_cell_take_index is not None:
+                        async_take_index = self.current_cell_take_index
+                    elif self.take_index is not None:
+                        async_take_index = self.take_index
 
                     # Call spawn (fire and forget). spawn_cascade handles the threading.
-                    # It needs the parent_trace object directly AND parent_session_id AND candidate_index
-                    spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id, candidate_index=async_candidate_index)
+                    # It needs the parent_trace object directly AND parent_session_id AND take_index
+                    spawn_cascade(ref_path, sub_input, parent_trace=trace, parent_session_id=self.session_id, take_index=async_take_index)
 
         # Sub-cascades handling
         if cell.sub_cascades:
@@ -11089,23 +11089,23 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 console.print(f"{indent}  ↳ [bold yellow]Routing to Sub-Cascade: {sub.ref}[/bold yellow] (In:{sub.context_in}, Out:{sub.context_out})")
                 log_message(self.session_id, "sub_cascade_start", sub.ref, trace_id=trace.id, parent_id=trace.parent_id, node_type="link")
 
-                # Generate unique sub-cascade session ID (include candidate index if inside candidates)
-                # Also determine which candidate_index to pass through to child
-                sub_candidate_index = None
-                if self.current_cell_candidate_index is not None:
-                    # Inside cell-level candidate - include candidate index
-                    sub_session_id = f"{self.session_id}_sub_{self.current_cell_candidate_index}"
-                    sub_candidate_index = self.current_cell_candidate_index
-                elif self.candidate_index is not None:
-                    # Inside cascade-level candidate - include candidate index
-                    sub_session_id = f"{self.session_id}_sub_{self.candidate_index}"
-                    sub_candidate_index = self.candidate_index
+                # Generate unique sub-cascade session ID (include take index if inside takes)
+                # Also determine which take_index to pass through to child
+                sub_take_index = None
+                if self.current_cell_take_index is not None:
+                    # Inside cell-level take - include take index
+                    sub_session_id = f"{self.session_id}_sub_{self.current_cell_take_index}"
+                    sub_take_index = self.current_cell_take_index
+                elif self.take_index is not None:
+                    # Inside cascade-level take - include take index
+                    sub_session_id = f"{self.session_id}_sub_{self.take_index}"
+                    sub_take_index = self.take_index
                 else:
-                    # Normal execution - no candidate
+                    # Normal execution - no take
                     sub_session_id = f"{self.session_id}_sub"
 
-                # Pass trace context AND HOOKS AND parent_session_id AND candidate_index
-                sub_result = run_cascade(ref_path, sub_input, sub_session_id, self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks, parent_session_id=self.session_id, candidate_index=sub_candidate_index)
+                # Pass trace context AND HOOKS AND parent_session_id AND take_index
+                sub_result = run_cascade(ref_path, sub_input, sub_session_id, self.overrides, self.depth + 1, parent_trace=trace, hooks=self.hooks, parent_session_id=self.session_id, take_index=sub_take_index)
 
                 # 2. Handle Output (Context Out)
                 if sub.context_out:
@@ -11265,7 +11265,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Hook: Turn Start
                 hook_result = self.hooks.on_turn_start(cell.name, i, {
                     "echo": self.echo,
-                    "candidate_index": self.current_cell_candidate_index or self.candidate_index,
+                    "take_index": self.current_cell_take_index or self.take_index,
                 })
                 turn_injection = ""
                 if hook_result.get("action") == HookAction.INJECT:
@@ -11276,15 +11276,15 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 turn_trace = trace.create_child("turn", f"turn_{i+1}")
 
                 # Add turn structure to Echo for visualization
-                # Include candidate_index so turn messages group correctly with their candidate branch
-                current_candidate = self.current_cell_candidate_index or self.candidate_index
+                # Include take_index so turn messages group correctly with their take branch
+                current_take = self.current_cell_take_index or self.take_index
                 self.echo.add_history({
                     "role": "structure",
                     "content": f"Turn {i+1}",
                     "node_type": "turn"
                 }, trace_id=turn_trace.id, parent_id=trace.id, node_type="turn",
                    metadata={"cell_name": cell.name, "turn_number": i+1, "max_turns": max_turns,
-                             "candidate_index": current_candidate,  # Tag with candidate for correct grouping
+                             "take_index": current_take,  # Tag with take for correct grouping
                              "semantic_actor": "framework", "semantic_purpose": "lifecycle"})
 
                 if max_turns > 1:
@@ -11636,8 +11636,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         node_type="agent",
                         role="assistant",
                         depth=self.depth,
-                        candidate_index=self.current_cell_candidate_index,
-                        is_winner=None,  # Set later when candidate evaluation happens
+                        take_index=self.current_cell_take_index,
+                        is_winner=None,  # Set later when take evaluation happens
                         reforge_step=getattr(self, 'current_reforge_step', None),
                         attempt_number=self.current_retry_attempt,
                         turn_number=self.current_turn_number,
@@ -11872,7 +11872,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                                 # Get the next available index to avoid overwriting existing images
                                 from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
-                                next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_candidate_index)
+                                next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_take_index)
 
                                 for i, img_path in enumerate(images):
                                     encoded_img = encode_image_base64(img_path)
@@ -11889,7 +11889,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                             cell.name,
                                             next_idx + i,
                                             extension=img_path.split('.')[-1] if '.' in img_path else 'png',
-                                            candidate_index=self.current_cell_candidate_index
+                                            take_index=self.current_cell_take_index
                                         )
                                         try:
                                             decode_and_save_image(encoded_img, save_path)
@@ -11913,7 +11913,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 # Get the next available index to avoid overwriting existing audio
                                 from .utils import get_audio_save_path, get_next_audio_index
                                 import shutil
-                                next_audio_idx = get_next_audio_index(self.session_id, cell.name, self.current_cell_candidate_index)
+                                next_audio_idx = get_next_audio_index(self.session_id, cell.name, self.current_cell_take_index)
 
                                 for i, audio_path in enumerate(audio_files):
                                     if os.path.exists(audio_path):
@@ -11923,7 +11923,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                             cell.name,
                                             next_audio_idx + i,
                                             extension=audio_path.split('.')[-1] if '.' in audio_path else 'mp3',
-                                            candidate_index=self.current_cell_candidate_index
+                                            take_index=self.current_cell_take_index
                                         )
                                         try:
                                             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -12075,7 +12075,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 content=content,
                                 full_request=full_request,  # ADD: Include complete request with images
                                 full_response=full_response,  # ADD: Include complete response
-                                candidate_index=self.current_cell_candidate_index or self.candidate_index,  # FIX: Tag with candidate
+                                take_index=self.current_cell_take_index or self.take_index,  # FIX: Tag with take
                                 reforge_step=getattr(self, 'current_reforge_step', None),  # FIX: Tag with reforge
                                 reasoning_enabled=followup_reasoning_enabled,
                                 reasoning_effort=followup_reasoning_effort,
@@ -12204,7 +12204,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                             content_block = [{"type": "text", "text": "Result Images from follow-up tool:"}]
 
                                             from .utils import get_image_save_path, decode_and_save_image, get_next_image_index
-                                            next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_candidate_index)
+                                            next_idx = get_next_image_index(self.session_id, cell.name, self.current_cell_take_index)
 
                                             for img_i, img_path in enumerate(images):
                                                 encoded_img = encode_image_base64(img_path)
@@ -12217,7 +12217,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                                     save_path = get_image_save_path(
                                                         self.session_id, cell.name, next_idx + img_i,
                                                         extension=img_path.split('.')[-1] if '.' in img_path else 'png',
-                                                        candidate_index=self.current_cell_candidate_index
+                                                        take_index=self.current_cell_take_index
                                                     )
                                                     try:
                                                         decode_and_save_image(encoded_img, save_path)
@@ -12599,14 +12599,14 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                             "original_input": input_data
                         }
 
-                        # Generate unique validator session ID (include candidate index if inside candidates)
-                        validator_candidate_index = None
-                        if self.current_cell_candidate_index is not None:
-                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_cell_candidate_index}"
-                            validator_candidate_index = self.current_cell_candidate_index
-                        elif self.candidate_index is not None:
-                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.candidate_index}"
-                            validator_candidate_index = self.candidate_index
+                        # Generate unique validator session ID (include take index if inside takes)
+                        validator_take_index = None
+                        if self.current_cell_take_index is not None:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.current_cell_take_index}"
+                            validator_take_index = self.current_cell_take_index
+                        elif self.take_index is not None:
+                            validator_session_id = f"{self.session_id}_validator_{attempt}_{self.take_index}"
+                            validator_take_index = self.take_index
                         else:
                             validator_session_id = f"{self.session_id}_validator_{attempt}"
 
@@ -12630,7 +12630,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                                 parent_trace=validation_trace,
                                 hooks=self.hooks,
                                 parent_session_id=self.session_id,
-                                candidate_index=validator_candidate_index
+                                take_index=validator_take_index
                             )
 
                             console.print(f"{indent}  [dim cyan]Validator sub-cascade completed[/dim cyan]")
@@ -12915,7 +12915,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
 def run_cascade(config_path: str | dict, input_data: dict | None = None, session_id: str = "default", overrides: dict | None = None,
                 depth: int = 0, parent_trace: TraceNode | None = None, hooks: RVBBITHooks | None = None, parent_session_id: str | None = None,
-                candidate_index: int | None = None, caller_id: str | None = None, invocation_metadata: dict | None = None) -> dict:
+                take_index: int | None = None, caller_id: str | None = None, invocation_metadata: dict | None = None) -> dict:
 
     # If caller tracking not provided, try to get from context
     if caller_id is None:
@@ -12926,7 +12926,7 @@ def run_cascade(config_path: str | dict, input_data: dict | None = None, session
             invocation_metadata = invocation_metadata or ctx_metadata
 
     # Auto-inherit model if downstream_model propagation is enabled
-    # This allows cascade tools to use the calling candidate's model
+    # This allows cascade tools to use the calling take's model
     if get_downstream_model():
         parent_model = get_current_model()
         if parent_model:
@@ -12935,7 +12935,7 @@ def run_cascade(config_path: str | dict, input_data: dict | None = None, session
                 overrides["model"] = parent_model
                 console.print(f"[dim]↳ Inheriting model from parent: {parent_model}[/dim]")
 
-    runner = RVBBITRunner(config_path, session_id, overrides, depth, parent_trace, hooks, candidate_index=candidate_index,
+    runner = RVBBITRunner(config_path, session_id, overrides, depth, parent_trace, hooks, take_index=take_index,
                           parent_session_id=parent_session_id, caller_id=caller_id, invocation_metadata=invocation_metadata)
 
     result = runner.run(input_data)

@@ -136,7 +136,7 @@ class SemanticOperation:
     cascade_path: str           # Path to backing cascade
     model: str                  # LLM model used
     cells: List[str]            # Cell names in cascade
-    candidates: int             # Candidate factor (default 1)
+    takes: int             # Take factor (default 1)
     arg_expression: str         # SQL expression passed to function
     distinct_query: str         # Query to get distinct values
     distinct_count: int         # Actual count of distinct values
@@ -195,7 +195,7 @@ class ExplainResult:
     cascade_path: Optional[str] = None
     cells: List[str] = field(default_factory=list)
     model: str = ""
-    candidates: int = 1
+    takes: int = 1
     rewritten_sql: str = ""
 
     # Semantic operations (for any query type)
@@ -359,7 +359,7 @@ def explain_rvbbit_map(
     cascade_info = _load_cascade_info(stmt.cascade_path)
     result.cells = cascade_info['cells']
     result.model = cascade_info['model']
-    result.candidates = cascade_info['candidates']
+    result.takes = cascade_info['takes']
 
     # 3. Get historical cost for this cascade
     historical_cascade = _get_historical_cascade_stats(cascade_info.get('cascade_id', stmt.cascade_path))
@@ -371,7 +371,7 @@ def explain_rvbbit_map(
         cost_per_row = _estimate_cost_per_row(
             result.model,
             result.cells,
-            result.candidates
+            result.takes
         )
 
     # 5. Estimate cache hit rate
@@ -395,7 +395,7 @@ def explain_rvbbit_map(
         cascade_path=stmt.cascade_path,
         model=result.model,
         cells=result.cells,
-        candidates=result.candidates,
+        takes=result.takes,
         arg_expression='(entire row)',
         distinct_query=stmt.using_query,
         distinct_count=result.input_rows,
@@ -489,7 +489,7 @@ def _analyze_semantic_operation(
         cost_per_call = _estimate_cost_per_row(
             cascade_info['model'],
             cascade_info['cells'],
-            cascade_info['candidates']
+            cascade_info['takes']
         )
         cost_stddev = 0
         run_count = 0
@@ -510,14 +510,14 @@ def _analyze_semantic_operation(
         prewarm_reason = f"High cache hit rate ({cache_hit_rate:.0%}); prewarm not needed"
     else:
         prewarm_eligible = True
-        prewarm_reason = f"Good candidate: {distinct_count} distinct values, {cache_hit_rate:.0%} cache hits"
+        prewarm_reason = f"Good take: {distinct_count} distinct values, {cache_hit_rate:.0%} cache hits"
 
     return SemanticOperation(
         function=function_name,
         cascade_path=cascade_path,
         model=cascade_info['model'],
         cells=cascade_info['cells'],
-        candidates=cascade_info['candidates'],
+        takes=cascade_info['takes'],
         arg_expression=arg_sql,
         distinct_query=distinct_query,
         distinct_count=distinct_count,
@@ -1198,7 +1198,7 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
             'cascade_id': os.path.basename(cascade_path).replace('.cascade.yaml', '').replace('.yaml', ''),
             'cells': ['unknown'],
             'model': _get_default_model(),
-            'candidates': 1
+            'takes': 1
         }
 
     # Load cascade config
@@ -1214,7 +1214,7 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
             'cascade_id': os.path.basename(cascade_path),
             'cells': ['unknown'],
             'model': _get_default_model(),
-            'candidates': 1
+            'takes': 1
         }
 
     # Extract cascade_id
@@ -1224,7 +1224,7 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
     cells = config.get('cells', [])
     cell_names = []
     model = None
-    candidates = 1
+    takes = 1
 
     for i, cell in enumerate(cells):
         if isinstance(cell, dict):
@@ -1232,13 +1232,13 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
             # Get model from first cell that has one
             if not model and cell.get('model'):
                 model = cell.get('model')
-            # Get candidates from first cell that has it
-            if candidates == 1:
-                candidates_config = cell.get('candidates', {})
-                if isinstance(candidates_config, dict):
-                    factor = candidates_config.get('factor', 1)
+            # Get takes from first cell that has it
+            if takes == 1:
+                takes_config = cell.get('takes', {})
+                if isinstance(takes_config, dict):
+                    factor = takes_config.get('factor', 1)
                     if isinstance(factor, int):
-                        candidates = factor
+                        takes = factor
 
     # Default model - use system default from config
     if not model:
@@ -1248,11 +1248,11 @@ def _load_cascade_info(cascade_path: str) -> Dict[str, Any]:
         'cascade_id': cascade_id,
         'cells': cell_names if cell_names else ['unknown'],
         'model': model,
-        'candidates': candidates
+        'takes': takes
     }
 
 
-def _estimate_cost_per_row(model: str, cells: List[str], candidates: int) -> float:
+def _estimate_cost_per_row(model: str, cells: List[str], takes: int) -> float:
     """
     Estimate cost per row based on model pricing from openrouter_models table.
 
@@ -1265,7 +1265,7 @@ def _estimate_cost_per_row(model: str, cells: List[str], candidates: int) -> flo
     completion_tokens = 200
 
     cost_per_cell = _estimate_cost_from_pricing(pricing, prompt_tokens, completion_tokens)
-    return cost_per_cell * len(cells) * candidates
+    return cost_per_cell * len(cells) * takes
 
 
 def _estimate_map_cache_hit_rate(
@@ -1303,9 +1303,9 @@ def _generate_optimization_hints(result: ExplainResult) -> List[str]:
     hints = []
 
     # Check for prewarm opportunities
-    prewarm_candidates = [op for op in result.operations if op.prewarm_eligible]
-    if prewarm_candidates:
-        for op in prewarm_candidates:
+    prewarm_takes = [op for op in result.operations if op.prewarm_eligible]
+    if prewarm_takes:
+        for op in prewarm_takes:
             hints.append(
                 f"✓ Prewarm eligible: {op.function} ({op.distinct_count} distinct values). "
                 f"Add: -- @ parallel: 10"
@@ -1482,7 +1482,7 @@ def format_explain_json(result: ExplainResult) -> Dict[str, Any]:
                 'cascade_path': op.cascade_path,
                 'model': op.model,
                 'cells': op.cells,
-                'candidates': op.candidates,
+                'takes': op.takes,
                 'arg_expression': op.arg_expression,
                 'distinct_count': op.distinct_count,
                 'cache_hits': op.cache_hits,

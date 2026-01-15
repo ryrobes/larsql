@@ -21,7 +21,7 @@ cells:
   name: research_topics
   rules:
     max_turns: 1
-  candidates:
+  takes:
     aggregator_instructions: 'You have received research summaries on multiple topics.
       Create a unified research report that:
 

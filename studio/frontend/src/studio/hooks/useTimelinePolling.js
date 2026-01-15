@@ -10,7 +10,7 @@ import { deriveCellState } from '../utils/deriveCellState';
  * Replaces fragmented SSE with simple polling:
  * - Single source of truth (DB)
  * - No missed events
- * - Complete execution data (candidates, reforge, wards, tools)
+ * - Complete execution data (takes, reforge, wards, tools)
  * - Self-healing (refresh works mid-execution)
  *
  * Polls every 750ms while running, stops 10s after completion.

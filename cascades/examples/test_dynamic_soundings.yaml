@@ -15,7 +15,7 @@ cells:
   context:
     from:
     - generate_list
-  candidates:
+  takes:
     factor: '{{ outputs.generate_list.result | length }}'
     mode: aggregate
     max_parallel: 3

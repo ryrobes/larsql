@@ -103,12 +103,12 @@ def initialize_dynamic_patterns(force: bool = False) -> Dict[str, Set[str]]:
         if not after:
             return None
 
-        stop_candidates = []
+        stop_takes = []
         for stop in ("{{", "'", '"', "(", ")", ","):
             idx = after.find(stop)
             if idx != -1:
-                stop_candidates.append(idx)
-        end = min(stop_candidates) if stop_candidates else len(after)
+                stop_takes.append(idx)
+        end = min(stop_takes) if stop_takes else len(after)
 
         segment = after[:end].strip()
         if not segment:

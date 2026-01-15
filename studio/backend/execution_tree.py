@@ -1,6 +1,6 @@
 """
 Execution Tree Builder - Constructs a structured representation of cascade execution
-including candidates, reforges, retries, and nested cascades.
+including takes, reforges, retries, and nested cascades.
 
 Uses similar semantics as visualizer.py - builds hierarchy from trace_id/parent_id
 relationships and collects all messages with content previews.
@@ -41,13 +41,13 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
     except:
         meta = {}
     return {
-        'candidate_index': meta.get('candidate_index'),
+        'take_index': meta.get('take_index'),
         'is_winner': meta.get('is_winner'),
         'reforge_step': meta.get('reforge_step'),
         'cell_name': meta.get('cell_name'),
         'cascade_id': meta.get('cascade_id'),
         'factor': meta.get('factor'),
-        'has_candidates': meta.get('has_candidates'),
+        'has_takes': meta.get('has_takes'),
         'has_wards': meta.get('has_wards'),
         'handoffs': meta.get('handoffs', []),
         'winner_index': meta.get('winner_index'),
@@ -60,7 +60,7 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
         'turn_number': meta.get('turn_number'),
         'max_turns': meta.get('max_turns'),
         'node_type': meta.get('node_type'),
-        # Cascade candidates specific
+        # Cascade takes specific
         'sub_session_id': meta.get('sub_session_id'),
         'winner_session_id': meta.get('winner_session_id'),
         'evaluation': meta.get('evaluation'),
@@ -71,9 +71,9 @@ def extract_metadata(metadata_str: Optional[str]) -> Dict:
 
 @dataclass
 class ExecutionNode:
-    """Represents a single execution unit (cell attempt, candidate, etc.)"""
+    """Represents a single execution unit (cell attempt, take, etc.)"""
     node_id: str
-    node_type: str  # 'cascade', 'cell', 'turn', 'message', 'candidate', 'reforge', 'sub_cascade'
+    node_type: str  # 'cascade', 'cell', 'turn', 'message', 'take', 'reforge', 'sub_cascade'
     name: str  # Display name or content preview
     session_id: str
     parent_id: Optional[str] = None
@@ -81,7 +81,7 @@ class ExecutionNode:
     role: str = ""  # Message role (system, user, assistant, tool)
 
     # Sounding metadata
-    candidate_index: Optional[int] = None
+    take_index: Optional[int] = None
     is_winner: Optional[bool] = None
 
     # Reforge metadata
@@ -106,7 +106,7 @@ class ExecutionNode:
             'parent_id': self.parent_id,
             'content': self.content,
             'role': self.role,
-            'candidate_index': self.candidate_index,
+            'take_index': self.take_index,
             'is_winner': self.is_winner,
             'reforge_step': self.reforge_step,
             'timestamp': self.timestamp,
@@ -175,7 +175,7 @@ class ExecutionTreeBuilder:
                 parent_id=parent_id,
                 content=content or "",
                 role=role or "",
-                candidate_index=meta.get('candidate_index'),
+                take_index=meta.get('take_index'),
                 is_winner=meta.get('is_winner'),
                 reforge_step=meta.get('reforge_step'),
                 timestamp=timestamp,
@@ -337,23 +337,23 @@ class ExecutionTreeBuilder:
                         sub_cascade_data = self._build_sub_cascade_data(grandchild, nodes_map)
                         sub_cascades.append(sub_cascade_data)
 
-        # Check for candidates
-        candidates = []
-        candidate_attempts = [n for n in nodes_map.values()
-                           if n.node_type == 'candidate_attempt'
+        # Check for takes
+        takes = []
+        take_attempts = [n for n in nodes_map.values()
+                           if n.node_type == 'take_attempt'
                            and n.metadata.get('cell_name') == cell_node.name]
 
-        if candidate_attempts:
-            for attempt in candidate_attempts:
-                candidates.append({
-                    'index': attempt.candidate_index,
+        if take_attempts:
+            for attempt in take_attempts:
+                takes.append({
+                    'index': attempt.take_index,
                     'is_winner': attempt.is_winner,
                     'content': attempt.content,
                     'preview': sanitize_label(attempt.content, 25) if attempt.content else ''
                 })
-            candidates.sort(key=lambda s: s.get('index') or 0)
+            takes.sort(key=lambda s: s.get('index') or 0)
 
-        # Check for evaluator entry for candidates
+        # Check for evaluator entry for takes
         evaluator_content = ""
         evaluator_entries = [n for n in nodes_map.values()
                            if n.node_type in ('evaluator', 'evaluation')
@@ -393,10 +393,10 @@ class ExecutionTreeBuilder:
 
         # Determine cell type
         cell_type = 'simple'
-        if candidates:
-            cell_type = 'candidates'
-        elif cell_node.metadata.get('has_candidates'):
-            cell_type = 'candidates'
+        if takes:
+            cell_type = 'takes'
+        elif cell_node.metadata.get('has_takes'):
+            cell_type = 'takes'
         elif wards['pre'] or wards['post']:
             cell_type = 'wards'
         elif sub_cascades:
@@ -404,7 +404,7 @@ class ExecutionTreeBuilder:
 
         # Check for winner
         winner_index = None
-        for s in candidates:
+        for s in takes:
             if s.get('is_winner'):
                 winner_index = s.get('index')
                 break
@@ -415,9 +415,9 @@ class ExecutionTreeBuilder:
             'type': cell_type,
             'messages': messages,
             'message_count': len(messages),
-            'candidates': candidates if candidates else None,
+            'takes': takes if takes else None,
             'winner_index': winner_index,
-            'evaluator_content': evaluator_content if candidates else None,
+            'evaluator_content': evaluator_content if takes else None,
             'quartermaster': quartermaster_entry,
             'wards': wards if (wards['pre'] or wards['post']) else None,
             'sub_cascades': sub_cascades if sub_cascades else None,
@@ -516,7 +516,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
     - Cascade as outer container
     - Cells as subgraphs containing message nodes
     - Messages connected sequentially (SYS → USE → 💬 → ...)
-    - Candidates with parallel attempts and winner highlighting
+    - Takes with parallel attempts and winner highlighting
     - Wards as checkpoints
 
     Returns:
@@ -568,35 +568,35 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
         cell_type = cell.get('type', 'simple')
         messages = cell.get('messages', [])
-        candidates = cell.get('candidates') or []
+        takes = cell.get('takes') or []
         wards = cell.get('wards')
 
-        if cell_type == 'candidates' and candidates:
-            # === CANDIDATES CELL ===
-            # Create group node for candidates
-            group_id = f"{cell_id}_candidates_group"
+        if cell_type == 'takes' and takes:
+            # === TAKES CELL ===
+            # Create group node for takes
+            group_id = f"{cell_id}_takes_group"
             nodes.append({
                 'id': group_id,
-                'type': 'candidatesGroup',
+                'type': 'takesGroup',
                 'position': {'x': x_offset, 'y': 0},
                 'data': {
                     'label': f"🔱 {cell['name']}",
                     'cell_name': cell['name'],
-                    'candidate_count': len(candidates),
+                    'take_count': len(takes),
                     'winner_index': cell.get('winner_index'),
-                    'type': 'candidates'
+                    'type': 'takes'
                 },
                 'style': {'backgroundColor': '#fff3bf', 'border': '2px solid #fab005'}
             })
 
-            # Create individual candidate attempt nodes
+            # Create individual take attempt nodes
             attempt_ids = []
-            for candidate in candidates:
-                idx = candidate.get('index', 0)
-                is_winner = candidate.get('is_winner', False)
-                content_preview = candidate.get('preview', '')
-                candidate_id = f"{cell_id}_candidate_{idx}"
-                attempt_ids.append(candidate_id)
+            for take in takes:
+                idx = take.get('index', 0)
+                is_winner = take.get('is_winner', False)
+                content_preview = take.get('preview', '')
+                take_id = f"{cell_id}_take_{idx}"
+                attempt_ids.append(take_id)
                 y_pos = idx * y_spacing
 
                 # Build label with content preview
@@ -610,8 +610,8 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                         label = f"#{idx + 1}: {content_preview}"
 
                 nodes.append({
-                    'id': candidate_id,
-                    'type': 'candidateNode',
+                    'id': take_id,
+                    'type': 'takeNode',
                     'position': {'x': 20, 'y': 40 + y_pos},
                     'parentNode': group_id,
                     'extent': 'parent',
@@ -619,7 +619,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                         'label': label,
                         'index': idx,
                         'is_winner': is_winner,
-                        'content': candidate.get('content', ''),
+                        'content': take.get('content', ''),
                         'preview': content_preview
                     },
                     'style': {
@@ -630,7 +630,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
 
             # Add evaluator node with content preview
             eval_id = f"{cell_id}_evaluator"
-            eval_y = len(candidates) * y_spacing + 60
+            eval_y = len(takes) * y_spacing + 60
             evaluator_content = cell.get('evaluator_content', '')
             if evaluator_content:
                 eval_preview = sanitize_label(evaluator_content, 35)
@@ -664,7 +664,7 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
                 winner_id = f"{cell_id}_winner"
                 # Find the winner's content
                 winner_content = ""
-                for s in candidates:
+                for s in takes:
                     if s.get('index') == winner_index:
                         winner_content = s.get('content', '')
                         break
@@ -1142,12 +1142,12 @@ def build_react_flow_nodes(tree: Dict) -> Dict:
     for cell_idx, cell in enumerate(cells):
         cell_id = f"cell_{cell_idx}"
         cell_type = cell.get('type', 'simple')
-        candidates = cell.get('candidates') or []
+        takes = cell.get('takes') or []
         wards = cell.get('wards')
         sub_cascades = cell.get('sub_cascades') or []
 
-        if cell_type == 'candidates' and candidates:
-            cell_group_ids.append(f"{cell_id}_candidates_group")
+        if cell_type == 'takes' and takes:
+            cell_group_ids.append(f"{cell_id}_takes_group")
         elif wards and (wards.get('pre') or wards.get('post')):
             cell_group_ids.append(f"{cell_id}_wards_group")
         elif cell_type == 'sub_cascade' and sub_cascades:

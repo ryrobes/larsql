@@ -44,7 +44,7 @@ const formatDuration = (ms) => {
  *
  * Tabs:
  * - Code: Monaco editor for SQL/Python/JS/etc
- * - Config: Cell configuration (LLM settings, candidates, wards)
+ * - Config: Cell configuration (LLM settings, takes, wards)
  * - Output: Results table/JSON
  */
 const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs = [], currentSessionId = null, onClose, onMessageClick, hoveredHash = null, onHoverHash, externalSelectedMessage = null }) => {
@@ -335,33 +335,33 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     `;
   }, []);
 
-  // Group messages by candidate index
-  const messagesByCandidate = React.useMemo(() => {
+  // Group messages by take index
+  const messagesByTake = React.useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
 
     const grouped = {};
     let winningIndex = null;
-    const hasAnyCandidate = cellLogs.some(log =>
-      log.candidate_index !== null && log.candidate_index !== undefined
+    const hasAnyTake = cellLogs.some(log =>
+      log.take_index !== null && log.take_index !== undefined
     );
 
-    if (!hasAnyCandidate) {
-      // No candidates - return all messages in single group
+    if (!hasAnyTake) {
+      // No takes - return all messages in single group
       return null;
     }
 
     for (const log of cellLogs) {
-      if (log.winning_candidate_index !== null && log.winning_candidate_index !== undefined) {
-        winningIndex = log.winning_candidate_index;
+      if (log.winning_take_index !== null && log.winning_take_index !== undefined) {
+        winningIndex = log.winning_take_index;
       }
     }
 
     for (const log of cellLogs) {
       if (!['user', 'assistant', 'tool', 'system'].includes(log.role)) continue;
 
-      const candidateIdx = log.candidate_index ?? 'main';
-      if (!grouped[candidateIdx]) {
-        grouped[candidateIdx] = [];
+      const takeIdx = log.take_index ?? 'main';
+      if (!grouped[takeIdx]) {
+        grouped[takeIdx] = [];
       }
 
       // Parse JSON fields
@@ -386,7 +386,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
         } catch {}
       }
 
-      grouped[candidateIdx].push({
+      grouped[takeIdx].push({
         role: log.role,
         node_type: log.node_type,
         turn_number: log.turn_number,
@@ -413,7 +413,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     if (!cellLogs || cellLogs.length === 0) return [];
 
     // Always return all messages - Messages tab should always be available
-    // (candidate tabs are ADDITIONAL views, not replacements)
+    // (take tabs are ADDITIONAL views, not replacements)
     return cellLogs
       .filter(log => ['user', 'assistant', 'tool', 'system'].includes(log.role))
       .map(log => {
@@ -588,12 +588,12 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     return request;
   }, [cellLogs]);
 
-  // Auto-select winner candidate tab when cell changes and has candidates
+  // Auto-select winner take tab when cell changes and has takes
   React.useEffect(() => {
-    if (messagesByCandidate && messagesByCandidate.winner !== null) {
-      setActiveOutputTab(`candidate-${messagesByCandidate.winner}`);
+    if (messagesByTake && messagesByTake.winner !== null) {
+      setActiveOutputTab(`take-${messagesByTake.winner}`);
     }
-  }, [cell.name, messagesByCandidate]);
+  }, [cell.name, messagesByTake]);
 
   // Initialize/reset localYaml when cell changes or YAML editor is opened
   // Use a ref to track which cell we last initialized for
@@ -808,10 +808,10 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
       isValid = false;
     } else if (activeOutputTab === 'messages' && (!cellMessages || cellMessages.length === 0)) {
       isValid = false;
-    } else if (activeOutputTab.startsWith('candidate-')) {
-      // Check if this candidate index exists
-      const candidateIdx = activeOutputTab.replace('candidate-', '');
-      if (!messagesByCandidate || !messagesByCandidate.grouped[candidateIdx]) {
+    } else if (activeOutputTab.startsWith('take-')) {
+      // Check if this take index exists
+      const takeIdx = activeOutputTab.replace('take-', '');
+      if (!messagesByTake || !messagesByTake.grouped[takeIdx]) {
         isValid = false;
       }
     }
@@ -821,7 +821,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
       console.log('[CellDetailPanel] Tab invalid for new cell, resetting:', activeOutputTab, '→ output');
       setActiveOutputTab('output');
     }
-  }, [cell.name, activeOutputTab, checkpointData, images, error, cellMessages, messagesByCandidate]);
+  }, [cell.name, activeOutputTab, checkpointData, images, error, cellMessages, messagesByTake]);
 
   return (
     <div className="cell-detail-panel">
@@ -926,7 +926,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
             <div className="cell-detail-config-section">
               <h4>LLM Configuration</h4>
               <p className="cell-detail-placeholder">
-                Config UI coming soon: model selection, candidates, wards, handoffs...
+                Config UI coming soon: model selection, takes, wards, handoffs...
               </p>
             </div>
           </div>
@@ -1304,27 +1304,27 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                         Messages ({cellMessages.length})
                       </button>
                     )}
-                    {/* Candidate tabs (additional per-candidate views) */}
-                    {messagesByCandidate && Object.keys(messagesByCandidate.grouped).sort().map((candidateIdx) => {
-                      // Compare as numbers (candidateIdx from Object.keys is string)
-                      const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
-                      const count = messagesByCandidate.grouped[candidateIdx].length;
+                    {/* Take tabs (additional per-take views) */}
+                    {messagesByTake && Object.keys(messagesByTake.grouped).sort().map((takeIdx) => {
+                      // Compare as numbers (takeIdx from Object.keys is string)
+                      const isWinner = parseInt(takeIdx) === messagesByTake.winner || takeIdx === 'main';
+                      const count = messagesByTake.grouped[takeIdx].length;
 
                       // Debug winner detection
-                      if (candidateIdx === '0' || candidateIdx === '1') {
-                        console.log('[CellDetailPanel] Tab', candidateIdx, '- isWinner:', isWinner, 'winner:', messagesByCandidate.winner, 'parsed:', parseInt(candidateIdx));
+                      if (takeIdx === '0' || takeIdx === '1') {
+                        console.log('[CellDetailPanel] Tab', takeIdx, '- isWinner:', isWinner, 'winner:', messagesByTake.winner, 'parsed:', parseInt(takeIdx));
                       }
 
                       return (
                         <button
-                          key={candidateIdx}
-                          className={`cell-detail-results-tab ${activeOutputTab === `candidate-${candidateIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
-                          onClick={() => setActiveOutputTab(`candidate-${candidateIdx}`)}
-                          title={isWinner ? `Candidate ${candidateIdx} (WINNER - ${count} messages)` : `Candidate ${candidateIdx} (${count} messages)`}
+                          key={takeIdx}
+                          className={`cell-detail-results-tab ${activeOutputTab === `take-${takeIdx}` ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
+                          onClick={() => setActiveOutputTab(`take-${takeIdx}`)}
+                          title={isWinner ? `Take ${takeIdx} (WINNER - ${count} messages)` : `Take ${takeIdx} (${count} messages)`}
                         >
                           {isWinner && <Icon icon="mdi:crown" width="14" />}
                           <Icon icon="mdi:message-processing" width="14" />
-                          C{candidateIdx}
+                          C{takeIdx}
                         </button>
                       );
                     })}
@@ -1420,7 +1420,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           DEBUG OUTPUT: hasResult={!!result} hasError={!!error} resultType={typeof result}
                           {result && ` keys=${Object.keys(result).join(',')}`}
                         </div> */}
-                        {/* Evaluator reasoning (for candidates) */}
+                        {/* Evaluator reasoning (for takes) */}
                         {evaluatorMessage && (
                           <div className="cell-detail-evaluator-banner">
                             <div className="cell-detail-evaluator-header">
@@ -1453,17 +1453,17 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                       </div>
                     )
                   )}
-                  {/* Candidate-specific message tabs */}
-                  {messagesByCandidate && activeOutputTab.startsWith('candidate-') && (() => {
-                    const candidateIdx = activeOutputTab.replace('candidate-', '');
-                    const isWinner = parseInt(candidateIdx) === messagesByCandidate.winner || candidateIdx === 'main';
+                  {/* Take-specific message tabs */}
+                  {messagesByTake && activeOutputTab.startsWith('take-') && (() => {
+                    const takeIdx = activeOutputTab.replace('take-', '');
+                    const isWinner = parseInt(takeIdx) === messagesByTake.winner || takeIdx === 'main';
 
                     return (
-                      <div className="cell-detail-candidate-messages-wrapper">
+                      <div className="cell-detail-take-messages-wrapper">
                         {isWinner && (
-                          <div className="cell-detail-candidate-winner-banner">
+                          <div className="cell-detail-take-winner-banner">
                             <Icon icon="mdi:crown" width="16" />
-                            This candidate was selected as the winner
+                            This take was selected as the winner
                           </div>
                         )}
                         <SessionMessagesLog
@@ -1472,7 +1472,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           shouldPollBudget={viewMode !== 'replay' && isRunningAll}
                           showFilters={true}
                           filterByCell={cell.name}
-                          filterByCandidate={candidateIdx}
+                          filterByTake={takeIdx}
                           showCellColumn={false}
                           compact={true}
                           className="cell-detail-messages-log"
@@ -1484,7 +1484,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                       </div>
                     );
                   })()}
-                  {/* Fallback single Messages tab for non-candidate cells */}
+                  {/* Fallback single Messages tab for non-take cells */}
                   {activeOutputTab === 'messages' && (
                     <SessionMessagesLog
                       logs={cellLogs || []}

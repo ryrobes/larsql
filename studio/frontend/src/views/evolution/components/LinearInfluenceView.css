@@ -329,8 +329,8 @@
   font-style: italic;
 }
 
-/* Block Candidates */
-.block-candidates {
+/* Block Takes */
+.block-takes {
   display: flex;
   gap: 4px;
   padding: 8px 12px;
@@ -338,7 +338,7 @@
   background: rgba(255, 255, 255, 0.01);
 }
 
-.block-candidate-chip {
+.block-take-chip {
   padding: 4px 8px;
   background: #000000;
   border: 1px solid #1a1628;
@@ -351,7 +351,7 @@
   gap: 3px;
 }
 
-.block-candidate-chip.winner {
+.block-take-chip.winner {
   border-color: #34d399;
   color: #34d399;
   background: rgba(52, 211, 153, 0.1);

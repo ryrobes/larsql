@@ -580,7 +580,7 @@ const OverviewContent = ({ overview }) => {
             </div>
             <div className="stats-body">
               <p>
-                Analyzed <strong>{overview.inter_cell.messages_assessed}</strong> candidate messages
+                Analyzed <strong>{overview.inter_cell.messages_assessed}</strong> take messages
                 across <strong>{overview.inter_cell.cells_assessed}</strong> cell transitions.
               </p>
               {overview.inter_cell.would_prune_count > 0 ? (
@@ -1160,8 +1160,8 @@ const calculateConfigComparison = (data) => {
   const configMap = {};
 
   data.cells.forEach(cell => {
-    cell.candidates.forEach(candidate => {
-      candidate.turns.forEach(turn => {
+    cell.takes.forEach(take => {
+      take.turns.forEach(turn => {
         turn.configs.forEach(cfg => {
           const key = `${cfg.window}-${cfg.mask_after}`;
           if (!configMap[key]) {
@@ -1195,16 +1195,16 @@ const CompressionCardsView = ({ data, selectedConfig }) => {
             <span className="cell-name">{cell.cell_name}</span>
           </div>
 
-          {cell.candidates.map(candidate => (
-            <div key={candidate.candidate_index ?? 'main'} className="candidate-section">
-              {candidate.candidate_index !== null && (
-                <div className="candidate-header">
-                  Candidate {candidate.candidate_index}
+          {cell.takes.map(take => (
+            <div key={take.take_index ?? 'main'} className="take-section">
+              {take.take_index !== null && (
+                <div className="take-header">
+                  Take {take.take_index}
                 </div>
               )}
 
               <div className="turns-grid">
-                {candidate.turns.map(turn => {
+                {take.turns.map(turn => {
                   const matchingConfig = turn.configs.find(
                     c => c.window === selectedConfig.window && c.mask_after === selectedConfig.mask_after
                   );
@@ -1270,8 +1270,8 @@ const CompressionTimelineView = ({ data, selectedConfig }) => {
   const timelineData = [];
 
   data.cells.forEach(cell => {
-    cell.candidates.forEach(candidate => {
-      candidate.turns.forEach(turn => {
+    cell.takes.forEach(take => {
+      take.turns.forEach(turn => {
         const matchingConfig = turn.configs.find(
           c => c.window === selectedConfig.window && c.mask_after === selectedConfig.mask_after
         );
@@ -1279,7 +1279,7 @@ const CompressionTimelineView = ({ data, selectedConfig }) => {
         if (matchingConfig) {
           timelineData.push({
             cell: cell.cell_name,
-            candidate: candidate.candidate_index,
+            take: take.take_index,
             turn: turn.turn_number,
             before: matchingConfig.tokens_before,
             after: matchingConfig.tokens_after,

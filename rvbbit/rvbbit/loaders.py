@@ -52,16 +52,16 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
 
         resolved_path = None
         for search_dir in search_dirs:
-            candidate = search_dir / path
-            if candidate.exists():
-                resolved_path = candidate
+            take = search_dir / path
+            if take.exists():
+                resolved_path = take
                 break
 
         if not resolved_path:
             # Also try just joining with RVBBIT_ROOT for paths like "skills/foo.yaml"
-            candidate = Path(config.root_dir) / path
-            if candidate.exists():
-                resolved_path = candidate
+            take = Path(config.root_dir) / path
+            if take.exists():
+                resolved_path = take
 
         if not resolved_path:
             raise FileNotFoundError(

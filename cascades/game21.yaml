@@ -10,7 +10,7 @@ cells:
   name: llm_phase
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate these 3 responses. Pick the best based on: - Completeness (covers all aspects?) - Clarity
       (well-structured?)
 

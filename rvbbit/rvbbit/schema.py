@@ -55,11 +55,11 @@ CREATE TABLE IF NOT EXISTS unified_logs (
     semantic_actor LowCardinality(Nullable(String)),
     semantic_purpose LowCardinality(Nullable(String)),
 
-    -- Execution Context (Candidates/Reforge)
-    candidate_index Nullable(Int32),
+    -- Execution Context (Takes/Reforge)
+    take_index Nullable(Int32),
     is_winner Nullable(Bool),
     reforge_step Nullable(Int32),
-    winning_candidate_index Nullable(Int32),
+    winning_take_index Nullable(Int32),
     attempt_number Nullable(Int32),
     turn_number Nullable(Int32),
     mutation_applied Nullable(String),
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     -- Type classification
     checkpoint_type Enum8(
         'cell_input' = 1,
-        'candidate_eval' = 2,
+        'take_eval' = 2,
         'free_text' = 3,
         'choice' = 4,
         'multi_choice' = 5,
@@ -205,9 +205,9 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     cell_output Nullable(String),
     trace_context Nullable(String),
 
-    -- For candidate evaluation
-    candidate_outputs Nullable(String),
-    candidate_metadata Nullable(String),
+    -- For take evaluation
+    take_outputs Nullable(String),
+    take_metadata Nullable(String),
 
     -- Human response
     response Nullable(String),
@@ -382,7 +382,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     -- Source context
     session_id String,
     cell_name String,
-    candidate_index Int32,
+    take_index Int32,
 
     -- Evaluation
     evaluation_type Enum8('rating' = 0, 'preference' = 1, 'flag' = 2),
@@ -727,7 +727,7 @@ TTL message_timestamp + INTERVAL 90 DAY;
 # =============================================================================
 # CONTEXT SHADOW ASSESSMENTS TABLE - Auto-Context Analysis
 # =============================================================================
-# Shadow assessment of auto-context relevance for all context candidates.
+# Shadow assessment of auto-context relevance for all context takes.
 # When running cascades with explicit context, we still assess what auto-context
 # WOULD have done. This enables comparing explicit vs auto decisions.
 #
@@ -745,7 +745,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     target_cell_name String,
     target_cell_instructions String,
 
-    -- Candidate message being assessed
+    -- Take message being assessed
     source_cell_name String,
     content_hash String,
     message_role LowCardinality(String),
@@ -781,7 +781,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     rank_heuristic UInt16,
     rank_semantic Nullable(UInt16),
     rank_composite UInt16,
-    total_candidates UInt16,
+    total_takes UInt16,
 
     -- Budget context
     budget_total UInt32,
@@ -1072,7 +1072,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     session_id String,
     cascade_id String,
     cell_name String,
-    candidate_index Nullable(Int16),       -- NULL if not in candidates, else 0, 1, 2...
+    take_index Nullable(Int16),       -- NULL if not in takes, else 0, 1, 2...
     turn_number UInt16,                    -- Turn within this cell (0-indexed)
     is_loop_retry Bool DEFAULT false,      -- Is this a loop_until retry turn?
 
@@ -1115,7 +1115,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
-    INDEX idx_candidate candidate_index TYPE set(100) GRANULARITY 1,
+    INDEX idx_take take_index TYPE set(100) GRANULARITY 1,
     INDEX idx_turn turn_number TYPE set(100) GRANULARITY 1,
     INDEX idx_batch assessment_batch_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,

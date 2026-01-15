@@ -27,7 +27,7 @@ SELECT
     content_type,
     content_json,
     metadata_json,
-    candidate_index,
+    take_index,
     role,
     node_type,
     -- Extract screenshot path from metadata for convenience
@@ -55,7 +55,7 @@ SELECT
     JSONExtractString(metadata_json, 'severity') AS severity,
     JSONExtractBool(metadata_json, 'has_html') AS has_html,
     JSONExtractInt(metadata_json, 'options_count') AS options_count,
-    candidate_index
+    take_index
 FROM unified_logs
 WHERE content_type = 'render:request_decision'
 ORDER BY timestamp_iso DESC;

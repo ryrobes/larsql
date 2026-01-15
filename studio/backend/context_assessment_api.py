@@ -345,7 +345,7 @@ def get_inter_cell(session_id):
                 rank_heuristic,
                 rank_semantic,
                 rank_composite,
-                total_candidates,
+                total_takes,
                 budget_total,
                 cumulative_tokens_at_rank,
                 would_fit_budget,
@@ -391,7 +391,7 @@ def get_inter_cell(session_id):
                     'semantic': safe_int(row['rank_semantic']) if row['rank_semantic'] else None,
                     'composite': safe_int(row['rank_composite'])
                 },
-                'total_candidates': safe_int(row['total_candidates']),
+                'total_takes': safe_int(row['total_takes']),
                 'budget': {
                     'total': safe_int(row['budget_total']),
                     'cumulative_at_rank': safe_int(row['cumulative_tokens_at_rank']),
@@ -424,25 +424,25 @@ def get_intra_cell(session_id):
 
     Query params:
         cell: Filter by cell name (optional)
-        candidate: Filter by candidate index (optional)
+        take: Filter by take index (optional)
 
     Returns per-turn config scenarios grouped by cell.
     """
     try:
         db = get_db()
         cell_name = request.args.get('cell')
-        candidate_idx = request.args.get('candidate', type=int)
+        take_idx = request.args.get('take', type=int)
 
         where_clause = f"WHERE session_id = '{session_id}'"
         if cell_name:
             where_clause += f" AND cell_name = '{cell_name}'"
-        if candidate_idx is not None:
-            where_clause += f" AND candidate_index = {candidate_idx}"
+        if take_idx is not None:
+            where_clause += f" AND take_index = {take_idx}"
 
         query = f"""
             SELECT
                 cell_name,
-                candidate_index,
+                take_index,
                 turn_number,
                 is_loop_retry,
                 config_window,
@@ -468,24 +468,24 @@ def get_intra_cell(session_id):
                 differs_from_actual
             FROM intra_context_shadow_assessments
             {where_clause}
-            ORDER BY cell_name, candidate_index NULLS FIRST, turn_number, config_window, config_mask_after
+            ORDER BY cell_name, take_index NULLS FIRST, turn_number, config_window, config_mask_after
         """
 
         results = db.query(query)
 
-        # Group by cell -> candidate -> turn -> configs
+        # Group by cell -> take -> turn -> configs
         cells = {}
         for row in results:
             cell = row['cell_name']
-            candidate = row['candidate_index']
+            take = row['take_index']
             turn = row['turn_number']
 
             if cell not in cells:
-                cells[cell] = {'cell_name': cell, 'candidates': {}}
-            if candidate not in cells[cell]['candidates']:
-                cells[cell]['candidates'][candidate] = {'candidate_index': candidate, 'turns': {}}
-            if turn not in cells[cell]['candidates'][candidate]['turns']:
-                cells[cell]['candidates'][candidate]['turns'][turn] = {
+                cells[cell] = {'cell_name': cell, 'takes': {}}
+            if take not in cells[cell]['takes']:
+                cells[cell]['takes'][take] = {'take_index': take, 'turns': {}}
+            if turn not in cells[cell]['takes'][take]['turns']:
+                cells[cell]['takes'][take]['turns'][turn] = {
                     'turn_number': turn,
                     'is_loop_retry': bool(row['is_loop_retry']),
                     'full_history_size': safe_int(row['full_history_size']),
@@ -501,7 +501,7 @@ def get_intra_cell(session_id):
             except:
                 breakdown = []
 
-            cells[cell]['candidates'][candidate]['turns'][turn]['configs'].append({
+            cells[cell]['takes'][take]['turns'][turn]['configs'].append({
                 'window': safe_int(row['config_window']),
                 'mask_after': safe_int(row['config_mask_after']),
                 'min_size': safe_int(row['config_min_masked_size']),
@@ -525,16 +525,16 @@ def get_intra_cell(session_id):
         # Convert nested dicts to lists
         result_cells = []
         for cell_data in cells.values():
-            candidates = []
-            for cand_data in cell_data['candidates'].values():
+            takes = []
+            for cand_data in cell_data['takes'].values():
                 turns = list(cand_data['turns'].values())
-                candidates.append({
-                    'candidate_index': cand_data['candidate_index'],
+                takes.append({
+                    'take_index': cand_data['take_index'],
                     'turns': sorted(turns, key=lambda t: t['turn_number'])
                 })
             result_cells.append({
                 'cell_name': cell_data['cell_name'],
-                'candidates': sorted(candidates, key=lambda c: c['candidate_index'] if c['candidate_index'] is not None else -1)
+                'takes': sorted(takes, key=lambda c: c['take_index'] if c['take_index'] is not None else -1)
             })
 
         return jsonify({
@@ -774,32 +774,32 @@ def get_relevance_scatter(session_id):
         return jsonify({'error': str(e)}), 500
 
 
-@context_assessment_bp.route('/api/context-assessment/candidate-comparison/<session_id>', methods=['GET'])
-def get_candidate_comparison(session_id):
+@context_assessment_bp.route('/api/context-assessment/take-comparison/<session_id>', methods=['GET'])
+def get_take_comparison(session_id):
     """
-    Get per-candidate context analysis for sessions with multiple candidates.
+    Get per-take context analysis for sessions with multiple takes.
 
-    Returns context usage stats per candidate to compare their efficiency.
+    Returns context usage stats per take to compare their efficiency.
     """
     try:
         db = get_db()
 
-        # Get per-candidate stats from intra-cell data
+        # Get per-take stats from intra-cell data
         query = f"""
             SELECT
                 cell_name,
-                candidate_index,
+                take_index,
                 MAX(turn_number) as max_turns,
                 SUM(tokens_before) as total_tokens_before,
-                -- Get best config stats for each candidate
+                -- Get best config stats for each take
                 argMax(config_window, tokens_saved) as best_window,
                 argMax(config_mask_after, tokens_saved) as best_mask_after,
                 MAX(tokens_saved) as max_tokens_saved,
                 AVG(compression_ratio) as avg_compression
             FROM intra_context_shadow_assessments
             WHERE session_id = '{session_id}'
-            GROUP BY cell_name, candidate_index
-            ORDER BY cell_name, candidate_index NULLS FIRST
+            GROUP BY cell_name, take_index
+            ORDER BY cell_name, take_index NULLS FIRST
         """
 
         results = db.query(query)
@@ -809,10 +809,10 @@ def get_candidate_comparison(session_id):
         for row in results:
             cell = row['cell_name']
             if cell not in cells:
-                cells[cell] = {'cell_name': cell, 'candidates': []}
+                cells[cell] = {'cell_name': cell, 'takes': []}
 
-            cells[cell]['candidates'].append({
-                'candidate_index': row['candidate_index'],
+            cells[cell]['takes'].append({
+                'take_index': row['take_index'],
                 'max_turns': safe_int(row['max_turns']),
                 'total_tokens': safe_int(row['total_tokens_before']),
                 'best_config': {
@@ -827,13 +827,13 @@ def get_candidate_comparison(session_id):
         heatmap_query = f"""
             SELECT
                 cell_name,
-                candidate_index,
+                take_index,
                 turn_number,
                 MAX(tokens_before) as tokens
             FROM intra_context_shadow_assessments
             WHERE session_id = '{session_id}'
-            GROUP BY cell_name, candidate_index, turn_number
-            ORDER BY cell_name, candidate_index NULLS FIRST, turn_number
+            GROUP BY cell_name, take_index, turn_number
+            ORDER BY cell_name, take_index NULLS FIRST, turn_number
         """
 
         heatmap_results = db.query(heatmap_query)
@@ -841,10 +841,10 @@ def get_candidate_comparison(session_id):
         # Add heatmap data to cells
         for row in heatmap_results:
             cell = row['cell_name']
-            cand_idx = row['candidate_index']
+            cand_idx = row['take_index']
             if cell in cells:
-                for cand in cells[cell]['candidates']:
-                    if cand['candidate_index'] == cand_idx:
+                for cand in cells[cell]['takes']:
+                    if cand['take_index'] == cand_idx:
                         if 'turns_heatmap' not in cand:
                             cand['turns_heatmap'] = []
                         cand['turns_heatmap'].append({

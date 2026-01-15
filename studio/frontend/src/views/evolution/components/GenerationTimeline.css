@@ -342,18 +342,18 @@
   border-color: rgba(0, 229, 255, 0.4);
 }
 
-/* Candidate Chips */
-.candidates-section {
+/* Take Chips */
+.takes-section {
   background: rgba(255, 255, 255, 0.01);
 }
 
-.candidates-chips {
+.takes-chips {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.candidate-chip {
+.take-chip {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -369,26 +369,26 @@
   position: relative;
 }
 
-.candidate-chip:hover {
+.take-chip:hover {
   border-color: #00e5ff;
   background: #050a15;
   transform: translateY(-1px);
 }
 
-.candidate-chip.winner {
+.take-chip.winner {
   border-color: #34d399;
   background: rgba(52, 211, 153, 0.1);
   color: #34d399;
 }
 
-.candidate-chip.highlighted {
+.take-chip.highlighted {
   border-color: #00e5ff;
   background: rgba(0, 229, 255, 0.15);
   box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
   color: #00e5ff;
 }
 
-.candidate-chip svg {
+.take-chip svg {
   width: 10px;
   height: 10px;
 }

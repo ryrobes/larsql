@@ -26,7 +26,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
     Categories:
         - 'llm_call': Actual LLM API call (has full_request_json with messages)
         - 'conversation': User/assistant/tool messages in the conversation flow
-        - 'evaluator': Evaluator reasoning (candidates, reforge)
+        - 'evaluator': Evaluator reasoning (takes, reforge)
         - 'quartermaster': Tool selection reasoning
         - 'ward': Validation checks (pre/post wards)
         - 'lifecycle': Cascade/cell/turn start/complete events
@@ -57,14 +57,14 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
 
     # Metadata/logging types (internal)
     metadata_types = {
-        'candidate_attempt', 'candidates_result', 'cost_update',
+        'take_attempt', 'takes_result', 'cost_update',
         'context_injection', 'checkpoint', 'human_input_request'
     }
 
     # Ward/validation types
     ward_types = {
         'pre_ward', 'post_ward', 'ward_block', 'ward_advisory',
-        'candidate_validator'
+        'take_validator'
     }
 
     # Evaluator types (these ARE LLM calls but logged separately)
@@ -118,7 +118,7 @@ def _classify_message(node_type: str, role: str, full_request) -> tuple:
 def get_message_flow(session_id):
     """
     Get complete message flow for a session showing:
-    - All candidates as parallel branches
+    - All takes as parallel branches
     - Reforge steps
     - Actual messages sent to LLM (from full_request_json)
     """
@@ -131,7 +131,7 @@ def get_message_flow(session_id):
             toUnixTimestamp64Micro(timestamp) / 1000000.0 as timestamp,
             role,
             node_type,
-            candidate_index,
+            take_index,
             reforge_step,
             turn_number,
             cell_name,
@@ -154,7 +154,7 @@ def get_message_flow(session_id):
         rows = db.query(query)
         # Convert to tuples for backward compatibility with existing code
         result = [
-            (r['timestamp'], r['role'], r['node_type'], r['candidate_index'],
+            (r['timestamp'], r['role'], r['node_type'], r['take_index'],
              r['reforge_step'], r['turn_number'], r['cell_name'], r['content_json'],
              r['full_request_json'], r['tokens_in'], r['tokens_out'], r['cost'],
              r['model'], r['is_winner'], r['metadata_json'], r.get('content_hash'),
@@ -167,19 +167,19 @@ def get_message_flow(session_id):
 
         # Build structured response
         messages = []
-        candidates_by_cell = {}  # cell_name -> {candidate_index -> {messages: [], is_winner: bool}}
+        takes_by_cell = {}  # cell_name -> {take_index -> {messages: [], is_winner: bool}}
         reforge_steps = {}  # reforge_step -> {messages: []} (flat, for backward compat)
         reforge_by_cell = {}  # cell_name -> {reforge_step -> {messages: [], is_winner: bool}}
 
-        # Track evaluators by cell for later attachment to candidates blocks
+        # Track evaluators by cell for later attachment to takes blocks
         evaluators_by_cell = {}  # cell_name -> evaluator message
 
-        # Track the most recent cell that had candidates - reforges inherit this
-        # (Reforge is always the refinement step after candidates complete)
-        last_candidate_cell = None
+        # Track the most recent cell that had takes - reforges inherit this
+        # (Reforge is always the refinement step after takes complete)
+        last_take_cell = None
 
         for row in result:
-            (timestamp, role, node_type, candidate_index, reforge_step, turn_number,
+            (timestamp, role, node_type, take_index, reforge_step, turn_number,
              cell_name, content_json, full_request_json, tokens_in, tokens_out,
              cost, model, is_winner, metadata_json, content_hash, context_hashes,
              estimated_tokens) = row
@@ -227,7 +227,7 @@ def get_message_flow(session_id):
                 'timestamp': timestamp,
                 'role': role,
                 'node_type': node_type,
-                'candidate_index': int(candidate_index) if candidate_index is not None else None,
+                'take_index': int(take_index) if take_index is not None else None,
                 'reforge_step': int(reforge_step) if reforge_step is not None else None,
                 'turn_number': int(turn_number) if turn_number is not None else None,
                 'cell_name': cell_name,
@@ -246,10 +246,10 @@ def get_message_flow(session_id):
                 'estimated_tokens': int(estimated_tokens) if estimated_tokens else 0
             }
 
-            # Track evaluator messages by cell (for cell-level candidates)
+            # Track evaluator messages by cell (for cell-level takes)
             # Also track reforge_evaluator using inherited cell
             if node_type in ('evaluator', 'reforge_evaluator'):
-                evaluator_cell = cell_name or last_candidate_cell
+                evaluator_cell = cell_name or last_take_cell
                 if evaluator_cell:
                     # Update message's cell_name so it groups correctly in frontend
                     if not cell_name and evaluator_cell:
@@ -264,8 +264,8 @@ def get_message_flow(session_id):
                         'tokens_in': int(tokens_in) if tokens_in else 0,
                         'tokens_out': int(tokens_out) if tokens_out else 0,
                         'winner_index': metadata.get('winner_index') if metadata else None,
-                        'total_candidates': metadata.get('total_candidates') if metadata else None,
-                        'valid_candidates': metadata.get('valid_candidates') if metadata else None,
+                        'total_takes': metadata.get('total_takes') if metadata else None,
+                        'valid_takes': metadata.get('valid_takes') if metadata else None,
                         'evaluation': metadata.get('evaluation') if metadata else content,
                         # NEW: Full evaluator input observability
                         'evaluator_prompt': metadata.get('evaluator_prompt') if metadata else None,
@@ -275,7 +275,7 @@ def get_message_flow(session_id):
                         'cost_aware': metadata.get('cost_aware') if metadata else False,
                         'quality_weight': metadata.get('quality_weight') if metadata else None,
                         'cost_weight': metadata.get('cost_weight') if metadata else None,
-                        'candidate_costs': metadata.get('candidate_costs') if metadata else None,
+                        'take_costs': metadata.get('take_costs') if metadata else None,
                         'winner_cost': metadata.get('winner_cost') if metadata else None,
                         # Pareto frontier info
                         'pareto_enabled': metadata.get('pareto_enabled') if metadata else False,
@@ -287,35 +287,35 @@ def get_message_flow(session_id):
                     evaluators_by_cell[evaluator_cell] = evaluator_data
 
             # Categorize message for parallel branch visualization
-            # Use int() to normalize candidate_index (may be returned as float for nullable int)
-            if candidate_index is not None:
-                candidate_key = int(candidate_index)
+            # Use int() to normalize take_index (may be returned as float for nullable int)
+            if take_index is not None:
+                take_key = int(take_index)
                 cell_key = cell_name or '_unknown_'
 
-                # Track the cell for candidates - reforges will inherit this
+                # Track the cell for takes - reforges will inherit this
                 if cell_name:
-                    last_candidate_cell = cell_name
+                    last_take_cell = cell_name
 
-                if cell_key not in candidates_by_cell:
-                    candidates_by_cell[cell_key] = {}
+                if cell_key not in takes_by_cell:
+                    takes_by_cell[cell_key] = {}
 
-                if candidate_key not in candidates_by_cell[cell_key]:
-                    candidates_by_cell[cell_key][candidate_key] = {
-                        'index': candidate_key,
+                if take_key not in takes_by_cell[cell_key]:
+                    takes_by_cell[cell_key][take_key] = {
+                        'index': take_key,
                         'cell_name': cell_key,
                         'messages': [],
                         'is_winner': False,
-                        'first_timestamp': timestamp  # Track when this candidate started
+                        'first_timestamp': timestamp  # Track when this take started
                     }
-                candidates_by_cell[cell_key][candidate_key]['messages'].append(msg)
+                takes_by_cell[cell_key][take_key]['messages'].append(msg)
                 if is_winner:
-                    candidates_by_cell[cell_key][candidate_key]['is_winner'] = True
+                    takes_by_cell[cell_key][take_key]['is_winner'] = True
 
             elif reforge_step is not None:
                 reforge_key = int(reforge_step)
-                # Reforges inherit cell from their parent candidate when cell_name is NULL
-                # (Reforge is always the final refinement step after candidates complete)
-                inherited_cell = cell_name or last_candidate_cell
+                # Reforges inherit cell from their parent take when cell_name is NULL
+                # (Reforge is always the final refinement step after takes complete)
+                inherited_cell = cell_name or last_take_cell
                 cell_key = inherited_cell or '_unknown_'
 
                 # Update message's cell_name so it groups correctly in frontend
@@ -330,7 +330,7 @@ def get_message_flow(session_id):
                     }
                 reforge_steps[reforge_key]['messages'].append(msg)
 
-                # Cell-organized structure (like candidates)
+                # Cell-organized structure (like takes)
                 if cell_key not in reforge_by_cell:
                     reforge_by_cell[cell_key] = {}
                 if reforge_key not in reforge_by_cell[cell_key]:
@@ -347,35 +347,35 @@ def get_message_flow(session_id):
 
             messages.append(msg)
 
-        # Convert candidates_by_cell to structured list with cell info
-        # Each cell gets a candidates block with all its parallel attempts
-        candidates_blocks = []
-        for cell_key in candidates_by_cell:
-            cell_candidates = candidates_by_cell[cell_key]
-            sorted_candidates = [cell_candidates[k] for k in sorted(cell_candidates.keys())]
+        # Convert takes_by_cell to structured list with cell info
+        # Each cell gets a takes block with all its parallel attempts
+        takes_blocks = []
+        for cell_key in takes_by_cell:
+            cell_takes = takes_by_cell[cell_key]
+            sorted_takes = [cell_takes[k] for k in sorted(cell_takes.keys())]
 
-            # Find first timestamp across all candidates in this cell (for ordering)
-            timestamps = [s['first_timestamp'] for s in sorted_candidates if s.get('first_timestamp')]
+            # Find first timestamp across all takes in this cell (for ordering)
+            timestamps = [s['first_timestamp'] for s in sorted_takes if s.get('first_timestamp')]
             first_ts = min(timestamps) if timestamps else 0
 
             # Get evaluator for this cell if present
             evaluator = evaluators_by_cell.get(cell_key)
 
-            candidates_blocks.append({
+            takes_blocks.append({
                 'cell_name': cell_key,
-                'candidates': sorted_candidates,
+                'takes': sorted_takes,
                 'first_timestamp': first_ts,
-                'winner_index': next((s['index'] for s in sorted_candidates if s['is_winner']), None),
+                'winner_index': next((s['index'] for s in sorted_takes if s['is_winner']), None),
                 'evaluator': evaluator  # Include evaluation step data
             })
 
-        # Sort candidates blocks by first_timestamp to maintain chronological order
-        candidates_blocks.sort(key=lambda x: x['first_timestamp'])
+        # Sort takes blocks by first_timestamp to maintain chronological order
+        takes_blocks.sort(key=lambda x: x['first_timestamp'])
 
         # Convert reforge steps to list (flat, for backward compat)
         reforge_list = [reforge_steps[k] for k in sorted(reforge_steps.keys())]
 
-        # Convert reforge_by_cell to structured list (like candidates_blocks)
+        # Convert reforge_by_cell to structured list (like takes_blocks)
         reforge_blocks = []
         for cell_key in reforge_by_cell:
             cell_reforges = reforge_by_cell[cell_key]
@@ -395,34 +395,34 @@ def get_message_flow(session_id):
         # Sort reforge blocks by first_timestamp to maintain chronological order
         reforge_blocks.sort(key=lambda x: x['first_timestamp'])
 
-        # Identify winner candidate cells and indexes
-        winner_candidate_keys = set()  # (cell_name, candidate_index) tuples
-        for block in candidates_blocks:
-            for s in block['candidates']:
+        # Identify winner take cells and indexes
+        winner_take_keys = set()  # (cell_name, take_index) tuples
+        for block in takes_blocks:
+            for s in block['takes']:
                 if s['is_winner']:
-                    winner_candidate_keys.add((s['cell_name'], s['index']))
+                    winner_take_keys.add((s['cell_name'], s['index']))
 
         winner_reforge_steps = set(r['step'] for r in reforge_list if any(m['is_winner'] for m in r['messages']))
 
         # Build main flow with ALL messages (for debug view)
         # We include everything but mark internal vs conversational via is_internal flag
-        # For candidates/reforge, we still filter to winner's path for main flow
-        # (non-winners are shown in the candidates blocks section)
+        # For takes/reforge, we still filter to winner's path for main flow
+        # (non-winners are shown in the takes blocks section)
         main_flow = []
         for msg in messages:
-            # Normalize cell_name to match how we store it in candidates_by_cell
+            # Normalize cell_name to match how we store it in takes_by_cell
             msg_cell_key = msg['cell_name'] or '_unknown_'
 
             # Include message if:
-            # 1. Not in any candidate/reforge (pre/post branching messages)
-            # 2. OR it's in a winner candidate (all messages from winning branch)
+            # 1. Not in any take/reforge (pre/post branching messages)
+            # 2. OR it's in a winner take (all messages from winning branch)
             # 3. OR it's in a winner reforge step (all messages from winning refinement)
-            # Note: Non-winner candidates are shown separately in candidates_by_cell blocks
-            if msg['candidate_index'] is None and msg['reforge_step'] is None:
+            # Note: Non-winner takes are shown separately in takes_by_cell blocks
+            if msg['take_index'] is None and msg['reforge_step'] is None:
                 # Pre/post branching messages - always in main flow
                 main_flow.append(msg)
-            elif msg['candidate_index'] is not None and (msg_cell_key, msg['candidate_index']) in winner_candidate_keys:
-                # All messages from winner candidate branch
+            elif msg['take_index'] is not None and (msg_cell_key, msg['take_index']) in winner_take_keys:
+                # All messages from winner take branch
                 main_flow.append(msg)
             elif msg['reforge_step'] is not None and msg['reforge_step'] in winner_reforge_steps:
                 # All messages from winner reforge step
@@ -448,15 +448,15 @@ def get_message_flow(session_id):
                     'role': msg.get('role'),
                     'node_type': msg.get('node_type'),
                     'cell_name': msg.get('cell_name'),
-                    'candidate_index': msg.get('candidate_index'),
+                    'take_index': msg.get('take_index'),
                     'reforge_step': msg.get('reforge_step'),
                     'turn_number': msg.get('turn_number')
                 }
 
-        # Flatten candidates for backward compatibility (total count)
-        all_candidates_flat = []
-        for block in candidates_blocks:
-            all_candidates_flat.extend(block['candidates'])
+        # Flatten takes for backward compatibility (total count)
+        all_takes_flat = []
+        for block in takes_blocks:
+            all_takes_flat.extend(block['takes'])
 
         # Build hash_index: map of content_hash -> list of message indices/metadata
         # This enables O(1) lookup for context lineage and cross-referencing
@@ -473,7 +473,7 @@ def get_message_flow(session_id):
                     'role': msg['role'],
                     'node_type': msg['node_type'],
                     'cell_name': msg.get('cell_name'),
-                    'candidate_index': msg.get('candidate_index'),
+                    'take_index': msg.get('take_index'),
                     'turn_number': msg.get('turn_number')
                 })
 
@@ -495,8 +495,8 @@ def get_message_flow(session_id):
         return jsonify({
             'session_id': session_id,
             'total_messages': len(messages),
-            'candidates': all_candidates_flat,  # Backward compatible flat list
-            'candidates_by_cell': candidates_blocks,  # New: organized by cell with timestamps
+            'takes': all_takes_flat,  # Backward compatible flat list
+            'takes_by_cell': takes_blocks,  # New: organized by cell with timestamps
             'reforge_steps': reforge_list,  # Backward compatible flat list
             'reforge_by_cell': reforge_blocks,  # New: organized by cell with timestamps
             'main_flow': main_flow,

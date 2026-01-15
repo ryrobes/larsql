@@ -17,52 +17,52 @@ log = logging.getLogger(__name__)
 # Shared thread pool for cascade execution
 _executor = ThreadPoolExecutor(max_workers=8)
 
-# Pattern for candidates config embedded in criterion strings
-# Format: __RVBBIT_CANDIDATES:{"factor":3,"evaluator":"..."}__
-_CANDIDATES_PATTERN = re.compile(r'^__RVBBIT_CANDIDATES:(\{.*?\})__\s*')
+# Pattern for takes config embedded in criterion strings
+# Format: __RVBBIT_TAKES:{"factor":3,"evaluator":"..."}__
+_TAKES_PATTERN = re.compile(r'^__RVBBIT_TAKES:(\{.*?\})__\s*')
 
 
-def _extract_candidates_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+def _extract_takes_from_inputs(inputs: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     """
-    Extract candidates config from input strings and return cleaned inputs.
+    Extract takes config from input strings and return cleaned inputs.
 
-    The candidates config is embedded in criterion/query strings as a special prefix:
-        __RVBBIT_CANDIDATES:{"factor":3}__ actual criterion here
+    The takes config is embedded in criterion/query strings as a special prefix:
+        __RVBBIT_TAKES:{"factor":3}__ actual criterion here
 
     Returns:
-        (cleaned_inputs, candidates_config) - inputs with prefix stripped, and extracted config
+        (cleaned_inputs, takes_config) - inputs with prefix stripped, and extracted config
     """
-    candidates_config = None
+    takes_config = None
     cleaned_inputs = {}
 
-    #log.info(f"[cascade_udf] 🔍 Checking inputs for candidates config: {inputs}")
-    #print(f"[cascade_udf] 🔍 Checking inputs for candidates config: {list(inputs.keys())}")
+    #log.info(f"[cascade_udf] 🔍 Checking inputs for takes config: {inputs}")
+    #print(f"[cascade_udf] 🔍 Checking inputs for takes config: {list(inputs.keys())}")
 
     for key, value in inputs.items():
         if isinstance(value, str):
             #print(f"[cascade_udf] 🔍 Checking key '{key}': value starts with '{value[:80]}...' " if len(value) > 80 else f"[cascade_udf] 🔍 Checking key '{key}': value='{value}'")
-            match = _CANDIDATES_PATTERN.match(value)
+            match = _TAKES_PATTERN.match(value)
             if match:
                 try:
-                    candidates_config = json.loads(match.group(1))
+                    takes_config = json.loads(match.group(1))
                     # Strip the prefix from the value
                     cleaned_inputs[key] = value[match.end():].lstrip()
-                    log.info(f"[cascade_udf] ✅ Extracted candidates config: {candidates_config}")
-                    print(f"[cascade_udf] ✅ Extracted candidates config: {candidates_config}")
+                    log.info(f"[cascade_udf] ✅ Extracted takes config: {takes_config}")
+                    print(f"[cascade_udf] ✅ Extracted takes config: {takes_config}")
                     print(f"[cascade_udf] ✅ Cleaned value: '{cleaned_inputs[key]}'")
                 except json.JSONDecodeError as e:
-                    log.warning(f"[cascade_udf] ❌ Failed to parse candidates config: {e}")
-                    print(f"[cascade_udf] ❌ Failed to parse candidates config: {e}")
+                    log.warning(f"[cascade_udf] ❌ Failed to parse takes config: {e}")
+                    print(f"[cascade_udf] ❌ Failed to parse takes config: {e}")
                     cleaned_inputs[key] = value
             else:
                 cleaned_inputs[key] = value
         else:
             cleaned_inputs[key] = value
 
-    # if not candidates_config:
-    #     print(f"[cascade_udf] ⚪ No candidates config found in inputs")
+    # if not takes_config:
+    #     print(f"[cascade_udf] ⚪ No takes config found in inputs")
 
-    return cleaned_inputs, candidates_config
+    return cleaned_inputs, takes_config
 
 
 # Pattern for source column embedded in inputs
@@ -194,8 +194,8 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
     Load a cascade file and inject overrides at cascade and cell levels.
 
     This enables cascade-level and cell-level overrides triggered by SQL comment hints:
-        -- @ candidates.factor: 3  (keyword-based)
-        -- @@ run 3 candidates with cheap model  (NL-interpreted)
+        -- @ takes.factor: 3  (keyword-based)
+        -- @@ run 3 takes with cheap model  (NL-interpreted)
 
     Supports two override formats:
 
@@ -205,7 +205,7 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
     2. New structured format (from NL interpreter):
        {
          "cascade_overrides": {
-           "candidates": {"factor": 3, ...},
+           "takes": {"factor": 3, ...},
            "token_budget": {...},
            "narrator": {...}
          },
@@ -238,11 +238,11 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
 
         # Apply cascade-level overrides
         for key, value in cascade_overrides.items():
-            if key == 'candidates':
-                # Merge with existing candidates config
-                existing = config.get('candidates', {})
-                config['candidates'] = _deep_merge(existing, value)
-                log.info(f"[cascade_udf] Injected cascade candidates: {config['candidates']}")
+            if key == 'takes':
+                # Merge with existing takes config
+                existing = config.get('takes', {})
+                config['takes'] = _deep_merge(existing, value)
+                log.info(f"[cascade_udf] Injected cascade takes: {config['takes']}")
             elif key in ['token_budget', 'narrator', 'auto_context', 'memory', 'max_parallel']:
                 config[key] = value
                 log.info(f"[cascade_udf] Injected cascade {key}: {value}")
@@ -266,10 +266,10 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
                     if key == 'model':
                         config['cells'][i]['model'] = value
                         log.info(f"[cascade_udf] Cell '{cell_name}' model → {value}")
-                    elif key == 'candidates':
-                        existing = config['cells'][i].get('candidates', {})
-                        config['cells'][i]['candidates'] = _deep_merge(existing, value)
-                        log.info(f"[cascade_udf] Cell '{cell_name}' candidates → {config['cells'][i]['candidates']}")
+                    elif key == 'takes':
+                        existing = config['cells'][i].get('takes', {})
+                        config['cells'][i]['takes'] = _deep_merge(existing, value)
+                        log.info(f"[cascade_udf] Cell '{cell_name}' takes → {config['cells'][i]['takes']}")
                     elif key == 'rules':
                         existing = config['cells'][i].get('rules', {})
                         config['cells'][i]['rules'] = _deep_merge(existing, value)
@@ -292,47 +292,47 @@ def _inject_overrides_into_cascade(cascade_path: str, overrides_config: Dict[str
 
     else:
         # Legacy flat format for backwards compatibility
-        candidates = {}
+        takes = {}
 
-        # Map hint keys to cascade candidates config
+        # Map hint keys to cascade takes config
         if 'factor' in overrides_config:
-            candidates['factor'] = overrides_config['factor']
+            takes['factor'] = overrides_config['factor']
 
         if 'multi_model' in overrides_config:
-            candidates['multi_model'] = overrides_config['multi_model']
+            takes['multi_model'] = overrides_config['multi_model']
             # Ensure factor matches number of models
-            if 'factor' not in candidates:
-                candidates['factor'] = len(overrides_config['multi_model'])
+            if 'factor' not in takes:
+                takes['factor'] = len(overrides_config['multi_model'])
 
         if 'evaluator' in overrides_config:
-            candidates['evaluator_instructions'] = overrides_config['evaluator']
+            takes['evaluator_instructions'] = overrides_config['evaluator']
 
         if 'max_parallel' in overrides_config:
-            candidates['max_parallel'] = overrides_config['max_parallel']
+            takes['max_parallel'] = overrides_config['max_parallel']
 
         if 'mode' in overrides_config:
-            candidates['mode'] = overrides_config['mode']
+            takes['mode'] = overrides_config['mode']
 
         if 'mutate' in overrides_config:
-            candidates['mutate'] = overrides_config['mutate']
+            takes['mutate'] = overrides_config['mutate']
 
         if 'reforge' in overrides_config:
             # Reforge is a nested config
-            candidates['reforge'] = {'rounds': overrides_config['reforge']}
+            takes['reforge'] = {'rounds': overrides_config['reforge']}
 
         if 'evaluator_model' in overrides_config:
-            candidates['evaluator_model'] = overrides_config['evaluator_model']
+            takes['evaluator_model'] = overrides_config['evaluator_model']
 
         # Inject at top level
-        if candidates:
-            config['candidates'] = candidates
-            log.info(f"[cascade_udf] Injected candidates config: {candidates}")
+        if takes:
+            config['takes'] = takes
+            log.info(f"[cascade_udf] Injected takes config: {takes}")
 
     return config
 
 
 # Backwards compatibility alias
-_inject_candidates_into_cascade = _inject_overrides_into_cascade
+_inject_takes_into_cascade = _inject_overrides_into_cascade
 
 
 def _run_cascade_sync(
@@ -490,13 +490,13 @@ def execute_cascade_udf(
     This is the core function registered as a DuckDB UDF that enables
     calling any cascade with sql_function config from SQL.
 
-    Supports cascade-level candidates via SQL comment hints:
-        -- @ candidates.factor: 3
-        -- @ candidates.evaluator: Pick the most accurate response
+    Supports cascade-level takes via SQL comment hints:
+        -- @ takes.factor: 3
+        -- @ takes.evaluator: Pick the most accurate response
         -- @ models: [claude-sonnet, gpt-4o, gemini-pro]
         SELECT description MEANS 'is eco-friendly' FROM products
 
-    When candidates config is detected, the cascade is run multiple times
+    When takes config is detected, the cascade is run multiple times
     and an evaluator picks the best result.
 
     Args:
@@ -519,8 +519,8 @@ def execute_cascade_udf(
         # Parse inputs
         inputs = json.loads(inputs_json) if inputs_json else {}
 
-        # Extract candidates config from inputs (embedded as special prefix)
-        cleaned_inputs, candidates_config = _extract_candidates_from_inputs(inputs)
+        # Extract takes config from inputs (embedded as special prefix)
+        cleaned_inputs, takes_config = _extract_takes_from_inputs(inputs)
 
         # Extract source lineage context from inputs (for row/column tracking)
         cleaned_inputs, source_column, source_row_index, source_table = _extract_source_context_from_inputs(cleaned_inputs)
@@ -536,8 +536,8 @@ def execute_cascade_udf(
         # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
         cache_name = fn.cache_name
 
-        # Check cache (only if no candidates - candidates bypass cache for fresh sampling)
-        if use_cache and not candidates_config:
+        # Check cache (only if no takes - takes bypass cache for fresh sampling)
+        if use_cache and not takes_config:
             found, cached = get_cached_result(cache_name, cleaned_inputs)
             if found:
                 log.debug(f"[cascade_udf] Cache hit for {cascade_id} (cache_name={cache_name})")
@@ -585,20 +585,20 @@ def execute_cascade_udf(
                 inputs=cleaned_inputs
             )
 
-        # Determine what to run: original cascade or modified with candidates
-        if candidates_config:
-            # Inject candidates into cascade config (in-memory, not modifying file)
-            cascade_config = _inject_candidates_into_cascade(fn.cascade_path, candidates_config)
-            log.info(f"[cascade_udf] Running {cascade_id} with candidates: factor={candidates_config.get('factor', 'N/A')}")
-            print(f"[cascade_udf] 🚀 Running {cascade_id} WITH CANDIDATES: {candidates_config}")
-            print(f"[cascade_udf] 🚀 Injected cascade config has candidates: {cascade_config.get('candidates', 'NONE')}")
+        # Determine what to run: original cascade or modified with takes
+        if takes_config:
+            # Inject takes into cascade config (in-memory, not modifying file)
+            cascade_config = _inject_takes_into_cascade(fn.cascade_path, takes_config)
+            log.info(f"[cascade_udf] Running {cascade_id} with takes: factor={takes_config.get('factor', 'N/A')}")
+            print(f"[cascade_udf] 🚀 Running {cascade_id} WITH TAKES: {takes_config}")
+            print(f"[cascade_udf] 🚀 Injected cascade config has takes: {cascade_config.get('takes', 'NONE')}")
             result = _run_cascade_sync(
                 cascade_config, session_id, cleaned_inputs, caller_id=caller_id,
                 source_column=source_column, source_row_index=source_row_index, source_table=source_table
             )
         else:
             # Execute the cascade normally (pass caller_id so it propagates to unified_logs!)
-            #print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no candidates)")
+            #print(f"[cascade_udf] ▶️ Running {cascade_id} normally (no takes)")
             result = _run_cascade_sync(
                 fn.cascade_path, session_id, cleaned_inputs, caller_id=caller_id,
                 source_column=source_column, source_row_index=source_row_index, source_table=source_table
@@ -629,7 +629,7 @@ def execute_cascade_udf(
             log.debug(f"[cascade_udf] Wrote {len(results)} rows to {temp_path}")
 
             # Cache the SQL statement (not the results file)
-            if use_cache and not candidates_config:
+            if use_cache and not takes_config:
                 set_cached_result(cache_name, cleaned_inputs, sql_statement)
 
             return temp_path
@@ -642,7 +642,7 @@ def execute_cascade_udf(
             log.debug(f"[cascade_udf] sql_execute mode - executing: {sql_fragment[:100]}...")
 
             # Cache the SQL fragment
-            if use_cache and not candidates_config:
+            if use_cache and not takes_config:
                 set_cached_result(cache_name, cleaned_inputs, sql_fragment)
 
             # Bind and execute
@@ -653,7 +653,7 @@ def execute_cascade_udf(
         # Handle output_mode: sql_raw returns SQL as-is
         if fn.output_mode == 'sql_raw':
             sql_raw = str(output).strip()
-            if use_cache and not candidates_config:
+            if use_cache and not takes_config:
                 set_cached_result(cache_name, cleaned_inputs, sql_raw)
             return sql_raw
 
@@ -675,8 +675,8 @@ def execute_cascade_udf(
                 except ValueError:
                     output = 0
 
-        # Cache result (but not candidates runs - they're for fresh sampling)
-        if use_cache and not candidates_config:
+        # Cache result (but not takes runs - they're for fresh sampling)
+        if use_cache and not takes_config:
             set_cached_result(cache_name, cleaned_inputs, output)
 
         # Return as JSON if complex, otherwise as string

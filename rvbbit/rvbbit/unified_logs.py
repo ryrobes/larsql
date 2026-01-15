@@ -293,10 +293,10 @@ class UnifiedLogger:
         semantic_purpose: str | None = None,
 
         # Execution context
-        candidate_index: int | None = None,
+        take_index: int | None = None,
         is_winner: bool | None = None,
         reforge_step: int | None = None,
-        winning_candidate_index: int | None = None,
+        winning_take_index: int | None = None,
         attempt_number: int | None = None,
         turn_number: int | None = None,
         mutation_applied: str | None = None,
@@ -468,10 +468,10 @@ class UnifiedLogger:
             "semantic_purpose": semantic_purpose,
 
             # Execution context
-            "candidate_index": candidate_index,
+            "take_index": take_index,
             "is_winner": is_winner,
             "reforge_step": reforge_step,
-            "winning_candidate_index": winning_candidate_index,
+            "winning_take_index": winning_take_index,
             "attempt_number": attempt_number,
             "turn_number": turn_number,
             "mutation_applied": mutation_applied,
@@ -596,7 +596,7 @@ class UnifiedLogger:
                     'session_id': session_id,
                     'cell_name': cell_name,
                     'cascade_id': cascade_id,
-                    'candidate_index': candidate_index,
+                    'take_index': take_index,
                     'turn_number': turn_number,
                     'model': model,
                     'provider': provider,  # Include provider for debugging
@@ -672,10 +672,10 @@ def log_unified(
     depth: int = 0,
     semantic_actor: str | None = None,
     semantic_purpose: str | None = None,
-    candidate_index: int | None = None,
+    take_index: int | None = None,
     is_winner: bool | None = None,
     reforge_step: int | None = None,
-    winning_candidate_index: int | None = None,
+    winning_take_index: int | None = None,
     attempt_number: int | None = None,
     turn_number: int | None = None,
     mutation_applied: str | None = None,
@@ -804,10 +804,10 @@ def log_unified(
         depth=depth,
         semantic_actor=semantic_actor,
         semantic_purpose=semantic_purpose,
-        candidate_index=candidate_index,
+        take_index=take_index,
         is_winner=is_winner,
         reforge_step=reforge_step,
-        winning_candidate_index=winning_candidate_index,
+        winning_take_index=winning_take_index,
         attempt_number=attempt_number,
         turn_number=turn_number,
         mutation_applied=mutation_applied,
@@ -981,14 +981,14 @@ def get_cascade_costs(cascade_id: str) -> 'pd.DataFrame':
     return db.query_df(query)
 
 
-def get_candidates_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
-    """Analyze candidate attempts for a specific cell in a session."""
+def get_takes_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
+    """Analyze take attempts for a specific cell in a session."""
     from .db_adapter import get_db
 
     db = get_db()
     query = f"""
     SELECT
-        candidate_index,
+        take_index,
         is_winner,
         SUM(cost) as total_cost,
         SUM(total_tokens) as total_tokens,
@@ -997,9 +997,9 @@ def get_candidates_analysis(session_id: str, cell_name: str) -> 'pd.DataFrame':
     FROM unified_logs
     WHERE session_id = '{session_id}'
       AND cell_name = '{cell_name}'
-      AND candidate_index IS NOT NULL
-    GROUP BY candidate_index, is_winner
-    ORDER BY candidate_index
+      AND take_index IS NOT NULL
+    GROUP BY take_index, is_winner
+    ORDER BY take_index
     """
     return db.query_df(query)
 
@@ -1056,13 +1056,13 @@ def get_model_usage_stats() -> 'pd.DataFrame':
     return db.query_df(query)
 
 
-def mark_candidate_winner(session_id: str, cell_name: str, winning_index: int):
+def mark_take_winner(session_id: str, cell_name: str, winning_index: int):
     """
-    Mark all messages in winning candidate with is_winner=True.
+    Mark all messages in winning take with is_winner=True.
 
     Called after evaluator selects winner. Updates ALL rows in that
-    candidate thread, not just a single "winner" row.
+    take thread, not just a single "winner" row.
     """
     from .db_adapter import get_db
     db = get_db()
-    db.mark_candidate_winner('unified_logs', session_id, cell_name, winning_index)
+    db.mark_take_winner('unified_logs', session_id, cell_name, winning_index)

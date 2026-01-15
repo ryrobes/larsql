@@ -613,8 +613,8 @@ def get_context_breakdown():
 
         where_sql = ' AND '.join(where_clauses)
 
-        # Get breakdown by cell with model and candidate info
-        # Each candidate is a separate row (candidates tracked via candidate_index column)
+        # Get breakdown by cell with model and take info
+        # Each take is a separate row (takes tracked via take_index column)
         # Use subquery to get is_winner from unified_logs
         # NOTE: Don't group by model_requested - use any() to get it, avoiding duplicates
         query = f"""
@@ -622,19 +622,19 @@ def get_context_breakdown():
                 SELECT
                     session_id,
                     cell_name,
-                    candidate_index,
+                    take_index,
                     any(is_winner) as is_winner
                 FROM unified_logs
                 WHERE node_type = 'agent'
-                  AND candidate_index IS NOT NULL
-                GROUP BY session_id, cell_name, candidate_index
+                  AND take_index IS NOT NULL
+                GROUP BY session_id, cell_name, take_index
             )
             SELECT
                 ccb.session_id,
                 ccb.cascade_id,
                 ccb.cell_name,
                 anyIf(ccb.model_requested, ccb.model_requested != '') as model_requested,
-                ccb.candidate_index,
+                ccb.take_index,
                 MAX(ccb.created_at) as session_timestamp,
                 MAX(ccb.total_cell_cost) as cell_cost,
                 MAX(ccb.total_context_messages) as total_messages,
@@ -656,13 +656,13 @@ def get_context_breakdown():
             LEFT JOIN winner_info w ON
                 ccb.session_id = w.session_id
                 AND ccb.cell_name = w.cell_name
-                AND ccb.candidate_index = w.candidate_index
+                AND ccb.take_index = w.take_index
             WHERE ccb.created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
                 {f"AND ccb.session_id = '{session_id}'" if session_id else ''}
                 {f"AND ccb.cascade_id = '{cascade_id}'" if cascade_id else ''}
                 {f"AND ccb.cell_name = '{cell_name}'" if cell_name else ''}
-            GROUP BY ccb.session_id, ccb.cascade_id, ccb.cell_name, ccb.candidate_index
-            ORDER BY session_timestamp DESC, ccb.candidate_index ASC NULLS LAST, cell_cost DESC
+            GROUP BY ccb.session_id, ccb.cascade_id, ccb.cell_name, ccb.take_index
+            ORDER BY session_timestamp DESC, ccb.take_index ASC NULLS LAST, cell_cost DESC
             LIMIT 100
         """
 
@@ -732,7 +732,7 @@ def get_context_breakdown():
                 'total_messages': int(row.get('total_messages', 0) or 0),
                 'total_tokens': int(row.get('total_tokens', 0) or 0),
                 'model': row.get('model_requested'),
-                'candidate_index': row.get('candidate_index'),
+                'take_index': row.get('take_index'),
                 'is_winner': is_winner,
                 'messages': messages,
                 'relevance_analysis_session': row.get('analysis_session'),
@@ -1050,7 +1050,7 @@ def get_top_expensive():
                 cost_z_score,
                 cluster_avg_cost,
                 primary_model,
-                candidate_count,
+                take_count,
                 created_at
             FROM cascade_analytics
             WHERE created_at >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
@@ -1078,7 +1078,7 @@ def get_top_expensive():
                 'z_score': safe_float(row['cost_z_score']),
                 'baseline': safe_float(row['cluster_avg_cost']),
                 'model': row['primary_model'],
-                'candidates': int(row['candidate_count'] or 0),
+                'takes': int(row['take_count'] or 0),
                 'created_at': timestamp_str,
             })
 

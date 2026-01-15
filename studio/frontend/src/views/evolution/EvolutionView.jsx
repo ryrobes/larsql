@@ -65,7 +65,7 @@ const EvolutionView = () => {
     }
   }, [initialCascade, initialSession]);
 
-  // Fetch available cascades with candidate data
+  // Fetch available cascades with take data
   useEffect(() => {
     fetchCascades();
   }, []);
@@ -231,9 +231,9 @@ const EvolutionView = () => {
     // Could show toast notification here
   };
 
-  // Get baseline prompt (from first generation, baseline candidate)
+  // Get baseline prompt (from first generation, baseline take)
   const baselinePrompt = phylogenyNodes.find(n =>
-    n.data.generation === 1 && n.data.candidate_index === 0
+    n.data.generation === 1 && n.data.take_index === 0
   )?.data.prompt || '';
 
   // Fetch evolution data when session is selected
@@ -321,7 +321,7 @@ const EvolutionView = () => {
               </div>
               <div className="stat-item">
                 <Icon icon="mdi:graph-outline" width="16" />
-                <span>{phylogenyMetadata.total_candidates || 0} attempts</span>
+                <span>{phylogenyMetadata.total_takes || 0} attempts</span>
               </div>
             </div>
           ) : selectedCascadeData ? (

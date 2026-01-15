@@ -1034,30 +1034,30 @@ def _request_decision_via_checkpoint(
     """Create checkpoint and wait for decision response."""
     from ..checkpoints import get_checkpoint_manager, CheckpointType
     from ..tracing import get_current_trace
-    from .state_tools import get_current_candidate_index
+    from .state_tools import get_current_take_index
 
     trace = get_current_trace()
     checkpoint_manager = get_checkpoint_manager()
 
-    # Capture candidate_index if we're in a candidate (for parallel candidate decisions)
+    # Capture take_index if we're in a take (for parallel take decisions)
     # Try multiple ways since context vars might not propagate across threads
-    candidate_index = get_current_candidate_index()
+    take_index = get_current_take_index()
 
     # Fallback: Try to get from runner metadata in trace
-    if candidate_index is None and trace:
+    if take_index is None and trace:
         try:
-            # Check if trace has candidate context
+            # Check if trace has take context
             from ..runner import RVBBITRunner
             # Try to find runner instance via contextvars or other means
             # For now, just log that we couldn't get it
-            console.print(f"[yellow]Warning: Could not get candidate_index from context var (thread issue)[/yellow]")
+            console.print(f"[yellow]Warning: Could not get take_index from context var (thread issue)[/yellow]")
         except:
             pass
 
-    if candidate_index is not None:
-        console.print(f"[cyan]Creating checkpoint for Sounding {candidate_index}[/cyan]")
+    if take_index is not None:
+        console.print(f"[cyan]Creating checkpoint for Sounding {take_index}[/cyan]")
     else:
-        console.print(f"[dim]Creating checkpoint (no candidate context detected)[/dim]")
+        console.print(f"[dim]Creating checkpoint (no take context detected)[/dim]")
 
     # Build UI spec - either from custom HTML or structured options
     if html:
@@ -1073,11 +1073,11 @@ def _request_decision_via_checkpoint(
             allow_custom=allow_custom
         )
 
-    # Add candidate_index to metadata for UI grouping
-    if candidate_index is not None:
+    # Add take_index to metadata for UI grouping
+    if take_index is not None:
         ui_spec['_meta'] = ui_spec.get('_meta', {})
-        ui_spec['_meta']['candidate_index'] = candidate_index
-        console.print(f"[dim]Added candidate_index={candidate_index} to checkpoint metadata[/dim]")
+        ui_spec['_meta']['take_index'] = take_index
+        console.print(f"[dim]Added take_index={take_index} to checkpoint metadata[/dim]")
 
     # Tag checkpoints created in Research Cockpit mode
     # These have dedicated inline UI and shouldn't clutter the Blocked Sessions page
@@ -1099,8 +1099,8 @@ def _request_decision_via_checkpoint(
         timeout_seconds=timeout_seconds
     )
 
-    candidate_label = f" [cyan](Sounding {candidate_index})[/cyan]" if candidate_index is not None else ""
-    console.print(f"\n[bold magenta]🔀 Decision point{candidate_label}:[/bold magenta] {question}")
+    take_label = f" [cyan](Sounding {take_index})[/cyan]" if take_index is not None else ""
+    console.print(f"\n[bold magenta]🔀 Decision point{take_label}:[/bold magenta] {question}")
     if context:
         console.print(f"[dim]{context[:200]}{'...' if len(context) > 200 else ''}[/dim]")
     console.print(f"[dim]Options: {len(options)}, Timeout: {timeout_seconds}s[/dim]")
@@ -1125,7 +1125,7 @@ def _request_decision_via_checkpoint(
                 html=complete_html,
                 session_id=session_id,
                 cell_name=cell_name or "request_decision",
-                candidate_index=candidate_index,
+                take_index=take_index,
                 render_type="decision",
                 unique_id=checkpoint.id  # Unique per checkpoint - no overwrites
             )
@@ -1195,7 +1195,7 @@ def _request_decision_via_checkpoint(
             "severity": severity,
             "has_html": bool(html),
             "options_count": len(options) if options else 0,
-            "candidate_index": candidate_index,
+            "take_index": take_index,
         }
 
         # Add screenshot path if available
@@ -1215,7 +1215,7 @@ def _request_decision_via_checkpoint(
             metadata=render_metadata,
             cell_name=cell_name or "request_decision",
             cascade_id=trace.name if trace else "unknown",
-            candidate_index=candidate_index,
+            take_index=take_index,
         )
         console.print(f"[dim]📝 Render entry logged for /outputs[/dim]")
 

@@ -19,18 +19,18 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
                 new_key = 'cells'
             elif key == 'tackle':
                 new_key = 'skills'
-            elif key == 'candidates':
-                new_key = 'candidates'
+            elif key == 'takes':
+                new_key = 'takes'
             elif key == 'cell_name':
                 new_key = 'cell_name'
             elif key == 'cell_json':
                 new_key = 'cell_json'
-            elif key == 'candidate_index':
-                new_key = 'candidate_index'
-            elif key == 'candidate_factor':
-                new_key = 'candidate_factor'
-            elif key == 'winning_candidate_index':
-                new_key = 'winning_candidate_index'
+            elif key == 'take_index':
+                new_key = 'take_index'
+            elif key == 'take_factor':
+                new_key = 'take_factor'
+            elif key == 'winning_take_index':
+                new_key = 'winning_take_index'
             elif key == 'current_cell':
                 new_key = 'current_cell'
             elif key == 'error_cell':

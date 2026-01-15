@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     target_cell_name String,
     target_cell_instructions String,
 
-    -- Candidate message being assessed
+    -- Take message being assessed
     source_cell_name String,
     content_hash String,
     message_role LowCardinality(String),
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS context_shadow_assessments (
     rank_heuristic UInt16,
     rank_semantic Nullable(UInt16),
     rank_composite UInt16,
-    total_candidates UInt16,
+    total_takes UInt16,
 
     -- Budget context
     budget_total UInt32,

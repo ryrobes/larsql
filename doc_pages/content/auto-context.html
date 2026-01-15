@@ -441,7 +441,7 @@ recent_messages = messages[window_start:]  <span class="cmt"># Full fidelity</sp
 <h4>Heuristic Selection (Fast, No LLM)</h4>
 
 <p>
-  Scores candidates using keyword overlap, recency, and callout status.
+  Scores takes using keyword overlap, recency, and callout status.
   Good for cost-sensitive workloads where approximate selection is acceptable.
 </p>
 
@@ -520,8 +520,8 @@ for r in results:
 </p>
 
 <ol>
-  <li><strong>Prefilter:</strong> Heuristic selects top candidates at 2x the token budget</li>
-  <li><strong>Skip LLM:</strong> If &le;5 candidates remain, use heuristic result directly</li>
+  <li><strong>Prefilter:</strong> Heuristic selects top takes at 2x the token budget</li>
+  <li><strong>Skip LLM:</strong> If &le;5 takes remain, use heuristic result directly</li>
   <li><strong>LLM Final:</strong> Otherwise, LLM picks from the prefiltered pool</li>
 </ol>
 
@@ -640,7 +640,7 @@ for r in results:
       <td><strong>80%</strong></td>
     </tr>
     <tr>
-      <td>5-way candidates with iterations</td>
+      <td>5-way takes with iterations</td>
       <td>~500K tokens</td>
       <td>~150K tokens</td>
       <td><strong>70%</strong></td>
@@ -663,7 +663,7 @@ for r in results:
     <li><strong>Long-running cells</strong> with many turns (research, iteration)</li>
     <li><strong>loop_until patterns</strong> with multiple retry attempts</li>
     <li><strong>Tool-heavy workflows</strong> with large result payloads</li>
-    <li><strong>Candidates/soundings</strong> that multiply context across branches</li>
+    <li><strong>Takes/soundings</strong> that multiply context across branches</li>
   </ul>
   <p>
     For simple, short cascades, overhead may exceed savings. The system is disabled by default
@@ -758,6 +758,6 @@ for r in results:
   <li><a href="#memory" data-link>Memory System</a> - Persistent memory banks, research database, RAG</li>
   <li><a href="#context" data-link>Context Management</a> - Traditional explicit context configuration</li>
   <li><a href="#validation" data-link>Validation (Wards)</a> - loop_until and validation patterns</li>
-  <li><a href="#candidates" data-link>Candidates & Evaluation</a> - Multi-candidate workflows</li>
+  <li><a href="#takes" data-link>Takes & Evaluation</a> - Multi-take workflows</li>
   <li><a href="#tools" data-link>Tools (Skills)</a> - Tool system overview</li>
 </ul>

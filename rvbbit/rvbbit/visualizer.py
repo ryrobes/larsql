@@ -4,7 +4,7 @@ RVBBIT Mermaid Visualizer
 Generates execution flow diagrams from Echo history showing:
 - Cascade structure with nested cells
 - Cell-to-cell handoffs
-- Candidates (Tree of Thought) with parallel attempts and winner selection
+- Takes (Tree of Thought) with parallel attempts and winner selection
 - Reforge (iterative refinement) with sequential steps
 - Sub-cascades as nested containers
 - Wards as validation checkpoints
@@ -27,7 +27,7 @@ from .config import get_config
 class ExecutionNode:
     """Represents a node in the execution tree."""
     id: str
-    node_type: str  # cascade, cell, turn, tool, candidates, reforge, etc.
+    node_type: str  # cascade, cell, turn, tool, takes, reforge, etc.
     name: str
     role: str = ""
     content: str = ""
@@ -35,7 +35,7 @@ class ExecutionNode:
     children: List['ExecutionNode'] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     # Sounding/Reforge specific
-    candidate_index: Optional[int] = None
+    take_index: Optional[int] = None
     is_winner: bool = False
     reforge_step: Optional[int] = None
 
@@ -192,7 +192,7 @@ def _log_invalid_mermaid(content: str, error: str, context: Optional[Dict], outp
         "content_stats": {
             "line_count": len(content.split('\n')),
             "char_count": len(content),
-            "has_candidates": "fork" in content.lower(),
+            "has_takes": "fork" in content.lower(),
             "has_reforge": "reforge" in content.lower(),
         }
     }
@@ -345,13 +345,13 @@ def extract_metadata(entry: Dict) -> Dict:
         except:
             meta = {}
     return {
-        'candidate_index': meta.get('candidate_index'),
+        'take_index': meta.get('take_index'),
         'is_winner': meta.get('is_winner'),
         'reforge_step': meta.get('reforge_step'),
         'cell_name': meta.get('cell_name'),
         'cascade_id': meta.get('cascade_id'),
         'factor': meta.get('factor'),
-        'has_candidates': meta.get('has_candidates'),
+        'has_takes': meta.get('has_takes'),
         'has_wards': meta.get('has_wards'),
         'has_sub_cascades': meta.get('has_sub_cascades'),
         'handoffs': meta.get('handoffs', []),
@@ -375,7 +375,7 @@ def extract_metadata(entry: Dict) -> Dict:
         # Retry/validation-specific
         'attempt': meta.get('attempt'),
         'max_attempts': meta.get('max_attempts'),
-        # Mutation-specific (for candidates)
+        # Mutation-specific (for takes)
         'mutation_applied': meta.get('mutation_applied'),
         'mutation_type': meta.get('mutation_type'),
         'mutation_template': meta.get('mutation_template'),
@@ -765,28 +765,28 @@ def extract_state_changes(history: List[Dict]) -> Dict[str, List[str]]:
     return state_changes
 
 
-def extract_candidate_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]]:
+def extract_take_mutations(history: List[Dict]) -> Dict[str, Dict[int, Dict]]:
     """
-    Extract mutation information for candidate attempts.
+    Extract mutation information for take attempts.
 
     Returns:
-        Dict: cell_name -> {candidate_index -> {'mutation_applied': str, 'mutation_type': str, 'is_winner': bool}}
+        Dict: cell_name -> {take_index -> {'mutation_applied': str, 'mutation_type': str, 'is_winner': bool}}
     """
     mutations = {}
 
     for entry in history:
         node_type = entry.get("node_type", "")
-        if node_type == "candidate_attempt":
+        if node_type == "take_attempt":
             meta = extract_metadata(entry)
             cell_name = meta.get("cell_name", "unknown")
-            candidate_index = meta.get("candidate_index", 0)
+            take_index = meta.get("take_index", 0)
             mutation_applied = meta.get("mutation_applied")
             is_winner = meta.get("is_winner", False)
 
             if cell_name not in mutations:
                 mutations[cell_name] = {}
 
-            mutations[cell_name][candidate_index] = {
+            mutations[cell_name][take_index] = {
                 'mutation_applied': mutation_applied,
                 'is_winner': is_winner
             }
@@ -816,7 +816,7 @@ def format_cell_progress_indicator(cell_progress: dict) -> str:
     - Stage: pre_ward, main, post_ward
     - Turn: T1/3 (turn 1 of 3)
     - Attempt: A2/5 (attempt 2 of 5 for validation)
-    - Sounding: S2/5⚖ (candidate 2 of 5, currently evaluating)
+    - Sounding: S2/5⚖ (take 2 of 5, currently evaluating)
     - Reforge: R1/3 (reforge step 1 of 3)
     - Ward: 🛡️grammar_check (current ward being run)
     - Tool: 🔧run_code (current tool being called)
@@ -850,15 +850,15 @@ def format_cell_progress_indicator(cell_progress: dict) -> str:
         parts.append(f"A{current_attempt}/{max_attempts}")
 
     # Sounding info
-    candidate_info = cell_progress.get("candidate")
-    if candidate_info:
-        candidate_idx = candidate_info.get("index")
-        candidate_factor = candidate_info.get("factor", 1)
-        candidate_stage = candidate_info.get("stage", "executing")
+    take_info = cell_progress.get("take")
+    if take_info:
+        take_idx = take_info.get("index")
+        take_factor = take_info.get("factor", 1)
+        take_stage = take_info.get("stage", "executing")
 
-        if candidate_idx is not None:
-            stage_icon = "⚖️" if candidate_stage == "evaluating" else "🔱"
-            parts.append(f"{stage_icon}S{candidate_idx + 1}/{candidate_factor}")
+        if take_idx is not None:
+            stage_icon = "⚖️" if take_stage == "evaluating" else "🔱"
+            parts.append(f"{stage_icon}S{take_idx + 1}/{take_factor}")
 
     # Reforge info
     reforge_info = cell_progress.get("reforge")
@@ -923,17 +923,17 @@ def get_running_internal_node_id(cell_progress: dict, pid: str) -> Optional[str]
             ward_idx = ward_info.get("index", 1) - 1  # 0-indexed
             return f"{pid}_post{ward_idx}"
 
-    # Main stage - could be turn, candidate, or reforge
+    # Main stage - could be turn, take, or reforge
     elif stage == "main":
-        candidate_info = cell_progress.get("candidate")
-        if candidate_info:
-            candidate_idx = candidate_info.get("index")
-            candidate_stage = candidate_info.get("stage")
+        take_info = cell_progress.get("take")
+        if take_info:
+            take_idx = take_info.get("index")
+            take_stage = take_info.get("stage")
 
-            if candidate_stage == "evaluating":
+            if take_stage == "evaluating":
                 return f"{pid}_eval"
-            elif candidate_idx is not None:
-                return f"{pid}_a{candidate_idx}"
+            elif take_idx is not None:
+                return f"{pid}_a{take_idx}"
 
         reforge_info = cell_progress.get("reforge")
         if reforge_info:
@@ -1005,7 +1005,7 @@ def build_execution_tree(echo: Echo) -> Tuple[List[ExecutionNode], Dict[str, Exe
             content=entry.get("content", ""),
             parent_id=entry.get("parent_id"),
             metadata=meta,
-            candidate_index=meta.get('candidate_index'),
+            take_index=meta.get('take_index'),
             is_winner=meta.get('is_winner', False),
             reforge_step=meta.get('reforge_step')
         )
@@ -1032,18 +1032,18 @@ def collect_cells(nodes_map: Dict[str, ExecutionNode]) -> List[ExecutionNode]:
     return cells
 
 
-def collect_candidates(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
-    """Collect candidate attempts for a cell, grouped by candidate_index."""
-    candidates: Dict[int, List[ExecutionNode]] = {}
+def collect_takes(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
+    """Collect take attempts for a cell, grouped by take_index."""
+    takes: Dict[int, List[ExecutionNode]] = {}
 
     for node in nodes_map.values():
         if node.parent_id == cell_id or (node.parent_id and nodes_map.get(node.parent_id, ExecutionNode("", "", "")).parent_id == cell_id):
-            if node.candidate_index is not None:
-                if node.candidate_index not in candidates:
-                    candidates[node.candidate_index] = []
-                candidates[node.candidate_index].append(node)
+            if node.take_index is not None:
+                if node.take_index not in takes:
+                    takes[node.take_index] = []
+                takes[node.take_index].append(node)
 
-    return candidates
+    return takes
 
 
 def collect_reforge_steps(nodes_map: Dict[str, ExecutionNode], cell_id: str) -> Dict[int, List[ExecutionNode]]:
@@ -1089,8 +1089,8 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             "cell_name": node.metadata.get("cell_name"),
             "cascade_id": node.metadata.get("cascade_id"),
 
-            # Candidates/Reforge
-            "candidate_index": node.candidate_index,
+            # Takes/Reforge
+            "take_index": node.take_index,
             "is_winner": node.is_winner,
             "reforge_step": node.reforge_step,
 
@@ -1131,16 +1131,16 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             "edge_type": "cell_sequence"
         })
 
-    # Collect candidates info
-    candidates_groups = {}
+    # Collect takes info
+    takes_groups = {}
     for node in nodes:
-        if node["candidate_index"] is not None:
+        if node["take_index"] is not None:
             cell = node.get("cell_name", "unknown")
-            if cell not in candidates_groups:
-                candidates_groups[cell] = []
-            candidates_groups[cell].append({
+            if cell not in takes_groups:
+                takes_groups[cell] = []
+            takes_groups[cell].append({
                 "trace_id": node["trace_id"],
-                "candidate_index": node["candidate_index"],
+                "take_index": node["take_index"],
                 "is_winner": node["is_winner"],
                 "reforge_step": node.get("reforge_step")
             })
@@ -1162,11 +1162,11 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
         basename = os.path.basename(sub_file)
         sub_session_id = basename.replace(".json", "")
 
-        # Extract candidate index from session ID
+        # Extract take index from session ID
         if "_sub_" in sub_session_id:
             try:
                 idx_str = sub_session_id.split("_sub_")[-1]
-                candidate_index = int(idx_str)
+                take_index = int(idx_str)
             except (ValueError, IndexError):
                 continue
 
@@ -1183,17 +1183,17 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             except Exception:
                 pass  # Gracefully handle missing/corrupt files
 
-            # Build mermaid node ID by checking which cell has this candidate
+            # Build mermaid node ID by checking which cell has this take
             # For now, we need to infer the cell name from the mermaid structure
             # Since we're generating this mapping AFTER mermaid is generated,
             # we can scan the actual mermaid content for the node IDs
 
             # This mapping is session_id-based, UI can match by pattern
             # Store with a generic key that UI can search
-            sub_cascade_mapping[f"candidate_{candidate_index}"] = {
+            sub_cascade_mapping[f"take_{take_index}"] = {
                 "session_id": sub_session_id,
                 "cascade_id": cascade_id,
-                "candidate_index": candidate_index
+                "take_index": take_index
             }
 
     # Build output structure
@@ -1205,7 +1205,7 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
         "edges": edges,
 
         "cells": cells,
-        "candidates": candidates_groups,
+        "takes": takes_groups,
 
         # NEW: Sub-cascade mapping for UI
         "sub_cascade_mapping": sub_cascade_mapping,
@@ -1214,7 +1214,7 @@ def export_execution_graph_json(echo: Echo, output_path: str) -> str:
             "total_nodes": len(nodes),
             "total_edges": len(edges),
             "total_cells": len(cells),
-            "has_candidates": len(candidates_groups) > 0,
+            "has_takes": len(takes_groups) > 0,
             "has_sub_cascades": len(sub_echoes) > 0
         }
     }
@@ -1275,8 +1275,8 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
             rf_type = "cellNode"
         elif node.node_type == "cascade":
             rf_type = "cascadeNode"
-        elif node.node_type in ("candidate_attempt", "candidates"):
-            rf_type = "candidateNode"
+        elif node.node_type in ("take_attempt", "takes"):
+            rf_type = "takeNode"
         elif node.node_type in ("reforge_step", "reforge_attempt"):
             rf_type = "reforgeNode"
         elif node.node_type == "tool_result":
@@ -1295,7 +1295,7 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
                 "role": node.role,
                 "cell_name": node.metadata.get("cell_name"),
                 "cascade_id": node.metadata.get("cascade_id"),
-                "candidate_index": node.candidate_index,
+                "take_index": node.take_index,
                 "is_winner": node.is_winner,
                 "reforge_step": node.reforge_step,
                 "metadata": node.metadata
@@ -1321,9 +1321,9 @@ def export_react_flow_graph(echo: Echo, output_path: str) -> str:
                 edge_style = {"stroke": "#00ff00", "strokeWidth": 3}
                 animated = True
                 edge_type = "winner"
-            elif node.candidate_index is not None:
+            elif node.take_index is not None:
                 edge_style = {"stroke": "#fab005", "strokeDasharray": "5 5"}
-                edge_type = "candidate"
+                edge_type = "take"
             elif node.node_type == "cell":
                 edge_style = {"stroke": "#1c7ed6", "strokeWidth": 2}
                 edge_type = "cell"
@@ -1379,7 +1379,7 @@ def generate_mermaid_string(echo: Echo) -> str:
     The diagram shows:
     - Cascade as the outer container
     - Cells as nodes connected by handoffs
-    - Candidates as parallel branches with winner highlighting
+    - Takes as parallel branches with winner highlighting
     - Reforge as sequential refinement steps
     - Sub-cascades as nested groups
 
@@ -1404,7 +1404,7 @@ def generate_mermaid_string(echo: Echo) -> str:
         "    classDef system fill:#16202A,stroke:#60a5fa,color:#F0F4F8;",
         "    classDef user fill:#16202A,stroke:#D9A553,color:#F0F4F8;",
         "    classDef tool fill:#16202A,stroke:#f472b6,color:#F0F4F8;",
-        "    classDef candidates_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef takes_group fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef attempt fill:#16202A,stroke:#D9A553,stroke-dasharray:3 3,color:#F0F4F8;",
         "    classDef winner fill:#16202A,stroke:#F0F4F8,stroke-width:4px,color:#F0F4F8;",
         "    classDef loser fill:#16202A,stroke:#9AA5B1,stroke-dasharray:5 5,color:#9AA5B1;",
@@ -1430,8 +1430,8 @@ def generate_mermaid_string(echo: Echo) -> str:
     # Collect structural entries from history with their metadata
     cascade_entry = None
     cell_entries = []
-    candidates_entries = []
-    candidate_attempts = []
+    takes_entries = []
+    take_attempts = []
     evaluator_entries = []
     ward_entries = []
     quartermaster_entries = []
@@ -1450,10 +1450,10 @@ def generate_mermaid_string(echo: Echo) -> str:
             if entry.get("parent_id") in sub_cascade_trace_ids:
                 continue
             cell_entries.append(entry)
-        elif node_type == "candidates":
-            candidates_entries.append(entry)
-        elif node_type == "candidate_attempt":
-            candidate_attempts.append(entry)
+        elif node_type == "takes":
+            takes_entries.append(entry)
+        elif node_type == "take_attempt":
+            take_attempts.append(entry)
         elif node_type in ("evaluator", "evaluation"):
             evaluator_entries.append(entry)
         elif node_type in ("pre_ward", "post_ward"):
@@ -1467,17 +1467,17 @@ def generate_mermaid_string(echo: Echo) -> str:
         elif node_type == "validation_retry":
             # Retry messages are already captured as user messages
             pass
-        elif node_type == "cascade_candidates":
-            # Cascade-level candidates start marker
+        elif node_type == "cascade_takes":
+            # Cascade-level takes start marker
             pass  # Collected separately below
-        elif node_type == "cascade_candidate_attempt":
-            # Individual cascade candidate attempt
+        elif node_type == "cascade_take_attempt":
+            # Individual cascade take attempt
             pass  # Collected separately below
         elif node_type == "cascade_evaluator":
-            # Cascade candidates evaluator
+            # Cascade takes evaluator
             pass  # Collected separately below
-        elif node_type == "cascade_candidates_result":
-            # Cascade candidates result/winner
+        elif node_type == "cascade_takes_result":
+            # Cascade takes result/winner
             pass  # Collected separately below
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
             # Reforge entries - collected separately by cell
@@ -1500,14 +1500,14 @@ def generate_mermaid_string(echo: Echo) -> str:
     # Note: Removed cascade container wrapper for cleaner visualization
     # Diagram renders cells directly without outer border box
 
-    # Group candidate attempts by cell
-    candidates_by_cell: Dict[str, List[Dict]] = {}
-    for sa in candidate_attempts:
+    # Group take attempts by cell
+    takes_by_cell: Dict[str, List[Dict]] = {}
+    for sa in take_attempts:
         meta = extract_metadata(sa)
         cell_name = meta.get("cell_name", "unknown")
-        if cell_name not in candidates_by_cell:
-            candidates_by_cell[cell_name] = []
-        candidates_by_cell[cell_name].append(sa)
+        if cell_name not in takes_by_cell:
+            takes_by_cell[cell_name] = []
+        takes_by_cell[cell_name].append(sa)
 
     # Group evaluator entries by cell
     evaluators_by_cell: Dict[str, Dict] = {}
@@ -1591,31 +1591,31 @@ def generate_mermaid_string(echo: Echo) -> str:
         else:
             return "-"  # Pending
 
-    # Collect cascade-level candidates entries
-    cascade_candidates_start = None
-    cascade_candidate_attempts = []
+    # Collect cascade-level takes entries
+    cascade_takes_start = None
+    cascade_take_attempts = []
     cascade_evaluator = None
-    cascade_candidates_result = None
+    cascade_takes_result = None
 
     for entry in history:
         node_type = entry.get("node_type")
-        if node_type == "cascade_candidates":
-            cascade_candidates_start = entry
-        elif node_type == "cascade_candidate_attempt":
-            cascade_candidate_attempts.append(entry)
+        if node_type == "cascade_takes":
+            cascade_takes_start = entry
+        elif node_type == "cascade_take_attempt":
+            cascade_take_attempts.append(entry)
         elif node_type == "cascade_evaluator":
             cascade_evaluator = entry
-        elif node_type == "cascade_candidates_result":
-            cascade_candidates_result = entry
+        elif node_type == "cascade_takes_result":
+            cascade_takes_result = entry
 
-    # Render cascade-level candidates if present (appears before cells)
-    cascade_candidates_node_id = None
-    if cascade_candidates_start and cascade_candidate_attempts:
-        cs_meta = extract_metadata(cascade_candidates_start)
-        factor = cs_meta.get("factor", len(cascade_candidate_attempts))
-        cs_id = "n_cascade_candidates"
+    # Render cascade-level takes if present (appears before cells)
+    cascade_takes_node_id = None
+    if cascade_takes_start and cascade_take_attempts:
+        cs_meta = extract_metadata(cascade_takes_start)
+        factor = cs_meta.get("factor", len(cascade_take_attempts))
+        cs_id = "n_cascade_takes"
 
-        lines.append(f'        subgraph {cs_id}["Cascade Candidates ({factor} executions)"]')
+        lines.append(f'        subgraph {cs_id}["Cascade Takes ({factor} executions)"]')
         lines.append("        direction TB")
 
         # Render attempts as boxes with sub-session links
@@ -1624,24 +1624,24 @@ def generate_mermaid_string(echo: Echo) -> str:
 
         attempt_ids = []
         winner_index = None
-        if cascade_candidates_result:
-            result_meta = extract_metadata(cascade_candidates_result)
+        if cascade_takes_result:
+            result_meta = extract_metadata(cascade_takes_result)
             winner_index = result_meta.get("winner_index")
 
-        # Group cells by candidate_index for cascade-level candidates
-        cells_by_candidate: Dict[int, List[Dict]] = {}
+        # Group cells by take_index for cascade-level takes
+        cells_by_take: Dict[int, List[Dict]] = {}
         for cell_entry in cell_entries:
             cell_meta = extract_metadata(cell_entry)
-            candidate_idx = cell_meta.get("candidate_index")
-            if candidate_idx is not None:
-                if candidate_idx not in cells_by_candidate:
-                    cells_by_candidate[candidate_idx] = []
-                cells_by_candidate[candidate_idx].append(cell_entry)
+            take_idx = cell_meta.get("take_index")
+            if take_idx is not None:
+                if take_idx not in cells_by_take:
+                    cells_by_take[take_idx] = []
+                cells_by_take[take_idx].append(cell_entry)
 
-        for attempt in sorted(cascade_candidate_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
+        for attempt in sorted(cascade_take_attempts, key=lambda a: extract_metadata(a).get("take_index", 0)):
             a_meta = extract_metadata(attempt)
-            idx = a_meta.get("candidate_index", 0)
-            sub_session_id = a_meta.get("sub_session_id", f"candidate_{idx}")
+            idx = a_meta.get("take_index", 0)
+            sub_session_id = a_meta.get("sub_session_id", f"take_{idx}")
             is_winner = (winner_index is not None and idx == winner_index)
 
             attempt_id = f"{cs_id}_a{idx}"
@@ -1669,16 +1669,16 @@ def generate_mermaid_string(echo: Echo) -> str:
                     lines.append(f"                class {attempt_id} loser")
             else:
                 # Fallback: Try to reconstruct from cells in parent history
-                candidate_cells = cells_by_candidate.get(idx, [])
+                take_cells = cells_by_take.get(idx, [])
 
-                if candidate_cells:
+                if take_cells:
                     # Render as subgraph containing the cells
                     winner_mark = " ✓" if is_winner else ""
                     lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                     lines.append("                direction TB")
 
-                    # Render each cell in this candidate
-                    for j, cell_entry in enumerate(candidate_cells):
+                    # Render each cell in this take
+                    for j, cell_entry in enumerate(take_cells):
                         cell_content = cell_entry.get("content", "")
                         cell_name = cell_content.replace("Cell: ", "") if cell_content.startswith("Cell: ") else cell_content
                         cell_id = f"{attempt_id}_p{j}"
@@ -1688,7 +1688,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                         lines.append(f'                    {cell_id}["{cell_label}"]')
                         lines.append(f"                    class {cell_id} cell")
 
-                        # Connect cells sequentially within the candidate
+                        # Connect cells sequentially within the take
                         if j > 0:
                             prev_cell_id = f"{attempt_id}_p{j-1}"
                             lines.append(f"                    {prev_cell_id} --> {cell_id}")
@@ -1731,12 +1731,12 @@ def generate_mermaid_string(echo: Echo) -> str:
             lines.append(f'            {winner_out}(["* Cascade #{winner_index+1} selected"])')
             lines.append(f"            class {winner_out} winner")
             lines.append(f"            {eval_id} ==> {winner_out}")
-            cascade_candidates_node_id = winner_out
+            cascade_takes_node_id = winner_out
         else:
-            cascade_candidates_node_id = eval_id
+            cascade_takes_node_id = eval_id
 
         lines.append("        end")
-        lines.append(f"        class {cs_id} candidates_group")
+        lines.append(f"        class {cs_id} takes_group")
 
     # Render cells and their connections
     cell_ids = []
@@ -1745,8 +1745,8 @@ def generate_mermaid_string(echo: Echo) -> str:
     for i, cell_entry in enumerate(cell_entries):
         meta = extract_metadata(cell_entry)
 
-        # Skip cells that belong to cascade-level candidates (they're already rendered inside candidate boxes)
-        if meta.get("candidate_index") is not None:
+        # Skip cells that belong to cascade-level takes (they're already rendered inside take boxes)
+        if meta.get("take_index") is not None:
             continue
 
         content = cell_entry.get("content", "")
@@ -1758,24 +1758,24 @@ def generate_mermaid_string(echo: Echo) -> str:
         # Get cell status
         status_icon = get_cell_status(cell_name)
 
-        has_candidates = meta.get("has_candidates", False) or cell_name in candidates_by_cell
+        has_takes = meta.get("has_takes", False) or cell_name in takes_by_cell
         has_wards = meta.get("has_wards", False) or cell_name in wards_by_cell
         cell_wards = wards_by_cell.get(cell_name, {"pre": [], "post": []})
 
-        if has_candidates and cell_name in candidates_by_cell:
-            # Render candidates group
+        if has_takes and cell_name in takes_by_cell:
+            # Render takes group
             lines.append(f'        subgraph {cell_id}["{status_icon} {sanitize_label(cell_name, 30)}"]')
             lines.append("        direction TB")
 
-            # Get candidate attempts for this cell
-            attempts = candidates_by_cell[cell_name]
+            # Get take attempts for this cell
+            attempts = takes_by_cell[cell_name]
             winner_index = None
 
             # Build attempts info with content
             attempts_info = {}
             for sa in attempts:
                 sa_meta = extract_metadata(sa)
-                idx = sa_meta.get("candidate_index", 0)
+                idx = sa_meta.get("take_index", 0)
                 is_winner = sa_meta.get("is_winner", False)
                 content = sa.get("content", "")
                 attempts_info[idx] = {"is_winner": is_winner, "content": content}
@@ -1790,18 +1790,18 @@ def generate_mermaid_string(echo: Echo) -> str:
             # Sub-cascades get rendered to {session_id}_sub.mmd
             sub_cascade_mermaid = load_sub_cascade_mermaid(f"{echo.session_id}_sub")
 
-            # Also group sub-cascade cells by candidate_index as fallback
-            # (happens when cell has both candidates + sub_cascades)
-            cells_by_candidate_idx: Dict[int, List[Dict]] = {}
+            # Also group sub-cascade cells by take_index as fallback
+            # (happens when cell has both takes + sub_cascades)
+            cells_by_take_idx: Dict[int, List[Dict]] = {}
             for pe in cell_entries:
                 pe_meta = extract_metadata(pe)
-                pe_candidate_idx = pe_meta.get("candidate_index")
-                # Check if this cell belongs to a candidate of the current cell we're rendering
-                if pe_candidate_idx is not None and pe_meta.get("cell_name") != cell_name:
-                    # This is a sub-cascade cell inside a candidate
-                    if pe_candidate_idx not in cells_by_candidate_idx:
-                        cells_by_candidate_idx[pe_candidate_idx] = []
-                    cells_by_candidate_idx[pe_candidate_idx].append(pe)
+                pe_take_idx = pe_meta.get("take_index")
+                # Check if this cell belongs to a take of the current cell we're rendering
+                if pe_take_idx is not None and pe_meta.get("cell_name") != cell_name:
+                    # This is a sub-cascade cell inside a take
+                    if pe_take_idx not in cells_by_take_idx:
+                        cells_by_take_idx[pe_take_idx] = []
+                    cells_by_take_idx[pe_take_idx].append(pe)
 
             # Render parallel attempts
             if attempts_info:
@@ -1836,17 +1836,17 @@ def generate_mermaid_string(echo: Echo) -> str:
                         else:
                             lines.append(f"                class {attempt_id} loser")
                     else:
-                        # Fallback: Check if this candidate has sub-cascade cells to render
-                        candidate_cells = cells_by_candidate_idx.get(idx, [])
+                        # Fallback: Check if this take has sub-cascade cells to render
+                        take_cells = cells_by_take_idx.get(idx, [])
 
-                        if candidate_cells:
+                        if take_cells:
                             # Render as subgraph containing the sub-cascade cells
                             winner_mark = " ✓" if info["is_winner"] else ""
                             lines.append(f'                subgraph {attempt_id}["Attempt #{idx+1}{winner_mark}"]')
                             lines.append("                direction TB")
 
-                            # Render each sub-cascade cell in this candidate
-                            for j, sub_cell_entry in enumerate(candidate_cells):
+                            # Render each sub-cascade cell in this take
+                            for j, sub_cell_entry in enumerate(take_cells):
                                 sub_cell_content = sub_cell_entry.get("content", "")
                                 sub_cell_name = sub_cell_content.replace("Cell: ", "") if sub_cell_content.startswith("Cell: ") else sub_cell_content
                                 sub_cell_id = f"{attempt_id}_p{j}"
@@ -1856,7 +1856,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                                 lines.append(f'                    {sub_cell_id}["{sub_cell_label}"]')
                                 lines.append(f"                    class {sub_cell_id} cell")
 
-                                # Connect cells sequentially within the candidate
+                                # Connect cells sequentially within the take
                                 if j > 0:
                                     prev_cell_id = f"{attempt_id}_p{j-1}"
                                     lines.append(f"                    {prev_cell_id} --> {sub_cell_id}")
@@ -1990,7 +1990,7 @@ def generate_mermaid_string(echo: Echo) -> str:
                             last_node_id = rf_step_winner if rf_winner_index is not None else rf_eval_id
 
             lines.append("        end")
-            lines.append(f"        class {cell_id} candidates_group")
+            lines.append(f"        class {cell_id} takes_group")
 
         elif cell_wards["pre"] or cell_wards["post"]:
             # Cell with wards - render as subgraph with checkpoints
@@ -2310,20 +2310,20 @@ def generate_mermaid_string(echo: Echo) -> str:
                 lines.append(f'        {cell_id}["{status_icon} {sanitize_label(cell_name, 35)}"]')
                 lines.append(f"        class {cell_id} cell")
 
-    # If we have cascade candidates, connect the winner to the first cell
-    if cascade_candidates_node_id and cell_ids:
-        lines.append(f"        {cascade_candidates_node_id} ==> {cell_ids[0]}")
+    # If we have cascade takes, connect the winner to the first cell
+    if cascade_takes_node_id and cell_ids:
+        lines.append(f"        {cascade_takes_node_id} ==> {cell_ids[0]}")
 
     # Connect cells using handoffs from metadata, or in order
     # Only connect cells that were actually rendered (not filtered out)
     for i in range(len(cell_ids)):
         # Find the corresponding cell_entry for this cell_id
-        # (skip cells that were filtered out due to candidate_index)
+        # (skip cells that were filtered out due to take_index)
         rendered_cell_idx = 0
         cell_entry = None
         for pe in cell_entries:
             meta = extract_metadata(pe)
-            if meta.get("candidate_index") is not None:
+            if meta.get("take_index") is not None:
                 continue  # Skip filtered cells
             if rendered_cell_idx == i:
                 cell_entry = pe
@@ -2359,19 +2359,19 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
     State diagrams provide a compact, semantic representation with encapsulated complexity:
     - Cells are composite states that contain their internal complexity
-    - Fork/join pseudo-states show parallel execution (candidates)
+    - Fork/join pseudo-states show parallel execution (takes)
     - Sub-cascades appear as nested composite states within parent cells
     - Wards chain as sequential validation steps
-    - Reforge chains sequentially after candidates
+    - Reforge chains sequentially after takes
     - Dynamic routing shown with taken (✓) vs available (○) paths
     - Blocked cells terminate at error states (⛔)
     - Live running state shows currently executing cell (▶)
-    - Mutation strategies shown on candidate attempts
+    - Mutation strategies shown on take attempts
 
     Visual language:
     - ▶ running (currently executing cell) + gold glow border
     - ✓ completed, ○ pending, ⛔ blocked
-    - 🔱 candidates (parallel attempts)
+    - 🔱 takes (parallel attempts)
     - 🔨 reforge (iterative refinement)
     - 📦 sub-cascade (nested workflow)
     - 🛡️ blocking ward, 🔄 retry ward, ℹ️ advisory ward
@@ -2388,7 +2388,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
     - checkpoint_paused: yellow border - for cells waiting for HITL input
     - checkpoint_resumed: blue border - for checkpoints that have been resumed
 
-    Candidate labels:
+    Take labels:
     - [baseline] = first attempt, no mutation
     - [mutation...] = mutation strategy applied (truncated)
     - ✓ = winner
@@ -2482,8 +2482,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
     # Extract state changes (set_state calls per cell)
     state_changes = extract_state_changes(history)
 
-    # Extract candidate mutations
-    candidate_mutations = extract_candidate_mutations(history)
+    # Extract take mutations
+    take_mutations = extract_take_mutations(history)
 
     # Extract validation retries (loop_until / max_attempts > 1)
     validation_retries = extract_validation_retries(history)
@@ -2529,14 +2529,14 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
     # Collect all entries by type
     cell_entries = []
-    candidates_by_cell: Dict[str, List[Dict]] = {}
+    takes_by_cell: Dict[str, List[Dict]] = {}
     reforge_by_cell: Dict[str, Dict[int, Dict]] = {}
     wards_by_cell: Dict[str, Dict[str, List[Dict]]] = {}
     tools_by_cell: Dict[str, List[str]] = {}
     turns_by_cell: Dict[str, int] = {}
     handoffs_by_cell: Dict[str, List[str]] = {}  # cell_name -> list of available handoff targets
-    cascade_candidate_attempts = []
-    cascade_candidates_result = None
+    cascade_take_attempts = []
+    cascade_takes_result = None
     checkpoint_entries: List[Dict] = []  # checkpoint_created entries
     checkpoint_resume_entries: List[Dict] = []  # checkpoint_resume entries
 
@@ -2555,11 +2555,11 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 if handoffs:
                     handoffs_by_cell[cell_name] = handoffs
 
-        elif node_type == "candidate_attempt":
+        elif node_type == "take_attempt":
             cell_name = meta.get("cell_name", "unknown")
-            if cell_name not in candidates_by_cell:
-                candidates_by_cell[cell_name] = []
-            candidates_by_cell[cell_name].append(entry)
+            if cell_name not in takes_by_cell:
+                takes_by_cell[cell_name] = []
+            takes_by_cell[cell_name].append(entry)
 
         elif node_type in ("reforge_step", "reforge_attempt", "reforge_evaluator", "reforge_winner"):
             cell_name = meta.get("cell_name", "unknown")
@@ -2602,11 +2602,11 @@ def generate_state_diagram_string(echo: Echo) -> str:
             cell_name = meta.get("cell_name", "unknown")
             turns_by_cell[cell_name] = turns_by_cell.get(cell_name, 0) + 1
 
-        elif node_type == "cascade_candidate_attempt":
-            cascade_candidate_attempts.append(entry)
+        elif node_type == "cascade_take_attempt":
+            cascade_take_attempts.append(entry)
 
-        elif node_type == "cascade_candidates_result":
-            cascade_candidates_result = entry
+        elif node_type == "cascade_takes_result":
+            cascade_takes_result = entry
 
         elif node_type == "checkpoint_created":
             checkpoint_entries.append(entry)
@@ -2700,26 +2700,26 @@ def generate_state_diagram_string(echo: Echo) -> str:
     running_cell_ids = []
     failed_cell_ids = []
 
-    # Cascade-level candidates (if present)
+    # Cascade-level takes (if present)
     first_state = None
-    if cascade_candidate_attempts:
-        cs_meta = extract_metadata(cascade_candidates_result) if cascade_candidates_result else {}
+    if cascade_take_attempts:
+        cs_meta = extract_metadata(cascade_takes_result) if cascade_takes_result else {}
         winner_index = cs_meta.get("winner_index")
-        factor = len(cascade_candidate_attempts)
+        factor = len(cascade_take_attempts)
 
-        lines.append("    state cascade_candidates {")
-        lines.append("        cs_label : 🔱 Cascade Candidates")
+        lines.append("    state cascade_takes {")
+        lines.append("        cs_label : 🔱 Cascade Takes")
         lines.append("        [*] --> cs_fork")
         lines.append("        state cs_fork <<fork>>")
 
-        for attempt in sorted(cascade_candidate_attempts, key=lambda a: extract_metadata(a).get("candidate_index", 0)):
+        for attempt in sorted(cascade_take_attempts, key=lambda a: extract_metadata(a).get("take_index", 0)):
             a_meta = extract_metadata(attempt)
-            idx = a_meta.get("candidate_index", 0)
+            idx = a_meta.get("take_index", 0)
             is_winner = (winner_index is not None and idx == winner_index)
             marker = " ✓" if is_winner else ""
-            sub_session_id = a_meta.get("sub_session_id", f"candidate_{idx}")
+            sub_session_id = a_meta.get("sub_session_id", f"take_{idx}")
 
-            # Try to load the complete mermaid diagram for this cascade candidate
+            # Try to load the complete mermaid diagram for this cascade take
             sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
 
             if sub_mermaid:
@@ -2762,7 +2762,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
         lines.append("    }")
         lines.append("")
-        first_state = "cascade_candidates"
+        first_state = "cascade_takes"
 
     # =========================================================================
     # RENDER EACH CELL
@@ -2781,7 +2781,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
         status = status_icon(cell_name, completed_cells)
 
         # Determine what complexity this cell has
-        has_candidates = cell_name in candidates_by_cell
+        has_takes = cell_name in takes_by_cell
         has_reforge = cell_name in reforge_by_cell
         has_wards = cell_name in wards_by_cell and (wards_by_cell[cell_name]["pre"] or wards_by_cell[cell_name]["post"])
         has_sub_cascades = cell_name in sub_cascades_by_cell_name
@@ -2870,7 +2870,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
         # Decide if cell needs composite state
         # Note: errors alone don't force composite - show as simple failed cell
         # Only render composite if there's meaningful internal structure to show
-        needs_composite = (has_candidates or has_reforge or has_wards or has_sub_cascades
+        needs_composite = (has_takes or has_reforge or has_wards or has_sub_cascades
                           or has_multi_turns or has_qm_selection or has_many_tool_calls)
 
         if not needs_composite:
@@ -2887,8 +2887,8 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
             # Cell label with status
             label_parts = [status, sanitize_label(cell_name, 25)]
-            if has_candidates:
-                factor = len(candidates_by_cell[cell_name])
+            if has_takes:
+                factor = len(takes_by_cell[cell_name])
                 label_parts.append(f"🔱{factor}")
             if has_reforge:
                 steps = len(reforge_by_cell[cell_name])
@@ -2986,15 +2986,15 @@ def generate_state_diagram_string(echo: Echo) -> str:
                         first_internal = ward_id
                     last_node = ward_id
 
-            # CANDIDATES
-            if has_candidates:
-                attempts = candidates_by_cell[cell_name]
+            # TAKES
+            if has_takes:
+                attempts = takes_by_cell[cell_name]
                 attempts_info = {}
                 winner_index = None
 
                 for sa in attempts:
                     sa_meta = extract_metadata(sa)
-                    idx = sa_meta.get("candidate_index", 0)
+                    idx = sa_meta.get("take_index", 0)
                     is_winner = sa_meta.get("is_winner", False)
                     attempts_info[idx] = {"is_winner": is_winner}
                     if is_winner:
@@ -3010,7 +3010,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     first_internal = fork_id
 
                 # Attempts - include mutation info if available
-                cell_mutations = candidate_mutations.get(cell_name, {})
+                cell_mutations = take_mutations.get(cell_name, {})
                 for idx in sorted(attempts_info.keys()):
                     info = attempts_info[idx]
                     marker = " ✓" if info["is_winner"] else ""
@@ -3030,9 +3030,9 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     elif idx == 0:
                         mutation_label = " [baseline]"
 
-                    # Always try to load sub-cascade diagram for this candidate attempt
-                    # For cell-level candidates with sub-cascades, the session ID pattern is:
-                    # {parent_session_id}_sub_{candidate_index}
+                    # Always try to load sub-cascade diagram for this take attempt
+                    # For cell-level takes with sub-cascades, the session ID pattern is:
+                    # {parent_session_id}_sub_{take_index}
                     sub_session_id = f"{echo.session_id}_sub_{idx}"
                     sub_mermaid = load_sub_cascade_mermaid(sub_session_id)
 
@@ -3079,7 +3079,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 else:
                     last_node = eval_id
 
-                # REFORGE (chains after candidates)
+                # REFORGE (chains after takes)
                 if has_reforge:
                     for step_num in sorted(reforge_by_cell[cell_name].keys()):
                         step_data = reforge_by_cell[cell_name][step_num]
@@ -3205,7 +3205,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = ward_id
 
             # TURNS (show individual turn progression for multi-turn cells)
-            if has_multi_turns and not has_candidates:  # Don't show turns if candidates handles it
+            if has_multi_turns and not has_takes:  # Don't show turns if takes handles it
                 lines.append("")
                 lines.append(f"        %% Turn progression")
                 turn_ids = []
@@ -3218,7 +3218,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
 
                     # Show turn with tool indicator and content preview
                     tool_mark = "🔧" if has_tools else ""
-                    # Add short content preview like candidates do with mutations
+                    # Add short content preview like takes do with mutations
                     context_label = ""
                     if content_preview:
                         # Truncate and clean for Mermaid
@@ -3238,7 +3238,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                     last_node = turn_ids[-1]
 
             # TOOL CALLS (show individual tool calls for cells with many tools but not multi-turn)
-            if has_many_tool_calls and not has_multi_turns and not has_candidates:
+            if has_many_tool_calls and not has_multi_turns and not has_takes:
                 lines.append("")
                 lines.append(f"        %% Tool calls")
                 tool_ids = []
@@ -3432,7 +3432,7 @@ def generate_state_diagram_string(echo: Echo) -> str:
                 checkpoint_node_ids.append(cp_node_id)
 
                 # Show checkpoint type indicator
-                if checkpoint_type == "candidate_eval":
+                if checkpoint_type == "take_eval":
                     cp_label = "⏸️ HITL Sounding Eval"
                 else:
                     cp_label = "⏸️ HITL Input"
@@ -3569,25 +3569,25 @@ def generate_state_diagram_with_metadata(echo: Echo, include_click_handlers: boo
                 "node_type": "turn"
             }
 
-    # Collect candidate attempts
+    # Collect take attempts
     for entry in history:
-        if entry.get("node_type") == "candidate_attempt":
+        if entry.get("node_type") == "take_attempt":
             meta = extract_metadata(entry)
             cell_name = meta.get("cell_name", "unknown")
-            candidate_index = meta.get("candidate_index", 0)
+            take_index = meta.get("take_index", 0)
             is_winner = meta.get("is_winner", False)
             trace_id = entry.get("trace_id", "")
             pid = sid(cell_name)
-            candidate_id = f"{pid}_a{candidate_index}"
+            take_id = f"{pid}_a{take_index}"
 
-            node_map[candidate_id] = {
-                "node_id": candidate_id,
+            node_map[take_id] = {
+                "node_id": take_id,
                 "cell_name": cell_name,
-                "candidate_index": candidate_index,
+                "take_index": take_index,
                 "is_winner": is_winner,
                 "trace_id": trace_id,
                 "parent_id": entry.get("parent_id"),
-                "node_type": "candidate_attempt"
+                "node_type": "take_attempt"
             }
 
     # Collect ward info
@@ -3726,7 +3726,7 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
 
     The diagram shows:
     - Cells as composite states with internal complexity
-    - Candidates as fork/join parallel branches with winner highlighting
+    - Takes as fork/join parallel branches with winner highlighting
     - Reforge as nested refinement states
     - Sub-cascades as nested composite states
     - Wards as entry/exit validation states
@@ -3753,7 +3753,7 @@ def generate_mermaid(echo: Echo, output_path: str) -> str:
         "session_id": echo.session_id,
         "cell_count": len(echo.lineage),
         "message_count": len(echo.history),
-        "has_candidates": any("candidate_index" in str(msg) for msg in echo.history),
+        "has_takes": any("take_index" in str(msg) for msg in echo.history),
     }
 
     is_valid, path = validate_and_write_mermaid(mermaid_content, output_path, context)
@@ -3784,7 +3784,7 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         "    %% Static Structure Styles - Midnight Fjord Dark Theme",
         "    classDef cell fill:#16202A,stroke:#2DD4BF,stroke-width:2px,color:#F0F4F8;",
         "    classDef deterministic fill:#16202A,stroke:#6366f1,stroke-width:2px,color:#F0F4F8;",
-        "    classDef candidates fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
+        "    classDef takes fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef reforge fill:#16202A,stroke:#D9A553,stroke-width:2px,color:#F0F4F8;",
         "    classDef sub_cascade fill:#16202A,stroke:#a78bfa,stroke-width:2px,color:#F0F4F8;",
         "    classDef ward fill:#16202A,stroke:#f97316,stroke-width:1px,color:#F0F4F8;",
@@ -3802,14 +3802,14 @@ def generate_mermaid_string_from_config(config: Any) -> str:
 
         # Determine cell type and decorations
         is_deterministic = cell.is_deterministic()
-        has_candidates = cell.candidates and cell.candidates.factor > 1
-        has_reforge = has_candidates and cell.candidates.reforge
+        has_takes = cell.takes and cell.takes.factor > 1
+        has_reforge = has_takes and cell.takes.reforge
         has_sub_cascades = bool(cell.sub_cascades)
         has_wards = cell.wards and (cell.wards.pre or cell.wards.post)
 
         # Build label with icons
         icons = []
-        if has_candidates:
+        if has_takes:
             icons.append("🔱ToT")
         if has_reforge:
             icons.append("🔨R")
@@ -3827,8 +3827,8 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         # Determine style class
         if has_reforge:
             style = "reforge"
-        elif has_candidates:
-            style = "candidates"
+        elif has_takes:
+            style = "takes"
         elif has_sub_cascades:
             style = "sub_cascade"
         elif is_deterministic:
@@ -3860,9 +3860,9 @@ def generate_mermaid_string_from_config(config: Any) -> str:
         if cell.rules and cell.rules.max_turns:
             details.append(f"Max turns: {cell.rules.max_turns}")
 
-        if has_candidates:
-            details.append(f"Candidates: {cell.candidates.factor}x")
-            if cell.candidates.mode == "aggregate":
+        if has_takes:
+            details.append(f"Takes: {cell.takes.factor}x")
+            if cell.takes.mode == "aggregate":
                 details.append("Mode: Aggregate")
 
         if details:

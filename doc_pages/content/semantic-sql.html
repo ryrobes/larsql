@@ -135,10 +135,10 @@ stateDiagram-v2
         direction LR
         S2_Scan --> S2_Model: model hints
         S2_Scan --> S2_Threshold: thresholds
-        S2_Scan --> S2_Candidates: candidates config
+        S2_Scan --> S2_Takes: takes config
         S2_Model --> S2_Inject
         S2_Threshold --> S2_Inject
-        S2_Candidates --> S2_Inject
+        S2_Takes --> S2_Inject
         S2_Inject --> S2_Done: Modified criteria
     }
 
@@ -589,7 +589,7 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 <span class="kw">ORDER BY</span> timestamp <span class="kw">DESC</span>
 <span class="kw">LIMIT</span> <span class="num">100</span>;
 
-<span class="cmt">-- Evaluation data from candidates</span>
+<span class="cmt">-- Evaluation data from takes</span>
 <span class="kw">SELECT</span> *
 <span class="kw">FROM</span> all_evals
 <span class="kw">WHERE</span> cascade_id = <span class="str">'my_cascade'</span>;</pre>
@@ -618,8 +618,8 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
 <span class="kw">SELECT</span> * <span class="kw">FROM</span> articles
 <span class="kw">WHERE</span> content <span class="fn">ABOUT</span> <span class="str">'sustainability'</span>;
 
-<span class="cmt">-- @ candidates.factor: 3</span>
-<span class="cmt">-- @ candidates.evaluator: human</span>
+<span class="cmt">-- @ takes.factor: 3</span>
+<span class="cmt">-- @ takes.evaluator: human</span>
 <span class="kw">SELECT</span> <span class="fn">SUMMARIZE</span>(feedback) <span class="kw">FROM</span> reviews;</pre>
   </div>
 </div>
@@ -666,16 +666,16 @@ conn = psycopg2.connect(host=<span class="str">"localhost"</span>, port=<span cl
       <td>Custom score threshold for ABOUT operators</td>
     </tr>
     <tr>
-      <td><code>-- @ candidates.factor: N</code></td>
+      <td><code>-- @ takes.factor: N</code></td>
       <td>Run cascade N times, pick best result</td>
     </tr>
     <tr>
-      <td><code>-- @ candidates.evaluator: human|llm</code></td>
-      <td>Who picks the winning candidate</td>
+      <td><code>-- @ takes.evaluator: human|llm</code></td>
+      <td>Who picks the winning take</td>
     </tr>
     <tr>
-      <td><code>-- @ candidates.mode: rank_all|pick_one</code></td>
-      <td>Selection mode for candidates</td>
+      <td><code>-- @ takes.mode: rank_all|pick_one</code></td>
+      <td>Selection mode for takes</td>
     </tr>
   </tbody>
 </table>

@@ -66,7 +66,7 @@
   color: #fbbf24;
 }
 
-.layer-icon-candidates {
+.layer-icon-takes {
   background: linear-gradient(135deg, rgba(0, 229, 255, 0.2), rgba(0, 200, 225, 0.1));
   color: #00e5ff;
 }
@@ -392,21 +392,21 @@
 }
 
 /* ============================================
-   CANDIDATES LAYER
+   TAKES LAYER
    ============================================ */
 
-.cell-anatomy-layer-candidates {
+.cell-anatomy-layer-takes {
   border-left-color: rgba(0, 229, 255, 0.4);
   padding-bottom: 16px;
 }
 
-.layer-candidates-badges {
+.layer-takes-badges {
   display: flex;
   gap: 6px;
   margin-left: auto;
 }
 
-.layer-candidates-badge {
+.layer-takes-badge {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -439,7 +439,7 @@
 }
 
 /* Loop-Until Validation Display */
-.layer-candidates-loop-until {
+.layer-takes-loop-until {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -451,19 +451,19 @@
   color: #fbbf24;
 }
 
-.layer-candidates-loop-until > svg {
+.layer-takes-loop-until > svg {
   flex-shrink: 0;
   margin-top: 2px;
 }
 
-.layer-candidates-loop-until-label {
+.layer-takes-loop-until-label {
   font-size: 10px;
   font-weight: 600;
   color: #fbbf24;
   flex-shrink: 0;
 }
 
-.layer-candidates-loop-until-preview {
+.layer-takes-loop-until-preview {
   font-size: 10px;
   font-family: 'Google Sans Code', monospace;
   color: #cbd5e1;
@@ -472,7 +472,7 @@
   line-height: 1.4;
 }
 
-.layer-candidates-loop-until-type {
+.layer-takes-loop-until-type {
   font-size: 9px;
   font-weight: 600;
   padding: 2px 6px;
@@ -482,32 +482,32 @@
   flex-shrink: 0;
 }
 
-.layer-candidates-loop-until-type.type-python {
+.layer-takes-loop-until-type.type-python {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
 }
 
-.layer-candidates-loop-until-type.type-javascript {
+.layer-takes-loop-until-type.type-javascript {
   background: rgba(234, 179, 8, 0.2);
   color: #fbbf24;
 }
 
-.layer-candidates-loop-until-type.type-sql {
+.layer-takes-loop-until-type.type-sql {
   background: rgba(168, 85, 247, 0.2);
   color: #a78bfa;
 }
 
-.layer-candidates-loop-until-type.type-bash {
+.layer-takes-loop-until-type.type-bash {
   background: rgba(34, 197, 94, 0.2);
   color: #4ade80;
 }
 
-.layer-candidates-loop-until-type.type-clojure {
+.layer-takes-loop-until-type.type-clojure {
   background: rgba(236, 72, 153, 0.2);
   color: #f472b6;
 }
 
-.layer-candidates-skills {
+.layer-takes-skills {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -515,7 +515,7 @@
   flex-wrap: wrap;
 }
 
-.layer-candidates-skills-label {
+.layer-takes-skills-label {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -524,13 +524,13 @@
   font-weight: 600;
 }
 
-.layer-candidates-skills-list {
+.layer-takes-skills-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.layer-candidates-skills-item {
+.layer-takes-skills-item {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -544,7 +544,7 @@
 }
 
 /* Manifest/Quartermaster Selection */
-.layer-candidates-manifest {
+.layer-takes-manifest {
   margin-bottom: 12px;
   padding: 8px 12px;
   background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(6, 182, 212, 0.04));
@@ -552,46 +552,46 @@
   border-radius: 6px;
 }
 
-.layer-candidates-manifest-header {
+.layer-takes-manifest-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-.layer-candidates-manifest-header .manifest-icon {
+.layer-takes-manifest-header .manifest-icon {
   color: #00e5ff;
 }
 
-.layer-candidates-manifest-label {
+.layer-takes-manifest-label {
   font-size: 10px;
   font-weight: 600;
   color: #00e5ff;
 }
 
-.layer-candidates-manifest-model {
+.layer-takes-manifest-model {
   font-size: 9px;
   color: #64748b;
   font-style: italic;
 }
 
-.layer-candidates-manifest-pending {
+.layer-takes-manifest-pending {
   font-size: 9px;
   color: #64748b;
   font-style: italic;
 }
 
-.layer-candidates-skills-item.manifest-selected {
+.layer-takes-skills-item.manifest-selected {
   background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(6, 182, 212, 0.08));
   border-color: rgba(0, 229, 255, 0.3);
   color: #67e8f9;
 }
 
 /* ============================================
-   CANDIDATE LANES CONTAINER
+   TAKE LANES CONTAINER
    ============================================ */
 
-.layer-candidates-lanes {
+.layer-takes-lanes {
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -599,10 +599,10 @@
 }
 
 /* ============================================
-   CANDIDATE LANE
+   TAKE LANE
    ============================================ */
 
-.candidate-lane {
+.take-lane {
   min-width: 100px;
   max-width: 140px;
   flex: 1;
@@ -616,13 +616,13 @@
   transition: all 0.15s ease;
 }
 
-.candidate-lane:hover {
+.take-lane:hover {
   border-color: #2a2638;
   background: linear-gradient(180deg, #0f0b1f 0%, #070512 100%);
 }
 
 /* Winner lane - prominent gold glow with crown indicator */
-.candidate-lane-winner {
+.take-lane-winner {
   border-color: #FFD700 !important;
   box-shadow:
     0 0 8px rgba(255, 215, 0, 0.4),
@@ -648,43 +648,43 @@
   }
 }
 
-.candidate-lane-winner .candidate-lane-header {
+.take-lane-winner .take-lane-header {
   background: linear-gradient(90deg, rgba(255, 215, 0, 0.15) 0%, transparent 100%);
   border-radius: 4px 4px 0 0;
 }
 
-.candidate-lane-winner .candidate-lane-index {
+.take-lane-winner .take-lane-index {
   color: #FFD700;
 }
 
 /* Loser lanes - dimmed when there's a winner */
-.candidate-lane-loser {
+.take-lane-loser {
   opacity: 0.5;
   border-color: #1a1628 !important;
   filter: grayscale(0.3);
   position: relative;
 }
 
-.candidate-lane-loser .candidate-lane-header {
+.take-lane-loser .take-lane-header {
   opacity: 0.7;
 }
 
-.candidate-lane-complete {
+.take-lane-complete {
   border-color: rgba(52, 211, 153, 0.3);
 }
 
-.candidate-lane-error {
+.take-lane-error {
   border-color: rgba(248, 113, 113, 0.3);
 }
 
-.candidate-lane-header {
+.take-lane-header {
   display: flex;
   align-items: center;
   justify-content: center;
   padding-bottom: 4px;
 }
 
-.candidate-lane-index {
+.take-lane-index {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -693,7 +693,7 @@
   color: #00e5ff;
 }
 
-.candidate-lane-crown {
+.take-lane-crown {
   color: #FFD700;
   filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.8));
   animation: crown-pulse 1.5s ease-in-out infinite;
@@ -704,27 +704,27 @@
   50% { transform: scale(1.15); }
 }
 
-.candidate-lane-loser-icon {
+.take-lane-loser-icon {
   color: #f87171;
   opacity: 0.6;
   margin-right: 2px;
 }
 
-.candidate-lane-row {
+.take-lane-row {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 3px 0;
 }
 
-.candidate-lane-row-label {
+.take-lane-row-label {
   color: #475569;
   width: 16px;
   display: flex;
   justify-content: center;
 }
 
-.candidate-lane-mutation-badge {
+.take-lane-mutation-badge {
   font-size: 9px;
   padding: 2px 6px;
   border-radius: 3px;
@@ -753,7 +753,7 @@
   color: #64748b;
 }
 
-.candidate-lane-model-name {
+.take-lane-model-name {
   font-size: 10px;
   font-family: 'Google Sans Code', monospace;
   color: #94a3b8;
@@ -762,7 +762,7 @@
   white-space: nowrap;
 }
 
-.candidate-lane-divider {
+.take-lane-divider {
   height: 1px;
   background-color: #1a1628;
   margin: 4px 0;
@@ -772,7 +772,7 @@
    TURNS STACK
    ============================================ */
 
-.candidate-lane-turns {
+.take-lane-turns {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -780,7 +780,7 @@
   overflow-y: auto;
 }
 
-.candidate-lane-turn {
+.take-lane-turn {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -793,44 +793,44 @@
 }
 
 /* Highlight turns with validation failures */
-.candidate-lane-turn.validation-failed {
+.take-lane-turn.validation-failed {
   background: rgba(248, 113, 113, 0.05);
   border-left-color: #f87171;
 }
 
-.candidate-lane-turn.used {
+.take-lane-turn.used {
   border-left-color: #00e5ff;
   background-color: rgba(0, 229, 255, 0.05);
 }
 
-.candidate-lane-turn.unused {
+.take-lane-turn.unused {
   opacity: 0.4;
   border-style: none;
 }
 
-.candidate-lane-turn.early-exit {
+.take-lane-turn.early-exit {
   border-left-color: #fbbf24;
   background: linear-gradient(90deg, rgba(251, 191, 36, 0.1) 0%, transparent 50%);
 }
 
-.candidate-lane-turn-index {
+.take-lane-turn-index {
   font-size: 9px;
   font-weight: 600;
   color: #64748b;
   min-width: 18px;
 }
 
-.candidate-lane-turn.used .candidate-lane-turn-index {
+.take-lane-turn.used .take-lane-turn-index {
   color: #00e5ff;
 }
 
-.candidate-lane-turn-tools {
+.take-lane-turn-tools {
   display: flex;
   gap: 2px;
   flex: 1;
 }
 
-.candidate-lane-tool-badge {
+.take-lane-tool-badge {
   width: 14px;
   height: 14px;
   display: flex;
@@ -841,29 +841,29 @@
   border-radius: 2px;
 }
 
-.candidate-lane-tool-more {
+.take-lane-tool-more {
   font-size: 8px;
   color: #64748b;
 }
 
-.candidate-lane-turn-validation {
+.take-lane-turn-validation {
   margin-left: auto;
 }
 
-.candidate-lane-turn-validation.pending {
+.take-lane-turn-validation.pending {
   color: #64748b;
 }
 
-.candidate-lane-turn-validation.passed {
+.take-lane-turn-validation.passed {
   color: #fbbf24;
 }
 
-.candidate-lane-turn-validation.failed {
+.take-lane-turn-validation.failed {
   color: #f87171;
 }
 
-/* Inline validation failure reason in candidate lane turns */
-.candidate-lane-turn-validation-failure {
+/* Inline validation failure reason in take lane turns */
+.take-lane-turn-validation-failure {
   display: flex;
   align-items: flex-start;
   gap: 4px;
@@ -877,28 +877,28 @@
   color: #f87171;
 }
 
-.candidate-lane-turn-validation-failure svg {
+.take-lane-turn-validation-failure svg {
   flex-shrink: 0;
   margin-top: 1px;
 }
 
-.candidate-lane-turn-validation-reason {
+.take-lane-turn-validation-reason {
   flex: 1;
   word-break: break-word;
   line-height: 1.3;
 }
 
-.candidate-lane-unused {
+.take-lane-unused {
   text-align: center;
 }
 
-.candidate-lane-unused-label {
+.take-lane-unused-label {
   font-size: 9px;
   color: #475569;
   font-style: italic;
 }
 
-.candidate-lane-footer {
+.take-lane-footer {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -906,29 +906,29 @@
   justify-content: center;
 }
 
-.candidate-lane-stat {
+.take-lane-stat {
   font-size: 9px;
   color: #64748b;
 }
 
-.candidate-lane-cost {
+.take-lane-cost {
   color: #34d399;
   font-weight: 600;
 }
 
-.candidate-lane-duration {
+.take-lane-duration {
   display: flex;
   align-items: center;
   gap: 3px;
   color: #60a5fa;
 }
 
-.candidate-lane-turns-count,
-.candidate-lane-tools-count {
+.take-lane-turns-count,
+.take-lane-tools-count {
   color: #94a3b8;
 }
 
-.candidate-lane-turn-duration {
+.take-lane-turn-duration {
   font-size: 8px;
   color: #60a5fa;
   margin-left: auto;
@@ -1801,15 +1801,15 @@
   to { transform: rotate(360deg); }
 }
 
-/* Duration styling in candidate lanes */
-.candidate-lane-duration {
+/* Duration styling in take lanes */
+.take-lane-duration {
   display: flex;
   align-items: center;
   gap: 3px;
   color: #60a5fa;
 }
 
-.candidate-lane-turn-duration {
+.take-lane-turn-duration {
   font-size: 8px;
   color: #60a5fa;
   margin-left: auto;

@@ -27,7 +27,7 @@ cells:
   - sql_query
   handoffs:
   - finalize
-  candidates:
+  takes:
     factor: 3
     models:
     - openai/gpt-5.2

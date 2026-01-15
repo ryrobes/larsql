@@ -82,13 +82,13 @@ function PromptNode({ data }) {
           <div className="dna-bar">
             {parentWinners.map((parent, idx) => (
               <div
-                key={`${parent.session_id}_${parent.candidate_index}`}
+                key={`${parent.session_id}_${parent.take_index}`}
                 className="dna-segment"
                 style={{
                   backgroundColor: dnaColors[idx % dnaColors.length],
                   width: `${100 / parentWinners.length}%`
                 }}
-                title={`Gen ${parent.generation} #${parent.candidate_index}: ${parent.prompt_snippet}...`}
+                title={`Gen ${parent.generation} #${parent.take_index}: ${parent.prompt_snippet}...`}
               />
             ))}
           </div>
@@ -119,7 +119,7 @@ function PromptNode({ data }) {
 
       {/* Footer */}
       <div className="prompt-node-footer">
-        <span className="candidate-index">#{data.candidate_index}</span>
+        <span className="take-index">#{data.take_index}</span>
         {isExpanded && data.mutation_template && (
           <div className="mutation-template">
             Template: {data.mutation_template}
@@ -288,14 +288,14 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
             <details style={{ marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
               <summary style={{ cursor: 'pointer' }}>What is species_hash?</summary>
               <p style={{ marginTop: '8px', lineHeight: '1.5' }}>
-                Species hash is a unique identifier for your cell configuration (instructions, rules, candidates settings).
+                Species hash is a unique identifier for your cell configuration (instructions, rules, takes settings).
                 It ensures we only compare prompts with the same "DNA" template for fair analysis.
               </p>
             </details>
           </div>
         ) : (
           <p className="empty-detail">
-            Run this cascade multiple times with candidates (candidates) to see prompt evolution!
+            Run this cascade multiple times with takes (takes) to see prompt evolution!
             {errorMessage && <><br/><br/><strong>Error:</strong> {errorMessage}</>}
           </p>
         )}
@@ -321,12 +321,12 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
             <strong>{metadata.session_count}</strong> generations
           </span>
           <span className="stat">
-            <strong>{metadata.total_candidates}</strong> total attempts
+            <strong>{metadata.total_takes}</strong> total attempts
           </span>
-          {metadata.total_candidates && metadata.session_count && (
-            <span className="stat" title="Candidates per generation">
+          {metadata.total_takes && metadata.session_count && (
+            <span className="stat" title="Takes per generation">
               <Icon icon="mdi:information-outline" width="14" />
-              <strong>{Math.round(metadata.total_candidates / metadata.session_count)}</strong> per gen
+              <strong>{Math.round(metadata.total_takes / metadata.session_count)}</strong> per gen
             </span>
           )}
           <span className="stat">

@@ -92,9 +92,9 @@ ORDER BY similarity DESC;
 -- ----------------------------------------------------------------------------
 -- This is THE KILLER FEATURE: Fast vector pre-filter + intelligent LLM reasoning
 
--- Stage 1: Vector search finds 100 candidates (~50ms for 1M items)
+-- Stage 1: Vector search finds 100 takes (~50ms for 1M items)
 -- Stage 2: LLM operators filter to best 10 (~2 seconds)
-WITH candidates AS (
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH('affordable eco-friendly products', 'products', 100)
     WHERE similarity > 0.6
 )
@@ -104,7 +104,7 @@ SELECT
     p.price,
     c.similarity as vector_score,
     p.description
-FROM candidates c
+FROM takes c
 JOIN products p ON p.id = c.id
 WHERE
     p.price < 40  -- Cheap SQL filter

@@ -158,7 +158,7 @@ cells:
       - extract_brand
 
   # ============================================================
-  # Cell 4: EXTRACT - LLM extraction with Candidates
+  # Cell 4: EXTRACT - LLM extraction with Takes
   # ============================================================
   - name: extract_brand
     model: google/gemini-2.0-flash-001
@@ -184,7 +184,7 @@ cells:
         "confidence": 0.0 to 1.0,
         "evidence": "Why you chose this brand (cite product name tokens or DB match)"
       }
-    candidates:
+    takes:
       factor: 3
       mode: evaluate
       evaluator_instructions: |

@@ -36,20 +36,20 @@
 }
 
 .cell-selector,
-.candidate-selector {
+.take-selector {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .cell-selector label,
-.candidate-selector label {
+.take-selector label {
   font-size: 13px;
   color: #94a3b8;
 }
 
 .cell-selector select,
-.candidate-selector select {
+.take-selector select {
   background: #1e1e24;
   border: 1px solid #2a2a32;
   border-radius: 6px;
@@ -60,7 +60,7 @@
 }
 
 .cell-selector select:focus,
-.candidate-selector select:focus {
+.take-selector select:focus {
   outline: none;
   border-color: #00e5ff;
 }

@@ -186,7 +186,7 @@ const CalliopeView = () => {
 
       // DEBUG: Log all potential tool results
       if (log.node_type || log.role === 'tool') {
-        console.log('[CalliopeView] Candidate log:', {
+        console.log('[CalliopeView] Take log:', {
           role: log.role,
           node_type: log.node_type,
           isToolResult,

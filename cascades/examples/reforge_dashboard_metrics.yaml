@@ -19,7 +19,7 @@ cells:
   name: ideate_metrics
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate the metric proposals based on:
 
       1. Relevance to {{ input.dashboard_type }}

@@ -19,18 +19,18 @@ function ParentSnippet({ parent, color, index }) {
 }
 
 /**
- * CandidateChip - Clickable chip for a single candidate
+ * TakeChip - Clickable chip for a single take
  */
-function CandidateChip({ candidate, onClick, isHighlighted }) {
+function TakeChip({ take, onClick, isHighlighted }) {
   return (
     <button
-      className={`candidate-chip ${candidate.is_winner ? 'winner' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+      className={`take-chip ${take.is_winner ? 'winner' : ''} ${isHighlighted ? 'highlighted' : ''}`}
       onClick={onClick}
-      title={`Candidate #${candidate.candidate_index}${candidate.is_winner ? ' (Winner)' : ''}\nModel: ${candidate.model}\nCost: $${candidate.cost?.toFixed(4) || '0'}`}
+      title={`Take #${take.take_index}${take.is_winner ? ' (Winner)' : ''}\nModel: ${take.model}\nCost: $${take.cost?.toFixed(4) || '0'}`}
     >
-      #{candidate.candidate_index}
-      {candidate.is_winner && <Icon icon="mdi:trophy" width="10" />}
-      {candidate.in_training_set && <span className="training-dot">🎓</span>}
+      #{take.take_index}
+      {take.is_winner && <Icon icon="mdi:trophy" width="10" />}
+      {take.in_training_set && <span className="training-dot">🎓</span>}
     </button>
   );
 }
@@ -38,20 +38,20 @@ function CandidateChip({ candidate, onClick, isHighlighted }) {
 /**
  * GenerationCard - Shows the lineage story for a single generation
  */
-function GenerationCard({ generation, isCurrentSession, onCandidateClick, highlightedNode }) {
+function GenerationCard({ generation, isCurrentSession, onTakeClick, highlightedNode }) {
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const [showParents, setShowParents] = useState(true);
 
-  const winner = generation.candidates.find(c => c.is_winner);
-  const totalCost = generation.candidates.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const winner = generation.takes.find(c => c.is_winner);
+  const totalCost = generation.takes.reduce((sum, c) => sum + (c.cost || 0), 0);
 
   // DNA bar colors (same as in graph)
   const dnaColors = ['#34d399', '#00e5ff', '#9333ea', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#a855f7'];
   const parents = generation.parent_winners || [];
 
-  // Get prompt to display (winner if exists, otherwise first candidate)
-  const displayCandidate = winner || generation.candidates[0];
-  const prompt = displayCandidate?.prompt || '';
+  // Get prompt to display (winner if exists, otherwise first take)
+  const displayTake = winner || generation.takes[0];
+  const prompt = displayTake?.prompt || '';
   const promptPreview = prompt.length > 300 ? prompt.substring(0, 300) + '...' : prompt;
   const hasMore = prompt.length > 300;
 
@@ -65,8 +65,8 @@ function GenerationCard({ generation, isCurrentSession, onCandidateClick, highli
           {isCurrentSession && <Icon icon="mdi:map-marker" width="14" className="current-marker" />}
         </div>
         <div className="gen-lineage-header-right">
-          {displayCandidate?.model && (
-            <span className="gen-model">{displayCandidate.model.split('/').pop().substring(0, 12)}</span>
+          {displayTake?.model && (
+            <span className="gen-model">{displayTake.model.split('/').pop().substring(0, 12)}</span>
           )}
           <span className="gen-cost">${totalCost.toFixed(4)}</span>
         </div>
@@ -91,7 +91,7 @@ function GenerationCard({ generation, isCurrentSession, onCandidateClick, highli
             <div className="parent-snippets">
               {parents.map((parent, idx) => (
                 <ParentSnippet
-                  key={`${parent.session_id}_${parent.candidate_index}`}
+                  key={`${parent.session_id}_${parent.take_index}`}
                   parent={parent}
                   color={dnaColors[idx % dnaColors.length]}
                   index={idx}
@@ -103,15 +103,15 @@ function GenerationCard({ generation, isCurrentSession, onCandidateClick, highli
       )}
 
       {/* Mutation Info */}
-      {displayCandidate?.mutation_type && (
+      {displayTake?.mutation_type && (
         <div className="gen-lineage-section mutation-section">
           <div className="mutation-header">
             <Icon icon="mdi:auto-fix" width="14" />
-            <span className="mutation-type-label">{displayCandidate.mutation_type}</span>
+            <span className="mutation-type-label">{displayTake.mutation_type}</span>
           </div>
-          {displayCandidate.mutation_template && (
+          {displayTake.mutation_template && (
             <div className="mutation-template-preview">
-              "{displayCandidate.mutation_template.substring(0, 100)}{displayCandidate.mutation_template.length > 100 ? '...' : ''}"
+              "{displayTake.mutation_template.substring(0, 100)}{displayTake.mutation_template.length > 100 ? '...' : ''}"
             </div>
           )}
         </div>
@@ -137,18 +137,18 @@ function GenerationCard({ generation, isCurrentSession, onCandidateClick, highli
         )}
       </div>
 
-      {/* Candidate Chips */}
-      <div className="gen-lineage-section candidates-section">
-        <div className="candidates-chips">
-          {generation.candidates.map(candidate => {
-            const nodeId = `${generation.session_id}_${candidate.candidate_index}`;
+      {/* Take Chips */}
+      <div className="gen-lineage-section takes-section">
+        <div className="takes-chips">
+          {generation.takes.map(take => {
+            const nodeId = `${generation.session_id}_${take.take_index}`;
             const isHighlighted = highlightedNode === nodeId;
 
             return (
-              <CandidateChip
-                key={candidate.candidate_index}
-                candidate={candidate}
-                onClick={() => onCandidateClick(nodeId, candidate)}
+              <TakeChip
+                key={take.take_index}
+                take={take}
+                onClick={() => onTakeClick(nodeId, take)}
                 isHighlighted={isHighlighted}
               />
             );
@@ -184,13 +184,13 @@ const GenerationTimeline = ({ metadata, nodes, onNodeFocus, highlightedNode, cur
           session_id: sessionId,
           generation: node.data.generation,
           timestamp: node.data.timestamp,
-          candidates: [],
-          parent_winners: node.data.parent_winners || [], // All candidates in a gen have same parents
+          takes: [],
+          parent_winners: node.data.parent_winners || [], // All takes in a gen have same parents
         };
       }
 
-      sessionMap[sessionId].candidates.push({
-        candidate_index: node.data.candidate_index,
+      sessionMap[sessionId].takes.push({
+        take_index: node.data.take_index,
         is_winner: node.data.is_winner,
         in_training_set: node.data.in_training_set,
         mutation_type: node.data.mutation_type,
@@ -205,8 +205,8 @@ const GenerationTimeline = ({ metadata, nodes, onNodeFocus, highlightedNode, cur
     return Object.values(sessionMap).sort((a, b) => a.generation - b.generation);
   }, [nodes]);
 
-  const handleCandidateClick = (nodeId, candidate) => {
-    console.log('[Timeline] Candidate clicked:', nodeId);
+  const handleTakeClick = (nodeId, take) => {
+    console.log('[Timeline] Take clicked:', nodeId);
     if (onNodeFocus) {
       onNodeFocus(nodeId);
     }
@@ -235,7 +235,7 @@ const GenerationTimeline = ({ metadata, nodes, onNodeFocus, highlightedNode, cur
             <GenerationCard
               generation={gen}
               isCurrentSession={gen.session_id === currentSessionId}
-              onCandidateClick={handleCandidateClick}
+              onTakeClick={handleTakeClick}
               highlightedNode={highlightedNode}
             />
 
@@ -253,11 +253,11 @@ const GenerationTimeline = ({ metadata, nodes, onNodeFocus, highlightedNode, cur
       <div className="timeline-footer">
         <div className="footer-stat">
           <Icon icon="mdi:trophy" width="14" />
-          <span>{generations.filter(g => g.candidates.some(c => c.is_winner)).length} winners</span>
+          <span>{generations.filter(g => g.takes.some(c => c.is_winner)).length} winners</span>
         </div>
         <div className="footer-stat">
           <Icon icon="mdi:graph-outline" width="14" />
-          <span>{generations.reduce((sum, g) => sum + g.candidates.length, 0)} attempts</span>
+          <span>{generations.reduce((sum, g) => sum + g.takes.length, 0)} attempts</span>
         </div>
       </div>
     </div>

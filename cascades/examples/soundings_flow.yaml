@@ -10,7 +10,7 @@ cells:
   name: draft_opening
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'You are an expert creative writing instructor. Evaluate
       the following story openings based on: 1) Hook strength - does it grab attention?
       2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear

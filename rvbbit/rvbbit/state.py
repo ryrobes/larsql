@@ -29,9 +29,9 @@ class CellProgress:
         self.max_attempts = 1
 
         # Sounding tracking
-        self.candidate_index: Optional[int] = None
-        self.candidate_factor: Optional[int] = None
-        self.candidate_stage: Optional[str] = None  # executing, evaluating, complete
+        self.take_index: Optional[int] = None
+        self.take_factor: Optional[int] = None
+        self.take_stage: Optional[str] = None  # executing, evaluating, complete
 
         # Reforge tracking
         self.reforge_step: Optional[int] = None
@@ -63,11 +63,11 @@ class CellProgress:
                 "current": self.current_attempt,
                 "max": self.max_attempts
             },
-            "candidate": {
-                "index": self.candidate_index,
-                "factor": self.candidate_factor,
-                "stage": self.candidate_stage
-            } if self.candidate_index is not None else None,
+            "take": {
+                "index": self.take_index,
+                "factor": self.take_factor,
+                "stage": self.take_stage
+            } if self.take_index is not None else None,
             "reforge": {
                 "step": self.reforge_step,
                 "total_steps": self.reforge_total_steps
@@ -160,9 +160,9 @@ def update_cell_progress(
     max_turns: int | None = None,
     attempt: int | None = None,
     max_attempts: int | None = None,
-    candidate_index: int | None = None,
-    candidate_factor: int | None = None,
-    candidate_stage: str | None = None,
+    take_index: int | None = None,
+    take_factor: int | None = None,
+    take_stage: str | None = None,
     reforge_step: int | None = None,
     reforge_total_steps: int | None = None,
     ward_name: str | None = None,
@@ -175,7 +175,7 @@ def update_cell_progress(
     Update detailed cell progress (in-memory only).
 
     This enables real-time visualization of exactly where execution is
-    within a cell (which turn, which attempt, which candidate, etc.)
+    within a cell (which turn, which attempt, which take, etc.)
     """
     progress = _state_manager.get_cell_progress(session_id, cell_name)
 
@@ -197,12 +197,12 @@ def update_cell_progress(
     if max_attempts is not None:
         progress.max_attempts = max_attempts
 
-    if candidate_index is not None:
-        progress.candidate_index = candidate_index
-    if candidate_factor is not None:
-        progress.candidate_factor = candidate_factor
-    if candidate_stage is not None:
-        progress.candidate_stage = candidate_stage
+    if take_index is not None:
+        progress.take_index = take_index
+    if take_factor is not None:
+        progress.take_factor = take_factor
+    if take_stage is not None:
+        progress.take_stage = take_stage
 
     if reforge_step is not None:
         progress.reforge_step = reforge_step

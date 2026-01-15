@@ -182,7 +182,7 @@ LIMIT 20;
 -- ============================================================================
 
 -- Fast vector search, then deep narrative analysis
-WITH candidates AS (
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH(
         'SQL and AI integration',
         'tweets',
@@ -202,7 +202,7 @@ SELECT
     
     t.like_count,
     t.url
-FROM candidates c
+FROM takes c
 JOIN tweets t ON t.id = c.id
 WHERE t.text ALIGNS 'SQL is the future of AI workflows' > 0.65
 ORDER BY combined_score DESC

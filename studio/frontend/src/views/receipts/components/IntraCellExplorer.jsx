@@ -9,7 +9,7 @@ const IntraCellExplorer = ({ sessionId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [selectedTake, setSelectedTake] = useState(null);
   const [config, setConfig] = useState(null);
   const [viewMode, setViewMode] = useState('timeline'); // 'timeline', 'breakdown'
 
@@ -27,16 +27,16 @@ const IntraCellExplorer = ({ sessionId }) => {
         const json = await res.json();
         setData(json);
 
-        // Auto-select first cell, candidate, and config
+        // Auto-select first cell, take, and config
         if (json.cells?.length > 0) {
           const firstCell = json.cells[0];
           setSelectedCell(firstCell.cell_name);
-          if (firstCell.candidates?.length > 0) {
-            const firstCandidate = firstCell.candidates[0];
-            setSelectedCandidate(firstCandidate.candidate_index);
+          if (firstCell.takes?.length > 0) {
+            const firstTake = firstCell.takes[0];
+            setSelectedTake(firstTake.take_index);
             // Auto-select first available config from first turn
-            if (firstCandidate.turns?.length > 0 && firstCandidate.turns[0].configs?.length > 0) {
-              const firstConfig = firstCandidate.turns[0].configs[0];
+            if (firstTake.turns?.length > 0 && firstTake.turns[0].configs?.length > 0) {
+              const firstConfig = firstTake.turns[0].configs[0];
               setConfig({
                 window: firstConfig.window,
                 mask_after: firstConfig.mask_after,
@@ -64,8 +64,8 @@ const IntraCellExplorer = ({ sessionId }) => {
     const min_sizes = new Set();
 
     data.cells.forEach(cell => {
-      cell.candidates?.forEach(candidate => {
-        candidate.turns?.forEach(turn => {
+      cell.takes?.forEach(take => {
+        take.turns?.forEach(turn => {
           turn.configs?.forEach(cfg => {
             windows.add(cfg.window);
             mask_afters.add(cfg.mask_after);
@@ -88,12 +88,12 @@ const IntraCellExplorer = ({ sessionId }) => {
     return data.cells.find(c => c.cell_name === selectedCell);
   }, [data, selectedCell]);
 
-  // Get current candidate's turns
+  // Get current take's turns
   const currentTurns = useMemo(() => {
-    if (!currentCell?.candidates) return [];
-    const candidate = currentCell.candidates.find(c => c.candidate_index === selectedCandidate);
-    return candidate?.turns || [];
-  }, [currentCell, selectedCandidate]);
+    if (!currentCell?.takes) return [];
+    const take = currentCell.takes.find(c => c.take_index === selectedTake);
+    return take?.turns || [];
+  }, [currentCell, selectedTake]);
 
   // Calculate summary stats for current config
   const configStats = useMemo(() => {
@@ -168,7 +168,7 @@ const IntraCellExplorer = ({ sessionId }) => {
 
   return (
     <div className="intra-cell-explorer">
-      {/* Header with cell/candidate selector */}
+      {/* Header with cell/take selector */}
       <div className="explorer-header">
         <div className="selector-group">
           <div className="cell-selector">
@@ -177,10 +177,10 @@ const IntraCellExplorer = ({ sessionId }) => {
               value={selectedCell || ''}
               onChange={(e) => {
                 setSelectedCell(e.target.value);
-                // Reset candidate selection
+                // Reset take selection
                 const cell = data.cells.find(c => c.cell_name === e.target.value);
-                if (cell?.candidates?.length > 0) {
-                  setSelectedCandidate(cell.candidates[0].candidate_index);
+                if (cell?.takes?.length > 0) {
+                  setSelectedTake(cell.takes[0].take_index);
                 }
               }}
             >
@@ -192,21 +192,21 @@ const IntraCellExplorer = ({ sessionId }) => {
             </select>
           </div>
 
-          {currentCell?.candidates?.length > 1 && (
-            <div className="candidate-selector">
-              <label>Candidate:</label>
+          {currentCell?.takes?.length > 1 && (
+            <div className="take-selector">
+              <label>Take:</label>
               <select
-                value={selectedCandidate ?? ''}
-                onChange={(e) => setSelectedCandidate(
+                value={selectedTake ?? ''}
+                onChange={(e) => setSelectedTake(
                   e.target.value === '' ? null : parseInt(e.target.value)
                 )}
               >
-                {currentCell.candidates.map(cand => (
+                {currentCell.takes.map(cand => (
                   <option
-                    key={cand.candidate_index ?? 'main'}
-                    value={cand.candidate_index ?? ''}
+                    key={cand.take_index ?? 'main'}
+                    value={cand.take_index ?? ''}
                   >
-                    {cand.candidate_index === null ? 'Main' : `Candidate ${cand.candidate_index}`}
+                    {cand.take_index === null ? 'Main' : `Take ${cand.take_index}`}
                   </option>
                 ))}
               </select>

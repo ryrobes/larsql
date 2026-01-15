@@ -55,8 +55,8 @@ class EchoLogger:
         role: str | None = None,
         depth: int = 0,
 
-        # Candidates/Reforge metadata
-        candidate_index: int | None = None,
+        # Takes/Reforge metadata
+        take_index: int | None = None,
         is_winner: bool | None = None,
         reforge_step: int | None = None,
 
@@ -93,8 +93,8 @@ class EchoLogger:
             node_type: Event type (message, tool_call, agent, etc.)
             role: Message role (user, assistant, tool, system)
             depth: Nesting depth for sub-cascades
-            candidate_index: Which candidate attempt (0-indexed, None if N/A)
-            is_winner: True if this candidate won (None if N/A)
+            take_index: Which take attempt (0-indexed, None if N/A)
+            is_winner: True if this take won (None if N/A)
             reforge_step: Which reforge iteration (0=initial, None if N/A)
             cell_name: Current cell name
             cascade_id: Cascade identifier
@@ -134,8 +134,8 @@ class EchoLogger:
             "role": role,
             "depth": depth,
 
-            # Candidates/Reforge (typed)
-            "candidate_index": candidate_index,
+            # Takes/Reforge (typed)
+            "take_index": take_index,
             "is_winner": is_winner,
             "reforge_step": reforge_step,
 
@@ -263,7 +263,7 @@ def log_echo(
     node_type: str = "message",
     role: str | None = None,
     depth: int = 0,
-    candidate_index: int | None = None,
+    take_index: int | None = None,
     is_winner: bool | None = None,
     reforge_step: int | None = None,
     cell_name: str | None = None,
@@ -293,7 +293,7 @@ def log_echo(
         node_type=node_type,
         role=role,
         depth=depth,
-        candidate_index=candidate_index,
+        take_index=take_index,
         is_winner=is_winner,
         reforge_step=reforge_step,
         cell_name=cell_name,
@@ -348,8 +348,8 @@ def query_echoes_parquet(where_clause: str | None = None) -> pd.DataFrame:
         import json
         df['content_parsed'] = df['content'].apply(lambda x: json.loads(x) if x else None)
 
-        # Query candidates
-        df = query_echoes_parquet("candidate_index IS NOT NULL")
+        # Query takes
+        df = query_echoes_parquet("take_index IS NOT NULL")
 
         # Query with JSON field (DuckDB syntax for JSON strings)
         df = query_echoes_parquet("json_extract_string(metadata, '$.cell_name') = 'generate'")

@@ -1255,13 +1255,13 @@
   gap: 16px;
 }
 
-.candidate-section {
+.take-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.candidate-header {
+.take-header {
   font-size: 10px;
   font-weight: 500;
   color: #64748b;

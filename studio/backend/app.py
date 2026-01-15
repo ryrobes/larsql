@@ -315,7 +315,7 @@ def detect_and_mark_orphaned_cascades():
                 'node_type': 'cascade_killed',
                 'role': 'system',
                 'depth': 0,
-                'candidate_index': None,
+                'take_index': None,
                 'is_winner': None,
                 'reforge_step': None,
                 'attempt_number': None,
@@ -555,17 +555,17 @@ def get_cascade_definitions():
                                 cells_data = []
                                 for p in config.get("cells", config.get("cells", [])):
                                     rules = p.get("rules", {})
-                                    candidates = p.get("candidates", {})
+                                    takes = p.get("takes", {})
                                     wards = p.get("wards", {})
 
                                     cells_data.append({
                                         "name": p["name"],
                                         "instructions": p.get("instructions", ""),
-                                        # Candidates
-                                        "has_candidates": "candidates" in p,
-                                        "candidates_factor": candidates.get("factor") if candidates else None,
-                                        "reforge_steps": candidates.get("reforge", {}).get("steps") if candidates.get("reforge") else None,
-                                        "candidates": candidates if candidates else None,
+                                        # Takes
+                                        "has_takes": "takes" in p,
+                                        "takes_factor": takes.get("factor") if takes else None,
+                                        "reforge_steps": takes.get("reforge", {}).get("steps") if takes.get("reforge") else None,
+                                        "takes": takes if takes else None,
                                         # Wards
                                         "has_wards": bool(wards),
                                         "ward_count": (len(wards.get("pre", [])) + len(wards.get("post", [])) + len(wards.get("turn", []))) if wards else 0,
@@ -609,7 +609,7 @@ def get_cascade_definitions():
                                     'memory': config.get('memory'),
                                     'tool_caching': config.get('tool_caching'),
                                     'triggers': config.get('triggers'),
-                                    'cascade_candidates': config.get('candidates'),  # Cascade-level candidates
+                                    'cascade_takes': config.get('takes'),  # Cascade-level takes
                                     'explorer': config.get('explorer', False),  # Explorer mode flag
                                     'metrics': {
                                         'run_count': 0,
@@ -881,7 +881,7 @@ def get_cascade_definitions():
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
                                         'total_cells': summary.get('total_cells', 0),
-                                        'has_candidates': summary.get('has_candidates', False),
+                                        'has_takes': summary.get('has_takes', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
                             except:
@@ -952,7 +952,7 @@ def get_cascade_definitions():
                                     all_cascades[cascade_id]['graph_complexity'] = {
                                         'total_nodes': summary.get('total_nodes', 0),
                                         'total_cells': summary.get('total_cells', 0),
-                                        'has_candidates': summary.get('has_candidates', False),
+                                        'has_takes': summary.get('has_takes', False),
                                         'has_sub_cascades': summary.get('has_sub_cascades', False),
                                     }
                             except:
@@ -1148,7 +1148,7 @@ def get_cascade_instances(cascade_id):
 
         # Batch 3: Get cascade-level errors for all sessions
         # Only cascade_failed, cascade_error, cascade_killed indicate true failure
-        # candidate_error, cell errors are expected and don't mark cascade as failed
+        # take_error, cell errors are expected and don't mark cascade as failed
         errors_by_session = {}
         if session_ids:
             try:
@@ -1377,37 +1377,37 @@ def get_cascade_instances(cascade_id):
                     SELECT
                         session_id,
                         cell_name,
-                        candidate_index,
+                        take_index,
                         turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
                     WHERE session_id IN ({})
                       AND cell_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
                       AND role = 'assistant'
-                    GROUP BY session_id, cell_name, candidate_index, turn_number
-                    ORDER BY session_id, cell_name, candidate_index, turn_number
+                    GROUP BY session_id, cell_name, take_index, turn_number
+                    ORDER BY session_id, cell_name, take_index, turn_number
                     """.format(','.join('?' * len(session_ids)))
                 else:
                     turn_query = """
                     SELECT
                         session_id,
                         cell_name,
-                        candidate_index,
+                        take_index,
                         0 as turn_number,
                         SUM(cost) as turn_cost
                     FROM unified_logs
                     WHERE session_id IN ({})
                       AND cell_name IS NOT NULL AND cost IS NOT NULL AND cost > 0
                       AND role = 'assistant'
-                    GROUP BY session_id, cell_name, candidate_index
-                    ORDER BY session_id, cell_name, candidate_index
+                    GROUP BY session_id, cell_name, take_index
+                    ORDER BY session_id, cell_name, take_index
                     """.format(','.join('?' * len(session_ids)))
                 turn_results = conn.execute(turn_query, session_ids).fetchall()
 
-                for sid, t_cell, t_candidate, t_turn, t_cost in turn_results:
+                for sid, t_cell, t_take, t_turn, t_cost in turn_results:
                     if sid not in turn_costs_by_session:
                         turn_costs_by_session[sid] = {}
-                    key = (t_cell, t_candidate)
+                    key = (t_cell, t_take)
                     if key not in turn_costs_by_session[sid]:
                         turn_costs_by_session[sid][key] = []
                     turn_costs_by_session[sid][key].append({
@@ -1461,33 +1461,33 @@ def get_cascade_instances(cascade_id):
             except Exception as e:
                 print(f"[ERROR] Batch tool calls query: {e}")
 
-        # Batch 10: Get candidate data for all sessions
+        # Batch 10: Get take data for all sessions
         # Only count 'assistant' role costs to avoid double-counting
-        candidates_by_session = {}
+        takes_by_session = {}
         if session_ids:
             try:
-                model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as candidate_model" if has_model else "NULL as candidate_model"
-                candidates_query = f"""
+                model_select = "MAX(IF(model_requested IS NOT NULL AND model_requested != '', model_requested, model)) as take_model" if has_model else "NULL as take_model"
+                takes_query = f"""
                 SELECT
                     session_id,
                     cell_name,
-                    candidate_index,
+                    take_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as is_winner,
                     SUM(CASE WHEN role = 'assistant' THEN cost ELSE 0 END) as total_cost,
                     {model_select}
                 FROM unified_logs
                 WHERE session_id IN ({','.join('?' * len(session_ids))})
-                  AND candidate_index IS NOT NULL
-                GROUP BY session_id, cell_name, candidate_index
-                ORDER BY session_id, cell_name, candidate_index
+                  AND take_index IS NOT NULL
+                GROUP BY session_id, cell_name, take_index
+                ORDER BY session_id, cell_name, take_index
                 """
-                candidate_results = conn.execute(candidates_query, session_ids).fetchall()
+                take_results = conn.execute(takes_query, session_ids).fetchall()
 
-                for sid, s_cell, s_idx, s_winner, s_cost, s_model in candidate_results:
-                    if sid not in candidates_by_session:
-                        candidates_by_session[sid] = {}
-                    if s_cell not in candidates_by_session[sid]:
-                        candidates_by_session[sid][s_cell] = {
+                for sid, s_cell, s_idx, s_winner, s_cost, s_model in take_results:
+                    if sid not in takes_by_session:
+                        takes_by_session[sid] = {}
+                    if s_cell not in takes_by_session[sid]:
+                        takes_by_session[sid][s_cell] = {
                             'total': 0,
                             'winner_index': None,
                             'attempts': [],
@@ -1495,17 +1495,17 @@ def get_cascade_instances(cascade_id):
                         }
 
                     s_idx_int = int(s_idx) if s_idx is not None else 0
-                    candidates_by_session[sid][s_cell]['total'] = max(candidates_by_session[sid][s_cell]['total'], s_idx_int + 1)
+                    takes_by_session[sid][s_cell]['total'] = max(takes_by_session[sid][s_cell]['total'], s_idx_int + 1)
 
                     if s_winner:
-                        candidates_by_session[sid][s_cell]['winner_index'] = s_idx_int
+                        takes_by_session[sid][s_cell]['winner_index'] = s_idx_int
 
-                    # Get turn breakdown for this candidate (from batch 8)
+                    # Get turn breakdown for this take (from batch 8)
                     turn_key = (s_cell, s_idx_int)
                     turns = turn_costs_by_session.get(sid, {}).get(turn_key, [])
-                    candidates_by_session[sid][s_cell]['max_turns'] = max(candidates_by_session[sid][s_cell]['max_turns'], len(turns))
+                    takes_by_session[sid][s_cell]['max_turns'] = max(takes_by_session[sid][s_cell]['max_turns'], len(turns))
 
-                    candidates_by_session[sid][s_cell]['attempts'].append({
+                    takes_by_session[sid][s_cell]['attempts'].append({
                         'index': s_idx_int,
                         'is_winner': bool(s_winner),
                         'cost': float(s_cost) if s_cost else 0.0,
@@ -1513,7 +1513,7 @@ def get_cascade_instances(cascade_id):
                         'model': s_model
                     })
             except Exception as e:
-                print(f"[ERROR] Batch candidates query: {e}")
+                print(f"[ERROR] Batch takes query: {e}")
 
         # Batch 11: Get message counts for all sessions
         message_counts_by_session = {}
@@ -1553,7 +1553,7 @@ def get_cascade_instances(cascade_id):
                     argMax(role, timestamp) as last_role,
                     argMax(content_json, timestamp) as last_content,
                     argMax(model, timestamp) as last_model,
-                    MAX(candidate_index) as max_candidate_index,
+                    MAX(take_index) as max_take_index,
                     MAX(CASE WHEN is_winner = true THEN 1 ELSE 0 END) as has_winner,
                     MIN(timestamp) as cell_start,
                     MAX(timestamp) as cell_end
@@ -1566,7 +1566,7 @@ def get_cascade_instances(cascade_id):
                 cell_results = conn.execute(cells_query, session_ids).fetchall()
 
                 for p_row in cell_results:
-                    sid, p_name, p_node_type, p_role, p_content, p_model, max_candidate, has_winner, cell_start, cell_end = p_row
+                    sid, p_name, p_node_type, p_role, p_content, p_model, max_take, has_winner, cell_start, cell_end = p_row
                     if sid not in cells_data_by_session:
                         cells_data_by_session[sid] = {}
                     cells_data_by_session[sid][p_name] = {
@@ -1574,7 +1574,7 @@ def get_cascade_instances(cascade_id):
                         'last_role': p_role,
                         'last_content': p_content,
                         'last_model': p_model,
-                        'max_candidate_index': max_candidate,
+                        'max_take_index': max_take,
                         'has_winner': has_winner
                     }
             except Exception as e:
@@ -1623,8 +1623,8 @@ def get_cascade_instances(cascade_id):
             # Get tool calls from batch query (Batch 9)
             tool_calls_map = tool_calls_by_session.get(session_id, {})
 
-            # Get candidate data from batch query (Batch 10)
-            candidates_map = candidates_by_session.get(session_id, {})
+            # Get take data from batch query (Batch 10)
+            takes_map = takes_by_session.get(session_id, {})
 
             # Get message counts from batch query (Batch 11)
             message_counts = message_counts_by_session.get(session_id, {})
@@ -1645,9 +1645,9 @@ def get_cascade_instances(cascade_id):
             # Build cells_map from batched data
             cells_map = {}
             for p_name, p_data in cells_data.items():
-                candidate_data = candidates_map.get(p_name, {})
+                take_data = takes_map.get(p_name, {})
 
-                # Get turn data for non-candidate cells
+                # Get turn data for non-take cells
                 turn_key = (p_name, None)
                 turns = turn_costs_map.get(turn_key, [])
 
@@ -1676,8 +1676,8 @@ def get_cascade_instances(cascade_id):
                 # Determine status based on node_type AND role
                 is_cell_complete = (p_node_type == "cell_complete") or (p_node_type == "cell" and p_role == "cell_complete")
                 is_agent_output = (p_node_type == "agent") or (p_node_type == "turn_output")
-                # Cascade-level candidates have _orchestration cell that completes with cascade_candidates_result
-                is_cascade_complete = p_node_type in ("cascade_candidates_result", "cascade_completed", "cascade_evaluator")
+                # Cascade-level takes have _orchestration cell that completes with cascade_takes_result
+                is_cascade_complete = p_node_type in ("cascade_takes_result", "cascade_completed", "cascade_evaluator")
                 is_error = p_node_type == "error" or (p_node_type and "error" in str(p_node_type).lower())
 
                 if is_cell_complete or is_agent_output or is_cascade_complete:
@@ -1718,11 +1718,11 @@ def get_cascade_instances(cascade_id):
                     "cell_output": cell_output,
                     "error_message": error_message,
                     "model": p_model,
-                    "has_candidates": p_name in candidates_map,
-                    "candidate_total": candidate_data.get('total', 0),
-                    "candidate_winner": candidate_data.get('winner_index'),
-                    "candidate_attempts": candidate_data.get('attempts', []),
-                    "max_turns_actual": candidate_data.get('max_turns', len(turns)),
+                    "has_takes": p_name in takes_map,
+                    "take_total": take_data.get('total', 0),
+                    "take_winner": take_data.get('winner_index'),
+                    "take_attempts": take_data.get('attempts', []),
+                    "max_turns_actual": take_data.get('max_turns', len(turns)),
                     "max_turns": max_turns_config,
                     "turn_costs": turns,
                     "tool_calls": tool_calls_map.get(p_name, []),
@@ -1731,9 +1731,9 @@ def get_cascade_instances(cascade_id):
                     "avg_duration": 0.0
                 }
 
-                # Handle candidates winner model (still need this for multi-model cells)
-                if candidate_data and candidate_data.get('winner_index') is not None:
-                    cells_map[p_name]["has_candidates"] = True
+                # Handle takes winner model (still need this for multi-model cells)
+                if take_data and take_data.get('winner_index') is not None:
+                    cells_map[p_name]["has_takes"] = True
 
             # Get final output from batch query
             final_output = outputs_by_session.get(session_id, None)
@@ -1774,8 +1774,8 @@ def get_cascade_instances(cascade_id):
                 else:
                     cascade_status = "success"
 
-            # Check if any cell has candidates
-            has_candidates = any(cell.get('candidate_total', 0) > 1 for cell in cells_map.values())
+            # Check if any cell has takes
+            has_takes = any(cell.get('take_total', 0) > 1 for cell in cells_map.values())
 
             instances.append({
                 'session_id': session_id,
@@ -1796,7 +1796,7 @@ def get_cascade_instances(cascade_id):
                 'error_count': error_count,
                 'errors': error_list,
                 'token_timeseries': token_timeseries_by_session.get(session_id, []),
-                'has_candidates': has_candidates,
+                'has_takes': has_takes,
                 'children': [],
                 '_source': 'sql'  # Indicate data source for debugging
             })
@@ -1921,7 +1921,7 @@ def get_session_execution_flow(session_id):
     """
     Get execution data for flow visualization.
     Returns structured data for CascadeFlowModal execution overlay.
-    Includes rich content: outputs, candidate previews, images, models, ward results.
+    Includes rich content: outputs, take previews, images, models, ward results.
     """
     try:
         conn = get_db_connection()
@@ -1932,9 +1932,9 @@ def get_session_execution_flow(session_id):
                 cell_name,
                 node_type,
                 role,
-                candidate_index,
+                take_index,
                 is_winner,
-                winning_candidate_index,
+                winning_take_index,
                 reforge_step,
                 attempt_number,
                 turn_number,
@@ -1973,8 +1973,8 @@ def get_session_execution_flow(session_id):
         overall_status = 'completed'
 
         for row in rows:
-            (cell_name, node_type, role, candidate_index, is_winner,
-             winning_candidate_index, reforge_step, attempt_number, turn_number,
+            (cell_name, node_type, role, take_index, is_winner,
+             winning_take_index, reforge_step, attempt_number, turn_number,
              cost, duration_ms, _, model_requested, model_used,
              tokens_in, tokens_out, content_preview, image_paths, timestamp) = row
 
@@ -1992,14 +1992,14 @@ def get_session_execution_flow(session_id):
                     'cost': 0.0,
                     'duration': 0.0,
                     'turnCount': 0,
-                    'candidateWinner': None,
+                    'takeWinner': None,
                     'model': None,
                     'tokensIn': 0,
                     'tokensOut': 0,
                     'output': None,
                     'images': [],
                     'details': {
-                        'candidates': {
+                        'takes': {
                             'winnerIndex': None,
                             'attempts': []
                         },
@@ -2051,15 +2051,15 @@ def get_session_execution_flow(session_id):
                 except:
                     pass
 
-            # Track candidate winner
-            if winning_candidate_index is not None:
-                cell_data['candidateWinner'] = winning_candidate_index
-                cell_data['details']['candidates']['winnerIndex'] = winning_candidate_index
+            # Track take winner
+            if winning_take_index is not None:
+                cell_data['takeWinner'] = winning_take_index
+                cell_data['details']['takes']['winnerIndex'] = winning_take_index
 
-            # Track candidate attempts with richer data
-            if candidate_index is not None and role == 'assistant':
-                attempts = cell_data['details']['candidates']['attempts']
-                while len(attempts) <= candidate_index:
+            # Track take attempts with richer data
+            if take_index is not None and role == 'assistant':
+                attempts = cell_data['details']['takes']['attempts']
+                while len(attempts) <= take_index:
                     attempts.append({
                         'status': 'pending',
                         'preview': '',
@@ -2068,7 +2068,7 @@ def get_session_execution_flow(session_id):
                         'tokensIn': 0,
                         'tokensOut': 0
                     })
-                attempt = attempts[candidate_index]
+                attempt = attempts[take_index]
                 attempt['status'] = 'completed'
 
                 # Model for this attempt
@@ -2104,9 +2104,9 @@ def get_session_execution_flow(session_id):
                 if is_winner:
                     attempt['is_winner'] = True
 
-            # Track final output (last assistant message that's not a candidate or is the winner)
+            # Track final output (last assistant message that's not a take or is the winner)
             if role == 'assistant' and content_preview:
-                is_final_output = (candidate_index is None) or is_winner
+                is_final_output = (take_index is None) or is_winner
                 if is_final_output:
                     preview = content_preview.strip('"').replace('\\n', '\n')[:400]
                     # Try to parse JSON content
@@ -2126,8 +2126,8 @@ def get_session_execution_flow(session_id):
                 while len(reforge_steps) < reforge_step:
                     reforge_steps.append({'winnerIndex': None, 'attempts': []})
                 step_data = reforge_steps[reforge_step - 1]
-                if is_winner and winning_candidate_index is not None:
-                    step_data['winnerIndex'] = winning_candidate_index
+                if is_winner and winning_take_index is not None:
+                    step_data['winnerIndex'] = winning_take_index
 
             # Check for error status
             if node_type and 'error' in node_type.lower():
@@ -2224,7 +2224,7 @@ def get_model_filters(session_id):
     Get model filtering events for a session.
 
     Returns list of model_filter events showing which models were filtered
-    during multi-model candidates due to insufficient context limits.
+    during multi-model takes due to insufficient context limits.
     """
     try:
         conn = get_db_connection()
@@ -2331,23 +2331,23 @@ def dump_session(session_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/candidates-tree/<session_id>', methods=['GET'])
-def get_candidates_tree(session_id):
+@app.route('/api/takes-tree/<session_id>', methods=['GET'])
+def get_takes_tree(session_id):
     """
-    Returns hierarchical candidates data for visualization.
+    Returns hierarchical takes data for visualization.
 
-    Shows all candidates across all cells, evaluator reasoning,
+    Shows all takes across all cells, evaluator reasoning,
     and the winner path through the cascade execution.
 
     Data source: ClickHouse unified_logs table
     """
     try:
-        # Query ClickHouse for candidates data
+        # Query ClickHouse for takes data
         conn = get_db_connection()
         query = """
         SELECT
             cell_name,
-            candidate_index,
+            take_index,
             reforge_step,
             is_winner,
             content_json,
@@ -2365,9 +2365,9 @@ def get_candidates_tree(session_id):
             full_request_json
         FROM unified_logs
         WHERE session_id = ?
-          AND candidate_index IS NOT NULL
-          AND node_type IN ('candidate_attempt', 'candidate_error', 'agent')
-        ORDER BY timestamp, reforge_step, candidate_index, turn_number
+          AND take_index IS NOT NULL
+          AND node_type IN ('take_attempt', 'take_error', 'agent')
+        ORDER BY timestamp, reforge_step, take_index, turn_number
         """
         df = conn.execute(query, [session_id]).fetchdf()
         conn.close()
@@ -2376,7 +2376,7 @@ def get_candidates_tree(session_id):
             return jsonify({"cells": [], "winner_path": []})
 
         # Debug: log available columns and sample data
-        print(f"[API] candidates-tree columns: {list(df.columns)}")
+        print(f"[API] takes-tree columns: {list(df.columns)}")
         print(f"[API] Total rows from ClickHouse: {len(df)}")
         if 'mutation_type' in df.columns:
             mutation_types = df['mutation_type'].dropna().unique().tolist()
@@ -2384,7 +2384,7 @@ def get_candidates_tree(session_id):
             # Show sample row with mutation
             sample = df[df['mutation_type'].notna()].head(1)
             if not sample.empty:
-                print(f"[API] Sample row with mutation: candidate={sample.iloc[0]['candidate_index']}, cell={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
+                print(f"[API] Sample row with mutation: take={sample.iloc[0]['take_index']}, cell={sample.iloc[0]['cell_name']}, mutation={sample.iloc[0]['mutation_type']}")
         if 'full_request_json' in df.columns:
             has_full_request = df['full_request_json'].notna().sum()
             print(f"[API] full_request_json non-null count: {has_full_request}/{len(df)}")
@@ -2396,20 +2396,20 @@ def get_candidates_tree(session_id):
 
         for _, row in df.iterrows():
             cell_name = row['cell_name']
-            candidate_idx = int(row['candidate_index'])
+            take_idx = int(row['take_index'])
             reforge_step = row['reforge_step']
 
             if cell_name not in cells_dict:
                 cells_dict[cell_name] = {
                     'name': cell_name,
-                    'candidates': {},
+                    'takes': {},
                     'reforge_steps': {},
                     'eval_reasoning': None
                 }
                 # Track execution order by first appearance (preserves timestamp order from query)
                 cell_order.append(cell_name)
 
-            # Separate initial candidates from reforge refinements
+            # Separate initial takes from reforge refinements
             is_reforge = pd.notna(reforge_step)
 
             if is_reforge:
@@ -2426,15 +2426,15 @@ def get_candidates_tree(session_id):
                     }
 
                 # Initialize refinement if needed
-                if candidate_idx not in cells_dict[cell_name]['reforge_steps'][step_num]['refinements']:
+                if take_idx not in cells_dict[cell_name]['reforge_steps'][step_num]['refinements']:
                     is_winner_val = row['is_winner']
                     if pd.isna(is_winner_val):
                         is_winner = False
                     else:
                         is_winner = bool(is_winner_val)
 
-                    cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][candidate_idx] = {
-                        'index': candidate_idx,
+                    cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][take_idx] = {
+                        'index': take_idx,
                         'cost': 0,
                         'turns': [],
                         'is_winner': is_winner,
@@ -2452,7 +2452,7 @@ def get_candidates_tree(session_id):
                         'prompt': None
                     }
 
-                refinement = cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][candidate_idx]
+                refinement = cells_dict[cell_name]['reforge_steps'][step_num]['refinements'][take_idx]
 
                 # Update is_winner if definitive
                 is_winner_val = row['is_winner']
@@ -2556,8 +2556,8 @@ def get_candidates_tree(session_id):
 
                 continue  # Skip to next row (reforge handled)
 
-            # INITIAL CANDIDATE (reforge_step IS NULL)
-            if candidate_idx not in cells_dict[cell_name]['candidates']:
+            # INITIAL TAKE (reforge_step IS NULL)
+            if take_idx not in cells_dict[cell_name]['takes']:
                 # Handle NA values for is_winner (agent rows may not have this set)
                 is_winner_val = row['is_winner']
                 if pd.isna(is_winner_val):
@@ -2565,8 +2565,8 @@ def get_candidates_tree(session_id):
                 else:
                     is_winner = bool(is_winner_val)
 
-                cells_dict[cell_name]['candidates'][candidate_idx] = {
-                    'index': candidate_idx,
+                cells_dict[cell_name]['takes'][take_idx] = {
+                    'index': take_idx,
                     'cost': 0,
                     'turns': [],
                     'is_winner': is_winner,
@@ -2584,50 +2584,50 @@ def get_candidates_tree(session_id):
                     'prompt': None
                 }
 
-            candidate = cells_dict[cell_name]['candidates'][candidate_idx]
+            take = cells_dict[cell_name]['takes'][take_idx]
 
-            # Update is_winner if we have a definitive value (candidate_attempt rows have this)
+            # Update is_winner if we have a definitive value (take_attempt rows have this)
             is_winner_val = row['is_winner']
             if pd.notna(is_winner_val) and bool(is_winner_val):
-                candidate['is_winner'] = True
+                take['is_winner'] = True
 
-            # Detect failed candidates from node_type='candidate_error'
+            # Detect failed takes from node_type='take_error'
             node_type = row.get('node_type')
-            if node_type == 'candidate_error':
-                candidate['failed'] = True
+            if node_type == 'take_error':
+                take['failed'] = True
                 # Extract error message from content_json
                 try:
                     error_content = row.get('content_json')
                     if pd.notna(error_content):
                         if isinstance(error_content, str):
                             try:
-                                candidate['error'] = json.loads(error_content)
+                                take['error'] = json.loads(error_content)
                             except:
-                                candidate['error'] = error_content
+                                take['error'] = error_content
                         else:
-                            candidate['error'] = str(error_content)
+                            take['error'] = str(error_content)
                 except:
                     pass
 
             # Set model if we haven't already (take first non-null value)
-            if pd.notna(row['model']) and not candidate['model']:
-                candidate['model'] = row['model']
+            if pd.notna(row['model']) and not take['model']:
+                take['model'] = row['model']
 
             # Extract mutation data (take first non-null values)
             mutation_type_val = row.get('mutation_type')
-            if pd.notna(mutation_type_val) and not candidate['mutation_type']:
-                candidate['mutation_type'] = mutation_type_val
-                print(f"[API] Found mutation_type={mutation_type_val} for cell={cell_name}, candidate={candidate_idx}")
-            if pd.notna(row.get('mutation_applied')) and not candidate['mutation_applied']:
-                candidate['mutation_applied'] = row['mutation_applied']
-            if pd.notna(row.get('mutation_template')) and not candidate['mutation_template']:
-                candidate['mutation_template'] = row['mutation_template']
+            if pd.notna(mutation_type_val) and not take['mutation_type']:
+                take['mutation_type'] = mutation_type_val
+                print(f"[API] Found mutation_type={mutation_type_val} for cell={cell_name}, take={take_idx}")
+            if pd.notna(row.get('mutation_applied')) and not take['mutation_applied']:
+                take['mutation_applied'] = row['mutation_applied']
+            if pd.notna(row.get('mutation_template')) and not take['mutation_template']:
+                take['mutation_template'] = row['mutation_template']
 
             # Extract prompt from full_request_json (take first non-null)
             # Note: System message contains tool descriptions, USER message contains actual instructions
             full_req = row.get('full_request_json')
-            if pd.notna(full_req) and not candidate['prompt']:
-                print(f"[API] Found full_request_json for cell={cell_name}, candidate={candidate_idx}")
+            if pd.notna(full_req) and not take['prompt']:
+                print(f"[API] Found full_request_json for cell={cell_name}, take={take_idx}")
                 try:
                     full_request = json.loads(full_req)
                     messages = full_request.get('messages', [])
@@ -2637,11 +2637,11 @@ def get_candidates_tree(session_id):
                         if msg.get('role') == 'user':
                             content = msg.get('content', '')
                             if isinstance(content, str):
-                                candidate['prompt'] = content
+                                take['prompt'] = content
                             elif isinstance(content, list):
                                 # Handle multi-part content (extract text parts)
                                 text_parts = [p.get('text', '') for p in content if p.get('type') == 'text']
-                                candidate['prompt'] = '\n'.join(text_parts)
+                                take['prompt'] = '\n'.join(text_parts)
                             break
                 except:
                     pass
@@ -2650,14 +2650,14 @@ def get_candidates_tree(session_id):
             if pd.notna(row['timestamp']):
                 timestamp = timestamp_to_float(row['timestamp'])
                 if timestamp is not None:
-                    if candidate['start_time'] is None or timestamp < candidate['start_time']:
-                        candidate['start_time'] = timestamp
-                    if candidate['end_time'] is None or timestamp > candidate['end_time']:
-                        candidate['end_time'] = timestamp
+                    if take['start_time'] is None or timestamp < take['start_time']:
+                        take['start_time'] = timestamp
+                    if take['end_time'] is None or timestamp > take['end_time']:
+                        take['end_time'] = timestamp
 
             # Accumulate data
-            candidate['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
-            candidate['turns'].append({
+            take['cost'] += float(row['cost']) if pd.notna(row['cost']) else 0
+            take['turns'].append({
                 'turn': int(row['turn_number']) if pd.notna(row['turn_number']) else 0,
                 'cost': float(row['cost']) if pd.notna(row['cost']) else 0
             })
@@ -2671,16 +2671,16 @@ def get_candidates_tree(session_id):
                         try:
                             parsed = json.loads(content)
                             if isinstance(parsed, str):
-                                candidate['output'] += parsed + '\n'
+                                take['output'] += parsed + '\n'
                             elif isinstance(parsed, dict) and 'content' in parsed:
-                                candidate['output'] += str(parsed['content']) + '\n'
+                                take['output'] += str(parsed['content']) + '\n'
                             else:
-                                candidate['output'] += str(parsed) + '\n'
+                                take['output'] += str(parsed) + '\n'
                         except (json.JSONDecodeError, TypeError):
                             # If JSON parsing fails, treat as plain string
-                            candidate['output'] += content + '\n'
+                            take['output'] += content + '\n'
                     else:
-                        candidate['output'] += str(content) + '\n'
+                        take['output'] += str(content) + '\n'
             except Exception as e:
                 pass
 
@@ -2692,8 +2692,8 @@ def get_candidates_tree(session_id):
                         for tool_call in tool_calls:
                             if isinstance(tool_call, dict) and 'tool' in tool_call:
                                 tool_name = tool_call['tool']
-                                if tool_name not in candidate['tool_calls']:
-                                    candidate['tool_calls'].append(tool_name)
+                                if tool_name not in take['tool_calls']:
+                                    take['tool_calls'].append(tool_name)
             except:
                 pass
 
@@ -2702,8 +2702,8 @@ def get_candidates_tree(session_id):
                 if pd.notna(row['metadata_json']):
                     metadata = json.loads(row['metadata_json'])
                     if isinstance(metadata, dict) and metadata.get('error'):
-                        candidate['error'] = metadata.get('error')
-                        candidate['failed'] = True
+                        take['error'] = metadata.get('error')
+                        take['failed'] = True
             except:
                 pass
 
@@ -2712,7 +2712,7 @@ def get_candidates_tree(session_id):
             if pd.notna(is_winner_val) and bool(is_winner_val) and cell_name not in [w['cell_name'] for w in winner_path]:
                 winner_path.append({
                     'cell_name': cell_name,
-                    'candidate_index': candidate_idx
+                    'take_index': take_idx
                 })
 
         # Query for eval reasoning (evaluator agent messages, including reforge)
@@ -2783,11 +2783,11 @@ def get_candidates_tree(session_id):
                             content_text = str(content)
 
                         # Heuristic: if content mentions evaluation-related keywords, it's likely evaluator reasoning
-                        eval_keywords = ['candidate', 'evaluate', 'winner', 'attempt', 'explanation', 'best', 'refinement', 'reforge']
+                        eval_keywords = ['take', 'evaluate', 'winner', 'attempt', 'explanation', 'best', 'refinement', 'reforge']
                         has_eval_keyword = any(keyword in content_text.lower() for keyword in eval_keywords)
 
                         if content_text and has_eval_keyword:
-                            # Check if this is reforge eval or initial candidates eval
+                            # Check if this is reforge eval or initial takes eval
                             if pd.notna(reforge_step):
                                 # Reforge step evaluation
                                 step_num = int(reforge_step)
@@ -2795,7 +2795,7 @@ def get_candidates_tree(session_id):
                                     if not cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning']:
                                         cells_dict[cell_name]['reforge_steps'][step_num]['eval_reasoning'] = content_text
                             else:
-                                # Initial candidates evaluation
+                                # Initial takes evaluation
                                 if not cells_dict[cell_name]['eval_reasoning']:
                                     # Store full eval reasoning (no truncation)
                                     cells_dict[cell_name]['eval_reasoning'] = content_text
@@ -2807,73 +2807,73 @@ def get_candidates_tree(session_id):
         cells = []
         for cell_name in cell_order:
             cell = cells_dict[cell_name]
-            candidates_list = list(cell['candidates'].values())
+            takes_list = list(cell['takes'].values())
 
-            # Calculate duration for each candidate
-            for candidate in candidates_list:
-                if candidate['start_time'] and candidate['end_time']:
-                    candidate['duration'] = candidate['end_time'] - candidate['start_time']
+            # Calculate duration for each take
+            for take in takes_list:
+                if take['start_time'] and take['end_time']:
+                    take['duration'] = take['end_time'] - take['start_time']
                 else:
-                    candidate['duration'] = 0
+                    take['duration'] = 0
                 # Remove raw timestamps (don't need to send to frontend)
-                del candidate['start_time']
-                del candidate['end_time']
+                del take['start_time']
+                del take['end_time']
 
-            cell['candidates'] = sorted(candidates_list, key=lambda s: s['index'])
+            cell['takes'] = sorted(takes_list, key=lambda s: s['index'])
 
-            # Attach images to candidates
+            # Attach images to takes
             import re
 
-            # METHOD 1: Check for cell-level candidate images (filename pattern)
-            # Pattern: images/{session_id}/{cell_name}/candidate_{s}_image_{index}.{ext}
+            # METHOD 1: Check for cell-level take images (filename pattern)
+            # Pattern: images/{session_id}/{cell_name}/take_{s}_image_{index}.{ext}
             cell_dir = os.path.join(IMAGE_DIR, session_id, cell_name)
             if os.path.exists(cell_dir):
                 for img_file in sorted(os.listdir(cell_dir)):
                     if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                        # Check if this is a candidate-specific image (has candidate_N_ prefix)
-                        candidate_file_match = re.match(r'candidate_(\d+)_image_\d+\.\w+$', img_file)
-                        if candidate_file_match:
-                            candidate_idx = int(candidate_file_match.group(1))
-                            # Find corresponding candidate in our list
-                            for candidate in candidates_list:
-                                if candidate['index'] == candidate_idx:
-                                    if 'images' not in candidate:
-                                        candidate['images'] = []
+                        # Check if this is a take-specific image (has take_N_ prefix)
+                        take_file_match = re.match(r'take_(\d+)_image_\d+\.\w+$', img_file)
+                        if take_file_match:
+                            take_idx = int(take_file_match.group(1))
+                            # Find corresponding take in our list
+                            for take in takes_list:
+                                if take['index'] == take_idx:
+                                    if 'images' not in take:
+                                        take['images'] = []
                                     # Avoid duplicates
                                     img_url = f'/api/images/{session_id}/{cell_name}/{img_file}'
-                                    if not any(img['url'] == img_url for img in candidate['images']):
-                                        candidate['images'].append({
+                                    if not any(img['url'] == img_url for img in take['images']):
+                                        take['images'].append({
                                             'filename': img_file,
                                             'url': img_url
                                         })
                                     break
                         else:
-                            # Non-candidate image - could be main output, add to all candidates or skip
-                            # For now, skip non-candidate-specific images in candidates view
+                            # Non-take image - could be main output, add to all takes or skip
+                            # For now, skip non-take-specific images in takes view
                             pass
 
-            # METHOD 2: Check cascade-level candidate images (directory pattern)
-            # Pattern: images/{session_id}_candidate_{index}/{cell_name}/
+            # METHOD 2: Check cascade-level take images (directory pattern)
+            # Pattern: images/{session_id}_take_{index}/{cell_name}/
             parent_dir = os.path.dirname(os.path.join(IMAGE_DIR, session_id))
             if os.path.exists(parent_dir):
                 for entry in os.listdir(parent_dir):
-                    if entry.startswith(f"{session_id}_candidate_"):
-                        candidate_match = re.search(r'_candidate_(\d+)$', entry)
-                        if candidate_match:
-                            candidate_idx = int(candidate_match.group(1))
-                            candidate_img_dir = os.path.join(parent_dir, entry, cell_name)
-                            if os.path.exists(candidate_img_dir):
-                                # Find corresponding candidate in our list
-                                for candidate in candidates_list:
-                                    if candidate['index'] == candidate_idx:
-                                        if 'images' not in candidate:
-                                            candidate['images'] = []
-                                        for img_file in sorted(os.listdir(candidate_img_dir)):
+                    if entry.startswith(f"{session_id}_take_"):
+                        take_match = re.search(r'_take_(\d+)$', entry)
+                        if take_match:
+                            take_idx = int(take_match.group(1))
+                            take_img_dir = os.path.join(parent_dir, entry, cell_name)
+                            if os.path.exists(take_img_dir):
+                                # Find corresponding take in our list
+                                for take in takes_list:
+                                    if take['index'] == take_idx:
+                                        if 'images' not in take:
+                                            take['images'] = []
+                                        for img_file in sorted(os.listdir(take_img_dir)):
                                             if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                                                 # Avoid duplicates
                                                 img_url = f'/api/images/{entry}/{cell_name}/{img_file}'
-                                                if not any(img['url'] == img_url for img in candidate['images']):
-                                                    candidate['images'].append({
+                                                if not any(img['url'] == img_url for img in take['images']):
+                                                    take['images'].append({
                                                         'filename': img_file,
                                                         'url': img_url
                                                     })
@@ -2954,7 +2954,7 @@ def get_candidates_tree(session_id):
         return jsonify(sanitize_for_json(result))
 
     except Exception as e:
-        print(f"[ERROR] Failed to get candidates tree: {e}")
+        print(f"[ERROR] Failed to get takes tree: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -3144,7 +3144,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             'cascade_id': str,     # Cascade ID from config
             'cascade_path': str,   # Resolved file path
             'cells_count': int,   # Number of cells
-            'has_candidates': bool, # Whether any cells have candidates
+            'has_takes': bool, # Whether any cells have takes
             'has_routing': bool    # Whether any cells have routing/handoffs
         }
 
@@ -3182,9 +3182,9 @@ def get_static_mermaid_from_cascade(cascade_path=None):
         # Also check common directories
         if not resolved_path.exists():
             for subdir in ['cascades/examples', 'cascades', 'skills']:
-                candidate = rvbbit_root / subdir / cascade_path
-                if candidate.exists():
-                    resolved_path = candidate
+                take = rvbbit_root / subdir / cascade_path
+                if take.exists():
+                    resolved_path = take
                     break
 
         if not resolved_path.exists():
@@ -3218,8 +3218,8 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             }), 500
 
         # Extract metadata from config
-        has_candidates = any(
-            cell.candidates and cell.candidates.factor > 1
+        has_takes = any(
+            cell.takes and cell.takes.factor > 1
             for cell in cascade_config.cells
         )
         has_routing = any(
@@ -3232,7 +3232,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
             'cascade_id': cascade_config.cascade_id,
             'cascade_path': str(resolved_path),
             'cells_count': len(cascade_config.cells),
-            'has_candidates': has_candidates,
+            'has_takes': has_takes,
             'has_routing': has_routing,
             'description': cascade_config.description
         })
@@ -3248,11 +3248,11 @@ def get_static_mermaid_from_cascade(cascade_path=None):
 def get_pareto_frontier(session_id):
     """Get Pareto frontier data for visualization.
 
-    Returns cost vs quality scatter plot data for multi-model candidates,
+    Returns cost vs quality scatter plot data for multi-model takes,
     including frontier points, dominated points, and winner selection.
 
     The data is read from graphs/pareto_{session_id}.json which is written
-    by RVBBITRunner when pareto_frontier is enabled in candidates config.
+    by RVBBITRunner when pareto_frontier is enabled in takes config.
     """
     try:
         # Look for Pareto data file
@@ -3986,14 +3986,14 @@ def load_playground_cascade(cascade_id):
         filepath = None
         for search_dir in search_dirs:
             # Try YAML first
-            candidate = os.path.join(search_dir, f"{cascade_id}.yaml")
-            if os.path.exists(candidate):
-                filepath = candidate
+            take = os.path.join(search_dir, f"{cascade_id}.yaml")
+            if os.path.exists(take):
+                filepath = take
                 break
             # Try JSON
-            candidate = os.path.join(search_dir, f"{cascade_id}.json")
-            if os.path.exists(candidate):
-                filepath = candidate
+            take = os.path.join(search_dir, f"{cascade_id}.json")
+            if os.path.exists(take):
+                filepath = take
                 break
 
         # Also search calliope subdirectories (cascades built by Calliope)
@@ -4009,13 +4009,13 @@ def load_playground_cascade(cascade_id):
                 session_dirs.sort(key=lambda x: x[1], reverse=True)
 
                 for dir_path, _ in session_dirs:
-                    candidate = os.path.join(dir_path, f"{cascade_id}.yaml")
-                    if os.path.exists(candidate):
-                        filepath = candidate
+                    take = os.path.join(dir_path, f"{cascade_id}.yaml")
+                    if os.path.exists(take):
+                        filepath = take
                         break
-                    candidate = os.path.join(dir_path, f"{cascade_id}.json")
-                    if os.path.exists(candidate):
-                        filepath = candidate
+                    take = os.path.join(dir_path, f"{cascade_id}.json")
+                    if os.path.exists(take):
+                        filepath = take
                         break
                     if filepath:
                         break
@@ -4179,7 +4179,7 @@ def playground_session_stream(session_id):
 
     This endpoint replaces fragmented SSE events with a single polling endpoint
     that returns all relevant execution data since a given timestamp. The UI
-    derives cell states, candidates progress, winner, etc. from these log rows.
+    derives cell states, takes progress, winner, etc. from these log rows.
 
     Query params:
         after: ISO timestamp to fetch logs after (default: 1970-01-01)
@@ -4221,10 +4221,10 @@ def playground_session_stream(session_id):
                 cell_name,
                 role,
                 node_type,
-                candidate_index,
+                take_index,
                 is_winner,
                 reforge_step,
-                winning_candidate_index,
+                winning_take_index,
                 turn_number,
                 model,
                 cost,
@@ -4814,16 +4814,16 @@ def hotornot_stats():
 
 @app.route('/api/hotornot/queue', methods=['GET'])
 def hotornot_queue():
-    """Get unevaluated candidates for the Hot or Not UI."""
+    """Get unevaluated takes for the Hot or Not UI."""
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from rvbbit.hotornot import get_unevaluated_candidates
+        from rvbbit.hotornot import get_unevaluated_takes
 
         limit = request.args.get('limit', 50, type=int)
         show_all = request.args.get('show_all', 'false').lower() == 'true'
-        df = get_unevaluated_candidates(limit=limit * 3 if show_all else limit)
+        df = get_unevaluated_takes(limit=limit * 3 if show_all else limit)
 
         if df.empty:
             return jsonify([])
@@ -4831,7 +4831,7 @@ def hotornot_queue():
         items = []
 
         if show_all:
-            # Show ALL individual candidates (for detailed review)
+            # Show ALL individual takes (for detailed review)
             for _, row in df.iterrows():
                 # Parse content
                 content = row.get('content_json', '')
@@ -4846,7 +4846,7 @@ def hotornot_queue():
                     'cell_name': row['cell_name'],
                     'cascade_id': row.get('cascade_id'),
                     'cascade_file': row.get('cascade_file'),
-                    'candidate_index': int(row.get('candidate_index', 0)),
+                    'take_index': int(row.get('take_index', 0)),
                     # Don't reveal winner status - blind evaluation to avoid bias
                     'is_winner': None,
                     'content_preview': str(content)[:200] if content else '',
@@ -4877,7 +4877,7 @@ def hotornot_queue():
                         'cell_name': row['cell_name'],
                         'cascade_id': row.get('cascade_id'),
                         'cascade_file': row.get('cascade_file'),
-                        'candidate_index': int(row.get('candidate_index', 0)),
+                        'take_index': int(row.get('take_index', 0)),
                         'is_winner': bool(row.get('is_winner')) if row.get('is_winner') is not None and not pd.isna(row.get('is_winner')) else False,
                         'content_preview': str(content)[:200] if content else '',
                         'timestamp': row.get('timestamp')
@@ -4891,16 +4891,16 @@ def hotornot_queue():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/hotornot/candidate-group/<session_id>/<cell_name>', methods=['GET'])
-def hotornot_candidate_group(session_id, cell_name):
-    """Get all candidates for a specific session+cell for comparison."""
+@app.route('/api/hotornot/take-group/<session_id>/<cell_name>', methods=['GET'])
+def hotornot_take_group(session_id, cell_name):
+    """Get all takes for a specific session+cell for comparison."""
     try:
         import sys
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
 
-        from rvbbit.hotornot import get_candidate_group
+        from rvbbit.hotornot import get_take_group
 
-        result = get_candidate_group(session_id, cell_name)
+        result = get_take_group(session_id, cell_name)
 
         if not result:
             return jsonify({'error': 'Sounding group not found'}), 404
@@ -4938,7 +4938,7 @@ def hotornot_rate():
             prompt_text=data.get('prompt_text'),
             output_text=data.get('output_text'),
             mutation_applied=data.get('mutation_applied'),
-            candidate_index=data.get('candidate_index'),
+            take_index=data.get('take_index'),
             notes=data.get('notes', ''),
             evaluator=data.get('evaluator', 'human')
         )
@@ -4972,7 +4972,7 @@ def hotornot_prefer():
         cell_name = data.get('cell_name')
         preferred_index = data.get('preferred_index')
         system_winner_index = data.get('system_winner_index')
-        candidate_outputs = data.get('candidate_outputs', [])
+        take_outputs = data.get('take_outputs', [])
 
         if not all([session_id, cell_name, preferred_index is not None, system_winner_index is not None]):
             return jsonify({'error': 'session_id, cell_name, preferred_index, and system_winner_index required'}), 400
@@ -4982,7 +4982,7 @@ def hotornot_prefer():
             cell_name=cell_name,
             preferred_index=preferred_index,
             system_winner_index=system_winner_index,
-            candidate_outputs=candidate_outputs,
+            take_outputs=take_outputs,
             cascade_id=data.get('cascade_id'),
             cascade_file=data.get('cascade_file'),
             prompt_text=data.get('prompt_text'),
@@ -5093,21 +5093,21 @@ def get_session_images(session_id):
     """
     Get list of all images for a session.
     Images are stored in IMAGE_DIR/{session_id}/{cell_name}/image_{N}.{ext}
-    Also scans for candidate images in IMAGE_DIR/{session_id}_candidate_{N}/{cell_name}/candidate_{N}_image_{M}.{ext}
+    Also scans for take images in IMAGE_DIR/{session_id}_take_{N}/{cell_name}/take_{N}_image_{M}.{ext}
     """
     import re
     try:
         images = []
 
-        # Helper function to extract candidate index from session_id or filename
-        def extract_candidate_info(scan_session_id, filename):
-            # Check if this is a candidate session (session_id ends with _candidate_N)
-            candidate_match = re.search(r'_candidate_(\d+)$', scan_session_id)
-            if candidate_match:
-                return int(candidate_match.group(1))
+        # Helper function to extract take index from session_id or filename
+        def extract_take_info(scan_session_id, filename):
+            # Check if this is a take session (session_id ends with _take_N)
+            take_match = re.search(r'_take_(\d+)$', scan_session_id)
+            if take_match:
+                return int(take_match.group(1))
 
-            # Check if filename has candidate prefix (candidate_N_image_M.ext)
-            filename_match = re.search(r'^candidate_(\d+)_', filename)
+            # Check if filename has take prefix (take_N_image_M.ext)
+            filename_match = re.search(r'^take_(\d+)_', filename)
             if filename_match:
                 return int(filename_match.group(1))
 
@@ -5133,37 +5133,37 @@ def get_session_images(session_id):
                     # Get file modification time for sorting
                     mtime = os.path.getmtime(full_path)
 
-                    # Extract candidate index from filename if present
-                    candidate_index = extract_candidate_info(session_id, filename)
+                    # Extract take index from filename if present
+                    take_index = extract_take_info(session_id, filename)
 
                     images.append({
                         'filename': filename,
                         'path': rel_path,
                         'cell_name': cell_name,
-                        'candidate_index': candidate_index,
+                        'take_index': take_index,
                         'url': f'/api/images/{session_id}/{rel_path}',
                         'mtime': mtime
                     })
 
-        # Scan for candidate subdirectories (session_id_candidate_0, session_id_candidate_1, etc.)
+        # Scan for take subdirectories (session_id_take_0, session_id_take_1, etc.)
         parent_dir = os.path.dirname(session_image_dir)
         if os.path.exists(parent_dir):
             for entry in os.listdir(parent_dir):
-                # Look for directories matching pattern: {session_id}_candidate_{N}
-                if entry.startswith(f"{session_id}_candidate_"):
-                    candidate_dir = os.path.join(parent_dir, entry)
-                    if not os.path.isdir(candidate_dir):
+                # Look for directories matching pattern: {session_id}_take_{N}
+                if entry.startswith(f"{session_id}_take_"):
+                    take_dir = os.path.join(parent_dir, entry)
+                    if not os.path.isdir(take_dir):
                         continue
 
-                    # Walk this candidate directory
-                    for root, dirs, files in os.walk(candidate_dir):
+                    # Walk this take directory
+                    for root, dirs, files in os.walk(take_dir):
                         for filename in files:
                             ext = filename.lower().split('.')[-1] if '.' in filename else ''
                             if ext not in ('png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'):
                                 continue
 
                             full_path = os.path.join(root, filename)
-                            rel_path = os.path.relpath(full_path, candidate_dir)
+                            rel_path = os.path.relpath(full_path, take_dir)
 
                             # Extract cell name
                             path_parts = rel_path.split(os.sep)
@@ -5171,14 +5171,14 @@ def get_session_images(session_id):
 
                             mtime = os.path.getmtime(full_path)
 
-                            # Extract candidate index from the directory name
-                            candidate_index = extract_candidate_info(entry, filename)
+                            # Extract take index from the directory name
+                            take_index = extract_take_info(entry, filename)
 
                             images.append({
                                 'filename': filename,
                                 'path': rel_path,
                                 'cell_name': cell_name,
-                                'candidate_index': candidate_index,
+                                'take_index': take_index,
                                 'url': f'/api/images/{entry}/{rel_path}',
                                 'mtime': mtime
                             })
@@ -5300,10 +5300,10 @@ def get_session_images(session_id):
                 # Sort windows by start time
                 reforge_windows.sort(key=lambda w: w['start'])
 
-                # Match images without candidate_index to reforge windows
+                # Match images without take_index to reforge windows
                 for img in images:
-                    # Skip images that already have candidate_index (they're candidate images)
-                    if img.get('candidate_index') is not None:
+                    # Skip images that already have take_index (they're take images)
+                    if img.get('take_index') is not None:
                         continue
 
                     img_time = img['mtime']
@@ -5319,52 +5319,52 @@ def get_session_images(session_id):
                             img['reforge_is_winner'] = window['is_final_step']
                             break
 
-            # Also enrich candidate images with winner information
-            # Query for candidate_attempt entries with is_winner=True
+            # Also enrich take images with winner information
+            # Query for take_attempt entries with is_winner=True
             try:
                 conn = get_db_connection()
-                candidate_winner_df = conn.execute(
-                    "SELECT DISTINCT cell_name, candidate_index FROM unified_logs WHERE session_id = ? AND role = 'candidate_attempt' AND is_winner = true",
+                take_winner_df = conn.execute(
+                    "SELECT DISTINCT cell_name, take_index FROM unified_logs WHERE session_id = ? AND role = 'take_attempt' AND is_winner = true",
                     [session_id]
                 ).fetchdf()
                 conn.close()
-                if not candidate_winner_df.empty:
-                    # Build a set of (cell_name, candidate_index) pairs that are winners
-                    candidate_winners = set()
-                    for _, row in candidate_winner_df.iterrows():
+                if not take_winner_df.empty:
+                    # Build a set of (cell_name, take_index) pairs that are winners
+                    take_winners = set()
+                    for _, row in take_winner_df.iterrows():
                         cell = row.get('cell_name')
-                        idx = row.get('candidate_index')
+                        idx = row.get('take_index')
                         if cell and idx is not None:
-                            candidate_winners.add((cell, int(idx)))
+                            take_winners.add((cell, int(idx)))
 
-                    # Mark winning candidate images
+                    # Mark winning take images
                     for img in images:
-                        if img.get('candidate_index') is not None:
-                            key = (img.get('cell_name'), img.get('candidate_index'))
-                            if key in candidate_winners:
-                                img['candidate_is_winner'] = True
+                        if img.get('take_index') is not None:
+                            key = (img.get('cell_name'), img.get('take_index'))
+                            if key in take_winners:
+                                img['take_is_winner'] = True
             except Exception as e:
-                print(f"Warning: Could not query candidate winners: {e}")
+                print(f"Warning: Could not query take winners: {e}")
 
-        # Sort by cell, then candidate index, then reforge step, then modification time
+        # Sort by cell, then take index, then reforge step, then modification time
         images.sort(key=lambda x: (
             x['cell_name'] or '',
-            x['candidate_index'] if x['candidate_index'] is not None else -1,
+            x['take_index'] if x['take_index'] is not None else -1,
             x.get('reforge_step', -1),
             x['mtime']
         ))
 
-        # Find candidate winner index for "refined from" label
-        candidate_winner_idx = None
+        # Find take winner index for "refined from" label
+        take_winner_idx = None
         for img in images:
-            if img.get('candidate_is_winner'):
-                candidate_winner_idx = img.get('candidate_index')
+            if img.get('take_is_winner'):
+                take_winner_idx = img.get('take_index')
                 break
 
         return jsonify({
             'session_id': session_id,
             'images': images,
-            'candidate_winner_index': candidate_winner_idx
+            'take_winner_index': take_winner_idx
         })
 
     except Exception as e:

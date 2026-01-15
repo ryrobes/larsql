@@ -23,7 +23,7 @@ const formatValidatorName = (validator) => {
 };
 
 /**
- * ConvergenceSection - Shows where candidates converge
+ * ConvergenceSection - Shows where takes converge
  *
  * Contains:
  * - Pre-validator (filters broken outputs)

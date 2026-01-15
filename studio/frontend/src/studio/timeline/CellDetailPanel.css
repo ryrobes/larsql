@@ -314,7 +314,7 @@
   font-weight: 600;
 }
 
-/* Winner candidate tab */
+/* Winner take tab */
 .cell-detail-results-tab.winner {
   background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
   border: 1px solid rgba(251, 191, 36, 0.4);
@@ -710,8 +710,8 @@
   gap: 12px;
 }
 
-/* Winner candidate banner */
-.cell-detail-candidate-winner-banner {
+/* Winner take banner */
+.cell-detail-take-winner-banner {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1302,8 +1302,8 @@
   /* Don't override flex-direction - let SessionMessagesLog handle its own layout */
 }
 
-/* Wrapper for candidate messages with winner banner */
-.cell-detail-candidate-messages-wrapper {
+/* Wrapper for take messages with winner banner */
+.cell-detail-take-messages-wrapper {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1312,7 +1312,7 @@
 }
 
 /* Keep existing winner banner styles */
-.cell-detail-candidate-winner-banner {
+.cell-detail-take-winner-banner {
   display: flex;
   align-items: center;
   gap: 8px;

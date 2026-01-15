@@ -382,10 +382,10 @@ def main():
         help='Show evaluation statistics'
     )
 
-    # hotornot list - List unevaluated candidates
+    # hotornot list - List unevaluated takes
     list_uneval_parser = hotornot_subparsers.add_parser(
         'list',
-        help='List unevaluated candidate outputs'
+        help='List unevaluated take outputs'
     )
     list_uneval_parser.add_argument('--limit', type=int, default=20, help='Max items to show')
 
@@ -1900,7 +1900,7 @@ def cmd_analyze(args):
             print("This could mean:")
             print("  • Not enough runs yet (need at least", args.min_runs, ")")
             print("  • No clear winner (< 60% win rate)")
-            print("  • No candidates configured in cascade")
+            print("  • No takes configured in cascade")
             sys.exit(0)
 
         # Display suggestions
@@ -3242,7 +3242,7 @@ def cmd_embed_status(args):
     print()
 
     # Database stats
-    # Count embeddable rows: assistant/user roles OR candidate_attempt/evaluator node types
+    # Count embeddable rows: assistant/user roles OR take_attempt/evaluator node types
     try:
         result = db.query("""
             SELECT
@@ -3250,8 +3250,8 @@ def cmd_embed_status(args):
                 countIf(
                     length(content_embedding) = 0
                     AND length(content_json) > 10
-                    AND (role IN ('assistant', 'user') OR node_type IN ('candidate_attempt', 'evaluator', 'agent', 'follow_up'))
-                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'candidates', 'validation', 'validation_start')
+                    AND (role IN ('assistant', 'user') OR node_type IN ('take_attempt', 'evaluator', 'agent', 'follow_up'))
+                    AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'takes', 'validation', 'validation_start')
                 ) as unembedded,
                 COUNT(*) as total
             FROM unified_logs
@@ -3315,8 +3315,8 @@ def cmd_embed_run(args):
     print()
 
     # Query for un-embedded messages
-    # Include: assistant/user roles AND candidate_attempt/evaluator node types
-    # (candidate_attempt is where is_winner is set - critical for analysis!)
+    # Include: assistant/user roles AND take_attempt/evaluator node types
+    # (take_attempt is where is_winner is set - critical for analysis!)
     query = f"""
         SELECT
             message_id,
@@ -3332,9 +3332,9 @@ def cmd_embed_run(args):
           AND length(content_json) > 10
           AND (
               role IN ('assistant', 'user')
-              OR node_type IN ('candidate_attempt', 'evaluator', 'agent', 'follow_up')
+              OR node_type IN ('take_attempt', 'evaluator', 'agent', 'follow_up')
           )
-          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'candidates', 'validation', 'validation_start')
+          AND node_type NOT IN ('embedding', 'tool_call', 'tool_result', 'cell', 'cascade', 'system', 'link', 'takes', 'validation', 'validation_start')
         ORDER BY timestamp DESC
         LIMIT {batch_size}
     """
@@ -3581,22 +3581,22 @@ def cmd_hotornot_stats(args):
 
 
 def cmd_hotornot_list(args):
-    """List unevaluated candidates."""
-    from rvbbit.hotornot import get_unevaluated_candidates
+    """List unevaluated takes."""
+    from rvbbit.hotornot import get_unevaluated_takes
 
-    df = get_unevaluated_candidates(limit=args.limit)
+    df = get_unevaluated_takes(limit=args.limit)
 
     if df.empty:
         print()
-        print("No unevaluated candidates found!")
+        print("No unevaluated takes found!")
         print()
-        print("Run some cascades with candidates first:")
-        print("  rvbbit examples/candidates_flow.json --input '{}'")
+        print("Run some cascades with takes first:")
+        print("  rvbbit examples/takes_flow.json --input '{}'")
         return
 
     print()
     print("="*60)
-    print(f"Unevaluated Candidates (showing {len(df)})")
+    print(f"Unevaluated Takes (showing {len(df)})")
     print("="*60)
     print()
 
@@ -3605,11 +3605,11 @@ def cmd_hotornot_list(args):
 
     for (session_id, cell_name), group in grouped:
         winner_row = group[group['is_winner'] == True]
-        winner_idx = winner_row['candidate_index'].values[0] if not winner_row.empty else '?'
+        winner_idx = winner_row['take_index'].values[0] if not winner_row.empty else '?'
 
         print(f"Session: {session_id[:30]}...")
         print(f"  Cell: {cell_name}")
-        print(f"  Candidates: {len(group)} variants")
+        print(f"  Takes: {len(group)} variants")
         print(f"  System winner: #{winner_idx}")
         print()
 
@@ -3649,7 +3649,7 @@ def cmd_hotornot_quick(args):
 def cmd_hotornot_rate(args):
     """Interactive rating session with WASD controls."""
     from rvbbit.hotornot import (
-        get_unevaluated_candidates, get_candidate_group,
+        get_unevaluated_takes, get_take_group,
         log_binary_eval, log_preference_eval, log_flag_eval,
         flush_evaluations
     )
@@ -3676,15 +3676,15 @@ def cmd_hotornot_rate(args):
     print("  W / Up Arrow    = FLAG for review")
     print("  Q               = Quit")
     print()
-    print("Loading candidates to rate...")
+    print("Loading takes to rate...")
     print()
 
     # Get items to rate
-    df = get_unevaluated_candidates(limit=args.limit * 3)  # Get extra in case of grouping
+    df = get_unevaluated_takes(limit=args.limit * 3)  # Get extra in case of grouping
 
     if df.empty:
-        print("No candidates to rate!")
-        print("Run cascades with candidates first.")
+        print("No takes to rate!")
+        print("Run cascades with takes first.")
         return
 
     # Get unique session+cell combinations
@@ -3704,9 +3704,9 @@ def cmd_hotornot_rate(args):
         session_id = row['session_id']
         cell_name = row['cell_name']
 
-        # Get the candidate group
-        group = get_candidate_group(session_id, cell_name)
-        if not group or not group.get('candidates'):
+        # Get the take group
+        group = get_take_group(session_id, cell_name)
+        if not group or not group.get('takes'):
             continue
 
         # Clear screen (simple version)
@@ -3723,21 +3723,21 @@ def cmd_hotornot_rate(args):
 
         # Show system winner
         winner_idx = group.get('system_winner_index', 0)
-        winner_candidate = None
-        for s in group['candidates']:
+        winner_take = None
+        for s in group['takes']:
             if s['index'] == winner_idx:
-                winner_candidate = s
+                winner_take = s
                 break
 
-        if winner_candidate:
+        if winner_take:
             print("-"*60)
             print(f"System picked: Sounding #{winner_idx + 1}")
-            if winner_candidate.get('mutation_applied'):
-                print(f"Mutation: {winner_candidate['mutation_applied'][:60]}...")
+            if winner_take.get('mutation_applied'):
+                print(f"Mutation: {winner_take['mutation_applied'][:60]}...")
             print("-"*60)
             print()
 
-            content = winner_candidate.get('content', '')
+            content = winner_take.get('content', '')
             if isinstance(content, dict):
                 content = json.dumps(content, indent=2)
             elif isinstance(content, list):
@@ -3769,8 +3769,8 @@ def cmd_hotornot_rate(args):
                 is_good=False,
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None,
-                mutation_applied=winner_candidate.get('mutation_applied') if winner_candidate else None
+                output_text=str(winner_take.get('content', ''))[:1000] if winner_take else None,
+                mutation_applied=winner_take.get('mutation_applied') if winner_take else None
             )
             rated_count += 1
             bad_count += 1
@@ -3783,8 +3783,8 @@ def cmd_hotornot_rate(args):
                 is_good=True,
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None,
-                mutation_applied=winner_candidate.get('mutation_applied') if winner_candidate else None
+                output_text=str(winner_take.get('content', ''))[:1000] if winner_take else None,
+                mutation_applied=winner_take.get('mutation_applied') if winner_take else None
             )
             rated_count += 1
             good_count += 1
@@ -3801,7 +3801,7 @@ def cmd_hotornot_rate(args):
                 flag_reason="Flagged during interactive rating",
                 cell_name=cell_name,
                 cascade_id=group.get('cascade_id'),
-                output_text=str(winner_candidate.get('content', ''))[:1000] if winner_candidate else None
+                output_text=str(winner_take.get('content', ''))[:1000] if winner_take else None
             )
             rated_count += 1
             flag_count += 1
@@ -5155,7 +5155,7 @@ def cmd_models_local_export(args):
         'text2text-generation': {'text': 'The input text'},
         'fill-mask': {'text': 'The text with [MASK] token to fill'},
         'question-answering': {'question': 'The question to answer', 'context': 'The context containing the answer'},
-        'zero-shot-classification': {'text': 'The text to classify', 'candidate_labels': 'Comma-separated list of possible labels'},
+        'zero-shot-classification': {'text': 'The text to classify', 'take_labels': 'Comma-separated list of possible labels'},
         'image-classification': {'image': 'Path to the image file'},
     }
 
@@ -5582,18 +5582,18 @@ def cmd_serve_studio(args):
     # Try relative to RVBBIT_ROOT if set
     rvbbit_root = os.environ.get('RVBBIT_ROOT')
     if rvbbit_root:
-        candidate = os.path.join(rvbbit_root, 'studio', 'backend')
-        if os.path.exists(candidate):
-            studio_backend_dir = candidate
+        take = os.path.join(rvbbit_root, 'studio', 'backend')
+        if os.path.exists(take):
+            studio_backend_dir = take
 
     # Try relative to this file (rvbbit package location)
     if not studio_backend_dir:
         package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         # Go up to repo root
         repo_root = os.path.dirname(package_dir)
-        candidate = os.path.join(repo_root, 'studio', 'backend')
-        if os.path.exists(candidate):
-            studio_backend_dir = candidate
+        take = os.path.join(repo_root, 'studio', 'backend')
+        if os.path.exists(take):
+            studio_backend_dir = take
 
     if not studio_backend_dir:
         print("❌ Could not find studio/backend directory.")

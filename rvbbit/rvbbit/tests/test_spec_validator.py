@@ -460,11 +460,11 @@ class TestW004SelfHandoff:
 # =============================================================================
 
 class TestW005MissingEvaluator:
-    """Test W005: Candidates without evaluator_instructions should warn."""
+    """Test W005: Takes without evaluator_instructions should warn."""
 
-    def test_candidates_with_evaluator_pass(self):
-        """Candidates with evaluator_instructions should pass."""
-        from rvbbit.cascade import CandidatesConfig
+    def test_takes_with_evaluator_pass(self):
+        """Takes with evaluator_instructions should pass."""
+        from rvbbit.cascade import TakesConfig
 
         cascade = CascadeConfig(
             cascade_id="test",
@@ -472,7 +472,7 @@ class TestW005MissingEvaluator:
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    candidates=CandidatesConfig(
+                    takes=TakesConfig(
                         factor=3,
                         evaluator_instructions="Pick the best one"
                     )
@@ -485,7 +485,7 @@ class TestW005MissingEvaluator:
 
     def test_aggregate_mode_no_evaluator_pass(self):
         """Aggregate mode without evaluator should pass."""
-        from rvbbit.cascade import CandidatesConfig
+        from rvbbit.cascade import TakesConfig
 
         cascade = CascadeConfig(
             cascade_id="test",
@@ -493,7 +493,7 @@ class TestW005MissingEvaluator:
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    candidates=CandidatesConfig(
+                    takes=TakesConfig(
                         factor=3,
                         mode="aggregate",
                         aggregator_instructions="Combine all outputs"
@@ -505,9 +505,9 @@ class TestW005MissingEvaluator:
         w005_issues = [i for i in result.issues if i.code == "W005"]
         assert len(w005_issues) == 0
 
-    def test_candidates_missing_evaluator_warns(self):
-        """Candidates without evaluator in evaluate mode should warn."""
-        from rvbbit.cascade import CandidatesConfig
+    def test_takes_missing_evaluator_warns(self):
+        """Takes without evaluator in evaluate mode should warn."""
+        from rvbbit.cascade import TakesConfig
 
         cascade = CascadeConfig(
             cascade_id="test",
@@ -515,7 +515,7 @@ class TestW005MissingEvaluator:
                 CellConfig(
                     name="step",
                     instructions="Do something",
-                    candidates=CandidatesConfig(
+                    takes=TakesConfig(
                         factor=3
                         # Missing evaluator_instructions, mode defaults to "evaluate"
                     )

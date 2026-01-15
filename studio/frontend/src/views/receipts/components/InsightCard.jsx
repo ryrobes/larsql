@@ -110,8 +110,8 @@ const InsightCard = ({ insight }) => {
               <div className="insight-context-header">
                 <span className="insight-context-session">{contextData.session_id}</span>
                 <span className="insight-context-model">{contextData.model}</span>
-                {contextData.candidate_index !== null && (
-                  <Badge variant="label" color="purple" size="sm">#{contextData.candidate_index}</Badge>
+                {contextData.take_index !== null && (
+                  <Badge variant="label" color="purple" size="sm">#{contextData.take_index}</Badge>
                 )}
               </div>
               <div className="insight-context-messages">

@@ -3,7 +3,7 @@ import { Icon } from '@iconify/react';
 import InputLayer from './components/InputLayer';
 import ContextLayer from './components/ContextLayer';
 import WardsLayer from './components/WardsLayer';
-import CandidatesLayer from './components/CandidatesLayer';
+import TakesLayer from './components/TakesLayer';
 import ParetoLayer from './components/ParetoLayer';
 import ConvergenceSection from './components/ConvergenceSection';
 import ReforgeLayer from './components/ReforgeLayer';
@@ -17,7 +17,7 @@ import './CellAnatomyPanel.css';
  *
  * Shows all the machinery inside a cell:
  * - Entry: Context injection, pre-wards
- * - Candidates: Parallel execution lanes with turns
+ * - Takes: Parallel execution lanes with turns
  * - Convergence: Evaluator, pre-validator
  * - Reforge: Iterative refinement loop
  * - Exit: Post-wards, output extraction
@@ -31,8 +31,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
   const executionData = useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
 
-    // Group logs by candidate index
-    const candidates = {};
+    // Group logs by take index
+    const takes = {};
     let winnerIndex = null;
     let reforgeData = null;
     const toolCalls = [];
@@ -58,8 +58,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
     for (const log of cellLogs) {
       const metadata = parseMetadata(log.metadata_json);
 
-      // Track winning candidate (check both old and new field names)
-      const logWinner = log.winner_index ?? log.winning_candidate_index ?? metadata.winner_index;
+      // Track winning take (check both old and new field names)
+      const logWinner = log.winner_index ?? log.winning_take_index ?? metadata.winner_index;
       if (logWinner !== null && logWinner !== undefined && logWinner >= 0) {
         winnerIndex = logWinner;
       }
@@ -72,30 +72,30 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
         }
         evaluatorResult = {
           content: typeof content === 'string' ? content : (content?.content || content?.reasoning || JSON.stringify(content)),
-          winnerIndex: log.winning_candidate_index,
+          winnerIndex: log.winning_take_index,
           model: log.model,
           timestamp: log.timestamp_iso
         };
       }
 
-      // Group by candidate - prefer top-level candidate_index, fall back to metadata
-      // Use explicit null/undefined check since log.candidate_index may be null
-      let candidateIdx = (log.candidate_index !== null && log.candidate_index !== undefined)
-        ? log.candidate_index
-        : metadata.candidate_index;
+      // Group by take - prefer top-level take_index, fall back to metadata
+      // Use explicit null/undefined check since log.take_index may be null
+      let takeIdx = (log.take_index !== null && log.take_index !== undefined)
+        ? log.take_index
+        : metadata.take_index;
 
-      // For non-candidate cells (factor=1), logs won't have candidate_index
+      // For non-take cells (factor=1), logs won't have take_index
       // Use index 0 as fallback for relevant execution logs
       const isExecutionLog = ['assistant', 'tool_call', 'structure', 'tool', 'cell_complete', 'error'].includes(log.role) ||
                              ['agent', 'turn', 'tool_call', 'tool_result'].includes(log.node_type);
-      if ((candidateIdx === null || candidateIdx === undefined) && isExecutionLog) {
-        candidateIdx = 0; // Virtual candidate for non-candidate cells
+      if ((takeIdx === null || takeIdx === undefined) && isExecutionLog) {
+        takeIdx = 0; // Virtual take for non-take cells
       }
 
-      if (candidateIdx !== null && candidateIdx !== undefined && candidateIdx >= 0) {
-        if (!candidates[candidateIdx]) {
-          candidates[candidateIdx] = {
-            index: candidateIdx,
+      if (takeIdx !== null && takeIdx !== undefined && takeIdx >= 0) {
+        if (!takes[takeIdx]) {
+          takes[takeIdx] = {
+            index: takeIdx,
             turns: [],
             toolCalls: [],
             model: null,
@@ -108,13 +108,13 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
           };
         }
 
-        const candidate = candidates[candidateIdx];
+        const take = takes[takeIdx];
 
         // Track timestamps for duration calculation
         const logTs = parseTs(log.timestamp_iso);
         if (logTs) {
-          if (!candidate.firstTs || logTs < candidate.firstTs) candidate.firstTs = logTs;
-          if (!candidate.lastTs || logTs > candidate.lastTs) candidate.lastTs = logTs;
+          if (!take.firstTs || logTs < take.firstTs) take.firstTs = logTs;
+          if (!take.lastTs || logTs > take.lastTs) take.lastTs = logTs;
         }
 
         // Track turns from structure/turn markers OR from metadata.turn_number
@@ -122,9 +122,9 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
         if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
           // Use 0-indexed (turn_number starts at 1 in logs)
           const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
-          while (candidate.turns.length <= turnIdx) {
-            candidate.turns.push({
-              index: candidate.turns.length,
+          while (take.turns.length <= turnIdx) {
+            take.turns.push({
+              index: take.turns.length,
               toolCalls: [],
               validationResult: null,
               status: 'pending',
@@ -134,7 +134,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
             });
           }
 
-          const turn = candidate.turns[turnIdx];
+          const turn = take.turns[turnIdx];
 
           // Track turn timestamps
           if (logTs) {
@@ -151,7 +151,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
         // Track tool calls (role='tool_call' or node_type='tool_call')
         if (log.role === 'tool_call' || log.node_type === 'tool_call') {
           const toolName = metadata.tool_name || 'unknown';
-          candidate.toolCalls.push(toolName);
+          take.toolCalls.push(toolName);
 
           // Add to current turn if we know which turn
           const turnNumber = metadata.turn_number;
@@ -161,10 +161,10 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
           }
 
           // Ensure turn exists
-          if (!candidate.turns[turnIdx]) {
-            while (candidate.turns.length <= turnIdx) {
-              candidate.turns.push({
-                index: candidate.turns.length,
+          if (!take.turns[turnIdx]) {
+            while (take.turns.length <= turnIdx) {
+              take.turns.push({
+                index: take.turns.length,
                 toolCalls: [],
                 validationResult: null,
                 status: 'running',
@@ -175,7 +175,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
             }
           }
 
-          candidate.turns[turnIdx].toolCalls.push({
+          take.turns[turnIdx].toolCalls.push({
             name: toolName,
             duration: log.duration_ms
           });
@@ -187,16 +187,16 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
           const turnNumber = metadata.turn_number;
           if (turnNumber !== null && turnNumber !== undefined && turnNumber >= 0) {
             const turnIdx = turnNumber > 0 ? turnNumber - 1 : 0;
-            if (candidate.turns[turnIdx]) {
-              candidate.turns[turnIdx].status = 'complete';
+            if (take.turns[turnIdx]) {
+              take.turns[turnIdx].status = 'complete';
               if (log.duration_ms) {
-                candidate.turns[turnIdx].duration += parseFloat(log.duration_ms);
+                take.turns[turnIdx].duration += parseFloat(log.duration_ms);
               }
             }
           } else {
             // No explicit turn_number - create/update turn 0 as fallback
-            if (candidate.turns.length === 0) {
-              candidate.turns.push({
+            if (take.turns.length === 0) {
+              take.turns.push({
                 index: 0,
                 toolCalls: [],
                 validationResult: null,
@@ -207,7 +207,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
               });
             } else {
               // Mark last turn as complete
-              const lastTurn = candidate.turns[candidate.turns.length - 1];
+              const lastTurn = take.turns[take.turns.length - 1];
               lastTurn.status = 'complete';
               if (log.duration_ms) {
                 lastTurn.duration += parseFloat(log.duration_ms);
@@ -218,41 +218,41 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
 
         // Track model
         if (log.model) {
-          candidate.model = log.model;
+          take.model = log.model;
         }
 
         // Track mutation type (stored as direct column, not in metadata_json)
         // Set it whenever we see it in the log (overwrites if already set)
         if (log.mutation_type) {
-          candidate.mutation = log.mutation_type;
+          take.mutation = log.mutation_type;
         }
 
         // Accumulate cost
-        if (log.cost) candidate.cost += parseFloat(log.cost);
+        if (log.cost) take.cost += parseFloat(log.cost);
 
-        // Track completion from candidate_attempt or cell_complete
-        if (log.role === 'candidate_attempt' || log.node_type === 'candidate_attempt') {
+        // Track completion from take_attempt or cell_complete
+        if (log.role === 'take_attempt' || log.node_type === 'take_attempt') {
           // Mark all turns as complete
-          candidate.status = 'complete';
-          candidate.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
+          take.status = 'complete';
+          take.turns.forEach(t => { if (t.status === 'running') t.status = 'complete'; });
         }
         if (log.role === 'cell_complete') {
-          candidate.status = 'complete';
+          take.status = 'complete';
         }
         if (log.role === 'error') {
-          candidate.status = 'error';
+          take.status = 'error';
         }
       }
 
       // Track tool calls globally
       if (log.role === 'tool_call' || log.node_type === 'tool_call') {
         const toolName = metadata.tool_name || 'unknown';
-        const toolSoundingIdx = (log.candidate_index !== null && log.candidate_index !== undefined)
-          ? log.candidate_index
-          : metadata.candidate_index;
+        const toolSoundingIdx = (log.take_index !== null && log.take_index !== undefined)
+          ? log.take_index
+          : metadata.take_index;
         toolCalls.push({
           name: toolName,
-          candidate: toolSoundingIdx,
+          take: toolSoundingIdx,
           turn: metadata.turn_number,
           duration: log.duration_ms
         });
@@ -289,10 +289,10 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
           timestamp: log.timestamp_iso
         };
 
-        // Associate with the current turn in candidate 0 (or the active candidate)
-        const targetCandidate = candidates[0];
-        if (targetCandidate && targetCandidate.turns.length > 0) {
-          const lastTurn = targetCandidate.turns[targetCandidate.turns.length - 1];
+        // Associate with the current turn in take 0 (or the active take)
+        const targetTake = takes[0];
+        if (targetTake && targetTake.turns.length > 0) {
+          const lastTurn = targetTake.turns[targetTake.turns.length - 1];
           lastTurn.validationResult = validationResult;
           // Mark as early exit if validation passed
           if (validationResult.valid) {
@@ -321,15 +321,15 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
       }
     }
 
-    // Calculate durations from timestamps for candidates and turns
-    const candidatesList = Object.values(candidates);
-    for (const candidate of candidatesList) {
-      // Candidate duration from first to last timestamp
-      if (candidate.firstTs && candidate.lastTs) {
-        candidate.duration = candidate.lastTs - candidate.firstTs;
+    // Calculate durations from timestamps for takes and turns
+    const takesList = Object.values(takes);
+    for (const take of takesList) {
+      // Take duration from first to last timestamp
+      if (take.firstTs && take.lastTs) {
+        take.duration = take.lastTs - take.firstTs;
       }
       // Turn durations
-      for (const turn of candidate.turns) {
+      for (const turn of take.turns) {
         if (turn.firstTs && turn.lastTs && !turn.duration) {
           turn.duration = turn.lastTs - turn.firstTs;
         }
@@ -337,19 +337,19 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
     }
 
     return {
-      candidates: candidatesList,
+      takes: takesList,
       winnerIndex,
       toolCalls,
       wardResults,
       reforgeData,
       evaluatorResult,
       manifestSelection,
-      hasCandidates: candidatesList.length > 0
+      hasTakes: takesList.length > 0
     };
   }, [cellLogs]);
 
   // Determine mode based on whether we have execution data
-  const hasExecutionData = executionData && executionData.hasCandidates;
+  const hasExecutionData = executionData && executionData.hasTakes;
 
   // Fetch Pareto frontier data if available
   const [paretoData, setParetoData] = useState(null);
@@ -401,17 +401,17 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
     // Post-wards
     postWards: cell?.wards?.post || [],
 
-    // Candidates configuration
-    candidates: cell?.candidates || null,
-    factor: cell?.candidates?.factor || 1,
-    mutate: cell?.candidates?.mutate || false,
-    models: cell?.candidates?.models || null,
-    evaluator: cell?.candidates?.evaluator_instructions || null,
-    preValidator: cell?.candidates?.validator || null,
-    mode: cell?.candidates?.mode || 'evaluate',
+    // Takes configuration
+    takes: cell?.takes || null,
+    factor: cell?.takes?.factor || 1,
+    mutate: cell?.takes?.mutate || false,
+    models: cell?.takes?.models || null,
+    evaluator: cell?.takes?.evaluator_instructions || null,
+    preValidator: cell?.takes?.validator || null,
+    mode: cell?.takes?.mode || 'evaluate',
 
     // Reforge configuration
-    reforge: cell?.candidates?.reforge || null,
+    reforge: cell?.takes?.reforge || null,
 
     // Rules
     maxTurns: cell?.rules?.max_turns || 1,
@@ -505,8 +505,8 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
 
         <LayerDivider type="major" label="Execution Chamber" />
 
-        {/* Candidates Layer - The Main Event */}
-        <CandidatesLayer
+        {/* Takes Layer - The Main Event */}
+        <TakesLayer
           config={cellConfig}
           execution={executionData}
           isLLMCell={isLLMCell}
@@ -517,7 +517,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
           <ParetoLayer paretoData={paretoData} />
         )}
 
-        {/* Convergence Section (inside Candidates visual) */}
+        {/* Convergence Section (inside Takes visual) */}
         {(cellConfig.factor > 1 || cellConfig.preValidator || cellConfig.evaluator) && (
           <ConvergenceSection
             config={cellConfig}

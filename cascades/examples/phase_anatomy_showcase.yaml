@@ -55,7 +55,7 @@ cells:
     - initial_analysis
     include:
     - output
-  candidates:
+  takes:
     factor: 6
     mutate: true
     models:
@@ -195,7 +195,7 @@ cells:
     - iterative_improvement
     include:
     - output
-  candidates:
+  takes:
     factor: 2
     models:
     - anthropic/claude-sonnet-4
@@ -243,7 +243,7 @@ cells:
   context:
     from:
     - reforged_synthesis
-  candidates:
+  takes:
     factor: 3
     mode: aggregate
     aggregator_instructions: 'Combine all three perspective reviews into a comprehensive

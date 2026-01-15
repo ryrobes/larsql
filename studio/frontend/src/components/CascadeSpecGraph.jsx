@@ -81,9 +81,9 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
     (cell.instructions ? 'llm_cell' : 'python_data'));
   const info = typeInfo[cellType] || typeInfo.llm_cell;
 
-  // Check for candidates/candidates
-  const hasCandidates = cell.candidates?.factor > 1 || cell.candidates_factor > 1 || cell.has_candidates;
-  const candidatesFactor = cell.candidates?.factor || cell.candidates_factor;
+  // Check for takes/takes
+  const hasTakes = cell.takes?.factor > 1 || cell.takes_factor > 1 || cell.has_takes;
+  const takesFactor = cell.takes?.factor || cell.takes_factor;
 
   // Check for wards
   const hasWards = cell.has_wards || cell.ward_count > 0;
@@ -96,7 +96,7 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
 
   return (
     <div
-      className={`spec-cell-node ${hasCandidates ? 'has-candidates' : ''} ${statusClass}`}
+      className={`spec-cell-node ${hasTakes ? 'has-takes' : ''} ${statusClass}`}
       title={cell.name}
     >
       {/* Top row: Type + badges */}
@@ -124,10 +124,10 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
 
       {/* Bottom row: Features */}
       <div className="spec-cell-features">
-        {hasCandidates && (
-          <span className="spec-feature candidates" title={`${candidatesFactor} candidates`}>
+        {hasTakes && (
+          <span className="spec-feature takes" title={`${takesFactor} takes`}>
             <Icon icon="mdi:source-fork" width="12" />
-            {candidatesFactor}x
+            {takesFactor}x
           </span>
         )}
         {hasWards && (
@@ -152,8 +152,8 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
         )}
       </div>
 
-      {/* Candidates stack effect */}
-      {hasCandidates && (
+      {/* Takes stack effect */}
+      {hasTakes && (
         <>
           <div className="spec-cell-stack-1" />
           <div className="spec-cell-stack-2" />

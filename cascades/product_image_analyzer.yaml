@@ -1,13 +1,13 @@
 # Per-Image Product Analyzer (Subcascade)
 # Called by product_catalog_extract.yaml via map_cascade
 #
-# Uses aggregate candidates to get multiple interpretations of a complex image
+# Uses aggregate takes to get multiple interpretations of a complex image
 # and combines them for maximum extraction recall.
 
 cascade_id: product_image_analyzer
 description: |
   Analyze a single product image to extract all visible products and prices.
-  Uses aggregate mode candidates to get multiple passes, combining results
+  Uses aggregate mode takes to get multiple passes, combining results
   for maximum recall on busy/complex images.
 
 inputs_schema:
@@ -42,12 +42,12 @@ cells:
       - Multiple products may share one price sign
       - Look for bundle deals or multi-buy offers
 
-      ## Candidate Pass Information
-      {% if candidate_index is defined %}
-      This is candidate pass {{ candidate_index + 1 }} of {{ candidate_factor }}.
-      {% if candidate_index == 0 %}
+      ## Take Pass Information
+      {% if take_index is defined %}
+      This is take pass {{ take_index + 1 }} of {{ take_factor }}.
+      {% if take_index == 0 %}
       Focus on the MOST VISIBLE and PROMINENT products first.
-      {% elif candidate_index == 1 %}
+      {% elif take_index == 1 %}
       Focus on PARTIALLY HIDDEN or OBSCURED products that might be missed.
       {% else %}
       Focus on EDGES, BACKGROUND, and any products you might have overlooked.
@@ -82,11 +82,11 @@ cells:
         - cell: load_image
           include: [images, output]
           images_filter: all
-    candidates:
+    takes:
       factor: 6
       mode: aggregate
       aggregator_instructions: |
-        You received {{ candidate_factor }} extraction passes over the same product image.
+        You received {{ take_factor }} extraction passes over the same product image.
         Each pass focused on different areas (prominent products, hidden products, edges/background).
 
         COMBINE all unique products into a single comprehensive list:

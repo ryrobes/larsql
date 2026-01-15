@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS cascade_analytics (
     message_count UInt16,                   -- Count of LLM messages
     cell_count UInt8,                       -- Count of cells executed
     error_count UInt8,                      -- Count of errors
-    candidate_count UInt8 DEFAULT 0,        -- Total candidates used
-    winner_candidate_index Nullable(Int8),  -- Which candidate won (if candidates)
+    take_count UInt8 DEFAULT 0,        -- Total takes used
+    winner_take_index Nullable(Int8),  -- Which take won (if takes)
 
     -- ============================================
     -- CONTEXT-AWARE BASELINES

@@ -365,10 +365,10 @@
 }
 
 /* ========================================
-   Candidate Group (multiple candidates)
+   Take Group (multiple takes)
    ======================================== */
 
-.candidate-group {
+.take-group {
   margin-bottom: 10px;
   border: 1px solid rgba(251, 191, 36, 0.25);
   border-radius: 4px;
@@ -376,11 +376,11 @@
   overflow: hidden;
 }
 
-.candidate-group:last-child {
+.take-group:last-child {
   margin-bottom: 0;
 }
 
-.candidate-group-header {
+.take-group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -389,14 +389,14 @@
   border-bottom: 1px solid rgba(251, 191, 36, 0.15);
 }
 
-.candidate-group-name {
+.take-group-name {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   font-weight: 600;
   color: #fbbf24;
 }
 
-.candidate-count {
+.take-count {
   font-size: 9px;
   color: #a78bfa;
   background: rgba(167, 139, 250, 0.1);
@@ -404,7 +404,7 @@
   border-radius: 3px;
 }
 
-.candidate-group-cells {
+.take-group-cells {
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -429,7 +429,7 @@
   background: rgba(52, 211, 153, 0.05);
 }
 
-.candidate-group-cells .cell-block {
+.take-group-cells .cell-block {
   margin-bottom: 0;
 }
 
@@ -461,7 +461,7 @@
   color: #a78bfa;
 }
 
-.candidate-tag {
+.take-tag {
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;
   color: #fbbf24;

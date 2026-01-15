@@ -23,7 +23,7 @@ cells:
   - name: rank_relevance
     rules:
       max_attempts: 2
-    candidates:
+    takes:
       factor: 2
       mode: aggregate  # Combine all outputs instead of picking winner
       models:

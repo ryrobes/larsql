@@ -366,10 +366,10 @@
 <p>Every execution is tracked with hierarchical IDs:</p>
 <ul>
   <li><strong>Session ID</strong>: Top-level execution identifier (e.g., <code>session_123</code>)</li>
-  <li><strong>Trace ID</strong>: Unique per execution node, includes candidate/reforge suffixes:
+  <li><strong>Trace ID</strong>: Unique per execution node, includes take/reforge suffixes:
     <ul>
       <li><code>session_123</code> - Main session</li>
-      <li><code>session_123_sounding_0</code> - First candidate</li>
+      <li><code>session_123_sounding_0</code> - First take</li>
       <li><code>session_123_reforge1_0</code> - First reforge attempt</li>
       <li><code>session_123_subcascade_analyze</code> - Sub-cascade named "analyze"</li>
     </ul>
@@ -406,12 +406,12 @@
       <td>State and history accumulated during execution</td>
     </tr>
     <tr>
-      <td><strong>Candidates</strong></td>
+      <td><strong>Takes</strong></td>
       <td>Parallel execution attempts (formerly "Soundings")</td>
     </tr>
     <tr>
       <td><strong>Reforge</strong></td>
-      <td>Iterative refinement of winning candidate</td>
+      <td>Iterative refinement of winning take</td>
     </tr>
     <tr>
       <td><strong>Wards</strong></td>

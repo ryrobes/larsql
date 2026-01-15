@@ -30,7 +30,7 @@ cells:
     Be thorough and comprehensive in your analysis.'
   model: x-ai/grok-4.1-fast
   name: analyze_with_multi_model
-  candidates:
+  takes:
     evaluator_instructions: 'Compare the analyses and select the one that is most
       comprehensive, insightful, and well-structured.
 

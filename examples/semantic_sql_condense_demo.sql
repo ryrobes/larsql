@@ -258,7 +258,7 @@ LIMIT 1000;
 -- ============================================================================
 
 -- Combine vector search pre-filter with scalar summarization
-WITH candidates AS (
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH('climate change impacts', 'articles', 20)
 )
 SELECT
@@ -267,7 +267,7 @@ SELECT
     CONDENSE(a.full_text) as summary,
     CONDENSE(a.full_text, 'focus on specific impacts mentioned') as impacts_summary,
     c.similarity as relevance_score
-FROM candidates c
+FROM takes c
 JOIN articles a ON a.article_id = c.id
 WHERE a.word_count > 50  -- Only summarize longer articles
 ORDER BY c.similarity DESC;

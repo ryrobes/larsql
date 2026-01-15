@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     session_id String,
     cascade_id String,
     cell_name String,
-    candidate_index Nullable(Int16),       -- NULL if not in candidates, else 0, 1, 2...
+    take_index Nullable(Int16),       -- NULL if not in takes, else 0, 1, 2...
     turn_number UInt16,                    -- Turn within this cell (0-indexed)
     is_loop_retry Bool DEFAULT false,      -- Is this a loop_until retry turn?
 
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS intra_context_shadow_assessments (
     INDEX idx_session session_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cascade cascade_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_cell cell_name TYPE bloom_filter GRANULARITY 1,
-    INDEX idx_candidate candidate_index TYPE set(100) GRANULARITY 1,
+    INDEX idx_take take_index TYPE set(100) GRANULARITY 1,
     INDEX idx_turn turn_number TYPE set(100) GRANULARITY 1,
     INDEX idx_batch assessment_batch_id TYPE bloom_filter GRANULARITY 1,
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
@@ -133,11 +133,11 @@ SETTINGS index_granularity = 8192;
 --    GROUP BY config_window, config_mask_after
 --    ORDER BY avg_saved DESC
 --
--- 4. "Candidate comparison - which candidate had most bloat?"
---    SELECT candidate_index, cell_name,
+-- 4. "Take comparison - which take had most bloat?"
+--    SELECT take_index, cell_name,
 --           SUM(tokens_before) as total_tokens,
 --           AVG(compression_ratio) as avg_compression
 --    FROM intra_context_shadow_assessments
 --    WHERE session_id = 'X' AND config_window = 5
---    GROUP BY candidate_index, cell_name
+--    GROUP BY take_index, cell_name
 --    ORDER BY total_tokens DESC

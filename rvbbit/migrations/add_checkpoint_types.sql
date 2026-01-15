@@ -4,7 +4,7 @@
 ALTER TABLE checkpoints
 MODIFY COLUMN checkpoint_type Enum8(
     'cell_input' = 1,
-    'candidate_eval' = 2,
+    'take_eval' = 2,
     'free_text' = 3,
     'choice' = 4,
     'multi_choice' = 5,

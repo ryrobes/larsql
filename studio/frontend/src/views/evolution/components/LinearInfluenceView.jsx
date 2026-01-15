@@ -55,14 +55,14 @@ function TrainingSnippet({ snippet, color, generation, onClick, isHighlighted })
 function GenerationBlock({ generation, generationColor, onSnippetClick, highlightedGen, onEvolveClick }) {
   const [showFullWinner, setShowFullWinner] = useState(false);
 
-  const winner = generation.candidates.find(c => c.is_winner) || generation.candidates[0];
+  const winner = generation.takes.find(c => c.is_winner) || generation.takes[0];
 
   console.log('[GenerationBlock] Gen', generation.generation, '- Has winner:', !!winner?.is_winner, '- Has evolveClick:', !!onEvolveClick);
   const winnerPrompt = winner?.prompt || '';
   const winnerPreview = winnerPrompt.length > 400 ? winnerPrompt.substring(0, 400) + '...' : winnerPrompt;
   const hasMore = winnerPrompt.length > 400;
 
-  const totalCost = generation.candidates.reduce((sum, c) => sum + (c.cost || 0), 0);
+  const totalCost = generation.takes.reduce((sum, c) => sum + (c.cost || 0), 0);
   const parents = generation.parent_winners || [];
 
   const isHighlighted = highlightedGen === generation.generation;
@@ -135,7 +135,7 @@ function GenerationBlock({ generation, generationColor, onSnippetClick, highligh
 
               return (
                 <TrainingSnippet
-                  key={`${parent.session_id}_${parent.candidate_index}`}
+                  key={`${parent.session_id}_${parent.take_index}`}
                   snippet={parent.prompt_snippet}
                   color={parentColor}
                   generation={parent.generation}
@@ -148,15 +148,15 @@ function GenerationBlock({ generation, generationColor, onSnippetClick, highligh
         </div>
       )}
 
-      {/* Candidate Chips (All attempts) */}
-      <div className="block-candidates">
-        {generation.candidates.map((cand, idx) => (
+      {/* Take Chips (All attempts) */}
+      <div className="block-takes">
+        {generation.takes.map((cand, idx) => (
           <span
             key={idx}
-            className={`block-candidate-chip ${cand.is_winner ? 'winner' : ''}`}
-            title={`#${cand.candidate_index} - ${cand.model} - $${cand.cost?.toFixed(4)}`}
+            className={`block-take-chip ${cand.is_winner ? 'winner' : ''}`}
+            title={`#${cand.take_index} - ${cand.model} - $${cand.cost?.toFixed(4)}`}
           >
-            #{cand.candidate_index}
+            #{cand.take_index}
             {cand.is_winner && '👑'}
           </span>
         ))}
@@ -197,13 +197,13 @@ const LinearInfluenceView = ({ nodes, currentSessionId, onEvolveClick }) => {
           session_id: sessionId,
           generation: node.data.generation,
           timestamp: node.data.timestamp,
-          candidates: [],
+          takes: [],
           parent_winners: node.data.parent_winners || [],
         };
       }
 
-      sessionMap[sessionId].candidates.push({
-        candidate_index: node.data.candidate_index,
+      sessionMap[sessionId].takes.push({
+        take_index: node.data.take_index,
         is_winner: node.data.is_winner,
         in_training_set: node.data.in_training_set,
         mutation_type: node.data.mutation_type,

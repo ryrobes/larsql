@@ -6,7 +6,7 @@ import './layers.css';
  * ReforgeLayer - Shows iterative refinement loop
  *
  * The reforge process:
- * - Winner enters from candidates
+ * - Winner enters from takes
  * - For each step: run factor_per_step attempts with honing_prompt
  * - Evaluate and pick winner
  * - Optional threshold check for early stopping

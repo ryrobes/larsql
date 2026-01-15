@@ -40,8 +40,8 @@ SHADOW_ASSESSMENT_ENABLED = os.getenv("RVBBIT_SHADOW_ASSESSMENT_ENABLED", "false
 
 
 @dataclass
-class CandidateMessage:
-    """A candidate message for context injection."""
+class TakeMessage:
+    """A take message for context injection."""
     content_hash: str
     source_cell_name: str
     role: str
@@ -59,8 +59,8 @@ class CandidateMessage:
 
 @dataclass
 class AssessmentResult:
-    """Result of assessing a single candidate message."""
-    candidate: CandidateMessage
+    """Result of assessing a single take message."""
+    take: TakeMessage
 
     # Heuristic scores
     heuristic_score: float = 0.0
@@ -82,7 +82,7 @@ class AssessmentResult:
     # Composite
     composite_score: float = 0.0
 
-    # Rankings (set after all candidates scored)
+    # Rankings (set after all takes scored)
     rank_heuristic: int = 0
     rank_semantic: Optional[int] = None
     rank_composite: int = 0
@@ -95,7 +95,7 @@ class ShadowAssessmentRequest:
     cascade_id: str
     target_cell_name: str
     target_cell_instructions: str
-    candidates: List[CandidateMessage]
+    takes: List[TakeMessage]
     actual_included_hashes: Set[str]
     actual_mode: str  # 'explicit' or 'auto'
     budget_total: int = 30000
@@ -105,7 +105,7 @@ class ShadowAssessor:
     """
     Runs shadow assessments for context selection.
 
-    Assesses all candidate messages using all strategies (heuristic, semantic, LLM)
+    Assesses all take messages using all strategies (heuristic, semantic, LLM)
     and logs results to context_shadow_assessments table.
 
     All LLM calls are logged to unified_logs with caller_id="shadow_assessment"
@@ -143,20 +143,20 @@ class ShadowAssessor:
         # Cache for task keywords
         self._task_keywords_cache: Dict[str, Set[str]] = {}
 
-    def assess_candidates(
+    def assess_takes(
         self,
         request: ShadowAssessmentRequest
     ) -> List[AssessmentResult]:
         """
-        Assess all candidates for a cell transition.
+        Assess all takes for a cell transition.
 
         Args:
-            request: Assessment request with candidates and context
+            request: Assessment request with takes and context
 
         Returns:
-            List of AssessmentResult, one per candidate
+            List of AssessmentResult, one per take
         """
-        if not request.candidates:
+        if not request.takes:
             return []
 
         start_time = time.time()
@@ -165,9 +165,9 @@ class ShadowAssessor:
         # Extract keywords from target cell instructions
         task_keywords = self._extract_keywords(request.target_cell_instructions)
 
-        # Score each candidate with heuristic strategy
-        for candidate in request.candidates:
-            result = AssessmentResult(candidate=candidate)
+        # Score each take with heuristic strategy
+        for take in request.takes:
+            result = AssessmentResult(take=take)
             self._score_heuristic(result, task_keywords)
             results.append(result)
 
@@ -190,32 +190,32 @@ class ShadowAssessor:
         self._assign_rankings(results)
 
         duration_ms = int((time.time() - start_time) * 1000)
-        logger.debug(f"Shadow assessment: {len(results)} candidates in {duration_ms}ms")
+        logger.debug(f"Shadow assessment: {len(results)} takes in {duration_ms}ms")
 
         return results
 
     def _score_heuristic(self, result: AssessmentResult, task_keywords: Set[str]):
-        """Score a candidate using heuristic strategy."""
-        candidate = result.candidate
+        """Score a take using heuristic strategy."""
+        take = result.take
         config = self.selection_config
 
         score = 0.0
 
         # Keyword overlap
-        candidate_keywords = set(candidate.keywords or [])
-        if not candidate_keywords and candidate.content:
-            candidate_keywords = self._extract_keywords(candidate.content)
+        take_keywords = set(take.keywords or [])
+        if not take_keywords and take.content:
+            take_keywords = self._extract_keywords(take.content)
 
-        overlap = len(task_keywords & candidate_keywords)
+        overlap = len(task_keywords & take_keywords)
         result.heuristic_keyword_overlap = overlap
         keyword_score = overlap * config["keyword_weight"] * 10
         score += keyword_score
 
         # Recency score
-        if candidate.message_timestamp:
+        if take.message_timestamp:
             now = datetime.now()
-            if isinstance(candidate.message_timestamp, datetime):
-                age_minutes = (now - candidate.message_timestamp).total_seconds() / 60
+            if isinstance(take.message_timestamp, datetime):
+                age_minutes = (now - take.message_timestamp).total_seconds() / 60
             else:
                 age_minutes = 60
             recency_score = max(0, 100 - age_minutes) / 100
@@ -227,14 +227,14 @@ class ShadowAssessor:
 
         # Callout boost
         callout_boost = 0.0
-        if candidate.is_callout:
+        if take.is_callout:
             callout_boost = config["callout_weight"] * 100
         result.heuristic_callout_boost = callout_boost
         score += callout_boost
 
         # Role boost (assistant messages slightly more valuable)
         role_boost = 0.0
-        if candidate.role == "assistant":
+        if take.role == "assistant":
             role_boost = 5.0
         result.heuristic_role_boost = role_boost
         score += role_boost
@@ -246,7 +246,7 @@ class ShadowAssessor:
         results: List[AssessmentResult],
         task_instructions: str
     ):
-        """Score all candidates using semantic similarity."""
+        """Score all takes using semantic similarity."""
         try:
             from .rag.indexer import embed_texts
             from .config import get_config
@@ -270,18 +270,18 @@ class ShadowAssessor:
                 logger.debug("Could not embed task instructions for semantic scoring")
                 return
 
-            # Score each candidate that has an embedding
+            # Score each take that has an embedding
             for result in results:
-                candidate = result.candidate
-                if candidate.embedding:
+                take = result.take
+                if take.embedding:
                     result.semantic_embedding_available = True
-                    similarity = self._cosine_similarity(task_embedding, candidate.embedding)
+                    similarity = self._cosine_similarity(task_embedding, take.embedding)
                     result.semantic_score = similarity
                 else:
                     # Try to get embedding from content
-                    if candidate.content:
+                    if take.content:
                         try:
-                            content_text = candidate.content[:500]
+                            content_text = take.content[:500]
                             content_embed_result = embed_texts(
                                 [content_text],
                                 model=embed_model
@@ -297,7 +297,7 @@ class ShadowAssessor:
                                     content_embedding
                                 )
                         except Exception as e:
-                            logger.debug(f"Failed to embed candidate: {e}")
+                            logger.debug(f"Failed to embed take: {e}")
 
             # Log embedding usage to unified_logs for observability
             # This provides visibility into embedding costs without requiring schema changes
@@ -333,7 +333,7 @@ class ShadowAssessor:
                             "shadow_assessment": True,
                             "embed_call_count": embed_call_count,
                             "total_chars_embedded": total_chars_embedded,
-                            "candidates_scored": len([r for r in results if r.semantic_score is not None]),
+                            "takes_scored": len([r for r in results if r.semantic_score is not None]),
                         }
                     )
                     logger.debug(f"Logged shadow embedding usage: {embed_call_count} calls, {total_chars_embedded} chars")
@@ -353,7 +353,7 @@ class ShadowAssessor:
         target_cell_name: str | None = None
     ) -> Dict[str, Any]:
         """
-        Use LLM to select relevant candidates from summary menu.
+        Use LLM to select relevant takes from summary menu.
 
         Uses the internal shadow_context_selector cascade for full observability
         and proper cost tracking through the standard cascade infrastructure.
@@ -362,29 +362,29 @@ class ShadowAssessor:
             from .runner import RVBBITRunner
             from .config import RVBBIT_ROOT
 
-            # Build menu of candidates
+            # Build menu of takes
             menu_lines = []
             hash_to_result = {}
 
             for result in results[:100]:  # Limit menu size
-                candidate = result.candidate
-                hash_short = candidate.content_hash[:8]
+                take = result.take
+                hash_short = take.content_hash[:8]
                 hash_to_result[hash_short] = result
 
-                role = candidate.role
-                cell = candidate.source_cell_name
-                summary = candidate.summary or candidate.content[:150] if candidate.content else "No content"
+                role = take.role
+                cell = take.source_cell_name
+                summary = take.summary or take.content[:150] if take.content else "No content"
                 summary = summary.replace("\n", " ")[:150]
-                tokens = candidate.estimated_tokens
+                tokens = take.estimated_tokens
                 # Include category tag for foundational context
                 category_tag = ""
-                if candidate.message_category != "content":
-                    category_tag = f" [{candidate.message_category}]"
+                if take.message_category != "content":
+                    category_tag = f" [{take.message_category}]"
 
                 menu_lines.append(f"[{hash_short}] {role}{category_tag} ({cell}, ~{tokens} tok): {summary}")
 
             if not menu_lines:
-                return {"selected": [], "reasoning": "No candidates"}
+                return {"selected": [], "reasoning": "No takes"}
 
             menu = "\n".join(menu_lines)
 
@@ -452,7 +452,7 @@ class ShadowAssessor:
             # Get cost from cascade execution (properly tracked via unified_logs)
             cost = cascade_result.get("cost", 0.0)
 
-            # Mark selected candidates
+            # Mark selected takes
             for short_hash in selected_hashes:
                 if short_hash in hash_to_result:
                     result = hash_to_result[short_hash]
@@ -468,7 +468,7 @@ class ShadowAssessor:
                     result.llm_reasoning = f"Not selected. LLM reasoning: {reasoning}"
                     result.llm_model = self.llm_model
 
-            logger.debug(f"LLM selected {len(selected_hashes)} candidates in {duration_ms}ms via cascade (session: {shadow_session_id}, cost: ${cost:.6f})")
+            logger.debug(f"LLM selected {len(selected_hashes)} takes in {duration_ms}ms via cascade (session: {shadow_session_id}, cost: ${cost:.6f})")
             return {
                 "selected": selected_hashes,
                 "reasoning": reasoning,
@@ -494,14 +494,14 @@ class ShadowAssessor:
         # Role-based baseline boosts for foundational context
         # These ensure system messages/tool definitions aren't unfairly penalized
         foundational_boost = 0.0
-        candidate = result.candidate
-        if candidate.message_category == "task_definition":
+        take = result.take
+        if take.message_category == "task_definition":
             foundational_boost = 0.25  # Task definitions are usually critical
-        elif candidate.message_category == "tool_definition":
+        elif take.message_category == "tool_definition":
             foundational_boost = 0.15  # Tool definitions shape decision space
-        elif candidate.message_category == "constraints":
+        elif take.message_category == "constraints":
             foundational_boost = 0.20  # Constraints shape what DIDN'T happen
-        elif candidate.is_callout:
+        elif take.is_callout:
             foundational_boost = 0.20  # User explicitly marked as important
 
         # Weighted combination (adjust weights as needed)
@@ -629,7 +629,7 @@ def _process_assessment_request(request_data: Dict):
         )
 
         start_time = time.time()
-        results = assessor.assess_candidates(request)
+        results = assessor.assess_takes(request)
         duration_ms = int((time.time() - start_time) * 1000)
 
         if not results:
@@ -648,7 +648,7 @@ def _process_assessment_request(request_data: Dict):
         cumulative_tokens = 0
         rank_to_cumulative_composite = {}
         for result in sorted_by_composite:
-            cumulative_tokens += result.candidate.estimated_tokens
+            cumulative_tokens += result.take.estimated_tokens
             rank_to_cumulative_composite[result.rank_composite] = cumulative_tokens
 
         # Also compute cumulative tokens for heuristic ranking
@@ -656,7 +656,7 @@ def _process_assessment_request(request_data: Dict):
         cumulative_tokens = 0
         rank_to_cumulative_heuristic = {}
         for result in sorted_by_heuristic:
-            cumulative_tokens += result.candidate.estimated_tokens
+            cumulative_tokens += result.take.estimated_tokens
             rank_to_cumulative_heuristic[result.rank_heuristic] = cumulative_tokens
 
         # Also compute cumulative tokens for semantic ranking (if available)
@@ -665,13 +665,13 @@ def _process_assessment_request(request_data: Dict):
         cumulative_tokens = 0
         rank_to_cumulative_semantic = {}
         for result in sorted_by_semantic:
-            cumulative_tokens += result.candidate.estimated_tokens
+            cumulative_tokens += result.take.estimated_tokens
             rank_to_cumulative_semantic[result.rank_semantic] = cumulative_tokens
 
-        # For each candidate, create a row for EACH budget level
+        # For each take, create a row for EACH budget level
         # This is purely local computation - no additional LLM calls!
         for result in results:
-            candidate = result.candidate
+            take = result.take
             cumulative_at_composite_rank = rank_to_cumulative_composite.get(result.rank_composite, 0)
             cumulative_at_heuristic_rank = rank_to_cumulative_heuristic.get(result.rank_heuristic, 0)
             cumulative_at_semantic_rank = rank_to_cumulative_semantic.get(result.rank_semantic, 0) if result.rank_semantic else 0
@@ -688,12 +688,12 @@ def _process_assessment_request(request_data: Dict):
                     "target_cell_name": request.target_cell_name,
                     "target_cell_instructions": request.target_cell_instructions[:500],
 
-                    "source_cell_name": candidate.source_cell_name,
-                    "content_hash": candidate.content_hash,
-                    "message_role": candidate.role,
-                    "content_preview": (candidate.content or "")[:300],
-                    "estimated_tokens": candidate.estimated_tokens,
-                    "message_turn_number": candidate.turn_number,
+                    "source_cell_name": take.source_cell_name,
+                    "content_hash": take.content_hash,
+                    "message_role": take.role,
+                    "content_preview": (take.content or "")[:300],
+                    "estimated_tokens": take.estimated_tokens,
+                    "message_turn_number": take.turn_number,
 
                     "heuristic_score": result.heuristic_score,
                     "heuristic_keyword_overlap": result.heuristic_keyword_overlap,
@@ -719,13 +719,13 @@ def _process_assessment_request(request_data: Dict):
                     "rank_heuristic": result.rank_heuristic,
                     "rank_semantic": result.rank_semantic,
                     "rank_composite": result.rank_composite,
-                    "total_candidates": len(results),
+                    "total_takes": len(results),
 
                     "budget_total": budget_total,
                     "cumulative_tokens_at_rank": cumulative_at_composite_rank,
                     "would_fit_budget": would_fit_composite,
 
-                    "was_actually_included": candidate.content_hash in request.actual_included_hashes,
+                    "was_actually_included": take.content_hash in request.actual_included_hashes,
                     "actual_mode": request.actual_mode,
 
                     "assessment_duration_ms": duration_ms // max(1, len(results) * len(BUDGET_LEVELS)),
@@ -736,7 +736,7 @@ def _process_assessment_request(request_data: Dict):
         _insert_assessments(rows)
 
         logger.info(
-            f"Shadow assessment complete: {len(results)} candidates × {len(BUDGET_LEVELS)} budgets = "
+            f"Shadow assessment complete: {len(results)} takes × {len(BUDGET_LEVELS)} budgets = "
             f"{len(rows)} rows for {request.target_cell_name} in {duration_ms}ms (batch: {batch_id})"
         )
 
@@ -787,7 +787,7 @@ def queue_shadow_assessment(
     cascade_id: str,
     target_cell_name: str,
     target_cell_instructions: str,
-    candidates: List[Dict[str, Any]],
+    takes: List[Dict[str, Any]],
     actual_included_hashes: Set[str],
     actual_mode: str = "explicit",
     budget_total: int = 30000,
@@ -803,7 +803,7 @@ def queue_shadow_assessment(
         cascade_id: Current cascade ID
         target_cell_name: Name of cell we're building context FOR
         target_cell_instructions: Instructions for the target cell
-        candidates: List of candidate messages (dicts with content_hash, role, content, etc.)
+        takes: List of take messages (dicts with content_hash, role, content, etc.)
         actual_included_hashes: Set of content_hash values that were actually included
         actual_mode: 'explicit' or 'auto'
         budget_total: Token budget for context
@@ -817,13 +817,13 @@ def queue_shadow_assessment(
     if not SHADOW_ASSESSMENT_ENABLED:
         return
 
-    if not candidates:
+    if not takes:
         return
 
-    # Convert candidate dicts to CandidateMessage objects
-    candidate_objs = []
-    for c in candidates:
-        candidate_objs.append(CandidateMessage(
+    # Convert take dicts to TakeMessage objects
+    take_objs = []
+    for c in takes:
+        take_objs.append(TakeMessage(
             content_hash=c.get("content_hash", ""),
             source_cell_name=c.get("source_cell_name", c.get("cell_name", "unknown")),
             role=c.get("role", "user"),
@@ -844,7 +844,7 @@ def queue_shadow_assessment(
         cascade_id=cascade_id,
         target_cell_name=target_cell_name,
         target_cell_instructions=target_cell_instructions,
-        candidates=candidate_objs,
+        takes=take_objs,
         actual_included_hashes=actual_included_hashes,
         actual_mode=actual_mode,
         budget_total=budget_total,
@@ -859,7 +859,7 @@ def queue_shadow_assessment(
         "llm_model": llm_model,
     })
 
-    logger.debug(f"Queued shadow assessment for {target_cell_name} with {len(candidates)} candidates")
+    logger.debug(f"Queued shadow assessment for {target_cell_name} with {len(takes)} takes")
 
 
 def is_shadow_assessment_enabled(cascade_id: Optional[str] = None) -> bool:
@@ -1230,7 +1230,7 @@ def _process_intra_assessment_request(request_data: Dict):
         session_id = request_data["session_id"]
         cascade_id = request_data["cascade_id"]
         cell_name = request_data["cell_name"]
-        candidate_index = request_data.get("candidate_index")
+        take_index = request_data.get("take_index")
         actual_config_enabled = request_data.get("actual_config_enabled", False)
         actual_tokens_after = request_data.get("actual_tokens_after")
 
@@ -1257,7 +1257,7 @@ def _process_intra_assessment_request(request_data: Dict):
                 "session_id": session_id,
                 "cascade_id": cascade_id,
                 "cell_name": cell_name,
-                "candidate_index": candidate_index,
+                "take_index": take_index,
                 "turn_number": turn_number,
                 "is_loop_retry": is_loop_retry,
 
@@ -1301,7 +1301,7 @@ def _process_intra_assessment_request(request_data: Dict):
 
         logger.info(
             f"Intra-cell shadow assessment: {len(results)} configs for "
-            f"{cell_name}[{candidate_index}] turn {turn_number} in {duration_ms}ms"
+            f"{cell_name}[{take_index}] turn {turn_number} in {duration_ms}ms"
         )
 
     except Exception as e:
@@ -1324,7 +1324,7 @@ def queue_intra_cell_shadow_assessment(
     cell_name: str,
     full_history: List[Dict[str, Any]],
     turn_number: int,
-    candidate_index: Optional[int] = None,
+    take_index: Optional[int] = None,
     is_loop_retry: bool = False,
     actual_config_enabled: bool = False,
     actual_tokens_after: Optional[int] = None
@@ -1340,7 +1340,7 @@ def queue_intra_cell_shadow_assessment(
         cell_name: Name of the cell
         full_history: Full message history for context building
         turn_number: Current turn number (0-indexed)
-        candidate_index: Candidate index if in candidates (None otherwise)
+        take_index: Take index if in takes (None otherwise)
         is_loop_retry: Whether this is a loop_until retry turn
         actual_config_enabled: Whether intra-context was actually enabled
         actual_tokens_after: Actual tokens after context building (if enabled)
@@ -1366,13 +1366,13 @@ def queue_intra_cell_shadow_assessment(
         "cell_name": cell_name,
         "full_history": full_history.copy(),  # Copy to avoid mutation
         "turn_number": turn_number,
-        "candidate_index": candidate_index,
+        "take_index": take_index,
         "is_loop_retry": is_loop_retry,
         "actual_config_enabled": actual_config_enabled,
         "actual_tokens_after": actual_tokens_after,
     })
 
     logger.debug(
-        f"Queued intra-cell shadow assessment for {cell_name}[{candidate_index}] "
+        f"Queued intra-cell shadow assessment for {cell_name}[{take_index}] "
         f"turn {turn_number} with {len(full_history)} messages"
     )

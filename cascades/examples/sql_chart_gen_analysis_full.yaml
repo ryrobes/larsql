@@ -76,7 +76,7 @@ cells:
   name: discover_question
   rules:
     max_turns: 3
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate question discovery attempts based on:
 
 
@@ -138,7 +138,7 @@ cells:
     \ table(s) would be most useful. \nNote: the search data is ephemeral, so if you\
     \ need access to it later please include important parts in your reply."
   name: discover_schema
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate schema discovery attempts based on:
 
 
@@ -218,7 +218,7 @@ cells:
 
     Write a clear, efficient query based on this information.'
   name: write_query
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate SQL query attempts based on:
 
 
@@ -288,7 +288,7 @@ cells:
 
     Be specific and reference actual numbers from the results.'
   name: analyze_results
-  candidates:
+  takes:
     evaluator_instructions: "Evaluate data analysis attempts based on:\n\n1. **Accuracy**\
       \ (35%): Does the analysis correctly interpret the query results?\n2. **Insight\
       \ Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n\
@@ -337,7 +337,7 @@ cells:
   name: create_initial_chart
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate based on:
 
       1. Accuracy of visual observations about the chart

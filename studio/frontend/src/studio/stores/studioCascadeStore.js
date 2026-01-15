@@ -656,7 +656,7 @@ Provide your analysis below:
 `,
             rvbbit_data: `# LLM Cell Cell (Data Tool)
 # Access prior cells with: {{outputs.cell_name}}
-# Full RVBBIT power: candidates, reforge, wards, model selection
+# Full RVBBIT power: takes, reforge, wards, model selection
 
 instructions: |
   Analyze the data and return structured results.
@@ -674,8 +674,8 @@ output_schema:
       id: { type: string }
       result: { type: string }
 
-# Optional: Add candidates for best-of-N attempts
-# candidates:
+# Optional: Add takes for best-of-N attempts
+# takes:
 #   factor: 3
 #   evaluator_instructions: Pick the most accurate result
 `,

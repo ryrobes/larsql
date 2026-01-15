@@ -55,7 +55,7 @@ cells:
   name: propose_optimizations
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'Evaluate optimized cascade definitions based on:
 
       1. Instruction clarity and specificity

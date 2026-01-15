@@ -54,7 +54,7 @@
   min-width: 240px;
   max-width: 240px;
   min-height: 90px;
-  max-height: 130px; /* Allow expansion for candidates row */
+  max-height: 130px; /* Allow expansion for takes row */
   background-color: #0c0a1a;
   border: 2px solid #1a1628;
   border-radius: 8px;
@@ -112,7 +112,7 @@
 }
 
 /* ============================================
-   STACKED CARD EFFECT (for candidates/parallel cells)
+   STACKED CARD EFFECT (for takes/parallel cells)
    ============================================ */
 
 .cell-card-stacked {
@@ -512,7 +512,7 @@
   color: #34d399;
 }
 
-.cell-card-badge-candidates {
+.cell-card-badge-takes {
   background-color: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
@@ -523,10 +523,10 @@
 }
 
 /* ============================================
-   CANDIDATES INDICATOR ROW
+   TAKES INDICATOR ROW
    ============================================ */
 
-.cell-card-candidates-row {
+.cell-card-takes-row {
   display: flex;
   align-items: center;
   justify-content: left;
@@ -536,7 +536,7 @@
   /* border-top: 1px solid #1a1628; */
 }
 
-.cell-card-candidate-dot {
+.cell-card-take-dot {
   width: 10px;
   height: 10px;
   border-radius: 2px;
@@ -546,20 +546,20 @@
 }
 
 /* Pending - dim gray border, empty */
-.cell-card-candidate-dot.pending {
+.cell-card-take-dot.pending {
   border: 1px solid #475569;
   background-color: transparent;
   opacity: 0.5;
 }
 
 /* Running - pulsing cyan border with empty center */
-.cell-card-candidate-dot.running {
+.cell-card-take-dot.running {
   border: 1px solid #00e5ff;
   background-color: transparent;
-  animation: candidate-pulse 1.5s ease-in-out infinite;
+  animation: take-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes candidate-pulse {
+@keyframes take-pulse {
   0%, 100% {
     border-color: #00e5ff;
     box-shadow: 0 0 4px rgba(0, 229, 255, 0.4);
@@ -571,7 +571,7 @@
 }
 
 /* Complete - filled cyan/teal */
-.cell-card-candidate-dot.complete {
+.cell-card-take-dot.complete {
   background-color: #00e5ff;
   border: 1px solid #5eead4;
   box-shadow: 0 0 4px rgba(0, 229, 255, 0.5);
@@ -579,7 +579,7 @@
 }
 
 /* Error - filled red */
-.cell-card-candidate-dot.error {
+.cell-card-take-dot.error {
   background-color: #ff006e;
   border: 1px solid #ff0080;
   box-shadow: 0 0 4px rgba(255, 0, 110, 0.5);
@@ -587,7 +587,7 @@
 }
 
 /* Winner - golden/yellow with enhanced glow */
-.cell-card-candidate-dot.winner {
+.cell-card-take-dot.winner {
   background-color: #fbbf24;
   border: 1px solid #f59e0b;
   box-shadow: 0 0 6px rgba(251, 191, 36, 0.6), 0 0 10px rgba(251, 191, 36, 0.3);

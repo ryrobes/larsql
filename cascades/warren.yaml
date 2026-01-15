@@ -56,7 +56,7 @@ cells:
       - request_decision
       - set_state
 
-    candidates:
+    takes:
       factor: 5
       mode: aggregate
 
@@ -74,10 +74,10 @@ cells:
         You are **Hazel**, the Owsla - the council that synthesizes the Warren's wisdom.
 
         ## Perspectives Received
-        {% for candidate in candidates %}
+        {% for take in takes %}
         ---
         **Advisor {{ loop.index }}**:
-        {{ candidate.content | default(candidate) }}
+        {{ take.content | default(take) }}
         {% endfor %}
 
         ## Your Task

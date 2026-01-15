@@ -165,8 +165,8 @@ WHERE price < 100              -- Cheap SQL filter (reduces rows)
 LIMIT 200;
 
 -- Pattern 2: Hybrid with vector search (ultimate performance)
-WITH candidates AS (
-    -- Vector pre-filter: 1M rows → 100 candidates in ~50ms
+WITH takes AS (
+    -- Vector pre-filter: 1M rows → 100 takes in ~50ms
     SELECT * FROM VECTOR_SEARCH('eco-friendly products', 'products', 100)
 )
 -- @ parallel: 10
@@ -175,7 +175,7 @@ SELECT
     p.description MEANS 'truly sustainable' as is_sustainable,
     p.description EXTRACTS 'certifications' as certs,
     c.similarity as vector_score
-FROM candidates c
+FROM takes c
 JOIN products p ON p.id = c.id
 WHERE p.description MEANS 'eco-friendly AND affordable'
 LIMIT 50;

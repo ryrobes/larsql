@@ -108,17 +108,17 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
   const isLLMCell = !!(cell.tool === 'rvbbit_data' || cell.instructions);
   const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
 
-  // Extract candidates config from YAML (before execution)
-  const candidatesConfig = cell.candidates;
-  const hasCandidates = candidatesConfig && candidatesConfig.factor && candidatesConfig.factor > 1;
-  const candidatesFactor = hasCandidates ? candidatesConfig.factor : null;
-  const reforgeSteps = hasCandidates && candidatesConfig.reforge ? candidatesConfig.reforge.steps : null;
+  // Extract takes config from YAML (before execution)
+  const takesConfig = cell.takes;
+  const hasTakes = takesConfig && takesConfig.factor && takesConfig.factor > 1;
+  const takesFactor = hasTakes ? takesConfig.factor : null;
+  const reforgeSteps = hasTakes && takesConfig.reforge ? takesConfig.reforge.steps : null;
 
-  // Extract candidate info from logs (after execution)
-  const candidateInfo = React.useMemo(() => {
+  // Extract take info from logs (after execution)
+  const takeInfo = React.useMemo(() => {
     if (!cellLogs || cellLogs.length === 0) return null;
 
-    const candidatesMap = new Map(); // candidate_index -> { status, maxTurn, maxTurnsAllowed }
+    const takesMap = new Map(); // take_index -> { status, maxTurn, maxTurnsAllowed }
     let winningIndex = null;
     let maxTurnsForCell = null;
 
@@ -134,60 +134,60 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     for (const log of cellLogs) {
       const metadata = parseMetadata(log.metadata_json);
 
-      // Track winning candidate index
-      if (log.winning_candidate_index !== null && log.winning_candidate_index !== undefined) {
-        winningIndex = log.winning_candidate_index;
+      // Track winning take index
+      if (log.winning_take_index !== null && log.winning_take_index !== undefined) {
+        winningIndex = log.winning_take_index;
       }
 
-      // Track max_turns for the cell (same for all candidates)
+      // Track max_turns for the cell (same for all takes)
       if (metadata.max_turns && maxTurnsForCell === null) {
         maxTurnsForCell = metadata.max_turns;
       }
 
-      // Track candidate status based on log entries
-      if (log.candidate_index !== null && log.candidate_index !== undefined) {
-        const idx = log.candidate_index;
+      // Track take status based on log entries
+      if (log.take_index !== null && log.take_index !== undefined) {
+        const idx = log.take_index;
 
-        if (!candidatesMap.has(idx)) {
-          candidatesMap.set(idx, { status: 'running', maxTurn: 0, maxTurnsAllowed: null });
+        if (!takesMap.has(idx)) {
+          takesMap.set(idx, { status: 'running', maxTurn: 0, maxTurnsAllowed: null });
         }
 
-        const candidate = candidatesMap.get(idx);
+        const take = takesMap.get(idx);
 
-        // Track the highest turn number we've seen for this candidate
-        if (metadata.turn_number && metadata.turn_number > candidate.maxTurn) {
-          candidate.maxTurn = metadata.turn_number;
+        // Track the highest turn number we've seen for this take
+        if (metadata.turn_number && metadata.turn_number > take.maxTurn) {
+          take.maxTurn = metadata.turn_number;
         }
 
         // Track max_turns from metadata
-        if (metadata.max_turns && !candidate.maxTurnsAllowed) {
-          candidate.maxTurnsAllowed = metadata.max_turns;
+        if (metadata.max_turns && !take.maxTurnsAllowed) {
+          take.maxTurnsAllowed = metadata.max_turns;
         }
 
         // COMPLETION DETECTION - check multiple indicators
         // 1. Final turn reached (turn_number >= max_turns)
-        if (candidate.maxTurn > 0 && candidate.maxTurnsAllowed &&
-            candidate.maxTurn >= candidate.maxTurnsAllowed &&
-            candidate.status === 'running') {
-          candidate.status = 'complete';
+        if (take.maxTurn > 0 && take.maxTurnsAllowed &&
+            take.maxTurn >= take.maxTurnsAllowed &&
+            take.status === 'running') {
+          take.status = 'complete';
         }
 
         // 2. Explicit completion markers
-        if (log.role === 'candidate_attempt' || log.node_type === 'candidate_attempt') {
-          candidate.status = 'complete';
+        if (log.role === 'take_attempt' || log.node_type === 'take_attempt') {
+          take.status = 'complete';
         }
 
         // 3. Error indicator
         if (log.role === 'error') {
-          candidate.status = 'error';
+          take.status = 'error';
         }
       }
     }
 
-    if (candidatesMap.size === 0) return null;
+    if (takesMap.size === 0) return null;
 
     // Convert to array with status information
-    const candidates = Array.from(candidatesMap.entries())
+    const takes = Array.from(takesMap.entries())
       .sort((a, b) => a[0] - b[0])  // Sort by index
       .map(([index, data]) => ({
         index,
@@ -196,7 +196,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
       }));
 
     return {
-      candidates,
+      takes,
       winner: winningIndex,
       maxTurns: maxTurnsForCell
     };
@@ -243,7 +243,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     <div className="cell-card-wrapper" style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
       <div
         ref={setNodeRef}
-        className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasCandidates ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''} ${imageUrl ? 'has-image-bg' : ''}`}
+        className={`cell-card cell-card-${status} ${isSelected ? 'cell-card-selected' : ''} ${hasTakes ? 'cell-card-stacked' : ''} ${isOver ? 'cell-card-drop-target' : ''} ${imageUrl ? 'has-image-bg' : ''}`}
         onClick={handleClick}
         data-cell-name={cell.name}
         style={imageUrl ? { '--bg-image-url': `url(${imageUrl})` } : undefined}
@@ -305,7 +305,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
         )}
 
         {/* Reforge steps - from YAML (BEFORE execution) */}
-        {reforgeSteps && !candidateInfo && (
+        {reforgeSteps && !takeInfo && (
           <Badge variant="label" color="purple" size="sm">
             {reforgeSteps}x reforge
           </Badge>
@@ -326,30 +326,30 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
         )}
       </div>
 
-      {/* Candidates indicator row */}
+      {/* Takes indicator row */}
       {/* Show during execution (from logs) or before execution (from config) */}
-      {(candidateInfo || (hasCandidates && candidatesFactor)) && (
-        <div className="cell-card-candidates-row">
-          {candidateInfo ? (
-            // Execution mode - show actual candidate statuses
-            candidateInfo.candidates.map((candidate) => (
+      {(takeInfo || (hasTakes && takesFactor)) && (
+        <div className="cell-card-takes-row">
+          {takeInfo ? (
+            // Execution mode - show actual take statuses
+            takeInfo.takes.map((take) => (
               <div
-                key={candidate.index}
-                className={`cell-card-candidate-dot ${candidate.status} ${candidate.isWinner ? 'winner' : ''}`}
+                key={take.index}
+                className={`cell-card-take-dot ${take.status} ${take.isWinner ? 'winner' : ''}`}
                 title={
-                  candidate.isWinner
-                    ? `Candidate ${candidate.index} (WINNER)`
-                    : `Candidate ${candidate.index} - ${candidate.status}`
+                  take.isWinner
+                    ? `Take ${take.index} (WINNER)`
+                    : `Take ${take.index} - ${take.status}`
                 }
               />
             ))
           ) : (
             // Spec mode - show placeholder dots
-            Array.from({ length: candidatesFactor }, (_, idx) => (
+            Array.from({ length: takesFactor }, (_, idx) => (
               <div
                 key={idx}
-                className="cell-card-candidate-dot pending"
-                title={`Candidate ${idx} - pending`}
+                className="cell-card-take-dot pending"
+                title={`Take ${idx} - pending`}
               />
             ))
           )}

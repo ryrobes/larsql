@@ -359,10 +359,10 @@ def rvbbit_cascade_udf_impl(
     Run a complete cascade as a SQL UDF.
 
     This enables multi-cell LLM workflows per database row with full validation,
-    candidates, wards, and all cascade features. Particularly powerful for:
+    takes, wards, and all cascade features. Particularly powerful for:
     - Complex multi-step reasoning per row
     - Validated outputs (wards + output_schema)
-    - Candidates per row (best-of-N selection)
+    - Takes per row (best-of-N selection)
     - Tool usage per row (query other data, call APIs)
 
     Args:

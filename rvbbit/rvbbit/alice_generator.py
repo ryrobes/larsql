@@ -43,8 +43,8 @@ class CellInfo:
     """Extracted cell information for visualization."""
     name: str
     is_deterministic: bool
-    has_candidates: bool
-    candidate_factor: int
+    has_takes: bool
+    take_factor: int
     handoffs: List[str]
     skills: List[str]
     position: Optional[CellPosition] = None
@@ -69,16 +69,16 @@ def extract_cells(cascade: Dict[str, Any]) -> List[CellInfo]:
         # Determine cell type
         is_deterministic = cell_def.get('tool') is not None
 
-        # Check for candidates
-        candidates = cell_def.get('candidates', {})
-        has_candidates = candidates is not None and bool(candidates)
-        candidate_factor = 1
-        if has_candidates:
-            factor = candidates.get('factor', 1)
+        # Check for takes
+        takes = cell_def.get('takes', {})
+        has_takes = takes is not None and bool(takes)
+        take_factor = 1
+        if has_takes:
+            factor = takes.get('factor', 1)
             if isinstance(factor, int):
-                candidate_factor = factor
+                take_factor = factor
             else:
-                candidate_factor = 3  # Default for dynamic factor
+                take_factor = 3  # Default for dynamic factor
 
         # Extract handoffs
         handoffs_raw = cell_def.get('handoffs', [])
@@ -101,8 +101,8 @@ def extract_cells(cascade: Dict[str, Any]) -> List[CellInfo]:
         cells.append(CellInfo(
             name=name,
             is_deterministic=is_deterministic,
-            has_candidates=has_candidates,
-            candidate_factor=candidate_factor,
+            has_takes=has_takes,
+            take_factor=take_factor,
             handoffs=handoffs,
             skills=skills
         ))
@@ -224,8 +224,8 @@ def generate_cell_block(cell: CellInfo, session_var: str = "{session_id}") -> Di
     # Determine type label based on cell type
     if cell.is_deterministic:
         type_label = "TOOL"
-    elif cell.has_candidates:
-        type_label = f"LLM x{cell.candidate_factor}"
+    elif cell.has_takes:
+        type_label = f"LLM x{cell.take_factor}"
     else:
         type_label = "LLM"
 

@@ -37,7 +37,7 @@ class _Token:
 class _Annotation:
     prompt_prefix: str = ""
     threshold: Optional[float] = None
-    candidates: Optional[Dict[str, Any]] = None  # Cascade-level candidates config
+    takes: Optional[Dict[str, Any]] = None  # Cascade-level takes config
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
     # Keep comments in-place (do not relocate) and rely on the legacy rewriter to remove them.
     pending_annotation_prefix = ""
     pending_threshold: Optional[float] = None
-    pending_candidates: Optional[Dict[str, Any]] = None  # Candidates config for cascade-level sampling
+    pending_takes: Optional[Dict[str, Any]] = None  # Takes config for cascade-level sampling
 
     import logging
     _log = logging.getLogger(__name__)
@@ -92,13 +92,13 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                         pending_annotation_prefix += ann.prompt_prefix
                     if ann.threshold is not None:
                         pending_threshold = ann.threshold
-                    if ann.candidates is not None:
-                        # Merge candidates config (multiple annotations can accumulate)
-                        if pending_candidates is None:
-                            pending_candidates = {}
-                        pending_candidates.update(ann.candidates)
-                        _log.info(f"[semantic_rewriter_v2] Parsed candidates annotation: {ann.candidates}, accumulated: {pending_candidates}")
-                        print(f"[semantic_rewriter_v2] 🎯 Parsed candidates annotation: {ann.candidates}, accumulated: {pending_candidates}")
+                    if ann.takes is not None:
+                        # Merge takes config (multiple annotations can accumulate)
+                        if pending_takes is None:
+                            pending_takes = {}
+                        pending_takes.update(ann.takes)
+                        _log.info(f"[semantic_rewriter_v2] Parsed takes annotation: {ann.takes}, accumulated: {pending_takes}")
+                        print(f"[semantic_rewriter_v2] 🎯 Parsed takes annotation: {ann.takes}, accumulated: {pending_takes}")
             out_tokens.append(tok)
             i += 1
             continue
@@ -157,25 +157,25 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
 
         rhs_text_injected = rhs_text
         consumed_annotation = False
-        consumed_candidates = False
+        consumed_takes = False
         consumed_source_context = False
 
         if _is_string_literal_span(tokens[rhs_start:rhs_end]):
-            # Inject candidates config as special prefix (if present)
-            # Format: __RVBBIT_CANDIDATES:{"factor":3}__
-            if pending_candidates:
+            # Inject takes config as special prefix (if present)
+            # Format: __RVBBIT_TAKES:{"factor":3}__
+            if pending_takes:
                 import json
-                candidates_prefix = f"__RVBBIT_CANDIDATES:{json.dumps(pending_candidates)}__"
-                rhs_text_injected = _inject_prefix_into_string_literal(rhs_text, candidates_prefix)
-                consumed_candidates = True
-                _log.info(f"[semantic_rewriter_v2] Injecting candidates prefix into '{rhs_text}' -> '{rhs_text_injected}'")
-                print(f"[semantic_rewriter_v2] 💉 Injecting candidates prefix: {candidates_prefix}")
+                takes_prefix = f"__RVBBIT_TAKES:{json.dumps(pending_takes)}__"
+                rhs_text_injected = _inject_prefix_into_string_literal(rhs_text, takes_prefix)
+                consumed_takes = True
+                _log.info(f"[semantic_rewriter_v2] Injecting takes prefix into '{rhs_text}' -> '{rhs_text_injected}'")
+                print(f"[semantic_rewriter_v2] 💉 Injecting takes prefix: {takes_prefix}")
                 print(f"[semantic_rewriter_v2] 💉 Result: {rhs_text_injected}")
 
             # Inject annotation prefix (model hints, etc.)
             if pending_annotation_prefix:
                 rhs_text_injected = _inject_prefix_into_string_literal(
-                    rhs_text_injected if consumed_candidates else rhs_text,
+                    rhs_text_injected if consumed_takes else rhs_text,
                     pending_annotation_prefix
                 )
                 consumed_annotation = True
@@ -188,7 +188,7 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
                 import json as json_module
                 source_prefix = f"__RVBBIT_SOURCE:{json_module.dumps({'column': column_name})}__"
                 rhs_text_injected = _inject_prefix_into_string_literal(
-                    rhs_text_injected if (consumed_candidates or consumed_annotation) else rhs_text,
+                    rhs_text_injected if (consumed_takes or consumed_annotation) else rhs_text,
                     source_prefix
                 )
                 consumed_source_context = True
@@ -203,8 +203,8 @@ def rewrite_semantic_sql_v2(sql: str) -> RewriteResult:
 
         if consumed_annotation:
             pending_annotation_prefix = ""
-        if consumed_candidates:
-            pending_candidates = None
+        if consumed_takes:
+            pending_takes = None
 
         # Skip original span
         i = rhs_end
@@ -320,7 +320,7 @@ def _parse_annotation(comment_text: str) -> Optional[_Annotation]:
     Non-prompt keys like parallel/batch_size are intentionally ignored here so they can
     be handled by the legacy rewriter (e.g. UNION ALL splitting).
 
-    Candidates config is parsed and stored separately for cascade-level sampling.
+    Takes config is parsed and stored separately for cascade-level sampling.
     """
     stripped = comment_text.strip()
     if not stripped.startswith("-- @"):
@@ -350,21 +350,21 @@ def _parse_annotation(comment_text: str) -> Optional[_Annotation]:
         if key == "prompt" and value:
             return _Annotation(prompt_prefix=f"{value} - ")
 
-        # Candidates config for cascade-level sampling
-        if key.startswith("candidates."):
-            subkey = key[11:]  # Remove 'candidates.' prefix
-            candidates = {}
+        # Takes config for cascade-level sampling
+        if key.startswith("takes."):
+            subkey = key[11:]  # Remove 'takes.' prefix
+            takes = {}
             if subkey in ("factor", "max_parallel", "reforge"):
                 try:
-                    candidates[subkey] = int(value)
+                    takes[subkey] = int(value)
                 except ValueError:
-                    candidates[subkey] = value
+                    takes[subkey] = value
             elif subkey == "mutate":
-                candidates[subkey] = value.lower() in ("true", "yes", "1")
+                takes[subkey] = value.lower() in ("true", "yes", "1")
             else:
                 # evaluator, mode, evaluator_model, etc.
-                candidates[subkey] = value
-            return _Annotation(prompt_prefix="", candidates=candidates)
+                takes[subkey] = value
+            return _Annotation(prompt_prefix="", takes=takes)
 
         # Multi-model shorthand: models: [a, b, c]
         if key == "models":
@@ -376,7 +376,7 @@ def _parse_annotation(comment_text: str) -> Optional[_Annotation]:
                 models = [m.strip() for m in value.strip("[]").split(",")]
             return _Annotation(
                 prompt_prefix="",
-                candidates={"multi_model": models, "factor": len(models)}
+                takes={"multi_model": models, "factor": len(models)}
             )
 
         # Unknown key or natural language with colon: treat as prompt text.
@@ -444,12 +444,12 @@ def _extract_infix_phrase(operator_pattern: str) -> Optional[str]:
     if not after:
         return None
 
-    stop_candidates = []
+    stop_takes = []
     for stop in ("{{", "'", '"', "(", ")", ","):
         idx = after.find(stop)
         if idx != -1:
-            stop_candidates.append(idx)
-    end = min(stop_candidates) if stop_candidates else len(after)
+            stop_takes.append(idx)
+    end = min(stop_takes) if stop_takes else len(after)
 
     segment = after[:end].strip()
     if not segment:

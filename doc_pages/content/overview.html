@@ -93,7 +93,7 @@
   </div>
   <div class="code-block-content">
     <pre>{
-  <span class="key">"candidates"</span>: {
+  <span class="key">"takes"</span>: {
     <span class="key">"factor"</span>: <span class="num">3</span>,
     <span class="key">"evaluator_instructions"</span>: <span class="str">"Pick the best"</span>
   }
@@ -124,13 +124,13 @@
 <h3>The Counterintuitive Economics</h3>
 
 <div class="info-box note">
-  <div class="info-box-title">Why Candidates Are Faster AND Cheaper</div>
+  <div class="info-box-title">Why Takes Are Faster AND Cheaper</div>
   <table>
     <thead>
       <tr>
         <th>Metric</th>
         <th>Serial Retries</th>
-        <th>Candidates</th>
+        <th>Takes</th>
       </tr>
     </thead>
     <tbody>
@@ -165,7 +165,7 @@
 
 <p>
   With 70% LLM success rate, serial retries give you "the result from attempt 3."
-  Candidates give you "the best of the 2-3 that succeeded." Same cost, higher quality,
+  Takes give you "the best of the 2-3 that succeeded." Same cost, higher quality,
   faster execution.
 </p>
 
@@ -305,7 +305,7 @@
     <span class="key">skills</span>:
       - smart_sql_run
       - create_chart
-    <span class="key">candidates</span>:
+    <span class="key">takes</span>:
       <span class="key">factor</span>: <span class="num">3</span>
       <span class="key">evaluator_instructions</span>: <span class="str">"Pick the most insightful dashboard"</span>
       <span class="key">reforge</span>:
@@ -331,7 +331,7 @@
   <strong>What this does:</strong>
 </p>
 <ol>
-  <li><strong>Candidates:</strong> Generate 3 dashboard variations in parallel, pick the best</li>
+  <li><strong>Takes:</strong> Generate 3 dashboard variations in parallel, pick the best</li>
   <li><strong>Wards:</strong> Block on data errors, retry on accessibility issues</li>
   <li><strong>Reforge:</strong> Iteratively refine the winner with vision feedback + mutations</li>
   <li><strong>Observability:</strong> Full execution trace, Mermaid graphs, real-time SSE events</li>
@@ -548,6 +548,6 @@ rvbbit serve studio --dev
   <li><a href="#cascade-dsl" data-link>Cascade DSL Reference</a> - Complete configuration guide</li>
   <li><a href="#cell-types" data-link>Cell Types</a> - Deep dive into LLM, Deterministic, HITL, and Polyglot cells</li>
   <li><a href="#semantic-sql" data-link>Semantic SQL</a> - Learn about SQL operators and rewrites</li>
-  <li><a href="#candidates" data-link>Candidates & Evaluation</a> - Parallel execution and multi-model benchmarking</li>
+  <li><a href="#takes" data-link>Takes & Evaluation</a> - Parallel execution and multi-model benchmarking</li>
   <li><a href="#tools" data-link>Tools (Skills)</a> - Six types of tools and how to create custom ones</li>
 </ul>

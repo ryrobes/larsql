@@ -996,7 +996,7 @@ class ClickHouseAdapter:
                     sync=False  # Don't wait for each individual update
                 )
 
-    def mark_candidate_winner(
+    def mark_take_winner(
         self,
         table: str,
         session_id: str,
@@ -1004,25 +1004,25 @@ class ClickHouseAdapter:
         winning_index: int
     ):
         """
-        Mark all rows in a candidate as winner/loser.
+        Mark all rows in a take as winner/loser.
 
-        Updates is_winner for all rows matching the session/cell/candidate.
+        Updates is_winner for all rows matching the session/cell/take.
 
         Args:
             table: Table name (usually unified_logs)
             session_id: Session ID
             cell_name: Cell name
-            winning_index: The winning candidate index
+            winning_index: The winning take index
         """
         # Mark winner
         self.update_row(
             table,
             {'is_winner': True},
-            f"session_id = '{session_id}' AND cell_name = '{cell_name}' AND candidate_index = {winning_index}",
+            f"session_id = '{session_id}' AND cell_name = '{cell_name}' AND take_index = {winning_index}",
             sync=True
         )
 
-        # Mark losers (all other candidate indexes in same cell)
+        # Mark losers (all other take indexes in same cell)
         start_time = time.time()
         success = True
         error_msg = None
@@ -1032,8 +1032,8 @@ class ClickHouseAdapter:
             UPDATE is_winner = false
             WHERE session_id = '{session_id}'
               AND cell_name = '{cell_name}'
-              AND candidate_index IS NOT NULL
-              AND candidate_index != {winning_index}
+              AND take_index IS NOT NULL
+              AND take_index != {winning_index}
             SETTINGS mutations_sync = 1
         """
         with ClickHouseAdapter._query_lock:

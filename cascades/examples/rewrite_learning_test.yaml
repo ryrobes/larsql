@@ -7,7 +7,7 @@ cells:
 - instructions: 'Write a creative short paragraph about: {{ input.topic }}'
   model: x-ai/grok-4.1-fast
   name: creative_writing
-  candidates:
+  takes:
     evaluator_instructions: "Compare the creative writing outputs. Select the one\
       \ that is most engaging, vivid, and creative.\n\nEvaluate based on:\n- Use of\
       \ descriptive language\n- Creativity and originality  \n- Engagement and flow\n\

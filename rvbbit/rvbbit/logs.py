@@ -11,7 +11,7 @@ are deprecated and no longer written to.
 
 def log_message(session_id: str | None, role: str, content: str, metadata: dict | None = None,
                 trace_id: str | None = None, parent_id: str | None = None, node_type: str = "log", depth: int = 0,
-                candidate_index: int | None = None, is_winner: bool | None = None, reforge_step: int | None = None,
+                take_index: int | None = None, is_winner: bool | None = None, reforge_step: int | None = None,
                 # Optional enrichment data
                 duration_ms: float | None = None, tokens_in: int | None = None, tokens_out: int | None = None,
                 cost: float | None = None, request_id: str | None = None, tool_calls: list | None = None,
@@ -79,7 +79,7 @@ def log_message(session_id: str | None, role: str, content: str, metadata: dict 
         node_type=node_type,
         role=role,
         depth=depth,
-        candidate_index=candidate_index,
+        take_index=take_index,
         is_winner=is_winner,
         reforge_step=reforge_step,
         turn_number=turn_number,

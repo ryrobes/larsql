@@ -474,13 +474,13 @@ async def execute_sql_function(
     structure but different values shares cached SQL fragments. This is powerful
     for consistent JSON extraction - the LLM generates SQL once per structure.
 
-    Supports cascade-level candidates via SQL comment hints:
-        -- @ candidates.factor: 3
-        -- @ candidates.evaluator: Pick the most accurate response
+    Supports cascade-level takes via SQL comment hints:
+        -- @ takes.factor: 3
+        -- @ takes.evaluator: Pick the most accurate response
         -- @ models: [claude-sonnet, gpt-4o, gemini-pro]
         SELECT description MEANS 'is eco-friendly' FROM products
 
-    When candidates config is detected (embedded in args as __RVBBIT_CANDIDATES:...__ prefix),
+    When takes config is detected (embedded in args as __RVBBIT_TAKES:...__ prefix),
     the cascade is run multiple times and an evaluator picks the best result.
 
     Args:
@@ -495,14 +495,14 @@ async def execute_sql_function(
         ValueError: If function not found
         Exception: If cascade execution fails
     """
-    from .executor import _extract_candidates_from_inputs, _inject_candidates_into_cascade
+    from .executor import _extract_takes_from_inputs, _inject_takes_into_cascade
 
     fn = get_sql_function(name)
     if not fn:
         raise ValueError(f"SQL function not found: {name}")
 
-    # Extract candidates config from args (embedded as special prefix in criterion strings)
-    cleaned_args, candidates_config = _extract_candidates_from_inputs(args)
+    # Extract takes config from args (embedded as special prefix in criterion strings)
+    cleaned_args, takes_config = _extract_takes_from_inputs(args)
 
     # Get caller_id from context (set by postgres_server for SQL queries)
     # Try ALL storage layers: contextvar → thread-local → global registry
@@ -553,8 +553,8 @@ async def execute_sql_function(
     else:
         cache_key = _make_cache_key(cache_name, cleaned_args)
 
-    # Check cache first (skip if candidates - candidates bypass cache for fresh sampling)
-    if not candidates_config and fn.cache_enabled:
+    # Check cache first (skip if takes - takes bypass cache for fresh sampling)
+    if not takes_config and fn.cache_enabled:
         from ..sql_tools.cache_adapter import get_cache
         cache = get_cache()
 
@@ -657,13 +657,13 @@ async def execute_sql_function(
         )
         log.debug(f"[sql_fn] Prepared structure-mode inputs for {fn.structure_args}")
 
-    # Determine what to run: original cascade or modified with candidates
-    if candidates_config:
-        # Inject candidates into cascade config (in-memory, not modifying file)
-        cascade_config = _inject_candidates_into_cascade(fn.cascade_path, candidates_config)
-        log.info(f"[sql_fn] Running {name} with candidates: factor={candidates_config.get('factor', 'N/A')}")
-        print(f"[sql_fn] 🚀 Running {name} WITH CANDIDATES: {candidates_config}")
-        print(f"[sql_fn] 🚀 Injected cascade config has candidates: {cascade_config.get('candidates', 'NONE')}")
+    # Determine what to run: original cascade or modified with takes
+    if takes_config:
+        # Inject takes into cascade config (in-memory, not modifying file)
+        cascade_config = _inject_takes_into_cascade(fn.cascade_path, takes_config)
+        log.info(f"[sql_fn] Running {name} with takes: factor={takes_config.get('factor', 'N/A')}")
+        print(f"[sql_fn] 🚀 Running {name} WITH TAKES: {takes_config}")
+        print(f"[sql_fn] 🚀 Injected cascade config has takes: {cascade_config.get('takes', 'NONE')}")
 
         # Create runner with modified config
         runner = RVBBITRunner(
@@ -690,7 +690,7 @@ async def execute_sql_function(
     # Handle output based on mode
     if output_mode == "sql_raw":
         # Return SQL fragment as-is (for debugging/composition)
-        if not candidates_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled:
             set_cached_result(cache_name, cleaned_args, output)
         return output
 
@@ -701,7 +701,7 @@ async def execute_sql_function(
 
         # Cache the SQL fragment (not the executed result)
         # This enables structure-based caching - same structure, different values
-        if not candidates_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled:
             # Use appropriate cache key strategy
             if use_fingerprint_cache:
                 # Store with fingerprint-based key
@@ -737,7 +737,7 @@ async def execute_sql_function(
         log.debug(f"[sql_fn] Generated SQL statement: {sql_statement[:200]}...")
 
         # Cache the SQL statement (exact match caching)
-        if not candidates_config and fn.cache_enabled:
+        if not takes_config and fn.cache_enabled:
             # For sql_statement, cache key is based on the question/input
             # Since user already has sql_search tool, caching is by exact question match
             from ..sql_tools.cache_adapter import get_cache
@@ -819,8 +819,8 @@ async def execute_sql_function(
             except json.JSONDecodeError:
                 pass
 
-    # Cache result (but not candidates runs - they're for fresh sampling)
-    if not candidates_config and fn.cache_enabled:
+    # Cache result (but not takes runs - they're for fresh sampling)
+    if not takes_config and fn.cache_enabled:
         # Use appropriate cache key strategy
         if use_fingerprint_cache:
             # Store with fingerprint-based key

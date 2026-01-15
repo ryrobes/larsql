@@ -51,7 +51,7 @@ const timeFilterToDays = (filter) => {
   }
 };
 
-// Group cells by cell_name to handle candidates
+// Group cells by cell_name to handle takes
 const groupCellsByCellName = (cells) => {
   const groups = {};
   cells.forEach(cell => {
@@ -61,26 +61,26 @@ const groupCellsByCellName = (cells) => {
     }
     groups[key].push(cell);
   });
-  // Convert to array and sort candidates by index
-  return Object.entries(groups).map(([cellName, candidates]) => {
-    const sorted = candidates.sort((a, b) => (a.candidate_index ?? 0) - (b.candidate_index ?? 0));
+  // Convert to array and sort takes by index
+  return Object.entries(groups).map(([cellName, takes]) => {
+    const sorted = takes.sort((a, b) => (a.take_index ?? 0) - (b.take_index ?? 0));
     const hasMultiple = sorted.length > 1;
 
     // Determine winner from backend is_winner field
-    // Only use fallback (index 0) if NO candidate has is_winner set at all
+    // Only use fallback (index 0) if NO take has is_winner set at all
     const hasAnyWinnerInfo = sorted.some(c => c.is_winner === true || c.is_winner === false);
 
     return {
       cellName,
-      candidates: sorted.map((c, idx) => ({
+      takes: sorted.map((c, idx) => ({
         ...c,
         _isWinner: hasMultiple && (
           hasAnyWinnerInfo
             ? c.is_winner === true  // Use explicit winner from backend
-            : idx === 0              // Fallback: first candidate if no winner info
+            : idx === 0              // Fallback: first take if no winner info
         ),
       })),
-      hasMultipleCandidates: hasMultiple,
+      hasMultipleTakes: hasMultiple,
     };
   });
 };
@@ -279,7 +279,7 @@ const ContextBreakdownPanel = () => {
   // Render a single cell with its messages
   const renderCell = (cell, cellIdx, isWinner, showWinnerBadge) => (
     <div
-      key={`${cell.cell_name}-${cell.candidate_index ?? cellIdx}`}
+      key={`${cell.cell_name}-${cell.take_index ?? cellIdx}`}
       className={`cell-block ${isWinner && showWinnerBadge ? 'winner' : ''}`}
     >
       {/* Cell header */}
@@ -289,8 +289,8 @@ const ContextBreakdownPanel = () => {
           {cell.model && (
             <span className="cell-model">{cell.model}</span>
           )}
-          {cell.candidate_index !== null && cell.candidate_index !== undefined && (
-            <span className="candidate-tag">#{cell.candidate_index}</span>
+          {cell.take_index !== null && cell.take_index !== undefined && (
+            <span className="take-tag">#{cell.take_index}</span>
           )}
           {isWinner && showWinnerBadge && (
             <Badge variant="subtle" color="green" size="sm">winner</Badge>
@@ -531,26 +531,26 @@ const ContextBreakdownPanel = () => {
                                   <div className="cells-empty">No cell data available</div>
                                 ) : (
                                   cellGroups.map((group) => {
-                                    if (group.hasMultipleCandidates) {
-                                      // Render candidate group with border wrapper
+                                    if (group.hasMultipleTakes) {
+                                      // Render take group with border wrapper
                                       return (
-                                        <div key={group.cellName} className="candidate-group">
-                                          <div className="candidate-group-header">
-                                            <span className="candidate-group-name">{group.cellName}</span>
-                                            <span className="candidate-count">
-                                              {group.candidates.length} candidates
+                                        <div key={group.cellName} className="take-group">
+                                          <div className="take-group-header">
+                                            <span className="take-group-name">{group.cellName}</span>
+                                            <span className="take-count">
+                                              {group.takes.length} takes
                                             </span>
                                           </div>
-                                          <div className="candidate-group-cells">
-                                            {group.candidates.map((cell, idx) =>
+                                          <div className="take-group-cells">
+                                            {group.takes.map((cell, idx) =>
                                               renderCell(cell, idx, cell._isWinner, true)
                                             )}
                                           </div>
                                         </div>
                                       );
                                     } else {
-                                      // Single cell, no candidate wrapper needed
-                                      const cell = group.candidates[0];
+                                      // Single cell, no take wrapper needed
+                                      const cell = group.takes[0];
                                       return renderCell(cell, 0, false, false);
                                     }
                                   })

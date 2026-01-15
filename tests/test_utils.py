@@ -93,10 +93,10 @@ class TestComputeSpeciesHash:
         # Model is filtered out, so hashes should be equal
         assert hash1 == hash2
 
-    def test_candidates_affects_hash(self):
-        """Candidates config should affect species hash."""
-        config1 = {"instructions": "Do something", "candidates": {"factor": 3}}
-        config2 = {"instructions": "Do something", "candidates": {"factor": 5}}
+    def test_takes_affects_hash(self):
+        """Takes config should affect species hash."""
+        config1 = {"instructions": "Do something", "takes": {"factor": 3}}
+        config2 = {"instructions": "Do something", "takes": {"factor": 5}}
 
         hash1 = compute_species_hash(config1)
         hash2 = compute_species_hash(config2)

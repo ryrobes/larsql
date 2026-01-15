@@ -22,7 +22,7 @@ description: |
 
 inputs_schema:
   task_instructions: "The target cell's instructions (truncated to 1000 chars)"
-  menu: "Formatted menu of candidate messages with hashes, roles, and previews"
+  menu: "Formatted menu of take messages with hashes, roles, and previews"
   budget: "Token budget for context selection"
 
 cells:

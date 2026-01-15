@@ -70,7 +70,7 @@ cells:
       \nresult = df\n# Auto-creates temp table: _enrich_data\n"
   handoffs:
     - analyze_with_soundings
-# LLM analysis with progress display (non-blocking during candidates)
+# LLM analysis with progress display (non-blocking during takes)
 - name: analyze_with_soundings
   await_input: false  # Don't block - this is a progress display
   hitl: |
@@ -83,13 +83,13 @@ cells:
           </svg>
           AI Analyzing Data
         </h2>
-        <p class="card-description">Running 3 candidate analyses in parallel...</p>
+        <p class="card-description">Running 3 take analyses in parallel...</p>
       </header>
       <section class="py-4">
         <div class="flex gap-2">
-          <span class="badge text-xs">Candidate 1</span>
-          <span class="badge text-xs">Candidate 2</span>
-          <span class="badge text-xs">Candidate 3</span>
+          <span class="badge text-xs">Take 1</span>
+          <span class="badge text-xs">Take 2</span>
+          <span class="badge text-xs">Take 3</span>
         </div>
         <p class="text-sm text-muted-foreground mt-2">Analysis type: {{ input.analysis_type }}</p>
       </section>
@@ -130,7 +130,7 @@ cells:
     - recommendations
     - confidence
     type: object
-  candidates:
+  takes:
     evaluator_instructions: 'Pick the most data-driven and actionable analysis.
 
 

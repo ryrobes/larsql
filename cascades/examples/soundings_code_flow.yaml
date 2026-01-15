@@ -13,7 +13,7 @@ cells:
   name: generate_solution
   rules:
     max_turns: 1
-  candidates:
+  takes:
     evaluator_instructions: 'You are an expert software engineer. Evaluate the following
       code solutions based on: 1) Correctness - does it solve the problem? 2) Efficiency
       - what is the time/space complexity? 3) Code quality - is it readable and well-structured?

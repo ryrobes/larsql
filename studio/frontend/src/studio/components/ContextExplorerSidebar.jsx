@@ -121,13 +121,13 @@ const ContextExplorerSidebar = ({
       return allLogs;
     }
 
-    // Filter to winners only (main flow or winning candidates)
+    // Filter to winners only (main flow or winning takes)
     return allLogs.filter(log => {
-      // Main flow messages (no candidate index) always pass
-      if (log.candidate_index === null || log.candidate_index === undefined) {
+      // Main flow messages (no take index) always pass
+      if (log.take_index === null || log.take_index === undefined) {
         return true;
       }
-      // Candidate messages only pass if they're winners
+      // Take messages only pass if they're winners
       return log.is_winner === true;
     });
   }, [allLogs, messageFilters]);

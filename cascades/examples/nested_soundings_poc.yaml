@@ -12,7 +12,7 @@ description: 'Proof of concept for nested soundings - cascade-level soundings co
 inputs_schema:
   challenge: The design/architecture challenge to solve
   constraints: Any constraints or requirements (optional)
-candidates:
+takes:
   factor: 2
   mutate: true
   mutation_mode: approach
@@ -104,7 +104,7 @@ cells:
     '
   skills:
   - create_artifact
-  candidates:
+  takes:
     factor: 6
     models:
     - anthropic/claude-opus-4.5::high

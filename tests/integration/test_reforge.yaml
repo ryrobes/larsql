@@ -1,11 +1,11 @@
 # Test: Reforge (Iterative Refinement)
-# Tests: Candidates with reforge iterations, honing prompts, winner selection
-# Expected: Initial candidates run, winner selected, reforge improves it
+# Tests: Takes with reforge iterations, honing prompts, winner selection
+# Expected: Initial takes run, winner selected, reforge improves it
 
 cascade_id: integration_test_reforge
 description: |
   Integration test verifying reforge (iterative refinement):
-  - Initial candidates are generated
+  - Initial takes are generated
   - Evaluator selects winner
   - Winner is refined through reforge steps
   - Final output is best refined version
@@ -26,7 +26,7 @@ cells:
       Just write the description, no preamble.
     rules:
       max_turns: 1
-    candidates:
+    takes:
       factor: 2
       evaluator_instructions: |
         Compare these product descriptions.

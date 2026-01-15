@@ -6,7 +6,7 @@
 #   SELECT PARSE(email_body, 'the deadline date') FROM emails
 #   SELECT PARSE(notes, 'all company names mentioned') FROM meetings
 #   SELECT PARSE(contract, 'payment terms') FROM documents
-#   SELECT PARSE(bio, 'years of experience') FROM candidates
+#   SELECT PARSE(bio, 'years of experience') FROM takes
 #   SELECT PARSE(review, 'specific product complaints') FROM feedback
 #
 # Returns: VARCHAR - the extracted value(s)

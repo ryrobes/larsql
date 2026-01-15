@@ -11,7 +11,7 @@ cells:
 
     Show the output to demonstrate your solution is correct.'
   name: solve
-  candidates:
+  takes:
     evaluator_instructions: Pick the best solution based on code quality, efficiency,
       and correctness of output.
     factor: 3

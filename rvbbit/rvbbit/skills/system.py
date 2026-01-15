@@ -10,7 +10,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 @simple_eddy
-def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str | None = None, candidate_index: int | None = None) -> str:
+def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace: Optional[TraceNode] = None, parent_session_id: str | None = None, take_index: int | None = None) -> str:
     """
     Spawns a cascade in the background (fire-and-forget).
     Returns the new session ID immediately.
@@ -20,7 +20,7 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
         input_data: Optional dictionary of input data for the spawned cascade.
         parent_trace: The TraceNode of the calling cascade for lineage.
         parent_session_id: The session_id of the parent cascade.
-        candidate_index: The candidate index if spawned from within a candidate.
+        take_index: The take index if spawned from within a take.
     """
     # Get parent session ID from context if not explicitly provided
     if not parent_session_id:
@@ -37,20 +37,20 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
         resolved_cascade_ref = cascade_ref
     else:
         # Smart search for the cascade file
-        # Build list of candidate paths to check
-        candidates = []
+        # Build list of take paths to check
+        takes = []
 
         # 1. Direct path relative to RVBBIT_ROOT
-        candidates.append(os.path.join(cfg.root_dir, cascade_ref))
+        takes.append(os.path.join(cfg.root_dir, cascade_ref))
 
         # 2. With common extensions
         for ext in ['.yaml', '.yml', '.json']:
-            candidates.append(os.path.join(cfg.root_dir, cascade_ref + ext))
+            takes.append(os.path.join(cfg.root_dir, cascade_ref + ext))
 
         # 3. In cascades directory
-        candidates.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref))
+        takes.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref))
         for ext in ['.yaml', '.yml', '.json']:
-            candidates.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref + ext))
+            takes.append(os.path.join(cfg.root_dir, 'cascades', cascade_ref + ext))
 
         # 4. In calliope subdirectories - PRIORITIZE current session's directory
         # This ensures we find the cascade being built in the current session, not an older one
@@ -62,7 +62,7 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
                     parent_calliope_dir = os.path.join(calliope_dir, parent_session_id)
                     if os.path.isdir(parent_calliope_dir):
                         for ext in ['', '.yaml', '.yml', '.json']:
-                            candidates.append(os.path.join(parent_calliope_dir, cascade_ref + ext))
+                            takes.append(os.path.join(parent_calliope_dir, cascade_ref + ext))
                         print(f"[spawn_cascade] Prioritizing parent session directory: {parent_calliope_dir}")
 
                 # Then search all session directories, sorted by modification time (newest first)
@@ -79,19 +79,19 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
                 for dir_path, _ in session_dirs:
                     # Try the cascade name in this session directory
                     for ext in ['', '.yaml', '.yml', '.json']:
-                        candidates.append(os.path.join(dir_path, cascade_ref + ext))
+                        takes.append(os.path.join(dir_path, cascade_ref + ext))
             except Exception as e:
                 print(f"[spawn_cascade] Error scanning calliope dirs: {e}")
 
         # 5. In skills directory
-        candidates.append(os.path.join(cfg.root_dir, 'skills', cascade_ref))
+        takes.append(os.path.join(cfg.root_dir, 'skills', cascade_ref))
         for ext in ['.yaml', '.yml', '.json']:
-            candidates.append(os.path.join(cfg.root_dir, 'skills', cascade_ref + ext))
+            takes.append(os.path.join(cfg.root_dir, 'skills', cascade_ref + ext))
 
         # Find first existing file
-        for candidate in candidates:
-            if os.path.exists(candidate) and os.path.isfile(candidate):
-                resolved_cascade_ref = candidate
+        for take in takes:
+            if os.path.exists(take) and os.path.isfile(take):
+                resolved_cascade_ref = take
                 print(f"[spawn_cascade] Found cascade at: {resolved_cascade_ref}")
                 break
 
@@ -99,7 +99,7 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
             # Fall back to the basic resolution
             resolved_cascade_ref = os.path.join(cfg.root_dir, cascade_ref)
             print(f"[spawn_cascade] WARNING: Could not find cascade '{cascade_ref}'")
-            print(f"[spawn_cascade] Searched {len(candidates)} locations")
+            print(f"[spawn_cascade] Searched {len(takes)} locations")
 
     # Debug: Log what we're about to spawn and verify file contents
     if os.path.exists(resolved_cascade_ref):
@@ -117,9 +117,9 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
     else:
         print(f"[spawn_cascade] WARNING: File does not exist: {resolved_cascade_ref}")
 
-    # Generate unique session ID (include candidate index if provided)
-    if candidate_index is not None:
-        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}_candidate_{candidate_index}"
+    # Generate unique session ID (include take index if provided)
+    if take_index is not None:
+        session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}_take_{take_index}"
     else:
         session_id = f"spawned_{int(time.time())}_{uuid.uuid4().hex[:6]}"
 
@@ -133,8 +133,8 @@ def spawn_cascade(cascade_ref: str, input_data: dict | None = None, parent_trace
 
         # Run in separate thread (context is preserved via ctx.run)
         try:
-            # We use a new runner instance, passing the parent trace AND parent_session_id AND candidate_index
-            run_cascade(resolved_cascade_ref, input_data or {}, session_id=session_id, parent_trace=parent_trace, parent_session_id=parent_session_id, candidate_index=candidate_index)
+            # We use a new runner instance, passing the parent trace AND parent_session_id AND take_index
+            run_cascade(resolved_cascade_ref, input_data or {}, session_id=session_id, parent_trace=parent_trace, parent_session_id=parent_session_id, take_index=take_index)
         except Exception as e:
             print(f"[Spawn Error] {e}")
 

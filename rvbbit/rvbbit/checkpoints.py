@@ -4,7 +4,7 @@ Human-in-the-Loop (HITL) Checkpoint Management for RVBBIT.
 This module handles cascade suspension and resume for human input.
 Checkpoints can be:
 1. Cell-level input: Pause after a cell for human confirmation/input
-2. Sounding evaluation: Present multiple candidate attempts for human selection
+2. Sounding evaluation: Present multiple take attempts for human selection
 
 Key features:
 - Persistent storage (survives server restart)
@@ -36,7 +36,7 @@ class CheckpointStatus(str, Enum):
 class CheckpointType(str, Enum):
     """Type of checkpoint."""
     CELL_INPUT = "cell_input"      # Cell-level HITL config
-    CANDIDATE_EVAL = "candidate_eval"  # Sounding evaluation
+    TAKE_EVAL = "take_eval"  # Sounding evaluation
     FREE_TEXT = "free_text"          # Free-form text input (ask_human tool)
     CHOICE = "choice"                # Single choice selection (radio buttons)
     MULTI_CHOICE = "multi_choice"    # Multiple choice selection (checkboxes)
@@ -103,8 +103,8 @@ class Checkpoint:
     created_at: datetime = field(default_factory=datetime.utcnow)
     timeout_at: Optional[datetime] = None
     responded_at: Optional[datetime] = None
-    candidate_outputs: Optional[List[str]] = None
-    candidate_metadata: Optional[List[Dict]] = None
+    take_outputs: Optional[List[str]] = None
+    take_metadata: Optional[List[Dict]] = None
     response: Optional[Dict[str, Any]] = None
     response_reasoning: Optional[str] = None
     response_confidence: Optional[float] = None
@@ -130,8 +130,8 @@ class Checkpoint:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "timeout_at": self.timeout_at.isoformat() if self.timeout_at else None,
             "responded_at": self.responded_at.isoformat() if self.responded_at else None,
-            "candidate_outputs": self.candidate_outputs,
-            "candidate_metadata": self.candidate_metadata,
+            "take_outputs": self.take_outputs,
+            "take_metadata": self.take_metadata,
             "response": self.response,
             "response_reasoning": self.response_reasoning,
             "response_confidence": self.response_confidence,
@@ -196,8 +196,8 @@ class CheckpointManager:
         cell_output: str,
         cascade_config: Optional[Dict[str, Any]] = None,
         trace_context: Optional[TraceContext] = None,
-        candidate_outputs: Optional[List[str]] = None,
-        candidate_metadata: Optional[List[Dict]] = None,
+        take_outputs: Optional[List[str]] = None,
+        take_metadata: Optional[List[Dict]] = None,
         timeout_seconds: Optional[int] = None
     ) -> Checkpoint:
         """
@@ -207,14 +207,14 @@ class CheckpointManager:
             session_id: Current cascade session ID
             cascade_id: Cascade identifier
             cell_name: Name of the cell creating this checkpoint
-            checkpoint_type: Type of checkpoint (cell_input or candidate_eval)
+            checkpoint_type: Type of checkpoint (cell_input or take_eval)
             ui_spec: UI specification for rendering the checkpoint
             echo_snapshot: Full Echo state snapshot for resume
             cell_output: Output from the cell (for preview)
             cascade_config: Full cascade configuration JSON for resume
             trace_context: Trace hierarchy context for proper resume linkage
-            candidate_outputs: List of candidate outputs (for candidate_eval type)
-            candidate_metadata: Metadata for each candidate attempt
+            take_outputs: List of take outputs (for take_eval type)
+            take_metadata: Metadata for each take attempt
             timeout_seconds: Optional timeout in seconds
 
         Returns:
@@ -236,8 +236,8 @@ class CheckpointManager:
             cell_output=cell_output,
             cascade_config=cascade_config,
             trace_context=trace_context,
-            candidate_outputs=candidate_outputs,
-            candidate_metadata=candidate_metadata,
+            take_outputs=take_outputs,
+            take_metadata=take_metadata,
             created_at=now,
             timeout_at=timeout_at
         )
@@ -401,8 +401,8 @@ class CheckpointManager:
         checkpoint.response_reasoning = reasoning
         checkpoint.response_confidence = confidence
 
-        # Extract training data fields for candidate evaluation
-        if checkpoint.checkpoint_type == CheckpointType.CANDIDATE_EVAL:
+        # Extract training data fields for take evaluation
+        if checkpoint.checkpoint_type == CheckpointType.TAKE_EVAL:
             checkpoint.winner_index = response.get("winner_index")
             checkpoint.rankings = response.get("rankings")
             checkpoint.ratings = response.get("ratings")
@@ -475,7 +475,7 @@ class CheckpointManager:
             # Map checkpoint type to blocked type
             blocked_type_map = {
                 CheckpointType.CELL_INPUT: BlockedType.HITL,
-                CheckpointType.CANDIDATE_EVAL: BlockedType.HITL,
+                CheckpointType.TAKE_EVAL: BlockedType.HITL,
                 CheckpointType.DECISION: BlockedType.DECISION,
                 CheckpointType.FREE_TEXT: BlockedType.HITL,
                 CheckpointType.CHOICE: BlockedType.HITL,
@@ -648,8 +648,8 @@ class CheckpointManager:
                     'ui_spec': json.dumps(checkpoint.ui_spec),  # JSON string, properly escaped by insert_rows
                     'echo_snapshot': json.dumps(checkpoint.echo_snapshot),
                     'cell_output': checkpoint.cell_output,
-                    'candidate_outputs': json.dumps(checkpoint.candidate_outputs) if checkpoint.candidate_outputs else None,
-                    'candidate_metadata': json.dumps(checkpoint.candidate_metadata) if checkpoint.candidate_metadata else None,
+                    'take_outputs': json.dumps(checkpoint.take_outputs) if checkpoint.take_outputs else None,
+                    'take_metadata': json.dumps(checkpoint.take_metadata) if checkpoint.take_metadata else None,
                     'trace_context': json.dumps(checkpoint.trace_context.to_dict()) if checkpoint.trace_context else None,
                     'summary': checkpoint.summary  # Will be NULL initially, updated async
                 }
@@ -808,8 +808,8 @@ class CheckpointManager:
                         created_at=row["created_at"],
                         timeout_at=row.get("timeout_at"),
                         responded_at=row.get("responded_at"),
-                        candidate_outputs=json.loads(row["candidate_outputs"]) if row.get("candidate_outputs") else None,
-                        candidate_metadata=json.loads(row["candidate_metadata"]) if row.get("candidate_metadata") else None,
+                        take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
+                        take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
                         response=json.loads(row["response"]) if row.get("response") else None,
                         response_reasoning=row.get("response_reasoning"),
                         response_confidence=row.get("response_confidence"),
@@ -875,8 +875,8 @@ class CheckpointManager:
                             created_at=row["created_at"],
                             timeout_at=row.get("timeout_at"),
                             responded_at=row.get("responded_at"),
-                            candidate_outputs=json.loads(row["candidate_outputs"]) if row.get("candidate_outputs") else None,
-                            candidate_metadata=json.loads(row["candidate_metadata"]) if row.get("candidate_metadata") else None,
+                            take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
+                            take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
                             response=json.loads(row["response"]) if row.get("response") else None,
                             response_reasoning=row.get("response_reasoning"),
                             response_confidence=row.get("response_confidence"),
@@ -942,8 +942,8 @@ class CheckpointManager:
                             created_at=row["created_at"],
                             timeout_at=row.get("timeout_at"),
                             responded_at=row.get("responded_at"),
-                            candidate_outputs=json.loads(row["candidate_outputs"]) if row.get("candidate_outputs") else None,
-                            candidate_metadata=json.loads(row["candidate_metadata"]) if row.get("candidate_metadata") else None,
+                            take_outputs=json.loads(row["take_outputs"]) if row.get("take_outputs") else None,
+                            take_metadata=json.loads(row["take_metadata"]) if row.get("take_metadata") else None,
                             response=json.loads(row["response"]) if row.get("response") else None,
                             response_reasoning=row.get("response_reasoning"),
                             response_confidence=row.get("response_confidence"),

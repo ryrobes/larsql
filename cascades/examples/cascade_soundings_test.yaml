@@ -50,7 +50,7 @@ cells:
     max_turns: 1
   skills:
   - set_state
-candidates:
+takes:
   evaluator_instructions: 'You are an expert problem-solving evaluator. Compare these
     three complete solution approaches based on:
 

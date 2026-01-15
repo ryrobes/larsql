@@ -254,8 +254,8 @@ LIMIT 30;
 -- 12. HYBRID: Vector Search + Semantic Filtering
 -- ============================================================================
 
--- Stage 1: Fast vector search (10,000 tweets → 200 candidates in 50ms)
-WITH candidates AS (
+-- Stage 1: Fast vector search (10,000 tweets → 200 takes in 50ms)
+WITH takes AS (
     SELECT * FROM VECTOR_SEARCH(
         'evidence that SQL is good for AI workflows',
         'tweets',
@@ -270,7 +270,7 @@ SELECT
     c.similarity as vector_match,
     t.like_count + t.retweet_count as engagement,
     t.url
-FROM candidates c
+FROM takes c
 JOIN tweets t ON t.id = c.id
 WHERE
     t.like_count > 50                           -- Cheap filter
@@ -520,8 +520,8 @@ ORDER BY total_engagement DESC;
 -- ============================================================================
 
 -- Find evidence for "SQL is becoming important for AI workflows"
--- Stage 1: Vector search on 100K tweets → 500 candidates in 50ms (no LLM!)
-WITH vector_candidates AS (
+-- Stage 1: Vector search on 100K tweets → 500 takes in 50ms (no LLM!)
+WITH vector_takes AS (
     SELECT * FROM VECTOR_SEARCH(
         'SQL is important for AI and LLM workflows',
         'tweets',
@@ -538,7 +538,7 @@ SELECT
     t.retweet_count,
     t.created_at,
     t.url
-FROM vector_candidates c
+FROM vector_takes c
 JOIN tweets t ON t.id = c.id
 WHERE
     -- Cheap SQL filters first
