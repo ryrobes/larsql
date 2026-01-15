@@ -3403,7 +3403,7 @@
         gap: 10px;
         padding: 0 0 20px 0;
         margin-bottom: 20px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        /* border-bottom: 1px solid rgba(255, 255, 255, 0.08); */
         text-decoration: none;
       }
 
@@ -3509,7 +3509,7 @@
         display: none;
         margin-top: 24px;
         padding: 16px 12px;
-        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        /* border-top: 1px solid rgba(255, 255, 255, 0.08); */
       }
 
       .toc-cta .btn {
@@ -5953,16 +5953,16 @@
 /* the long underline accent */
 .larsql-rule{
   position:absolute;
-  left: 12%;
-  top: 58%;
-  width: 58%;
+  left: 6%;
+  top: 224px;
+  width: 60%;
   height: 6px;
-  border-radius: 10%;
+  border-radius: 3px;
   background: linear-gradient(30deg, #21f6ff 0 52%, #ff2bd6 52% 100%);
   box-shadow:
     0 0 14px rgba(33, 246, 255, .38),
     0 0 18px rgba(255, 43, 214, .28);
-  opacity: .5;
+  opacity: .15;
 }
 
 /* tagline (light + slightly hazy) */
@@ -5995,7 +5995,8 @@
 .larsql-word{
   font-family: "Outrun future", system-ui, sans-serif;
   font-size: 47px;
-  line-height: .9;
+  height: 20px;
+  line-height: 0.9;
   letter-spacing: .02em;
 
   /* gray-ish fill like your render */
@@ -6007,10 +6008,10 @@
   /* glow + tiny magenta kick */
   text-shadow:
     0 0 10px rgba(35, 240, 255, .55),
-    0 0 22px rgba(35, 240, 255, .25),
+    0 0 12px rgba(35, 240, 255, .25),
     2px 2px 0 rgba(255, 43, 214, .10),
-    0 14px 40px rgba(0,0,0,.55);
-  filter: drop-shadow(0 0 10px rgba(35, 240, 255, .20));
+    0 4px 20px rgba(0,0,0,.55);
+  filter: drop-shadow(0 0 4px rgba(35, 240, 255, .20));
 }
 
 /* reflection: flipped copy, blurred and faded */
