@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains SQL migration scripts for upgrading existing Windlass databases.
+This directory contains SQL migration scripts for upgrading existing Lars databases.
 
 ## Applying Migrations
 
@@ -13,27 +13,27 @@ If you're using ClickHouse server (not chDB), you can apply migrations using the
 clickhouse-client --host localhost --port 9000
 
 # Run the migration
-SOURCE /path/to/windlass/migrations/add_callouts_columns.sql;
+SOURCE /path/to/lars/migrations/add_callouts_columns.sql;
 ```
 
-### Using windlass CLI
+### Using lars CLI
 
-You can also apply migrations using the windlass SQL command:
+You can also apply migrations using the lars SQL command:
 
 ```bash
 # Apply migration line by line
-cat windlass/migrations/add_callouts_columns.sql | grep -v "^--" | windlass sql -
+cat lars/migrations/add_callouts_columns.sql | grep -v "^--" | lars sql -
 ```
 
 ### Using Python
 
 ```python
-from windlass.db_adapter import get_db
+from lars.db_adapter import get_db
 
 db = get_db()
 
 # Read and execute migration
-with open('windlass/migrations/add_callouts_columns.sql') as f:
+with open('lars/migrations/add_callouts_columns.sql') as f:
     sql = f.read()
     # Split by semicolons and execute each statement
     for statement in sql.split(';'):

@@ -8,7 +8,7 @@ inputs_schema:
   data_query: Optional query to validate (defaults to a valid SELECT)
 cells:
 - name: validate_input
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
   inputs:
     query: '{{ input.data_query | default(''SELECT id, value FROM metrics WHERE value
       > 0'') }}'
@@ -56,7 +56,7 @@ cells:
     '
   skills: []
 - name: process_signal_data
-  tool: python:windlass.demo_tools.transform_data
+  tool: python:lars.demo_tools.transform_data
   inputs:
     data: '[{"metric": "latency", "value": 45}, {"metric": "throughput", "value":
       1200}, {"metric": "errors", "value": 3}]'

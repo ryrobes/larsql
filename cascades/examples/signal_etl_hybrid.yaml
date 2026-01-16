@@ -7,7 +7,7 @@ inputs_schema:
   query: SQL query to validate and execute
 cells:
 - name: validate_query
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
   inputs:
     query: '{{ input.query }}'
   routing:
@@ -53,7 +53,7 @@ cells:
     '
   skills: []
 - name: transform_data
-  tool: python:windlass.demo_tools.transform_data
+  tool: python:lars.demo_tools.transform_data
   inputs:
     data: '[{"id": 1, "value": 100, "category": "A"}, {"id": 2, "value": 250, "category":
       "B"}, {"id": 3, "value": 175, "category": "A"}]'

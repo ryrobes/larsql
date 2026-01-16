@@ -16,9 +16,9 @@
    - Zustand state management
    - Polling-based updates
    - Cyberpunk/pure black design system
-   - **This is LARS** - remove all "Windlass" references
+   - **This is LARS** - remove all "Lars" references
 
-2. **`old_frontend/`** - **Windlass** (legacy system) - Temporary dev-only
+2. **`old_frontend/`** - **Lars** (legacy system) - Temporary dev-only
    - Original architecture with SSE
    - Midnight Fjord ocean theme
    - Exists ONLY during migration
@@ -47,7 +47,7 @@ dashboard/
     │   ├── shell/                    # NEW: AppShell system
     │   ├── views/                    # NEW: View registry (7 views)
     │   ├── stores/                   # NEW: Zustand stores
-    │   ├── styles/                   # NEW: Design system (misnamed "Windlass")
+    │   ├── styles/                   # NEW: Design system (misnamed "Lars")
     │   ├── studio/                   # HYBRID: SQL/notebook IDE
     │   ├── playground/               # OLD: Visual canvas
     │   ├── workshop/                 # OLD: Cascade editor
@@ -58,13 +58,13 @@ dashboard/
 
 ### System Comparison Matrix
 
-| Aspect | LARS (New) | Windlass (Old) |
+| Aspect | LARS (New) | Lars (Old) |
 |--------|--------------|----------------|
 | **Architecture** | AppShell + view registry | Monolithic App.js routing |
 | **State Management** | Zustand stores | useState + prop drilling |
 | **Backend Updates** | Polling (2-5s intervals) | SSE (EventSource) |
 | **Design System** | Cyberpunk/pure black | Midnight Fjord/ocean |
-| **CSS Variables** | Currently says "Windlass" (WRONG) | theme.css |
+| **CSS Variables** | Currently says "Lars" (WRONG) | theme.css |
 | **Routes** | 7 views (#/studio, #/console, etc.) | 17 views (#/playground, #/workshop, etc.) |
 | **Code Style** | Modern, composable | Legacy, duplicated logic |
 | **File Count** | ~200 files | ~300 files (includes old system) |
@@ -106,7 +106,7 @@ return useNewShell ? <AppShell {...callbacks} /> : <LegacyRoutingSystem />;
 - ✅ Interrupts - HITL management
 - ✅ Explore - Exploration interface
 
-**Windlass (Pending Migration - 10+ views)**:
+**Lars (Pending Migration - 10+ views)**:
 - ⏳ Playground - Visual canvas (React Flow)
 - ⏳ Workshop - Cascade editor
 - ⏳ Sessions - Unified sessions view
@@ -145,7 +145,7 @@ useEffect(() => {
 }, []);
 ```
 
-**Windlass Pattern** (SSE):
+**Lars Pattern** (SSE):
 ```javascript
 // App.js lines 556-901
 useEffect(() => {
@@ -172,7 +172,7 @@ useEffect(() => {
 - `sections/` - Generative UI (11 components)
 - `layouts/` - Layout components (3 components)
 
-**Windlass Legacy** (119 components) - `/components`:
+**Lars Legacy** (119 components) - `/components`:
 - `CascadesView.js` - Legacy cascade grid
 - `InstancesView.js` - Instance list
 - `SplitDetailView.js` - Detail view
@@ -188,12 +188,12 @@ useEffect(() => {
 ### CSS/Styling Inventory
 
 **LARS Styles** (currently misnamed):
-- `/src/styles/variables.css` - **Says "Windlass" but IS LARS** (NEEDS RENAMING)
+- `/src/styles/variables.css` - **Says "Lars" but IS LARS** (NEEDS RENAMING)
 - `/src/styles/animations.css` - LARS animations
 - `/src/styles/index.css` - Global design system
 - `/src/shell/AppShell.css` - Shell styles
 
-**Windlass Styles**:
+**Lars Styles**:
 - `/src/theme.css` - Legacy ocean theme
 - `/src/index.css` - Old base styles
 - 119+ component CSS files (mixed old/new)
@@ -210,13 +210,13 @@ useEffect(() => {
 ### THE CORRECTION
 
 **WRONG** (my initial analysis):
-- "Windlass" = new design system
-- New system uses Windlass
+- "Lars" = new design system
+- New system uses Lars
 
 **RIGHT** (corrected):
 - **LARS** = new system (AppShell, modern, future)
-- **Windlass** = old system (legacy, being replaced)
-- CSS variables say "Windlass" but should say "LARS"
+- **Lars** = old system (legacy, being replaced)
+- CSS variables say "Lars" but should say "LARS"
 
 ### Files That Need Renaming
 
@@ -225,11 +225,11 @@ useEffect(() => {
 **Current** (WRONG):
 ```css
 /**
- * Windlass Design System
+ * Lars Design System
  * Pure black background with bright neon accents
  */
 :root {
-  /* === Windlass Color Palette === */
+  /* === Lars Color Palette === */
   --color-bg-primary: #000000;
   --shadow-glow-cyan: 0 0 20px rgba(0, 229, 255, 0.5);
   /* etc. */
@@ -250,7 +250,7 @@ useEffect(() => {
 }
 ```
 
-**Action**: Search all files for "Windlass" references and replace with "LARS" in new frontend.
+**Action**: Search all files for "Lars" references and replace with "LARS" in new frontend.
 
 ---
 
@@ -270,7 +270,7 @@ npm start  # Should start on port 5550
 
 # In browser, test:
 # - http://localhost:5550/#/studio - LARS view
-# - http://localhost:5550/#/playground - Windlass view
+# - http://localhost:5550/#/playground - Lars view
 # - Both should work
 
 # 3. Check backend is running
@@ -309,9 +309,9 @@ ls -la old_frontend/  # Should match frontend/
 
 ```json
 {
-  "name": "lars-windlass-legacy",
-  "version": "0.1.0-windlass",
-  "description": "Windlass UI - Legacy system (dev-only, will be deleted)",
+  "name": "lars-lars-legacy",
+  "version": "0.1.0-lars",
+  "description": "Lars UI - Legacy system (dev-only, will be deleted)",
   "private": true,
   "scripts": {
     "start": "PORT=5560 react-scripts start",
@@ -325,8 +325,8 @@ ls -la old_frontend/  # Should match frontend/
 ```
 
 **Changes**:
-- Name: `lars-windlass-legacy` (clear it's temporary)
-- Version: Add `-windlass` suffix
+- Name: `lars-lars-legacy` (clear it's temporary)
+- Version: Add `-lars` suffix
 - Description: Mark as legacy, dev-only
 - Port: **5560** (different from LARS)
 - Proxy: Keep same backend (5001)
@@ -357,7 +357,7 @@ npm start  # Should start on port 5560
 
 ### Phase 2: Clean Up LARS Frontend (45-60 minutes)
 
-**Goal**: Remove all Windlass (legacy) code from `frontend/`, rebrand as pure LARS.
+**Goal**: Remove all Lars (legacy) code from `frontend/`, rebrand as pure LARS.
 
 #### Step 2.1: Simplify App.js (30 minutes)
 
@@ -373,7 +373,7 @@ cd /home/ryanr/repos/lars/dashboard/frontend/src
 
 **Backup current App.js**:
 ```bash
-cp App.js App.js.BACKUP_WINDLASS  # Safety backup
+cp App.js App.js.BACKUP_LARS  # Safety backup
 ```
 
 **Replace with**:
@@ -387,7 +387,7 @@ import './App.css';
  * LARS Dashboard - Main Application
  *
  * Pure AppShell architecture - all routing handled by navigationStore.
- * For legacy Windlass views, use old_frontend/ (dev-only, port 5560).
+ * For legacy Lars views, use old_frontend/ (dev-only, port 5560).
  */
 function App() {
   return <AppShell />;
@@ -568,14 +568,14 @@ const VerticalSidebar = ({
 { view: 'interrupts', label: 'Interrupts', icon: 'carbon:pause' }
 { view: 'explore', label: 'Explore', icon: 'carbon:explore' }
 
-// DELETE these (they're Windlass views):
+// DELETE these (they're Lars views):
 { view: 'playground', ... }
 { view: 'workshop', ... }
 { view: 'cockpit', ... }
 // etc.
 ```
 
-**If users need to access Windlass**, add a link to old_frontend:
+**If users need to access Lars**, add a link to old_frontend:
 
 ```javascript
 // Add at bottom of sidebar (optional):
@@ -586,7 +586,7 @@ const VerticalSidebar = ({
     rel="noopener noreferrer"
     className="legacy-link"
   >
-    🏴‍☠️ Windlass (Legacy)
+    🏴‍☠️ Lars (Legacy)
   </a>
 </div>
 ```
@@ -618,15 +618,15 @@ initFromUrl: () => {
 
 **Test**: Navigating to `http://localhost:5550/` should redirect to `#/console`.
 
-#### Step 2.5: Rebrand "Windlass" to "LARS" (15 minutes)
+#### Step 2.5: Rebrand "Lars" to "LARS" (15 minutes)
 
-**Search and replace all "Windlass" references**:
+**Search and replace all "Lars" references**:
 
 ```bash
 cd /home/ryanr/repos/lars/dashboard/frontend/src
 
-# Find all files with "Windlass" (case-insensitive)
-grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
+# Find all files with "Lars" (case-insensitive)
+grep -ri "lars" . --include="*.js" --include="*.jsx" --include="*.css"
 
 # Expected locations:
 # - styles/variables.css (main file)
@@ -641,12 +641,12 @@ grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
 ```css
 /* BEFORE */
 /**
- * Windlass Design System
+ * Lars Design System
  * Pure black background with bright neon accents
  * Cyberpunk/Tron aesthetic for LARS Dashboard
  */
 :root {
-  /* === Windlass Color Palette === */
+  /* === Lars Color Palette === */
   /* ... */
 }
 
@@ -665,15 +665,15 @@ grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
 **Search for variable names** (unlikely but check):
 
 ```bash
-# Check if any CSS variables are named --windlass-*
-grep -r "windlass" styles/
+# Check if any CSS variables are named --lars-*
+grep -r "lars" styles/
 ```
 
-**Update any comments** that mention Windlass:
+**Update any comments** that mention Lars:
 
 ```javascript
 // BEFORE
-// Using Windlass design system components
+// Using Lars design system components
 import Button from '../components/Button';
 
 // AFTER
@@ -685,7 +685,7 @@ import Button from '../components/Button';
 
 ```bash
 # After replacements, search again:
-grep -ri "windlass" frontend/src/
+grep -ri "lars" frontend/src/
 
 # Should return ZERO results (or only in old backup files)
 ```
@@ -698,8 +698,8 @@ grep -ri "windlass" frontend/src/
 
 ```bash
 # Phase 3 or 4, not Phase 2:
-rm -rf frontend/src/playground/    # Windlass visual canvas
-rm -rf frontend/src/workshop/      # Windlass cascade editor
+rm -rf frontend/src/playground/    # Lars visual canvas
+rm -rf frontend/src/workshop/      # Lars cascade editor
 
 # Keep components/ for now - some may be shared
 # Clean up components/ in Phase 4 after thorough testing
@@ -724,7 +724,7 @@ cd /home/ryanr/repos/lars/dashboard/frontend
 npm start
 # Output: Compiled successfully! On port 5550
 
-# Terminal 3: Windlass Frontend
+# Terminal 3: Lars Frontend
 cd /home/ryanr/repos/lars/dashboard/old_frontend
 npm start
 # Output: Compiled successfully! On port 5560
@@ -751,7 +751,7 @@ npm start
 - [ ] Toast notifications work
 - [ ] **NO SSE connection** (check Network tab - no EventSource)
 - [ ] No console errors
-- [ ] No "Windlass" references visible in UI
+- [ ] No "Lars" references visible in UI
 
 **Browser DevTools**:
 ```
@@ -764,7 +764,7 @@ Console tab:
   ✅ No warnings (except benign ResizeObserver)
 ```
 
-#### Test 3.2: Windlass Frontend (Port 5560)
+#### Test 3.2: Lars Frontend (Port 5560)
 
 **URL**: `http://localhost:5560`
 
@@ -803,7 +803,7 @@ Console tab:
 ```bash
 # In backend terminal, should see requests from both ports:
 # - 127.0.0.1:5550 (LARS)
-# - 127.0.0.1:5560 (Windlass)
+# - 127.0.0.1:5560 (Lars)
 
 # No CORS errors
 # Both can execute cascades
@@ -816,11 +816,11 @@ Console tab:
 - Studio → Execute a cascade
 - Should complete successfully
 
-**Check Windlass** (port 5560):
+**Check Lars** (port 5560):
 - Should see same cascade in running sessions (SSE)
 - Should update in real-time
 
-**Run cascade from Windlass** (port 5560):
+**Run cascade from Lars** (port 5560):
 - Playground → Execute a cascade
 - Should see real-time updates via SSE
 
@@ -855,7 +855,7 @@ The LARS Dashboard is split into two applications during migration:
 - **Design**: Cyberpunk/pure black
 - **Routes**: `#/console`, `#/studio`, `#/cascades`, `#/outputs`, `#/receipts`, `#/interrupts`, `#/explore`
 
-### **Windlass** (Legacy System) - `old_frontend/`
+### **Lars** (Legacy System) - `old_frontend/`
 - **Purpose**: Temporary legacy views during migration
 - **Status**: ⚠️ Dev-only, will be deleted
 - **Port**: 5560 (dev only)
@@ -876,7 +876,7 @@ cd frontend
 npm install  # First time only
 npm start    # Port 5550
 
-# Terminal 3: Windlass (during migration only)
+# Terminal 3: Lars (during migration only)
 cd old_frontend
 npm install  # First time only
 npm start    # Port 5560
@@ -884,7 +884,7 @@ npm start    # Port 5560
 
 **URLs**:
 - LARS: http://localhost:5550
-- Windlass: http://localhost:5560
+- Lars: http://localhost:5560
 - Backend API: http://localhost:5001
 
 ## Development Guidelines
@@ -893,7 +893,7 @@ npm start    # Port 5560
 
 **ALWAYS** build new features in `frontend/` (LARS system).
 
-**NEVER** add features to `old_frontend/` (Windlass is frozen).
+**NEVER** add features to `old_frontend/` (Lars is frozen).
 
 ### Migrating a View
 
@@ -903,8 +903,8 @@ See `MIGRATION_GUIDE.md` for detailed steps.
 1. Create new view in `frontend/src/views/[viewname]/`
 2. Register in `frontend/src/views/index.js`
 3. Test in LARS (port 5550)
-4. Verify parity with Windlass version
-5. Mark Windlass view as deprecated (add banner)
+4. Verify parity with Lars version
+5. Mark Lars view as deprecated (add banner)
 6. Eventually delete from `old_frontend/`
 
 ## Migration Status
@@ -921,7 +921,7 @@ See `MIGRATION_GUIDE.md` for detailed steps.
 - ✅ Interrupts - HITL management
 - ✅ Explore - Exploration interface
 
-### Windlass (Pending - 10 views)
+### Lars (Pending - 10 views)
 
 - ⏳ Playground - Visual canvas
 - ⏳ Workshop - Cascade editor
@@ -968,7 +968,7 @@ navigate('studio', { cascade: 'my-cascade.yaml' });
 - Cyberpunk aesthetic (pure black + neon accents)
 - Reusable components (Button, Badge, Card, Modal, Toast)
 
-### Windlass System
+### Lars System
 
 **State Management**: useState hooks + prop drilling
 
@@ -998,7 +998,7 @@ window.location.hash = '#/playground';
 cd frontend
 npm test
 
-# Test Windlass
+# Test Lars
 cd old_frontend
 npm test
 ```
@@ -1009,7 +1009,7 @@ npm test
 ```bash
 # Find process on port
 lsof -i :5550  # LARS
-lsof -i :5560  # Windlass
+lsof -i :5560  # Lars
 
 # Kill process
 kill -9 <PID>
@@ -1022,7 +1022,7 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-**SSE not connecting** (Windlass):
+**SSE not connecting** (Lars):
 - Check backend is running (port 5001)
 - Check Network tab for EventSource connection
 - Verify no CORS errors
@@ -1059,18 +1059,18 @@ Internal LARS project.
 ```markdown
 # LARS View Migration Guide
 
-This guide explains how to migrate a view from Windlass (old_frontend) to LARS (frontend).
+This guide explains how to migrate a view from Lars (old_frontend) to LARS (frontend).
 
 ## Philosophy
 
 - **LARS**: Modern, componentized, polling-based
-- **Windlass**: Legacy, monolithic, SSE-based
+- **Lars**: Legacy, monolithic, SSE-based
 - **Goal**: Replicate functionality, not implementation
 
 ## Before You Start
 
 1. **Document the view**: Screenshots, feature list, edge cases
-2. **Test in Windlass**: Make sure it works (port 5560)
+2. **Test in Lars**: Make sure it works (port 5560)
 3. **Identify dependencies**: What components/hooks does it use?
 4. **Plan the rewrite**: Don't port old patterns, rebuild with LARS patterns
 
@@ -1107,7 +1107,7 @@ import './[ViewName]View.css';
 /**
  * [ViewName]View - [Brief description]
  *
- * Migrated from Windlass on [date]
+ * Migrated from Lars on [date]
  * Original: old_frontend/src/components/[ViewName]View.js
  */
 
@@ -1267,11 +1267,11 @@ http://localhost:5550/#/[viewname]
 - [ ] No SSE connections
 - [ ] No console errors
 
-### Step 7: Compare with Windlass
+### Step 7: Compare with Lars
 
 **Open both versions side-by-side**:
 - LARS: `http://localhost:5550/#/[viewname]`
-- Windlass: `http://localhost:5560/#/[viewname]`
+- Lars: `http://localhost:5560/#/[viewname]`
 
 **Verify parity**:
 - [ ] Same data displayed
@@ -1285,7 +1285,7 @@ http://localhost:5550/#/[viewname]
 - Update mechanism (polling vs SSE)
 - Code structure (Zustand vs useState)
 
-### Step 8: Mark Windlass View as Deprecated
+### Step 8: Mark Lars View as Deprecated
 
 **File**: `old_frontend/src/components/[ViewName]View.js`
 
@@ -1334,7 +1334,7 @@ Update `dashboard/README.md`:
 - ✅ Explore
 - ✅ [ViewName] - Migrated 2025-12-XX
 
-### Windlass (Pending - 9 views)
+### Lars (Pending - 9 views)
 
 - ⏳ [Other views...]
 ```
@@ -1343,7 +1343,7 @@ Update `dashboard/README.md`:
 
 ### Replace SSE with Polling
 
-**Windlass (SSE)**:
+**Lars (SSE)**:
 ```javascript
 useEffect(() => {
   const eventSource = new EventSource('/api/events/stream');
@@ -1374,7 +1374,7 @@ useEffect(() => {
 
 ### Replace Prop Drilling with Zustand
 
-**Windlass (Props)**:
+**Lars (Props)**:
 ```javascript
 // In App.js
 const [data, setData] = useState([]);
@@ -1404,7 +1404,7 @@ const MyView = ({ navigate }) => {
 
 ### Replace Manual Hash Updates with navigate()
 
-**Windlass (Manual)**:
+**Lars (Manual)**:
 ```javascript
 const handleClick = () => {
   window.location.hash = '#/cascade_id/session_id';
@@ -1420,7 +1420,7 @@ const handleClick = () => {
 
 ### Use Design System Components
 
-**Windlass (Custom)**:
+**Lars (Custom)**:
 ```javascript
 <button className="custom-button primary" onClick={handleClick}>
   Click Me
@@ -1476,7 +1476,7 @@ python app.py &
 cd dashboard/frontend
 npm start &
 
-# Start Windlass
+# Start Lars
 cd dashboard/old_frontend
 npm start &
 ```
@@ -1489,17 +1489,17 @@ npm start &
    - Can execute cascades
    - Polling active
    - No SSE connections
-   - No "Windlass" visible
+   - No "Lars" visible
 
-2. **Windlass** (`localhost:5560`):
+2. **Lars** (`localhost:5560`):
    - Loads to cascades view
    - All legacy views work
    - SSE connected
    - Real-time updates work
 
 3. **Cross-system**:
-   - Cascade run in LARS appears in Windlass (after SSE event)
-   - Cascade run in Windlass appears in LARS (after polling cycle)
+   - Cascade run in LARS appears in Lars (after SSE event)
+   - Cascade run in Lars appears in LARS (after polling cycle)
    - Both can execute simultaneously without conflict
 
 **Smoke test checklist**:
@@ -1520,7 +1520,7 @@ cd dashboard
 ls -la
 # backend/
 # frontend/          ← LARS
-# old_frontend/      ← Windlass
+# old_frontend/      ← Lars
 # README.md          ← New
 # MIGRATION_GUIDE.md ← New
 # FRONTEND_SPLIT_PLAN.md ← This file
@@ -1547,7 +1547,7 @@ cd dashboard/frontend && npm start
 
 **Need legacy view** (rare):
 ```bash
-# Terminal 3: Windlass
+# Terminal 3: Lars
 cd dashboard/old_frontend && npm start
 
 # Browser: http://localhost:5560
@@ -1561,7 +1561,7 @@ cd dashboard/old_frontend && npm start
 3. Test on port 5550
 4. Commit to master
 
-**Never in Windlass**:
+**Never in Lars**:
 - `old_frontend/` is frozen
 - Bug fixes only (if critical)
 
@@ -1570,11 +1570,11 @@ cd dashboard/old_frontend && npm start
 Follow `MIGRATION_GUIDE.md`:
 1. Create new view in LARS
 2. Test for parity
-3. Mark Windlass view as deprecated
+3. Mark Lars view as deprecated
 4. Update migration status in README
-5. Eventually delete from Windlass
+5. Eventually delete from Lars
 
-### Deleting Windlass
+### Deleting Lars
 
 **When all views migrated**:
 
@@ -1586,8 +1586,8 @@ Follow `MIGRATION_GUIDE.md`:
 cd dashboard
 rm -rf old_frontend/
 
-# Update README (remove Windlass section)
-# Commit: "Remove Windlass (all views migrated)"
+# Update README (remove Lars section)
+# Commit: "Remove Lars (all views migrated)"
 ```
 
 ---
@@ -1603,7 +1603,7 @@ pkill -f "app.py"
 
 # 2. Restore App.js backup
 cd dashboard/frontend/src
-cp App.js.BACKUP_WINDLASS App.js
+cp App.js.BACKUP_LARS App.js
 
 # 3. Delete old_frontend
 cd dashboard
@@ -1630,7 +1630,7 @@ npm start
 
 **Mitigation**: None needed - isolation is the goal
 
-**Future**: When Windlass deleted, duplication eliminated
+**Future**: When Lars deleted, duplication eliminated
 
 ### Issue 2: Dependency Drift
 
@@ -1643,7 +1643,7 @@ npm start
 - Update critical deps in both
 - Document which deps are shared
 
-**Future**: When Windlass deleted, only one package.json to manage
+**Future**: When Lars deleted, only one package.json to manage
 
 ### Issue 3: Shared Backend State
 
@@ -1669,20 +1669,20 @@ npm start
 - Use shell aliases:
   ```bash
   alias lars="cd ~/repos/lars/dashboard/frontend && npm start"
-  alias windlass="cd ~/repos/lars/dashboard/old_frontend && npm start"
+  alias lars="cd ~/repos/lars/dashboard/old_frontend && npm start"
   ```
 
-**Future**: Delete Windlass, back to one port
+**Future**: Delete Lars, back to one port
 
-### Issue 5: No Production Path for Windlass
+### Issue 5: No Production Path for Lars
 
-**Problem**: Windlass can't be deployed (by design)
+**Problem**: Lars can't be deployed (by design)
 
 **Impact**: None - dev-only
 
 **Mitigation**: Clearly document dev-only status
 
-**Future**: Delete Windlass, problem disappears
+**Future**: Delete Lars, problem disappears
 
 ---
 
@@ -1705,17 +1705,17 @@ npm start
 
 **Tracking**: Update `dashboard/README.md` after each view migration
 
-**Goal**: 17/17 migrated, Windlass deleted
+**Goal**: 17/17 migrated, Lars deleted
 
 ### Code Quality
 
 **LARS**:
 - App.js: 1640 lines → ~50 lines ✅
 - No SSE connections ✅
-- No "Windlass" references ✅
+- No "Lars" references ✅
 - Clean Zustand architecture ✅
 
-**Windlass**:
+**Lars**:
 - Frozen (no new features) ✅
 - Deprecated banners added ⏳
 - Deleted when migration complete ⏳
@@ -1744,7 +1744,7 @@ npm start
 - Migrate last few views
 
 ### Week 11
-- Delete Windlass
+- Delete Lars
 - Celebrate 🎉
 
 **Total**: ~11 weeks to complete migration
@@ -1771,7 +1771,7 @@ Both apps: ~720MB (acceptable)
 |---------|------|-----|
 | Backend | 5001 | http://localhost:5001 |
 | LARS | 5550 | http://localhost:5550 |
-| Windlass | 5560 | http://localhost:5560 |
+| Lars | 5560 | http://localhost:5560 |
 
 ### Key Files Modified
 
@@ -1786,7 +1786,7 @@ Both apps: ~720MB (acceptable)
 - `dashboard/frontend/src/shell/AppShell.jsx` (remove legacy props)
 - `dashboard/frontend/src/shell/VerticalSidebar.jsx` (remove legacy nav)
 - `dashboard/frontend/src/stores/navigationStore.js` (add default redirect)
-- `dashboard/frontend/src/styles/variables.css` (Windlass → LARS)
+- `dashboard/frontend/src/styles/variables.css` (Lars → LARS)
 - `dashboard/old_frontend/package.json` (port 5560, rename)
 
 **Deleted** (later):
@@ -1809,10 +1809,10 @@ pkill -f "app.py"
 # Check ports
 lsof -i :5001  # Backend
 lsof -i :5550  # LARS
-lsof -i :5560  # Windlass
+lsof -i :5560  # Lars
 
-# Search for Windlass references
-grep -ri "windlass" dashboard/frontend/src/
+# Search for Lars references
+grep -ri "lars" dashboard/frontend/src/
 
 # Count lines in App.js
 wc -l dashboard/frontend/src/App.js

@@ -378,7 +378,7 @@ function PromptDiff({ original, mutated }) {
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      WINDLASS RUNNER                             │
+│                      LARS RUNNER                             │
 │  - Applies mutations (rewrite/augment/approach)                  │
 │  - Logs: mutation_applied, mutation_type, mutation_template      │
 │  - Logs: full_request_json with complete prompt context          │
@@ -430,13 +430,13 @@ function PromptDiff({ original, mutated }) {
 
 ```bash
 # Test mutation visibility
-windlass examples/soundings_rewrite_flow.json --input '{"topic": "AI safety"}'
+lars examples/soundings_rewrite_flow.json --input '{"topic": "AI safety"}'
 
 # Test reforge with mutations
-windlass examples/reforge_dashboard_metrics.json --input '{"data": "test"}'
+lars examples/reforge_dashboard_metrics.json --input '{"data": "test"}'
 
 # Test multi-model with Pareto
-windlass examples/multi_model_pareto.json --input '{"question": "test"}'
+lars examples/multi_model_pareto.json --input '{"question": "test"}'
 ```
 
 ---

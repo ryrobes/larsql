@@ -114,7 +114,7 @@ npm start
 **Test:**
 ```bash
 # Run a cascade with known phase order
-windlass examples/sql_chart_gen_analysis_full.json \
+lars examples/sql_chart_gen_analysis_full.json \
   --input '{"question": "test"}' \
   --session phase_order_test
 ```
@@ -155,7 +155,7 @@ print(df.to_string())
 
 **Test Cascade:**
 ```bash
-windlass examples/reforge_feedback_chart.json \
+lars examples/reforge_feedback_chart.json \
   --input '{"data": "test"}' \
   --session reforge_test_001
 ```
@@ -249,7 +249,7 @@ Look for errors like:
 
 3. **Test with a session that has soundings:**
    ```bash
-   windlass examples/sql_chart_gen_analysis_full.json \
+   lars examples/sql_chart_gen_analysis_full.json \
      --input '{"question": "What states have bigfoot?"}' \
      --session test_fixes_001
    ```

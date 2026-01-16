@@ -315,7 +315,7 @@ const handleRefinementClick = (phaseIdx, stepIdx, refIdx) => {
 
 ### 1. Basic Reforge (Chart Refinement)
 ```bash
-windlass examples/reforge_feedback_chart.json \
+lars examples/reforge_feedback_chart.json \
   --input '{"data": "test"}' \
   --session test_reforge_001
 ```
@@ -329,7 +329,7 @@ This should create:
 
 ### 2. Multi-Phase with Mixed Reforge
 ```bash
-windlass examples/sql_chart_gen_analysis_full.json \
+lars examples/sql_chart_gen_analysis_full.json \
   --input '{"question": "What states have the most bigfoot sightings?"}'
 ```
 
@@ -340,7 +340,7 @@ If reforge enabled:
 
 ### 3. Reforge META Optimizer
 ```bash
-windlass examples/reforge_meta_optimizer.json \
+lars examples/reforge_meta_optimizer.json \
   --input '{"cascade_to_optimize": "simple_flow.json"}'
 ```
 
@@ -519,7 +519,7 @@ Final Optimized Output
 
 ## Acknowledgments
 
-This implementation completes the vision outlined in `SOUNDINGS_REFORGE_IMAGES_PLAN.md`, providing full observability into Windlass's Tree of Thought + Reforge system with multi-modal visual feedback.
+This implementation completes the vision outlined in `SOUNDINGS_REFORGE_IMAGES_PLAN.md`, providing full observability into Lars's Tree of Thought + Reforge system with multi-modal visual feedback.
 
 **Key Achievement**: Developers can now see exactly how their LLM agents explore solution space (soundings) and progressively refine winners (reforge), with complete visual feedback at every step.
 

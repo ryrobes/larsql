@@ -87,7 +87,7 @@ npm start
 Use the updated `sql_chart_gen_analysis_full.json` which has soundings at every phase:
 
 ```bash
-windlass examples/sql_chart_gen_analysis_full.json \
+lars examples/sql_chart_gen_analysis_full.json \
   --input '{"question": "What states have the most bigfoot sightings?"}'
 ```
 

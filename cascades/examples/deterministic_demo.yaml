@@ -13,7 +13,7 @@ cells:
   routing:
     invalid: fix_query
     valid: execute_query
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
 - handoffs:
   - execute_query
   instructions: 'The SQL query was invalid. Please analyze and fix the following query:

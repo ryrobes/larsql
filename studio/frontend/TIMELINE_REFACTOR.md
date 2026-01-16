@@ -124,7 +124,7 @@ SqlQueryPage (mode === 'timeline')
 
 ### ✅ Maintainability:
 - 1,900 fewer lines to maintain
-- Single execution path (standard Windlass)
+- Single execution path (standard Lars)
 - No duplicate/dead code
 
 ### ✅ Correctness:

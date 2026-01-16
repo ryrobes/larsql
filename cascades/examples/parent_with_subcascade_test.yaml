@@ -8,7 +8,7 @@ cells:
 
       '
 - name: spawn_child
-  tool: windlass_data
+  tool: lars_data
   inputs:
     code: examples/test_subcascade_child.yaml
 - name: finish

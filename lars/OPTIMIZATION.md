@@ -43,7 +43,7 @@ After 10-20 runs, the system can:
 After ~20 runs (100 sounding attempts), run analysis:
 
 ```bash
-windlass analyze examples/dashboard_generator.json
+lars analyze examples/dashboard_generator.json
 ```
 
 **System queries logs:**
@@ -101,10 +101,10 @@ Impact:
 
 ```bash
 # Review suggestion
-windlass analyze examples/dashboard_generator.json
+lars analyze examples/dashboard_generator.json
 
 # Apply it
-windlass analyze examples/dashboard_generator.json --apply
+lars analyze examples/dashboard_generator.json --apply
 
 # Auto-commits to git with analysis in commit message
 ```
@@ -143,7 +143,7 @@ windlass analyze examples/dashboard_generator.json --apply
 
 **Day 8: System has learned**
 ```bash
-windlass analyze examples/dashboard_generator.json
+lars analyze examples/dashboard_generator.json
 
 Analyzing examples/dashboard_generator.json...
 Found 20 runs
@@ -176,12 +176,12 @@ PROMPT IMPROVEMENT SUGGESTIONS
 ----------------------------------------------------------------------
 
 To apply suggestions:
-  windlass analyze examples/dashboard_generator.json --apply
+  lars analyze examples/dashboard_generator.json --apply
 ```
 
 **Click apply:**
 ```bash
-windlass analyze examples/dashboard_generator.json --apply
+lars analyze examples/dashboard_generator.json --apply
 
 Updated phase: generate_dashboard
 
@@ -236,7 +236,7 @@ You mentioned this - it's brilliant!
 # Don't use output (just log it)
 # Build corpus of "what works"
 
-windlass train examples/dashboard_generator.json \
+lars train examples/dashboard_generator.json \
   --snapshots context_inheritance_works,good_dashboard_1,good_dashboard_2 \
   --mutations 10 \
   --offline
@@ -262,7 +262,7 @@ windlass train examples/dashboard_generator.json \
 
 **After training run:**
 ```bash
-windlass analyze examples/dashboard_generator.json
+lars analyze examples/dashboard_generator.json
 
 # Now has 30+ extra data points
 # Better confidence in suggestions
@@ -277,7 +277,7 @@ windlass analyze examples/dashboard_generator.json
 - Run optimization passes
 - Imperative Python code
 
-**Windlass requires:**
+**Lars requires:**
 - Just use soundings (you already do this!)
 - Data auto-collected
 - Metrics auto-tracked (cost, time, wards)
@@ -290,29 +290,29 @@ windlass analyze examples/dashboard_generator.json
 
 ### 1. **Continuous, Not Batch**
 - DSPy: Collect examples → optimize → deploy
-- Windlass: Use system → optimize while using → keep using
+- Lars: Use system → optimize while using → keep using
 
 ### 2. **Multi-Objective**
 - DSPy: Optimize for single metric
-- Windlass: Optimize for cost + quality + time simultaneously
+- Lars: Optimize for cost + quality + time simultaneously
 
 ### 3. **Observable**
 - DSPy: Black box optimization
-- Windlass: See winner patterns, git diffs, evolution timeline
+- Lars: See winner patterns, git diffs, evolution timeline
 
 ### 4. **Multi-Modal**
 - DSPy: Text only
-- Windlass: Can optimize based on visual outputs (charts, UI)
+- Lars: Can optimize based on visual outputs (charts, UI)
 
 ### 5. **Workflow-Level**
 - DSPy: Optimize individual prompts
-- Windlass: Optimize entire workflows (phase ordering, tool selection, etc.)
+- Lars: Optimize entire workflows (phase ordering, tool selection, etc.)
 
 ## Roadmap
 
 ### Phase 1: Foundation (What We Just Built)
 - ✅ SoundingAnalyzer class
-- ✅ CLI command: `windlass analyze`
+- ✅ CLI command: `lars analyze`
 - ✅ Pattern extraction
 - ✅ Suggestion generation
 - ✅ Apply suggestions
@@ -374,19 +374,19 @@ Month Later:
 
 ```bash
 # Analyze cascade (needs 10+ runs with soundings)
-windlass analyze examples/my_cascade.json
+lars analyze examples/my_cascade.json
 
 # Analyze specific phase
-windlass analyze examples/my_cascade.json --phase generate
+lars analyze examples/my_cascade.json --phase generate
 
 # Apply suggestions automatically
-windlass analyze examples/my_cascade.json --apply
+lars analyze examples/my_cascade.json --apply
 
 # Save suggestions to review later
-windlass analyze examples/my_cascade.json --output my_suggestions.json
+lars analyze examples/my_cascade.json --output my_suggestions.json
 
 # Future: Synthetic training
-windlass train examples/my_cascade.json \
+lars train examples/my_cascade.json \
   --snapshots good_example_1,good_example_2 \
   --mutations 10
 ```
@@ -396,7 +396,7 @@ windlass train examples/my_cascade.json \
 Not just "DSPy for workflows" - something **fundamentally different**:
 
 **DSPy:** "Optimize prompts through compilation"
-**Windlass:** "Prompts evolve through usage"
+**Lars:** "Prompts evolve through usage"
 
 - ✅ No manual labeling (soundings generate data)
 - ✅ No batch optimization (continuous improvement)
@@ -413,7 +413,7 @@ This is wild. And it's actually **simpler** than the alternatives.
 
 **Want to try it?** Run a cascade with soundings 10-20 times, then:
 ```bash
-windlass analyze examples/your_cascade.json
+lars analyze examples/your_cascade.json
 ```
 
 Let's see what patterns emerged!

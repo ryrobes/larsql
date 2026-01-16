@@ -1,14 +1,14 @@
 cascade_id: signal_validation_gate
 description: 'Validation gate that combines deterministic validation with signal-based
   approval. Run this cascade, then fire the ''approved'' signal from CLI to continue:
-  windlass signals fire approved --payload ''{"approver":"admin"}''
+  lars signals fire approved --payload ''{"approver":"admin"}''
 
   '
 inputs_schema:
   query: SQL query to validate before approval
 cells:
 - name: validate_request
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
   inputs:
     query: '{{ input.query | default(''SELECT * FROM users WHERE active = true'')
       }}'
@@ -48,7 +48,7 @@ cells:
 
     While waiting, an administrator can approve by running:
 
-    windlass signals fire approved --payload ''{"approver":"admin","reason":"looks
+    lars signals fire approved --payload ''{"approver":"admin","reason":"looks
     good"}''
 
     '
@@ -71,7 +71,7 @@ cells:
     '
   skills: []
 - name: process_approved
-  tool: python:windlass.demo_tools.transform_data
+  tool: python:lars.demo_tools.transform_data
   inputs:
     data: '[{"user_id": 1, "score": 85}, {"user_id": 2, "score": 92}, {"user_id":
       3, "score": 78}]'

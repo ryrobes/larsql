@@ -44,7 +44,7 @@ cells:
   routing:
     invalid: handle_validation_error
     valid: extract_data
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
 - instructions: 'Source data validation failed:
 
 
@@ -77,7 +77,7 @@ cells:
   routing:
     error: handle_transform_error
     success: load_data
-  tool: python:windlass.demo_tools.transform_data
+  tool: python:lars.demo_tools.transform_data
 - instructions: 'Transform failed:
 
 
@@ -145,7 +145,7 @@ triggers:
 - args:
     min_size_bytes: 1000
     path: /data/incoming/events.csv
-  check: python:windlass.triggers.sensor_file_exists
+  check: python:lars.triggers.sensor_file_exists
   description: Trigger when source file appears
   inputs:
     mode: incremental

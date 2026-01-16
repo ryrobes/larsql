@@ -4,7 +4,7 @@ cells:
 - name: setup
   tool: bash_data
   inputs:
-    script: 'export MY_VAR="hello_windlass"
+    script: 'export MY_VAR="hello_lars"
 
       echo "status,message"
 

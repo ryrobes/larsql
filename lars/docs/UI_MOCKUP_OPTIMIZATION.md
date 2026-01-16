@@ -348,7 +348,7 @@ Click "Preview Impact" to see before/after comparison:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Windlass Analytics Dashboard                                       │
+│ Lars Analytics Dashboard                                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │ ┌──────────────────────┬──────────────────────┬──────────────────┐ │
@@ -479,6 +479,6 @@ No guessing. No dark art. Just:
 
 ---
 
-This UI would make Windlass **the** framework for production AI systems.
+This UI would make Lars **the** framework for production AI systems.
 
 Not because it's the most powerful - because it's the most **transparent** and **self-improving**.

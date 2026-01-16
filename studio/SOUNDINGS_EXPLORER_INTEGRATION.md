@@ -173,7 +173,7 @@ def get_soundings_tree(session_id):
         ORDER BY phase_name, sounding_index, turn_number
         """
 
-        from windlass.unified_logs import query_unified
+        from lars.unified_logs import query_unified
         df = query_unified(query)
 
         if df.empty:

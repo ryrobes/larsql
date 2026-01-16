@@ -6,24 +6,24 @@ This directory contains frozen cascade executions used for regression testing.
 
 1. **Run a cascade normally** (uses real LLM):
    ```bash
-   windlass examples/simple_flow.json --input '{"data": "test"}' --session test_001
+   lars examples/simple_flow.json --input '{"data": "test"}' --session test_001
    ```
 
 2. **Verify it worked correctly** (check outputs, logs, graph)
 
 3. **Freeze as a test** (captures execution from logs):
    ```bash
-   windlass test freeze test_001 --name simple_flow_works --description "Basic two-phase workflow"
+   lars test freeze test_001 --name simple_flow_works --description "Basic two-phase workflow"
    ```
 
 4. **Replay anytime** (no LLM calls, instant):
    ```bash
-   windlass test replay simple_flow_works
+   lars test replay simple_flow_works
    ```
 
 5. **Run all tests**:
    ```bash
-   windlass test run           # CLI
+   lars test run           # CLI
    pytest tests/test_snapshots.py  # Pytest
    ```
 
@@ -142,7 +142,7 @@ The state management behavior changed. This might be:
 
 ```bash
 # After making framework changes
-windlass test run
+lars test run
 pytest tests/test_snapshots.py -v
 ```
 
@@ -151,17 +151,17 @@ pytest tests/test_snapshots.py -v
 If behavior intentionally changed:
 ```bash
 # Run the cascade again with same input
-windlass examples/my_flow.json --input '{}' --session update_001
+lars examples/my_flow.json --input '{}' --session update_001
 
 # Freeze with same name (overwrites)
-windlass test freeze update_001 --name existing_snapshot_name
+lars test freeze update_001 --name existing_snapshot_name
 ```
 
 ### Debug Failed Replay
 
 ```bash
 # Run with verbose to see what's being replayed
-windlass test replay my_snapshot --verbose
+lars test replay my_snapshot --verbose
 ```
 
 ## Example Workflow
@@ -171,7 +171,7 @@ windlass test replay my_snapshot --verbose
 vim examples/my_new_feature.json
 
 # 2. Test it manually
-windlass examples/my_new_feature.json \
+lars examples/my_new_feature.json \
   --input '{"test": "data"}' \
   --session feature_test_001
 
@@ -180,12 +180,12 @@ cat logs/*.parquet | grep feature_test_001
 cat graphs/*.mmd
 
 # 4. Looks good! Freeze it
-windlass test freeze feature_test_001 \
+lars test freeze feature_test_001 \
   --name my_new_feature_works \
   --description "Tests new feature with validation and routing"
 
 # 5. Now it's a regression test forever
-windlass test run
+lars test run
 # ✓ my_new_feature_works
 
 # 6. Commit snapshot to git
@@ -219,7 +219,7 @@ jobs:
 
       - name: Run snapshot tests
         run: |
-          windlass test run
+          lars test run
           pytest tests/test_snapshots.py -v
 ```
 

@@ -1,12 +1,12 @@
-# Sextant: Visual Prompt Observatory for Windlass
+# Sextant: Visual Prompt Observatory for Lars
 
 *"Making the invisible visible in prompt engineering"*
 
 ## Vision
 
-Sextant is a visual analysis layer for Windlass that makes prompt optimization **tangible and immediate**. Inspired by Bret Victor's principle of "seeing the effects of your changes", Sextant transforms the abstract process of prompt engineering into an interactive, visual experience.
+Sextant is a visual analysis layer for Lars that makes prompt optimization **tangible and immediate**. Inspired by Bret Victor's principle of "seeing the effects of your changes", Sextant transforms the abstract process of prompt engineering into an interactive, visual experience.
 
-**Core Insight**: Windlass already generates massive amounts of optimization data through soundings, evaluations, and logging. Sextant is the *lens* that makes this data legible and actionable.
+**Core Insight**: Lars already generates massive amounts of optimization data through soundings, evaluations, and logging. Sextant is the *lens* that makes this data legible and actionable.
 
 ### What Makes This Different
 
@@ -31,7 +31,7 @@ Sextant is different:
 |-----------|------|--------|
 | **SoundingAnalyzer** | `analyzer.py` | Working - queries winners, extracts patterns |
 | **PromptSuggestionManager** | `analyzer.py` | Working - applies suggestions, auto-commits |
-| **CLI: `windlass analyze`** | `cli.py` | Working - full analysis from command line |
+| **CLI: `lars analyze`** | `cli.py` | Working - full analysis from command line |
 | **Unified Logs** | `unified_logs.py` | Production - 34+ fields per message |
 | **Training Preferences** | `schema.py` | Ready - DPO/RLHF data collection |
 | **Evaluations Table** | `schema.py` | Ready - human ratings storage |
@@ -80,7 +80,7 @@ The data exists. The analysis code exists. What's missing is **making it visible
 
 Current state:
 ```
-windlass analyze examples/my_cascade.json
+lars analyze examples/my_cascade.json
 
 Analyzing...
 Found 23 runs
@@ -528,7 +528,7 @@ frontend/src/components/Sextant/
 
 A sextant is a navigation instrument for measuring angles between celestial objects. It's how sailors determined their position by observing the stars.
 
-**Sextant** for Windlass:
+**Sextant** for Lars:
 - **Measure** - quantify prompt performance precisely
 - **Navigate** - find your way through the prompt space
 - **Observe** - see patterns that would otherwise be invisible
@@ -540,7 +540,7 @@ The nautical theme continues: you're navigating the vast sea of possible prompts
 
 ## Comparison to Existing Tools
 
-| Feature | DSPy | LangSmith | Windlass Sextant |
+| Feature | DSPy | LangSmith | Lars Sextant |
 |---------|------|-----------|------------------|
 | Optimization | Batch compilation | Manual A/B | Continuous/passive |
 | Visibility | Black box | Traces only | Full visual analysis |

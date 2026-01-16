@@ -1,8 +1,8 @@
-# Harbor: HuggingFace Spaces Integration for Windlass
+# Harbor: HuggingFace Spaces Integration for Lars
 
 ## Overview
 
-Harbor integrates HuggingFace Spaces (Gradio endpoints) as first-class tools in Windlass. Rather than introducing a special "HF phase" type, Spaces are exposed as **dynamic tools** that flow naturally through the existing cascade system.
+Harbor integrates HuggingFace Spaces (Gradio endpoints) as first-class tools in Lars. Rather than introducing a special "HF phase" type, Spaces are exposed as **dynamic tools** that flow naturally through the existing cascade system.
 
 ## Design Philosophy
 
@@ -28,7 +28,7 @@ HF Spaces are **inference endpoints** - they're fundamentally tools, not reasoni
 export HF_TOKEN="hf_..."
 
 # Optional: disable auto-discovery
-export WINDLASS_HARBOR_AUTO_DISCOVER="false"
+export LARS_HARBOR_AUTO_DISCOVER="false"
 ```
 
 ## Integration Points
@@ -73,7 +73,7 @@ When `introspect: true` and `inputs_schema` is omitted, schema is fetched from t
 
 ### 2. Harbor Manifest (Auto-Discovery)
 
-When `HF_TOKEN` is set and `WINDLASS_HARBOR_AUTO_DISCOVER=true` (default), Windlass automatically discovers the user's running HF Spaces and makes them available as tools.
+When `HF_TOKEN` is set and `LARS_HARBOR_AUTO_DISCOVER=true` (default), Lars automatically discovers the user's running HF Spaces and makes them available as tools.
 
 Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
 
@@ -81,24 +81,24 @@ Discovered tools are named: `hf_{author}_{space_name}_{endpoint}`
 
 ```bash
 # Dashboard view - all spaces with cost estimates
-windlass harbor status
+lars harbor status
 
 # List user's Gradio Spaces with status
-windlass harbor list
-windlass harbor list --all  # Include sleeping spaces
+lars harbor list
+lars harbor list --all  # Include sleeping spaces
 
 # Introspect a Space's API (show endpoints and parameters)
-windlass harbor introspect user/space-name
+lars harbor introspect user/space-name
 
 # Generate .tool.json from a Space
-windlass harbor export user/space-name -o tackle/my_tool.tool.json
+lars harbor export user/space-name -o tackle/my_tool.tool.json
 
 # Show auto-discovered tools for Quartermaster
-windlass harbor manifest
+lars harbor manifest
 
 # Space lifecycle management
-windlass harbor wake user/space-name   # Wake sleeping space
-windlass harbor pause user/space-name  # Pause running space (stops billing)
+lars harbor wake user/space-name   # Wake sleeping space
+lars harbor pause user/space-name  # Pause running space (stops billing)
 ```
 
 #### Example `harbor status` Output
@@ -173,7 +173,7 @@ Phase output flows to next phase via context system
 
 ## Multi-Modal Output
 
-Gradio tools returning files (images, audio) use Windlass's existing protocol:
+Gradio tools returning files (images, audio) use Lars's existing protocol:
 
 ```python
 return {
@@ -194,7 +194,7 @@ These integrate with the context system's `include: ["images"]` option.
 
 ### Phase 2: Harbor Discovery & CLI
 1. Create `harbor.py` with discovery logic
-2. Add `windlass harbor` CLI commands
+2. Add `lars harbor` CLI commands
 3. Integrate with `tackle_manifest.py`
 
 ### Phase 3: Advanced Features

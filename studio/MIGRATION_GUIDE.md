@@ -1,6 +1,6 @@
 # Dashboard Architecture Migration Guide
 
-This document outlines the ongoing migration of the Windlass Dashboard from a collection of independent pages to a unified SPA shell architecture based on the Studio view patterns.
+This document outlines the ongoing migration of the Lars Dashboard from a collection of independent pages to a unified SPA shell architecture based on the Studio view patterns.
 
 ## Why This Migration?
 

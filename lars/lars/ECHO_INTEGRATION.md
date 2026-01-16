@@ -1,6 +1,6 @@
 # Echo Logging Integration Guide
 
-This guide shows how to integrate comprehensive echo logging into Windlass runners.
+This guide shows how to integrate comprehensive echo logging into Lars runners.
 
 ## Overview
 
@@ -364,7 +364,7 @@ Alternatively, modify echoes.py to support UPDATE operations (update existing en
 ### Query Parquet with DuckDB
 
 ```python
-from windlass.echoes import query_echoes_parquet
+from lars.echoes import query_echoes_parquet
 
 # All agent messages with timing
 df = query_echoes_parquet("node_type = 'agent' AND duration_ms IS NOT NULL")
@@ -382,7 +382,7 @@ df = query_echoes_parquet("tokens_out > 1000 ORDER BY tokens_out DESC")
 ### Query JSONL
 
 ```python
-from windlass.echoes import query_echoes_jsonl, query_echoes_jsonl_duckdb
+from lars.echoes import query_echoes_jsonl, query_echoes_jsonl_duckdb
 
 # Load single session
 entries = query_echoes_jsonl("session_123")

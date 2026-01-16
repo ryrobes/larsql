@@ -1,6 +1,6 @@
-# Windlass Dashboard Framework - COMPLETE ✅
+# Lars Dashboard Framework - COMPLETE ✅
 
-The complete framework for building modern, scalable views in the Windlass Dashboard.
+The complete framework for building modern, scalable views in the Lars Dashboard.
 
 ---
 

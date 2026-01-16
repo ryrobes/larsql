@@ -110,7 +110,7 @@ decision_points:
 
 ### 2. Temp Tables (Session DuckDB)
 ```
-$WINDLASS_ROOT/session_dbs/test_comp_003.duckdb
+$LARS_ROOT/session_dbs/test_comp_003.duckdb
 
 Tables:
   _extract_sales_data       (8 rows) - Raw sales data
@@ -190,8 +190,8 @@ finalize (LLM)                    →  ~3s    ✓ Complete
 
 Run this test cascade:
 ```bash
-cd /home/ryanr/repos/windlass/windlass
-windlass run ../examples/comprehensive_test_cascade.yaml \
+cd /home/ryanr/repos/lars/lars
+lars run ../examples/comprehensive_test_cascade.yaml \
   --input '{"analysis_type": "sales"}' \
   --session my_test_run
 ```
@@ -200,7 +200,7 @@ Inspect results:
 ```bash
 # Check temp tables
 python3 -c "
-from windlass.sql_tools.session_db import get_session_db
+from lars.sql_tools.session_db import get_session_db
 db = get_session_db('my_test_run')
 print(db.execute('SHOW TABLES').fetchall())
 print(db.execute('SELECT * FROM _enrich_data').fetchdf())
@@ -208,7 +208,7 @@ print(db.execute('SELECT * FROM _enrich_data').fetchdf())
 
 # Check cascade definition
 python3 -c "
-from windlass.db_adapter import get_db
+from lars.db_adapter import get_db
 db = get_db()
 rows = db.query(\"SELECT cascade_definition FROM cascade_sessions WHERE session_id = 'my_test_run'\")
 print(rows[0]['cascade_definition'])
@@ -252,6 +252,6 @@ All data from this execution is queryable and replayable:
 - `artifacts` - Published dashboard
 
 **Session DuckDB**:
-- `$WINDLASS_ROOT/session_dbs/test_comp_003.duckdb` - Temp tables
+- `$LARS_ROOT/session_dbs/test_comp_003.duckdb` - Temp tables
 
 This is a **complete execution artifact** - everything needed to understand, replay, or debug this run is preserved.

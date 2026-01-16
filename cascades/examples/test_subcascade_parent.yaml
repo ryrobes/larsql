@@ -2,6 +2,6 @@ cascade_id: test_subcascade_parent
 description: Test sub-cascade path resolution from Studio
 cells:
 - name: call_child
-  tool: windlass_data
+  tool: lars_data
   inputs:
     code: examples/test_subcascade_child.yaml

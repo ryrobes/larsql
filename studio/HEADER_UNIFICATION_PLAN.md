@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The Windlass dashboard currently has **inconsistent header implementations** across different pages. Some pages use the canonical `Header` component (6 pages), while others implement custom inline headers (9+ pages). This creates visual inconsistency, code duplication, and missing functionality across the UI.
+The Lars dashboard currently has **inconsistent header implementations** across different pages. Some pages use the canonical `Header` component (6 pages), while others implement custom inline headers (9+ pages). This creates visual inconsistency, code duplication, and missing functionality across the UI.
 
 **Goal:** Unify all page headers to use the canonical `Header` component, ensuring consistent navigation, styling, and functionality throughout the dashboard.
 
@@ -265,7 +265,7 @@ Convert standard navigation pages one at a time:
 ```javascript
 <header className="browser-sessions-header">
   <div className="header-left">
-    <img src="/windlass-transparent-square.png"
+    <img src="/lars-transparent-square.png"
          className="brand-logo"
          onClick={() => window.location.hash = ''} />
     <div className="header-title">

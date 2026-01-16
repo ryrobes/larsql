@@ -1,6 +1,6 @@
 # Fraud Assessment with Takes
 # This cascade runs 3 parallel fraud analyses and picks the best one
-# Perfect for windlass_cascade_udf() testing!
+# Perfect for lars_cascade_udf() testing!
 
 cascade_id: fraud_assessment_with_takes
 description: Multi-step fraud assessment with takes (best of 3)

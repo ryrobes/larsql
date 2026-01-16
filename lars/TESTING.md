@@ -8,12 +8,12 @@
 
 ```bash
 # Run any cascade with a specific session ID
-windlass examples/simple_flow.json \
+lars examples/simple_flow.json \
   --input '{"data": "Sales: Q1=100k, Q2=150k"}' \
   --session test_simple_001
 
 # Or use default session ID (auto-generated)
-windlass examples/simple_flow.json --input '{"data": "test"}'
+lars examples/simple_flow.json --input '{"data": "test"}'
 # Session ID: session_1733123456_a1b2c3d4
 ```
 
@@ -35,7 +35,7 @@ open http://localhost:3000
 ### 3. Freeze as Test
 
 ```bash
-windlass test freeze test_simple_001 \
+lars test freeze test_simple_001 \
   --name simple_flow_basic \
   --description "Basic two-phase ingest and summarize workflow"
 ```
@@ -50,13 +50,13 @@ Freezing session test_simple_001 as test snapshot...
   Phases: ingest, summarize
   Total turns: 3
 
-Replay with: windlass test replay simple_flow_basic
+Replay with: lars test replay simple_flow_basic
 ```
 
 ### 4. Replay Test (Instant, No LLM Calls)
 
 ```bash
-windlass test replay simple_flow_basic
+lars test replay simple_flow_basic
 # ✓ simple_flow_basic PASSED
 ```
 
@@ -64,7 +64,7 @@ windlass test replay simple_flow_basic
 
 ```bash
 # CLI
-windlass test run
+lars test run
 
 # Or pytest
 pytest tests/test_snapshots.py -v
@@ -72,12 +72,12 @@ pytest tests/test_snapshots.py -v
 
 ## Commands
 
-### `windlass test freeze`
+### `lars test freeze`
 
 Capture a session execution as a test snapshot.
 
 ```bash
-windlass test freeze <session_id> --name <snapshot_name> [--description "..."]
+lars test freeze <session_id> --name <snapshot_name> [--description "..."]
 ```
 
 **Arguments:**
@@ -87,19 +87,19 @@ windlass test freeze <session_id> --name <snapshot_name> [--description "..."]
 
 **Example:**
 ```bash
-windlass test freeze session_123 \
+lars test freeze session_123 \
   --name routing_positive_sentiment \
   --description "Tests routing to positive handler based on sentiment"
 ```
 
 **Creates:** `tests/cascade_snapshots/routing_positive_sentiment.json`
 
-### `windlass test replay`
+### `lars test replay`
 
 Replay a single snapshot test.
 
 ```bash
-windlass test replay <snapshot_name> [--verbose]
+lars test replay <snapshot_name> [--verbose]
 ```
 
 **Arguments:**
@@ -108,27 +108,27 @@ windlass test replay <snapshot_name> [--verbose]
 
 **Example:**
 ```bash
-windlass test replay routing_positive_sentiment
+lars test replay routing_positive_sentiment
 
 # With verbose output
-windlass test replay routing_positive_sentiment --verbose
+lars test replay routing_positive_sentiment --verbose
 ```
 
 **Exit codes:**
 - `0` - Test passed
 - `1` - Test failed
 
-### `windlass test run`
+### `lars test run`
 
 Run all snapshot tests.
 
 ```bash
-windlass test run [--verbose]
+lars test run [--verbose]
 ```
 
 **Example:**
 ```bash
-windlass test run
+lars test run
 
 # Output:
 # ============================================================
@@ -147,12 +147,12 @@ windlass test run
 # ============================================================
 ```
 
-### `windlass test list`
+### `lars test list`
 
 List all available snapshot tests.
 
 ```bash
-windlass test list
+lars test list
 ```
 
 **Example output:**
@@ -200,7 +200,7 @@ Snapshot tests validate **framework orchestration**, not LLM quality:
 vim examples/my_feature.json
 
 # 2. Run it
-windlass examples/my_feature.json \
+lars examples/my_feature.json \
   --input '{"test": "input"}' \
   --session feature_001
 
@@ -208,7 +208,7 @@ windlass examples/my_feature.json \
 # ...looks good!
 
 # 4. Freeze as test
-windlass test freeze feature_001 \
+lars test freeze feature_001 \
   --name my_feature_works \
   --description "Tests new feature with validation"
 
@@ -225,17 +225,17 @@ git commit -m "Add test for new feature"
 vim examples/routing_cascade.json
 
 # 3. Test the fix
-windlass examples/routing_cascade.json \
+lars examples/routing_cascade.json \
   --input '{"text": ""}' \
   --session bug_fix_001
 
 # 4. Freeze as regression test
-windlass test freeze bug_fix_001 \
+lars test freeze bug_fix_001 \
   --name routing_handles_empty_input \
   --description "Regression test: routing should handle empty input gracefully"
 
 # 5. Now this bug can never come back
-windlass test run
+lars test run
 # ✓ routing_handles_empty_input
 ```
 
@@ -247,19 +247,19 @@ vim examples/my_cascade.json
 # (changed "phase_1" to "ingestion")
 
 # 2. Old test now fails
-windlass test replay my_cascade_test
+lars test replay my_cascade_test
 # ✗ Phase mismatch: expected ['phase_1'], got ['ingestion']
 
 # 3. Re-run with new structure
-windlass examples/my_cascade.json \
+lars examples/my_cascade.json \
   --input '{"data": "test"}' \
   --session update_001
 
 # 4. Freeze with same name (overwrites)
-windlass test freeze update_001 --name my_cascade_test
+lars test freeze update_001 --name my_cascade_test
 
 # 5. Test passes again
-windlass test replay my_cascade_test
+lars test replay my_cascade_test
 # ✓ my_cascade_test PASSED
 ```
 
@@ -275,7 +275,7 @@ pytest tests/test_snapshots.py -v
 pytest tests/test_snapshots.py -k routing
 
 # Run with coverage
-pytest tests/test_snapshots.py --cov=windlass
+pytest tests/test_snapshots.py --cov=lars
 
 # Output:
 # tests/test_snapshots.py::test_cascade_snapshot[routing_positive] PASSED
@@ -310,7 +310,7 @@ jobs:
 
       - name: Run cascade snapshot tests
         run: |
-          windlass test run
+          lars test run
           pytest tests/test_snapshots.py -v
 ```
 
@@ -326,11 +326,11 @@ Freeze a cascade with soundings to test that:
 - Winner selection is consistent
 
 ```bash
-windlass examples/soundings_flow.json \
+lars examples/soundings_flow.json \
   --input '{"theme": "pirates"}' \
   --session soundings_001
 
-windlass test freeze soundings_001 \
+lars test freeze soundings_001 \
   --name soundings_basic \
   --description "Tests phase-level soundings with 3 attempts"
 ```
@@ -341,27 +341,27 @@ Freeze cascades that should fail validation:
 
 ```bash
 # This cascade has a blocking ward that should abort
-windlass examples/ward_blocking_flow.json \
+lars examples/ward_blocking_flow.json \
   --input '{"unsafe": "content"}' \
   --session ward_blocks_001
 
-windlass test freeze ward_blocks_001 \
+lars test freeze ward_blocks_001 \
   --name ward_blocks_unsafe \
   --description "Tests blocking ward aborts on unsafe content"
 
 # Replay verifies it still fails correctly
-windlass test replay ward_blocks_unsafe
+lars test replay ward_blocks_unsafe
 # ✓ ward_blocks_unsafe PASSED (yes, passing test means it failed correctly!)
 ```
 
 ### Testing State Management
 
 ```bash
-windlass examples/state_flow.json \
+lars examples/state_flow.json \
   --input '{"initial": "value"}' \
   --session state_001
 
-windlass test freeze state_001 \
+lars test freeze state_001 \
   --name state_persists \
   --description "Tests state persists across phases"
 
@@ -423,22 +423,22 @@ Each snapshot is a JSON file:
 
 ```bash
 # ✓ Good
-windlass test freeze session_001 --name routing_handles_positive_sentiment
+lars test freeze session_001 --name routing_handles_positive_sentiment
 
 # ✗ Bad
-windlass test freeze session_001 --name test1
+lars test freeze session_001 --name test1
 ```
 
 ### 2. Add Descriptions
 
 ```bash
 # ✓ Good
-windlass test freeze session_001 \
+lars test freeze session_001 \
   --name ward_retry_grammar \
   --description "Tests retry ward fixes grammar issues after 2 attempts"
 
 # ✗ Bad (no description)
-windlass test freeze session_001 --name ward_retry_grammar
+lars test freeze session_001 --name ward_retry_grammar
 ```
 
 ### 3. Test Edge Cases
@@ -475,7 +475,7 @@ You don't need to freeze every run. Only freeze:
 ls -lt logs/*.parquet | head
 
 # Or run cascade again with known session ID
-windlass examples/flow.json --input '{}' --session known_id_001
+lars examples/flow.json --input '{}' --session known_id_001
 ```
 
 ### "Cannot replay: phase not in snapshot"
@@ -516,10 +516,10 @@ Options:
 
 ```bash
 # Your existing workflow
-windlass examples/my_flow.json --input '{"data": "test"}' --session test_001
+lars examples/my_flow.json --input '{"data": "test"}' --session test_001
 
 # Add one line to freeze it
-windlass test freeze test_001 --name my_flow_works
+lars test freeze test_001 --name my_flow_works
 
 # Done! You now have a regression test.
 ```

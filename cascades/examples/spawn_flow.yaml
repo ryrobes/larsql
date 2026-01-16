@@ -4,7 +4,7 @@ cells:
   - context_in: false
     input_map:
       text: SIDE EFFECT VALIDATION
-    ref: windlass/examples/validator.json
+    ref: lars/examples/validator.json
     trigger: on_start
   instructions: I am doing important work. Count to 3. A background task is spawned
     to validate data.

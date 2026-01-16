@@ -58,17 +58,17 @@ Possible causes:
 
 1. Check if images exist for your test session:
 ```bash
-ls -la /home/ryanr/repos/windlass/images/ | grep -i sounding
+ls -la /home/ryanr/repos/lars/images/ | grep -i sounding
 ```
 
 2. Find a session with sounding images:
 ```bash
-find /home/ryanr/repos/windlass/images/ -name "*sounding*" -type d
+find /home/ryanr/repos/lars/images/ -name "*sounding*" -type d
 ```
 
 3. Check what's inside:
 ```bash
-ls -la /home/ryanr/repos/windlass/images/[session_id]_sounding_0/
+ls -la /home/ryanr/repos/lars/images/[session_id]_sounding_0/
 ```
 
 4. Test API response:
@@ -93,7 +93,7 @@ curl "http://localhost:5001/api/soundings-tree/[session_id]" | jq '.phases[].sou
 
 ### 1. RESTART BACKEND (CRITICAL!)
 ```bash
-cd /home/ryanr/repos/windlass/dashboard
+cd /home/ryanr/repos/lars/dashboard
 # Ctrl+C if running
 ./start.sh
 ```
@@ -103,7 +103,7 @@ Press **Ctrl+Shift+R** to clear React cache
 
 ### 3. Test Phase Ordering
 ```bash
-windlass examples/sql_chart_gen_analysis_full.json \
+lars examples/sql_chart_gen_analysis_full.json \
   --input '{"question": "test"}'
 ```
 
@@ -125,10 +125,10 @@ For a session with images:
 ```bash
 # Check if session has sounding images:
 SESSION_ID="your_session_id"
-find /home/ryanr/repos/windlass/images/ -name "*${SESSION_ID}*sounding*"
+find /home/ryanr/repos/lars/images/ -name "*${SESSION_ID}*sounding*"
 
 # If empty, run a cascade that creates images:
-windlass examples/reforge_feedback_chart.json \
+lars examples/reforge_feedback_chart.json \
   --input '{"data": "test"}' \
   --session test_with_images
 ```

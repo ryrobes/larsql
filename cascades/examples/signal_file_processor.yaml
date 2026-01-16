@@ -8,7 +8,7 @@ inputs_schema:
   signal_name: 'Signal name to fire when ready (default: file_ready)'
 cells:
 - name: check_file
-  tool: python:windlass.demo_tools.file_exists
+  tool: python:lars.demo_tools.file_exists
   inputs:
     path: '{{ input.file_path | default(''/tmp/test_data.json'') }}'
   routing:
@@ -31,7 +31,7 @@ cells:
     '
   skills: []
 - name: parse_file
-  tool: python:windlass.demo_tools.parse_json
+  tool: python:lars.demo_tools.parse_json
   inputs:
     text: '{"records": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}], "metadata":
       {"source": "demo", "count": 2}}'

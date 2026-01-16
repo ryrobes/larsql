@@ -5,7 +5,7 @@
 
 ## Overview
 
-When using `mutation_mode: "rewrite"` in soundings, Windlass automatically learns from previous winning rewrites **for that exact phase configuration**. Each subsequent run benefits from what worked before, creating a self-optimizing flywheel effect.
+When using `mutation_mode: "rewrite"` in soundings, Lars automatically learns from previous winning rewrites **for that exact phase configuration**. Each subsequent run benefits from what worked before, creating a self-optimizing flywheel effect.
 
 ## How It Works
 
@@ -117,18 +117,18 @@ Explicitly opts out of winner learning for maximum diversity:
 
 ```bash
 # Run 1: Establish baseline
-windlass examples/rewrite_learning_test.json \
+lars examples/rewrite_learning_test.json \
   --input '{"topic": "a mysterious lighthouse"}' \
   --session run_001
 
 # Run 2: Learn from Run 1
-windlass examples/rewrite_learning_test.json \
+lars examples/rewrite_learning_test.json \
   --input '{"topic": "a mysterious lighthouse"}' \
   --session run_002
 # Output: "📚 Learning from 1 previous winning rewrite"
 
 # Run 5: Even better learning
-windlass examples/rewrite_learning_test.json \
+lars examples/rewrite_learning_test.json \
   --input '{"topic": "a mysterious lighthouse"}' \
   --session run_005
 # Output: "📚 Learning from 4 previous winning rewrites"
@@ -140,10 +140,10 @@ windlass examples/rewrite_learning_test.json \
 
 ```bash
 # Max number of previous winners to show in rewrite prompt (default: 5)
-WINDLASS_WINNER_HISTORY_LIMIT=10
+LARS_WINNER_HISTORY_LIMIT=10
 
 # Disable learning globally (nuclear option)
-WINDLASS_DISABLE_WINNER_LEARNING=true
+LARS_DISABLE_WINNER_LEARNING=true
 ```
 
 ### How Winners Are Presented
@@ -247,7 +247,7 @@ Learning is transparent:
 
 Two ways to opt out:
 - **Mode-level**: Use `mutation_mode: "rewrite_free"`
-- **Global**: Set `WINDLASS_DISABLE_WINNER_LEARNING=true`
+- **Global**: Set `LARS_DISABLE_WINNER_LEARNING=true`
 
 ## Edge Cases
 
@@ -282,8 +282,8 @@ Two ways to opt out:
 
 ```bash
 # Both use same species_hash (same phase config)
-windlass cascade.json --input '{"topic": "lighthouse"}'
-windlass cascade.json --input '{"topic": "mountain"}'
+lars cascade.json --input '{"topic": "lighthouse"}'
+lars cascade.json --input '{"topic": "mountain"}'
 ```
 
 ## Implementation Details
@@ -320,14 +320,14 @@ Winner learning uses the **cascade's base model** for all rewrites (not per-soun
 
 ```python
 # All rewrites use same model for consistency
-rewrite_model = os.environ.get("WINDLASS_REWRITE_MODEL", self.model)
+rewrite_model = os.environ.get("LARS_REWRITE_MODEL", self.model)
 ```
 
 **Why**: Ensures consistent rewriting quality across all soundings, regardless of which model executes each sounding.
 
 ## Philosophy Alignment
 
-| Windlass Property | How This Fits |
+| Lars Property | How This Fits |
 |-------------------|---------------|
 | **Self-Testing** | Winners automatically captured in unified_logs |
 | **Self-Optimizing** | Passive improvement with zero config |
@@ -364,7 +364,7 @@ rewrite_model = os.environ.get("WINDLASS_REWRITE_MODEL", self.model)
 Only learn from recent winners:
 
 ```bash
-WINDLASS_WINNER_TIME_WINDOW_DAYS=30  # Only last 30 days
+LARS_WINNER_TIME_WINDOW_DAYS=30  # Only last 30 days
 ```
 
 ### 2. Diversity Scoring
@@ -419,13 +419,13 @@ def test_winner_learning():
 ```bash
 # 1. Run cascade 3 times
 for i in {1..3}; do
-  windlass examples/rewrite_learning_test.json \
+  lars examples/rewrite_learning_test.json \
     --input '{"topic": "mystery"}' \
     --session "test_$i"
 done
 
 # 2. Check learning happened
-windlass sql "
+lars sql "
   SELECT session_id, COUNT(*) as winner_count
   FROM unified_logs
   WHERE cascade_id = 'rewrite_learning_test'

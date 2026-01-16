@@ -5,7 +5,7 @@ cells:
   tool: bash_data
   inputs:
     script: "# Export environment variables (persist across phases)\nexport PROJECT_NAME=\"\
-      windlass_demo\"\nexport DATA_SOURCE=\"mock_api\"\n\n# Change directory (persists)\n\
+      lars_demo\"\nexport DATA_SOURCE=\"mock_api\"\n\n# Change directory (persists)\n\
       mkdir -p workspace/data\ncd workspace/data\n\n# Define shell functions (persist)\n\
       function log_msg() {\n  echo \"[$(date '+%H:%M:%S')] $1\" >&2  # Send to stderr\
       \ to not pollute stdout\n}\n\nfunction generate_id() {\n  echo \"ID_$(date +%s)_$$\"\

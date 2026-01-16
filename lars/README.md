@@ -1,8 +1,8 @@
-# Windlass
+# Lars
 
 **Stop writing imperative glue code. Start orchestrating agents declaratively.**
 
-Windlass is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Windlass gives you the primitives to **focus on prompts, not plumbing**.
+Lars is a production-grade agent framework for **long-running, iterative workflows** - not chatbots. If you're building agents that generate and refine complex artifacts (dashboards, reports, charts), require vision-based feedback loops, or need validation to filter LLM errors, Lars gives you the primitives to **focus on prompts, not plumbing**.
 
 ## The Problem
 
@@ -45,7 +45,7 @@ for iteration in range(refinement_loops):
 
 ## The Solution
 
-Windlass turns that nightmare into **20 lines of declarative JSON**:
+Lars turns that nightmare into **20 lines of declarative JSON**:
 
 ```json
 {
@@ -81,11 +81,11 @@ Windlass turns that nightmare into **20 lines of declarative JSON**:
 
 **No Python loops. No global state. No debugging spaghetti.**
 
-## Why Windlass?
+## Why Lars?
 
 ### Built for Iterative Artifact Generation
 
-Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), Windlass is designed for **monolithic context agents** that iterate on complex tasks:
+Unlike LangChain (chatbot-oriented) or AutoGen (agent-to-agent conversations), Lars is designed for **monolithic context agents** that iterate on complex tasks:
 
 - **Data dashboards**: Query → Validate → Visualize → Refine
 - **Report generation**: Research → Draft → Critique → Polish
@@ -166,11 +166,11 @@ export OPENROUTER_API_KEY="your-key-here"
 
 **Optional: Configure directories and model**
 ```bash
-export WINDLASS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
-export WINDLASS_LOG_DIR="./logs"
-export WINDLASS_GRAPH_DIR="./graphs"
-export WINDLASS_STATE_DIR="./states"
-export WINDLASS_IMAGE_DIR="./images"
+export LARS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
+export LARS_LOG_DIR="./logs"
+export LARS_GRAPH_DIR="./graphs"
+export LARS_STATE_DIR="./states"
+export LARS_IMAGE_DIR="./images"
 ```
 
 ## Quick Start
@@ -209,7 +209,7 @@ Create `my_first_cascade.json`:
 
 Run it:
 ```bash
-windlass my_first_cascade.json --input '{"question": "What are the top sales regions?", "database": "sales.csv"}'
+lars my_first_cascade.json --input '{"question": "What are the top sales regions?", "database": "sales.csv"}'
 ```
 
 **What happens:**
@@ -583,7 +583,7 @@ Not everything needs an LLM. **Deterministic phases** execute tools directly wit
 ```json
 {
   "name": "validate_query",
-  "tool": "python:windlass.demo_tools.validate_sql",
+  "tool": "python:lars.demo_tools.validate_sql",
   "inputs": {
     "query": "{{ input.query }}"
   },
@@ -677,16 +677,16 @@ list_signals(signal_name="daily_data_ready")
 **CLI commands:**
 ```bash
 # List all waiting signals
-windlass signals list
+lars signals list
 
 # Fire a signal from external script
-windlass signals fire daily_data_ready --payload '{"ready": true}'
+lars signals fire daily_data_ready --payload '{"ready": true}'
 
 # Check signal status
-windlass signals status sig_abc123
+lars signals status sig_abc123
 
 # Cancel a waiting signal
-windlass signals cancel sig_abc123 --reason "Pipeline cancelled"
+lars signals cancel sig_abc123 --reason "Pipeline cancelled"
 ```
 
 **Use cases:**
@@ -721,7 +721,7 @@ Define **when** cascades should run, directly in the cascade file:
     {
       "name": "on_source_ready",
       "type": "sensor",
-      "check": "python:windlass.triggers.sensor_file_exists",
+      "check": "python:lars.triggers.sensor_file_exists",
       "args": {"path": "/data/incoming/feed.csv"},
       "poll_interval": "5m",
       "timeout": "4h"
@@ -749,30 +749,30 @@ Define **when** cascades should run, directly in the cascade file:
 
 **Export to schedulers:**
 
-Windlass generates configs for external schedulers:
+Lars generates configs for external schedulers:
 
 ```bash
 # Export to crontab format
-windlass triggers export examples/scheduled_etl_demo.json --format cron
+lars triggers export examples/scheduled_etl_demo.json --format cron
 
 # Export to systemd timer/service
-windlass triggers export examples/scheduled_etl_demo.json --format systemd
+lars triggers export examples/scheduled_etl_demo.json --format systemd
 
 # Export to Kubernetes CronJob
-windlass triggers export examples/scheduled_etl_demo.json --format kubernetes
+lars triggers export examples/scheduled_etl_demo.json --format kubernetes
 
 # Export to Airflow DAG
-windlass triggers export examples/scheduled_etl_demo.json --format airflow
+lars triggers export examples/scheduled_etl_demo.json --format airflow
 ```
 
 **Example crontab output:**
 ```bash
-# Windlass triggers for daily_etl
+# Lars triggers for daily_etl
 # Generated at 2024-01-15T10:30:00
 
 # Run every day at 6 AM Eastern
 # Timezone: America/New_York (cron uses system timezone)
-0 6 * * * windlass run /path/to/daily_etl.json --input '{"mode": "incremental"}' --trigger daily_morning
+0 6 * * * lars run /path/to/daily_etl.json --input '{"mode": "incremental"}' --trigger daily_morning
 ```
 
 **Example Kubernetes output:**
@@ -780,7 +780,7 @@ windlass triggers export examples/scheduled_etl_demo.json --format airflow
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: windlass-daily-etl-daily-morning
+  name: lars-daily-etl-daily-morning
   namespace: default
 spec:
   schedule: "0 6 * * *"
@@ -790,15 +790,15 @@ spec:
       template:
         spec:
           containers:
-          - name: windlass
-            image: windlass:latest
-            command: ["windlass"]
+          - name: lars
+            image: lars:latest
+            command: ["lars"]
             args: ["run", "/app/daily_etl.json", "--trigger", "daily_morning"]
 ```
 
 **List triggers:**
 ```bash
-windlass triggers list examples/scheduled_etl_demo.json
+lars triggers list examples/scheduled_etl_demo.json
 ```
 
 ## Built-in Tools (Tackle)
@@ -928,7 +928,7 @@ Real-time flowcharts in `./graphs/` with enhanced visualization:
 Built-in event bus for live monitoring:
 
 ```python
-from windlass.events import get_event_bus
+from lars.events import get_event_bus
 
 bus = get_event_bus()
 queue = bus.subscribe()
@@ -946,7 +946,7 @@ while True:
 
 **SSE Integration (Flask/FastAPI):**
 ```python
-from windlass.events import get_event_bus
+from lars.events import get_event_bus
 from flask import Response, stream_with_context
 
 @app.route('/api/events/stream')
@@ -1035,11 +1035,11 @@ You Click "Apply":
 
 ```bash
 # Week 1: Use cascade normally with soundings
-windlass examples/dashboard_gen.json --input '{...}'
+lars examples/dashboard_gen.json --input '{...}'
 # (run it 20 times for real work)
 
 # Week 2: System has learned from 100 sounding attempts
-windlass analyze examples/dashboard_gen.json
+lars analyze examples/dashboard_gen.json
 
 # ======================================================================
 # PROMPT IMPROVEMENT SUGGESTIONS
@@ -1065,7 +1065,7 @@ windlass analyze examples/dashboard_gen.json
 # - Winners mention accessibility
 # - Winners pass validation 95% vs 70%
 #
-# To apply: windlass analyze examples/dashboard_gen.json --apply
+# To apply: lars analyze examples/dashboard_gen.json --apply
 
 # Week 3+: Keep using improved prompt
 # Soundings continue, new patterns emerge, cycle repeats
@@ -1110,7 +1110,7 @@ See `OPTIMIZATION.md` for complete details.
 5. **Refine (Reforge)**: Polish based on feedback with mutations
 6. **Repeat**: Until quality threshold met
 
-**Windlass primitives map directly:**
+**Lars primitives map directly:**
 - Soundings → exploration
 - Wards → validation
 - Image protocol → rendering
@@ -1160,7 +1160,7 @@ See `OPTIMIZATION.md` for complete details.
 For complex conditional logic, generate cascades programmatically:
 
 ```python
-from windlass import run_cascade
+from lars import run_cascade
 
 def build_cascade(complexity_level):
     sounding_factor = 3 if complexity_level < 5 else 7
@@ -1193,7 +1193,7 @@ result = run_cascade(cascade_config, user_input.data)
 Register entire cascades as callable tools:
 
 ```python
-from windlass import register_cascade_as_tool
+from lars import register_cascade_as_tool
 
 # Register cascade as tool
 register_cascade_as_tool("specialized_task.json")
@@ -1204,9 +1204,9 @@ register_cascade_as_tool("specialized_task.json")
 
 Build tool libraries from cascades for unlimited composability.
 
-## When to Use Windlass
+## When to Use Lars
 
-### ✅ Windlass Excels At:
+### ✅ Lars Excels At:
 
 - **Long-running iterative workflows** (hours, not seconds)
 - **Artifact generation with refinement** (dashboards, reports, code)
@@ -1236,33 +1236,33 @@ Build tool libraries from cascades for unlimited composability.
 
 ### Provider Setup
 
-Windlass uses LiteLLM for flexible provider support.
+Lars uses LiteLLM for flexible provider support.
 
 **OpenRouter (default):**
 ```bash
 export OPENROUTER_API_KEY="your-key"
-export WINDLASS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
+export LARS_DEFAULT_MODEL="anthropic/claude-3-5-sonnet"
 ```
 
 **OpenAI directly:**
 ```bash
-export WINDLASS_PROVIDER_BASE_URL="https://api.openai.com/v1"
-export WINDLASS_PROVIDER_API_KEY="sk-..."
-export WINDLASS_DEFAULT_MODEL="gpt-4"
+export LARS_PROVIDER_BASE_URL="https://api.openai.com/v1"
+export LARS_PROVIDER_API_KEY="sk-..."
+export LARS_DEFAULT_MODEL="gpt-4"
 ```
 
 **Azure OpenAI:**
 ```bash
-export WINDLASS_PROVIDER_BASE_URL="https://your-resource.openai.azure.com"
-export WINDLASS_PROVIDER_API_KEY="your-azure-key"
-export WINDLASS_DEFAULT_MODEL="azure/your-deployment"
+export LARS_PROVIDER_BASE_URL="https://your-resource.openai.azure.com"
+export LARS_PROVIDER_API_KEY="your-azure-key"
+export LARS_DEFAULT_MODEL="azure/your-deployment"
 ```
 
 ### Runtime Overrides
 
 **Programmatic configuration:**
 ```python
-from windlass import set_provider, run_cascade
+from lars import set_provider, run_cascade
 
 set_provider(
     base_url="https://api.openai.com/v1",
@@ -1284,10 +1284,10 @@ result = run_cascade(
 
 ## Python API
 
-While Windlass is designed for declarative workflows, full Python API available:
+While Lars is designed for declarative workflows, full Python API available:
 
 ```python
-from windlass import run_cascade, register_tackle
+from lars import run_cascade, register_tackle
 
 # Register custom tools
 def my_tool(param: str) -> str:
@@ -1357,15 +1357,15 @@ The `examples/` directory contains reference implementations:
 ### Running Tests
 
 ```bash
-cd windlass
+cd lars
 python -m pytest tests/
 ```
 
 ### Project Structure
 
 ```
-windlass/
-├── windlass/                # Core framework
+lars/
+├── lars/                # Core framework
 │   ├── runner.py           # Execution engine
 │   ├── agent.py            # LLM wrapper (LiteLLM)
 │   ├── cascade.py          # Pydantic models for DSL
@@ -1411,7 +1411,7 @@ MIT
 
 ## The Three Self-* Properties
 
-Windlass isn't just a framework - it's a **self-evolving system**:
+Lars isn't just a framework - it's a **self-evolving system**:
 
 ### 1. **Self-Orchestrating** (Manifest/Quartermaster)
 Workflows pick their own tools based on context.
@@ -1430,13 +1430,13 @@ Tests write themselves from real executions.
 
 ```bash
 # Run cascade, verify it works
-windlass examples/flow.json --session test_001
+lars examples/flow.json --session test_001
 
 # Freeze as test (one command)
-windlass test freeze test_001 --name flow_works
+lars test freeze test_001 --name flow_works
 
 # Forever regression-proof (instant, no LLM calls)
-windlass test validate flow_works
+lars test validate flow_works
 ```
 
 **No manual mocking.** Click a button (or run one command), test created. Validates framework behavior without expensive LLM calls.
@@ -1448,7 +1448,7 @@ Prompts improve automatically from usage data.
 # Use system normally with soundings (A/B tests every run)
 # After 10-20 runs...
 
-windlass analyze examples/flow.json
+lars analyze examples/flow.json
 
 # Output:
 # 💡 Prompt could be 32% cheaper, 25% better
@@ -1464,9 +1464,9 @@ windlass analyze examples/flow.json
 
 ---
 
-## What Makes Windlass Different?
+## What Makes Lars Different?
 
-**Not just another agent framework.** Windlass provides:
+**Not just another agent framework.** Lars provides:
 
 1. **Infrastructure as Code for AI** - Agent behaviors as version-controlled configs
 2. **Observable by Default** - Full traces, queryable logs, visual graphs, real-time events
@@ -1477,7 +1477,7 @@ windlass analyze examples/flow.json
 7. **Self-Evolving** - Workflows orchestrate themselves, tests write themselves, prompts optimize themselves
 8. **No Magic** - Prompts are prompts, tools are functions, no framework magic
 
-**Built from production experience, not academic research.** Windlass emerged from building a data analytics autopilot that required orchestrating complex, iterative workflows with vision feedback, validation, and error filtering.
+**Built from production experience, not academic research.** Lars emerged from building a data analytics autopilot that required orchestrating complex, iterative workflows with vision feedback, validation, and error filtering.
 
 **The insight:** Soundings aren't just for better answers NOW - they're a continuous optimization engine that makes your prompts better over time, automatically, just from usage.
 

@@ -136,6 +136,49 @@ def _sanitize_for_json(obj: Any) -> Any:
     # Pass through other types (str, int, bool, etc.)
     return obj
 
+
+def _sanitize_column_metadata(columns: list) -> list:
+    """
+    Sanitize column metadata to handle complex nested objects.
+
+    MongoDB documents and other sources may contain nested objects in value_distribution.
+    Elasticsearch expects text fields, so we convert any non-scalar values to JSON strings.
+    """
+    if not columns:
+        return columns
+
+    sanitized = []
+    for col in columns:
+        col_copy = dict(col)
+
+        # Sanitize metadata.value_distribution if present
+        if 'metadata' in col_copy and isinstance(col_copy['metadata'], dict):
+            metadata = dict(col_copy['metadata'])
+
+            if 'value_distribution' in metadata and isinstance(metadata['value_distribution'], list):
+                sanitized_dist = []
+                for entry in metadata['value_distribution']:
+                    if isinstance(entry, dict) and 'value' in entry:
+                        entry_copy = dict(entry)
+                        val = entry_copy['value']
+                        # Convert non-scalar values (dicts, lists) to JSON string representation
+                        if isinstance(val, (dict, list)):
+                            entry_copy['value'] = json.dumps(val, default=str)
+                        elif val is not None and not isinstance(val, (str, int, float, bool)):
+                            # Handle other non-serializable types (dates, ObjectIds, etc.)
+                            entry_copy['value'] = str(val)
+                        sanitized_dist.append(entry_copy)
+                    else:
+                        sanitized_dist.append(entry)
+                metadata['value_distribution'] = sanitized_dist
+
+            col_copy['metadata'] = metadata
+
+        sanitized.append(col_copy)
+
+    return sanitized
+
+
 # Global client instance
 _es_client: Optional[Elasticsearch] = None
 
@@ -246,7 +289,9 @@ def create_sql_schema_index():
                         },
                         "type": {"type": "keyword"},
                         "nullable": {"type": "boolean"},
-                        "distribution": {"type": "object", "enabled": False},  # Don't index distributions
+                        # Don't index metadata (contains value_distribution with potentially complex nested objects)
+                        "metadata": {"type": "object", "enabled": False},
+                        "distribution": {"type": "object", "enabled": False},  # Legacy field name
                         "min_value": {"type": "keyword"},
                         "max_value": {"type": "keyword"}
                     }
@@ -298,7 +343,8 @@ def index_sql_schema(qualified_name: str, schema_data: Dict[str, Any]):
         "description": schema_data.get('description', ''),
         "row_count": schema_data.get('row_count', 0),
         "table_type": schema_data.get('table_type', 'TABLE'),
-        "columns": schema_data.get('columns', []),
+        # Sanitize columns to handle nested objects in value_distribution (e.g., MongoDB docs)
+        "columns": _sanitize_column_metadata(schema_data.get('columns', [])),
         "sample_rows": schema_data.get('sample_rows', []),  # Stored but excluded from search results
         "embedding": schema_data.get('embedding'),
         "embedding_model": schema_data.get('embedding_model', ''),
@@ -337,7 +383,8 @@ def bulk_index_sql_schemas(schemas: List[Dict[str, Any]]):
             "description": schema.get('description', ''),
             "row_count": schema.get('row_count', 0),
             "table_type": schema.get('table_type', 'TABLE'),
-            "columns": schema.get('columns', []),
+            # Sanitize columns to handle nested objects in value_distribution (e.g., MongoDB docs)
+            "columns": _sanitize_column_metadata(schema.get('columns', [])),
             "sample_rows": schema.get('sample_rows', []),
             "embedding": schema.get('embedding'),
             "embedding_model": schema.get('embedding_model', ''),

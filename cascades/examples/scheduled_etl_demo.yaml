@@ -1,6 +1,6 @@
 cascade_id: scheduled_etl_demo
 description: Demonstrates trigger definitions for scheduled and sensor-based cascade
-  execution. Use `windlass triggers export` to generate scheduler configs.
+  execution. Use `lars triggers export` to generate scheduler configs.
 cells:
 - handoffs:
   - extract_data
@@ -12,7 +12,7 @@ cells:
   routing:
     invalid: log_error
     valid: extract_data
-  tool: python:windlass.demo_tools.validate_sql
+  tool: python:lars.demo_tools.validate_sql
 - instructions: Log the validation error and notify the team.
   name: log_error
   skills: []
@@ -37,7 +37,7 @@ cells:
     empty: log_empty
     error: handle_transform_error
     success: load_data
-  tool: python:windlass.demo_tools.transform_data
+  tool: python:lars.demo_tools.transform_data
 - instructions: No data to process. Log this and exit gracefully.
   name: log_empty
   skills: []
@@ -76,7 +76,7 @@ triggers:
 - args:
     min_size_bytes: 1000
     path: /data/incoming/daily_feed.csv
-  check: python:windlass.triggers.sensor_file_exists
+  check: python:lars.triggers.sensor_file_exists
   description: Trigger when daily feed file appears
   inputs:
     mode: incremental

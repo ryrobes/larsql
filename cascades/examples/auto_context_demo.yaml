@@ -26,7 +26,7 @@ cells:
 
     4. ls examples/
 
-    5. wc -l windlass/windlass/*.py'
+    5. wc -l lars/lars/*.py'
   name: research
   rules:
     max_turns: 8

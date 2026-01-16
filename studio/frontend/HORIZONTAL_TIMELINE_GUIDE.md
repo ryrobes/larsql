@@ -217,7 +217,7 @@ This UI handles **all cascade types** with one unified mental model:
 **Progressive disclosure**:
 - Beginner: SQL → Python (horizontal notebook)
 - Intermediate: Add LLM phase (basic prompt)
-- Advanced: Configure soundings, reforge, wards (full Windlass power)
+- Advanced: Configure soundings, reforge, wards (full Lars power)
 
 ---
 

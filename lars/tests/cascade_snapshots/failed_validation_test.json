@@ -46,7 +46,7 @@
           {
             "turn_number": 6,
             "agent_response": {
-              "content": "Hello WindlassUser, it's nice to meet you. Is there something I can help you with or would you like to chat?"
+              "content": "Hello LarsUser, it's nice to meet you. Is there something I can help you with or would you like to chat?"
             },
             "tool_results": []
           }
@@ -94,7 +94,7 @@
           {
             "turn_number": 6,
             "agent_response": {
-              "content": "Your name \"WindlassUser\" spelled backwards is \"resUssaldniW\"."
+              "content": "Your name \"LarsUser\" spelled backwards is \"resUssaldniW\"."
             },
             "tool_results": [
               {

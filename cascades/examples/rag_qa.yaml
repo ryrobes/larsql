@@ -9,7 +9,7 @@ cells:
     question: {{ input.question }}. Search before answering and cite sources as path#line_start-line_end.'
   name: answer
   rag:
-    directory: /home/ryanr/repos/windlass/examples
+    directory: /home/ryanr/repos/lars/examples
     model: qwen/qwen3-embedding-8b
   rules:
     max_turns: 1

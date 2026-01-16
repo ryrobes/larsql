@@ -1,8 +1,8 @@
-# Windlass Dashboard - New Architecture Summary
+# Lars Dashboard - New Architecture Summary
 
 ## What We Built
 
-A complete foundational architecture that transforms the Windlass Dashboard from scattered pages into a unified, scalable SPA.
+A complete foundational architecture that transforms the Lars Dashboard from scattered pages into a unified, scalable SPA.
 
 ---
 
@@ -108,7 +108,7 @@ src/
 **Utilities:**
 - `pulse`, `pulse-glow`, `spin`
 
-**Windlass-specific:**
+**Lars-specific:**
 - `running-pulse`, `success-pop`, `ring-pulse`
 
 **Usage:**

@@ -270,6 +270,10 @@ def discover_all_schemas(session_id: str | None = None):
                 # Bulk index to Elasticsearch
                 if docs_with_embeddings:
                     from ..elastic import bulk_index_sql_schemas
+
+                    # Note: Index is already recreated with fresh mapping at the start of discover_all_schemas()
+                    # via create_sql_schema_index() call, which handles schema changes like nested MongoDB objects
+
                     indexed_count = bulk_index_sql_schemas(docs_with_embeddings)
                     console.print(f"[green][OK] Indexed {indexed_count} schemas to Elasticsearch[/green]")
 

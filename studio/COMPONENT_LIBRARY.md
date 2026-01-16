@@ -1,6 +1,6 @@
-# Windlass Component Library
+# Lars Component Library
 
-Shared, reusable components for the Windlass Dashboard. All components follow the cyberpunk/Tron design system with consistent styling, animations, and behavior.
+Shared, reusable components for the Lars Dashboard. All components follow the cyberpunk/Tron design system with consistent styling, animations, and behavior.
 
 ## Installation
 

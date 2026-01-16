@@ -17,7 +17,7 @@ Uses shared chDB session (faster queries, no overhead).
 **Multi-process, best performance:**
 ```bash
 # Use stateless mode (no shared chDB session)
-export WINDLASS_CHDB_SHARED_SESSION=false
+export LARS_CHDB_SHARED_SESSION=false
 
 gunicorn -w 4 -b 0.0.0.0:5001 app:app
 ```
@@ -37,7 +37,7 @@ gunicorn -w 4 -b 0.0.0.0:5001 app:app
 **Single-process with async I/O:**
 ```bash
 # Can use shared session (single process)
-export WINDLASS_CHDB_SHARED_SESSION=true
+export LARS_CHDB_SHARED_SESSION=true
 
 gunicorn -k gevent -w 1 --worker-connections 1000 -b 0.0.0.0:5001 app:app
 ```
@@ -61,9 +61,9 @@ docker run -d --name clickhouse-server \
   -p 9000:9000 -p 8123:8123 \
   clickhouse/clickhouse-server
 
-# Configure Windlass
-export WINDLASS_USE_CLICKHOUSE_SERVER=true
-export WINDLASS_CLICKHOUSE_HOST=localhost
+# Configure Lars
+export LARS_USE_CLICKHOUSE_SERVER=true
+export LARS_CLICKHOUSE_HOST=localhost
 
 # Use any gunicorn configuration (no session issues!)
 gunicorn -w 8 -b 0.0.0.0:5001 app:app
@@ -80,16 +80,16 @@ gunicorn -w 8 -b 0.0.0.0:5001 app:app
 
 ### chDB Configuration
 
-- `WINDLASS_CHDB_SHARED_SESSION` (default: `false`)
+- `LARS_CHDB_SHARED_SESSION` (default: `false`)
   - `true`: Use persistent session (faster but single-worker only)
   - `false`: Create session per query (slower but multi-worker safe)
 
 ### ClickHouse Server Configuration
 
-- `WINDLASS_USE_CLICKHOUSE_SERVER` (default: `false`)
-- `WINDLASS_CLICKHOUSE_HOST` (default: `localhost`)
-- `WINDLASS_CLICKHOUSE_PORT` (default: `9000`)
-- `WINDLASS_CLICKHOUSE_DATABASE` (default: `windlass`)
+- `LARS_USE_CLICKHOUSE_SERVER` (default: `false`)
+- `LARS_CLICKHOUSE_HOST` (default: `localhost`)
+- `LARS_CLICKHOUSE_PORT` (default: `9000`)
+- `LARS_CLICKHOUSE_DATABASE` (default: `lars`)
 
 ## Performance Comparison
 
@@ -108,7 +108,7 @@ gunicorn -w 8 -b 0.0.0.0:5001 app:app
 
 **Fix:**
 ```bash
-export WINDLASS_CHDB_SHARED_SESSION=false
+export LARS_CHDB_SHARED_SESSION=false
 gunicorn -w 4 -b 0.0.0.0:5001 app:app
 ```
 
@@ -125,13 +125,13 @@ gunicorn -w 4 -b 0.0.0.0:5001 app:app
 **Options:**
 1. Use gevent worker (single process, shared session):
    ```bash
-   export WINDLASS_CHDB_SHARED_SESSION=true
+   export LARS_CHDB_SHARED_SESSION=true
    gunicorn -k gevent -w 1 --worker-connections 1000 -b 0.0.0.0:5001 app:app
    ```
 
 2. Upgrade to ClickHouse server (best performance):
    ```bash
-   export WINDLASS_USE_CLICKHOUSE_SERVER=true
+   export LARS_USE_CLICKHOUSE_SERVER=true
    gunicorn -w 8 -b 0.0.0.0:5001 app:app
    ```
 
@@ -147,14 +147,14 @@ python app.py
 ### Team of 2-5 developers
 ```bash
 # Gunicorn with stateless chDB
-export WINDLASS_CHDB_SHARED_SESSION=false
+export LARS_CHDB_SHARED_SESSION=false
 gunicorn -w 4 -b 0.0.0.0:5001 app:app
 ```
 
 ### Production monitoring dashboard
 ```bash
 # ClickHouse server + multiple workers
-export WINDLASS_USE_CLICKHOUSE_SERVER=true
+export LARS_USE_CLICKHOUSE_SERVER=true
 gunicorn -w 8 -b 0.0.0.0:5001 app:app
 ```
 
@@ -162,24 +162,24 @@ gunicorn -w 8 -b 0.0.0.0:5001 app:app
 
 ```ini
 [Unit]
-Description=Windlass Debug UI
+Description=Lars Debug UI
 After=network.target
 
 [Service]
 Type=notify
-User=windlass
-WorkingDirectory=/opt/windlass/dashboard/backend
-Environment="WINDLASS_ROOT=/opt/windlass"
-Environment="WINDLASS_CHDB_SHARED_SESSION=false"
-ExecStart=/opt/windlass/venv/bin/gunicorn -w 4 -b 0.0.0.0:5001 app:app
+User=lars
+WorkingDirectory=/opt/lars/dashboard/backend
+Environment="LARS_ROOT=/opt/lars"
+Environment="LARS_CHDB_SHARED_SESSION=false"
+ExecStart=/opt/lars/venv/bin/gunicorn -w 4 -b 0.0.0.0:5001 app:app
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Save as `/etc/systemd/system/windlass-ui.service`, then:
+Save as `/etc/systemd/system/lars-ui.service`, then:
 ```bash
-sudo systemctl enable windlass-ui
-sudo systemctl start windlass-ui
+sudo systemctl enable lars-ui
+sudo systemctl start lars-ui
 ```

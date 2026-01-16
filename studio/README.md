@@ -1,4 +1,4 @@
-# Windlass UI - Cascade Explorer & Analytics Dashboard 🌊
+# Lars UI - Cascade Explorer & Analytics Dashboard 🌊
 
 A sleek dark mode interface for exploring cascade definitions, analyzing execution metrics, and tracking performance.
 
@@ -123,11 +123,11 @@ npm start
 
 ```bash
 # In another terminal
-cd /home/ryanr/repos/windlass
+cd /home/ryanr/repos/lars
 
 # Run a few cascades to populate data
-windlass windlass/examples/simple_flow.json --input '{"data": "test1"}'
-windlass windlass/examples/model_override_test.json --input '{"task": "test2"}'
+lars lars/examples/simple_flow.json --input '{"data": "test1"}'
+lars lars/examples/model_override_test.json --input '{"task": "test2"}'
 ```
 
 ### 4. Explore the UI
@@ -367,8 +367,8 @@ npm install
 **Terminal 1 - Backend:**
 ```bash
 cd dashboard/backend
-export WINDLASS_LOG_DIR=../../../logs
-export WINDLASS_GRAPH_DIR=../../../graphs
+export LARS_LOG_DIR=../../../logs
+export LARS_GRAPH_DIR=../../../graphs
 python app.py
 ```
 
@@ -380,12 +380,12 @@ npm start
 
 ### Configuration
 
-Set environment variables to point to your Windlass data:
+Set environment variables to point to your Lars data:
 
 ```bash
-export WINDLASS_LOG_DIR=/path/to/windlass/logs
-export WINDLASS_GRAPH_DIR=/path/to/windlass/graphs
-export WINDLASS_CASCADES_DIR=/path/to/windlass/examples
+export LARS_LOG_DIR=/path/to/lars/logs
+export LARS_GRAPH_DIR=/path/to/lars/graphs
+export LARS_CASCADES_DIR=/path/to/lars/examples
 ```
 
 ---
@@ -681,7 +681,7 @@ dashboard/
 ls logs/echoes/
 
 # Run a cascade to generate data
-windlass windlass/examples/simple_flow.json --input '{}'
+lars lars/examples/simple_flow.json --input '{}'
 ```
 
 **"DuckDB query failed"**
@@ -712,7 +712,7 @@ curl http://localhost:5001/api/cascade-definitions
 
 ## Summary
 
-You now have a sleek dark mode Windlass UI with:
+You now have a sleek dark mode Lars UI with:
 
 ✅ **Cascades screen** - Explore all cascade definitions
 ✅ **Instances screen** - View execution history

@@ -1,4 +1,4 @@
-# Windlass UI - Visual Design Mockup 🎨
+# Lars UI - Visual Design Mockup 🎨
 
 ## Color Palette: Pure Black + Bright Pastels
 
@@ -457,7 +457,7 @@ background: linear-gradient(90deg, #fbbf24 0%, #34d399 100%);
 
 ## Summary
 
-A **metrics-focused, visually striking** interface for exploring Windlass cascades:
+A **metrics-focused, visually striking** interface for exploring Lars cascades:
 
 ✅ **Pure black background** - sleek, professional
 ✅ **Bright pastel accents** - easy to scan, beautiful

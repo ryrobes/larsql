@@ -6,7 +6,7 @@ cells:
 - name: phase_1
   tool: sql_data
   inputs:
-    connection: windlass
+    connection: lars
     query: '-- SQL comment preserved?
 
       SELECT ''test'' as message

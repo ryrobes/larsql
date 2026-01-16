@@ -171,7 +171,7 @@ def register_lars(connection):
             return cached
 
         # Spawn mini LLM phase
-        from windlass.runner import run_llm_turn
+        from lars.runner import run_llm_turn
         result = run_llm_turn(
             instructions=instructions,
             input_data={"value": input_value},

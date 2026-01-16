@@ -315,7 +315,7 @@ This lets you see "what the prompt knew at that moment" vs "how it evolved after
 - Convergence patterns over time
 - Your current position in the evolution
 
-**Aligns with Windlass Philosophy**:
+**Aligns with Lars Philosophy**:
 - ✅ Self-Testing: Evolution captured automatically
 - ✅ Self-Optimizing: Visual feedback on what works
 - ✅ Explicit: Full observability of learning process

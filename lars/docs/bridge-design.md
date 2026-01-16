@@ -1,8 +1,8 @@
-# Bridge: Dashboard Composer for Windlass
+# Bridge: Dashboard Composer for Lars
 
 ## Vision
 
-Bridge is a visual dashboard layer for Windlass that turns cascades into interactive "micro-apps" with persistent UI surfaces. Instead of chatbot-style conversations or simple input→output demos, Bridge provides a **workspace** where multiple cascades can run simultaneously, share state, and render their outputs in configurable panels.
+Bridge is a visual dashboard layer for Lars that turns cascades into interactive "micro-apps" with persistent UI surfaces. Instead of chatbot-style conversations or simple input→output demos, Bridge provides a **workspace** where multiple cascades can run simultaneously, share state, and render their outputs in configurable panels.
 
 **Core Insight**: Cascades are already headless micro-apps with defined inputs/outputs/state. Bridge is the runtime shell that gives them a visible, interactive surface.
 
@@ -509,7 +509,7 @@ Context variable or runner mode flag indicates "dashboard mode".
 ## File Locations
 
 ```
-$WINDLASS_ROOT/
+$LARS_ROOT/
 ├── bridges/              # Dashboard JSON definitions
 │   ├── data_cockpit.json
 │   └── research_studio.json

@@ -9,8 +9,7 @@ export function renderSidebar(navData, currentPage) {
     <aside class="toc-sidebar">
       <!-- Brand/Logo -->
       <a href="index.html" class="toc-brand">
-        <img src="assets/lars-logo-square.png" alt="LARS" class="toc-logo">
-        <span>LARS</span>
+        <span>LARsqL</span>
       </a>
 
       <!-- Navigation Groups -->

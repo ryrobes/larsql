@@ -3,7 +3,7 @@ cells:
 - async_cascades:
   - input_map:
       text: SIDE EFFECT VALIDATION
-    ref: windlass/examples/validator.json
+    ref: lars/examples/validator.json
     trigger: on_start
   instructions: I am doing important work. Count to 3.
   name: main_task

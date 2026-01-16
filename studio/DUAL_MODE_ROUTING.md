@@ -1,6 +1,6 @@
 # Dual-Mode Routing Architecture
 
-The Windlass Dashboard now runs in **dual-mode**: new routes use AppShell (modern architecture), old routes use legacy App.js routing.
+The Lars Dashboard now runs in **dual-mode**: new routes use AppShell (modern architecture), old routes use legacy App.js routing.
 
 This allows **incremental migration** without breaking existing functionality.
 

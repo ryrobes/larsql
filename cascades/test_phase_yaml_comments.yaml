@@ -4,7 +4,7 @@ cells:
 - name: sql_query
   tool: sql_data
   inputs:
-    connection: windlass
+    connection: lars
     query: "SELECT\n  'test' as col1,\n  42 as col2\n"
 - name: process_data
   tool: python_data

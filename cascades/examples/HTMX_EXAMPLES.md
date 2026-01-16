@@ -23,7 +23,7 @@ All HTMX checkpoints have access to:
 
 **Run:**
 ```bash
-windlass examples/htmx_demo.yaml --input '{"task": "quantum computing"}' --session basic_test
+lars examples/htmx_demo.yaml --input '{"task": "quantum computing"}' --session basic_test
 ```
 
 **Use cases:** Simple yes/no decisions, document approval, workflow gates
@@ -41,7 +41,7 @@ windlass examples/htmx_demo.yaml --input '{"task": "quantum computing"}' --sessi
 
 **Run:**
 ```bash
-windlass examples/htmx_plotly_demo.yaml --input '{"analysis_topic": "sales trends"}' --session plotly_test
+lars examples/htmx_plotly_demo.yaml --input '{"analysis_topic": "sales trends"}' --session plotly_test
 ```
 
 **Charts LLMs can create:**
@@ -86,7 +86,7 @@ Plotly.newPlot('chart', data, layout, {responsive: true});
 
 **Run:**
 ```bash
-windlass examples/htmx_vegalite_demo.yaml --input '{"dataset_topic": "climate data"}' --session vega_test
+lars examples/htmx_vegalite_demo.yaml --input '{"dataset_topic": "climate data"}' --session vega_test
 ```
 
 **Vega-Lite advantages:**
@@ -137,7 +137,7 @@ vegaEmbed('#vis', spec, {theme: 'dark', actions: false});
 
 **Run:**
 ```bash
-windlass examples/htmx_wizard_demo.yaml --input '{"workflow_type": "ETL pipeline"}' --session wizard_test
+lars examples/htmx_wizard_demo.yaml --input '{"workflow_type": "ETL pipeline"}' --session wizard_test
 ```
 
 **Pattern:**
@@ -161,7 +161,7 @@ windlass examples/htmx_wizard_demo.yaml --input '{"workflow_type": "ETL pipeline
 
 **Run:**
 ```bash
-windlass examples/htmx_interactive_table.yaml --input '{"data_topic": "customer orders"}' --session table_test
+lars examples/htmx_interactive_table.yaml --input '{"data_topic": "customer orders"}' --session table_test
 ```
 
 **Features LLMs can add:**
@@ -185,7 +185,7 @@ windlass examples/htmx_interactive_table.yaml --input '{"data_topic": "customer 
 
 **Run:**
 ```bash
-windlass examples/htmx_realtime_status.yaml --input '{"task_description": "model training"}' --session status_test
+lars examples/htmx_realtime_status.yaml --input '{"task_description": "model training"}' --session status_test
 ```
 
 **Polling patterns:**
@@ -246,7 +246,7 @@ instructions: |
 
 ### Dark Theme Styling
 
-Always use Windlass colors:
+Always use Lars colors:
 ```javascript
 // Plotly
 {

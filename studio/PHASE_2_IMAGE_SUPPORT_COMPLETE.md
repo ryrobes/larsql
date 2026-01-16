@@ -244,7 +244,7 @@ To verify image support works correctly:
 Use a cascade that generates charts in soundings:
 
 ```bash
-windlass examples/reforge_feedback_chart.json \
+lars examples/reforge_feedback_chart.json \
   --input '{"data": "test"}' \
   --session test_images_001
 ```

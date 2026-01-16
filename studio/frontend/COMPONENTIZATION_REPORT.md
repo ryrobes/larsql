@@ -149,7 +149,7 @@ The Timeline builder is now:
 - ✅ **Clean** - No dead code, consistent naming
 - ✅ **Modular** - Well-scoped components
 - ✅ **Extensible** - Easy to add features
-- ✅ **Standard** - Uses Windlass execution pipeline
+- ✅ **Standard** - Uses Lars execution pipeline
 - ✅ **Maintainable** - Won't become spaghetti
 
 **Ship it!** 🚀

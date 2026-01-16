@@ -139,7 +139,7 @@ The code is inside a `try/except` somewhere that swallows errors.
 
 ### 1. Restart Backend (CRITICAL!)
 ```bash
-cd /home/ryanr/repos/windlass/dashboard
+cd /home/ryanr/repos/lars/dashboard
 # Ctrl+C if running
 ./start.sh
 ```
@@ -190,7 +190,7 @@ if pd.notna(row['content_json']):
 ### 4. Test with a Fresh Cascade
 
 ```bash
-windlass examples/sql_chart_gen_analysis_full.json \
+lars examples/sql_chart_gen_analysis_full.json \
   --input '{"question": "What states have the most bigfoot sightings?"}' \
   --session debug_test_001
 ```

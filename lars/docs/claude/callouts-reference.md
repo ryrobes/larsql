@@ -143,7 +143,7 @@ Callouts are stored in the `unified_logs` table with two new columns:
 
 **Get all callouts from a session:**
 ```sql
-windlass sql "SELECT callout_name, content_json, phase_name
+lars sql "SELECT callout_name, content_json, phase_name
               FROM unified_logs
               WHERE session_id = 'my_session_123'
                 AND is_callout = true
@@ -152,7 +152,7 @@ windlass sql "SELECT callout_name, content_json, phase_name
 
 **Get callouts by name:**
 ```sql
-windlass sql "SELECT * FROM unified_logs
+lars sql "SELECT * FROM unified_logs
               WHERE is_callout = true
                 AND callout_name LIKE '%Quarterly Sales%'
               ORDER BY timestamp"
@@ -160,7 +160,7 @@ windlass sql "SELECT * FROM unified_logs
 
 **Count callouts by phase:**
 ```sql
-windlass sql "SELECT phase_name, COUNT(*) as callout_count
+lars sql "SELECT phase_name, COUNT(*) as callout_count
               FROM unified_logs
               WHERE is_callout = true
               GROUP BY phase_name"
@@ -168,7 +168,7 @@ windlass sql "SELECT phase_name, COUNT(*) as callout_count
 
 **Get callouts for a specific cascade:**
 ```sql
-windlass sql "SELECT session_id, callout_name, content_json
+lars sql "SELECT session_id, callout_name, content_json
               FROM unified_logs
               WHERE cascade_id = 'sales_analysis'
                 AND is_callout = true
@@ -179,7 +179,7 @@ windlass sql "SELECT session_id, callout_name, content_json
 ### Python API
 
 ```python
-from windlass.unified_logs import query_unified
+from lars.unified_logs import query_unified
 
 # Get all callouts from a session
 df = query_unified(
@@ -194,7 +194,7 @@ df = query_unified(
 )
 
 # Get callouts with parsed JSON content
-from windlass.unified_logs import query_unified_json_parsed
+from lars.unified_logs import query_unified_json_parsed
 
 df = query_unified_json_parsed(
     where_clause="is_callout = true AND session_id = 'xyz'",
@@ -289,8 +289,8 @@ INDEX idx_is_callout is_callout TYPE set(2) GRANULARITY 1
 For existing databases, run the migration:
 
 ```bash
-# See windlass/migrations/add_callouts_columns.sql
-windlass sql < windlass/migrations/add_callouts_columns.sql
+# See lars/migrations/add_callouts_columns.sql
+lars sql < lars/migrations/add_callouts_columns.sql
 ```
 
 Or use the ALTER commands:
@@ -350,8 +350,8 @@ See `examples/callouts_demo.json` for a complete example demonstrating:
 
 Run it with:
 ```bash
-windlass examples/callouts_demo.json --input '{"year": "2024", "company": "Acme Corp"}' --session callouts_test
+lars examples/callouts_demo.json --input '{"year": "2024", "company": "Acme Corp"}' --session callouts_test
 
 # Then query the callouts
-windlass sql "SELECT callout_name, content_json FROM unified_logs WHERE session_id = 'callouts_test' AND is_callout = true"
+lars sql "SELECT callout_name, content_json FROM unified_logs WHERE session_id = 'callouts_test' AND is_callout = true"
 ```

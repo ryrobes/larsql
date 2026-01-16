@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation plan for adding durable execution capabilities to Windlass using ClickHouse as the coordination database. This replaces the current JSON file-based state tracking with a robust, queryable, cross-process coordination system.
+This document outlines the implementation plan for adding durable execution capabilities to Lars using ClickHouse as the coordination database. This replaces the current JSON file-based state tracking with a robust, queryable, cross-process coordination system.
 
 ### Problems Solved
 
@@ -29,7 +29,7 @@ This document outlines the implementation plan for adding durable execution capa
          │ heartbeat          │ wait/fire          │ HITL
          │ status             │                    │
     ┌────┴────────────────────┴────────────────────┴────┐
-    │                  WindlassRunner                    │
+    │                  LarsRunner                    │
     │  - Heartbeat thread (30s)                         │
     │  - Cancellation check (between phases)            │
     │  - Blocked state surfacing                        │
@@ -153,25 +153,25 @@ PARTITION BY toYYYYMM(started_at);
 - [x] 1.3 Add table creation to DB initialization
 - [x] 1.4 Write unit tests for session state operations
 
-**Files**: `windlass/schema.py`, `windlass/session_state.py`, `tests/test_session_state.py`
+**Files**: `lars/schema.py`, `lars/session_state.py`, `tests/test_session_state.py`
 
 ---
 
 ### Phase 2: Heartbeat System ✅ COMPLETE
 **Goal**: Detect zombie sessions via heartbeat expiry
 
-- [x] 2.1 Add heartbeat thread to `WindlassRunner`
+- [x] 2.1 Add heartbeat thread to `LarsRunner`
   - Start on `run()`, stop on completion
   - Heartbeat every 30 seconds
   - Update `heartbeat_at` in session_state
 - [x] 2.2 Implement `cleanup_zombie_sessions()` function
   - Find sessions where `heartbeat_at + lease < now()`
   - Mark as `orphaned`
-- [x] 2.3 Add CLI command: `windlass sessions cleanup`
-- [x] 2.4 Add CLI command: `windlass sessions list` (shows all session states)
+- [x] 2.3 Add CLI command: `lars sessions cleanup`
+- [x] 2.4 Add CLI command: `lars sessions list` (shows all session states)
 - [ ] 2.5 Call cleanup on UI backend startup (deferred to Phase 6)
 
-**Files**: `windlass/runner.py`, `windlass/session_state.py`, `windlass/cli.py`
+**Files**: `lars/runner.py`, `lars/session_state.py`, `lars/cli.py`
 
 ---
 
@@ -185,7 +185,7 @@ PARTITION BY toYYYYMM(started_at);
 - [x] 3.5 Dual-write to JSON files during transition (backward compat)
 - [x] 3.6 Update sub-cascade spawning to track parent_session_id
 
-**Files**: `windlass/runner.py`, `windlass/session_state.py`
+**Files**: `lars/runner.py`, `lars/session_state.py`
 
 ---
 
@@ -199,10 +199,10 @@ PARTITION BY toYYYYMM(started_at);
   - Set status to `cancelled`
   - Clean up resources
   - Optional: save checkpoint for resume (Phase 7)
-- [x] 4.5 Add CLI command: `windlass sessions cancel <session_id>`
+- [x] 4.5 Add CLI command: `lars sessions cancel <session_id>`
 - [ ] 4.6 Add HTTP callback for instant cancellation (optional enhancement)
 
-**Files**: `windlass/runner.py`, `windlass/session_state.py`, `windlass/cli.py`
+**Files**: `lars/runner.py`, `lars/session_state.py`, `lars/cli.py`
 
 ---
 
@@ -216,7 +216,7 @@ PARTITION BY toYYYYMM(started_at);
 - [x] 5.5 Ensure blocked sessions still send heartbeats (heartbeat runs on main thread)
 - [x] 5.6 Add blocked state to CLI `sessions list` output (with color coding)
 
-**Files**: `windlass/signals.py`, `windlass/checkpoints.py`, `windlass/session_state.py`, `windlass/cli.py`
+**Files**: `lars/signals.py`, `lars/checkpoints.py`, `lars/session_state.py`, `lars/cli.py`
 
 ---
 
@@ -230,7 +230,7 @@ PARTITION BY toYYYYMM(started_at);
 - [ ] 6.5 Remove JSON file writes (after UI migration verified)
 - [ ] 6.6 Clean up `state.py` (keep PhaseProgress for detailed tracking)
 
-**Files**: UI backend, `windlass/state.py`, `windlass/runner.py`
+**Files**: UI backend, `lars/state.py`, `lars/runner.py`
 
 ---
 
@@ -239,11 +239,11 @@ PARTITION BY toYYYYMM(started_at);
 
 - [ ] 7.1 Store `last_checkpoint_id` when checkpointing phases
 - [ ] 7.2 Add `resumable` flag for cascades that support resume
-- [ ] 7.3 Implement `WindlassRunner.from_checkpoint(checkpoint_id)`
-- [ ] 7.4 Add CLI command: `windlass sessions resume <session_id>`
+- [ ] 7.3 Implement `LarsRunner.from_checkpoint(checkpoint_id)`
+- [ ] 7.4 Add CLI command: `lars sessions resume <session_id>`
 - [ ] 7.5 Auto-resume orphaned sessions on startup (optional)
 
-**Files**: `windlass/runner.py`, `windlass/checkpoints.py`, `windlass/cli.py`
+**Files**: `lars/runner.py`, `lars/checkpoints.py`, `lars/cli.py`
 
 ---
 
@@ -276,20 +276,20 @@ class SessionStateManager:
 
 ```bash
 # List all sessions
-windlass sessions list
-windlass sessions list --status running
-windlass sessions list --status blocked
+lars sessions list
+lars sessions list --status running
+lars sessions list --status blocked
 
 # Cancel a session
-windlass sessions cancel abc123
-windlass sessions cancel abc123 --reason "User requested"
+lars sessions cancel abc123
+lars sessions cancel abc123 --reason "User requested"
 
 # Cleanup zombies
-windlass sessions cleanup
-windlass sessions cleanup --dry-run
+lars sessions cleanup
+lars sessions cleanup --dry-run
 
 # Show session details
-windlass sessions show abc123
+lars sessions show abc123
 ```
 
 ### SQL Queries (for UI/debugging)

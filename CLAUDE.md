@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LARS (formerly Windlass) is a **declarative agent framework** for building long-running, iterative LLM workflows. It's designed for monolithic context agents that iterate on complex artifacts (dashboards, reports, charts), not chatbots.
+LARS is a **declarative agent framework** for building long-running, iterative LLM workflows. It's designed for monolithic context agents that iterate on complex artifacts (dashboards, reports, charts), not chatbots.
 
 This monorepo contains three projects:
 - **LARS** (`lars/`) - Core Python framework for cascade execution
@@ -420,3 +420,88 @@ SELECT * FROM mysql_db.schema.orders
 ```
 
 Supports: PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, S3, Azure, GCS
+
+## Ollama (Local & Remote)
+
+LARS supports Ollama for zero-cost local inference. Auto-detects localhost by default, but also supports remote Ollama servers for distributed GPU workloads.
+
+### Local Ollama (Default)
+
+```bash
+# Install and start Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama serve
+ollama pull llama3.3:70b
+
+# Refresh LARS model catalog
+lars models refresh
+```
+
+Use in cascades or SQL with `ollama/` prefix:
+
+```yaml
+# In cascade YAML
+- name: analyze
+  model: ollama/llama3.3:70b
+  instructions: "Analyze this data"
+```
+
+```sql
+-- @ model: ollama/qwen2.5-coder:32b
+SELECT ASK('Explain this code', source) FROM functions
+```
+
+### Remote Ollama
+
+Three ways to connect to remote Ollama servers:
+
+**1. Override default URL** (all `ollama/` models route here):
+```bash
+export LARS_OLLAMA_BASE_URL=http://gpu-server:11434
+```
+
+**2. Named host aliases** (use `ollama@alias/model`):
+```bash
+# JSON format
+export LARS_OLLAMA_HOSTS='{"gpu1": "http://10.10.10.1:11434", "gpu2": "http://192.168.1.50:11434"}'
+```
+
+Then use:
+```yaml
+model: ollama@gpu1/llama3.3:70b    # Routes to 10.10.10.1
+model: ollama@gpu2/qwen2.5:32b     # Routes to 192.168.1.50
+```
+
+**3. Direct host syntax** (no config needed):
+```yaml
+model: ollama@10.10.10.1/mistral           # Default port 11434
+model: ollama@gpu-server:9999/llama3       # Custom port
+```
+
+### Model ID Formats
+
+| Format | Routes To |
+|--------|-----------|
+| `ollama/model` | `LARS_OLLAMA_BASE_URL` (default: localhost:11434) |
+| `ollama@alias/model` | URL from `LARS_OLLAMA_HOSTS[alias]` |
+| `ollama@host/model` | `http://host:11434` |
+| `ollama@host:port/model` | `http://host:port` |
+
+### Configuration
+
+```bash
+# Enable/disable Ollama integration (default: true)
+LARS_OLLAMA_ENABLED=true
+
+# Default Ollama URL (default: http://localhost:11434)
+LARS_OLLAMA_BASE_URL=http://localhost:11434
+
+# Named remote hosts (JSON or YAML format)
+LARS_OLLAMA_HOSTS='{"gpu1": "http://10.10.10.1:11434"}'
+```
+
+### Key Files
+
+- `lars/config.py` - Ollama configuration parsing (`_parse_ollama_hosts`)
+- `lars/agent.py` - Model routing (`parse_ollama_model`)
+- `lars/model_registry.py` - Model discovery (`_fetch_ollama_models`)
