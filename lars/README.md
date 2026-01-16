@@ -107,11 +107,7 @@ For a full end-to-end setup (ClickHouse + sample data + Studio UI), see the [Qui
 <details>
 <summary>Screenshot: DataGrip connected over pgwire</summary>
 
-<p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/datagrip.jpg">
-    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg" width="520" alt="DataGrip querying LARS via PostgreSQL wire protocol" />
-  </a>
-</p>
+[![DataGrip querying LARS via PostgreSQL wire protocol](gh_jpg/datagrip.jpg)](gh_jpg/datagrip.jpg)
 </details>
 
 ## How It Works
@@ -141,11 +137,7 @@ LIMIT 20;
 <details>
 <summary>Screenshot: costs + context (optional Studio UI)</summary>
 
-<p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/gh-image1.jpg">
-    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg" width="100%" alt="Studio showing context inspector, query logs, takes, and cost analytics" />
-  </a>
-</p>
+[![Studio showing context inspector, query logs, takes, and cost analytics](gh_jpg/gh-image1.jpg)](gh_jpg/gh-image1.jpg)
 </details>
 
 Every semantic operator is backed by a cascade file under `cascades/semantic_sql/` - edit YAML to change behavior or create your own operator.
@@ -288,11 +280,7 @@ lars serve studio
 <details>
 <summary>Screenshots: Studio overview</summary>
 
-<p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/gh-image2.jpg">
-    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg" width="100%" alt="Studio overview screenshots" />
-  </a>
-</p>
+[![Studio overview screenshots](gh_jpg/gh-image2.jpg)](gh_jpg/gh-image2.jpg)
 </details>
 
 ## Documentation

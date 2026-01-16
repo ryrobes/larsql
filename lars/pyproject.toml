@@ -9,12 +9,12 @@ description = "LARS: Declarative agent framework with first class SQL integratio
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Ryan Robitaille", email = "ryan.robitaille@gmail.com"}]
-license = {text = "MIT"}
+license = {text = "OSASSY"}
 keywords = ["agents", "llm", "workflows", "declarative", "sql", "semantic"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
