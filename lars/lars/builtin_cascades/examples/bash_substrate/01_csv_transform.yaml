@@ -1,0 +1,31 @@
+cascade_id: bash_csv_transform
+description: Clean CSV transformation using bash - demonstrates stdin/stdout data
+  flow
+cells:
+- name: extract
+  tool: sql_data
+  inputs:
+    query: "SELECT * FROM (VALUES\n  (1, 'alice@gmail.com', '2024-01-15'),\n  (2,\
+      \ 'bob@yahoo.com', '2024-01-16'),\n  (3, 'charlie@gmail.com', '2024-01-17'),\n\
+      \  (4, 'diana@outlook.com', '2024-01-18'),\n  (5, 'eve@gmail.com', '2024-01-19')\n\
+      ) AS t(user_id, email, signup_date)\n"
+  handoffs:
+  - extract_domains
+- name: extract_domains
+  tool: bash_data
+  inputs:
+    script: "# Skip CSV header line, extract domain from email\ntail -n +2 | awk -F','\
+      \ '\n{\n  user_id = $1\n  email = $2\n  signup_date = $3\n\n  # Remove quotes\
+      \ from email field\n  gsub(/\"/, \"\", email)\n\n  # Extract domain (everything\
+      \ after @)\n  split(email, parts, \"@\")\n  domain = parts[2]\n\n  # Output:\
+      \ user_id, email, domain, signup_date\n  print user_id \",\" email \",\" domain\
+      \ \",\" signup_date\n}\n'\n"
+    output_format: csv
+  handoffs:
+  - analyze_domains
+- name: analyze_domains
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  column2 as domain,\n  COUNT(*) as user_count,\n  MIN(column3)\
+      \ as first_signup,\n  MAX(column3) as last_signup\nFROM _extract_domains\nGROUP\
+      \ BY domain\nORDER BY user_count DESC, domain\n"

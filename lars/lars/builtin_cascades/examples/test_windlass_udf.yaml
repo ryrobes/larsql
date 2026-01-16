@@ -1,0 +1,39 @@
+cascade_id: test_lars
+description: Test lars() for LLM-powered data enrichment in SQL
+cells:
+- name: load_products
+  tool: sql_data
+  inputs:
+    query: "SELECT * FROM (VALUES\n  ('Apple iPhone 15 Pro Max 256GB Space Black',\
+      \ 1199.99),\n  ('Samsung Galaxy S24 Ultra Titanium Gray', 1299.99),\n  ('Levis\
+      \ 501 Original Fit Jeans - Blue', 59.99),\n  ('KitchenAid Artisan Stand Mixer\
+      \ Red', 429.99),\n  ('Sony WH-1000XM5 Noise Canceling Headphones', 399.99)\n\
+      ) AS t(product_name, price)\n"
+    materialize: 'true'
+- name: enrich_products
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  product_name,\n  price,\n\n  -- Extract structured attributes\
+      \ using LLM\n  lars(\n    'Extract the brand name from this product\
+      \ title. Return just the brand, nothing else.',\n    product_name\n  ) as brand,\n\
+      \n  lars(\n    'Extract the color from this product title. If no color\
+      \ mentioned, return NULL.',\n    product_name\n  ) as color,\n\n  lars(\n\
+      \    'Classify this product category in one word: Electronics, Clothing, or\
+      \ Home',\n    product_name\n  ) as category,\n\n  lars(\n    'Based\
+      \ on the product name and price, classify as: budget, mid-range, premium, or\
+      \ luxury. Return just one word.',\n    product_name || ' - $' || price\n  )\
+      \ as price_tier\n\nFROM _load_products\n"
+    materialize: 'true'
+  context:
+    from:
+    - load_products
+- name: analyze_by_category
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  category,\n  COUNT(*) as product_count,\n  ROUND(AVG(price),\
+      \ 2) as avg_price,\n  MIN(price) as min_price,\n  MAX(price) as max_price,\n\
+      \  STRING_AGG(brand, ', ') as brands\nFROM _enrich_products\nGROUP BY category\n\
+      ORDER BY avg_price DESC\n"
+  context:
+    from:
+    - enrich_products

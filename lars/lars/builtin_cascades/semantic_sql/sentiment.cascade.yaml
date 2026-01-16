@@ -1,0 +1,75 @@
+cascade_id: semantic_sentiment
+internal: true
+description: 'Aggregate sentiment analysis - calculates the overall sentiment
+
+  of a collection of texts. Returns a score from -1.0 to 1.0.
+
+  '
+inputs_schema:
+  texts: JSON array of texts to analyze
+sql_function:
+  name: semantic_sentiment
+  description: Calculates overall sentiment (-1.0 to 1.0) for a collection
+  args:
+  - name: texts
+    type: JSON
+  returns: DOUBLE
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+  - SENTIMENT_AGG({{ texts }})
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('I absolutely love this product!'),
+          ('Best purchase I ever made'),
+          ('Fantastic quality and service'),
+          ('Highly recommend to everyone')
+        ) AS t(review)
+      )
+      SELECT SENTIMENT_AGG(review) FROM test_data
+    expect:
+      type: range
+      min: 0.3
+      max: 1.0
+    description: Positive reviews should return positive sentiment score
+cells:
+- name: analyze_sentiment
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Analyze the overall sentiment of these texts.
+
+
+    TEXTS:
+
+    {{ input.texts }}
+
+
+    Consider the emotional tone across all texts:
+
+    - Positive: happiness, excitement, satisfaction, hope
+
+    - Negative: fear, anger, sadness, frustration
+
+    - Neutral: factual, objective, balanced
+
+
+    Return a single number from -1.0 to 1.0:
+
+    - -1.0 = Extremely negative
+
+    - -0.5 = Moderately negative
+
+    -  0.0 = Neutral/mixed
+
+    - +0.5 = Moderately positive
+
+    - +1.0 = Extremely positive
+
+
+    Return ONLY the number (e.g., 0.3 or -0.7), nothing else.
+
+    '
+  rules:
+    max_turns: 1

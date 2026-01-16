@@ -1,0 +1,31 @@
+# LARS Data Cell - Nested LLM with full cascade power
+type_id: lars_data
+display_name: LARS Data
+icon: mdi:sail-boat
+color: "#2dd4bf"
+name_prefix: lars
+description: "Embedded LLM cell with full LARS power: takes, reforge, wards, model selection"
+category: ai
+tags:
+  - ai-ml
+  - advanced
+  - powerful
+template:
+  tool: lars_data
+  inputs:
+    cascade: |
+      instructions: |
+        Analyze the data and return structured results.
+
+        Available data:
+        - {{outputs.cell_name}}
+
+      model: google/gemini-2.5-flash
+
+      output_schema:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: string }
+            result: { type: string }

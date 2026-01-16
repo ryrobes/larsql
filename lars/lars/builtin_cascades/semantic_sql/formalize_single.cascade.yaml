@@ -1,0 +1,62 @@
+cascade_id: formalize_single
+internal: true
+description: 'Convert informal, messy, or casual text to a formal, professional format.
+
+  Useful for cleaning up user input, notes, and comments.
+
+  '
+inputs_schema:
+  text: Text to formalize
+  style: Target style (business, technical, academic, neutral)
+sql_function:
+  name: formalize
+  description: Convert informal text to formal
+  args:
+  - name: text
+    type: VARCHAR
+  - name: style
+    type: VARCHAR
+    optional: true
+    default: business
+    description: 'Target style: business, technical, academic, neutral'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - FORMALIZE({{ text }})
+  - FORMALIZE({{ text }}, '{{ style }}')
+  cache: true
+  test_cases:
+  - sql: SELECT formalize('hey can u help me?')
+    expect:
+      type: contains
+      value: you
+    description: Informal text formalized
+cells:
+- name: make_formal
+  model: google/gemini-2.5-flash-lite
+  instructions: "Formalize this text to {{ input.style | default('business') }} style.\n\
+    \nTEXT: {{ input.text }}\nTARGET STYLE: {{ input.style | default('business') }}\n\
+    \nReturn a JSON object:\n{\n  \"original\": \"hey so the thing is totally broken\
+    \ lol\",\n  \"formalized\": \"The system is currently experiencing a malfunction.\"\
+    ,\n  \"changes\": [\n    \"Removed informal greeting\",\n    \"Replaced 'thing'\
+    \ with 'system'\",\n    \"Removed 'lol'\",\n    \"Improved sentence structure\"\
+    \n  ],\n  \"formality_increase\": \"high\"\n}\n\n**Style guidelines**:\n\n\"business\"\
+    :\n- Professional tone\n- Clear and concise\n- Action-oriented\n- \"gonna check\
+    \ that out\" → \"I will investigate this matter\"\n\n\"technical\":\n- Precise\
+    \ terminology\n- Objective tone\n- Specific details preserved\n- \"it keeps crashing\"\
+    \ → \"The application terminates unexpectedly\"\n\n\"academic\":\n- Formal vocabulary\n\
+    - Complete sentences\n- Passive voice acceptable\n- \"they found that...\" → \"\
+    Research indicates that...\"\n\n\"neutral\":\n- Remove emotion and bias\n- Factual\
+    \ statements only\n- Balanced perspective\n- \"this is terrible\" → \"This presents\
+    \ challenges\"\n\n**Transformations to apply**:\n- Fix grammar and spelling\n\
+    - Expand contractions (don't → do not)\n- Remove slang (gonna, wanna, kinda)\n\
+    - Remove filler words (like, basically, literally)\n- Remove excessive punctuation\
+    \ (!!! → .)\n- Remove emojis and emoticons\n- Remove informal greetings (hey,\
+    \ hi there)\n- Use complete sentences\n- Fix capitalization\n- Remove profanity\
+    \ (replace with professional alternative)\n\nPreserve the core meaning and factual\
+    \ content.\nDon't add information not present in original.\n\nReturn ONLY the\
+    \ JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

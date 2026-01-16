@@ -1,0 +1,29 @@
+# Validator: Check if data analysis is complete with required components
+cascade_id: analysis_complete
+description: Validates that analysis includes question, query, data sample, and insights
+
+inputs_schema:
+  content: The agent's output to validate
+  original_input: The original cascade input (optional)
+
+cells:
+  - name: validate
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Check if this output contains a complete data analysis.
+
+      Output to check:
+      {{ input.content }}
+
+      A VALID output must have:
+      1. The original question being answered
+      2. The SQL query used
+      3. A data sample or summary of results
+      4. Key findings with specific numbers/percentages
+
+      Return JSON only:
+      - If valid: {"valid": true, "reason": "Complete analysis with findings"}
+      - If not valid: {"valid": false, "reason": "Missing [question/query/data/findings]"}
+
+    rules:
+      max_turns: 1

@@ -1,0 +1,89 @@
+cascade_id: signal_file_processor
+description: 'Checks for a file using deterministic phase, parses it, then fires a
+  signal to notify downstream cascades that data is ready.
+
+  '
+inputs_schema:
+  file_path: Path to the file to process
+  signal_name: 'Signal name to fire when ready (default: file_ready)'
+cells:
+- name: check_file
+  tool: python:lars.demo_tools.file_exists
+  inputs:
+    path: '{{ input.file_path | default(''/tmp/test_data.json'') }}'
+  routing:
+    exists: parse_file
+    not_found: handle_not_found
+  handoffs:
+  - parse_file
+  - handle_not_found
+- name: handle_not_found
+  instructions: 'The file was not found:
+
+
+    Path: {{ input.file_path | default(''/tmp/test_data.json'') }}
+
+    Check Result: {{ state.output_check_file }}
+
+
+    Suggest what might have gone wrong and how to resolve it.
+
+    '
+  skills: []
+- name: parse_file
+  tool: python:lars.demo_tools.parse_json
+  inputs:
+    text: '{"records": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}], "metadata":
+      {"source": "demo", "count": 2}}'
+  routing:
+    success: fire_ready_signal
+    error: handle_parse_error
+  handoffs:
+  - fire_ready_signal
+  - handle_parse_error
+- name: handle_parse_error
+  instructions: 'Failed to parse the file as JSON:
+
+
+    Error: {{ state.output_parse_file.error }}
+
+
+    Diagnose the issue and suggest fixes.
+
+    '
+  skills: []
+- name: fire_ready_signal
+  instructions: 'The file has been validated and parsed successfully!
+
+
+    Use fire_signal to notify downstream systems:
+
+    - Signal name: ''{{ input.signal_name | default("file_ready") }}''
+
+    - Include the parsed metadata in the payload
+
+
+    Parsed data summary:
+
+    {{ state.output_parse_file }}
+
+    '
+  skills:
+  - fire_signal
+  handoffs:
+  - generate_report
+- name: generate_report
+  instructions: 'Generate a brief processing report:
+
+
+    File Check: {{ state.output_check_file }}
+
+    Parse Result: {{ state.output_parse_file }}
+
+    Signal Fired: {{ state.output_fire_ready_signal }}
+
+
+    Summarize what was processed and what downstream systems were notified.
+
+    '
+  skills: []

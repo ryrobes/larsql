@@ -1,0 +1,51 @@
+cascade_id: satisfied
+description: 'Impartial 3rd party validator: Evaluates if the output actually satisfies the original request'
+tags:
+- quality
+- validation
+- impartial
+- third-party
+inputs_schema:
+  content: The output/work that was produced
+  original_input: The original task/request/query that was given
+cells:
+- name: check
+  instructions: |-
+    You are an IMPARTIAL THIRD-PARTY EVALUATOR. Your job is to determine if the produced output actually satisfies the original request.
+
+    **ORIGINAL REQUEST:**
+    {{ input.original_input | tojson }}
+
+    **PRODUCED OUTPUT:**
+    {{ input.content }}
+
+    ---
+
+    Evaluate objectively:
+
+    1. **Does the output address what was requested?**
+       - Check if all key requirements are met
+       - Verify completeness and relevance
+
+    2. **Is the quality satisfactory?**
+       - Is it clear and understandable?
+       - Is it accurate and well-formed?
+       - Does it provide value?
+
+    3. **Would a reasonable person consider this request fulfilled?**
+       - Not just "good enough" but actually satisfactory
+       - Consider if you'd accept this if you made the request
+
+    IMPORTANT:
+    - DO NOT just look for phrases like "I'm satisfied" - that's self-reporting, not validation
+    - Judge the ACTUAL QUALITY and COMPLETENESS of the work
+    - Be objective and fair, but maintain reasonable standards
+    - If something is clearly incomplete, low-effort, or doesn't address the request, mark invalid
+
+    Return ONLY a JSON object with this exact format:
+    {"valid": true/false, "reason": "objective explanation of whether the output satisfies the original request", "issues": [list of specific gaps or problems if not satisfied]}
+
+    Mark as valid (true) ONLY if the output genuinely satisfies the original request.
+    Mark as invalid (false) if it's incomplete, off-topic, low-quality, or doesn't fulfill what was asked.
+  rules:
+    max_turns: 1

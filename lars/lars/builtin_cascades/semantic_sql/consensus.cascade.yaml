@@ -1,0 +1,78 @@
+cascade_id: semantic_consensus
+internal: true
+description: 'Find consensus or common ground among a collection of texts.
+
+  Returns a summary of what most items agree on or have in common.
+
+  '
+inputs_schema:
+  texts: JSON array of texts to analyze
+  prompt: Optional custom prompt for what to find consensus on
+sql_function:
+  name: semantic_consensus
+  description: Finds common ground or consensus among texts
+  args:
+  - name: texts
+    type: JSON
+  - name: prompt
+    type: VARCHAR
+    optional: true
+  returns: VARCHAR
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+  - CONSENSUS({{ texts }})
+  - CONSENSUS({{ texts }}, '{{ prompt }}')
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The service was excellent'),
+          ('Staff was friendly and helpful'),
+          ('Great customer service experience'),
+          ('Very attentive and professional team')
+        ) AS t(review)
+      )
+      SELECT CONSENSUS(review) FROM test_data
+    expect:
+      type: contains
+      value: service
+    description: Finds consensus in positive service reviews
+cells:
+- name: find_consensus
+  model: x-ai/grok-4
+  instructions: 'Analyze these texts and identify what they have in common or agree
+    on.
+
+
+    TEXTS:
+
+    {{ input.texts }}
+
+
+    {% if input.prompt %}
+
+    FOCUS ON: {{ input.prompt }}
+
+    {% endif %}
+
+
+    Identify:
+
+    1. Common themes or patterns that appear across multiple items
+
+    2. Points of agreement or shared perspectives
+
+    3. The overall consensus view
+
+
+    Return a concise summary (2-4 sentences) of what most items agree on.
+
+    Focus on the strongest shared themes, not outliers.
+
+    Return ONLY the consensus summary, no preamble.
+
+    '
+  rules:
+    max_turns: 1

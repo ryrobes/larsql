@@ -1,0 +1,45 @@
+cascade_id: htmx_plotly_demo
+description: 'Demonstrates LLM generating interactive Plotly visualizations with HTMX.
+
+  Shows how to create data-driven charts for analysis and decision-making.
+
+  '
+inputs_schema:
+  analysis_topic: What data to analyze and visualize
+cells:
+- name: analyze_and_visualize
+  model: anthropic/claude-sonnet-4.5
+  skills:
+  - request_decision
+  - route_to
+  handoffs:
+  - final_report
+  instructions: "Analyze: {{ input.analysis_topic }}\n\nYour task:\n1. Generate sample/synthetic\
+    \ data relevant to the topic\n2. Create an interactive Plotly chart to visualize\
+    \ the data\n3. Request approval using request_decision with HTMX + Plotly\n\n\
+    Use the html parameter to create a visualization UI that:\n- Shows your analysis\
+    \ text\n- Embeds a Plotly chart (use <div id=\"chart\"></div> + Plotly.newPlot)\n\
+    - Has approve/reject buttons\n- Includes the data inline in the HTML\n\nIMPORTANT:\
+    \ Plotly is available in the iframe. Use this pattern:\n\n<div id=\"myChart\"\
+    ></div>\n<script>\n  var data = [{\n    x: [1, 2, 3, 4],\n    y: [10, 15, 13,\
+    \ 17],\n    type: 'scatter'\n  }];\n  var layout = {title: 'My Chart', paper_bgcolor:\
+    \ '#1a1a1a', plot_bgcolor: '#0a0a0a'};\n  Plotly.newPlot('myChart', data, layout,\
+    \ {responsive: true});\n</script>\n\nThen add approval form below the chart.\n\
+    When approved/rejected, route to final_report.\n"
+- name: final_report
+  instructions: 'The user {{ outputs.analyze_and_visualize.selected }} the analysis.
+
+
+    {% if outputs.analyze_and_visualize.reasoning %}
+
+    Feedback: {{ outputs.analyze_and_visualize.reasoning }}
+
+    {% endif %}
+
+
+    Provide a final summary.
+
+    '
+  context:
+    from:
+    - analyze_and_visualize

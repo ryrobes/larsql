@@ -1,0 +1,48 @@
+cascade_id: test_ansi_output
+description: Test ANSI color rendering in Studio UI
+inputs_schema:
+  message: Optional test message
+cells:
+- name: test_ansi
+  tool: python_data
+  inputs:
+    code: '# Return ANSI colored output
+
+      output = """
+
+      \x1b[31m██████ RED BLOCK\x1b[0m
+
+      \x1b[32m██████ GREEN BLOCK\x1b[0m
+
+      \x1b[33m██████ YELLOW BLOCK\x1b[0m
+
+      \x1b[34m██████ BLUE BLOCK\x1b[0m
+
+      \x1b[35m██████ MAGENTA BLOCK\x1b[0m
+
+      \x1b[36m██████ CYAN BLOCK\x1b[0m
+
+
+      \x1b[1;31mBold Red Text\x1b[0m
+
+      \x1b[4;32mUnderlined Green Text\x1b[0m
+
+      \x1b[7;33mInverted Yellow Text\x1b[0m
+
+
+      ┌─────────────────────┐
+
+      │ Box Drawing Test    │
+
+      ├─────────────────────┤
+
+      │ Colors: \x1b[32m✓\x1b[0m \x1b[31m✗\x1b[0m \x1b[33m⚠\x1b[0m  │
+
+      └─────────────────────┘
+
+      """
+
+
+      return output
+
+      '

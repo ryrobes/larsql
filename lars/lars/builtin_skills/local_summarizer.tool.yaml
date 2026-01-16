@@ -1,0 +1,22 @@
+# Local Model Tool: Text Summarization
+# Runs locally using HuggingFace transformers
+# Install dependencies: pip install lars[local-models]
+
+tool_id: local_summarizer
+description: |
+  Summarize long text using a local BART model.
+  Produces concise summaries while preserving key information.
+  Runs entirely locally - no API calls required.
+  Note: Larger model, may require more memory.
+
+inputs_schema:
+  text: The text to summarize
+
+type: local_model
+model_id: facebook/bart-large-cnn
+task: summarization
+device: auto
+pipeline_kwargs:
+  max_length: 150
+  min_length: 30
+  do_sample: false

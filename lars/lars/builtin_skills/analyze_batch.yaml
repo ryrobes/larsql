@@ -1,0 +1,41 @@
+cascade_id: analyze_batch
+description: Analyze a batch of products and create summary statistics
+
+inputs_schema:
+  data_table: Name of temp table containing product data
+  row_count: Number of rows in the batch
+
+cells:
+  # Query the temp table
+  - name: load_data
+    tool: sql_data
+    inputs:
+      query: "SELECT * FROM {{ input.data_table }}"
+      materialize: "true"
+
+  # Analyze the batch
+  - name: analyze
+    instructions: |
+      Analyze this batch of {{ input.row_count }} products.
+
+      Products: {{ outputs.load_data.result }}
+
+      Provide a summary with:
+      - Total products analyzed
+      - Common themes or patterns
+      - Any notable insights
+
+    output_schema:
+      type: object
+      properties:
+        summary:
+          type: string
+        total_products:
+          type: integer
+        insights:
+          type: array
+          items:
+            type: string
+      required:
+        - summary
+        - total_products

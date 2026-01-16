@@ -1,0 +1,90 @@
+cascade_id: topics_dimension
+internal: true
+description: 'Semantic topic dimension function. Extracts N topics from a collection
+  of texts,
+
+  then assigns each text to the most relevant topic.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  num_topics: Number of topics to extract (default 8)
+  focus: Optional focus/hint for topic extraction
+sql_function:
+  name: topics
+  description: 'Extract topics from text collection and assign each text to a topic.
+
+    First arg is the column, remaining args are modifiers.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: num_topics
+    type: INTEGER
+    default: 8
+  - name: focus
+    type: VARCHAR
+    default: null
+  returns: VARCHAR
+  cache: true
+  operators:
+  - TOPICS({{ text }})
+  - TOPICS({{ text }}, {{ num_topics }})
+  - TOPICS({{ text }}, {{ num_topics }}, '{{ focus }}')
+  - '{{ text }} TOPICS {{ num_topics }}'
+  - '{{ text }} TOPICS INTO {{ num_topics }}'
+  block_operator:
+    start: DISCOVER_TOPICS
+    end: END_DISCOVER
+    structure:
+    - keyword: IN
+    - capture: text
+      as: expression
+    - optional:
+        pattern:
+        - keyword: COUNT
+        - capture: num_topics
+          as: expression
+    - optional:
+        pattern:
+        - keyword: FOCUS
+        - capture: focus
+          as: string
+  test_cases:
+  - sql: SELECT topics('Machine learning and neural networks')
+    expect:
+      type: regex
+      pattern: .+
+    description: Topics extracted
+cells:
+- name: extract_and_assign
+  model: x-ai/grok-4
+  instructions: "Analyze these {{ input.texts | length }} texts and:\n1. Extract {{\
+    \ input.num_topics | default(8) }} meaningful topic categories\n2. Assign each\
+    \ text to its best-matching topic\n\n{% if input.focus %}\nFocus on: {{ input.focus\
+    \ }}\n{% endif %}\n\nTexts to analyze (with index numbers):\n{% for v in input.texts\
+    \ %}\n[{{ loop.index0 }}] \"{{ v | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\
+    \nReturn a JSON object mapping each text's INDEX NUMBER to its assigned topic:\n\
+    \n{\n  \"mapping\": {\n    \"0\": \"Topic Name A\",\n    \"1\": \"Topic Name B\"\
+    ,\n    ...\n  }\n}\n\nIMPORTANT:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys,\
+    \ NOT the original text\n- Topic names should be concise but descriptive (2-5\
+    \ words)\n- Every input text must be assigned to exactly one topic\n- Return ONLY\
+    \ the JSON object\n- This is a grouping and classifying task - you are only creating\
+    \ {{ input.num_topics | default(8) }} groups!\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

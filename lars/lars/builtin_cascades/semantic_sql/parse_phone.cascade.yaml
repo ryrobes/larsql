@@ -1,0 +1,125 @@
+cascade_id: parse_phone
+internal: true
+sql_function:
+  name: parse_phone
+  description: 'Parse phone numbers using structural caching.
+
+    Same phone format + same extraction task = cached parser reuse.
+
+
+    Supported formats are auto-detected:
+
+    - US with parentheses: (555) 123-4567
+
+    - US with dashes: 555-123-4567
+
+    - US with dots: 555.123.4567
+
+    - International: +1 555 123 4567
+
+
+    Common tasks:
+
+    - "area code" - Extract area code
+
+    - "last 4 digits" - Extract last 4 digits
+
+    - "digits only" - Strip all formatting
+
+    - "format as (XXX) XXX-XXXX" - Reformat to standard
+
+    '
+  args:
+  - name: phone_value
+    type: VARCHAR
+    description: The phone number string to parse
+  - name: extraction_task
+    type: VARCHAR
+    description: What to extract (e.g., 'area code', 'last 4 digits', 'digits only')
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args:
+    - phone_value
+    fingerprint_config:
+      method: hybrid
+      include_lengths: false
+  cache: true
+  test_cases:
+  - sql: SELECT parse_phone('call 555-1234')
+    expect:
+      type: regex
+      pattern: .+
+    description: Phone expression generated
+cells:
+- name: generate_parser
+  #model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'Generate a DuckDB SQL expression to parse a phone number.
+
+
+    ## Phone Format
+
+    Pattern: {{ input.phone_value | fingerprint }}
+
+    Example: {{ input.phone_value }}
+
+
+    ## Task
+
+    Extract: "{{ input.extraction_task }}"
+
+
+    ## Rules
+
+    - Use :phone_value as the placeholder (will be bound at execution time)
+
+    - Use REGEXP_EXTRACT for pattern matching
+
+    - Return ONLY the SQL expression, no explanation, no markdown
+
+    - Handle the specific format pattern shown above
+
+
+    ## DuckDB Functions Reference
+
+    - REGEXP_EXTRACT(string, pattern, group) - Extract regex capturing group
+
+    - REGEXP_REPLACE(string, pattern, replacement, flags) - Replace with regex
+
+    - SUBSTRING(string, start, length) - Extract substring by position
+
+    - REPLACE(string, from, to) - Simple string replacement
+
+    - CONCAT(str1, str2, ...) - Concatenate strings
+
+
+    ## Examples by Task
+
+
+    For format "(D)_D-D" (e.g., "(555) 123-4567"):
+
+    - "area code": REGEXP_EXTRACT(:phone_value, ''\((\d{3})\)'', 1)
+
+    - "last 4 digits": REGEXP_EXTRACT(:phone_value, ''(\d{4})$'', 1)
+
+    - "digits only": REGEXP_REPLACE(:phone_value, ''[^0-9]'', '''', ''g'')
+
+    - "exchange": REGEXP_EXTRACT(:phone_value, ''\) (\d{3})-'', 1)
+
+
+    For format "D-D-D" (e.g., "555-123-4567"):
+
+    - "area code": REGEXP_EXTRACT(:phone_value, ''^(\d{3})-'', 1)
+
+    - "last 4 digits": REGEXP_EXTRACT(:phone_value, ''(\d{4})$'', 1)
+
+    - "digits only": REGEXP_REPLACE(:phone_value, ''-'', '''', ''g'')
+
+
+    Return only the SQL expression that handles the given format and task.
+
+    '

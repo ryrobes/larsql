@@ -20,6 +20,29 @@ _LARS_ROOT = os.getenv("LARS_ROOT", os.getcwd())
 # (e.g., analytics_worker.py uses `from .config import LARS_ROOT`)
 LARS_ROOT = _LARS_ROOT
 
+
+# ============================================================================
+# Builtin Resources - Package-bundled content
+# ============================================================================
+def _get_package_dir() -> str:
+    """Get the directory containing the lars package."""
+    return os.path.dirname(__file__)
+
+
+def get_builtin_cascades_dir() -> str:
+    """Get the package-bundled cascades directory."""
+    return os.path.join(_get_package_dir(), "builtin_cascades")
+
+
+def get_builtin_skills_dir() -> str:
+    """Get the package-bundled skills directory."""
+    return os.path.join(_get_package_dir(), "builtin_skills")
+
+
+def get_builtin_cell_types_dir() -> str:
+    """Get the package-bundled cell types directory."""
+    return os.path.join(_get_package_dir(), "builtin_cell_types")
+
 # ============================================================================
 # Google Credentials Resolver
 # ============================================================================

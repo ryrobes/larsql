@@ -1,0 +1,71 @@
+cascade_id: rank_agg
+internal: true
+description: 'Semantically rank values based on subjective criteria.
+
+  Goes beyond numeric sorting to qualitative ranking.
+
+  '
+inputs_schema:
+  values: Array of values to rank
+  criteria: Ranking criteria
+sql_function:
+  name: rank_semantic
+  description: Rank values by semantic criteria
+  args:
+  - name: values
+    type: VARCHAR
+    description: Values to rank
+  - name: criteria
+    type: VARCHAR
+    description: 'Ranking criteria: ''by quality'', ''by relevance to X'', ''by completeness'''
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - RANK_SEMANTIC({{ values }}, '{{ criteria }}')
+  - '{{ values }} RANKED BY ''{{ criteria }}'''
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('Brief but vague answer'),
+          ('Comprehensive detailed response with examples and citations'),
+          ('OK response')
+        ) AS t(answer)
+      )
+      SELECT RANK_SEMANTIC(answer, 'by quality and completeness') FROM test_data
+    expect:
+      type: contains
+      value: rankings
+    description: Ranks answers by quality
+cells:
+- name: semantic_ranking
+  model: google/gemini-2.5-flash-lite
+  instructions: "Rank these values according to the criteria.\n\nVALUES:\n{{ input.values\
+    \ }}\n\nCRITERIA: {{ input.criteria }}\n\nReturn a JSON object:\n{\n  \"rankings\"\
+    : [\n    {\n      \"rank\": 1,\n      \"value_index\": 2,\n      \"value_preview\"\
+    : \"First 50 chars of value...\",\n      \"score\": 0.95,\n      \"reasoning\"\
+    : \"Most comprehensive and well-structured\"\n    },\n    {\n      \"rank\": 2,\n\
+    \      \"value_index\": 0,\n      \"value_preview\": \"First 50 chars...\",\n\
+    \      \"score\": 0.82,\n      \"reasoning\": \"Good content but less detailed\"\
+    \n    },\n    {\n      \"rank\": 3,\n      \"value_index\": 1,\n      \"value_preview\"\
+    : \"First 50 chars...\",\n      \"score\": 0.65,\n      \"reasoning\": \"Incomplete\
+    \ information\"\n    }\n  ],\n  \"best\": {\n    \"index\": 2,\n    \"preview\"\
+    : \"First 100 chars of best value...\"\n  },\n  \"worst\": {\n    \"index\": 1,\n\
+    \    \"preview\": \"First 100 chars of worst value...\"\n  },\n  \"criteria_used\"\
+    : \"quality and completeness\",\n  \"spread\": \"high\",\n  \"notes\": \"Significant\
+    \ quality gap between #1 and others\"\n}\n\n**Common criteria patterns**:\n\n\"\
+    by quality\":\n- Writing quality, grammar, coherence\n- Completeness and accuracy\n\
+    - Professional presentation\n\n\"by relevance to X\":\n- How well it matches the\
+    \ topic/requirement X\n- Semantic relevance, not keyword matching\n\n\"by completeness\"\
+    :\n- How thorough and comprehensive\n- Missing information lowers rank\n\n\"by\
+    \ clarity\":\n- How easy to understand\n- Well-organized, clear language\n\n\"\
+    by actionability\":\n- Contains clear next steps\n- Practical and implementable\n\
+    \n\"by sentiment\":\n- Positive sentiment ranks higher (or lower if specified)\n\
+    \n\"by specificity\":\n- More specific/detailed ranks higher\n\nScore from 0.0\
+    \ to 1.0 for comparability.\nProvide brief reasoning for rankings.\n\nReturn ONLY\
+    \ the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

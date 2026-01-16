@@ -1,0 +1,91 @@
+cascade_id: semantic_extract
+internal: true
+description: 'Semantic information extraction - pulls specific facts, entities, or
+  details
+
+  from unstructured text. Like grep but with semantic understanding.
+
+
+  Use cases:
+
+  - Extract product names from reviews
+
+  - Pull dates/amounts from emails
+
+  - Find key entities in support tickets
+
+  - Grab specific facts from documents
+
+
+  Returns NULL if the requested information isn''t present in the text.
+
+  '
+inputs_schema:
+  text: The text to extract information from
+  what: Description of what to extract (e.g., 'customer name', 'price mentioned',
+    'date')
+sql_function:
+  name: semantic_extract
+  description: Extract specific information from unstructured text
+  args:
+  - name: text
+    type: VARCHAR
+  - name: what
+    type: VARCHAR
+    description: What to extract (e.g., 'product name', 'complaint type')
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - '{{ text }} EXTRACTS ''{{ what }}'''
+  cache: true
+  test_cases:
+  # Function syntax
+  - sql: SELECT semantic_extract('The price is $49.99 per unit', 'price')
+    expect:
+      type: contains
+      value: '49.99'
+    description: "Function: Price extracted"
+  - sql: SELECT semantic_extract('Contact John Smith at john@company.com', 'email')
+    expect:
+      type: contains
+      value: 'john@company.com'
+    description: "Function: Email extracted"
+  # Alias syntax - Note: extract() conflicts with DuckDB builtin, use semantic_extract
+  - sql: "SELECT semantic_extract('Order shipped ref 12345 on Monday', 'order number')"
+    expect:
+      type: contains
+      value: '12345'
+    description: "Function: order number extracted"
+  # Infix EXTRACTS syntax - need WITH for proper parsing
+  - sql: "WITH t AS (SELECT 'Meeting with CEO scheduled for 3pm' AS msg) SELECT msg EXTRACTS 'time' FROM t"
+    expect:
+      type: contains
+      value: '3pm'
+    description: "Infix EXTRACTS: time extracted from text"
+  - sql: "WITH t AS (SELECT 'Product: iPhone 15 Pro Max - great camera!' AS review) SELECT review EXTRACTS 'product name' FROM t"
+    expect:
+      type: contains
+      value: 'iPhone'
+    description: "Infix EXTRACTS: product name extracted"
+cells:
+- name: extract
+  model: google/gemini-2.5-flash-lite
+  instructions: "Extract the requested information from this text.\n\nTEXT:\n{{ input.text\
+    \ }}\n\nEXTRACT: {{ input.what }}\n\nInstructions:\n1. Find the specific information\
+    \ requested in the text\n2. Return ONLY the extracted information, nothing else\n\
+    3. If the information is not present or cannot be determined, return \"NULL\"\n\
+    4. Be concise - extract just the relevant part, not surrounding context\n5. If\
+    \ multiple instances exist, extract the most prominent/relevant one\n\nExamples:\n\
+    - Text: \"Customer John Smith called about order #12345\"\n  Extract: \"customer\
+    \ name\" → \"John Smith\"\n  Extract: \"order number\" → \"12345\"\n  Extract:\
+    \ \"problem type\" → \"NULL\"\n\n- Text: \"The iPhone 15 costs $999 and has great\
+    \ battery life\"\n  Extract: \"product name\" → \"iPhone 15\"\n  Extract: \"price\"\
+    \ → \"$999\"\n  Extract: \"warranty period\" → \"NULL\"\n\n- Text: \"Meeting scheduled\
+    \ for March 15th at 2pm in Conference Room B\"\n  Extract: \"date\" → \"March\
+    \ 15th\"\n  Extract: \"time\" → \"2pm\"\n  Extract: \"location\" → \"Conference\
+    \ Room B\"\n  Extract: \"attendees\" → \"NULL\"\n\nReturn ONLY the extracted value\
+    \ or \"NULL\" - no explanations, no quotes around it.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: string

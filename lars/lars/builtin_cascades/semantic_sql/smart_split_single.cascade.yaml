@@ -1,0 +1,105 @@
+# SMART_SPLIT - Smart splitting of delimited or structured values
+# (Named smart_split to avoid conflict with DuckDB's SPLIT function)
+#
+# SQL Usage:
+#   SELECT SMART_SPLIT(tags, 'into array') FROM posts
+#   SELECT SMART_SPLIT(full_name, 'into first and last') FROM contacts
+#   SELECT SMART_SPLIT(address_line, 'into components') FROM imports
+#
+# More intelligent than string split functions
+
+cascade_id: smart_split_single
+internal: true
+
+description: |
+  Intelligently split a value into components.
+  Handles various delimiters and natural language patterns.
+
+inputs_schema:
+  value: The value to split
+  instruction: How to split (delimiter or semantic instruction)
+
+sql_function:
+  name: smart_split
+  description: Smart value splitting
+  args:
+    - name: value
+      type: VARCHAR
+    - name: instruction
+      type: VARCHAR
+      default: "auto"
+      description: "Split instruction: delimiter, 'into array', 'into first and last', etc."
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "SMART_SPLIT({{ value }})"
+    - "SMART_SPLIT({{ value }}, '{{ instruction }}')"
+  cache: true
+  test_cases:
+    - sql: "SELECT smart_split('apple,banana,cherry', 'comma')"
+      expect:
+        type: json_contains
+        path: "$.parts"
+        value: ["apple", "banana", "cherry"]
+      description: "Comma-separated values split correctly"
+    - sql: "SELECT smart_split('John Smith', 'into first and last')"
+      expect:
+        type: json_contains
+        path: "$.first"
+        value: "John"
+      description: "Name split into first/last"
+
+cells:
+  - name: smart_split
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Split this value according to the instruction.
+
+      VALUE: {{ input.value }}
+      INSTRUCTION: {{ input.instruction | default('auto') }}
+
+      Return a JSON object with the split result.
+
+      **"auto" or delimiter detection**:
+      - Detect natural delimiters: comma, semicolon, pipe, newline, slash
+      - "a, b, c" → ["a", "b", "c"]
+      - "a; b; c" → ["a", "b", "c"]
+      - "a|b|c" → ["a", "b", "c"]
+
+      **"into array"**:
+      - Split by detected delimiter into array
+      - {"parts": ["a", "b", "c"], "count": 3}
+
+      **"into first and last" (names)**:
+      - "John Smith" → {"first": "John", "last": "Smith"}
+      - "John Q. Smith" → {"first": "John", "middle": "Q.", "last": "Smith"}
+      - "Smith, John" → {"first": "John", "last": "Smith"}
+
+      **"into components" (generic)**:
+      - Identify logical components
+      - "123 Main St, Boston, MA 02101" → address components
+
+      **Explicit delimiter**:
+      - SPLIT(value, ',') or SPLIT(value, 'by comma')
+      - SPLIT(value, ' ') or SPLIT(value, 'by space')
+
+      **"into key-value pairs"**:
+      - "a=1, b=2, c=3" → {"a": "1", "b": "2", "c": "3"}
+      - "name: John; age: 30" → {"name": "John", "age": "30"}
+
+      **"into sentences"**:
+      - Split by sentence boundaries
+      - Preserve sentence structure
+
+      **"into words"**:
+      - Split by whitespace, return array of words
+
+      Trim whitespace from all parts.
+      Return ONLY the JSON result.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object

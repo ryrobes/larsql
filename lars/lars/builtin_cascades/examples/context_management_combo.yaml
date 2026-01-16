@@ -1,0 +1,53 @@
+cascade_id: context_management_combo
+description: Demonstrates selective context management across phases
+inputs_schema:
+  topic: What to search for
+cells:
+- handoffs:
+  - build_query
+  instructions: 'Research {{ input.topic }} using sql_search.
+
+
+    You have 3 turns:
+
+    - Turn 1: Search for tables
+
+    - Turn 2: Analyze results (RAG explodes after this)
+
+    - Turn 3: Make final decision with clean context
+
+
+    State your final table choice clearly.'
+  name: research_with_ttl
+  rules:
+    max_turns: 3
+  skills:
+  - sql_search
+- context:
+    from:
+    - previous
+  handoffs:
+  - analyze
+  instructions: 'Based on what the previous phase found (you should only see the final
+    decision, not the RAG dump), write a SQL query.
+
+
+    What exactly do you see from the previous phase? Be specific about the context
+    you have access to.'
+  name: build_query
+  skills:
+  - sql_query
+- context:
+    from:
+    - all
+  instructions: 'Analyze the query results and provide insights. Confirm you have
+    access to:
+
+    1. Phase 1''s final decision (NOT the RAG dump)
+
+    2. Phase 2''s query and results
+
+
+    Describe your full context visibility.'
+  name: analyze
+  skills: []

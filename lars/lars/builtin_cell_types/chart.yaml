@@ -1,0 +1,20 @@
+# Chart Cell - Create visualizations
+type_id: chart
+display_name: Chart
+icon: mdi:chart-line
+color: "#8b5cf6"
+name_prefix: chart
+description: "Create data visualizations and charts"
+category: visualization
+tags:
+  - visualization
+  - popular
+template:
+  instructions: |
+    Create a chart from the provided data.
+
+    Data: {{ outputs.prior_cell }}
+
+    Generate an appropriate visualization.
+  skills:
+    - create_chart

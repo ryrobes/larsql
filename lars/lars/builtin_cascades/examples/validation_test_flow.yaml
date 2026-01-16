@@ -1,0 +1,17 @@
+cascade_id: validation_test_flow
+description: Demonstrates loop_until validation with automatic retry
+inputs_schema:
+  topic: The topic to write about
+cells:
+- instructions: 'Write a short paragraph (at least 50 characters) about: {{ input.topic
+    }}
+
+
+    Make it clear and well-written.'
+  name: write_content
+  rules:
+    loop_until: simple_validator
+    max_attempts: 3
+    max_turns: 1
+    retry_instructions: 'The validator said: {{ validation_error }}. Please revise
+      your response to address this issue. Attempt {{ attempt }}/{{ max_attempts }}.'

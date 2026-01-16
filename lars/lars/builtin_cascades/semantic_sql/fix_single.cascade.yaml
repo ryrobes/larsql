@@ -1,0 +1,116 @@
+cascade_id: fix_single
+internal: true
+description: 'Auto-fix common data quality issues. Attempts to repair the value
+
+  while preserving the original intent.
+
+  '
+inputs_schema:
+  value: The value to fix
+  type_hint: Optional hint about what type this should be
+sql_function:
+  name: fix
+  description: Auto-fix common data issues
+  args:
+  - name: value
+    type: VARCHAR
+  - name: type_hint
+    type: VARCHAR
+    optional: true
+    description: 'Type hint: email, phone, address, name, date, url, etc.'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - FIX({{ value }})
+  - FIX({{ value }}, '{{ type_hint }}')
+  cache: true
+  test_cases:
+  - sql: SELECT fix('john@gmial.com', 'email')
+    expect:
+      type: regex
+      pattern: '@g(oogle\.com|mail\.com)'
+    description: Email typo fixed
+cells:
+- name: auto_fix
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Fix this value if it has common data quality issues.
+
+
+    VALUE: {{ input.value }}
+
+    {% if input.type_hint %}TYPE HINT: {{ input.type_hint }}{% endif %}
+
+
+    Common fixes to apply:
+
+
+    **Email**:
+
+    - Fix domain typos: gmial.com → gmail.com, yaho.com → yahoo.com
+
+    - Add missing TLD: john@gmail → john@gmail.com
+
+    - Fix double dots: john..smith@gmail.com → john.smith@gmail.com
+
+    - Remove spaces: john @ gmail.com → john@gmail.com
+
+
+    **Phone**:
+
+    - Standardize format: 555.123.4567 → (555) 123-4567
+
+    - Add country code if missing (assume US): 5551234567 → +1 (555) 123-4567
+
+    - Fix transpositions if obvious pattern
+
+
+    **Address**:
+
+    - Expand abbreviations: St → Street, Ave → Avenue
+
+    - Fix common misspellings: Steet → Street
+
+    - Standardize punctuation
+
+    - Fix state abbreviation case: ca → CA
+
+
+    **Name**:
+
+    - Fix case: JOHN SMITH → John Smith
+
+    - Fix spacing: John  Smith → John Smith
+
+    - Reorder if clearly reversed: Smith, John → John Smith
+
+
+    **Date**:
+
+    - Fix obvious typos: 2024-13-01 → 2024-01-13 (if month > 12)
+
+    - Standardize format to ISO: 03/15/2024 → 2024-03-15
+
+
+    **URL**:
+
+    - Add protocol: example.com → https://example.com
+
+    - Fix common domain typos
+
+
+    **General**:
+
+    - Trim whitespace
+
+    - Remove control characters
+
+    - Fix encoding issues (Ã© → é)
+
+
+    If the value appears fine or unfixable, return it unchanged.
+
+    Return ONLY the fixed value (or original if no fix needed).
+
+    '
+  rules:
+    max_turns: 1

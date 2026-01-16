@@ -1,0 +1,53 @@
+cascade_id: normalize_unit_single
+internal: true
+description: 'Convert units of measurement to a standard unit.
+
+  Handles various notations and compound units.
+
+  '
+inputs_schema:
+  value: Value with unit
+  target_unit: Target unit to convert to
+sql_function:
+  name: normalize_unit
+  description: Convert to standard unit
+  args:
+  - name: value
+    type: VARCHAR
+  - name: target_unit
+    type: VARCHAR
+    description: 'Target unit: kg, lb, m, ft, cm, ml, oz, etc.'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - NORMALIZE_UNIT({{ value }}, '{{ target_unit }}')
+  - '{{ value }} IN {{ target_unit }}'
+  - '{{ value }} TO {{ target_unit }}'
+  cache: true
+  test_cases:
+  - sql: SELECT normalize_unit('100 kilometers', 'miles')
+    expect:
+      type: contains
+      value: '62'
+    description: KM to miles converted
+cells:
+- name: convert_unit
+  model: google/gemini-2.5-flash-lite
+  instructions: "Convert this value to {{ input.target_unit }}.\n\nVALUE: {{ input.value\
+    \ }}\nTARGET UNIT: {{ input.target_unit }}\n\nReturn a JSON object:\n{\n  \"original_value\"\
+    : 5.5,\n  \"original_unit\": \"kg\",\n  \"converted_value\": 12.13,\n  \"target_unit\"\
+    : \"lb\",\n  \"formatted\": \"12.13 lb\"\n}\n\n**Length**:\n- m, cm, mm, km, in,\
+    \ ft, yd, mi\n- \"5'10\\\"\" or \"5 ft 10 in\" = 177.8 cm\n- 1 in = 2.54 cm, 1\
+    \ ft = 30.48 cm, 1 mi = 1.609 km\n\n**Weight/Mass**:\n- kg, g, mg, lb, oz, st\
+    \ (stone)\n- 1 lb = 0.4536 kg, 1 oz = 28.35 g, 1 st = 6.35 kg\n\n**Volume**:\n\
+    - l, ml, gal (US), qt, pt, cup, fl oz, tbsp, tsp\n- 1 gal = 3.785 l, 1 cup = 236.6\
+    \ ml\n\n**Temperature**:\n- C, F, K\n- F to C: (F - 32) × 5/9\n- C to F: C × 9/5\
+    \ + 32\n\n**Area**:\n- m², ft², acre, hectare\n- 1 acre = 4047 m², 1 hectare =\
+    \ 10000 m²\n\n**Speed**:\n- km/h, mph, m/s, knots\n- 1 mph = 1.609 km/h\n\n**Data**:\n\
+    - B, KB, MB, GB, TB (use 1024 multiplier)\n- Kb, Mb, Gb (bits)\n\nHandle compound\
+    \ units: \"5 lb 8 oz\" → single value in target unit.\nHandle informal: \"about\
+    \ 10 kg\" → 10 kg (ignore qualifier).\n\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

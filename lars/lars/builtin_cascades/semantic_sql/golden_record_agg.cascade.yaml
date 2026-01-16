@@ -1,0 +1,59 @@
+cascade_id: golden_record_agg
+internal: true
+description: 'Create a golden record by intelligently merging multiple records.
+
+  Selects the best value for each field based on quality, recency, and completeness.
+
+  '
+inputs_schema:
+  records: Array of records to merge (as JSON strings)
+sql_function:
+  name: golden_record
+  description: Create best composite record from duplicates
+  args:
+  - name: records
+    type: VARCHAR
+    description: JSON record or struct to aggregate
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - GOLDEN_RECORD({{ records }})
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('{"name": "JOHN SMITH", "email": "john@gmail.com", "phone": null}'),
+          ('{"name": "John Smith", "email": null, "phone": "(555) 123-4567"}'),
+          ('{"name": "John Q. Smith", "email": "john.smith@gmail.com", "phone": "555-123-4567"}')
+        ) AS t(record)
+      )
+      SELECT GOLDEN_RECORD(record) FROM test_data
+    expect:
+      type: contains
+      value: John
+    description: Creates golden record from duplicate customer records
+cells:
+- name: merge_golden
+  model: google/gemini-2.5-flash-lite
+  instructions: "Create a golden record by merging these duplicate/related records.\n\
+    \nRECORDS:\n{{ input.records }}\n\nFor each field, select the best value using\
+    \ these criteria (in order):\n\n1. **Completeness**: Prefer non-null, non-empty\
+    \ values\n2. **Quality**: Prefer properly formatted values\n   - Correct capitalization\n\
+    \   - Valid format (real email > malformed email)\n   - More specific (full address\
+    \ > partial address)\n3. **Recency**: If a date/timestamp field exists, prefer\
+    \ more recent\n4. **Consistency**: If multiple records agree, prefer that value\n\
+    5. **Length**: For text, prefer more complete (longer if meaningful)\n\nExamples:\n\
+    \nRecords:\n- {name: \"JOHN SMITH\", email: \"john@gmail.com\", phone: null}\n\
+    - {name: \"John Smith\", email: \"j@gmail.com\", phone: \"(555) 123-4567\"}\n\
+    - {name: \"John Q. Smith\", email: null, phone: \"555-123-4567\"}\n\nGolden Record:\n\
+    {\n  \"name\": \"John Q. Smith\",         // Most complete, proper case\n  \"\
+    email\": \"john@gmail.com\",       // Most complete email\n  \"phone\": \"(555)\
+    \ 123-4567\"        // Best formatted\n}\n\nRules:\n- Include ALL fields that\
+    \ appear in ANY record\n- Use null only if ALL records have null for that field\n\
+    - Standardize format in the golden record\n- Add \"_source_count\" field showing\
+    \ how many records merged\n\nReturn ONLY the JSON golden record.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

@@ -74,9 +74,18 @@ def get_skill_manifest(refresh: bool = False) -> Dict[str, Any]:
     # 2. Scan cascade directories for cascade tools
     # Import registration function for cascade tools
     from .skill_registry import register_cascade_as_tool, get_skill
+    from .config import get_builtin_cascades_dir, get_builtin_skills_dir
 
     config = get_config()
-    for skills_dir in config.skills_dirs:
+
+    # Build search list: builtin directories first, then user directories
+    # User directories have higher priority (registered last, can override)
+    all_skills_dirs = [
+        get_builtin_skills_dir(),
+        get_builtin_cascades_dir(),
+    ] + list(config.skills_dirs)
+
+    for skills_dir in all_skills_dirs:
         # Support both absolute and relative paths
         if not os.path.isabs(skills_dir):
             # Try relative to cwd

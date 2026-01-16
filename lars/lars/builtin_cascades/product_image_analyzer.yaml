@@ -1,0 +1,121 @@
+# Per-Image Product Analyzer (Subcascade)
+# Called by product_catalog_extract.yaml via map_cascade
+#
+# Uses aggregate takes to get multiple interpretations of a complex image
+# and combines them for maximum extraction recall.
+
+cascade_id: product_image_analyzer
+description: |
+  Analyze a single product image to extract all visible products and prices.
+  Uses aggregate mode takes to get multiple passes, combining results
+  for maximum recall on busy/complex images.
+
+inputs_schema:
+  image_path: "Path to the image file to analyze"
+
+cells:
+  - name: load_image
+    tool: read_image
+    inputs:
+      path: "{{ input.image_path }}"
+    handoffs: [extract_products]
+
+  - name: extract_products
+    instructions: |
+      You are a product extraction specialist analyzing an image of products
+      (likely a retail display, market stand, or catalog).
+
+      ## Your Task
+      Carefully examine this image and extract EVERY visible product.
+
+      For each product, identify:
+      1. **Product Name**: The exact name/label visible on the product
+      2. **Price**: Any price tag visible (may be on the product, nearby shelf tag, or sign)
+      3. **Description**: Brief description of what you see (size, color, type)
+      4. **Location**: Where in the image (e.g., "top shelf left", "center display")
+      5. **Confidence**: Your confidence in the extraction (high/medium/low)
+
+      ## Important Notes
+      - Prices may NOT be directly on products - look for nearby price tags and signs
+      - Some products may be partially obscured - still try to identify them
+      - If you can only see part of a name, include what you can read with [partial]
+      - Multiple products may share one price sign
+      - Look for bundle deals or multi-buy offers
+
+      ## Take Pass Information
+      {% if take_index is defined %}
+      This is take pass {{ take_index + 1 }} of {{ take_factor }}.
+      {% if take_index == 0 %}
+      Focus on the MOST VISIBLE and PROMINENT products first.
+      {% elif take_index == 1 %}
+      Focus on PARTIALLY HIDDEN or OBSCURED products that might be missed.
+      {% else %}
+      Focus on EDGES, BACKGROUND, and any products you might have overlooked.
+      {% endif %}
+      {% else %}
+      Thoroughly examine ALL products in the image - prominent, obscured, and edge products.
+      {% endif %}
+
+      ## Output Format
+      Return a JSON object:
+      {
+        "products": [
+          {
+            "name": "Product Name",
+            "price": "$XX.XX" or null if not visible,
+            "description": "Brief description",
+            "location": "Where in image",
+            "confidence": "high|medium|low"
+          }
+        ],
+        "image_notes": "Any relevant observations about the image quality or layout",
+        "pass_focus": "What this pass focused on"
+      }
+
+    skills: [read_image]  # In case model needs to re-examine
+    models: 
+      - google/gemini-3-pro-preview
+      - openai/gpt-5.2
+      - x-ai/grok-4
+    context:
+      from:
+        - cell: load_image
+          include: [images, output]
+          images_filter: all
+    takes:
+      factor: 6
+      mode: aggregate
+      aggregator_instructions: |
+        You received {{ take_factor }} extraction passes over the same product image.
+        Each pass focused on different areas (prominent products, hidden products, edges/background).
+
+        COMBINE all unique products into a single comprehensive list:
+        1. Merge products that are clearly the same (same name, same location)
+        2. Keep ALL unique products - better to have slight duplicates than miss items
+        3. If price differs, use the price with higher confidence
+        4. Preserve the highest confidence rating for merged items
+
+        Return the combined results in the same JSON format.
+    output_schema:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              price:
+                type: string
+              description:
+                type: string
+              location:
+                type: string
+              confidence:
+                type: string
+        image_notes:
+          type: string
+      required: [products]
+    rules:
+      max_turns: 1

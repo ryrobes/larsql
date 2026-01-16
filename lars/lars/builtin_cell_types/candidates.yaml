@@ -1,0 +1,24 @@
+# Takes Cell - Best-of-N selection
+type_id: takes
+display_name: Takes
+icon: mdi:source-branch
+color: "#ec4899"
+name_prefix: takes
+description: "Run multiple LLM attempts and select the best result"
+category: ai
+tags:
+  - ai-ml
+  - advanced
+  - powerful
+template:
+  instructions: |
+    Complete the following task with high quality:
+
+    {{ input.task }}
+
+    Be thorough and accurate in your response.
+  takes:
+    factor: 3
+    evaluator_instructions: |
+      Select the take that best completes the task.
+      Consider accuracy, completeness, and clarity.

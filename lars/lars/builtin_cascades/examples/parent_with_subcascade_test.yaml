@@ -1,0 +1,19 @@
+cascade_id: parent_with_subcascade_test
+description: Test sub-cascade tracking and navigation
+cells:
+- name: setup
+  tool: python_data
+  inputs:
+    code: 'result = {"message": "Parent cascade starting"}
+
+      '
+- name: spawn_child
+  tool: lars_data
+  inputs:
+    code: examples/test_subcascade_child.yaml
+- name: finish
+  tool: python_data
+  inputs:
+    code: 'result = {"message": "Parent cascade completed"}
+
+      '

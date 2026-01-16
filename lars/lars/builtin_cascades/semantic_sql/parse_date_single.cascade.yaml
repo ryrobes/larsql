@@ -1,0 +1,142 @@
+cascade_id: parse_date_single
+internal: true
+description: |
+  Parse date from virtually any format into structured components.
+  Returns JSON - use ->> operator to extract fields:
+    PARSE_DATE(text) ->> 'iso' -- "2024-03-15"
+    PARSE_DATE(text) ->> 'year' -- "2024"
+
+inputs_schema:
+  date_text: The date text to parse
+  prefer_format: Hint for ambiguous dates (mdy, dmy, ymd)
+sql_function:
+  name: parse_date
+  description: "Parse date from any format into JSON with fields: year, month, day, iso, formatted, day_of_week, is_valid"
+  args:
+  - name: date_text
+    type: VARCHAR
+  - name: prefer_format
+    type: VARCHAR
+    optional: true
+    default: mdy
+    description: 'For ambiguous dates: mdy (US), dmy (EU), ymd (ISO)'
+  returns: JSON
+  shape: SCALAR
+  operators:
+  - PARSE_DATE({{ date_text }})
+  - PARSE_DATE({{ date_text }}, '{{ prefer_format }}')
+  cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: [date_text]
+  test_cases:
+  - sql: SELECT parse_date('March 15th, 2024')
+    expect:
+      type: contains
+      value: '2024-03-15'
+    description: Date parsed from text
+    skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
+cells:
+- name: parse
+  #model: google/gemini-2.5-flash-lite
+  instructions: |
+    Generate a DuckDB SQL expression that parses this date format into a JSON object.
+
+    DATE PATTERN: {{ input.date_text }}
+    PREFER FORMAT: {{ input.prefer_format | default('mdy') }} (for ambiguous dates)
+
+    Return a SQL expression using json_object() that extracts ALL fields:
+    - year: 4-digit year (INTEGER)
+    - month: Month number 1-12 (INTEGER)
+    - day: Day of month 1-31 (INTEGER)
+    - hour: Hour 0-23 or NULL (INTEGER)
+    - minute: Minute 0-59 or NULL (INTEGER)
+    - second: Second 0-59 or NULL (INTEGER)
+    - timezone: Timezone string or NULL
+    - iso: ISO date string "YYYY-MM-DD"
+    - iso_datetime: Full ISO datetime or NULL
+    - formatted: Human-readable format "Month Day, Year"
+    - day_of_week: Day name or NULL
+    - quarter: Quarter 1-4 (INTEGER)
+    - is_approximate: true if partial date (BOOLEAN)
+    - is_valid: true if parseable (BOOLEAN)
+
+    Use :date_text as the parameter placeholder.
+
+    EXAMPLE for "2024-03-15" (ISO format):
+    json_object(
+      'year', CAST(split_part(:date_text, '-', 1) AS INTEGER),
+      'month', CAST(split_part(:date_text, '-', 2) AS INTEGER),
+      'day', CAST(split_part(:date_text, '-', 3) AS INTEGER),
+      'hour', NULL,
+      'minute', NULL,
+      'second', NULL,
+      'timezone', NULL,
+      'iso', :date_text,
+      'iso_datetime', NULL,
+      'formatted', strftime(strptime(:date_text, '%Y-%m-%d'), '%B %d, %Y'),
+      'day_of_week', strftime(strptime(:date_text, '%Y-%m-%d'), '%A'),
+      'quarter', CAST(CEIL(CAST(split_part(:date_text, '-', 2) AS INTEGER) / 3.0) AS INTEGER),
+      'is_approximate', false,
+      'is_valid', true
+    )
+
+    EXAMPLE for "03/15/2024" (US slash format):
+    json_object(
+      'year', CAST(split_part(:date_text, '/', 3) AS INTEGER),
+      'month', CAST(split_part(:date_text, '/', 1) AS INTEGER),
+      'day', CAST(split_part(:date_text, '/', 2) AS INTEGER),
+      'hour', NULL,
+      'minute', NULL,
+      'second', NULL,
+      'timezone', NULL,
+      'iso', split_part(:date_text, '/', 3) || '-' || lpad(split_part(:date_text, '/', 1), 2, '0') || '-' || lpad(split_part(:date_text, '/', 2), 2, '0'),
+      'iso_datetime', NULL,
+      'formatted', strftime(strptime(:date_text, '%m/%d/%Y'), '%B %d, %Y'),
+      'day_of_week', strftime(strptime(:date_text, '%m/%d/%Y'), '%A'),
+      'quarter', CAST(CEIL(CAST(split_part(:date_text, '/', 1) AS INTEGER) / 3.0) AS INTEGER),
+      'is_approximate', false,
+      'is_valid', true
+    )
+
+    EXAMPLE for "March 15, 2024" (written format):
+    json_object(
+      'year', CAST(regexp_extract(:date_text, '(\d{4})', 1) AS INTEGER),
+      'month', CASE
+        WHEN :date_text ~* 'jan' THEN 1 WHEN :date_text ~* 'feb' THEN 2 WHEN :date_text ~* 'mar' THEN 3
+        WHEN :date_text ~* 'apr' THEN 4 WHEN :date_text ~* 'may' THEN 5 WHEN :date_text ~* 'jun' THEN 6
+        WHEN :date_text ~* 'jul' THEN 7 WHEN :date_text ~* 'aug' THEN 8 WHEN :date_text ~* 'sep' THEN 9
+        WHEN :date_text ~* 'oct' THEN 10 WHEN :date_text ~* 'nov' THEN 11 WHEN :date_text ~* 'dec' THEN 12
+      END,
+      'day', CAST(regexp_extract(:date_text, '(\d{1,2})', 1) AS INTEGER),
+      'hour', NULL,
+      'minute', NULL,
+      'second', NULL,
+      'timezone', NULL,
+      'iso', regexp_extract(:date_text, '(\d{4})', 1) || '-' || lpad(CAST(CASE
+        WHEN :date_text ~* 'jan' THEN 1 WHEN :date_text ~* 'feb' THEN 2 WHEN :date_text ~* 'mar' THEN 3
+        WHEN :date_text ~* 'apr' THEN 4 WHEN :date_text ~* 'may' THEN 5 WHEN :date_text ~* 'jun' THEN 6
+        WHEN :date_text ~* 'jul' THEN 7 WHEN :date_text ~* 'aug' THEN 8 WHEN :date_text ~* 'sep' THEN 9
+        WHEN :date_text ~* 'oct' THEN 10 WHEN :date_text ~* 'nov' THEN 11 WHEN :date_text ~* 'dec' THEN 12
+      END AS VARCHAR), 2, '0') || '-' || lpad(regexp_extract(:date_text, '(\d{1,2})', 1), 2, '0'),
+      'iso_datetime', NULL,
+      'formatted', :date_text,
+      'day_of_week', NULL,
+      'quarter', CAST(CEIL(CASE
+        WHEN :date_text ~* 'jan' THEN 1 WHEN :date_text ~* 'feb' THEN 2 WHEN :date_text ~* 'mar' THEN 3
+        WHEN :date_text ~* 'apr' THEN 4 WHEN :date_text ~* 'may' THEN 5 WHEN :date_text ~* 'jun' THEN 6
+        WHEN :date_text ~* 'jul' THEN 7 WHEN :date_text ~* 'aug' THEN 8 WHEN :date_text ~* 'sep' THEN 9
+        WHEN :date_text ~* 'oct' THEN 10 WHEN :date_text ~* 'nov' THEN 11 WHEN :date_text ~* 'dec' THEN 12
+      END / 3.0) AS INTEGER),
+      'is_approximate', false,
+      'is_valid', true
+    )
+
+    Two-digit year rules: 00-30 → 2000-2030, 31-99 → 1931-1999
+    CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
+    The expression must build the COMPLETE JSON with ALL fields.
+  rules:
+    max_turns: 1
+  output_schema:
+    type: string

@@ -1,0 +1,41 @@
+cascade_id: takes_fanout_demo
+description: 'Demonstrates fan-out pattern: each take processes a different item
+  from an array, then aggregates results'
+inputs_schema:
+  topics: Array of topics to research in parallel
+cells:
+- instructions: 'You are researching the topic: **{{ input.topics[take_index]
+    }}**
+
+
+    Provide a brief but informative summary (2-3 paragraphs) covering:
+
+    1. What it is and why it matters
+
+    2. Key benefits or applications
+
+    3. Current trends or future outlook
+
+
+    Be concise but insightful.'
+  name: research_topics
+  rules:
+    max_turns: 1
+  takes:
+    aggregator_instructions: 'You have received research summaries on multiple topics.
+      Create a unified research report that:
+
+      1. Organizes the topics thematically
+
+      2. Identifies connections between topics
+
+      3. Provides an executive summary at the top
+
+      4. Preserves the key insights from each topic
+
+
+      Format as a well-structured markdown document.'
+    factor: 3
+    mode: aggregate
+    mutate: false
+  skills: []

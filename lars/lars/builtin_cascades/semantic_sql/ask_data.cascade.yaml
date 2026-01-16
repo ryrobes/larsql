@@ -1,0 +1,102 @@
+# ============================================================================
+# Semantic Macro: ask_data
+# ============================================================================
+#
+# Part of "Semantic Macros with Structural Caching"
+#
+# A natural language to SQL interface using sql_statement output mode.
+# The LLM generates FULL SQL queries (not just expressions) and returns
+# table results.
+#
+# Key features:
+#   - Uses sql_search tool to introspect available schemas/tables
+#   - Generates complete SELECT statements
+#   - Safety layer blocks dangerous operations (DROP, DELETE, etc.)
+#   - Exact-match caching: same question = cached SQL
+#
+# Example:
+#   SELECT ask_data('show me the top 5 customers by revenue')
+#   Returns: [{"name": "Acme", "revenue": 1000000}, ...]
+#
+# ============================================================================
+
+cascade_id: ask_data
+internal: true
+sql_function:
+  name: ask_data
+  description: |
+    Ask questions about your data in natural language.
+
+    Generates, executes, and returns results from SQL queries.
+    Uses schema introspection to understand available tables and columns.
+
+    Returns table results as JSON array: [{"col": "val"}, ...]
+
+    Related functions:
+    - ask_data('question') → JSON results (this function)
+    - ask_data_sql('question') → SQL statement only (for debugging)
+
+    Examples:
+    - ask_data('show me the top 10 products by sales')
+    - ask_data('how many orders were placed last month?')
+    - ask_data('list customers who have not ordered in 90 days')
+
+    Safety: Only SELECT queries are allowed. DDL and DML are blocked.
+  operators:
+    - ASK_DATA({{ question }}')
+    - 'ASK_DATA ''{{ question }}'''    
+  args:
+    - name: question
+      type: VARCHAR
+      description: Natural language question about your data
+  returns: JSON
+  shape: SCALAR
+  output_mode: sql_statement
+  cache_key:
+    strategy: content  # Exact match - same question = same SQL
+    cache_as: ask_data  # Share cache with ask_data_sql
+  cache: true
+  test_cases:
+    - sql: SELECT * from ask_data('select 1 as test')
+      expect: 1
+      description: Simple passthrough query returns value
+
+cells:
+  - name: generate_query
+    #model: google/gemini-2.5-flash
+    skills:
+      - sql_search  # Tool for schema introspection
+    rules:
+      #max_turns: 2  # Allow 1-2 turns to discover schema via tools
+      loop_until: validate_sql  # Validate SQL syntax + schema before accepting
+      max_attempts: 3  # Retry up to 3 times if validation fails
+    instructions: |
+      You are a SQL expert. Generate a DuckDB SQL query to answer the user's question.
+
+      ## User Question
+      {{ input.question }}
+
+      ## Instructions
+
+      1. Use the `sql_search` tool to discover available tables and their schemas
+      2. Generate a DuckDB-compatible SELECT query
+      3. Return ONLY the SQL query - no explanation, no markdown code blocks
+
+      ## Rules
+
+      - Only generate SELECT or WITH queries
+      - Never generate DROP, DELETE, UPDATE, INSERT, or DDL statements
+      - Use proper DuckDB SQL syntax
+      - Do NOT end queries with a semicolon
+      - If the question is ambiguous, make reasonable assumptions
+      - If no matching tables exist, return a query that explains this
+
+      ## Examples
+
+      Question: "show me the top 5 customers"
+      Answer: SELECT * FROM customers ORDER BY revenue DESC LIMIT 5
+
+      Question: "count of orders by month"
+      Answer: SELECT DATE_TRUNC('month', order_date) as month, COUNT(*) as orders FROM orders GROUP BY 1 ORDER BY 1
+
+      Return only the SQL query.

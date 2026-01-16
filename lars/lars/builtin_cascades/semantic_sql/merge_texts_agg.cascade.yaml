@@ -1,0 +1,70 @@
+cascade_id: merge_texts_agg
+internal: true
+description: 'Intelligently merge multiple text values into coherent output.
+
+  Handles deduplication, synthesis, and formatting.
+
+  '
+inputs_schema:
+  texts: Array of texts to merge
+  mode: Merge mode (concatenate, deduplicate, synthesize, summarize)
+sql_function:
+  name: merge_texts
+  description: Intelligently merge text values
+  args:
+  - name: texts
+    type: VARCHAR
+    description: Text values to merge
+  - name: mode
+    type: VARCHAR
+    optional: true
+    default: deduplicate
+    description: 'Mode: concatenate, deduplicate, synthesize, summarize, timeline'
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - MERGE_TEXTS({{ texts }})
+  - MERGE_TEXTS({{ texts }}, '{{ mode }}')
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The product arrived on time.'),
+          ('Product arrived on time!'),
+          ('Fast shipping, item came early.'),
+          ('Great packaging and quick delivery.')
+        ) AS t(comment)
+      )
+      SELECT MERGE_TEXTS(comment, 'deduplicate') FROM test_data
+    expect:
+      type: contains
+      value: merged
+    description: Deduplicates similar shipping comments
+cells:
+- name: intelligent_merge
+  model: google/gemini-2.5-flash-lite
+  instructions: "Merge these text values according to the specified mode.\n\nTEXTS:\n\
+    {{ input.texts }}\n\nMODE: {{ input.mode | default('deduplicate') }}\n\nReturn\
+    \ a JSON object:\n{\n  \"merged\": \"The combined/processed text output...\",\n\
+    \  \"input_count\": 3,\n  \"mode_used\": \"deduplicate\",\n  \"processing_notes\"\
+    : [\n    \"Removed 2 duplicate sentences\",\n    \"Combined related information\"\
+    ,\n    \"Preserved chronological order\"\n  ]\n}\n\n**Modes**:\n\n\"concatenate\"\
+    :\n- Simple joining with separators\n- Preserve all content\n- Add paragraph breaks\
+    \ between sources\n- Best for logs, notes, comments\n\n\"deduplicate\":\n- Remove\
+    \ duplicate or near-duplicate content\n- Preserve unique information\n- Maintain\
+    \ one instance of repeated facts\n- Best for aggregating multiple sources about\
+    \ same entity\n\n\"synthesize\":\n- Combine into coherent narrative\n- Resolve\
+    \ contradictions (note them if unresolvable)\n- Create unified text, not just\
+    \ concatenation\n- Best for creating comprehensive descriptions\n\n\"summarize\"\
+    :\n- Distill key points from all texts\n- Remove redundancy\n- Create concise\
+    \ overview\n- Best for aggregating feedback, reviews\n\n\"timeline\":\n- Arrange\
+    \ chronologically if dates present\n- Create narrative progression\n- Best for\
+    \ history, activity logs\n\n**Processing rules**:\n- Preserve important facts\
+    \ and details\n- Maintain consistent voice/tense\n- Handle contradictions gracefully\n\
+    - Note source count in output\n- For deduplicate: keep most complete version\n\
+    \nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

@@ -1,0 +1,84 @@
+cascade_id: parse_phone_single
+internal: true
+description: |
+  Parse phone number into structured components and normalized formats.
+  Returns JSON - use ->> operator to extract fields:
+    PARSE_PHONE(num) ->> 'e164' -- "+15551234567"
+    PARSE_PHONE(num) ->> 'national' -- "(555) 123-4567"
+
+inputs_schema:
+  phone: The phone number to parse
+  default_country: 'Default country code if not specified (default: US)'
+sql_function:
+  name: parse_phone
+  description: "Parse phone number into JSON with fields: country_code, area_code, e164, national, international, is_valid, type"
+  args:
+  - name: phone
+    type: VARCHAR
+  - name: default_country
+    type: VARCHAR
+    optional: true
+    default: US
+  returns: JSON
+  shape: SCALAR
+  operators:
+  - PARSE_PHONE({{ phone }})
+  - PARSE_PHONE({{ phone }}, '{{ default_country }}')
+  cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: [phone]
+  test_cases:
+  - sql: SELECT parse_phone('Call me at (555) 123-4567')
+    expect:
+      type: contains
+      value: '5551234567'
+    description: Phone extracted from text
+    skip: true  # sql_execute mode requires LLM to generate valid SQL expressions
+cells:
+- name: parse
+  #model: google/gemini-2.5-flash-lite
+  instructions: |
+    Generate a DuckDB SQL expression that parses this phone format into a JSON object.
+
+    PHONE PATTERN: {{ input.phone }}
+    DEFAULT COUNTRY: {{ input.default_country | default('US') }}
+
+    Return a SQL expression using json_object() that extracts ALL fields:
+    - country_code: The country dialing code (e.g., "1" for US)
+    - area_code: The area/city code
+    - exchange: The exchange/central office code
+    - subscriber: The subscriber number
+    - extension: Any extension (null if none)
+    - e164: Full E.164 format (e.g., "+15551234567")
+    - national: National format (e.g., "(555) 123-4567")
+    - international: International format (e.g., "+1 555-123-4567")
+    - is_valid: true/false
+    - type: "landline", "mobile", "tollfree", or "unknown"
+
+    Use :phone as the parameter placeholder for the phone value.
+
+    EXAMPLE for "(555) 123-4567" pattern:
+    json_object(
+      'country_code', '1',
+      'area_code', regexp_extract(:phone, '^\((\d{3})\)', 1),
+      'exchange', regexp_extract(:phone, '^\(\d{3}\) (\d{3})-', 1),
+      'subscriber', regexp_extract(:phone, '-(\d{4})$', 1),
+      'extension', NULL,
+      'e164', '+1' || regexp_replace(regexp_replace(:phone, '[^0-9]', '', 'g'), '^1?', ''),
+      'national', :phone,
+      'international', '+1 ' || regexp_extract(:phone, '^\((\d{3})\)', 1) || '-' || regexp_extract(:phone, '^\(\d{3}\) (\d{3})-', 1) || '-' || regexp_extract(:phone, '-(\d{4})$', 1),
+      'is_valid', length(regexp_replace(:phone, '[^0-9]', '', 'g')) >= 10,
+      'type', CASE
+        WHEN regexp_extract(:phone, '^\(?(\d{3})', 1) IN ('800','888','877','866','855','844','833') THEN 'tollfree'
+        ELSE 'landline'
+      END
+    )
+
+    CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
+    The expression must build the COMPLETE JSON with ALL fields.
+  rules:
+    max_turns: 1
+  output_schema:
+    type: string

@@ -1,0 +1,134 @@
+cascade_id: test_hitl_screens
+description: Test cascade demonstrating the new HITL cell type for interactive screens
+
+inputs_schema:
+  user_name: Name of the user (optional)
+
+cells:
+  - name: welcome_screen
+    hitl: |
+      <div style="text-align: center; padding: 20px;">
+        <h1>Welcome!</h1>
+        <p>Hello{% if input.user_name %}, {{ input.user_name }}{% endif %}!</p>
+        <p>This is a simple demo of HITL screens.</p>
+
+        <form hx-post="/checkpoint/respond" hx-ext="json-enc" style="margin-top: 20px;">
+          <button type="submit" name="response[action]" value="continue"
+                  style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
+            Get Started
+          </button>
+        </form>
+      </div>
+    hitl_title: Welcome
+    hitl_description: The first screen of the demo
+    handoffs:
+      - choice_screen
+
+  - name: choice_screen
+    hitl: |
+      <div style="padding: 20px;">
+        <h2>Make a Choice</h2>
+        <p>What would you like to do?</p>
+
+        <form hx-post="/checkpoint/respond" hx-ext="json-enc">
+          <div style="display: flex; flex-direction: column; gap: 10px; margin: 20px 0;">
+            <label style="display: flex; align-items: center; gap: 10px;">
+              <input type="radio" name="response[choice]" value="option_a" required>
+              <span>Option A - View some data</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px;">
+              <input type="radio" name="response[choice]" value="option_b">
+              <span>Option B - Enter custom text</span>
+            </label>
+          </div>
+
+          <button type="submit" name="response[action]" value="choose"
+                  style="padding: 10px 20px;">
+            Continue
+          </button>
+        </form>
+      </div>
+    hitl_title: Choose Your Path
+    routing:
+      option_a: data_screen
+      option_b: input_screen
+    handoffs:
+      - data_screen
+      - input_screen
+
+  - name: data_screen
+    hitl: |
+      <div style="padding: 20px;">
+        <h2>Here's Some Data</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <thead>
+            <tr style="background: #333;">
+              <th style="padding: 10px; border: 1px solid #444;">Item</th>
+              <th style="padding: 10px; border: 1px solid #444;">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding: 10px; border: 1px solid #444;">Alpha</td><td style="padding: 10px; border: 1px solid #444;">100</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #444;">Beta</td><td style="padding: 10px; border: 1px solid #444;">250</td></tr>
+            <tr><td style="padding: 10px; border: 1px solid #444;">Gamma</td><td style="padding: 10px; border: 1px solid #444;">175</td></tr>
+          </tbody>
+        </table>
+
+        <form hx-post="/checkpoint/respond" hx-ext="json-enc">
+          <button type="submit" name="response[action]" value="finish"
+                  style="padding: 10px 20px;">
+            Finish
+          </button>
+        </form>
+      </div>
+    hitl_title: Data View
+    handoffs:
+      - complete_screen
+
+  - name: input_screen
+    hitl: |
+      <div style="padding: 20px;">
+        <h2>Enter Some Text</h2>
+
+        <form hx-post="/checkpoint/respond" hx-ext="json-enc">
+          <div style="margin: 20px 0;">
+            <label style="display: block; margin-bottom: 5px;">Your message:</label>
+            <textarea name="response[message]" rows="4" style="width: 100%; padding: 10px;"
+                      placeholder="Type something..."></textarea>
+          </div>
+
+          <button type="submit" name="response[action]" value="submit"
+                  style="padding: 10px 20px;">
+            Submit
+          </button>
+        </form>
+      </div>
+    hitl_title: Text Input
+    handoffs:
+      - complete_screen
+
+  - name: complete_screen
+    hitl: |
+      <div style="text-align: center; padding: 40px;">
+        <h1>All Done!</h1>
+        <p>You've completed the HITL screens demo.</p>
+
+        {% if state.input_screen.response.message %}
+        <div style="margin: 20px 0; padding: 15px; background: #1a1a1a; border-radius: 8px;">
+          <p style="color: #888; margin-bottom: 5px;">Your message:</p>
+          <p style="font-style: italic;">"{{ state.input_screen.response.message }}"</p>
+        </div>
+        {% endif %}
+
+        <form hx-post="/checkpoint/respond" hx-ext="json-enc" style="margin-top: 20px;">
+          <button type="submit" name="response[action]" value="restart"
+                  style="padding: 10px 20px;">
+            Start Over
+          </button>
+        </form>
+      </div>
+    hitl_title: Complete
+    routing:
+      restart: welcome_screen
+    handoffs:
+      - welcome_screen

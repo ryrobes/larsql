@@ -1,0 +1,87 @@
+cascade_id: semantic_clean_year
+internal: true
+description: 'Scalar function to clean/extract 4-digit years from messy string data.
+
+
+  Handles various formats that regex can''t reliably parse:
+
+  - Standard: "2023", "1995"
+
+  - Two-digit: "95" → 1995, "05" → 2005
+
+  - Decades: "the 90s", "early 2000s"
+
+  - Approximate: "circa 1995", "around 2010"
+
+  - Dates: "2023-01-15", "Jan 2023", "15/03/1995"
+
+  - Spelled: "nineteen eighty-four"
+
+  - Ranges: "1990-1995" → first year (1990)
+
+
+  Returns -1 for undeterminable values (garbage, empty, null-like).
+
+  '
+inputs_schema:
+  text: The raw text potentially containing a year
+sql_function:
+  name: semantic_clean_year
+  description: Extracts 4-digit year from messy text, returns -1 if undetermined
+  shape: SCALAR
+  returns: INTEGER
+  cache: true
+  args:
+  - name: text
+    type: VARCHAR
+    description: Raw text to extract year from
+  operators:
+  - CLEAN_YEAR({{ text }})
+  test_cases:
+  - sql: SELECT clean_year('FY2023')
+    expect:
+      type: one_of
+      values:
+      - '2023'
+      - 2023
+    description: Fiscal year cleaned
+  - sql: SELECT clean_year('circa 1990')
+    expect:
+      type: one_of
+      values:
+      - '1990'
+      - 1990
+    description: Approximate year cleaned
+cells:
+- name: extract_year
+  model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'Extract the 4-digit year from this text. Return ONLY an integer.
+
+
+    TEXT: {{ input.text }}
+
+
+    Conversion rules:
+
+    - Two-digit years: 00-30 → 2000-2030, 31-99 → 1931-1999
+
+    - Decades ("the 90s", "early 90s") → decade start (1990)
+
+    - "circa", "around", "approximately" → the year mentioned
+
+    - Any date format → extract just the year component
+
+    - Spelled out ("nineteen eighty-four") → convert to digits (1984)
+
+    - Year ranges ("1990-1995") → use the first year (1990)
+
+    - Multiple years → use the primary/most relevant one
+
+    - Empty, null, N/A, or undeterminable → return -1
+
+
+    Return ONLY the integer. No text, no explanation, no formatting.
+
+    '

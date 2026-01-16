@@ -1,0 +1,32 @@
+cascade_id: multi_model_pareto_2
+description: Phase 3 Multi-Model Takes - Pareto frontier analysis for optimal
+  cost/quality tradeoff
+inputs_schema:
+  task: The task to complete with Pareto optimization
+cells:
+- instructions: 'Complete this task: {{ input.task }}'
+  name: generate
+  takes:
+    evaluator_instructions: Evaluate the quality of each response for clarity, accuracy,
+      and usefulness.
+    factor: 3
+    models:
+      xiaomi/mimo-v2-flash:free:
+        factor: 3
+      google/gemini-3-flash-preview:
+        factor: 3
+      bytedance-seed/seed-1.6-flash:
+        factor: 3
+      qwen/qwen3-coder-flash:
+        factor: 3
+      x-ai/grok-4.1-fast:
+        factor: 3
+    mutate: false
+    downstream_model: true  # Cascade tools use each take's model for fair benchmarking
+    pareto_frontier:
+      enabled: true
+      include_dominated: true
+      policy: balanced
+      quality_metric: evaluator_score
+      show_frontier: true
+  skills: [manifest]

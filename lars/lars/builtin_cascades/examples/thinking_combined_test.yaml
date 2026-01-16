@@ -1,0 +1,32 @@
+cascade_id: thinking_combined_test
+description: Tests different thinking mode configurations
+inputs_schema:
+  riddle: A riddle to solve
+cells:
+- name: solve_with_budget
+  model: anthropic/claude-sonnet-4::6000
+  instructions: 'Solve this riddle with careful reasoning:
+
+
+    {{ input.riddle }}
+
+
+    Take your time to think through all possibilities.
+
+    '
+  skills: []
+- name: solve_with_effort
+  model: anthropic/claude-sonnet-4::high
+  instructions: 'Provide an alternative interpretation of the riddle:
+
+
+    {{ input.riddle }}
+
+
+    Think deeply about other possible answers.
+
+    '
+  skills: []
+  context:
+    from:
+    - solve_with_budget

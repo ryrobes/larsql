@@ -1,0 +1,69 @@
+cascade_id: bash_persistent_session
+description: Demonstrate persistent bash sessions - env vars, cwd, functions survive
+cells:
+- name: setup
+  tool: bash_data
+  inputs:
+    script: "# Export environment variables (persist across phases)\nexport PROJECT_NAME=\"\
+      lars_demo\"\nexport DATA_SOURCE=\"mock_api\"\n\n# Change directory (persists)\n\
+      mkdir -p workspace/data\ncd workspace/data\n\n# Define shell functions (persist)\n\
+      function log_msg() {\n  echo \"[$(date '+%H:%M:%S')] $1\" >&2  # Send to stderr\
+      \ to not pollute stdout\n}\n\nfunction generate_id() {\n  echo \"ID_$(date +%s)_$$\"\
+      \n}\n\n# Output confirmation\necho \"name,value\"\necho \"project,$PROJECT_NAME\"\
+      \necho \"source,$DATA_SOURCE\"\n"
+    output_format: csv
+  handoffs:
+  - check_persistence
+- name: check_persistence
+  tool: bash_data
+  inputs:
+    script: '# Use exported variables (should still exist)
+
+      log_msg "Project: $PROJECT_NAME, Source: $DATA_SOURCE"
+
+
+      # Check working directory (should be workspace/data)
+
+      current_dir=$(basename $(pwd))
+
+      log_msg "Current directory: $current_dir"
+
+
+      # Use shell function
+
+      job_id=$(generate_id)
+
+      log_msg "Generated job ID: $job_id"
+
+
+      # Output CSV
+
+      echo "check,status"
+
+      echo "env_vars,${PROJECT_NAME:+PASS}"
+
+      echo "cwd,$([ "$current_dir" = "data" ] && echo "PASS" || echo "FAIL")"
+
+      echo "functions,PASS"
+
+      '
+    output_format: csv
+  handoffs:
+  - simulate_workflow
+- name: simulate_workflow
+  tool: bash_data
+  inputs:
+    script: "# Create mock data file (in persistent workspace/data directory)\nlog_msg\
+      \ \"Generating data for $PROJECT_NAME...\"\n\ncat > raw_data.csv <<'EOF'\nid,name,value\n\
+      1,alpha,100\n2,beta,200\n3,gamma,300\nEOF\n\nlog_msg \"Data saved to $(pwd)/raw_data.csv\"\
+      \n\n# Process the data\nlog_msg \"Processing data from $DATA_SOURCE...\"\n\n\
+      # Output processed CSV\necho \"id,name,value,source\"\ntail -n +2 raw_data.csv\
+      \ | while read line; do\n  echo \"$line,$DATA_SOURCE\"\ndone\n"
+    output_format: csv
+  handoffs:
+  - analyze
+- name: analyze
+  tool: sql_data
+  inputs:
+    query: "SELECT\n  source,\n  COUNT(*) as record_count,\n  SUM(value) as total_value,\n\
+      \  AVG(value) as avg_value\nFROM _simulate_workflow\nGROUP BY source\n"

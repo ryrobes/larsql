@@ -1,0 +1,17 @@
+# Local Model Tool: Sentiment Analysis
+# Runs locally using HuggingFace transformers
+# Install dependencies: pip install lars[local-models]
+
+tool_id: local_sentiment
+description: |
+  Analyze text sentiment using a local DistilBERT model.
+  Returns classification label (POSITIVE/NEGATIVE) with confidence score.
+  Runs entirely locally - no API calls required.
+
+inputs_schema:
+  text: The text to analyze for sentiment
+
+type: local_model
+model_id: distilbert/distilbert-base-uncased-finetuned-sst-2-english
+task: text-classification
+device: auto  # Will use CUDA if available, otherwise CPU

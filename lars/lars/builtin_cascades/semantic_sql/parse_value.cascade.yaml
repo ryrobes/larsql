@@ -1,0 +1,183 @@
+cascade_id: parse_value
+internal: true
+sql_function:
+  name: parse_value
+  description: 'Generic parser for patterned string data with structural caching.
+
+    Works with phone numbers, dates, addresses, IDs, codes, currencies, etc.
+
+
+    The parser automatically detects the format pattern and caches the
+
+    generated SQL expression. Same format + same task = instant cache hit.
+
+
+    Common use cases:
+
+    - Extract parts from formatted data (area code from phone, year from date)
+
+    - Validate format (is this a valid email?)
+
+    - Transform format (convert date from US to ISO)
+
+    - Clean data (extract digits only, remove special chars)
+
+    '
+  args:
+  - name: value
+    type: VARCHAR
+    description: The string value to parse or transform
+  - name: task
+    type: VARCHAR
+    description: What to extract, validate, or how to transform
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_execute
+  operators:
+  - '{{ value }} PARSE {{ task }}'
+  - PARSE_VALUE({{ value }}, {{ task }})
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args:
+    - value
+    fingerprint_config:
+      method: hybrid
+      include_lengths: true
+  cache: true
+  test_cases:
+  - sql: SELECT parse_value('approximately $500 million')
+    expect:
+      type: regex
+      pattern: .+
+    description: Value parsed from text
+cells:
+- name: generate_parser
+  #model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'Generate a DuckDB SQL expression to parse, extract, or transform
+    a string value.
+
+
+    ## Value Format Analysis
+
+    Fingerprint (detailed): {{ input.value | fingerprint(''with_lengths'') }}
+
+    Fingerprint (normalized): {{ input.value | fingerprint(''normalized'') }}
+
+    Known format: {{ input.value | fingerprint(''pattern_library'') }}
+
+    Example value: {{ input.value }}
+
+
+    ## Task
+
+    {{ input.task }}
+
+
+    ## Rules
+
+    - Use :value as the placeholder (will be bound at execution time)
+
+    - Return ONLY the SQL expression, no explanation, no markdown, no quotes around
+    expression
+
+    - Use appropriate DuckDB functions for the detected format and task
+
+    - Handle edge cases gracefully (NULL, empty string, malformed input)
+
+
+    ## DuckDB Functions Reference
+
+
+    **String Functions:**
+
+    - REGEXP_EXTRACT(str, pattern, group) - Extract regex capturing group
+
+    - REGEXP_REPLACE(str, pattern, replacement, ''g'') - Replace with regex
+
+    - REGEXP_MATCHES(str, pattern) - Returns true if pattern matches
+
+    - SUBSTRING(str, start, length) - Extract by position
+
+    - SPLIT_PART(str, delimiter, index) - Split and get part (1-indexed)
+
+    - REPLACE(str, from, to) - Simple replacement
+
+    - TRIM/LTRIM/RTRIM(str) - Remove whitespace
+
+    - UPPER/LOWER(str) - Case conversion
+
+    - LENGTH(str) - String length
+
+    - CONCAT(str1, str2, ...) - Concatenate
+
+
+    **Date Functions:**
+
+    - STRPTIME(str, format) - Parse string to timestamp
+
+    - STRFTIME(date, format) - Format date to string
+
+    - EXTRACT(part FROM date) - Get year/month/day/etc
+
+
+    **Numeric Functions:**
+
+    - CAST(str AS DOUBLE/INTEGER) - Convert to number
+
+    - TRY_CAST(str AS type) - Returns NULL on failure
+
+
+    ## Examples by Format Type
+
+
+    **Phone (fingerprint like "(D)_D-D" or "D-D-D"):**
+
+    - "area code": REGEXP_EXTRACT(:value, ''^\(?(\d{3})\)?'', 1)
+
+    - "last 4": REGEXP_EXTRACT(:value, ''(\d{4})$'', 1)
+
+    - "digits only": REGEXP_REPLACE(:value, ''[^0-9]'', '''', ''g'')
+
+
+    **Email (fingerprint "L@L.L"):**
+
+    - "domain": REGEXP_EXTRACT(:value, ''@(.+)$'', 1)
+
+    - "username": REGEXP_EXTRACT(:value, ''^([^@]+)@'', 1)
+
+    - "is valid": REGEXP_MATCHES(:value, ''^[\w.+-]+@[\w.-]+\.\w{2,}$'')
+
+
+    **Currency (fingerprint "$D.D" or "$D,D.D"):**
+
+    - "numeric value": CAST(REGEXP_REPLACE(:value, ''[$,]'', '''', ''g'') AS DOUBLE)
+
+    - "currency symbol": REGEXP_EXTRACT(:value, ''^([^\d]+)'', 1)
+
+
+    **Date (various formats):**
+
+    - "year": EXTRACT(YEAR FROM STRPTIME(:value, detected_format))
+
+    - "iso format": STRFTIME(parsed_date, ''%Y-%m-%d'')
+
+
+    **ID/Code (fingerprint like "L-D" or "D-D-D"):**
+
+    - "prefix": SPLIT_PART(:value, ''-'', 1)
+
+    - "numeric part": REGEXP_EXTRACT(:value, ''(\d+)'', 1)
+
+
+    **Name (fingerprint "L_L" or "L,_L"):**
+
+    - "first name": SPLIT_PART(:value, '' '', 1)
+
+    - "last name": SPLIT_PART(:value, '' '', -1)
+
+
+    Return only the SQL expression that handles the given format and task.
+
+    '

@@ -1,0 +1,84 @@
+cascade_id: virality_dimension
+internal: true
+description: 'Viral potential predictor for social media content. Assesses how likely
+
+  content is to spread widely and what viral mechanism it might leverage.
+
+
+  Can focus on specific viral drivers: humor, outrage, inspiration, controversy, etc.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  mechanism: Optional focus on specific viral mechanism
+sql_function:
+  name: virality
+  description: 'Predict viral potential of content. What''s the likelihood of wide
+    spread?
+
+    Optional mechanism parameter focuses on specific viral drivers.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: mechanism
+    type: VARCHAR
+    default: null
+    description: Focus on specific mechanism (humor, outrage, inspiration, controversy)
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT virality('You wont believe what happens!')
+    expect:
+      type: regex
+      pattern: .+
+    description: Virality potential assessed
+cells:
+- name: assess_virality
+  model: google/gemini-2.5-flash-lite
+  instructions: "Assess the VIRAL POTENTIAL of these {{ input.texts | length }} social\
+    \ media posts.\n\n{% if input.mechanism %}\nFOCUS ON VIRAL MECHANISM: {{ input.mechanism\
+    \ }}\n{% if input.mechanism == 'humor' %}\nLook for: jokes, wit, comedic timing,\
+    \ meme potential, absurdity\n{% elif input.mechanism == 'outrage' %}\nLook for:\
+    \ rage-inducing content, injustice, \"can you believe this\", moral outrage\n\
+    {% elif input.mechanism == 'inspiration' %}\nLook for: motivational, heartwarming,\
+    \ feel-good, achievement stories\n{% elif input.mechanism == 'controversy' %}\n\
+    Look for: hot takes, unpopular opinions, debate-starting claims\n{% elif input.mechanism\
+    \ == 'utility' %}\nLook for: useful tips, how-tos, life hacks, must-know information\n\
+    {% endif %}\n\nUSE THESE LEVELS for {{ input.mechanism }} virality:\n- No {{ input.mechanism\
+    \ | title }} Potential\n- Low {{ input.mechanism | title }} Potential\n- Moderate\
+    \ {{ input.mechanism | title }} Potential\n- High {{ input.mechanism | title }}\
+    \ Potential\n- Extreme {{ input.mechanism | title }} Potential\n{% else %}\nAssess\
+    \ OVERALL viral potential. Consider what makes content spread:\n- Emotional resonance\
+    \ (humor, outrage, inspiration, fear)\n- Relatability (\"this is so me\", \"we've\
+    \ all been there\")\n- Novelty (surprising, new information, unique perspective)\n\
+    - Social currency (makes sharer look good/smart/funny)\n- Controversy (debate-worthy,\
+    \ hot takes)\n- Utility (helpful, actionable, \"save this\")\n\nUSE THESE CATEGORIES:\n\
+    - Low Potential (unlikely to spread beyond followers)\n- Niche Viral (could spread\
+    \ within specific community)\n- Moderate Viral (has elements that encourage sharing)\n\
+    - High Viral (strong viral hooks, likely to spread)\n- Mega Viral (exceptional\
+    \ viral potential, all the right elements)\n{% endif %}\n\nPosts to analyze (with\
+    \ index numbers):\n{% for v in input.texts %}\n[{{ loop.index0 }}] \"{{ v[:500]\
+    \ | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\nReturn a JSON object mapping\
+    \ each post's INDEX NUMBER to its virality assessment:\n\n{\n  \"mapping\": {\n\
+    \    \"0\": \"Virality Level\",\n    \"1\": \"Virality Level\",\n    ...\n  }\n\
+    }\n\nRULES:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys\n- Be realistic - most\
+    \ content is NOT viral\n- Consider: hook strength, emotional pull, shareability\n\
+    - Return ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

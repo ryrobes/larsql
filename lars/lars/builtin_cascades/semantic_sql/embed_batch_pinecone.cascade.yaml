@@ -1,0 +1,123 @@
+cascade_id: embed_batch_pinecone
+internal: true
+description: "Batch embed rows from a table, storing results in Pinecone.\n\nUses\
+  \ LARS's Qwen embedding model (4096 dimensions) and upserts to Pinecone\nwith\
+  \ metadata for filtering. Supports namespaces for multi-tenancy.\n\nSQL Usage:\n\
+  \  -- Basic (default namespace):\n  LARS EMBED products.description\n  USING (SELECT\
+  \ id::VARCHAR AS id, description AS text FROM products)\n  WITH (backend='pinecone');\n\
+  \n  -- With custom namespace:\n  LARS EMBED products.description\n  USING (SELECT\
+  \ id::VARCHAR AS id, description AS text FROM products)\n  WITH (backend='pinecone',\
+  \ namespace='products_v2', batch_size=100);\n\nReturns JSON stats:\n  {\n    \"\
+  rows_embedded\": 850,\n    \"batches\": 9,\n    \"model\": \"qwen/qwen3-embedding-8b\"\
+  ,\n    \"duration_seconds\": 12.4,\n    \"backend\": \"pinecone\",\n    \"namespace\"\
+  : \"products_v2\"\n  }\n"
+inputs_schema:
+  table_name: Source table name (for metadata)
+  column_name: Column name (for metadata)
+  rows_json: JSON array of {id, text} objects
+  batch_size: 'Vectors per upsert batch (default: 100)'
+  namespace: 'Pinecone namespace (default: ''default'')'
+sql_function:
+  name: embed_batch_pinecone
+  description: Batch embed rows and store in Pinecone for vector search
+  args:
+  - name: table_name
+    type: VARCHAR
+  - name: column_name
+    type: VARCHAR
+  - name: rows_json
+    type: VARCHAR
+  - name: batch_size
+    type: INTEGER
+    optional: true
+    default: 100
+  - name: namespace
+    type: VARCHAR
+    optional: true
+    default: default
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false
+  test_cases:
+  - sql: -- Requires Pinecone
+    skip: true
+    description: Pinecone embed needs API
+cells:
+- name: batch_embed_pinecone
+  tool: python_data
+  inputs:
+    code: "import time\nimport json\nimport logging\nimport os\nfrom pathlib import\
+      \ Path\n\nlogger = logging.getLogger(__name__)\nstart_time = time.time()\n\n\
+      # Load Pinecone config\nconfig_path = Path(os.getenv('LARS_ROOT', os.getcwd()))\
+      \ / 'config' / 'pinecone.yaml'\nif not config_path.exists():\n    result = json.dumps({\"\
+      error\": f\"Pinecone config not found at {config_path}\"})\nelse:\n    import\
+      \ yaml\n    with open(config_path) as f:\n        pinecone_config = yaml.safe_load(f)\n\
+      \n    # Get API key from environment\n    api_key_env = pinecone_config['connection']['api_key_env']\n\
+      \    api_key = os.getenv(api_key_env)\n    if not api_key:\n        result =\
+      \ json.dumps({\"error\": f\"Environment variable {api_key_env} not set\"})\n\
+      \    else:\n        # Get parameters\n        table_name = input.get('table_name',\
+      \ 'unknown')\n        column_name = input.get('column_name', 'unknown')\n  \
+      \      rows_json = input.get('rows_json', '[]')\n        batch_size = input.get('batch_size')\
+      \ or 100\n        namespace = input.get('namespace') or pinecone_config['defaults']['namespace']\n\
+      \n        try:\n            rows = json.loads(rows_json) if isinstance(rows_json,\
+      \ str) else rows_json\n        except:\n            result = json.dumps({\"\
+      error\": \"Invalid JSON in rows_json\"})\n        else:\n            if not\
+      \ rows:\n                result = json.dumps({\"rows_embedded\": 0, \"message\"\
+      : \"No rows provided\"})\n            else:\n                from lars.skills.embedding_storage\
+      \ import agent_embed_batch\n                from pinecone import Pinecone\n\n\
+      \                # Initialize Pinecone client\n                pc = Pinecone(api_key=api_key)\n\
+      \                index = pc.Index(\n                    pinecone_config['connection']['index_name'],\n\
+      \                    host=pinecone_config['connection']['host']\n          \
+      \      )\n\n                rows_embedded = 0\n                batch_count =\
+      \ 0\n                model_used = None\n                errors = []\n\n    \
+      \            # Process in batches\n                for i in range(0, len(rows),\
+      \ batch_size):\n                    batch = rows[i:i + batch_size]\n       \
+      \             batch_texts = [r.get('text', '') for r in batch]\n           \
+      \         batch_ids = [str(r.get('id', '')) for r in batch]\n\n            \
+      \        # Skip empty texts\n                    valid = [(id, text) for id,\
+      \ text in zip(batch_ids, batch_texts) if text and text.strip()]\n          \
+      \          if not valid:\n                        continue\n\n             \
+      \       batch_ids, batch_texts = zip(*valid)\n\n                    try:\n \
+      \                       # Get embeddings via LARS agent (cost-tracked)\n \
+      \                       embed_result = agent_embed_batch(\n                \
+      \            texts=list(batch_texts),\n                            _session_id=input.get('_session_id'),\n\
+      \                            _caller_id=input.get('_caller_id'),\n         \
+      \                   _cascade_id=input.get('_cascade_id'),\n                \
+      \            _cell_name=input.get('_cell_name'),\n                        )\n\
+      \                        embeddings = embed_result['embeddings']\n         \
+      \               model_used = embed_result['model']\n\n                     \
+      \   # Prepare vectors for Pinecone upsert\n                        # CRITICAL:\
+      \ Pinecone requires all values to be floats (not ints)\n                   \
+      \     vectors = []\n                        for row_id, text, embedding in zip(batch_ids,\
+      \ batch_texts, embeddings):\n                            # Ensure all embedding\
+      \ values are floats (not mixed int/float)\n                            embedding_floats\
+      \ = [float(v) for v in embedding]\n\n                            vectors.append({\n\
+      \                                'id': row_id,\n                           \
+      \     'values': embedding_floats,\n                                'metadata':\
+      \ {\n                                    'source_table': table_name,\n     \
+      \                               'column_name': column_name,\n              \
+      \                      'text': text[:1000],  # Truncate for metadata size limits\n\
+      \                                    'model': model_used\n                 \
+      \               }\n                            })\n\n                      \
+      \  # Upsert to Pinecone\n                        try:\n                    \
+      \        index.upsert(vectors=vectors, namespace=namespace)\n              \
+      \              rows_embedded += len(vectors)\n                            batch_count\
+      \ += 1\n                            logger.info(f\"Upserted batch {batch_count}:\
+      \ {len(vectors)} vectors to Pinecone namespace '{namespace}'\")\n          \
+      \              except Exception as e:\n                            errors.append(f\"\
+      batch {batch_count + 1} upsert: {e}\")\n                            logger.error(f\"\
+      Pinecone upsert failed: {e}\")\n\n                    except Exception as e:\n\
+      \                        logger.error(f\"Batch {batch_count + 1} failed: {e}\"\
+      )\n                        errors.append(f\"batch {batch_count + 1}: {e}\")\n\
+      \n                duration = time.time() - start_time\n\n                result\
+      \ = json.dumps({\n                    \"rows_embedded\": rows_embedded,\n  \
+      \                  \"rows_total\": len(rows),\n                    \"batches\"\
+      : batch_count,\n                    \"model\": model_used,\n               \
+      \     \"duration_seconds\": round(duration, 2),\n                    \"rows_per_second\"\
+      : round(rows_embedded / duration, 1) if duration > 0 else 0,\n             \
+      \       \"backend\": \"pinecone\",\n                    \"namespace\": namespace,\n\
+      \                    \"index\": pinecone_config['connection']['index_name'],\n\
+      \                    \"errors\": errors[:5] if errors else None\n          \
+      \      })\n\nresult = result\n"
+  context:
+    enabled: false

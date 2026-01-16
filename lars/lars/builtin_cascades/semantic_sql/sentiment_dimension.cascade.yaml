@@ -1,0 +1,70 @@
+cascade_id: sentiment_dimension
+internal: true
+description: 'Semantic sentiment dimension function. Analyzes sentiment/mood of texts
+
+  with optional focus area and configurable number of levels.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  focus: Optional focus area (e.g., 'fear', 'excitement', 'credibility')
+  num_levels: Number of sentiment levels (default 5)
+sql_function:
+  name: sentiment
+  description: 'Analyze sentiment of text with optional focus. Returns a sentiment
+    level.
+
+    First arg is the column, remaining args are modifiers.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: focus
+    type: VARCHAR
+    default: null
+  - name: num_levels
+    type: INTEGER
+    default: 5
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT sentiment('I had a great experience')
+    expect:
+      type: regex
+      pattern: .+
+    description: Sentiment assessed
+cells:
+- name: analyze_sentiment
+  instructions: "Analyze the sentiment of these {{ input.texts | length }} texts.\n\
+    \n{% if input.focus %}\nFOCUS SPECIFICALLY ON: {{ input.focus }}\n(Analyze how\
+    \ much {{ input.focus }} is expressed in each text)\n{% else %}\nAnalyze general\
+    \ emotional sentiment/mood.\n{% endif %}\n\nUse {{ input.num_levels | default(5)\
+    \ }} distinct levels, ordered from lowest to highest intensity.\n\n{% if input.focus\
+    \ %}\nExample levels for \"{{ input.focus }}\":\n- \"No {{ input.focus }}\"\n\
+    - \"Low {{ input.focus }}\"\n- \"Moderate {{ input.focus }}\"\n- \"High {{ input.focus\
+    \ }}\"\n- \"Extreme {{ input.focus }}\"\n{% else %}\nExample levels:\n- \"Very\
+    \ Negative\"\n- \"Negative\"\n- \"Neutral\"\n- \"Positive\"\n- \"Very Positive\"\
+    \n{% endif %}\n\nTexts to analyze (with index numbers):\n{% for v in input.texts\
+    \ %}\n[{{ loop.index0 }}] \"{{ v | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\
+    \nReturn a JSON object mapping each text's INDEX NUMBER to its sentiment level:\n\
+    \n{\n  \"mapping\": {\n    \"0\": \"Level Name\",\n    \"1\": \"Level Name\",\n\
+    \    ...\n  }\n}\n\nIMPORTANT:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys,\
+    \ NOT the original text\n- Sentiment level names should be consistent across all\
+    \ assignments\n- Return ONLY the JSON object, nothing else\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

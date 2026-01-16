@@ -1,0 +1,8 @@
+cascade_id: test_subcascade_child
+description: Child cascade for testing path resolution
+cells:
+- name: simple_task
+  tool: python_data
+  inputs:
+    code: "result = {\n  \"message\": \"Child cascade executed successfully!\",\n\
+      \  \"status\": \"ok\"\n}\n"

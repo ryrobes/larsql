@@ -1,0 +1,159 @@
+# Ephemeral RAG Test - Generates large content to trigger auto-indexing
+#
+# This cascade uses a deterministic Python cell to generate content that
+# exceeds the ephemeral RAG threshold (25K chars), demonstrating:
+# 1. Large content is automatically indexed
+# 2. A search tool is injected for the LLM
+# 3. The LLM uses the search tool to find relevant information
+#
+# Run with:
+#   lars run cascades/examples/ephemeral_rag_test.yaml --input '{"query": "renewable energy"}'
+
+cascade_id: ephemeral_rag_test
+description: Test cascade to verify ephemeral RAG auto-indexing works
+
+inputs_schema:
+  query: A search query to find in the generated document
+
+cells:
+  # Step 1: Generate a large document using Python (deterministic - no LLM)
+  - name: generate_large_content
+    tool: python_data
+    inputs:
+      code: |
+        import random
+
+        # Generate a ~50K character document about various topics
+        topics = [
+            ("Renewable Energy", [
+                "Solar power has become increasingly cost-effective over the past decade.",
+                "Wind turbines now generate significant portions of electricity in many countries.",
+                "Hydroelectric power remains one of the most reliable renewable sources.",
+                "Geothermal energy taps into the Earth's internal heat for power generation.",
+                "Biomass energy converts organic materials into usable fuel sources.",
+                "Tidal and wave energy represent emerging oceanic power technologies.",
+                "Energy storage solutions are critical for renewable grid integration.",
+                "Smart grids enable better distribution of renewable energy sources.",
+            ]),
+            ("Climate Science", [
+                "Global temperatures have risen approximately 1.1 degrees Celsius since pre-industrial times.",
+                "Arctic sea ice extent has decreased significantly over recent decades.",
+                "Ocean acidification threatens marine ecosystems worldwide.",
+                "Extreme weather events are becoming more frequent and intense.",
+                "Carbon dioxide levels have exceeded 420 parts per million.",
+                "Methane emissions from agriculture contribute to greenhouse effect.",
+                "Deforestation reduces the planet's carbon absorption capacity.",
+                "Permafrost thawing releases stored greenhouse gases.",
+            ]),
+            ("Sustainable Agriculture", [
+                "Regenerative farming practices improve soil health over time.",
+                "Vertical farming enables food production in urban environments.",
+                "Precision agriculture uses technology to optimize resource usage.",
+                "Cover crops prevent soil erosion and improve nutrient cycling.",
+                "Integrated pest management reduces reliance on chemical pesticides.",
+                "Water-efficient irrigation systems conserve precious resources.",
+                "Agroforestry combines trees with crops for mutual benefits.",
+                "Local food systems reduce transportation emissions significantly.",
+            ]),
+            ("Electric Vehicles", [
+                "Battery technology improvements have extended EV driving ranges.",
+                "Charging infrastructure continues to expand globally.",
+                "Electric buses are transforming public transportation systems.",
+                "Vehicle-to-grid technology allows EVs to support power grids.",
+                "Solid-state batteries promise faster charging and longer life.",
+                "Electric trucks are entering the commercial freight market.",
+                "Autonomous electric vehicles may reshape urban transportation.",
+                "Battery recycling programs address end-of-life concerns.",
+            ]),
+            ("Ocean Conservation", [
+                "Marine protected areas help preserve biodiversity hotspots.",
+                "Coral reef restoration projects show promising early results.",
+                "Sustainable fishing practices prevent stock depletion.",
+                "Plastic pollution affects marine life at all ocean depths.",
+                "Whale populations are slowly recovering from historic hunting.",
+                "Seagrass meadows serve as important carbon sinks.",
+                "Deep sea mining poses risks to unexplored ecosystems.",
+                "Ocean temperature monitoring reveals long-term warming trends.",
+            ]),
+        ]
+
+        sections = []
+        for topic_name, facts in topics:
+            section = f"\n\n## {topic_name}\n\n"
+            for i in range(15):
+                paragraph = []
+                for _ in range(random.randint(8, 12)):
+                    fact = random.choice(facts)
+                    variations = [
+                        f"{fact}",
+                        f"Research indicates that {fact.lower()}",
+                        f"Studies have shown that {fact.lower()}",
+                        f"Experts agree that {fact.lower()}",
+                        f"Recent data confirms that {fact.lower()}",
+                        f"Analysis reveals that {fact.lower()}",
+                    ]
+                    paragraph.append(random.choice(variations))
+                section += " ".join(paragraph) + "\n\n"
+            sections.append(section)
+
+        document = "# Comprehensive Environmental Research Document\n\n"
+        document += "This document contains extensive research on environmental topics.\n"
+        document += "\n".join(sections)
+
+        document += "\n\n## Key Facts Summary\n\n"
+        document += "- Solar power cost-effectiveness has improved dramatically\n"
+        document += "- Wind energy generates significant electricity globally\n"
+        document += "- Battery technology enables longer EV driving ranges\n"
+        document += "- Marine protected areas preserve ocean biodiversity\n"
+        document += "- Regenerative farming improves soil health\n"
+        document += "- Global temperatures rose 1.1C since pre-industrial era\n"
+
+        # python_data requires setting 'result' variable (not return)
+        result = {
+            "document": document,
+            "size_chars": len(document),
+            "size_approx_tokens": len(document) // 4
+        }
+    handoffs: [analyze_with_search]
+
+  # Step 2: Analyze the document - this should trigger ephemeral RAG
+  # The large document will be indexed and a search tool injected
+  - name: analyze_with_search
+    instructions: |
+      You have access to a large research document about environmental topics.
+
+      The document content:
+      {{ outputs.generate_large_content.document }}
+
+      IMPORTANT: If you see a message about the content being indexed for search,
+      use the provided search tool to find information. Do NOT try to answer from
+      memory - use the search tool!
+
+      User's query: "{{ input.query }}"
+
+      Your task:
+      1. Search the document for information related to the query
+      2. Extract 3-5 relevant facts
+      3. Provide a concise summary answering the query
+
+      If a search tool like `search_document()` or `search_generate_large_content_output()`
+      is available, USE IT to find relevant sections.
+    skills:
+      - manifest
+    rules:
+      max_turns: 5
+    handoffs: [report_results]
+
+  # Step 3: Report what happened
+  - name: report_results
+    instructions: |
+      Based on the analysis above:
+
+      {{ outputs.analyze_with_search }}
+
+      Provide a brief report that includes:
+      1. Whether you used a search tool (and which one)
+      2. The key findings related to "{{ input.query }}"
+      3. A one-sentence conclusion
+    rules:
+      max_turns: 1

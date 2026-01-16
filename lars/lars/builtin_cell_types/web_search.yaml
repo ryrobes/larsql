@@ -1,0 +1,20 @@
+# Web Search Cell - Search the web
+type_id: web_search
+display_name: Web Search
+icon: mdi:search-web
+color: "#3b82f6"
+name_prefix: search
+description: "Search the web using Brave Search API"
+category: integration
+tags:
+  - integration
+  - ai-ml
+template:
+  instructions: |
+    Search the web for information about:
+
+    {{ input.query }}
+
+    Summarize the key findings.
+  skills:
+    - brave_web_search

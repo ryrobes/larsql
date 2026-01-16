@@ -1,0 +1,27 @@
+cascade_id: context_basic_test
+description: Simple test to verify context injection works
+cells:
+- handoffs:
+  - phase_b
+  instructions: 'Say exactly: ''Hello from Phase A! The secret code is ALPHA-123.''
+    Then route to phase_b.'
+  name: phase_a
+- handoffs:
+  - phase_c_selective
+  instructions: 'Say exactly: ''Hello from Phase B! The secret code is BETA-456.''
+    Then route to phase_c_selective.'
+  name: phase_b
+- context:
+    from:
+    - phase_a
+    include_input: false
+  handoffs: []
+  instructions: 'You are Phase C with SELECTIVE context. You should ONLY see Phase
+    A''s output.
+
+
+    What secret code do you see? If you see BETA-456, something is wrong.
+
+
+    Respond with: ''I only see code: [the code you see]'''
+  name: phase_c_selective

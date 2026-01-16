@@ -1,0 +1,55 @@
+cascade_id: context_sugar_demo
+description: 'Demonstrates context injection sugar: ''first'', ''previous'', and ''all''
+  keywords'
+cells:
+- handoffs:
+  - brainstorm
+  instructions: 'You are given this problem to solve: ''Design a REST API for a todo
+    app''. Describe the key endpoints needed. Include the codeword PROBLEM-001 in
+    your response. Then route to brainstorm.'
+  name: original_problem
+- context:
+    from:
+    - previous
+  handoffs:
+  - draft
+  instructions: Brainstorm some additional features beyond basic CRUD. Include the
+    codeword BRAINSTORM-002 in your response. Then route to draft.
+  name: brainstorm
+- context:
+    from:
+    - previous
+  handoffs:
+  - review
+  instructions: Create a draft API specification. Include the codeword DRAFT-003 in
+    your response. Then route to review.
+  name: draft
+- context:
+    from:
+    - previous
+  handoffs:
+  - final
+  instructions: Review the draft and suggest improvements. Include the codeword REVIEW-004
+    in your response. Then route to final.
+  name: review
+- context:
+    from:
+    - first
+    - previous
+    include_input: false
+  handoffs: []
+  instructions: 'Create the final API specification.
+
+
+    IMPORTANT: You should see:
+
+    1. The ORIGINAL problem statement (via ''first'' keyword) with PROBLEM-001
+
+    2. The REVIEW feedback (via ''previous'' keyword) with REVIEW-004
+
+
+    You should NOT see BRAINSTORM-002 or DRAFT-003 - those phases are skipped!
+
+
+    If you can see all the codewords, the context selection is NOT working correctly.'
+  name: final

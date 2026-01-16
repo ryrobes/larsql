@@ -1,0 +1,35 @@
+cascade_id: takes_aggregate_demo
+description: Demonstrates aggregate mode for takes - combines all outputs instead
+  of picking one winner
+inputs_schema:
+  topic: The topic to brainstorm ideas about
+cells:
+- handoffs:
+  - select_best
+  instructions: Generate 3 creative ideas for {{ input.topic }}. Be creative and think
+    outside the box. Number your ideas 1-3.
+  name: brainstorm
+  rules:
+    max_turns: 1
+  takes:
+    aggregator_instructions: You have received brainstorming outputs from multiple
+      AI models. Synthesize these into a comprehensive list of unique ideas. Remove
+      duplicates, organize by theme, and create a final consolidated list of the best
+      ideas.
+    factor: 3
+    mode: aggregate
+  skills: []
+- context:
+    from:
+    - previous
+  instructions: 'From this comprehensive brainstorm:
+
+
+    {{ outputs.brainstorm }}
+
+
+    Select the top 3 most promising ideas and explain why they stand out.'
+  name: select_best
+  rules:
+    max_turns: 1
+  skills: []

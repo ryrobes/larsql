@@ -1,0 +1,79 @@
+# ============================================================================
+# Semantic Macro: ask_data_sql
+# ============================================================================
+#
+# Returns the generated SQL statement WITHOUT executing it.
+# Useful for:
+#   - Debugging and auditing generated queries
+#   - Understanding what ask_data will execute
+#   - Copying SQL for manual execution or modification
+#
+# Example:
+#   SELECT ask_data_sql('show me top customers')
+#   Returns: "SELECT * FROM customers ORDER BY revenue DESC LIMIT 10"
+#
+# For executing and getting results, use ask_data() instead.
+#
+# ============================================================================
+
+cascade_id: ask_data_sql
+internal: true
+sql_function:
+  name: ask_data_sql
+  description: |
+    Generate SQL from natural language WITHOUT executing it.
+
+    Returns the SQL statement that would answer your question.
+    Use this for debugging, auditing, or understanding what query
+    will be generated before running it.
+
+    For actual results, use ask_data() instead.
+
+    Examples:
+    - ask_data_sql('top 10 products') → "SELECT * FROM products ORDER BY..."
+    - ask_data_sql('orders last month') → "SELECT * FROM orders WHERE..."
+  args:
+    - name: question
+      type: VARCHAR
+      description: Natural language question about your data
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_raw  # Return SQL as-is, don't execute
+  cache_key:
+    strategy: content
+    cache_as: ask_data  # Share cache with ask_data
+  cache: true
+  test_cases:
+    - sql: SELECT ask_data_sql('select 1')
+      expect:
+        type: regex
+        pattern: SELECT
+      description: Returns SQL statement
+
+cells:
+  - name: generate_query
+    skills:
+      - sql_search
+    rules:
+      max_turns: 3
+    instructions: |
+      You are a SQL expert. Generate a DuckDB SQL query to answer the user's question.
+
+      ## User Question
+      {{ input.question }}
+
+      ## Instructions
+
+      1. Use the `sql_search` tool to discover available tables and their schemas
+      2. Generate a DuckDB-compatible SELECT query
+      3. Return ONLY the SQL query - no explanation, no markdown code blocks
+
+      ## Rules
+
+      - Only generate SELECT or WITH queries
+      - Never generate DROP, DELETE, UPDATE, INSERT, or DDL statements
+      - Use proper DuckDB SQL syntax
+      - If the question is ambiguous, make reasonable assumptions
+      - If no matching tables exist, return a query that explains this
+
+      Return only the SQL query.

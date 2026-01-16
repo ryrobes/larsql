@@ -1,0 +1,110 @@
+# PARSE_NAME - Specialized name parsing
+#
+# SQL Usage:
+#   SELECT PARSE_NAME(full_name) FROM contacts
+#   SELECT PARSE_NAME(name) ->> 'first' AS first_name FROM leads
+#   SELECT PARSE_NAME(name) ->> 'last' AS last_name FROM leads
+#
+# Returns: JSON with prefix, first, middle, last, suffix, nickname, formatted
+
+cascade_id: parse_name_single
+internal: true
+
+description: |
+  Parse person name into structured components.
+  Handles various formats and cultural name patterns.
+  Returns JSON - use ->> operator to extract fields.
+
+inputs_schema:
+  name: The name to parse
+
+sql_function:
+  name: parse_name
+  description: "Parse person name into JSON with fields: prefix, first, middle, last, suffix, nickname, formatted"
+  args:
+    - name: name
+      type: VARCHAR
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - "PARSE_NAME({{ name }})"
+  cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: [name]
+  test_cases:
+    - sql: "SELECT parse_name('Dr. John Michael Smith Jr.')"
+      expect:
+        type: json_contains
+        path: "$.first"
+        value: "John"
+      description: "First name extracted"
+    - sql: "SELECT parse_name('Smith, Jane')"
+      expect:
+        type: contains
+        value: "Jane"
+      description: "Last-first format parsed"
+
+cells:
+  - name: parse
+    #model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Generate a DuckDB SQL expression that parses this name format into a JSON object.
+
+      NAME PATTERN: {{ input.name }}
+
+      Return a SQL expression using json_object() that extracts ALL fields:
+      - prefix: Title/honorific (Dr., Mr., Ms., etc.) or NULL
+      - first: First/given name
+      - middle: Middle name(s) or initial or NULL
+      - last: Last/family name
+      - suffix: Suffix (Jr., Sr., III, PhD, etc.) or NULL
+      - nickname: Nickname if present or NULL
+      - formatted: Properly formatted full name
+
+      Use :name as the parameter placeholder.
+
+      EXAMPLE for "John Smith" pattern (first last):
+      json_object(
+        'prefix', NULL,
+        'first', initcap(split_part(:name, ' ', 1)),
+        'middle', NULL,
+        'last', initcap(split_part(:name, ' ', 2)),
+        'suffix', NULL,
+        'nickname', NULL,
+        'formatted', initcap(split_part(:name, ' ', 1)) || ' ' || initcap(split_part(:name, ' ', 2))
+      )
+
+      EXAMPLE for "Smith, John" pattern (last, first):
+      json_object(
+        'prefix', NULL,
+        'first', initcap(trim(split_part(:name, ',', 2))),
+        'middle', NULL,
+        'last', initcap(trim(split_part(:name, ',', 1))),
+        'suffix', NULL,
+        'nickname', NULL,
+        'formatted', initcap(trim(split_part(:name, ',', 2))) || ' ' || initcap(trim(split_part(:name, ',', 1)))
+      )
+
+      EXAMPLE for "Dr. John Q. Smith Jr." pattern:
+      json_object(
+        'prefix', regexp_extract(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', 1),
+        'first', initcap(split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 1)),
+        'middle', split_part(regexp_replace(:name, '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 2),
+        'last', split_part(regexp_replace(regexp_replace(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', ''), '^(Dr\.|Mr\.|Ms\.|Mrs\.|Prof\.)\s*', ''), ' ', 3),
+        'suffix', regexp_extract(:name, '\s+(Jr\.|Sr\.|III|II|IV|PhD|MD)$', 1),
+        'nickname', NULL,
+        'formatted', :name
+      )
+
+      Handle case normalization with initcap() for ALL-CAPS input.
+      CRITICAL: Return ONLY the json_object(...) SQL expression. No markdown, no explanation.
+      The expression must build the COMPLETE JSON with ALL fields.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: string

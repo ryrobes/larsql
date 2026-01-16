@@ -1,0 +1,98 @@
+# RLM-Style Context Processor
+#
+# This cascade implements the "model as context programmer" pattern from RLM,
+# but using native LARS primitives. The model writes Python code to decompose
+# and analyze large contexts, with access to sub-LLM calls via rlm_exec.
+#
+# Key differences from external RLM:
+# - Uses LARS's rlm_exec (full observability)
+# - Tracks provenance of summarized content
+# - Integrates with unified_logs for cost tracking
+# - Can use any tool in the registry
+#
+# Usage:
+#   lars run cascades/rlm_context_processor.cascade.yaml \
+#     --input '{"context": "...", "task": "..."}'
+
+cascade_id: rlm_context_processor
+description: "Model-driven context decomposition using code generation"
+
+inputs_schema:
+  context: "The large context to process (string or structured data)"
+  task: "What to do with the context - be specific about desired output"
+  max_iterations: "Max code execution iterations (default: 15)"
+  chunk_model: "Model for chunk processing (default: uses context_selector_model)"
+
+cells:
+  - name: context_programmer
+    model: "{{ input.chunk_model | default('google/gemini-2.5-flash-lite') }}"
+    instructions: |
+      You are a **context decomposition expert**. Your job is to process large contexts
+      by writing Python code that analyzes, chunks, and synthesizes information.
+
+      ## Your Task
+      {{ input.task }}
+
+      ## Context Stats
+      - Length: {{ input.context | length }} characters
+
+      ## Available Tools
+
+      ### rlm_exec
+      Execute Python code with these pre-defined variables and functions:
+      - `context`: The full input text
+      - `task`: The task description
+      - `llm_query(prompt)`: Make a sub-LLM call, returns string
+      - `llm_query_batched([prompts])`: Parallel sub-LLM calls, returns list
+      - `chunk(text, strategy)`: Split text ("paragraph", "markdown", "sentence", "fixed")
+      - `set_state(key, value)`: Store results
+      - `results`: List to accumulate findings
+      - `provenance`: Dict for tracking chunk sources
+
+      ### set_state
+      Store your final answer: `{"final_answer": "...", "chunks_processed": N}`
+
+      ## Strategy
+
+      1. **Analyze first** - understand context size and structure
+      2. **Chunk appropriately** - use markdown for docs, paragraph for prose
+      3. **Process chunks** - use llm_query for each chunk
+      4. **Synthesize** - combine findings into final answer
+      5. **Call set_state** - this terminates the loop
+
+      ## Example Code
+
+      ```python
+      print(f"Context: {len(context)} chars")
+
+      if len(context) < 2000:
+          answer = llm_query(f"{task}\n\nContext: {context}")
+          set_state("final_answer", answer)
+      else:
+          chunks = chunk(context, "markdown")
+          print(f"Split into {len(chunks)} chunks")
+
+          for i, c in enumerate(chunks[:5]):
+              summary = llm_query(f"Extract key points: {c[:2000]}")
+              results.append(summary)
+              print(f"Processed chunk {i+1}")
+
+          combined = "\n".join(results)
+          final = llm_query(f"{task}\n\nFindings:\n{combined}")
+          set_state("final_answer", final)
+      ```
+
+      ## Context Preview
+      ```
+      {{ input.context[:2000] }}{% if input.context | length > 2000 %}
+
+      ... [{{ input.context | length - 2000 }} more characters] ...
+      {% endif %}
+      ```
+
+      Write Python code and call rlm_exec. When done, the loop exits.
+
+    skills: [rlm_exec, set_state]
+    rules:
+      max_turns: "{{ input.max_iterations | default(15) }}"
+      loop_until: "{{ state.final_answer }}"

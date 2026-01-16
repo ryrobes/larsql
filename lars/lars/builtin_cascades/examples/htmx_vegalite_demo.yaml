@@ -1,0 +1,51 @@
+cascade_id: htmx_vegalite_demo
+description: 'Demonstrates LLM generating Vega-Lite visualizations with HTMX.
+
+  Vega-Lite is a high-level grammar for creating declarative visualizations.
+
+  '
+inputs_schema:
+  dataset_topic: What kind of data to visualize
+cells:
+- name: create_dashboard
+  model: anthropic/claude-sonnet-4.5
+  skills:
+  - request_decision
+  - route_to
+  handoffs:
+  - finalize
+  rules:
+    max_turns: 5
+  instructions: "Create a mini data dashboard about: {{ input.dataset_topic }}\n\n\
+    Your task:\n1. Generate 2-3 small datasets relevant to the topic\n2. Create Vega-Lite\
+    \ specifications for each chart\n3. Request approval using request_decision with\
+    \ HTMX + Vega-Lite\n\nUse the html parameter to create a dashboard UI with:\n\
+    - Title and brief description\n- 2-3 Vega-Lite charts (bar, line, scatter, etc.)\n\
+    - Approve/reject buttons\n\nIMPORTANT: Vega-Lite is available in the iframe. Use\
+    \ this pattern:\n\n<div id=\"chart1\"></div>\n<script>\n  var spec1 = {\n    \"\
+    $schema\": \"https://vega.github.io/schema/vega-lite/v5.json\",\n    \"data\"\
+    : {\"values\": [\n      {\"category\": \"A\", \"value\": 28},\n      {\"category\"\
+    : \"B\", \"value\": 55}\n    ]},\n    \"mark\": \"bar\",\n    \"encoding\": {\n\
+    \      \"x\": {\"field\": \"category\", \"type\": \"nominal\"},\n      \"y\":\
+    \ {\"field\": \"value\", \"type\": \"quantitative\"}\n    },\n    \"background\"\
+    : \"#1a1a1a\",\n    \"config\": {\"axis\": {\"labelColor\": \"#e5e7eb\", \"titleColor\"\
+    : \"#a78bfa\"}}\n  };\n  vegaEmbed('#chart1', spec1, {theme: 'dark'});\n</script>\n\
+    \nCreate multiple charts, then add approval form below.\nWhen approved/rejected,\
+    \ route to finalize.\n"
+- name: finalize
+  instructions: 'Dashboard decision: {{ outputs.create_dashboard.selected }}
+
+
+    {% if outputs.create_dashboard.reasoning %}
+
+    User feedback: {{ outputs.create_dashboard.reasoning }}
+
+    {% endif %}
+
+
+    Provide final summary of the dashboard and decision.
+
+    '
+  context:
+    from:
+    - create_dashboard

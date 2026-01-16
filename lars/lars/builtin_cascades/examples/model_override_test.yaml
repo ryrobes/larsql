@@ -1,0 +1,24 @@
+cascade_id: model_override_test
+description: Tests phase-level model overrides and model tracking in logs
+inputs_schema:
+  task: Description of the task to perform
+cells:
+- instructions: 'Quickly analyze the task: {{ input.task }}. Provide a brief overview.'
+  model: x-ai/grok-4.1-fast:free
+  name: fast_analysis
+  rules:
+    max_turns: 1
+  skills: []
+- instructions: 'Provide a detailed analysis of the task: {{ input.task }}. Use thorough
+    reasoning.'
+  model: anthropic/claude-3.5-sonnet
+  name: detailed_processing
+  rules:
+    max_turns: 1
+  skills: []
+- instructions: 'Summarize the results using the default model. Task: {{ input.task
+    }}'
+  name: default_model_phase
+  rules:
+    max_turns: 1
+  skills: []

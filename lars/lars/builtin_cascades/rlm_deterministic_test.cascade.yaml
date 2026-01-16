@@ -1,0 +1,68 @@
+# RLM Deterministic Test
+#
+# Uses rlm_exec as a deterministic cell with injected context/task.
+# The LLM generates the code in a prior cell, then we execute it.
+#
+# Test:
+#   lars run cascades/rlm_deterministic_test.cascade.yaml \
+#     --input cascades/rlm_test_input.json --session rlm_det_test
+
+cascade_id: rlm_deterministic_test
+description: "RLM pattern with deterministic execution"
+
+inputs_schema:
+  context: "Text to analyze"
+  task: "What to do with it"
+
+cells:
+  # Step 1: LLM generates the analysis code
+  - name: generate_code
+    model: "google/gemini-2.5-flash-lite"
+    instructions: |
+      Generate Python code to analyze a context using the RLM pattern.
+
+      ## Task
+      {{ input.task }}
+
+      ## Context Stats
+      - Length: {{ input.context | length }} characters
+
+      ## Available Functions (in the execution environment)
+      - `context`: The full context string
+      - `task`: The task description
+      - `llm_query(prompt)`: Make a sub-LLM call, returns string
+      - `llm_query_batched([prompts])`: Parallel sub-LLM calls
+      - `chunk(text, strategy)`: Split text ("paragraph", "markdown", "sentence")
+      - `set_state(key, value)`: Store final result
+      - `results`: List for accumulating findings
+      - `print()`: For progress logging
+
+      ## Strategy
+      1. Check context size
+      2. If small (<2000): analyze directly
+      3. If large: chunk by markdown headers, analyze each, synthesize
+
+      ## Requirements
+      - MUST call `set_state("final_answer", answer)` at the end
+      - Print progress as you go
+      - Limit to 5 chunks max to control cost
+
+      ## Context Preview
+      ```
+      {{ input.context[:800] }}...
+      ```
+
+      Output ONLY the Python code, no markdown fences or explanations.
+      The code will be executed directly.
+    rules:
+      max_turns: 1
+
+  # Step 2: Execute the generated code with injected context
+  - name: execute_analysis
+    tool: rlm_exec
+    inputs:
+      code: "{{ outputs.generate_code.result }}"
+      context: "{{ input.context }}"
+      task: "{{ input.task }}"
+    context:
+      from_: [generate_code]

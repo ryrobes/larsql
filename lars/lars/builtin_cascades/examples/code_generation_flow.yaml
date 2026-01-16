@@ -1,0 +1,68 @@
+cascade_id: code_generation_flow
+description: Generate code with validation ensuring proper documentation
+inputs_schema:
+  description: What the function should do
+  function_name: Name of the function to create
+cells:
+- handoffs:
+  - add_docstring
+  instructions: 'Create a Python function:
+
+    - Function name: {{ input.function_name }}
+
+    - Purpose: {{ input.description }}
+
+
+    Provide clean, working Python code.'
+  name: generate_code
+  rules:
+    loop_until: simple_validator
+    max_attempts: 3
+    max_turns: 1
+    retry_instructions: 'Code validation failed: {{ validation_error }}
+
+
+      Please provide more complete code. Attempt {{ attempt }}/{{ max_attempts }}'
+- context:
+    from:
+    - previous
+  handoffs:
+  - summary
+  instructions: 'Your code structure looks good. Now add comprehensive documentation:
+
+
+    Add a detailed docstring to the function that:
+
+    1. Explains what it does
+
+    2. Documents parameters
+
+    3. Documents return value
+
+    4. Must include the word ''important'' in the docstring (coding standard requirement)
+
+
+    Provide the complete documented function.'
+  name: add_docstring
+  rules:
+    loop_until: keyword_validator
+    max_attempts: 3
+    max_turns: 1
+    retry_instructions: 'Documentation standard not met: {{ validation_error }}
+
+
+      Your docstring must mention what is ''important'' about this function''s usage
+      or behavior.
+
+
+      Attempt {{ attempt }}/{{ max_attempts }}'
+- context:
+    from:
+    - all
+  instructions: 'Perfect! The code is complete and properly documented.
+
+
+    Provide a brief summary of the function you created.'
+  name: summary
+  skills:
+  - set_state

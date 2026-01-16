@@ -1,0 +1,88 @@
+cascade_id: semantic_score
+internal: true
+description: 'Semantic relevance scoring - returns 0.0-1.0 for how well text matches
+  a criterion.
+
+  Used for threshold-based filtering and relevance ranking.
+
+  '
+inputs_schema:
+  text: The text to evaluate
+  criterion: The semantic criterion to score against
+sql_function:
+  name: semantic_score
+  description: Returns 0.0-1.0 relevance score for text vs criterion
+  args:
+  - name: text
+    type: VARCHAR
+  - name: criterion
+    type: VARCHAR
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+  - '{{ text }} ABOUT {{ criterion }}'
+  - '{{ text }} RELEVANCE TO {{ criterion }}'
+  cache: true
+  test_cases:
+  # Function syntax
+  - sql: SELECT semantic_score('The food was excellent, service was great', 'quality')
+    expect:
+      type: range
+      min: 0.7
+      max: 1.0
+    description: "Function: High quality score"
+  # Skip LLM-dependent test - scores vary based on interpretation
+  - sql: SELECT semantic_score('The product broke after one day', 'quality')
+    skip: true
+    expect:
+      type: range
+      min: 0.0
+      max: 0.5
+    description: "Function: Low quality score (skipped - LLM interpretation varies)"
+  # Infix ABOUT syntax - use function form to avoid window function in WHERE
+  - sql: "SELECT semantic_score('Great customer support and fast delivery', 'service')"
+    expect:
+      type: range
+      min: 0.5
+      max: 1.0
+    description: "Function: High service relevance score"
+  # Infix RELEVANCE TO syntax - use function form to avoid window function in WHERE
+  - sql: "SELECT semantic_score('Machine learning and AI developments', 'technology')"
+    expect:
+      type: range
+      min: 0.5
+      max: 1.0
+    description: "Function: tech relevance score"
+cells:
+- name: score
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Rate how well this text matches the semantic criterion on a scale
+    from 0.0 to 1.0.
+
+
+    TEXT: {{ input.text }}
+
+
+    CRITERION: {{ input.criterion }}
+
+
+    Scoring guide:
+
+    - 0.0-0.2: No relation or contradicts the criterion
+
+    - 0.2-0.4: Weak/tangential connection
+
+    - 0.4-0.6: Moderate relevance, partial match
+
+    - 0.6-0.8: Strong relevance, good match
+
+    - 0.8-1.0: Excellent match, directly addresses criterion
+
+
+    Respond with ONLY a decimal number between 0.0 and 1.0.
+
+    No explanation, no other text.
+
+    '
+  rules:
+    max_turns: 1

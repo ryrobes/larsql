@@ -1,0 +1,74 @@
+cascade_id: map_with_takes_demo
+description: 'Demonstrates dynamic mapping pattern using takes with aggregate
+  mode. Three files are processed in parallel, each by a different take.
+
+  '
+cells:
+- name: list_files
+  tool: python_data
+  inputs:
+    code: "# In real world, this could be: os.listdir('/data/'), s3.list_objects(),\
+      \ etc.\nreturn {\n  \"files\": [\n    \"/tmp/sales_jan.csv\",\n    \"/tmp/sales_feb.csv\"\
+      ,\n    \"/tmp/sales_mar.csv\"\n  ],\n  \"metadata\": {\n    \"total_files\"\
+      : 3,\n    \"file_type\": \"sales_data\"\n  }\n}\n"
+- name: process_file
+  instructions: 'You are processing file {{ take_index + 1 }} of {{ take_factor
+    }}.
+
+
+    File path: {{ state.output_list_files.files[take_index] }}
+
+
+    Your task:
+
+    1. Read the file (simulate: imagine it has sales data)
+
+    2. Calculate summary statistics (simulate: return random counts)
+
+    3. Return results as JSON: {"file": "filename", "total_sales": 12345, "row_count":
+    500}
+
+
+    Since this is a demo, you can simulate the file contents. In production, you''d
+    use:
+
+    - sql_data tool to read CSV
+
+    - python_data to process
+
+    - linux_shell to download from S3
+
+
+    Return ONLY valid JSON, no markdown fences.
+
+    '
+  takes:
+    factor: 3
+    mode: aggregate
+    max_parallel: 3
+    aggregator_instructions: "You have {{ takes | length }} results from processing\
+      \ files in parallel.\n\nResults:\n{% for take in takes %}\n- Take\
+      \ {{ loop.index }}: {{ take.output }}\n{% endfor %}\n\nYour task:\n1. Parse\
+      \ each take's JSON output\n2. Calculate total sales across all files\n3.\
+      \ Calculate total row count across all files\n4. Return summary report as JSON:\n\
+      {\n  \"total_sales\": sum_of_all,\n  \"total_rows\": sum_of_all_rows,\n  \"\
+      files_processed\": 3,\n  \"breakdown\": [\n    {\"file\": \"jan\", \"sales\"\
+      : 123},\n    {\"file\": \"feb\", \"sales\": 456},\n    ...\n  ]\n}\n\nReturn\
+      \ ONLY valid JSON.\n"
+- name: report
+  instructions: 'Generate a human-readable summary report.
+
+
+    Aggregated data: {{ outputs.process_file }}
+
+
+    Create a markdown report with:
+
+    - Executive summary (total sales, total records)
+
+    - Per-file breakdown table
+
+    - Any insights or observations
+
+    '
+  skills: []

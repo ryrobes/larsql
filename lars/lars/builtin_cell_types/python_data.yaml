@@ -1,0 +1,21 @@
+# Python Data Cell
+type_id: python_data
+display_name: Python
+icon: mdi:language-python
+color: "#fbbf24"
+name_prefix: python
+description: "Execute Python code for data processing and analysis"
+category: data
+tags:
+  - quick-start
+  - popular
+  - data-processing
+template:
+  tool: python_data
+  inputs:
+    code: |
+      # Access prior cell outputs as DataFrames:
+      # df = data.cell_name
+      #
+      # Set result to a DataFrame or dict:
+      result = {"message": "Hello from Python"}

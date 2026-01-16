@@ -1,0 +1,30 @@
+cascade_id: context_demo_parent
+cells:
+- handoffs:
+  - call_child
+  instructions: Use the 'set_state' tool to set a state variable 'secret_code' to
+    'BLUE_OCEAN'.
+  name: setup
+  skills:
+  - set_state
+- context:
+    from:
+    - previous
+  handoffs:
+  - verify
+  instructions: Calling child cascade with context inheritance.
+  name: call_child
+  sub_cascades:
+  - context_in: true
+    context_out: true
+    ref: context_demo_child.json
+  skills: []
+- context:
+    from:
+    - all
+  instructions: 'Current State: {{ state }}. The child should have added ''child_status''
+    to the state. Verify it.'
+  name: verify
+  rules:
+    max_turns: 1
+  skills: []

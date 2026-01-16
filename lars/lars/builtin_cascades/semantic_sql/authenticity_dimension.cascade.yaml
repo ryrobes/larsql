@@ -1,0 +1,91 @@
+cascade_id: authenticity_dimension
+internal: true
+description: 'Authenticity analyzer for social media content. Assesses how genuine/organic
+
+  vs artificial/manufactured the content appears based on linguistic patterns.
+
+
+  Useful for detecting: bot-like content, astroturfing, coordinated campaigns,
+
+  AI-generated content, spam, or inauthentic behavior.
+
+
+  NOTE: This is heuristic-based on content patterns only, not account metadata.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  focus: Optional focus (bot, astroturf, spam, ai_generated)
+sql_function:
+  name: authenticity
+  description: 'Assess authenticity of content. How genuine vs artificial does it
+    appear?
+
+    Optional focus parameter targets specific inauthenticity types.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: focus
+    type: VARCHAR
+    default: null
+    description: Focus on specific type (bot, astroturf, spam, ai_generated)
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT authenticity('This post seems genuine and authentic')
+    expect:
+      type: regex
+      pattern: .+
+    description: Authenticity assessed
+cells:
+- name: assess_authenticity
+  model: google/gemini-2.5-flash-lite
+  instructions: "Assess the AUTHENTICITY of these {{ input.texts | length }} social\
+    \ media posts.\nHow genuine/organic vs artificial/manufactured does each one appear?\n\
+    \n{% if input.focus == 'bot' %}\nFOCUS ON BOT-LIKE PATTERNS:\n- Repetitive/formulaic\
+    \ language\n- Unusual posting patterns indicators\n- Generic responses that could\
+    \ apply to anything\n- Missing personal voice or genuine engagement\n{% elif input.focus\
+    \ == 'astroturf' %}\nFOCUS ON ASTROTURFING PATTERNS:\n- Coordinated campaign language\n\
+    - Talking points that seem scripted\n- Artificial grassroots impression\n- Suspiciously\
+    \ similar messaging\n{% elif input.focus == 'spam' %}\nFOCUS ON SPAM PATTERNS:\n\
+    - Promotional without value\n- Link farming, engagement farming\n- Copy-paste\
+    \ content\n- Irrelevant to conversation\n{% elif input.focus == 'ai_generated'\
+    \ %}\nFOCUS ON AI-GENERATED PATTERNS:\n- Overly formal/polished language\n- Hedging\
+    \ phrases, excessive qualifications\n- Generic summaries, lack of specific knowledge\n\
+    - Unnatural flow, context mismatches\n{% else %}\nAssess OVERALL authenticity.\
+    \ Look for:\n- Personal voice, unique perspective\n- Genuine emotion vs performed\
+    \ emotion\n- Specific details vs vague generalities\n- Natural conversation vs\
+    \ scripted talking points\n- Contextual awareness vs generic responses\n{% endif\
+    \ %}\n\nUSE THESE CATEGORIES:\n{% if input.focus %}\n- Clearly Authentic (no {{\
+    \ input.focus }} indicators)\n- Likely Authentic (few {{ input.focus }} indicators)\n\
+    - Uncertain (mixed signals)\n- Potentially {{ input.focus | title }} (some concerning\
+    \ patterns)\n- Likely {{ input.focus | title }} (strong {{ input.focus }} patterns)\n\
+    {% else %}\n- Highly Authentic (genuine voice, personal, specific)\n- Likely Authentic\
+    \ (mostly genuine, minor concerns)\n- Uncertain (mixed signals, hard to tell)\n\
+    - Potentially Inauthentic (some artificial patterns)\n- Likely Inauthentic (strong\
+    \ artificial patterns)\n{% endif %}\n\nPosts to analyze (with index numbers):\n\
+    {% for v in input.texts %}\n[{{ loop.index0 }}] \"{{ v[:500] | replace('\"', '\\\
+    \\\"') }}\"\n{% endfor %}\n\nReturn a JSON object mapping each post's INDEX NUMBER\
+    \ to its authenticity assessment:\n\n{\n  \"mapping\": {\n    \"0\": \"Authenticity\
+    \ Level\",\n    \"1\": \"Authenticity Level\",\n    ...\n  }\n}\n\nRULES:\n- Use\
+    \ the INDEX NUMBER (0, 1, 2, ...) as keys\n- Base assessment ONLY on content patterns,\
+    \ not assumptions\n- Be careful: unusual ≠ inauthentic, formal ≠ bot\n- Return\
+    \ ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

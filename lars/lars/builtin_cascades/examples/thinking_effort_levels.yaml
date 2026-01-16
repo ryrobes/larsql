@@ -1,0 +1,17 @@
+cascade_id: thinking_effort_levels
+description: Single-phase test for different thinking effort levels
+inputs_schema:
+  question: A question requiring thought
+cells:
+- name: reason
+  model: anthropic/claude-sonnet-4::high
+  instructions: 'Think carefully about this question:
+
+
+    {{ input.question }}
+
+
+    Reason through it step by step before answering.
+
+    '
+  skills: []

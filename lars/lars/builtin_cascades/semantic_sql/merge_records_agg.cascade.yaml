@@ -1,0 +1,64 @@
+cascade_id: merge_records_agg
+internal: true
+description: 'Merge multiple records with explicit conflict resolution strategy.
+
+  More control than GOLDEN_RECORD.
+
+  '
+inputs_schema:
+  records: Array of records to merge
+  strategy: Conflict resolution strategy
+sql_function:
+  name: merge_records
+  description: Merge records with conflict resolution
+  args:
+  - name: records
+    type: VARCHAR
+    description: JSON records to merge
+  - name: strategy
+    type: VARCHAR
+    default: best_quality
+    description: 'Strategy: best_quality, prefer_recent, prefer_first, prefer_longest,
+      unanimous_only'
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - MERGE_RECORDS({{ records }})
+  - MERGE_RECORDS({{ records }}, '{{ strategy }}')
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('{"name": "Acme Corp", "address": "123 Main St"}'),
+          ('{"name": "ACME Corporation", "phone": "555-1234"}'),
+          ('{"name": "Acme", "address": "123 Main Street", "website": "acme.com"}')
+        ) AS t(record)
+      )
+      SELECT MERGE_RECORDS(record, 'best_quality') FROM test_data
+    expect:
+      type: contains
+      value: merged
+    description: Merges company records using best quality strategy
+cells:
+- name: merge_with_strategy
+  model: google/gemini-2.5-flash-lite
+  instructions: "Merge these records using the specified conflict resolution strategy.\n\
+    \nRECORDS:\n{{ input.records }}\n\nSTRATEGY: {{ input.strategy | default('best_quality')\
+    \ }}\n\nStrategies:\n\n**best_quality** (default):\n- For each field, pick the\
+    \ highest quality value\n- Quality = completeness + validity + formatting\n\n\
+    **prefer_recent**:\n- If records have timestamps/dates, prefer newer\n- Otherwise\
+    \ fall back to best_quality\n\n**prefer_first**:\n- When values conflict, use\
+    \ the first record's value\n- Only use later records to fill nulls\n\n**prefer_longest**:\n\
+    - For text fields, prefer the longest non-empty value\n- For other fields, use\
+    \ best_quality\n\n**unanimous_only**:\n- Only include a field if ALL records agree\
+    \ on the value\n- Mark conflicts as null with \"_conflicts\": [\"field1\", \"\
+    field2\"]\n\n**prefer_source_X** (where X is a source identifier in the record):\n\
+    - Prefer values from records where source = X\n\nOutput format:\n{\n  \"merged_field1\"\
+    : \"value\",\n  \"merged_field2\": \"value\",\n  \"_merge_stats\": {\n    \"records_merged\"\
+    : 3,\n    \"fields_total\": 5,\n    \"fields_with_conflicts\": 2,\n    \"strategy_used\"\
+    : \"best_quality\"\n  }\n}\n\nReturn ONLY the merged JSON record.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

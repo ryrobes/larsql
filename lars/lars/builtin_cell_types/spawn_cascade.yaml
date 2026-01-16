@@ -1,0 +1,16 @@
+# Spawn Cascade Cell - Run sub-cascade
+type_id: spawn_cascade
+display_name: Spawn Cascade
+icon: mdi:call-split
+color: "#22d3ee"
+name_prefix: spawn
+description: "Execute another cascade as a sub-workflow"
+category: orchestration
+tags:
+  - orchestration
+  - advanced
+template:
+  tool: spawn_cascade
+  inputs:
+    cascade_path: "cascades/example.yaml"
+    inputs: "{{ {} | tojson }}"

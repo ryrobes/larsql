@@ -1,0 +1,23 @@
+cascade_id: keyword_validator
+description: Validates that content contains the word 'important'
+tags:
+- validation
+- keyword
+inputs_schema:
+  content: The content to validate
+cells:
+- name: validate
+  instructions: |-
+    Check if the following text contains the word 'important' (case-insensitive):
+
+    ---
+    {{ input.content }}
+    ---
+
+    Return ONLY a JSON object:
+    - If it contains 'important': {"valid": true, "reason": "Content contains required keyword"}
+    - If it does NOT contain 'important': {"valid": false, "reason": "Content must include the word 'important'"}
+
+    No other text.
+  rules:
+    max_turns: 1

@@ -1,0 +1,128 @@
+cascade_id: signal_validation_gate
+description: 'Validation gate that combines deterministic validation with signal-based
+  approval. Run this cascade, then fire the ''approved'' signal from CLI to continue:
+  lars signals fire approved --payload ''{"approver":"admin"}''
+
+  '
+inputs_schema:
+  query: SQL query to validate before approval
+cells:
+- name: validate_request
+  tool: python:lars.demo_tools.validate_sql
+  inputs:
+    query: '{{ input.query | default(''SELECT * FROM users WHERE active = true'')
+      }}'
+  routing:
+    valid: request_approval
+    invalid: reject_invalid
+  handoffs:
+  - request_approval
+  - reject_invalid
+- name: reject_invalid
+  instructions: 'The request failed validation and cannot proceed to approval:
+
+
+    Query: {{ input.query | default(''SELECT * FROM users WHERE active = true'') }}
+
+    Validation Error: {{ state.output_validate_request.error }}
+
+
+    Explain why this request was rejected and what needs to be fixed.
+
+    '
+  skills: []
+- name: request_approval
+  instructions: 'The request has been validated successfully:
+
+
+    Query: {{ state.output_validate_request.cleaned_query }}
+
+    Validation: PASSED
+
+
+    Now waiting for approval. Use await_signal to wait for signal named
+
+    ''approved'' with a timeout of ''2m''. Set description to ''Awaiting approval
+    for validated request''.
+
+
+    While waiting, an administrator can approve by running:
+
+    lars signals fire approved --payload ''{"approver":"admin","reason":"looks
+    good"}''
+
+    '
+  skills:
+  - await_signal
+  handoffs:
+  - process_approved
+  - handle_timeout
+- name: handle_timeout
+  instructions: 'The approval request timed out:
+
+
+    {{ state.output_request_approval }}
+
+
+    The request was valid but no approval was received within the timeout period.
+
+    Suggest next steps (retry, escalate, etc.).
+
+    '
+  skills: []
+- name: process_approved
+  tool: python:lars.demo_tools.transform_data
+  inputs:
+    data: '[{"user_id": 1, "score": 85}, {"user_id": 2, "score": 92}, {"user_id":
+      3, "score": 78}]'
+    operation: sum_numeric
+  routing:
+    success: generate_completion_report
+    empty: handle_empty
+    error: handle_error
+  handoffs:
+  - generate_completion_report
+  - handle_empty
+  - handle_error
+- name: handle_empty
+  instructions: No data to process after approval. Log and exit gracefully.
+  skills: []
+- name: handle_error
+  instructions: 'Processing failed after approval: {{ state.last_deterministic_error
+    }}
+
+    This is unexpected - the request was approved but processing failed.
+
+    '
+  skills: []
+- name: generate_completion_report
+  instructions: 'Generate a completion report for this approved workflow:
+
+
+    VALIDATION PHASE:
+
+    {{ state.output_validate_request }}
+
+
+    APPROVAL PHASE:
+
+    {{ state.output_request_approval }}
+
+
+    PROCESSING PHASE:
+
+    {{ state.output_process_approved }}
+
+
+    Include:
+
+    1. What was validated
+
+    2. Who approved it (from signal payload)
+
+    3. What was processed
+
+    4. Final results
+
+    '
+  skills: []

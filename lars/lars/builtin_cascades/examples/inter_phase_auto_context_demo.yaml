@@ -1,0 +1,58 @@
+auto_context:
+  inter_phase:
+    enabled: true
+    selection:
+      max_tokens: 20000
+      strategy: hybrid
+cascade_id: inter_phase_auto_context_demo
+description: 'Demonstrates LLM-assisted inter-phase context selection. Phase 2 uses
+  mode: auto to intelligently select relevant context from Phase 1.'
+cells:
+- handoffs:
+  - synthesis
+  instructions: 'You are a research assistant. The user wants to learn about {{ input.topic
+    }}.
+
+
+    Provide a comprehensive overview including:
+
+    1. Definition and key concepts
+
+    2. Important applications or use cases
+
+    3. Current challenges or limitations
+
+    4. Future directions
+
+
+    Be thorough but concise.'
+  name: research
+  rules:
+    max_turns: 1
+- context:
+    anchors:
+      from_phases:
+      - previous
+      include:
+      - output
+    mode: auto
+    selection:
+      max_tokens: 15000
+      strategy: hybrid
+  instructions: 'You are a technical writer. Based on the research provided in the
+    context, create a structured summary.
+
+
+    Your summary should:
+
+    1. Start with a one-sentence definition
+
+    2. List 3 key takeaways
+
+    3. Suggest one follow-up question worth exploring
+
+
+    Be concise and focused.'
+  name: synthesis
+  rules:
+    max_turns: 1

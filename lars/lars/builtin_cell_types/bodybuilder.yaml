@@ -1,0 +1,33 @@
+# Bodybuilder Cell - LLM with structured output
+type_id: bodybuilder
+display_name: Bodybuilder
+icon: mdi:dumbbell
+color: "#ff6b35"
+name_prefix: structured
+description: "LLM cell with structured JSON output schema (guaranteed valid output)"
+category: ai
+tags:
+  - quick-start
+  - ai-ml
+  - popular
+template:
+  instructions: |
+    Analyze the input and return a structured response.
+
+    Your output must conform to the specified schema.
+  output_schema:
+    type: object
+    properties:
+      analysis:
+        type: string
+        description: Your analysis
+      confidence:
+        type: number
+        description: Confidence score 0-1
+      tags:
+        type: array
+        items:
+          type: string
+    required:
+      - analysis
+      - confidence

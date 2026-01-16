@@ -1,0 +1,29 @@
+cascade_id: content_safety
+description: Checks for harmful or inappropriate content
+tags:
+- safety
+- moderation
+- validation
+inputs_schema:
+  content: The content to check for safety issues
+cells:
+- name: safety_check
+  instructions: |-
+    Review the following content for potential safety issues:
+
+    {{ input.content }}
+
+    Check for:
+    - Hate speech or discrimination
+    - Violence or harmful content
+    - Explicit or inappropriate content
+    - Misinformation or dangerous advice
+
+    Be reasonable - educational or news content discussing these topics is acceptable.
+
+    Return ONLY a JSON object with this exact format:
+    {"valid": true/false, "reason": "explanation of safety assessment"}
+
+    Do not include any other text.
+  rules:
+    max_turns: 1

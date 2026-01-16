@@ -11,16 +11,29 @@ from pathlib import Path
 from typing import Union, Dict, Any
 
 
+def _get_builtin_dir() -> Path:
+    """Get the package directory containing builtin resources."""
+    return Path(__file__).parent
+
+
 def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
     """
     Load a configuration file (JSON or YAML) based on file extension.
 
-    Resolves relative paths against LARS_ROOT and searches in:
-    - Current path (if absolute or exists)
-    - LARS_ROOT/path (if relative)
-    - LARS_ROOT/examples/path
-    - LARS_ROOT/skills/path
-    - LARS_ROOT/cascades/path
+    Resolves relative paths with the following search order:
+    1. Absolute path or current directory (direct)
+    2. User LARS_ROOT locations:
+       - LARS_ROOT/path
+       - LARS_ROOT/examples/path
+       - LARS_ROOT/skills/path
+       - LARS_ROOT/cascades/path
+    3. Package builtin locations (fallback):
+       - builtin_cascades/path
+       - builtin_skills/path
+       - builtin_cell_types/path
+
+    This allows users to override any builtin cascade/skill by placing
+    a file with the same relative path in their LARS_ROOT.
 
     Args:
         path: Path to the configuration file
@@ -41,9 +54,9 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
     if path.is_absolute() or path.exists():
         resolved_path = path
     else:
-        # Try searching in LARS_ROOT-relative locations
+        # Try searching in LARS_ROOT-relative locations first (user overrides)
         config = get_config()
-        search_dirs = [
+        user_search_dirs = [
             Path(config.root_dir),  # LARS_ROOT
             Path(config.examples_dir),  # LARS_ROOT/examples
             Path(config.skills_dir),  # LARS_ROOT/skills
@@ -51,7 +64,7 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
         ]
 
         resolved_path = None
-        for search_dir in search_dirs:
+        for search_dir in user_search_dirs:
             take = search_dir / path
             if take.exists():
                 resolved_path = take
@@ -63,10 +76,29 @@ def load_config_file(path: Union[str, Path]) -> Dict[str, Any]:
             if take.exists():
                 resolved_path = take
 
+        # If not found in user space, try package builtin directories
         if not resolved_path:
+            builtin_dir = _get_builtin_dir()
+            builtin_search_dirs = [
+                builtin_dir / "builtin_cascades",
+                builtin_dir / "builtin_skills",
+                builtin_dir / "builtin_cell_types",
+            ]
+
+            for search_dir in builtin_search_dirs:
+                take = search_dir / path
+                if take.exists():
+                    resolved_path = take
+                    break
+
+        if not resolved_path:
+            all_search_dirs = user_search_dirs + [
+                _get_builtin_dir() / "builtin_cascades",
+                _get_builtin_dir() / "builtin_skills",
+            ]
             raise FileNotFoundError(
                 f"Configuration file not found: {path}\n"
-                f"Searched in: {', '.join(str(d) for d in search_dirs)}"
+                f"Searched in: {', '.join(str(d) for d in all_search_dirs)}"
             )
 
     if not resolved_path.exists():

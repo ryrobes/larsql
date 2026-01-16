@@ -1,0 +1,12 @@
+cascade_id: test_oneshot
+description: Force one-shot mode by setting session_id to None
+cells:
+- name: generate
+  tool: bash_data
+  inputs:
+    script: 'echo "id,name"
+
+      echo "1,test"
+
+      '
+    output_format: csv

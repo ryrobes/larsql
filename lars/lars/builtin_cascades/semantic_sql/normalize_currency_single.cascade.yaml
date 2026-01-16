@@ -1,0 +1,60 @@
+cascade_id: normalize_currency_single
+internal: true
+description: 'Normalize currency values to a standard currency.
+
+  Handles various formats and provides approximate conversions.
+
+  '
+inputs_schema:
+  value: Currency value (may include symbol or code)
+  target_currency: Target currency code (USD, EUR, GBP, etc.)
+  reference_date: Optional date for historical rates
+sql_function:
+  name: normalize_currency
+  description: Standardize currency to target
+  args:
+  - name: value
+    type: VARCHAR
+  - name: target_currency
+    type: VARCHAR
+    default: USD
+  - name: reference_date
+    type: VARCHAR
+    optional: true
+    description: Date for exchange rate (YYYY-MM-DD)
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - NORMALIZE_CURRENCY({{ value }})
+  - NORMALIZE_CURRENCY({{ value }}, '{{ target_currency }}')
+  - NORMALIZE_CURRENCY({{ value }}, '{{ target_currency }}', '{{ reference_date }}')
+  - '{{ value }} IN {{ target_currency }}'
+  cache: true
+  test_cases:
+  - sql: SELECT normalize_currency('100 dollars', 'EUR')
+    expect:
+      type: contains
+      value: EUR
+    description: Currency converted
+cells:
+- name: normalize_currency
+  model: google/gemini-2.5-flash-lite
+  instructions: "Normalize this currency value to {{ input.target_currency | default('USD')\
+    \ }}.\n\nVALUE: {{ input.value }}\nTARGET CURRENCY: {{ input.target_currency |\
+    \ default('USD') }}\n{% if input.reference_date %}REFERENCE DATE: {{ input.reference_date\
+    \ }}{% endif %}\n\nReturn a JSON object:\n{\n  \"original_amount\": 100.00,\n\
+    \  \"original_currency\": \"EUR\",\n  \"converted_amount\": 108.50,\n  \"target_currency\"\
+    : \"USD\",\n  \"exchange_rate\": 1.085,\n  \"rate_date\": \"2024-03-15\",\n  \"\
+    is_approximate\": true,\n  \"formatted\": \"$108.50\"\n}\n\nCurrency detection:\n\
+    - \"$100\" → USD\n- \"€100\" or \"100 EUR\" → EUR\n- \"£100\" or \"100 GBP\" →\
+    \ GBP\n- \"¥100\" → JPY (or CNY based on context)\n- \"100 CHF\", \"CHF 100\"\
+    \ → CHF\n- \"R$100\" → BRL\n- \"₹100\" → INR\n\nFormat normalization:\n- \"1,234.56\"\
+    \ (US) → 1234.56\n- \"1.234,56\" (EU) → 1234.56\n- \"1 234,56\" (EU/space) → 1234.56\n\
+    \nExchange rate notes:\n- Use approximate rates (you don't have live data)\n-\
+    \ Mark is_approximate: true\n- Common approximate rates (vs USD):\n  - EUR: ~1.08\n\
+    \  - GBP: ~1.27\n  - JPY: ~0.0067\n  - CAD: ~0.74\n  - CHF: ~1.12\n\nIf same currency\
+    \ as target, just normalize format.\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

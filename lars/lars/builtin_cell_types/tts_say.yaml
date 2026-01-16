@@ -1,0 +1,20 @@
+# TTS Say Cell - Text-to-speech output
+type_id: tts_say
+display_name: Say (TTS)
+icon: mdi:text-to-speech
+color: "#f472b6"
+name_prefix: say
+description: "Convert text to speech using ElevenLabs"
+category: integration
+tags:
+  - integration
+  - novel
+template:
+  instructions: |
+    Generate a spoken response for:
+
+    {{ input.text }}
+
+    Keep it natural and conversational.
+  skills:
+    - say

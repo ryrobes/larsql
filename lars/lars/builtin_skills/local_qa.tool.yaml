@@ -1,0 +1,18 @@
+# Local Model Tool: Question Answering
+# Runs locally using HuggingFace transformers
+# Install dependencies: pip install lars[local-models]
+
+tool_id: local_qa
+description: |
+  Answer questions based on provided context using a local DistilBERT model.
+  Extractive QA - finds the answer span within the given context.
+  Runs entirely locally - no API calls required.
+
+inputs_schema:
+  question: The question to answer
+  context: The context/passage containing the answer
+
+type: local_model
+model_id: distilbert/distilbert-base-cased-distilled-squad
+task: question-answering
+device: auto

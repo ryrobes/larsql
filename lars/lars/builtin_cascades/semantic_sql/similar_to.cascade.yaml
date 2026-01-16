@@ -1,0 +1,66 @@
+cascade_id: semantic_similar_to
+internal: true
+description: "Compute cosine similarity between two texts.\n\nReturns similarity score\
+  \ 0.0 to 1.0 (higher = more similar).\nUseful for WHERE clauses and filtering.\n\
+  \nSQL Usage:\n  SELECT * FROM products\n  WHERE description SIMILAR_TO 'sustainable'\
+  \ > 0.7;\n\n  SELECT c1.name, c2.name,\n         c1.description SIMILAR_TO c2.description\
+  \ as similarity\n  FROM companies c1, companies c2\n  WHERE c1.id < c2.id\n    AND\
+  \ c1.description SIMILAR_TO c2.description > 0.8;\n\nPerformance:\n  - Per comparison:\
+  \ ~100ms (2 embeddings + cosine calc)\n  - Cached: <1ms for duplicate text pairs\n\
+  \  - Use LIMIT to avoid N×M explosion in JOINs\n\nWarning:\n  Be careful with CROSS\
+  \ JOINs! Use LIMIT to prevent massive LLM costs:\n    WHERE a SIMILAR_TO b > 0.8\
+  \ LIMIT 100  -- Good\n    WHERE a SIMILAR_TO b > 0.8            -- Dangerous (N×M\
+  \ calls)\n"
+inputs_schema:
+  text1: First text (required)
+  text2: Second text (required, can be literal or column)
+sql_function:
+  name: similar_to
+  description: Cosine similarity between two texts (0.0 to 1.0)
+  args:
+  - name: text1
+    type: VARCHAR
+    description: First text
+  - name: text2
+    type: VARCHAR
+    description: Second text
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+  - '{{ text1 }} SIMILAR_TO {{ text2 }}'
+  - SIMILAR_TO({{ text1 }}, {{ text2 }})
+  cache: true
+  context_arg: text1
+  test_cases:
+  - sql: WITH t AS (SELECT 'machine learning algorithms' AS topic) SELECT * FROM t WHERE topic SIMILAR_TO 'artificial intelligence' > 0.5
+    expect:
+      type: contains
+      value: machine learning
+    description: SIMILAR_TO operator filters by semantic similarity
+    skip: true  # Requires python_data and cosine_similarity_texts tools
+cells:
+- name: compute_similarity
+  tool: cosine_similarity_texts
+  inputs:
+    text1: '{{ input.text1 }}'
+    text2: '{{ input.text2 }}'
+  description: Compute cosine similarity via embeddings
+  context:
+    enabled: false
+- name: format_output
+  tool: python_data
+  inputs:
+    code: '# Return similarity as float (0.0 to 1.0)
+
+      similarity_result = data.compute_similarity
+
+      similarity = similarity_result[''similarity'']
+
+      # Clamp and round
+
+      result = round(max(0.0, min(1.0, similarity)), 6)
+
+      '
+  context:
+    from:
+    - compute_similarity

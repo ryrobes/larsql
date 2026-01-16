@@ -1,0 +1,56 @@
+cascade_id: semantic_match_pair
+internal: true
+description: 'Pairwise semantic relationship check for fuzzy JOINs and deduplication.
+
+  Returns TRUE if the two values satisfy the relationship.
+
+  '
+inputs_schema:
+  left: First value
+  right: Second value
+  relationship: 'Relationship to check (default: same entity)'
+sql_function:
+  name: semantic_match_pair
+  description: Checks whether two values match under a relationship
+  args:
+  - name: left
+    type: VARCHAR
+  - name: right
+    type: VARCHAR
+  - name: relationship
+    type: VARCHAR
+    default: same entity
+  returns: BOOLEAN
+  shape: SCALAR
+  cache: true
+  test_cases:
+  - sql: SELECT semantic_match_pair('John Smith', 'J. Smith')
+    expect:
+      type: range
+      min: 0.7
+      max: 1.0
+    description: Name match score high
+cells:
+- name: evaluate_pair
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Do these two values refer to the {{ input.relationship | default("same
+    entity") }}?
+
+
+    Value 1:
+
+    {{ input.left }}
+
+
+    Value 2:
+
+    {{ input.right }}
+
+
+    Respond with ONLY "true" or "false", nothing else.
+
+    '
+  rules:
+    max_turns: 1
+  output_schema:
+    type: boolean

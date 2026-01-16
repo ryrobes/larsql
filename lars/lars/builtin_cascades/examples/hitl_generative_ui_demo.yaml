@@ -1,0 +1,92 @@
+cascade_id: hitl_generative_ui_demo
+description: Demonstrates the Generative UI system that automatically creates contextually-appropriate
+  UIs based on the question being asked. Tests confirmation, choice, rating, and text
+  input UI types.
+inputs_schema: {}
+cells:
+- handoffs:
+  - test_choice
+  instructions: 'Ask the human a yes/no confirmation question using ask_human. For
+    example: ''Should I proceed with the analysis?'' The system should automatically
+    generate a confirmation UI with Yes/No buttons.'
+  name: test_confirmation
+  rules:
+    max_turns: 2
+  skills:
+  - ask_human
+- context:
+    from:
+    - test_confirmation
+    include:
+    - state
+  handoffs:
+  - test_rating
+  instructions: 'The human responded: {{ state.test_confirmation }}
+
+
+    Now ask the human to pick between options using ask_human. For example: ''Which
+    format would you prefer: JSON, XML, or YAML?'' The system should automatically
+    generate a choice UI with radio buttons.'
+  name: test_choice
+  rules:
+    max_turns: 2
+  skills:
+  - ask_human
+- context:
+    from:
+    - test_choice
+    include:
+    - state
+  handoffs:
+  - test_text
+  instructions: 'The human chose: {{ state.test_choice }}
+
+
+    Now ask the human for a rating using ask_human. For example: ''How would you rate
+    this experience on a scale of 1-5?'' The system should automatically generate
+    a rating UI with stars.'
+  name: test_rating
+  rules:
+    max_turns: 2
+  skills:
+  - ask_human
+- context:
+    from:
+    - test_rating
+    include:
+    - state
+  handoffs:
+  - summary
+  instructions: 'The human rated: {{ state.test_rating }}
+
+
+    Now ask the human an open-ended question using ask_human. For example: ''What
+    additional feedback do you have?'' The system should automatically generate a
+    text input UI.'
+  name: test_text
+  rules:
+    max_turns: 2
+  skills:
+  - ask_human
+- context:
+    from:
+    - all
+    include:
+    - state
+  instructions: 'Summarize all the human responses collected:
+
+
+    - Confirmation response: {{ state.test_confirmation }}
+
+    - Choice response: {{ state.test_choice }}
+
+    - Rating response: {{ state.test_rating }}
+
+    - Text feedback: {{ state.test_text }}
+
+
+    Provide a brief summary of the interaction.'
+  name: summary
+  rules:
+    max_turns: 1
+  skills: []

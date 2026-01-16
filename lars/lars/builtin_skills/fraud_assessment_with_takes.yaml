@@ -1,0 +1,77 @@
+# Fraud Assessment with Takes
+# This cascade runs 3 parallel fraud analyses and picks the best one
+# Perfect for lars_cascade_udf() testing!
+
+cascade_id: fraud_assessment_with_takes
+description: Multi-step fraud assessment with takes (best of 3)
+
+inputs_schema:
+  customer_id: "Customer ID to assess"
+  transaction_amount: "Transaction amount"
+  customer_name: "Customer company name"
+
+cells:
+  - name: assess_risk
+    instructions: |
+      You are a fraud detection expert analyzing a transaction.
+
+      Customer: {{ input.customer_name }} (ID: {{ input.customer_id }})
+      Transaction Amount: ${{ input.transaction_amount }}
+
+      Analyze this transaction for fraud risk. Consider:
+      1. Company name legitimacy (is it a placeholder, generic, or specific?)
+      2. Transaction amount relative to typical patterns
+      3. Any red flags in the data
+
+      Return a JSON object with:
+      {
+        "risk_score": 0.0-1.0,
+        "risk_level": "low|medium|high",
+        "reasoning": "brief explanation",
+        "recommended_action": "approve|review|block",
+        "confidence": 0.0-1.0
+      }
+
+      Be thorough in your analysis. Return ONLY valid JSON.
+
+    takes:
+      factor: 3  # Run 3 parallel analyses
+      mode: evaluate
+      evaluator_instructions: |
+        You are evaluating 3 different fraud risk assessments.
+
+        Pick the MOST CONSERVATIVE assessment (highest risk score when uncertain).
+
+        Consider:
+        1. Thoroughness of reasoning
+        2. Risk score appropriateness
+        3. Recommended action prudence
+
+        Return the number (0, 1, or 2) of the best assessment.
+
+    wards:
+      post:
+        - # Validate the output structure
+          validator:
+            python: |
+              import json
+              try:
+                data = json.loads(output)
+                valid = (
+                  'risk_score' in data and
+                  0 <= data['risk_score'] <= 1 and
+                  'risk_level' in data and
+                  data['risk_level'] in ['low', 'medium', 'high'] and
+                  'recommended_action' in data and
+                  data['recommended_action'] in ['approve', 'review', 'block']
+                )
+                result = {
+                  'valid': valid,
+                  'reason': 'Valid fraud assessment' if valid else 'Invalid JSON structure'
+                }
+              except:
+                result = {'valid': False, 'reason': 'Not valid JSON'}
+          mode: retry
+          max_retries: 2
+
+    skills: []

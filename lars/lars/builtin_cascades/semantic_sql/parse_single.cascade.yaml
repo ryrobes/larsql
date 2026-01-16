@@ -1,0 +1,149 @@
+# PARSE_TYPED - Structured extraction with predefined schemas
+#
+# SQL Usage:
+#   SELECT PARSE_TYPED(raw_text, 'address') FROM imports
+#   SELECT PARSE_TYPED(notes, 'email') FROM contacts
+#   SELECT PARSE_TYPED(bio, 'name') FROM profiles
+#
+# Returns: JSON object with parsed components using predefined schemas
+#
+# Note: For free-form extraction, use PARSE() instead.
+
+cascade_id: parse_typed
+internal: true
+
+description: |
+  Type-specific parser that extracts structured data using predefined schemas.
+  Returns JSON with parsed components. For free-form extraction, use PARSE().
+
+inputs_schema:
+  text: The text to parse
+  extract_type: What to extract (address, name, phone, email, date, url, currency)
+
+sql_function:
+  name: parse_typed
+  description: Extract structured data using predefined schemas (address, name, phone, email, date, url, currency)
+  args:
+    - name: text
+      type: VARCHAR
+    - name: extract_type
+      type: VARCHAR
+      description: "What to extract: address, name, phone, email, date, url, currency, or custom"
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - "PARSE_TYPED({{ text }}, '{{ extract_type }}')"
+    - "{{ text }} PARSE_TYPED '{{ extract_type }}'"
+  cache: true
+  test_cases:
+    - sql: "SELECT parse_typed('Contact John at john@example.com', 'email')"
+      expect:
+        type: json_contains
+        path: "$.email"
+        value: "john@example.com"
+      description: "Email extracted from text"
+    - sql: "SELECT parse_typed('123 Main St, Boston MA 02101', 'address')"
+      expect:
+        type: contains
+        value: "Boston"
+      description: "Address parsed correctly"
+
+cells:
+  - name: extract
+    #model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Extract {{ input.extract_type }} information from this text and return as JSON.
+
+      TEXT: {{ input.text }}
+      EXTRACT: {{ input.extract_type }}
+
+      Return formats by type:
+
+      {% if 'address' in input.extract_type.lower() %}
+      ADDRESS FORMAT:
+      {
+        "street": "123 Main Street",
+        "unit": "Suite 100",
+        "city": "Boston",
+        "state": "MA",
+        "zip": "02101",
+        "country": "US",
+        "full": "123 Main Street, Suite 100, Boston, MA 02101"
+      }
+
+      {% elif 'name' in input.extract_type.lower() %}
+      NAME FORMAT:
+      {
+        "prefix": "Dr.",
+        "first": "John",
+        "middle": "Q.",
+        "last": "Smith",
+        "suffix": "Jr.",
+        "full": "Dr. John Q. Smith Jr."
+      }
+
+      {% elif 'phone' in input.extract_type.lower() %}
+      PHONE FORMAT:
+      {
+        "country_code": "+1",
+        "area_code": "555",
+        "number": "1234567",
+        "extension": "123",
+        "full": "+15551234567",
+        "formatted": "(555) 123-4567"
+      }
+
+      {% elif 'email' in input.extract_type.lower() %}
+      EMAIL FORMAT:
+      {
+        "local": "john.smith",
+        "domain": "example.com",
+        "full": "john.smith@example.com"
+      }
+
+      {% elif 'date' in input.extract_type.lower() %}
+      DATE FORMAT:
+      {
+        "year": 2024,
+        "month": 3,
+        "day": 15,
+        "iso": "2024-03-15",
+        "formatted": "March 15, 2024"
+      }
+
+      {% elif 'url' in input.extract_type.lower() %}
+      URL FORMAT:
+      {
+        "protocol": "https",
+        "domain": "example.com",
+        "path": "/page",
+        "query": "id=123",
+        "full": "https://example.com/page?id=123"
+      }
+
+      {% elif 'currency' in input.extract_type.lower() or 'money' in input.extract_type.lower() %}
+      CURRENCY FORMAT:
+      {
+        "amount": 1234.56,
+        "currency": "USD",
+        "symbol": "$",
+        "formatted": "$1,234.56"
+      }
+
+      {% else %}
+      CUSTOM EXTRACTION:
+      Return a JSON object with the requested information.
+      Use descriptive keys for what you extract.
+      {% endif %}
+
+      RULES:
+      - Return ONLY the JSON object, no markdown fences
+      - Use null for missing components
+      - If nothing can be extracted, return {"error": "no {{ input.extract_type }} found"}
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: object

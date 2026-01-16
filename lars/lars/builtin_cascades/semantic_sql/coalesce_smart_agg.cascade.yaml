@@ -1,0 +1,114 @@
+cascade_id: coalesce_smart_agg
+internal: true
+description: 'Smart coalesce - picks the best non-null value, not just the first one.
+
+  Considers quality, not just null-ness.
+
+  '
+inputs_schema:
+  values: Array of values
+  preference: Optional preference hint
+sql_function:
+  name: coalesce_smart
+  description: Pick best non-null value (smarter than COALESCE)
+  args:
+  - name: values
+    type: VARCHAR
+    description: Values to coalesce
+  - name: preference
+    type: VARCHAR
+    optional: true
+    description: 'Preference hint: ''prefer mobile'', ''prefer complete'', etc.'
+  returns: VARCHAR
+  shape: AGGREGATE
+  operators:
+  - COALESCE_SMART({{ values }})
+  - COALESCE_SMART({{ values }}, '{{ preference }}')
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          (NULL),
+          ('N/A'),
+          ('test@test.com'),
+          ('jane@company.com')
+        ) AS t(email)
+      )
+      SELECT COALESCE_SMART(email) FROM test_data
+    expect:
+      type: contains
+      value: company.com
+    description: Picks best non-null value, skipping fake emails
+cells:
+- name: smart_coalesce
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Pick the best non-null value from this group.
+
+
+    VALUES:
+
+    {{ input.values }}
+
+
+    {% if input.preference %}PREFERENCE: {{ input.preference }}{% endif %}
+
+
+    Unlike regular COALESCE which returns the first non-null:
+
+    - Skip null, empty string, "N/A", "null", "none", "unknown"
+
+    - Skip obviously invalid values (e.g., "test@test.test")
+
+    - Pick the highest quality remaining value
+
+
+    Quality ranking:
+
+    1. Valid and complete
+
+    2. Valid but incomplete
+
+    3. Questionable but usable
+
+    4. Empty/null (last resort)
+
+
+    Preference hints:
+
+    - "prefer mobile": For phones, prefer mobile over landline
+
+    - "prefer work": Prefer work email/phone over personal
+
+    - "prefer personal": Prefer personal over work
+
+    - "prefer complete": Prefer longer/more complete
+
+    - "prefer short": Prefer concise/abbreviated
+
+
+    Examples:
+
+
+    Values: [null, "N/A", "john@gmail.com", ""]
+
+    → "john@gmail.com"
+
+
+    Values: ["test@test.com", "unknown", "jane@company.com"]
+
+    → "jane@company.com" (test@test.com is likely fake)
+
+
+    Values: ["+1 (555) 123-4567", "555-123-4567", null]
+
+    Preference: "prefer complete"
+
+    → "+1 (555) 123-4567"
+
+
+    Return ONLY the selected value, or null if all values are null/empty/invalid.
+
+    '
+  rules:
+    max_turns: 1

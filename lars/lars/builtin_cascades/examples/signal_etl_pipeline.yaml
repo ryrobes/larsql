@@ -1,0 +1,154 @@
+cascade_id: signal_etl_pipeline
+description: Complete ETL pipeline using signals for coordination. Demonstrates how
+  deterministic phases, signals, and LLM phases work together.
+cells:
+- handoffs:
+  - validate_source
+  - handle_timeout
+  inputs:
+    description: Waiting for source data to be available
+    signal_name: source_data_ready
+    timeout: 4h
+  name: wait_for_source
+  routing:
+    fired: validate_source
+    timeout: handle_timeout
+  tool: await_signal
+- instructions: 'The source data did not arrive within 4 hours.
+
+
+    This could mean:
+
+    1. Upstream system is delayed
+
+    2. Network connectivity issues
+
+    3. Source system failure
+
+
+    Recommend checking the upstream data provider and consider:
+
+    - Sending an alert to the data team
+
+    - Scheduling a retry for later
+
+    - Using fallback data if available'
+  name: handle_timeout
+- handoffs:
+  - extract_data
+  - handle_validation_error
+  inputs:
+    query: SELECT COUNT(*) FROM source_table WHERE date = '{{ input.date | default("today")
+      }}'
+  name: validate_source
+  routing:
+    invalid: handle_validation_error
+    valid: extract_data
+  tool: python:lars.demo_tools.validate_sql
+- instructions: 'Source data validation failed:
+
+
+    {{ state.last_deterministic_error }}
+
+
+    Diagnose the issue and suggest remediation steps.'
+  name: handle_validation_error
+- handoffs:
+  - transform_data
+  instructions: 'Source validation passed. Now extract the data for processing.
+
+
+    Extraction details:
+
+    - Mode: {{ input.mode | default(''incremental'') }}
+
+    - Source payload: {{ state.output_wait_for_source }}
+
+
+    Simulate data extraction and return the extracted record count.'
+  name: extract_data
+- handoffs:
+  - load_data
+  - handle_transform_error
+  inputs:
+    data: '[{"id": 1, "value": 100}, {"id": 2, "value": 200}, {"id": 3, "value": 300}]'
+    operation: sum_numeric
+  name: transform_data
+  routing:
+    error: handle_transform_error
+    success: load_data
+  tool: python:lars.demo_tools.transform_data
+- instructions: 'Transform failed:
+
+
+    {{ state.last_deterministic_error }}
+
+
+    Diagnose the transformation issue.'
+  name: handle_transform_error
+- handoffs:
+  - notify_downstream
+  instructions: 'Transformation complete with results:
+
+
+    {{ state.output_transform_data }}
+
+
+    Simulate loading to the destination warehouse. Include:
+
+    - Target table name
+
+    - Row count loaded
+
+    - Load timestamp'
+  name: load_data
+- handoffs:
+  - complete
+  instructions: 'Use fire_signal to notify downstream systems:
+
+
+    - Signal name: ''etl_complete''
+
+    - Payload: {"cascade_id": "signal_etl_pipeline", "status": "success", "records_processed":
+    "{{ state.output_transform_data.count }}"}'
+  name: notify_downstream
+  skills:
+  - fire_signal
+- instructions: 'ETL pipeline complete!
+
+
+    Summary:
+
+    1. Waited for source data signal
+
+    2. Validated source data
+
+    3. Extracted {{ state.output_extract_data }}
+
+    4. Transformed data
+
+    5. Loaded to destination
+
+    6. Notified downstream systems
+
+
+    Signal result: {{ state.output_notify_downstream }}'
+  name: complete
+triggers:
+- description: Run daily at 6 AM Eastern
+  inputs:
+    mode: incremental
+  name: daily_run
+  schedule: 0 6 * * *
+  timezone: America/New_York
+  type: cron
+- args:
+    min_size_bytes: 1000
+    path: /data/incoming/events.csv
+  check: python:lars.triggers.sensor_file_exists
+  description: Trigger when source file appears
+  inputs:
+    mode: incremental
+  name: on_source_ready
+  poll_interval: 5m
+  type: sensor

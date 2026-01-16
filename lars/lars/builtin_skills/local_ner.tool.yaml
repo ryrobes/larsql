@@ -1,0 +1,19 @@
+# Local Model Tool: Named Entity Recognition
+# Runs locally using HuggingFace transformers
+# Install dependencies: pip install lars[local-models]
+
+tool_id: local_ner
+description: |
+  Extract named entities from text using a local BERT-based NER model.
+  Identifies: PER (person), ORG (organization), LOC (location), MISC (miscellaneous).
+  Runs entirely locally - no API calls required.
+
+inputs_schema:
+  text: The text to extract entities from
+
+type: local_model
+model_id: dslim/bert-base-NER
+task: token-classification
+device: auto
+pipeline_kwargs:
+  aggregation_strategy: simple  # Merge B-/I- tags into single entities

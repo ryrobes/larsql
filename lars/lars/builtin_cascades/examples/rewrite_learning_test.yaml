@@ -1,0 +1,18 @@
+cascade_id: rewrite_learning_test
+description: Test cascade to verify winner learning in rewrite mode. Run this multiple
+  times to see learning in action!
+inputs_schema:
+  topic: A topic to write about
+cells:
+- instructions: 'Write a creative short paragraph about: {{ input.topic }}'
+  model: x-ai/grok-4.1-fast
+  name: creative_writing
+  takes:
+    evaluator_instructions: "Compare the creative writing outputs. Select the one\
+      \ that is most engaging, vivid, and creative.\n\nEvaluate based on:\n- Use of\
+      \ descriptive language\n- Creativity and originality  \n- Engagement and flow\n\
+      - Emotional impact\n\nReturn the index (0-based) of the best output."
+    factor: 4
+    mutate: true
+    mutation_mode: rewrite
+  skills: []

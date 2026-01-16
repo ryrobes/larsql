@@ -1,0 +1,62 @@
+cascade_id: semantic_summarize
+internal: true
+description: 'Text summarization aggregate - summarizes a collection of texts into
+  a concise overview.
+
+  Used as an aggregate function in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of texts to summarize
+sql_function:
+  name: semantic_summarize
+  description: Summarizes a collection of texts into a concise overview
+  args:
+  - name: texts
+    type: JSON
+  returns: VARCHAR
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+  - summarize({{ texts }})
+  - SUMMARIZE({{ texts }})
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('The weather was sunny and warm'),
+          ('It was a beautiful day for outdoor activities'),
+          ('Perfect conditions for a picnic in the park')
+        ) AS t(review)
+      )
+      SELECT SUMMARIZE(review) FROM test_data
+    expect:
+      type: contains
+      value: weather
+    description: Summarizes multiple texts about weather into overview
+cells:
+- name: summarize
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Summarize these texts into a concise overview.
+
+
+    TEXTS:
+
+    {{ input.texts }}
+
+
+    Create a 2-3 sentence summary that:
+
+    - Captures the main themes and patterns
+
+    - Highlights any notable specifics
+
+    - Is written in a neutral, informative tone
+
+
+    Return ONLY the summary text, no preamble or explanation.
+
+    '
+  rules:
+    max_turns: 1

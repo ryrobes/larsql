@@ -1,0 +1,120 @@
+cascade_id: impute_single
+internal: true
+description: 'Impute missing values using statistical or logical reasoning.
+
+  More sophisticated than simple fill - considers distributions.
+
+  '
+inputs_schema:
+  value: The value (may be null or empty)
+  context: Statistical context (group values, similar items, etc.)
+sql_function:
+  name: impute
+  description: Statistical imputation for missing values
+  args:
+  - name: value
+    type: VARCHAR
+  - name: context
+    type: VARCHAR
+    description: 'Statistical context: group values, similar records, distribution
+      info'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - IMPUTE({{ value }}, '{{ context }}')
+  - '{{ value }} IMPUTED FROM ''{{ context }}'''
+  cache: true
+  test_cases:
+  - sql: 'SELECT impute(''unknown'', ''name: John Smith'', ''first_name'')'
+    expect:
+      type: contains
+      value: John
+    description: First name imputed from context
+cells:
+- name: statistical_impute
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Impute the missing value using statistical reasoning.
+
+
+    VALUE: {{ input.value }}
+
+    CONTEXT: {{ input.context }}
+
+
+    Imputation strategies (choose most appropriate):
+
+
+    **Numeric values**:
+
+    - Median: For skewed distributions (salaries, prices)
+
+    - Mean: For normal distributions (heights, test scores)
+
+    - Mode: For categorical-like numbers (ratings 1-5)
+
+    - Interpolation: If ordered sequence is provided
+
+
+    **Categorical values**:
+
+    - Mode: Most frequent category
+
+    - Weighted random: Based on distribution
+
+    - Logical inference: From related fields
+
+
+    **Time-based**:
+
+    - Linear interpolation between known points
+
+    - Last value carried forward
+
+    - Seasonal pattern matching
+
+
+    Examples:
+
+
+    Value: null (age field)
+
+    Context: "group ages: 25, 28, 30, 32, 75"
+
+    → 29 (median, not mean=38 which is skewed by outlier)
+
+
+    Value: null (price field)
+
+    Context: "similar products: $9.99, $10.99, $10.49, $10.99"
+
+    → $10.99 (mode) or $10.62 (mean) - mode preferred for prices
+
+
+    Value: null (rating field)
+
+    Context: "other ratings for category: 5, 4, 4, 5, 4, 3, 5"
+
+    → 4 (mode)
+
+
+    Value: null (temperature at 2pm)
+
+    Context: "1pm: 72°F, 3pm: 76°F"
+
+    → 74 (interpolation)
+
+
+    Value: "existing"
+
+    Context: "anything"
+
+    → "existing" (return as-is)
+
+
+    Return ONLY the imputed value (or original if present).
+
+    For numeric imputation, return just the number.
+
+    '
+  rules:
+    max_turns: 1

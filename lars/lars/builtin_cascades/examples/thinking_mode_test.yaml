@@ -1,0 +1,34 @@
+cascade_id: thinking_mode_test
+description: Tests thinking mode parsing and token capture with different configurations
+inputs_schema:
+  problem: A problem that requires reasoning
+cells:
+- name: think_high
+  model: anthropic/claude-sonnet-4::high
+  instructions: 'You are a reasoning assistant. Think carefully about this problem:
+
+
+    **Problem:** {{ input.problem }}
+
+
+    Work through this step by step using deep logical reasoning.
+
+    Provide a well-reasoned answer.
+
+    '
+  skills: []
+- name: think_medium_budget
+  model: anthropic/claude-sonnet-4::medium(4000)
+  instructions: 'Based on the previous analysis, synthesize the key insights.
+
+
+    Previous reasoning: {{ outputs.think_high }}
+
+
+    Provide a concise summary of the main conclusion.
+
+    '
+  skills: []
+  context:
+    from:
+    - think_high

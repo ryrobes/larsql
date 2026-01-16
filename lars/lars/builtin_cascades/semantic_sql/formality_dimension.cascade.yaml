@@ -1,0 +1,104 @@
+# FORMALITY dimension - Group by formality level
+#
+# SQL Usage:
+#   SELECT FORMALITY(message), COUNT(*) FROM emails GROUP BY FORMALITY(message)
+#   SELECT * FROM support_tickets WHERE FORMALITY(text) = 'informal'
+#   SELECT FORMALITY(comment), AVG(response_time) FROM feedback GROUP BY 1
+#
+# For communication analysis
+
+cascade_id: formality_dimension
+internal: true
+
+description: |
+  Dimension operator that buckets text by formality level.
+  Useful for communication style analysis.
+
+inputs_schema:
+  text: Text to analyze for formality
+
+sql_function:
+  name: formality
+  description: Detect formality level for grouping
+  args:
+    - name: text
+      type: VARCHAR
+  returns: VARCHAR
+  shape: DIMENSION
+  operators:
+    - "FORMALITY({{ text }})"
+    - "{{ text }} BY FORMALITY"
+  cache: true
+  test_cases:
+    - sql: "SELECT formality('Dear Sir or Madam, I am writing to inquire about...')"
+      expect:
+        type: one_of
+        values: ["very_formal", "formal"]
+      description: "Formal letter detected"
+    - sql: "SELECT formality('hey whats up dude')"
+      expect:
+        type: one_of
+        values: ["very_informal", "informal"]
+      description: "Informal chat detected"
+
+cells:
+  - name: assess_formality
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Assess the formality level of this text.
+
+      TEXT: {{ input.text }}
+
+      Return a formality bucket for GROUP BY analysis.
+
+      **Buckets**:
+
+      "very_formal":
+      - Legal/academic language
+      - Complex sentence structures
+      - Technical terminology
+      - No contractions
+      - Third person, passive voice
+      - Example: "The undersigned hereby acknowledges..."
+
+      "formal":
+      - Professional business tone
+      - Complete sentences
+      - Few or no contractions
+      - Proper grammar
+      - Example: "Thank you for your inquiry..."
+
+      "neutral":
+      - Standard written communication
+      - Some contractions OK
+      - Clear and direct
+      - Example: "I wanted to follow up on..."
+
+      "informal":
+      - Casual conversation
+      - Contractions common
+      - First person
+      - Relaxed grammar
+      - Example: "Hey, just checking in..."
+
+      "very_informal":
+      - Slang, emoji, abbreviations
+      - Incomplete sentences
+      - Text-speak (u, ur, lol)
+      - Example: "omg thats crazy lol"
+
+      **Signals for formality**:
+      - Contractions: informal
+      - Slang/emoji: informal
+      - Complete sentences: formal
+      - Technical jargon: formal
+      - Greetings like "Dear X": formal
+      - Greetings like "Hey": informal
+      - Passive voice: formal
+      - First person (I/we): less formal
+
+      Return ONLY the bucket name (e.g., "formal", "informal").
+
+    rules:
+      max_turns: 1

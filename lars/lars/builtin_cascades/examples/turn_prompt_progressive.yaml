@@ -1,0 +1,16 @@
+cascade_id: progressive_refinement
+description: Demonstrates dynamic turn-specific prompts using Jinja2 conditionals
+inputs_schema:
+  task: The task to complete
+cells:
+- handoffs: []
+  instructions: 'Complete this task: {{ input.task }}'
+  name: complete_task
+  rules:
+    max_turns: 4
+    turn_prompt: '{% if turn == 1 %}**First Review**: Check for major issues or missing
+      requirements. Fix critical problems.{% elif turn == 2 %}**Second Review**: Polish
+      your work. Improve clarity and structure.{% elif turn == 3 %}**Third Review**:
+      Final refinement. Check grammar, formatting, and overall quality.{% else %}**Final
+      Check**: Make any last improvements. Ensure everything is perfect.{% endif %}'
+  skills: []

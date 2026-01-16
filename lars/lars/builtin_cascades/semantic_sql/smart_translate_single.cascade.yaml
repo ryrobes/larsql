@@ -1,0 +1,60 @@
+cascade_id: smart_translate_single
+internal: true
+description: 'Translate text from one language to another.
+
+  Auto-detects source language if not specified.
+
+  '
+inputs_schema:
+  text: Text to translate
+  target_language: Target language code (en, es, fr, de, etc.)
+  source_language: Source language (optional, auto-detect)
+sql_function:
+  name: smart_translate
+  description: Translate text between languages
+  args:
+  - name: text
+    type: VARCHAR
+  - name: target_language
+    type: VARCHAR
+    description: 'Target language code: en, es, fr, de, zh, ja, etc.'
+  - name: source_language
+    type: VARCHAR
+    optional: true
+    default: auto
+    description: Source language code or 'auto' for detection
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - SMART_TRANSLATE({{ text }}, '{{ target_language }}')
+  - SMART_TRANSLATE({{ text }}, '{{ target_language }}', '{{ source_language }}')
+  - '{{ text }} TRANSLATED TO ''{{ target_language }}'''
+  cache: true
+  test_cases:
+  - sql: SELECT smart_translate('Hello world', 'es')
+    expect:
+      type: contains
+      value: mundo
+    description: English to Spanish
+cells:
+- name: translate_text
+  model: google/gemini-2.5-flash-lite
+  instructions: "Translate this text to {{ input.target_language }}.\n\nTEXT: {{ input.text\
+    \ }}\nTARGET LANGUAGE: {{ input.target_language }}\nSOURCE LANGUAGE: {{ input.source_language\
+    \ | default('auto') }}\n\nReturn a JSON object:\n{\n  \"original\": \"Hola mundo\"\
+    ,\n  \"translated\": \"Hello world\",\n  \"source_language\": \"es\",\n  \"source_language_name\"\
+    : \"Spanish\",\n  \"target_language\": \"en\",\n  \"target_language_name\": \"\
+    English\",\n  \"confidence\": 0.95\n}\n\nLanguage codes:\n- en: English\n- es:\
+    \ Spanish\n- fr: French\n- de: German\n- it: Italian\n- pt: Portuguese\n- zh:\
+    \ Chinese (Simplified)\n- zh-TW: Chinese (Traditional)\n- ja: Japanese\n- ko:\
+    \ Korean\n- ru: Russian\n- ar: Arabic\n- hi: Hindi\n- nl: Dutch\n- pl: Polish\n\
+    - sv: Swedish\n\nTranslation guidelines:\n- Preserve formatting (line breaks,\
+    \ punctuation style)\n- Maintain proper nouns unchanged when appropriate\n- Use\
+    \ natural phrasing in target language\n- For technical terms, use standard translations\n\
+    - If text is already in target language, return it unchanged\n\nIf unable to translate,\
+    \ return:\n{\"error\": \"Unable to translate\", \"reason\": \"...\"}\n\nReturn\
+    \ ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

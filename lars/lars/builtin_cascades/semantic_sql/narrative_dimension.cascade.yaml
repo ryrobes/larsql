@@ -1,0 +1,79 @@
+cascade_id: narrative_dimension
+internal: true
+description: 'Narrative frame analyzer. Identifies what story or angle the author
+  is using
+
+  to present information. Critical for understanding media framing and discourse.
+
+
+  Narrative frames shape how readers interpret information by emphasizing
+
+  certain aspects over others.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  context: Optional topic/event context for more relevant frame identification
+sql_function:
+  name: narrative
+  description: 'Identify the narrative frame being used. What story is the author
+    telling?
+
+    Optional context parameter helps identify relevant frames.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: context
+    type: VARCHAR
+    default: null
+    description: Optional context (e.g., 'tech industry', 'election', 'pandemic')
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT narrative('The underdog won against all odds')
+    expect:
+      type: regex
+      pattern: .+
+    description: Narrative type detected
+cells:
+- name: identify_narrative
+  instructions: "Identify the NARRATIVE FRAME used in these {{ input.texts | length\
+    \ }} texts.\nWhat story or angle is the author using to present their message?\n\
+    \n{% if input.context %}\nContext/Topic: {{ input.context }}\n{% endif %}\n\n\
+    COMMON NARRATIVE FRAMES:\n- David vs Goliath (underdog fighting powerful forces)\n\
+    - Victim/Villain (assigning blame, identifying wrongdoers)\n- Progress/Innovation\
+    \ (forward movement, improvement, breakthrough)\n- Decline/Decay (things getting\
+    \ worse, golden age lost)\n- Crisis/Emergency (urgent problem requiring action)\n\
+    - Comeback/Redemption (recovery, second chances, turnaround)\n- Us vs Them (in-group\
+    \ vs out-group, tribal conflict)\n- Expert/Authority (citing credentials, technical\
+    \ knowledge)\n- Personal Story (anecdote, individual experience)\n- Trend/Movement\
+    \ (broader pattern, cultural shift)\n- Conspiracy/Hidden Truth (secret forces,\
+    \ what \"they\" don't want you to know)\n- Common Sense (obvious truth, \"everyone\
+    \ knows\")\n- Humor/Satire (using comedy to make a point)\n- Call to Action (mobilization,\
+    \ demanding change)\n- Neutral/Informational (just the facts, no clear frame)\n\
+    \nTexts to analyze (with index numbers):\n{% for v in input.texts %}\n[{{ loop.index0\
+    \ }}] \"{{ v[:500] | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\nReturn a JSON\
+    \ object mapping each text's INDEX NUMBER to its narrative frame:\n\n{\n  \"mapping\"\
+    : {\n    \"0\": \"Frame Name\",\n    \"1\": \"Frame Name\",\n    ...\n  }\n}\n\
+    \nRULES:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys\n- Identify the PRIMARY/dominant\
+    \ frame being used\n- Consider: word choices, what's emphasized, what's omitted,\
+    \ emotional appeal\n- Use exact frame names from the list above\n- Return ONLY\
+    \ the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

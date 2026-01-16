@@ -1,0 +1,71 @@
+cascade_id: engagement_dimension
+internal: true
+description: 'Engagement type predictor for social media posts. Predicts what kind
+  of
+
+  engagement a post is likely to receive based on its content and tone.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  platform: Optional platform context (twitter, linkedin, reddit, etc.)
+sql_function:
+  name: engagement
+  description: 'Predict the type of engagement a post will receive.
+
+    Optional platform parameter adjusts for platform-specific behavior.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: platform
+    type: VARCHAR
+    default: null
+    description: Optional platform (twitter, linkedin, reddit, instagram)
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT engagement('Must read! Share with everyone!')
+    expect:
+      type: regex
+      pattern: .+
+    description: Engagement level assessed
+cells:
+- name: predict_engagement
+  model: google/gemini-2.5-flash-lite
+  instructions: "Predict the likely ENGAGEMENT TYPE for these {{ input.texts | length\
+    \ }} social media posts.\nWhat kind of response will each post likely receive?\n\
+    \n{% if input.platform %}\nPlatform context: {{ input.platform }}\n{% endif %}\n\
+    \nUSE THESE ENGAGEMENT CATEGORIES:\n- Discussion Starter (invites thoughtful replies\
+    \ and conversation)\n- Controversial (likely to spark debate or strong reactions)\n\
+    - Shareable (high retweet/share potential, quotable)\n- Relatable (will get \"\
+    mood\", \"same\", reaction-type engagement)\n- Informative (save/bookmark worthy,\
+    \ reference material)\n- Supportive (will receive encouragement, sympathy)\n-\
+    \ Entertaining (will get laughs, entertainment reactions)\n- Polarizing (will\
+    \ get both strong support and criticism)\n- Ignored (low engagement potential,\
+    \ noise)\n- Engagement Bait (designed to farm engagement, may backfire)\n\nPosts\
+    \ to analyze (with index numbers):\n{% for v in input.texts %}\n[{{ loop.index0\
+    \ }}] \"{{ v[:500] | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\nReturn a JSON\
+    \ object mapping each post's INDEX NUMBER to its likely engagement type:\n\n{\n\
+    \  \"mapping\": {\n    \"0\": \"Engagement Category\",\n    \"1\": \"Engagement\
+    \ Category\",\n    ...\n  }\n}\n\nRULES:\n- Use the INDEX NUMBER (0, 1, 2, ...)\
+    \ as keys\n- Predict the DOMINANT engagement pattern\n- Consider: content, tone,\
+    \ controversy level, relatability\n- Use exact category names from the list above\n\
+    - Return ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

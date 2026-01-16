@@ -1,0 +1,77 @@
+cascade_id: stance_dimension
+internal: true
+description: 'Stance/position analyzer for text content. Identifies where the author
+
+  stands on a given topic or issue.
+
+
+  REQUIRES a topic to analyze stance on. Optionally accepts custom stance
+
+  categories.
+
+
+  This is a DIMENSION-shaped function for use in GROUP BY clauses.
+
+  '
+inputs_schema:
+  texts: JSON array of all text values to analyze
+  topic: The topic/issue to analyze stance on (REQUIRED)
+  stances: Optional comma-separated list of stance categories
+sql_function:
+  name: stance
+  description: 'Identify author''s stance on a topic. REQUIRES topic as second argument.
+
+    Optionally specify custom stance categories as third argument.
+
+    '
+  shape: DIMENSION
+  mode: mapping
+  args:
+  - name: text
+    type: VARCHAR
+    role: dimension_source
+  - name: topic
+    type: VARCHAR
+    description: The topic to analyze stance on (e.g., 'AI regulation', 'remote work')
+  - name: stances
+    type: VARCHAR
+    default: null
+    description: Optional custom stances (e.g., 'Supportive, Opposed, Skeptical, Neutral')
+  returns: VARCHAR
+  cache: true
+  test_cases:
+  - sql: SELECT stance('I strongly support this initiative')
+    expect:
+      type: regex
+      pattern: .+
+    description: Stance detected
+cells:
+- name: analyze_stance
+  model: google/gemini-2.5-flash-lite
+  instructions: "Analyze the STANCE/POSITION on \"{{ input.topic }}\" expressed in\
+    \ these {{ input.texts | length }} texts.\n\nTOPIC TO ANALYZE: {{ input.topic\
+    \ }}\n\n{% if input.stances %}\nUSE THESE STANCE CATEGORIES:\n{% for stance in\
+    \ input.stances.split(',') %}\n- {{ stance | trim }}\n{% endfor %}\n{% else %}\n\
+    USE THESE STANCE CATEGORIES:\n- Strongly Supportive (enthusiastic advocacy, clear\
+    \ support)\n- Supportive (agrees, positive but not passionate)\n- Neutral/Balanced\
+    \ (no clear position, balanced view)\n- Skeptical (doubts, concerns, questioning)\n\
+    - Opposed (disagrees, negative view)\n- Strongly Opposed (vehement opposition,\
+    \ harsh criticism)\n- Off-Topic (doesn't address {{ input.topic }})\n{% endif\
+    \ %}\n\nTexts to analyze (with index numbers):\n{% for v in input.texts %}\n[{{\
+    \ loop.index0 }}] \"{{ v[:500] | replace('\"', '\\\\\"') }}\"\n{% endfor %}\n\n\
+    Return a JSON object mapping each text's INDEX NUMBER to the author's stance:\n\
+    \n{\n  \"mapping\": {\n    \"0\": \"Stance Category\",\n    \"1\": \"Stance Category\"\
+    ,\n    ...\n  }\n}\n\nRULES:\n- Use the INDEX NUMBER (0, 1, 2, ...) as keys\n\
+    - Analyze stance specifically on \"{{ input.topic }}\"\n- Consider: explicit statements,\
+    \ implied positions, tone, arguments made\n- If text doesn't address the topic,\
+    \ use \"Off-Topic\" (or neutral if forced)\n- Return ONLY the JSON object\n"
+  rules:
+    max_turns: 1
+    max_attempts: 3
+  output_schema:
+    type: object
+    properties:
+      mapping:
+        type: object
+    required:
+    - mapping

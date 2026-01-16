@@ -1,0 +1,18 @@
+# Screenshot Cell - Capture webpage screenshot
+type_id: screenshot
+display_name: Screenshot
+icon: mdi:camera
+color: "#fb923c"
+name_prefix: screenshot
+description: "Capture a screenshot of a webpage or URL"
+category: integration
+tags:
+  - integration
+  - visualization
+template:
+  instructions: |
+    Take a screenshot of the specified URL.
+
+    URL: {{ input.url }}
+  skills:
+    - take_screenshot

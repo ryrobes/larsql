@@ -1,0 +1,36 @@
+cascade_id: test_dynamic_takes
+description: Test dynamic takes factor with Jinja2 templates
+cells:
+- name: generate_list
+  tool: python_data
+  inputs:
+    code: 'result = ["apple", "banana", "cherry"]
+
+      '
+- name: process_items
+  instructions: "You are processing item {{ take_index + 1 }} of {{ take_factor\
+    \ }}.\n\nThe item is: {{ outputs.generate_list.result[take_index] }}\n\nReturn\
+    \ a JSON object with:\n{\n  \"item\": \"the item name\",\n  \"length\": number_of_characters,\n\
+    \  \"uppercase\": \"ITEM IN UPPERCASE\"\n}\n"
+  context:
+    from:
+    - generate_list
+  takes:
+    factor: '{{ outputs.generate_list.result | length }}'
+    mode: aggregate
+    max_parallel: 3
+    mutate: false
+    aggregator_instructions: "Combine all {{ takes | length }} take results.\n\
+      \nReturn a JSON array of all processed items:\n[\n  {\"item\": \"apple\", \"\
+      length\": 5, \"uppercase\": \"APPLE\"},\n  ...\n]\n"
+- name: report
+  instructions: 'Create a summary report.
+
+
+    Results: {{ outputs.process_items }}
+
+
+    List each item with its length.
+
+    '
+  skills: []

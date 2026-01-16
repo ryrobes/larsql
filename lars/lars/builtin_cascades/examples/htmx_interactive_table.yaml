@@ -1,0 +1,48 @@
+cascade_id: htmx_interactive_table
+description: 'Demonstrates interactive data tables with HTMX.
+
+  Shows filtering, sorting, and row selection for data review workflows.
+
+  '
+inputs_schema:
+  data_topic: What kind of data to generate and review
+cells:
+- name: generate_and_review_data
+  skills:
+  - request_decision
+  - route_to
+  handoffs:
+  - process_selection
+  rules:
+    max_turns: 5
+  instructions: "Generate sample data about: {{ input.data_topic }}\n\nCreate 10-15\
+    \ rows of realistic data with 4-6 columns.\n\nUse request_decision with HTMX to\
+    \ build an interactive table UI:\n- Sortable columns (click header to sort)\n\
+    - Filter input (type to filter rows)\n- Checkboxes to select rows\n- Submit selected\
+    \ rows for approval\n\nExample pattern:\n<div>\n  <input type=\"text\" id=\"filter\"\
+    \ placeholder=\"Filter...\"\n         oninput=\"filterTable(this.value)\">\n\n\
+    \  <table id=\"dataTable\" style=\"width:100%; border-collapse:collapse;\">\n\
+    \    <thead>\n      <tr style=\"background:#2C3B4B;\">\n        <th><input type=\"\
+    checkbox\" onclick=\"toggleAll(this)\"></th>\n        <th onclick=\"sortTable(0)\"\
+    >Column 1 ▼</th>\n        <th onclick=\"sortTable(1)\">Column 2 ▼</th>\n     \
+    \ </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td><input type=\"checkbox\"\
+    \ name=\"selected[]\" value=\"row1\"></td>\n        <td>Data</td>\n        <td>Data</td>\n\
+    \      </tr>\n    </tbody>\n  </table>\n\n  <script>\n    function sortTable(col)\
+    \ { /* sort logic */ }\n    function filterTable(query) { /* filter logic */ }\n\
+    \    function toggleAll(cb) { /* select all */ }\n  </script>\n\n  <form hx-post=\"\
+    /api/checkpoints/{{ checkpoint_id }}/respond\" hx-ext=\"json-enc\">\n    <input\
+    \ type=\"hidden\" name=\"response[selected_rows]\" id=\"selectedRows\">\n    <button\
+    \ type=\"submit\" onclick=\"captureSelection()\">Submit Selection</button>\n \
+    \ </form>\n</div>\n\nMake it fully functional with vanilla JS.\nWhen submitted,\
+    \ route to process_selection.\n"
+- name: process_selection
+  instructions: 'User selected: {{ outputs.generate_and_review_data.selected_rows
+    }}
+
+
+    Provide analysis of the selected data.
+
+    '
+  context:
+    from:
+    - generate_and_review_data

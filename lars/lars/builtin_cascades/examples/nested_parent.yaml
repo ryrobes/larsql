@@ -1,0 +1,24 @@
+cascade_id: parent_cascade
+cells:
+- handoffs:
+  - call_child
+  instructions: Introduce yourself as the Parent Cascade.
+  name: parent_start
+  skills: []
+- context:
+    from:
+    - previous
+  handoffs:
+  - parent_finish
+  instructions: Now we are delegating to a sub-routine.
+  name: call_child
+  sub_cascades:
+  - ref: nested_child.json
+  skills: []
+- context:
+    from:
+    - all
+  handoffs: []
+  instructions: Thank the sub-routine and sign off.
+  name: parent_finish
+  skills: []

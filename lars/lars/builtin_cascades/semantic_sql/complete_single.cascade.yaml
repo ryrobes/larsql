@@ -1,0 +1,106 @@
+cascade_id: complete_single
+internal: true
+description: 'Complete a partial value by filling in missing components.
+
+  Uses type knowledge and context to infer missing parts.
+
+  '
+inputs_schema:
+  value: The partial value to complete
+  context: What type of value and any hints
+sql_function:
+  name: complete
+  description: Fill in missing parts of a value
+  args:
+  - name: value
+    type: VARCHAR
+  - name: context
+    type: VARCHAR
+    description: 'Type and context: ''address'', ''US phone'', ''full name given email...'''
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - COMPLETE({{ value }}, '{{ context }}')
+  - '{{ value }} COMPLETED AS ''{{ context }}'''
+  cache: true
+  test_cases:
+  - sql: SELECT complete('555-1234', 'US phone number')
+    expect:
+      type: contains
+      value: '555'
+    description: Partial phone completed
+cells:
+- name: fill_missing
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Complete this partial value by filling in missing components.
+
+
+    PARTIAL VALUE: {{ input.value }}
+
+    CONTEXT: {{ input.context }}
+
+
+    Examples:
+
+
+    **Address Completion**:
+
+    - "123 Main St, Boston" + "address" → "123 Main Street, Boston, MA" (can infer
+    MA)
+
+    - "123 Main St" + "city is NYC" → "123 Main Street, New York, NY"
+
+    - "Boston, MA" + "address with zip" → "Boston, MA 02101" (main zip)
+
+
+    **Phone Completion**:
+
+    - "555-1234" + "US phone, area code 617" → "(617) 555-1234"
+
+    - "5551234567" + "international format" → "+1 555-123-4567"
+
+
+    **Name Completion**:
+
+    - "John" + "full name given email john.smith@company.com" → "John Smith"
+
+    - "J. Smith" + "full name" → "J. Smith" (can''t infer first name)
+
+    - "Dr." + "title + name from ''Dr. Sarah Johnson signed...''" → "Dr. Sarah Johnson"
+
+
+    **Date Completion**:
+
+    - "March 15" + "date in 2024" → "March 15, 2024"
+
+    - "2024-03" + "full date, assume first" → "2024-03-01"
+
+
+    **URL Completion**:
+
+    - "example.com" + "full URL" → "https://example.com"
+
+    - "example" + "URL given company is Example Inc" → "https://example.com"
+
+
+    **Email Completion**:
+
+    - "john.smith" + "email at company.com" → "john.smith@company.com"
+
+
+    Rules:
+
+    - Only add information you can reasonably infer
+
+    - If you can''t complete confidently, return the original
+
+    - Use standard formats for the completion
+
+    - Add "[INCOMPLETE]" suffix if critical parts can''t be inferred
+
+
+    Return ONLY the completed value.
+
+    '
+  rules:
+    max_turns: 1

@@ -1,0 +1,17 @@
+cascade_id: thinking_token_budget
+description: Tests explicit token budget for thinking mode
+inputs_schema:
+  puzzle: A puzzle to solve
+cells:
+- name: solve
+  model: anthropic/claude-sonnet-4::8000
+  instructions: 'Solve this puzzle using careful reasoning:
+
+
+    {{ input.puzzle }}
+
+
+    Show your work and explain each step.
+
+    '
+  skills: []

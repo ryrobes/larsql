@@ -1,0 +1,32 @@
+cascade_id: hello_bash_data
+description: Simplest possible bash_data example - generate structured data
+cells:
+- name: generate
+  tool: bash_data
+  inputs:
+    script: '# Output CSV with header
+
+      echo "id,name,score"
+
+      echo "1,Alice,95"
+
+      echo "2,Bob,87"
+
+      echo "3,Charlie,92"
+
+      '
+    output_format: csv
+  handoffs:
+  - query
+- name: query
+  tool: sql_data
+  inputs:
+    query: 'SELECT name, score
+
+      FROM _generate
+
+      WHERE score >= 90
+
+      ORDER BY score DESC
+
+      '

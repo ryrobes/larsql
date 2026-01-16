@@ -1,0 +1,103 @@
+# LOOKS_LIKE - Check if value looks like a specific type
+#
+# SQL Usage:
+#   SELECT * FROM data WHERE LOOKS_LIKE(col, 'email')
+#   SELECT LOOKS_LIKE(mystery_field, 'phone') as might_be_phone FROM imports
+#   SELECT * FROM leads WHERE NOT LOOKS_LIKE(email_col, 'email')
+#
+# Returns boolean - good for filtering
+
+cascade_id: looks_like_single
+internal: true
+
+description: |
+  Check if a value looks like a specific type.
+  More forgiving than VALID - catches malformed but recognizable values.
+
+inputs_schema:
+  value: The value to check
+  expected_type: The type to check for
+
+sql_function:
+  name: looks_like
+  description: Check if value looks like a type (fuzzy)
+  args:
+    - name: value
+      type: VARCHAR
+    - name: expected_type
+      type: VARCHAR
+      description: "Type to check: email, phone, address, name, date, url, ssn, etc."
+  returns: BOOLEAN
+  shape: SCALAR
+  operators:
+    - "LOOKS_LIKE({{ value }}, '{{ expected_type }}')"
+    - "{{ value }} LOOKS_LIKE '{{ expected_type }}'"
+  cache: true
+  test_cases:
+    - sql: "SELECT looks_like('john@gmail', 'email')"
+      expect: true
+      description: "Malformed but recognizable email"
+    - sql: "SELECT looks_like('542 Oak Avenue, Boston MA', 'address')"
+      expect: true
+      description: "Address looks like address"
+
+cells:
+  - name: check_looks_like
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Does this value LOOK LIKE a {{ input.expected_type }}?
+
+      VALUE: {{ input.value }}
+      EXPECTED TYPE: {{ input.expected_type }}
+
+      LOOKS_LIKE is more forgiving than strict validation.
+      Return true if the value is recognizable as the type, even if malformed.
+
+      Examples:
+
+      **Email**:
+      - "john@gmail.com" → true (valid)
+      - "john@gmail" → true (looks like email, missing TLD)
+      - "john at gmail dot com" → true (recognizable pattern)
+      - "john" → false (no @ sign indicator)
+
+      **Phone**:
+      - "(555) 123-4567" → true
+      - "555.123.4567" → true
+      - "call 555-1234" → true (has phone-like number)
+      - "1234" → false (too short)
+      - "five five five" → true (spelled out but recognizable)
+
+      **Address**:
+      - "123 Main St" → true
+      - "123 main street boston ma" → true (messy but address-like)
+      - "near the coffee shop" → false (not a real address)
+
+      **Date**:
+      - "2024-03-15" → true
+      - "March 15" → true
+      - "sometime in March" → true (vague but date-like)
+      - "never" → false
+
+      **Name**:
+      - "John Smith" → true
+      - "SMITH, JOHN" → true
+      - "JSmith" → true (looks like name abbreviation)
+      - "N/A" → false
+
+      **URL**:
+      - "https://example.com" → true
+      - "example.com" → true (looks like domain)
+      - "www dot example" → true (recognizable)
+      - "click here" → false
+
+      Key principle: If a human would recognize it as an attempt at the type, return true.
+
+      Return ONLY "true" or "false".
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: boolean

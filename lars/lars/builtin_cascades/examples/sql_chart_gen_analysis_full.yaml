@@ -1,0 +1,401 @@
+cascade_id: sql_chart_gen_analysis_full_evo
+description: Auto-discovers interesting data questions, executes SQL queries, creates
+  charts, iterates on them, and presents findings.
+inputs_schema:
+  focus_area: (Optional) Area of interest to focus the analysis on, e.g. 'geographic
+    trends', 'time patterns', 'outliers'
+memory: sql_rag_search
+cells:
+- handoffs:
+  - discover_schema
+  instructions: 'Your goal is to explore the available data and come up with an INTERESTING
+    analytical question to investigate.
+
+
+    {% if input.focus_area %}Focus area hint: {{ input.focus_area }}{% endif %}
+
+
+    **Step 1: Discover what data is available**
+
+    Use `list_sql_connections` to see available data sources.
+
+    Use `sql_search` with broad terms to discover tables (e.g., ''sales'', ''users'',
+    ''events'', or just browse what''s there).
+
+
+    **Step 2: Sample the data (DO NOT read everything!)**
+
+    Once you find interesting tables, use `sql_query` to get SMALL SAMPLES:
+
+    - `SELECT * FROM connection.table LIMIT 5` to see structure
+
+    - `SELECT COUNT(*) FROM connection.table` for size
+
+    - `SELECT DISTINCT column FROM connection.table LIMIT 20` to see categorical values
+
+    - `SELECT column, COUNT(*) FROM connection.table GROUP BY column LIMIT 10` for
+    distributions
+
+
+    **Step 3: Formulate an interesting question**
+
+    Based on what you discovered, come up with a question that:
+
+    - Is answerable with the data available
+
+    - Would produce an interesting visualization
+
+    - Reveals patterns, trends, comparisons, or anomalies
+
+    - Is specific enough to be actionable
+
+
+    Good questions often involve:
+
+    - Comparisons ("Which X has the highest Y?")
+
+    - Trends over time ("How has X changed over time?")
+
+    - Distributions ("What is the distribution of X across Y?")
+
+    - Correlations ("Is there a relationship between X and Y?")
+
+    - Outliers ("What are the unusual cases of X?")
+
+
+    **IMPORTANT**: Use `set_state` to save your chosen question:
+
+    ```
+
+    set_state(key="question", value="Your specific analytical question here")
+
+    ```
+
+
+    End your response by clearly stating the question you''ve chosen to investigate.'
+  name: discover_question
+  rules:
+    max_turns: 3
+  takes:
+    evaluator_instructions: 'Evaluate question discovery attempts based on:
+
+
+      1. **Question Quality** (40%): Is the question interesting, specific, and likely
+      to produce insightful analysis?
+
+      2. **Data Fit** (30%): Is the question well-suited to the available data? Can
+      it actually be answered?
+
+      3. **Visualization Potential** (20%): Would answering this question produce
+      a compelling chart?
+
+      4. **Exploration Quality** (10%): Did they efficiently sample the data without
+      over-reading?
+
+
+      Select the attempt that:
+
+      - Formulated the MOST interesting and insightful question
+
+      - Demonstrated efficient data exploration (sampling, not bulk reading)
+
+      - Chose a question that''s specific enough to be actionable
+
+      - Successfully saved the question to state
+
+
+      Prefer questions about trends, comparisons, distributions, or anomalies over
+      simple counts or lists.'
+    factor: 7
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - amazon/nova-premier-v1
+    - openai/gpt-5.1
+    - openai/gpt-4.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+  skills:
+  - sql_search
+  - list_sql_connections
+  - sql_rag_search
+  - sql_query
+  - set_state
+- context:
+    from:
+    - previous
+  handoffs:
+  - write_query
+  instructions: "The question to investigate: {{ state.question }}\n\nNow do a focused\
+    \ schema discovery to find the exact tables and columns needed.\n\nUse sql_search\
+    \ to find relevant tables that contain data to answer this question.\n\nSearch\
+    \ for tables using natural language - the tool will return schema information\
+    \ including:\n- Column names and types\n- Value distributions for categorical\
+    \ columns\n- Sample rows\n- Row counts\n\nAnalyze the results and identify which\
+    \ table(s) would be most useful. \nNote: the search data is ephemeral, so if you\
+    \ need access to it later please include important parts in your reply."
+  name: discover_schema
+  takes:
+    evaluator_instructions: 'Evaluate schema discovery attempts based on:
+
+
+      1. **Relevance** (40%): Did they find tables that directly answer the user''s
+      question?
+
+      2. **Thoroughness** (30%): Did they examine multiple relevant tables and understand
+      the schema structure?
+
+      3. **Data Understanding** (20%): Do they demonstrate understanding of column
+      types, value distributions, and data quality?
+
+      4. **Actionability** (10%): Did they provide clear next steps for query writing,
+      including specific column names and table references?
+
+
+      Select the attempt that:
+
+      - Found the MOST relevant table(s) for the question
+
+      - Demonstrated deepest understanding of the data structure
+
+      - Provided most useful information for the next phase (query writing)
+
+      - Avoided irrelevant tables while being thorough
+
+
+      Prefer attempts that balance breadth (checking multiple options) with depth
+      (understanding what''s useful).'
+    factor: 7
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - amazon/nova-premier-v1
+    - openai/gpt-5.1
+    - openai/gpt-4.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+  skills:
+  - sql_search
+  - list_sql_connections
+  - sql_rag_search
+- context:
+    from:
+    - previous
+  handoffs:
+  - analyze_results
+  instructions: 'Based on the schema information from the previous phase, write a
+    SQL query to answer: {{ state.question }}
+
+
+    Use the sql_query tool to execute your query.
+
+
+    IMPORTANT Query Syntax:
+
+    - CSV folders: SELECT * FROM connection_name.table_name
+
+    - PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table
+
+    - Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = ''California''
+
+
+    The schema info from the previous phase shows you:
+
+    - Exact column names
+
+    - Data types
+
+    - Sample values (use these to understand the data format)
+
+    - Value distributions (shows you what values exist in categorical columns)
+
+
+    Write a clear, efficient query based on this information.'
+  name: write_query
+  takes:
+    evaluator_instructions: 'Evaluate SQL query attempts based on:
+
+
+      1. **Correctness** (40%): Does the query execute without errors and return results?
+
+      2. **Accuracy** (30%): Do the results actually answer the user''s question?
+
+      3. **Efficiency** (15%): Is the query optimized (proper filters, aggregations,
+      no unnecessary data)?
+
+      4. **Completeness** (15%): Does it return all relevant data needed to answer
+      the question?
+
+
+      Select the attempt that:
+
+      - Executed successfully (queries with errors are automatic losers)
+
+      - Returns the MOST relevant data for the user''s question
+
+      - Uses proper SQL syntax for the connection type
+
+      - Applies appropriate filters, aggregations, or joins
+
+      - Returns a reasonable amount of data (not too little, not too much)
+
+
+      CRITICAL: Syntax errors or failed queries should be heavily penalized. A working
+      query that''s slightly less optimal is better than a perfect-looking query that
+      fails.
+
+
+      Prefer queries that demonstrate understanding of the schema and make smart decisions
+      about what columns/rows to include.'
+    factor: 7
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - amazon/nova-premier-v1
+    - openai/gpt-5.1
+    - openai/gpt-4.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+  skills:
+  - sql_query
+  - sql_rag_search
+- context:
+    from:
+    - previous
+  handoffs:
+  - create_initial_chart
+  instructions: 'Analyze the query results from the previous phase and provide a clear
+    answer to: {{ state.question }}
+
+
+    Summarize:
+
+    - Key findings from the data
+
+    - Any interesting patterns or insights
+
+    - Direct answer to the user''s question
+
+
+    Be specific and reference actual numbers from the results.'
+  name: analyze_results
+  takes:
+    evaluator_instructions: "Evaluate data analysis attempts based on:\n\n1. **Accuracy**\
+      \ (35%): Does the analysis correctly interpret the query results?\n2. **Insight\
+      \ Quality** (30%): Does it identify meaningful patterns, trends, or anomalies?\n\
+      3. **Specificity** (20%): Does it reference actual numbers, percentages, or\
+      \ concrete evidence from the data?\n4. **Clarity** (15%): Is the answer clear,\
+      \ well-structured, and directly addresses the user's question?\n\nSelect the\
+      \ attempt that:\n- Provides the MOST insightful interpretation of the data\n\
+      - Directly and clearly answers the user's original question\n- Supports claims\
+      \ with specific numbers/evidence from the results\n- Identifies interesting\
+      \ patterns beyond just the obvious\n- Avoids vague or generic statements\n-\
+      \ Demonstrates quantitative thinking (percentages, comparisons, trends)\n\n\
+      Prefer analyses that go beyond surface-level observations and provide actionable\
+      \ insights. An analysis that says \"Sales increased by 47% in Q3, primarily\
+      \ driven by the Northeast region (23% growth)\" is better than \"Sales went\
+      \ up.\"\n\nPenalize attempts that:\n- Make claims not supported by the data\n\
+      - Are too vague or generic\n- Miss obvious patterns in the results\n- Don't\
+      \ directly answer the user's question.\n\n IMPORTANT: Include the SQL query\
+      \ and a small sample of the data in your response - enough context so a chart\
+      \ could be constructed from the data."
+    factor: 7
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - amazon/nova-premier-v1
+    - openai/gpt-5.1
+    - openai/gpt-4.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+  skills: []
+- context:
+    from:
+    - previous
+  handoffs:
+  - say_summary_summarize
+  instructions: "Create a chart based on this data to help illustrate the findings.\
+    \ \n\nUse the create_vega_lite or create_plotly tool. After creating it, the image\
+    \ will be automatically injected for you to see.\n\nOnce you see the chart image,\
+    \ analyze it against the requirements and describe:\n1. What you observe visually\n\
+    2. How well it meets the requirements\n3. What specific improvements are needed\
+    \ - does it help to answer the users question? If mutiple compound charts would\
+    \ help visualize, go for that. For styling use dark mode and give it some flair\
+    \ and personality."
+  name: create_initial_chart
+  rules:
+    max_turns: 1
+  takes:
+    evaluator_instructions: 'Evaluate based on:
+
+      1. Accuracy of visual observations about the chart
+
+      2. Depth of analysis against requirements
+
+      3. Specificity of improvement suggestions
+
+
+      Select the analysis that is most detailed and actionable. Must have a successfully
+      generated chart images to be valid.'
+    factor: 7
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - amazon/nova-premier-v1
+    - openai/gpt-5.1
+    - openai/gpt-4.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+    reforge:
+      evaluator_override: 'Evaluate refinements on:
+
+        1. Specificity (exact values, not vague suggestions)
+
+        2. Visual awareness (referencing actual chart elements)
+
+        3. Implementation feasibility
+
+        4. Completeness of improvements
+
+
+        Pick the most production-ready, implementable analysis.'
+      factor_per_step: 2
+      honing_prompt: "You previously analyzed this chart. Looking at the chart image\
+        \ again, provide even MORE specific improvements:\n\n- Exact color codes for\
+        \ better contrast (hex values)\n- Precise font sizes for labels\n- Specific\
+        \ axis range adjustments\n- Data point annotation placement\n- Are things\
+        \ being overlapped or clipped? \nLegend positioning coordinates\n\nBe EXTREMELY\
+        \ specific and actionable. Reference exact elements you see in the image."
+      mutate: true
+      steps: 2
+  skills:
+  - sql_query
+  - create_vega_lite
+  - create_plotly
+- context:
+    from:
+    - all
+  instructions: Use the `say` tool to speak to the user and give a VERY short summary
+    of the findings and chart. Persona is a sassy, foul mouthed, street kid turned
+    corpo. Yet a beautiful vixen, none the less.
+  model: anthropic/claude-sonnet-4.5
+  name: say_summary_summarize
+  rules:
+    max_turns: 1
+  skills:
+  - say

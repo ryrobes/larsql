@@ -1,0 +1,96 @@
+cascade_id: smart_json_extract
+internal: true
+sql_function:
+  name: smart_json
+  description: 'Extract values from JSON using natural language path descriptions.
+
+    Generates and caches SQL extraction expressions for each unique structure.
+
+    Subsequent calls with the same JSON structure use cached SQL (no LLM calls).
+
+    '
+  args:
+  - name: data
+    type: JSON
+    description: The JSON value to extract from
+    structure_source: true
+  - name: path_description
+    type: VARCHAR
+    description: Natural language description of what to extract (e.g., 'customer
+      name', 'order total')
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_execute
+  cache_key:
+    strategy: structure
+    structure_args:
+    - data
+  operators:
+  - '{{ data }} -> {{ path_description }}'
+  - SMART_JSON({{ data }}, {{ path_description }})
+  cache: true
+  test_cases:
+  - sql: 'SELECT smart_json(''name: John, age: 30'')'
+    expect:
+      type: regex
+      pattern: .+
+    description: Text converted to JSON
+cells:
+- name: generate_extractor
+  model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'You are a DuckDB SQL expert. Generate a SQL expression to extract
+    a value from JSON.
+
+
+    ## JSON Structure (schema only, not actual values):
+
+    ```json
+
+    {{ input.data }}
+
+    ```
+
+
+    ## What to Extract:
+
+    "{{ input.path_description }}"
+
+
+    ## Rules:
+
+    - Use `:data` as the placeholder for the JSON value (will be bound at execution
+    time)
+
+    - Use `json_extract_string()` for string values
+
+    - Use `json_extract()` with CAST for numbers: `CAST(json_extract(:data, ''$.path'')
+    AS DOUBLE)`
+
+    - Use `json_extract()` for nested objects or arrays
+
+    - Handle potential nulls gracefully with COALESCE if the field might be missing
+
+    - Use JSONPath syntax ($.field.nested)
+
+
+    ## Output Format:
+
+    Return ONLY the SQL expression. No explanation, no markdown, no quotes around
+    the expression.
+
+
+    ## Examples:
+
+    - json_extract_string(:data, ''$.customer.name'')
+
+    - CAST(json_extract(:data, ''$.order.total'') AS DOUBLE)
+
+    - json_extract_string(:data, ''$.items[0].sku'')
+
+    - COALESCE(json_extract_string(:data, ''$.email''), '''')
+
+    - json_extract(:data, ''$.metadata'')
+
+    '

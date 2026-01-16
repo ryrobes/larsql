@@ -1,0 +1,37 @@
+cascade_id: creative_writing_with_takes2
+description: Demonstrates takes (Tree of Thought) for creative writing
+inputs_schema:
+  theme: The theme for the story
+cells:
+- handoffs:
+  - develop_story
+  instructions: Write an engaging opening paragraph for a short story about {{ input.theme
+    }}. Be creative and varied in your approach.
+  name: draft_opening
+  rules:
+    max_turns: 1
+  takes:
+    evaluator_instructions: 'You are an expert creative writing instructor. Evaluate
+      the following story openings based on: 1) Hook strength - does it grab attention?
+      2) Originality - is it fresh and unique? 3) Writing quality - is the prose clear
+      and compelling? Select the BEST opening.'
+    factor: 10
+    model_strategy: round-robin
+    models:
+    - anthropic/claude-sonnet-4.5
+    - x-ai/grok-4.1-fast
+    - openai/gpt-5.1
+    - anthropic/claude-opus-4.5
+    - google/gemini-3-pro-preview
+    mutate: true
+    mutation_mode: rewrite
+  skills: []
+- context:
+    from:
+    - previous
+  instructions: 'Continue the story from this opening: {{ outputs.draft_opening }}.
+    Write 2-3 more paragraphs to develop the narrative.'
+  name: develop_story
+  rules:
+    max_turns: 2
+  skills: []

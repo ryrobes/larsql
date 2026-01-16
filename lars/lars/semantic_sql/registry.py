@@ -200,8 +200,18 @@ def _scan_directory(directory: Path) -> List[Tuple[Path, Dict[str, Any]]]:
     return results
 
 
+def _get_builtin_cascades_dir() -> Path:
+    """Get the package-bundled cascades directory."""
+    return Path(__file__).parent.parent / "builtin_cascades"
+
+
+def _get_builtin_skills_dir() -> Path:
+    """Get the package-bundled skills directory."""
+    return Path(__file__).parent.parent / "builtin_skills"
+
+
 def _get_skills_dir() -> Path:
-    """Get the skills directory path (from config or default)."""
+    """Get the user skills directory path (from config or default)."""
     try:
         from ..config import get_config
         config = get_config()
@@ -211,7 +221,7 @@ def _get_skills_dir() -> Path:
 
 
 def _get_cascades_dir() -> Path:
-    """Get the cascades directory path."""
+    """Get the user cascades directory path."""
     try:
         from ..config import get_config
         config = get_config()
@@ -225,11 +235,15 @@ def initialize_registry(force: bool = False) -> None:
     Initialize the SQL function registry by scanning for cascade files.
 
     Scans in priority order (later overwrites earlier):
-    1. skills/ directory - For backwards compatibility and custom tools
-    2. cascades/ directory - Highest priority, includes built-in semantic_sql/
+    1. Package builtin_skills/ - Bundled skill cascades (lowest priority)
+    2. Package builtin_cascades/ - Bundled semantic operators
+    3. User skills/ directory - User custom skills
+    4. User cascades/ directory - Highest priority, user overrides
 
-    Built-in operators (MEANS, ABOUT, SUMMARIZE, etc.) are now in
-    cascades/semantic_sql/ and can be overridden by user cascades.
+    Built-in operators (MEANS, ABOUT, SUMMARIZE, etc.) are bundled in the
+    package under builtin_cascades/semantic_sql/. Users can override any
+    operator by creating a cascade with the same function name in their
+    LARS_ROOT/cascades/ directory.
 
     Args:
         force: If True, re-scan even if already initialized
@@ -242,50 +256,54 @@ def initialize_registry(force: bool = False) -> None:
 
         _registry.clear()
 
-        # Scan skills directory first (lower priority)
-        # For backwards compatibility and custom tools
+        def _register_from_directory(directory: Path, source_name: str) -> int:
+            """Scan a directory and register SQL functions. Returns count."""
+            count = 0
+            if not directory.exists():
+                return count
+
+            log.info(f"[sql_registry] Scanning {source_name}: {directory}")
+            for path, config in _scan_directory(directory):
+                sql_fn = config["sql_function"]
+                name = sql_fn.get("name") or config["cascade_id"]
+
+                if not sql_fn.get("enabled", True):
+                    continue
+
+                _registry[name] = SQLFunctionEntry(
+                    name=name,
+                    cascade_path=str(path),
+                    cascade_id=config["cascade_id"],
+                    config=config,
+                    sql_function=sql_fn,
+                )
+                count += 1
+                log.debug(f"[sql_registry] Registered from {source_name}: {name}")
+
+            return count
+
+        # 1. Scan package builtin_skills (lowest priority)
+        builtin_skills_dir = _get_builtin_skills_dir()
+        builtin_skills_count = _register_from_directory(builtin_skills_dir, "builtin_skills")
+
+        # 2. Scan package builtin_cascades (includes semantic_sql operators)
+        builtin_cascades_dir = _get_builtin_cascades_dir()
+        builtin_cascades_count = _register_from_directory(builtin_cascades_dir, "builtin_cascades")
+
+        # 3. Scan user skills directory (can override builtins)
         skills_dir = _get_skills_dir()
-        if skills_dir.exists():
-            log.info(f"[sql_registry] Scanning skills: {skills_dir}")
-            for path, config in _scan_directory(skills_dir):
-                sql_fn = config["sql_function"]
-                name = sql_fn.get("name") or config["cascade_id"]
+        user_skills_count = _register_from_directory(skills_dir, "user_skills")
 
-                if not sql_fn.get("enabled", True):
-                    continue
-
-                _registry[name] = SQLFunctionEntry(
-                    name=name,
-                    cascade_path=str(path),
-                    cascade_id=config["cascade_id"],
-                    config=config,
-                    sql_function=sql_fn,
-                )
-                log.info(f"[sql_registry] Registered from skills: {name}")
-
-        # Scan cascades directory (highest priority)
-        # Includes cascades/semantic_sql/ with built-in operators
+        # 4. Scan user cascades directory (highest priority - can override everything)
         cascades_dir = _get_cascades_dir()
-        if cascades_dir.exists():
-            log.info(f"[sql_registry] Scanning cascades: {cascades_dir}")
-            for path, config in _scan_directory(cascades_dir):
-                sql_fn = config["sql_function"]
-                name = sql_fn.get("name") or config["cascade_id"]
-
-                if not sql_fn.get("enabled", True):
-                    continue
-
-                _registry[name] = SQLFunctionEntry(
-                    name=name,
-                    cascade_path=str(path),
-                    cascade_id=config["cascade_id"],
-                    config=config,
-                    sql_function=sql_fn,
-                )
-                log.info(f"[sql_registry] Registered from cascades: {name}")
+        user_cascades_count = _register_from_directory(cascades_dir, "user_cascades")
 
         _initialized = True
-        log.info(f"[sql_registry] Initialized with {len(_registry)} functions")
+        log.info(
+            f"[sql_registry] Initialized with {len(_registry)} functions "
+            f"(builtin: {builtin_skills_count + builtin_cascades_count}, "
+            f"user: {user_skills_count + user_cascades_count})"
+        )
 
 
 def get_sql_function_registry() -> Dict[str, SQLFunctionEntry]:

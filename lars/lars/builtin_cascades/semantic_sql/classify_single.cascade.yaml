@@ -1,0 +1,70 @@
+cascade_id: semantic_classify
+internal: true
+description: 'Classify a single text into one of the provided topics.
+
+  This is a helper function used by GROUP BY TOPICS to classify individual rows
+
+  after topics have been extracted from the collection.
+
+  '
+inputs_schema:
+  text: The text to classify
+  topics: JSON array of topic names to choose from
+sql_function:
+  name: semantic_classify
+  description: Classifies a single text into one of the provided topics
+  args:
+  - name: text
+    type: VARCHAR
+  - name: topics
+    type: JSON
+  returns: VARCHAR
+  shape: SCALAR
+  cache: true
+  test_cases:
+  # Basic sentiment classification
+  - sql: "SELECT semantic_classify('I love this product!', 'positive,negative,neutral')"
+    expect: positive
+    description: "Function: Positive sentiment classified"
+  - sql: "SELECT semantic_classify('This is terrible, worst purchase ever', 'positive,negative,neutral')"
+    expect: negative
+    description: "Function: Negative sentiment classified"
+  - sql: "SELECT semantic_classify('The item arrived on time', 'positive,negative,neutral')"
+    expect: neutral
+    description: "Function: Neutral statement classified"
+  # Multi-category classification
+  - sql: "SELECT semantic_classify('Need help with my broken laptop', 'sales,support,billing,general')"
+    expect: support
+    description: "Function: Support request classified"
+  - sql: "SELECT semantic_classify('I want to upgrade my subscription', 'sales,support,billing,general')"
+    expect:
+      type: one_of
+      values: ['sales', 'billing']
+    description: "Function: Upgrade request (sales or billing)"
+  # Short alias syntax (classify -> semantic_classify)
+  - sql: "SELECT classify('Stock market reaches all-time high', 'sports,politics,business,technology')"
+    expect: business
+    description: "Alias classify(): Business news classified"
+cells:
+- name: classify
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Classify this text into ONE of the provided topics.
+
+
+    TEXT: {{ input.text }}
+
+
+    AVAILABLE TOPICS:
+
+    {{ input.topics }}
+
+
+    Return ONLY the exact topic name that best fits this text.
+
+    You must choose from the provided topics - do not create new ones.
+
+    Return the topic name exactly as it appears in the list.
+
+    '
+  rules:
+    max_turns: 1

@@ -1106,6 +1106,33 @@ def main():
         help='Overwrite existing files'
     )
 
+    # Eject command - Copy builtin resources to user space for customization
+    eject_parser = subparsers.add_parser(
+        'eject',
+        help='Copy builtin cascades/skills/cell_types to user space for customization'
+    )
+    eject_parser.add_argument(
+        'target',
+        nargs='?',
+        help='What to eject: "all", "semantic_sql", a specific operator name, or a path pattern'
+    )
+    eject_parser.add_argument(
+        '--list', '-l',
+        action='store_true',
+        help='List available builtin resources that can be ejected'
+    )
+    eject_parser.add_argument(
+        '--type', '-t',
+        choices=['cascades', 'skills', 'cell_types', 'all'],
+        default='all',
+        help='Type of resources to eject (default: all)'
+    )
+    eject_parser.add_argument(
+        '--force', '-f',
+        action='store_true',
+        help='Overwrite existing files'
+    )
+
     # Doctor command - Check workspace health and configuration
     doctor_parser = subparsers.add_parser(
         'doctor',
@@ -1460,6 +1487,8 @@ def main():
     #         sys.exit(1)
     elif args.command == 'init':
         cmd_init(args)
+    elif args.command == 'eject':
+        cmd_eject(args)
     elif args.command == 'doctor':
         cmd_doctor(args)
     else:
@@ -6252,6 +6281,191 @@ def cmd_init(args):
     print("     python scripts/setup_sample_data.py")
     print("     lars sql crawl")
     print()
+
+
+def cmd_eject(args):
+    """Copy builtin resources to user space for customization."""
+    import shutil
+    from pathlib import Path
+    from .config import (
+        get_config,
+        get_builtin_cascades_dir,
+        get_builtin_skills_dir,
+        get_builtin_cell_types_dir,
+    )
+
+    config = get_config()
+    workspace = Path(config.root_dir).resolve()
+
+    # Define source and destination mappings
+    builtin_dirs = {
+        'cascades': (Path(get_builtin_cascades_dir()), workspace / 'cascades'),
+        'skills': (Path(get_builtin_skills_dir()), workspace / 'skills'),
+        'cell_types': (Path(get_builtin_cell_types_dir()), workspace / 'cell_types'),
+    }
+
+    # List mode - show available resources
+    if args.list:
+        print("Available builtin resources:\n")
+        for resource_type, (src_dir, _) in builtin_dirs.items():
+            if not src_dir.exists():
+                continue
+
+            print(f"{resource_type.upper()}:")
+            print("-" * 50)
+
+            # Count files
+            yaml_files = list(src_dir.glob('**/*.yaml'))
+            json_files = list(src_dir.glob('**/*.json'))
+
+            # Show subdirectories
+            subdirs = sorted(set(f.parent.relative_to(src_dir) for f in yaml_files + json_files if f.parent != src_dir))
+            if subdirs:
+                for subdir in subdirs[:10]:
+                    count = len([f for f in yaml_files + json_files if f.parent.relative_to(src_dir) == subdir])
+                    print(f"  {subdir}/ ({count} files)")
+                if len(subdirs) > 10:
+                    print(f"  ... and {len(subdirs) - 10} more directories")
+
+            # Show root-level files
+            root_files = [f for f in yaml_files + json_files if f.parent == src_dir]
+            if root_files:
+                print(f"  (root) ({len(root_files)} files)")
+
+            print(f"\n  Total: {len(yaml_files) + len(json_files)} files\n")
+
+        print("\nUsage examples:")
+        print("  lars eject all                    # Eject everything")
+        print("  lars eject semantic_sql           # Eject all semantic SQL operators")
+        print("  lars eject semantic_matches       # Eject a specific operator")
+        print("  lars eject examples               # Eject example cascades")
+        print("  lars eject --type skills          # Eject only skills")
+        return
+
+    # Determine what to eject
+    target = args.target
+    resource_type = args.type
+    force = args.force
+
+    if not target:
+        print("Error: Please specify what to eject, or use --list to see available resources.")
+        print("\nExamples:")
+        print("  lars eject all                    # Eject everything")
+        print("  lars eject semantic_sql           # Eject semantic SQL operators")
+        print("  lars eject --list                 # List available resources")
+        sys.exit(1)
+
+    # Track copied files
+    copied_count = 0
+    skipped_count = 0
+
+    def copy_files(src_dir: Path, dst_dir: Path, pattern: str = '**/*'):
+        """Copy files matching pattern from src to dst."""
+        nonlocal copied_count, skipped_count
+
+        if not src_dir.exists():
+            return
+
+        for src_file in src_dir.glob(pattern):
+            if src_file.is_dir():
+                continue
+            if not src_file.suffix in ('.yaml', '.yml', '.json', '.sql', '.py'):
+                continue
+
+            # Calculate relative path and destination
+            rel_path = src_file.relative_to(src_dir)
+            dst_file = dst_dir / rel_path
+
+            # Check if destination exists
+            if dst_file.exists() and not force:
+                print(f"  Skipped: {dst_dir.name}/{rel_path} (exists, use --force to overwrite)")
+                skipped_count += 1
+                continue
+
+            # Create parent directories
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy the file
+            shutil.copy2(src_file, dst_file)
+            print(f"  Ejected: {dst_dir.name}/{rel_path}")
+            copied_count += 1
+
+    print(f"Ejecting to workspace: {workspace}\n")
+
+    # Handle different targets
+    if target == 'all':
+        # Eject everything
+        for rtype, (src, dst) in builtin_dirs.items():
+            if resource_type != 'all' and resource_type != rtype:
+                continue
+            print(f"Ejecting {rtype}...")
+            copy_files(src, dst)
+            print()
+
+    elif target == 'semantic_sql':
+        # Eject semantic SQL operators
+        src_dir = Path(get_builtin_cascades_dir()) / 'semantic_sql'
+        dst_dir = workspace / 'cascades' / 'semantic_sql'
+        print(f"Ejecting semantic SQL operators...")
+        copy_files(src_dir, dst_dir)
+
+    elif target == 'examples':
+        # Eject example cascades
+        src_dir = Path(get_builtin_cascades_dir()) / 'examples'
+        dst_dir = workspace / 'cascades' / 'examples'
+        print(f"Ejecting example cascades...")
+        copy_files(src_dir, dst_dir)
+
+    else:
+        # Try to find matching files
+        found = False
+
+        for rtype, (src_dir, dst_dir) in builtin_dirs.items():
+            if resource_type != 'all' and resource_type != rtype:
+                continue
+            if not src_dir.exists():
+                continue
+
+            # Try exact subdirectory match
+            subdir = src_dir / target
+            if subdir.is_dir():
+                print(f"Ejecting {rtype}/{target}/...")
+                copy_files(subdir, dst_dir / target)
+                found = True
+                continue
+
+            # Try glob pattern for files
+            matches = list(src_dir.glob(f'**/{target}*'))
+            if matches:
+                print(f"Ejecting matching files from {rtype}...")
+                for match in matches:
+                    if match.is_file():
+                        rel_path = match.relative_to(src_dir)
+                        dst_file = dst_dir / rel_path
+                        if dst_file.exists() and not force:
+                            print(f"  Skipped: {dst_dir.name}/{rel_path} (exists)")
+                            skipped_count += 1
+                        else:
+                            dst_file.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(match, dst_file)
+                            print(f"  Ejected: {dst_dir.name}/{rel_path}")
+                            copied_count += 1
+                found = True
+
+        if not found:
+            print(f"Error: No builtin resource found matching '{target}'")
+            print("Use 'lars eject --list' to see available resources.")
+            sys.exit(1)
+
+    # Summary
+    print()
+    print("=" * 50)
+    print(f"Ejected {copied_count} files")
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} existing files (use --force to overwrite)")
+    print()
+    print("These files are now in your workspace and can be customized.")
+    print("Your customizations will override the built-in versions.")
 
 
 def cmd_doctor(args):

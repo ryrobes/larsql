@@ -1,0 +1,25 @@
+# JSON Transform Cell - Transform data with jq-like operations
+type_id: json_transform
+display_name: JSON Transform
+icon: mdi:code-json
+color: "#34d399"
+name_prefix: transform
+description: "Transform JSON data using Python"
+category: data
+tags:
+  - data-processing
+template:
+  tool: python_data
+  inputs:
+    code: |
+      # Input data from prior cell
+      input_data = data.prior_cell if hasattr(data, 'prior_cell') else []
+
+      # Transform the data
+      result = [
+          {
+              'id': row.get('id'),
+              'transformed': row.get('value', '').upper()
+          }
+          for row in input_data
+      ]

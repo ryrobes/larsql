@@ -1,0 +1,116 @@
+# SAME_AS - Semantic entity equality for fuzzy joins
+# The holy grail of ETL - joining tables without exact matches
+#
+# SQL Usage:
+#   SELECT * FROM customers c, vendors v
+#   WHERE c.company SAME_AS v.vendor_name
+#
+#   SELECT * FROM table_a a
+#   JOIN table_b b ON a.name SAME_AS b.client_name
+#
+#   -- With entity type hint:
+#   WHERE c.company SAME_AS v.vendor AS 'company'
+#
+# Examples:
+#   "IBM" SAME_AS "International Business Machines" → true
+#   "John Smith" SAME_AS "J. Smith" → true (with 'name' type)
+#   "123 Main St" SAME_AS "123 Main Street, Apt 1" → true (with 'address' type)
+
+cascade_id: same_as_single
+internal: true
+
+description: |
+  Semantic entity equality check for fuzzy joins. Determines if two values
+  refer to the same real-world entity despite different representations.
+
+inputs_schema:
+  left: First value
+  right: Second value
+  entity_type: Optional entity type hint (company, person, address, product)
+
+sql_function:
+  name: same_as
+  description: Check if two values refer to the same entity (for fuzzy joins)
+  args:
+    - name: left
+      type: VARCHAR
+    - name: right
+      type: VARCHAR
+    - name: entity_type
+      type: VARCHAR
+      optional: true
+      default: "auto"
+      description: "Entity type: company, person, address, product, or auto"
+  returns: BOOLEAN
+  shape: SCALAR
+  test_cases:
+    - sql: "SELECT same_as('IBM', 'International Business Machines')"
+      expect: true
+      description: "Company aliases match"
+    - sql: "SELECT same_as('Toyota', 'Honda')"
+      expect: false
+      description: "Different car companies don't match"
+    - sql: "SELECT same_as('John Smith', 'J. Smith', 'person')"
+      expect: true
+      description: "Name variations match with type hint"
+  operators:
+    - "{{ left }} SAME_AS {{ right }}"
+    - "{{ left }} SAME_AS {{ right }} AS '{{ entity_type }}'"
+    - "SAME_AS({{ left }}, {{ right }})"
+    - "SAME_AS({{ left }}, {{ right }}, '{{ entity_type }}')"
+    - "{{ left }} SAME_ENTITY {{ right }}"
+  cache: true
+
+cells:
+  - name: check_equality
+    model: google/gemini-2.5-flash-lite
+
+    instructions: |
+      Do these two values refer to the SAME real-world entity?
+
+      VALUE 1: {{ input.left }}
+      VALUE 2: {{ input.right }}
+      {% if input.entity_type and input.entity_type != 'auto' %}
+      ENTITY TYPE: {{ input.entity_type }}
+      {% endif %}
+
+      Consider these as equivalent:
+
+      COMPANY matching:
+      - Different legal suffixes: "Apple Inc" = "Apple Corporation" = "Apple"
+      - Abbreviations: "IBM" = "International Business Machines"
+      - Common variations: "Coca-Cola" = "Coke" = "The Coca-Cola Company"
+      - Typos: "Microsft" = "Microsoft"
+      - Stock tickers: "AAPL" = "Apple" (if context suggests)
+
+      PERSON matching:
+      - Name order: "John Smith" = "Smith, John"
+      - Initials: "J. Smith" = "John Smith" (likely match)
+      - Nicknames: "Bob" = "Robert", "Bill" = "William"
+      - Titles/suffixes: "Dr. John Smith" = "John Smith, MD"
+      - Typos: "Jonh" = "John"
+
+      ADDRESS matching:
+      - Abbreviations: "St" = "Street", "Ave" = "Avenue"
+      - Missing unit: "123 Main St" ≈ "123 Main St Apt 1" (same building)
+      - Format variations: "123 Main Street" = "123 Main St."
+      - Zip variations: "02101" = "02101-1234"
+
+      PRODUCT matching:
+      - Model variations: "iPhone 15" ≠ "iPhone 15 Pro" (different products!)
+      - But: "iPhone 15 Pro" = "Apple iPhone 15 Pro" = "iphone 15 pro"
+      - SKU vs name if clearly same product
+
+      BE CAREFUL - these are NOT the same:
+      - "IBM" and "Apple" (different companies)
+      - "John Smith" and "Jane Smith" (different people)
+      - "123 Main St" and "124 Main St" (different addresses)
+      - "iPhone 15" and "iPhone 15 Pro" (different products)
+
+      Return ONLY "true" or "false".
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: boolean

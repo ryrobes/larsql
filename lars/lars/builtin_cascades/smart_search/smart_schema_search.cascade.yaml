@@ -1,0 +1,101 @@
+cascade_id: smart_schema_search
+internal: true
+description: |
+  LLM-powered SQL schema search with intelligent filtering and synthesis.
+
+  Specialized for SQL schema metadata, this cascade:
+  1. Evaluates which tables are actually relevant (not just keyword matches)
+  2. Filters out tables that mention the concept but aren't useful
+  3. Identifies the most relevant columns within relevant tables
+  4. Synthesizes a compact "schema brief" for LLM consumption
+
+  This dramatically reduces context bloat from schema searches by:
+  - Dropping tables that match keywords but aren't relevant
+  - Highlighting only the useful columns (not all 50 columns)
+  - Providing reasoning the LLM can use to decide if it needs more info
+
+  Usage:
+    smart_schema_search(query="user email addresses", results="[...]", k=5)
+
+inputs_schema:
+  query: Natural language query describing what schema/tables to find
+  results: JSON array of schema search results (tables with columns, row_count, etc.)
+  k: Number of tables to return (default 5)
+  task_context: Optional context about what the user is trying to do (e.g., "write a query to find inactive users")
+
+cells:
+  - name: evaluate_schemas
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a SQL schema analyst. Your job is to evaluate schema search results and
+      determine which tables are ACTUALLY useful for the task at hand.
+
+      USER QUERY: {{ input.query }}
+      {% if input.task_context %}
+      TASK CONTEXT: {{ input.task_context }}
+      {% endif %}
+
+      RAW SCHEMA SEARCH RESULTS:
+      {{ input.results }}
+
+      TASK:
+      1. Evaluate each table's ACTUAL usefulness for the query
+      2. Identify which specific columns would be relevant (not all columns!)
+      3. Consider table size (row_count) - very small tables might be lookup tables
+      4. Filter to top {{ input.k | default(5) }} most useful tables
+      5. Create a compact "schema brief" that an LLM can use efficiently
+
+      EVALUATION CRITERIA:
+      - Does this table contain the DATA needed (not just columns with similar names)?
+      - Are the relevant columns the right type/cardinality for the use case?
+      - Is this a fact table or a dimension table - which is more useful here?
+      - Would joining to this table add value or just noise?
+
+      Return JSON:
+      {
+        "relevant_tables": [
+          {
+            "qualified_name": "db.schema.table",
+            "row_count": 1000000,
+            "relevance": "high|medium",
+            "reasoning": "Why this table is useful for the query",
+            "key_columns": [
+              {
+                "name": "column_name",
+                "type": "VARCHAR",
+                "why_useful": "Contains the user email addresses"
+              }
+            ],
+            "join_hint": "Can join to users table via user_id"
+          }
+        ],
+        "dropped_tables": [
+          {
+            "name": "dropped_table_name",
+            "reason": "This is a lookup table with only status codes, not actual user data"
+          }
+        ],
+        "schema_brief": "Compact 2-3 sentence summary: 'For finding user emails, use users.email (1M rows). The user_sessions table has login timestamps if needed. Avoid user_preferences - it's a sparse table with optional settings.'"
+      }
+    output_schema:
+      type: object
+      required:
+        - relevant_tables
+        - schema_brief
+      properties:
+        relevant_tables:
+          type: array
+          items:
+            type: object
+            required:
+              - qualified_name
+              - reasoning
+              - key_columns
+        dropped_tables:
+          type: array
+          items:
+            type: object
+        schema_brief:
+          type: string
+    rules:
+      max_turns: 1

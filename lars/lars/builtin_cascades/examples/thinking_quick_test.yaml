@@ -1,0 +1,17 @@
+cascade_id: thinking_quick_test
+description: Quick test for thinking mode token capture
+inputs_schema:
+  num1: First number
+  num2: Second number
+cells:
+- name: calculate
+  model: anthropic/claude-sonnet-4::high
+  instructions: 'Calculate the result of {{ input.num1 }} * {{ input.num2 }}.
+
+
+    Think through it step by step before giving your answer.
+
+    Just give the final number.
+
+    '
+  skills: []

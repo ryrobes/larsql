@@ -1,0 +1,20 @@
+# Ask Human Cell - Simple HITL question
+type_id: ask_human
+display_name: Ask Human
+icon: mdi:account-question
+color: "#facc15"
+name_prefix: ask
+description: "Simple human-in-the-loop question/answer checkpoint"
+category: orchestration
+tags:
+  - orchestration
+  - popular
+template:
+  instructions: |
+    Ask the user for clarification or input.
+
+    Context: {{ outputs.prior_cell }}
+
+    Ask a clear, specific question.
+  skills:
+    - ask_human

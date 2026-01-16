@@ -1,0 +1,133 @@
+cascade_id: infer_type_single
+internal: true
+description: 'Infer the semantic type of a value.
+
+  Useful for schema discovery and data profiling.
+
+  '
+inputs_schema:
+  value: The value to type-check
+sql_function:
+  name: infer_type
+  description: Detect semantic type of a value
+  args:
+  - name: value
+    type: VARCHAR
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - INFER_TYPE({{ value }})
+  - '{{ value }} IS TYPE'
+  - TYPEOF({{ value }})
+  cache: true
+  test_cases:
+  - sql: SELECT infer_type('john@example.com')
+    expect:
+      type: one_of
+      values:
+      - email
+      - Email
+      - EMAIL
+      - string
+    description: Email type detected
+cells:
+- name: detect_type
+  model: google/gemini-2.5-flash-lite
+  instructions: 'What type of data is this value?
+
+
+    VALUE: {{ input.value }}
+
+
+    Return one of these types:
+
+
+    **Contact Types**:
+
+    - email: Email address (contains @, valid domain structure)
+
+    - phone: Phone number (digits with optional formatting)
+
+    - url: Web URL (has protocol or www.)
+
+    - social_handle: @username or social media handle
+
+
+    **Identity Types**:
+
+    - name: Person''s name
+
+    - company: Company/organization name
+
+    - ssn: Social Security Number (XXX-XX-XXXX pattern)
+
+    - ein: Employer ID (XX-XXXXXXX)
+
+    - credit_card: Credit card number
+
+    - uuid: UUID format
+
+
+    **Location Types**:
+
+    - address: Street address (has number + street)
+
+    - city: City name only
+
+    - state: State/province (2-letter code or full name)
+
+    - country: Country name or code
+
+    - zipcode: Postal code
+
+    - coordinates: Lat/long coordinates
+
+
+    **Temporal Types**:
+
+    - date: Date without time
+
+    - datetime: Date with time
+
+    - time: Time only
+
+    - year: Just a year
+
+    - duration: Time duration (2h 30m, etc.)
+
+
+    **Numeric Types**:
+
+    - currency: Money amount ($, €, etc.)
+
+    - percentage: Percentage value
+
+    - integer: Whole number
+
+    - decimal: Decimal number
+
+    - quantity: Number with unit (5kg, 100ml)
+
+
+    **Text Types**:
+
+    - code: Programming code or technical ID
+
+    - json: JSON structure
+
+    - paragraph: Multi-sentence text
+
+    - sentence: Single sentence
+
+    - word: Single word
+
+    - empty: Null, empty, or whitespace only
+
+    - unknown: Cannot determine
+
+
+    Return ONLY the type name (lowercase, no quotes).
+
+    '
+  rules:
+    max_turns: 1

@@ -1,0 +1,19 @@
+cascade_id: fact_check
+description: Evaluates claims for accuracy and identifies potential issues or areas needing verification
+inputs_schema:
+  claim: The claim or statement to fact-check
+cells:
+- name: evaluate
+  instructions: |-
+    Evaluate this claim: {{ input.claim }}
+
+    Analyze:
+    1. Is the claim verifiable?
+    2. What would you need to verify it?
+    3. Are there any red flags or potential issues?
+    4. What's your confidence level in this claim? (low/medium/high)
+
+    Note: You don't have web access, so focus on logical analysis and identifying verification needs.
+  rules:
+    max_turns: 1
+  skills: []

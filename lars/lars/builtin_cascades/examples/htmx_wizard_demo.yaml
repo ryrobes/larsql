@@ -1,0 +1,48 @@
+cascade_id: htmx_wizard_demo
+description: 'Demonstrates a multi-step wizard using HTMX for progressive disclosure.
+
+  Shows how LLMs can create complex, stateful UIs for data collection.
+
+  '
+inputs_schema:
+  workflow_type: What kind of workflow to configure
+cells:
+- name: wizard_flow
+  skills:
+  - request_decision
+  - route_to
+  handoffs:
+  - process_config
+  rules:
+    max_turns: 10
+  instructions: "Create a 3-step configuration wizard for: {{ input.workflow_type\
+    \ }}\n\nUse request_decision with HTMX to build:\n\nStep 1: Basic Settings (name,\
+    \ description)\nStep 2: Advanced Options (2-3 configuration choices)\nStep 3:\
+    \ Review & Confirm (show all selections)\n\nIMPORTANT: Use HTMX to make it interactive:\n\
+    - Each step loads the next via hx-post\n- Use hidden inputs to carry forward previous\
+    \ values\n- Final step submits to /api/checkpoints/{{ checkpoint_id }}/respond\n\
+    \nPattern for multi-step:\n<div id=\"wizard-container\">\n  <div id=\"step-indicator\"\
+    >Step 1 of 3</div>\n  <div id=\"wizard-content\">\n    <h3>Step 1: Basic Settings</h3>\n\
+    \    <input name=\"config[name]\" placeholder=\"Name\" required>\n    <!-- Next\
+    \ button posts to same form, swaps wizard-content -->\n    <button hx-post=\"\
+    #\" hx-target=\"#wizard-content\"\n            onclick=\"showStep2(this.form)\"\
+    >Next →</button>\n  </div>\n</div>\n<script>\n  function showStep2(form) {\n \
+    \   var name = form.elements['config[name]'].value;\n    document.getElementById('wizard-content').innerHTML\
+    \ = \\`\n      <h3>Step 2: Options</h3>\n      <p>Name: \\${name}</p>\n      <input\
+    \ type=\"hidden\" name=\"config[name]\" value=\"\\${name}\">\n      <select name=\"\
+    config[mode]\">...</select>\n      <button onclick=\"showStep3(this.form)\">Next\
+    \ →</button>\n    \\`;\n    return false;\n  }\n</script>\n\nBuild a complete\
+    \ wizard, final step submits to checkpoint endpoint.\nWhen submitted, route to\
+    \ process_config.\n"
+- name: process_config
+  instructions: 'Configuration received:
+
+    {{ outputs.wizard_flow }}
+
+
+    Validate and summarize the configuration.
+
+    '
+  context:
+    from:
+    - wizard_flow

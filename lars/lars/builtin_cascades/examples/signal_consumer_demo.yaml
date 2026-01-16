@@ -1,0 +1,48 @@
+cascade_id: signal_consumer_demo
+description: Demonstrates await_signal - waits for external events before proceeding.
+  Run this cascade and then fire the signal from CLI or another cascade.
+cells:
+- instructions: 'We''re starting the data processing pipeline. First we need to wait
+    for upstream data to be ready.
+
+
+    Use the await_signal tool to wait for the ''data_ready'' signal with a 10 minute
+    timeout.
+
+
+    Describe what you''re waiting for: ''Waiting for upstream ETL pipeline to complete'''
+  name: start_processing
+- handoffs:
+  - complete
+  instructions: 'The signal was received! The payload contains:
+
+
+    {{ state.output_start_processing }}
+
+
+    Extract the information from the payload and simulate processing the data. Describe
+    what you would do with this information.'
+  name: process_data
+- instructions: 'The signal timed out. We didn''t receive the expected data in time.
+
+
+    Explain what happened and suggest next steps:
+
+    1. Check if the upstream pipeline failed
+
+    2. Retry the wait
+
+    3. Alert the team'
+  name: handle_timeout
+- instructions: 'Processing complete! Summarize what was done:
+
+
+    1. Waited for upstream signal
+
+    2. Received the data payload
+
+    3. Processed the information
+
+
+    The cascade is now complete.'
+  name: complete

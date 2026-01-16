@@ -1,0 +1,59 @@
+cascade_id: normalize_quantity_single
+internal: true
+description: 'Parse complex quantity expressions into structured components.
+
+  Handles dosages, packages, ranges, and compound expressions.
+
+  '
+inputs_schema:
+  value: Quantity expression
+  system: Optional unit system preference (metric, imperial, or auto)
+sql_function:
+  name: normalize_quantity
+  description: Parse and normalize quantities
+  args:
+  - name: value
+    type: VARCHAR
+  - name: system
+    type: VARCHAR
+    optional: true
+    default: auto
+    description: 'Unit system preference: metric, imperial, auto'
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - NORMALIZE_QUANTITY({{ value }})
+  - NORMALIZE_QUANTITY({{ value }}, '{{ system }}')
+  cache: true
+  test_cases:
+  - sql: SELECT normalize_quantity('about 5 gallons', 'liters')
+    expect:
+      type: contains
+      value: liter
+    description: Quantity normalized
+cells:
+- name: parse_quantity
+  model: google/gemini-2.5-flash-lite
+  instructions: "Parse this quantity expression into structured format.\n\nVALUE:\
+    \ {{ input.value }}\nSYSTEM PREFERENCE: {{ input.system | default('auto') }}\n\
+    \nReturn a JSON object:\n{\n  \"value\": 500,\n  \"unit\": \"mg\",\n  \"unit_type\"\
+    : \"mass\",\n  \"count\": 30,\n  \"total\": 15000,\n  \"total_unit\": \"mg\",\n\
+    \  \"per\": null,\n  \"range_min\": null,\n  \"range_max\": null,\n  \"formatted\"\
+    : \"500mg x 30 (15g total)\",\n  \"normalized\": {\n    \"value\": 0.5,\n    \"\
+    unit\": \"g\"\n  }\n}\n\nParse patterns:\n\n**Simple**: \"500mg\" → value: 500,\
+    \ unit: mg\n**Count**: \"500mg x 30\" → value: 500, count: 30, total: 15000\n\
+    **Pack**: \"30 tablets, 500mg each\" → same as above\n**Range**: \"2-3 cups\"\
+    \ → range_min: 2, range_max: 3, unit: cups\n**Rate**: \"100mg/ml\" → value: 100,\
+    \ unit: mg, per: ml\n**Compound**: \"5 lb 8 oz\" → convert to single unit\n**Approximate**:\
+    \ \"~500mg\" or \"about 500mg\" → value: 500, is_approximate: true\n**Fraction**:\
+    \ \"1/2 cup\" → value: 0.5, unit: cup\n**Text**: \"half a pound\" → value: 0.5,\
+    \ unit: lb\n\nUnit types:\n- mass: g, kg, mg, lb, oz\n- volume: ml, l, cup, tbsp,\
+    \ tsp, gal\n- length: m, cm, mm, ft, in\n- count: tablets, pills, units, pieces,\
+    \ each\n- concentration: mg/ml, %, ppm\n\nIf system is \"metric\", normalize to\
+    \ metric units in the \"normalized\" field.\nIf system is \"imperial\", normalize\
+    \ to imperial units.\nIf \"auto\", keep original but provide normalized in both.\n\
+    \nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

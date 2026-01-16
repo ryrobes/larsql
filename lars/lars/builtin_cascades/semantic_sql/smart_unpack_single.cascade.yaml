@@ -1,0 +1,57 @@
+cascade_id: smart_unpack_single
+internal: true
+description: 'Extract multiple distinct values from a compound/messy field.
+
+  Common in data imports where multiple fields got concatenated.
+
+  '
+inputs_schema:
+  value: The compound value
+  extract: What to extract (optional, auto-detects if not specified)
+sql_function:
+  name: smart_unpack
+  description: Extract values from compound field
+  args:
+  - name: value
+    type: VARCHAR
+  - name: extract
+    type: VARCHAR
+    optional: true
+    description: 'What to extract: ''email and phone'', ''name and title'', ''auto'''
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+  - SMART_UNPACK({{ value }})
+  - SMART_UNPACK({{ value }}, '{{ extract }}')
+  cache: true
+  test_cases:
+  - sql: SELECT smart_unpack('john@email.com, 555-1234')
+    expect:
+      type: contains
+      value: email
+    description: Email and phone unpacked
+cells:
+- name: extract_values
+  model: google/gemini-2.5-flash-lite
+  instructions: "Extract distinct values from this compound field.\n\nVALUE: {{ input.value\
+    \ }}\n{% if input.extract %}EXTRACT: {{ input.extract }}{% endif %}\n\nReturn\
+    \ a JSON object with all extracted components.\n\n**Auto-detection (no extract\
+    \ specified)**:\nIdentify and extract all recognizable data types:\n\n\"John Smith,\
+    \ john@email.com, 555-1234\"\n→\n{\n  \"name\": \"John Smith\",\n  \"email\":\
+    \ \"john@email.com\",\n  \"phone\": \"555-1234\"\n}\n\n\"CEO at Acme Inc - john@acme.com\"\
+    \n→\n{\n  \"title\": \"CEO\",\n  \"company\": \"Acme Inc\",\n  \"email\": \"john@acme.com\"\
+    \n}\n\n**Specific extraction**:\n\n\"email and phone\":\n- Look specifically for\
+    \ email and phone patterns\n- Ignore other data\n\n\"name and title\":\n- \"John\
+    \ Smith, CEO\" → {\"name\": \"John Smith\", \"title\": \"CEO\"}\n- \"CEO John\
+    \ Smith\" → {\"name\": \"John Smith\", \"title\": \"CEO\"}\n\n\"dimensions\":\n\
+    - \"10x20x30 cm\" → {\"width\": 10, \"height\": 20, \"depth\": 30, \"unit\": \"\
+    cm\"}\n- \"L: 10, W: 20, H: 30\" → same\n\n\"address components\":\n- Extract\
+    \ street, city, state, zip, country\n\n\"date and time\":\n- \"March 15, 2024\
+    \ at 2:30 PM\" → {\"date\": \"2024-03-15\", \"time\": \"14:30\"}\n\n\"name and\
+    \ credentials\":\n- \"John Smith, MD, PhD\" → {\"name\": \"John Smith\", \"credentials\"\
+    : [\"MD\", \"PhD\"]}\n\nInclude \"_raw\" field with original value.\nInclude \"\
+    _confidence\" for questionable extractions.\n\nReturn ONLY the JSON object.\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object

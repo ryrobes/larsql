@@ -1,0 +1,134 @@
+cascade_id: creative_collab
+description: 'A creative collaboration workflow where the LLM generates multiple
+
+  approaches to a task and lets the human choose their preferred direction.
+
+  Shows decision points with dynamically generated creative options.
+
+  '
+inputs_schema:
+  brief: What you want to create or accomplish
+  style: Any style preferences or constraints (optional)
+  context: Additional context or background (optional)
+cells:
+- name: ideate
+  model: anthropic/claude-sonnet-4
+  instructions: "You are a creative collaborator. Your job is to generate multiple\
+    \ distinct\napproaches to the human's request and let them choose their preferred\
+    \ direction.\n\n## Creative Brief\n{{ input.brief }}\n\n{% if input.style %}\n\
+    **Style preferences:** {{ input.style }}\n{% endif %}\n\n{% if input.context %}\n\
+    **Additional context:** {{ input.context }}\n{% endif %}\n\n## Your Process\n\n\
+    1. **Understand the brief** - What are they really asking for?\n2. **Generate\
+    \ 3-4 distinct approaches** - Each should be meaningfully different\n3. **Present\
+    \ them as a decision** - Let the human choose their direction\n\n## Decision Format\n\
+    \nCreate a decision block with your generated approaches:\n\n```\n<decision>\n\
+    {\n  \"question\": \"Which direction would you like to explore?\",\n  \"context\"\
+    : \"Brief explanation of how you interpreted the request and why you generated\
+    \ these options\",\n  \"severity\": \"info\",\n  \"options\": [\n    {\n     \
+    \ \"id\": \"approach_1\",\n      \"label\": \"Short catchy name\",\n      \"description\"\
+    : \"2-3 sentence description of this approach, its strengths, and what it would\
+    \ look like\",\n      \"style\": \"primary\"  // your recommended option\n   \
+    \ },\n    // ... more options\n  ],\n  \"allow_custom\": true\n}\n</decision>\n\
+    ```\n\n## Guidelines for Good Creative Options\n\n- Each option should be **meaningfully\
+    \ different** - not just variations\n- Give options **evocative names** that capture\
+    \ their essence\n- Descriptions should help the human **visualize the outcome**\n\
+    - Mark your recommended option with \"style\": \"primary\"\n- Consider including\
+    \ one \"unexpected\" or \"bold\" option\n- Options can span a spectrum (e.g.,\
+    \ conservative to experimental)\n\n## Example\n\nFor a brief like \"Write a product\
+    \ description for our new coffee maker\":\n\n```\n<decision>\n{\n  \"question\"\
+    : \"What tone should we strike for the coffee maker description?\",\n  \"context\"\
+    : \"I see a few strong directions we could take. Each appeals to different customer\
+    \ motivations and brand personalities.\",\n  \"severity\": \"info\",\n  \"options\"\
+    : [\n    {\n      \"id\": \"premium_craft\",\n      \"label\": \"Premium Artisan\"\
+    ,\n      \"description\": \"Emphasize craftsmanship, quality materials, and the\
+    \ ritual of making perfect coffee. Appeals to enthusiasts who see coffee as an\
+    \ experience, not just caffeine.\",\n      \"style\": \"primary\"\n    },\n  \
+    \  {\n      \"id\": \"tech_forward\",\n      \"label\": \"Smart & Connected\"\
+    ,\n      \"description\": \"Lead with the technology: app control, scheduling,\
+    \ customization. Position it as the coffee maker for the connected home and busy\
+    \ professionals.\"\n    },\n    {\n      \"id\": \"simple_joy\",\n      \"label\"\
+    : \"Simple Daily Joy\",\n      \"description\": \"Focus on the emotional moment\
+    \ - that first sip in the morning. Warm, accessible language that makes great\
+    \ coffee feel achievable, not intimidating.\"\n    },\n    {\n      \"id\": \"\
+    eco_conscious\",\n      \"label\": \"Sustainable Choice\",\n      \"description\"\
+    : \"Highlight energy efficiency, durability, and responsible sourcing. For customers\
+    \ who want their purchases to align with their values.\"\n    }\n  ],\n  \"allow_custom\"\
+    : true\n}\n</decision>\n```\n\nNow read the brief above and generate your creative\
+    \ options!\n"
+  decision_points:
+    enabled: true
+    trigger: output
+    timeout_seconds: 900
+    ui:
+      layout: cards
+      max_options: 5
+    routing:
+      _continue: next
+- name: execute
+  model: anthropic/claude-sonnet-4
+  instructions: 'The human has chosen their preferred creative direction.
+
+
+    ## Original Brief
+
+    {{ input.brief }}
+
+
+    {% if input.style %}
+
+    **Style:** {{ input.style }}
+
+    {% endif %}
+
+
+    ## Their Choice
+
+    {{ state._decision_ideate | tojson }}
+
+
+    ## Your Task
+
+
+    Now execute on their chosen direction! Create the actual deliverable based on:
+
+    - The original brief
+
+    - Their selected approach (or custom direction if they provided one)
+
+
+    Be creative and deliver something polished. If their choice was a custom response,
+
+    interpret it thoughtfully and ask clarifying questions if truly needed.
+
+
+    After delivering, briefly note if there are natural next steps or variations
+
+    they might want to explore.
+
+    '
+  context:
+    from:
+    - ideate
+- name: refine
+  instructions: 'If the human wants to iterate, this phase handles refinement requests.
+
+
+    Previous output:
+
+    {{ outputs.execute }}
+
+
+    Human feedback (if any):
+
+    {{ state._refinement_feedback | default("No specific feedback provided") }}
+
+
+    Refine the deliverable based on any feedback while maintaining the
+
+    core direction they chose.
+
+    '
+  context:
+    from:
+    - ideate
+    - execute

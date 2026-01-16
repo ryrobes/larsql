@@ -1,0 +1,17 @@
+# Await Signal Cell - Wait for cross-cascade signal
+type_id: await_signal
+display_name: Await Signal
+icon: mdi:bell-ring
+color: "#fcd34d"
+name_prefix: wait
+description: "Wait for a signal from another cascade (cross-cascade coordination)"
+category: orchestration
+tags:
+  - orchestration
+  - advanced
+template:
+  tool: await_signal
+  inputs:
+    signal_name: "data_ready"
+    timeout: "1h"
+    description: "Wait for upstream process to complete"

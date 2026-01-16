@@ -1,0 +1,18 @@
+# Summarize Cell - Summarize text or data
+type_id: summarize
+display_name: Summarize
+icon: mdi:text-box-check
+color: "#a78bfa"
+name_prefix: summary
+description: "Summarize text, documents, or data"
+category: ai
+tags:
+  - ai-ml
+  - popular
+template:
+  instructions: |
+    Summarize the following content concisely:
+
+    {{ outputs.prior_cell }}
+
+    Provide key points and a brief overview.

@@ -1,0 +1,219 @@
+# Natural Language Annotation Interpreter (Enhanced)
+#
+# Interprets -- @@ comments in SQL queries and produces structured
+# cascade configuration overrides. Called when -- @@ annotations are detected.
+#
+# Enhanced version:
+# - Uses a smart model (claude-sonnet-4) for accurate interpretation
+# - Includes full cascade DSL reference for comprehensive understanding
+# - Validates output with loop_until to ensure valid configurations
+#
+# Called from: semantic_operators.py:_interpret_nl_annotations()
+
+cascade_id: nl_annotation_interpreter
+
+# Exclude from meta-analysis to prevent self-referential loops
+internal: true
+
+description: |
+  Internal cascade for interpreting natural language annotation hints.
+  
+  Parses free-form hints like "run 3 takes with a cheap model" or 
+  "add a ward that validates JSON output" and produces structured cascade
+  configuration overrides that get applied at runtime.
+  
+  Uses full cascade DSL knowledge to support ANY valid cascade mutation.
+
+inputs_schema:
+  sql_query: "The full SQL query for context"
+  hints: "The natural language hints (concatenated from -- @@ lines)"
+  scope: "global or local - whether hints apply to entire query or specific operator"
+
+cells:
+  - name: interpret
+    model: anthropic/claude-sonnet-4
+    skills: [validate_cascade_overrides]
+    rules:
+      max_turns: 3
+      max_attempts: 3
+      loop_until:
+        python: |
+          import json
+          try:
+              # Parse the output as JSON
+              if content.strip().startswith('```'):
+                  lines = content.strip().split('\n')
+                  json_lines = [l for l in lines[1:] if not l.strip().startswith('```')]
+                  content = '\n'.join(json_lines)
+              overrides = json.loads(content.strip())
+              
+              # Import and validate
+              from lars.skills.cascade_validator import _validate_cascade_overrides_internal
+              validation = _validate_cascade_overrides_internal(overrides)
+              result = {
+                  "valid": validation["valid"],
+                  "reason": validation["reason"] + (" Errors: " + str(validation["errors"]) if validation["errors"] else "")
+              }
+          except json.JSONDecodeError as e:
+              result = {"valid": False, "reason": f"Invalid JSON: {str(e)}"}
+          except Exception as e:
+              result = {"valid": False, "reason": f"Validation error: {str(e)}"}
+      loop_until_prompt: "Produce valid JSON that passes cascade schema validation."
+    instructions: |
+      You are an LARS cascade configuration expert. Parse the natural language
+      hints and produce structured cascade override configuration.
+      
+      SQL QUERY:
+      ```sql
+      {{ input.sql_query }}
+      ```
+      
+      NATURAL LANGUAGE HINTS:
+      {{ input.hints }}
+      
+      SCOPE: {{ input.scope }} (global = applies to all operators, local = applies to next operator only)
+      
+      # LARS CASCADE DSL REFERENCE
+      
+      You can override ANY valid cascade configuration. Here are the key structures:
+      
+      ## Top-Level Override Structure
+      
+      Your output must be a JSON object with this structure:
+      ```json
+      {
+        "cascade_overrides": {
+          // Any CascadeConfig fields
+        },
+        "cell_overrides": {
+          "default": {
+            // Applied to all cells
+          },
+          "specific_cell_name": {
+            // Override for specific cell
+          }
+        }
+      }
+      ```
+      
+      ## TakesConfig (Parallel Execution)
+      
+      ```json
+      {
+        "cascade_overrides": {
+          "takes": {
+            "factor": 3,                    // Number of parallel attempts (1-20)
+            "max_parallel": 3,              // Max concurrent (1-10)
+            "mode": "evaluate",             // "evaluate" (pick best) or "aggregate" (combine all)
+            "evaluator_instructions": "Pick the most accurate response",
+            "mutate": true,                 // Apply prompt variations
+            "mutation_mode": "rewrite",     // "rewrite", "augment", or "approach"
+            "models": ["anthropic/claude-sonnet-4", "openai/gpt-4o"],  // Multi-model
+            "model_strategy": "round_robin", // "round_robin", "random", "weighted"
+            "reforge": {
+              "steps": 2,
+              "honing_prompt": "Improve based on feedback"
+            }
+          }
+        }
+      }
+      ```
+      
+      ## Model Override
+      
+      ```json
+      {
+        "cell_overrides": {
+          "default": {
+            "model": "anthropic/claude-sonnet-4"
+          }
+        }
+      }
+      ```
+      
+      ## RuleConfig (Execution Control)
+      
+      ```json
+      {
+        "cell_overrides": {
+          "default": {
+            "rules": {
+              "max_turns": 5,
+              "max_attempts": 3,
+              "loop_until": "validator_name",
+              "turn_prompt": "Continue improving..."
+            }
+          }
+        }
+      }
+      ```
+      
+      ## WardsConfig (Validation)
+      
+      ```json
+      {
+        "cell_overrides": {
+          "default": {
+            "wards": {
+              "post": [
+                {
+                  "validator": {"python": "result = {'valid': 'error' not in content.lower(), 'reason': 'Check passed'}"},
+                  "mode": "retry",
+                  "max_attempts": 2
+                }
+              ]
+            }
+          }
+        }
+      }
+      ```
+      
+      ## IntraContextConfig (Token Management)
+      
+      ```json
+      {
+        "cell_overrides": {
+          "default": {
+            "intra_context": {
+              "enabled": true,
+              "window": 5,
+              "mask_observations_after": 3
+            }
+          }
+        }
+      }
+      ```
+      
+      ## Common Model IDs
+      
+      - Claude: anthropic/claude-sonnet-4, anthropic/claude-opus-4, anthropic/claude-3-5-haiku-latest
+      - GPT: openai/gpt-4o, openai/gpt-4o-mini, openai/o1, openai/o3-mini
+      - Gemini: google/gemini-2.5-flash, google/gemini-2.5-flash-lite, google/gemini-2.5-pro
+      - Grok: x-ai/grok-4, x-ai/grok-3
+      
+      ## Natural Language Mappings
+      
+      Common phrases to config:
+      - "run N takes" → cascade_overrides.takes.factor: N
+      - "pick the best" → cascade_overrides.takes.mode: "evaluate"
+      - "combine/aggregate all" → cascade_overrides.takes.mode: "aggregate"
+      - "cheap/fast model" → cell_overrides.default.model: "google/gemini-2.5-flash-lite"
+      - "claude haiku" → cell_overrides.default.model: "anthropic/claude-3-5-haiku-latest"
+      - "claude sonnet" → cell_overrides.default.model: "anthropic/claude-sonnet-4"
+      - "gpt-4o" → cell_overrides.default.model: "openai/gpt-4o"
+      - "try multiple models" → cascade_overrides.takes.models: [list]
+      - "threshold X" → (not in overrides, handled separately)
+      - "add a ward" → cell_overrides.default.wards: {...}
+      - "loop until X" → cell_overrides.default.rules.loop_until: "X"
+      - "max N turns" → cell_overrides.default.rules.max_turns: N
+      
+      # INSTRUCTIONS
+      
+      1. Parse the hints carefully
+      2. Map to the appropriate cascade config structure
+      3. Use the EXACT model IDs (not friendly names)
+      4. Output ONLY valid JSON - no markdown, no explanation
+      5. If hints don't map to any config, return: {}
+      6. Omit fields that aren't mentioned (don't include nulls)
+      
+      Output the JSON now:

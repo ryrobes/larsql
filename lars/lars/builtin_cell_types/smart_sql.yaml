@@ -1,0 +1,20 @@
+# Smart SQL Cell - LLM-powered SQL generation
+type_id: smart_sql
+display_name: Smart SQL
+icon: mdi:database-search
+color: "#818cf8"
+name_prefix: smart_sql
+description: "LLM generates and executes SQL based on natural language"
+category: ai
+tags:
+  - ai-ml
+  - data-processing
+template:
+  instructions: |
+    Generate and execute SQL to answer this question:
+
+    {{ input.question }}
+
+    Use the available schema to write correct SQL.
+  skills:
+    - smart_sql_run

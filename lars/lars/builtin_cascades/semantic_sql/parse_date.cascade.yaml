@@ -1,0 +1,151 @@
+cascade_id: parse_date
+internal: true
+sql_function:
+  name: parse_date
+  description: 'Parse and transform dates using structural caching.
+
+    Same date format + same task = cached parser reuse.
+
+
+    Supported formats (auto-detected):
+
+    - ISO: 2024-01-15
+
+    - US slash: 01/15/2024 or 1/15/2024
+
+    - US dash: 01-15-2024
+
+    - European dot: 15.01.2024
+
+    - Written: January 15, 2024 or Jan 15, 2024
+
+
+    Common tasks:
+
+    - "year" - Extract 4-digit year
+
+    - "month" - Extract month (numeric or name)
+
+    - "day" - Extract day of month
+
+    - "iso format" - Convert to YYYY-MM-DD
+
+    - "us format" - Convert to MM/DD/YYYY
+
+    '
+  args:
+  - name: date_value
+    type: VARCHAR
+    description: The date string to parse
+  - name: extraction_task
+    type: VARCHAR
+    description: What to extract or how to transform
+  returns: VARCHAR
+  shape: SCALAR
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args:
+    - date_value
+    fingerprint_config:
+      method: pattern_library
+      include_lengths: false
+  cache: true
+  test_cases:
+  - sql: SELECT parse_date('born in 1990')
+    expect:
+      type: regex
+      pattern: .+
+    description: Date expression generated
+cells:
+- name: generate_parser
+  #model: google/gemini-2.5-flash-lite
+  rules:
+    max_turns: 1
+  instructions: 'Generate a DuckDB SQL expression to parse or transform a date.
+
+
+    ## Date Format
+
+    Pattern: {{ input.date_value | fingerprint }}
+
+    Example: {{ input.date_value }}
+
+
+    ## Task
+
+    {{ input.extraction_task }}
+
+
+    ## Rules
+
+    - Use :date_value as the placeholder (will be bound at execution time)
+
+    - Use STRPTIME for parsing string to date, STRFTIME for formatting date to string
+
+    - Return ONLY the SQL expression, no explanation, no markdown
+
+    - Handle the specific format pattern shown above
+
+
+    ## DuckDB Date Functions Reference
+
+    - STRPTIME(string, format) - Parse string to timestamp
+
+    - STRFTIME(timestamp, format) - Format timestamp to string
+
+    - EXTRACT(part FROM date) - Extract year/month/day/etc
+
+    - DATE_PART(''part'', date) - Alternative extraction
+
+    - CAST(... AS DATE) - Convert to date type
+
+
+    ## Common Format Codes (for STRPTIME/STRFTIME)
+
+    - %Y = 4-digit year (2024)
+
+    - %y = 2-digit year (24)
+
+    - %m = month 01-12
+
+    - %d = day 01-31
+
+    - %B = full month name (January)
+
+    - %b = abbreviated month (Jan)
+
+    - %H = hour 00-23
+
+    - %M = minute 00-59
+
+    - %S = second 00-59
+
+
+    ## Examples by Format
+
+
+    For "known:date:us_slash" (e.g., "01/15/2024"):
+
+    - "year": EXTRACT(YEAR FROM STRPTIME(:date_value, ''%m/%d/%Y''))
+
+    - "month": EXTRACT(MONTH FROM STRPTIME(:date_value, ''%m/%d/%Y''))
+
+    - "iso format": STRFTIME(STRPTIME(:date_value, ''%m/%d/%Y''), ''%Y-%m-%d'')
+
+
+    For "known:date:iso" (e.g., "2024-01-15"):
+
+    - "year": EXTRACT(YEAR FROM CAST(:date_value AS DATE))
+
+    - "us format": STRFTIME(CAST(:date_value AS DATE), ''%m/%d/%Y'')
+
+
+    For "D/D/D" (generic US-style):
+
+    - Parse with ''%m/%d/%Y'' or ''%d/%m/%Y'' based on context
+
+
+    Return only the SQL expression that handles the given format and task.
+
+    '

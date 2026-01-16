@@ -1,0 +1,96 @@
+cascade_id: semantic_cluster
+internal: true
+description: 'Semantic clustering - assigns each value to one of N semantic clusters.
+
+  The LLM first identifies cluster centroids, then classifies each value.
+
+  Used for GROUP BY MEANING operations.
+
+  '
+inputs_schema:
+  values: JSON array of all unique values to cluster
+  num_clusters: Number of clusters to create
+  criterion: Optional semantic guidance for clustering (e.g., 'geographic region')
+sql_function:
+  name: semantic_cluster
+  description: Assigns values to N semantic clusters based on criterion
+  args:
+  - name: values
+    type: JSON
+  - name: num_clusters
+    type: INTEGER
+    default: '8'
+  - name: criterion
+    type: VARCHAR
+    optional: true
+  returns: JSON
+  shape: AGGREGATE
+  context_arg: values
+  operators:
+  - MEANING({{ values }})
+  - MEANING({{ values }}, {{ num_clusters }})
+  - MEANING({{ values }}, {{ num_clusters }}, {{ criterion }})
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('New York'), ('Los Angeles'), ('Chicago'),
+          ('Paris'), ('London'), ('Berlin'),
+          ('Tokyo'), ('Beijing'), ('Seoul')
+        ) AS t(city)
+      )
+      SELECT MEANING(city, 3, 'geographic region') FROM test_data
+    expect:
+      type: contains
+      value: clusters
+    description: Clusters cities by geographic region
+cells:
+- name: identify_clusters
+  model: google/gemini-2.5-flash-lite
+  instructions: "Analyze these values and identify {{ input.num_clusters | default(8)\
+    \ }} semantic clusters.\n\nVALUES:\n{{ input.values }}\n\n{% if input.criterion\
+    \ %}\nCLUSTERING CRITERION: {{ input.criterion }}\nGroup values by: {{ input.criterion\
+    \ }}\n{% else %}\nGroup values by semantic similarity - find natural categories.\n\
+    {% endif %}\n\nReturn a JSON object with this exact structure:\n{\n  \"clusters\"\
+    : [\n    {\"id\": 0, \"name\": \"Cluster Name\", \"description\": \"What values\
+    \ belong here\"},\n    {\"id\": 1, \"name\": \"Another Cluster\", \"description\"\
+    : \"Description\"},\n    ...\n  ]\n}\n\nRules:\n- Create exactly {{ input.num_clusters\
+    \ | default(8) }} clusters\n- Cluster names should be descriptive but concise\
+    \ (2-4 words)\n- Every value should fit into exactly one cluster\n- Make clusters\
+    \ roughly balanced when possible\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object
+    properties:
+      clusters:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            description:
+              type: string
+- name: assign_values
+  model: google/gemini-2.5-flash-lite
+  context:
+    from:
+    - identify_clusters
+  instructions: "Assign each value to one of the identified clusters.\n\nCLUSTERS:\n\
+    {{ outputs.identify_clusters.clusters | tojson }}\n\nVALUES TO ASSIGN:\n{{ input.values\
+    \ }}\n\nReturn a JSON object mapping each value to its cluster ID:\n{\n  \"assignments\"\
+    : {\n    \"value1\": 0,\n    \"value2\": 1,\n    \"value3\": 0,\n    ...\n  }\n\
+    }\n\nRules:\n- Every value must be assigned to exactly one cluster\n- Use the\
+    \ cluster IDs from the CLUSTERS list\n- Choose the best-fitting cluster for each\
+    \ value\n"
+  rules:
+    max_turns: 1
+  output_schema:
+    type: object
+    properties:
+      assignments:
+        type: object

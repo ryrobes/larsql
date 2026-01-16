@@ -1,0 +1,85 @@
+# Product Catalog Extractor
+# Processes multiple images of products (e.g., fireworks stand) to extract
+# a comprehensive catalog of items and their prices.
+#
+# Usage:
+#   lars run cascades/product_catalog_extract.yaml --input '{"image_dir": "/path/to/images"}'
+
+cascade_id: product_catalog_extract
+description: |
+  Extract products and prices from multiple product images.
+  Uses map_cascade to process each image independently, then aggregates results.
+  Each image is analyzed with multiple take passes using aggregate mode
+  to maximize extraction recall on busy/complex images.
+
+inputs_schema:
+  image_dir: "Directory containing product images to process"
+  output_format: "Output format: 'json', 'markdown', or 'text' (default: json)"
+
+cells:
+  - name: discover_images
+    tool: python_data
+    inputs:
+      code: |
+        import os
+        from pathlib import Path
+
+        image_dir = "{{ input.image_dir }}"
+        extensions = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+
+        image_paths = []
+        for f in sorted(Path(image_dir).iterdir()):
+            if f.is_file() and f.suffix.lower() in extensions:
+                image_paths.append(str(f.absolute()))
+
+        result = {
+            "image_paths": image_paths,
+            "count": len(image_paths),
+            "directory": image_dir
+        }
+    handoffs: [process_images]
+
+  - name: process_images
+    tool: map_cascade
+    inputs:
+      cascade: "cascades/product_image_analyzer.yaml"
+      map_over: "{{ outputs.discover_images.result.image_paths }}"
+      input_key: "image_path"
+      max_parallel: "3"
+    handoffs: [aggregate_catalog]
+
+  - name: aggregate_catalog
+    instructions: |
+      You are a catalog aggregator. You have received extraction results from
+      analyzing multiple product images. Your job is to:
+
+      1. MERGE all products into a unified catalog
+      2. DEDUPLICATE products that appear in multiple images
+      3. RESOLVE conflicts (e.g., different prices for same product - use most common)
+      4. Structure the output in the requested format
+
+      ## Image Analysis Results
+      {{ outputs.process_images | tojson }}
+
+      ## Output Format
+      Output format requested: {{ input.output_format | default('json') }}
+
+      If json: Return a JSON object with:
+        - products: array of {name, price, description, confidence, source_images}
+        - metadata: {total_products, images_processed, extraction_date}
+
+      If markdown: Return a formatted markdown table with products.
+
+      If text: Return a human-readable bulleted list.
+
+      Ensure ALL products are included. It's better to include a duplicate
+      than to miss a product.
+    skills: []  # No tools needed - pure synthesis
+    model: anthropic/claude-sonnet-4
+    rules:
+      max_turns: 1
+    context:
+      from:
+      - cell: process_images
+        include:
+        - output

@@ -1,0 +1,83 @@
+cascade_id: semantic_dedupe
+internal: true
+description: 'Semantic deduplication - groups items by similarity and returns
+
+  one representative per group. Useful for cleaning up fuzzy duplicates.
+
+  '
+inputs_schema:
+  texts: JSON array of texts to deduplicate
+  criteria: Description of what makes items "the same" (default "same entity")
+sql_function:
+  name: semantic_dedupe
+  description: Deduplicates texts by semantic similarity
+  args:
+  - name: texts
+    type: JSON
+  - name: criteria
+    type: VARCHAR
+    default: '''same entity'''
+  returns: VARCHAR
+  shape: AGGREGATE
+  context_arg: texts
+  operators:
+  - DEDUPE({{ texts }})
+  - DEDUPE({{ texts }}, '{{ criteria }}')
+  cache: true
+  test_cases:
+  - sql: |
+      WITH test_data AS (
+        SELECT * FROM (VALUES
+          ('John Smith'),
+          ('Jon Smith'),
+          ('Johnny Smith'),
+          ('Jane Doe'),
+          ('J. Doe'),
+          ('Michael Johnson')
+        ) AS t(name)
+      )
+      SELECT DEDUPE(name) FROM test_data
+    expect:
+      type: contains
+      value: Smith
+    description: Deduplicates similar names
+cells:
+- name: deduplicate
+  model: google/gemini-2.5-flash-lite
+  instructions: 'Deduplicate these items by semantic similarity.
+
+    Group items that represent: {{ input.criteria | default(''the same entity or concept'')
+    }}
+
+
+    ITEMS:
+
+    {{ input.texts }}
+
+
+    For each group of similar items, select ONE representative
+
+    (pick the clearest, most canonical form).
+
+
+    Return a JSON array of unique representative values:
+
+    ["Representative 1", "Representative 2", ...]
+
+
+    Rules:
+
+    - Each output represents a distinct group
+
+    - Choose the most clear/complete form from each group
+
+    - Remove near-duplicates, variants, and synonyms
+
+    - Order by frequency/importance if possible
+
+
+    Return ONLY the JSON array, no explanation or markdown.
+
+    '
+  rules:
+    max_turns: 1

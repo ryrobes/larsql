@@ -1,0 +1,69 @@
+# Shadow Context Selector - Internal cascade for shadow assessment
+#
+# Replaces direct Agent.run() calls in shadow_assessment.py
+# This provides full observability and cost tracking for shadow assessment LLM calls.
+#
+# Called from: shadow_assessment.py:_score_llm_batch()
+
+cascade_id: shadow_context_selector
+
+# Exclude from meta-analysis to prevent self-referential loops
+# and avoid wasting resources analyzing infrastructure calls
+internal: true
+
+description: |
+  Internal cascade for shadow assessment context selection.
+
+  Evaluates which context messages would be most relevant for a target cell,
+  enabling comparison between explicit context and what auto-context would select.
+
+  This is infrastructure - it runs in the background during every cell transition
+  when shadow assessment is enabled.
+
+inputs_schema:
+  task_instructions: "The target cell's instructions (truncated to 1000 chars)"
+  menu: "Formatted menu of take messages with hashes, roles, and previews"
+  budget: "Token budget for context selection"
+
+cells:
+  - name: select_context
+    model: google/gemini-2.5-flash-lite
+    rules:
+      max_attempts: 2
+      max_turns: 1
+    instructions: |
+      You are selecting relevant context for an AI agent about to work on a task.
+
+      CURRENT TASK:
+      {{ input.task_instructions }}
+
+      AVAILABLE CONTEXT (by ID):
+      {{ input.menu }}
+
+      TOKEN BUDGET: ~{{ input.budget }} tokens
+
+      Select the message IDs most relevant to the current task. Consider:
+      - Direct relevance to the task topic
+      - Important decisions or findings
+      - Error messages that might be relevant
+      - User instructions or requirements
+
+      **FOUNDATIONAL CONTEXT LENIENCY:**
+      Messages marked [tool_definition], [task_definition], or [constraints] are often critical even if not directly quoted:
+      - Tool definitions: Relevant if the task involves calling functions OR if the agent made decisions about which tools to use/avoid
+      - Task definitions: Usually high relevance - they define WHAT to do and HOW
+      - Constraints: Relevant if they shaped what the agent DIDN'T do (negative influence)
+      When in doubt about system messages and foundational context, err on the side of inclusion.
+
+    output_schema:
+      type: object
+      properties:
+        selected:
+          type: array
+          items:
+            type: string
+          description: "Array of message hash IDs to include in context"
+        reasoning:
+          type: string
+          description: "Brief explanation of selection rationale"
+      required: [selected, reasoning]

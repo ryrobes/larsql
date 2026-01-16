@@ -1,0 +1,109 @@
+cascade_id: hitl_classifier_edge_cases
+description: Tests edge cases for the UI classifier to ensure it correctly identifies
+  question types. Each phase asks a question that might be ambiguous or tricky for
+  the classifier.
+inputs_schema: {}
+cells:
+- handoffs:
+  - embedded_options
+  instructions: 'Ask a choice question without explicit options listed. Use ask_human
+    with: ''Which option do you prefer?'' The classifier should recognize this as
+    a choice question but may fall back to text without explicit options.'
+  name: ambiguous_choice
+  rules:
+    max_turns: 1
+  skills:
+  - ask_human
+- context:
+    from:
+    - ambiguous_choice
+    include:
+    - state
+  handoffs:
+  - indirect_rating
+  instructions: 'Response: {{ state.ambiguous_choice }}
+
+
+    Ask a question with options embedded in natural language. Use ask_human with:
+    ''Would you like the report in PDF format, Word document, or plain text?'' The
+    classifier should extract PDF, Word, and plain text as options.'
+  name: embedded_options
+  rules:
+    max_turns: 1
+  skills:
+  - ask_human
+- context:
+    from:
+    - embedded_options
+    include:
+    - state
+  handoffs:
+  - context_dependent
+  instructions: 'Response: {{ state.embedded_options }}
+
+
+    Ask for feedback that implies a rating. Use ask_human with: ''How satisfied are
+    you with the results?'' The classifier should recognize this as a rating question.'
+  name: indirect_rating
+  rules:
+    max_turns: 1
+  skills:
+  - ask_human
+- context:
+    from:
+    - indirect_rating
+    include:
+    - state
+  handoffs:
+  - multi_choice_test
+  instructions: 'Response: {{ state.indirect_rating }}
+
+
+    Ask a confirmation question that requires context understanding. Use ask_human
+    with context about an analysis and the question: ''Is this analysis complete?''.
+    Pass some context about a completed analysis.'
+  name: context_dependent
+  rules:
+    max_turns: 1
+  skills:
+  - ask_human
+- context:
+    from:
+    - context_dependent
+    include:
+    - state
+  handoffs:
+  - final_summary
+  instructions: 'Response: {{ state.context_dependent }}
+
+
+    Test multi-choice detection. Use ask_human with: ''Which of the following topics
+    interest you (select all that apply): AI, Data Science, Web Development, DevOps?''
+    The classifier should recognize this as multi_choice.'
+  name: multi_choice_test
+  rules:
+    max_turns: 1
+  skills:
+  - ask_human
+- context:
+    from:
+    - all
+    include:
+    - state
+  instructions: 'Summarize all responses and what UI type was likely generated for
+    each:
+
+
+    1. Ambiguous choice: {{ state.ambiguous_choice }}
+
+    2. Embedded options: {{ state.embedded_options }}
+
+    3. Indirect rating: {{ state.indirect_rating }}
+
+    4. Context-dependent: {{ state.context_dependent }}
+
+    5. Multi-choice: {{ state.multi_choice_test }}'
+  name: final_summary
+  rules:
+    max_turns: 1
+  skills: []

@@ -1,0 +1,44 @@
+cascade_id: research_db_demo
+description: Demonstrates the research_db feature for persisting structured data across
+  cascade runs
+inputs_schema:
+  action: 'What to do: ''setup'', ''insert'', ''query'', or ''full_demo'''
+cells:
+- instructions: 'You have access to a research database. Based on the action requested,
+    perform the appropriate operations.
+
+
+    Available actions:
+
+    - ''setup'': Create a sample products table with columns: id (VARCHAR PRIMARY
+    KEY), name (VARCHAR), price (DECIMAL), category (VARCHAR)
+
+    - ''insert'': Insert some sample products (electronics, books, etc.)
+
+    - ''query'': Query and summarize the products in the database
+
+    - ''full_demo'': Do all of the above in sequence
+
+
+    Action requested: {{ input.action }}
+
+
+    Use the research_execute tool for CREATE/INSERT/UPDATE/DELETE statements.
+
+    Use the research_query tool for SELECT statements.
+
+
+    IMPORTANT: When creating tables, always use CREATE TABLE IF NOT EXISTS to be idempotent.'
+  name: execute_action
+  rules:
+    max_turns: 5
+  skills:
+  - research_query
+  - research_execute
+- context:
+    from:
+    - previous
+  instructions: Provide a brief summary of what was done with the research database.
+    If data was queried, include interesting findings.
+  name: summarize
+research_db: demo_research

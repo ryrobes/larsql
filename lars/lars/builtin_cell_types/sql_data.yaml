@@ -1,0 +1,19 @@
+# SQL Data Cell
+type_id: sql_data
+display_name: SQL
+icon: mdi:database
+color: "#60a5fa"
+name_prefix: sql
+description: "Query databases with SQL, reference prior cell outputs as tables"
+category: data
+tags:
+  - quick-start
+  - popular
+  - data-processing
+template:
+  tool: sql_data
+  inputs:
+    query: |
+      -- Enter SQL here
+      -- Reference prior cells with: SELECT * FROM _cell_name
+      SELECT 1 as example

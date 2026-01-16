@@ -1,0 +1,61 @@
+cascade_id: embed_status
+internal: true
+description: "Check embedding status for a table/column - how many rows are embedded\
+  \ vs total.\n\nSQL Usage:\n  SELECT embed_status('products', 'description', 'id');\n\
+  \nReturns JSON stats:\n  {\n    \"table\": \"products\",\n    \"column\": \"description\"\
+  ,\n    \"rows_total\": 1000,\n    \"rows_embedded\": 850,\n    \"rows_pending\"\
+  : 150,\n    \"coverage_pct\": 85.0,\n    \"embedding_model\": \"qwen/qwen3-embedding-8b\"\
+  \n  }\n"
+inputs_schema:
+  table_name: Source table name
+  column_name: Column that was embedded
+  id_column: ID column
+sql_function:
+  name: embed_status
+  description: Check embedding coverage for a table/column
+  args:
+  - name: table_name
+    type: VARCHAR
+    description: Source table name
+  - name: column_name
+    type: VARCHAR
+    description: Text column
+  - name: id_column
+    type: VARCHAR
+    description: ID column
+  returns: VARCHAR
+  shape: SCALAR
+  cache: false
+  test_cases:
+  - sql: -- Requires embedding infrastructure
+    skip: true
+    description: Embed status needs infrastructure
+cells:
+- name: check_status
+  tool: python_data
+  inputs:
+    code: "import json\nfrom lars.db_adapter import get_db_adapter\n\ntable_name\
+      \ = input.get('table_name')\ncolumn_name = input.get('column_name')\nid_column\
+      \ = input.get('id_column')\n\nif not all([table_name, column_name, id_column]):\n\
+      \    result = json.dumps({\"error\": \"table_name, column_name, and id_column\
+      \ are required\"})\nelse:\n    db = get_db_adapter()\n\n    # Count total rows\
+      \ with non-empty text\n    total_query = f\"\"\"\n        SELECT COUNT(*) as\
+      \ cnt\n        FROM {table_name}\n        WHERE {column_name} IS NOT NULL AND\
+      \ {column_name} != ''\n    \"\"\"\n\n    # Count embedded rows\n    embedded_query\
+      \ = f\"\"\"\n        SELECT COUNT(DISTINCT source_id) as cnt, any(embedding_model)\
+      \ as model\n        FROM lars_embeddings\n        WHERE source_table = '{table_name}'\n\
+      \    \"\"\"\n\n    try:\n        total_result = db.query(total_query, output_format=\"\
+      dict\")\n        embedded_result = db.query(embedded_query, output_format=\"\
+      dict\")\n\n        rows_total = total_result[0]['cnt'] if total_result else\
+      \ 0\n        rows_embedded = embedded_result[0]['cnt'] if embedded_result else\
+      \ 0\n        model = embedded_result[0].get('model') if embedded_result else\
+      \ None\n\n        rows_pending = rows_total - rows_embedded\n        coverage\
+      \ = round((rows_embedded / rows_total * 100), 1) if rows_total > 0 else 0\n\n\
+      \        result = json.dumps({\n            \"table\": table_name,\n       \
+      \     \"column\": column_name,\n            \"rows_total\": rows_total,\n  \
+      \          \"rows_embedded\": rows_embedded,\n            \"rows_pending\":\
+      \ rows_pending,\n            \"coverage_pct\": coverage,\n            \"embedding_model\"\
+      : model\n        })\n\n    except Exception as e:\n        result = json.dumps({\"\
+      error\": str(e)})\n\nresult = result\n"
+  context:
+    enabled: false

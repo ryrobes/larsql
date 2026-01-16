@@ -1,0 +1,13 @@
+cascade_id: test_no_persistence
+description: Test with persist_session=False
+cells:
+- name: generate
+  tool: bash_data
+  inputs:
+    script: 'echo "id,name"
+
+      echo "1,test"
+
+      '
+    output_format: csv
+    persist_session: false

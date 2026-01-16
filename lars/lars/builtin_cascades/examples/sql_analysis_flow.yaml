@@ -1,0 +1,86 @@
+cascade_id: sql_analysis_demo
+description: Demonstrates SQL schema discovery and query execution with natural language
+inputs_schema:
+  question: Natural language question about the data
+cells:
+- handoffs:
+  - write_query
+  instructions: 'The user asked: {{ input.question }}
+
+
+    First, use sql_search to find relevant tables that might contain data to answer
+    this question.
+
+
+    Search for tables using natural language - the tool will return schema information
+    including:
+
+    - Column names and types
+
+    - Value distributions for categorical columns
+
+    - Sample rows
+
+    - Row counts
+
+
+    Analyze the results and identify which table(s) would be most useful.'
+  name: discover_schema
+  skills:
+  - sql_search
+  - list_sql_connections
+- context:
+    from:
+    - previous
+  handoffs:
+  - analyze_results
+  instructions: 'Based on the schema information from the previous phase, write a
+    SQL query to answer: {{ input.question }}
+
+
+    Use the sql_query tool to execute your query.
+
+
+    IMPORTANT Query Syntax:
+
+    - CSV folders: SELECT * FROM connection_name.table_name
+
+    - PostgreSQL/MySQL: SELECT * FROM connection_name.schema.table
+
+    - Example: SELECT * FROM csv_files.bigfoot_sightings WHERE state = ''California''
+
+
+    The schema info from the previous phase shows you:
+
+    - Exact column names
+
+    - Data types
+
+    - Sample values (use these to understand the data format)
+
+    - Value distributions (shows you what values exist in categorical columns)
+
+
+    Write a clear, efficient query based on this information.'
+  name: write_query
+  skills:
+  - sql_query
+- context:
+    from:
+    - all
+  instructions: 'Analyze the query results from the previous phase and provide a clear
+    answer to: {{ input.question }}
+
+
+    Summarize:
+
+    - Key findings from the data
+
+    - Any interesting patterns or insights
+
+    - Direct answer to the user''s question
+
+
+    Be specific and reference actual numbers from the results.'
+  name: analyze_results
+  skills: []

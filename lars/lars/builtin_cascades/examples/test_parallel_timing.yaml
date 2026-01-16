@@ -1,0 +1,19 @@
+cascade_id: test_parallel_timing
+description: Cascade with artificial delay to test parallel execution speedup
+
+cells:
+- name: slow_process
+  instructions: |
+    Process this input: {{ input.text }}
+
+    This task takes a moment to complete (simulating I/O-bound LLM call).
+    Just return the uppercase version of the input.
+
+    Input: {{ input.text }}
+  skills: []
+  output_schema:
+    type: object
+    properties:
+      result: {type: string}
+      processed: {type: boolean}
+    required: [result, processed]
