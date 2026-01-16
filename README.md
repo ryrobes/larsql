@@ -104,11 +104,8 @@ psql postgresql://localhost:15432/default
 That's it. Run semantic queries from DBeaver, DataGrip, psql, Tableau, or any PostgreSQL client.
 For a full end-to-end setup (ClickHouse + sample data + Studio UI), see the [Quickstart Guide](https://larsql.com/docs.html#quickstart).
 
-<details>
-<summary>Screenshot: DataGrip connected over pgwire</summary>
 
 [![DataGrip querying LARS via PostgreSQL wire protocol](https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg)](https://github.com/ryrobes/larsql/blob/master/gh_jpg/datagrip.jpg)
-</details>
 
 ## How It Works
 
@@ -134,11 +131,7 @@ ORDER BY timestamp DESC
 LIMIT 20;
 ```
 
-<details>
-<summary>Screenshot: costs + context (optional Studio UI)</summary>
-
 [![Studio showing context inspector, query logs, takes, and cost analytics](https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg)](https://github.com/ryrobes/larsql/blob/master/gh_jpg/gh-image1.jpg)
-</details>
 
 Every semantic operator is backed by a cascade file under `cascades/semantic_sql/` - edit YAML to change behavior or create your own operator.
 If you want a visual view of the same execution data, Studio is a UI over these logs (optional).
@@ -277,11 +270,7 @@ lars serve studio
 # - Cost explorer (by query/cascade/model)
 ```
 
-<details>
-<summary>Screenshots: Studio overview</summary>
-
 [![Studio overview screenshots](https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg)](https://github.com/ryrobes/larsql/blob/master/gh_jpg/gh-image2.jpg)
-</details>
 
 ## Documentation
 
