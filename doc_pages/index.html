@@ -4,6 +4,20 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LARS - AI that speaks SQL</title>
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://larsql.com/">
+    <meta property="og:title" content="LARS - AI that speaks SQL">
+    <meta property="og:description" content="Add AI operators to SQL. Use semantic operators like WHERE description MEANS 'urgent' directly in your SQL queries. Works with PostgreSQL, MySQL, BigQuery, and more.">
+    <meta property="og:image" content="https://larsql.com/preview-image.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://larsql.com/">
+    <meta property="twitter:title" content="LARS - AI that speaks SQL">
+    <meta property="twitter:description" content="Add AI operators to SQL. Use semantic operators like WHERE description MEANS 'urgent' directly in your SQL queries. Works with PostgreSQL, MySQL, BigQuery, and more.">
+    <meta property="twitter:image" content="https://larsql.com/preview-image.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -144,6 +158,28 @@
         height: 52px;
         object-fit: contain;
         filter: drop-shadow(0 0 14px rgba(28, 246, 255, 0.4));
+      }
+
+      /* Header wordmark styling */
+      .brand-wordmark {
+        font-family: "Outrun future", system-ui, sans-serif;
+        font-size: 28px;
+        letter-spacing: .02em;
+        font-weight: normal;
+        background: linear-gradient(180deg,
+          rgba(28, 246, 255, 0) 0%,
+          rgba(28, 246, 255, 0.9) 45%,
+          rgba(28, 246, 255, 1) 55%,
+          rgba(120, 200, 255, 0.8) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        -webkit-text-stroke: 1.2px rgba(28, 246, 255, 0.5);
+        text-shadow:
+          0 0 18px rgba(28, 246, 255, 0.5),
+          0 4px 8px rgba(0, 0, 0, 0.4);
+        filter: drop-shadow(0 2px 8px rgba(28, 246, 255, 0.3));
       }
 
       .brand span {
@@ -5991,7 +6027,7 @@
   text-align: right;
 }
 
-/* main word */
+/* main word - outline only (no fill) */
 .larsql-word{
   font-family: "Outrun future", system-ui, sans-serif;
   font-size: 47px;
@@ -5999,8 +6035,8 @@
   line-height: 0.9;
   letter-spacing: .02em;
 
-  /* gray-ish fill like your render */
-  color: linear-gradient(90deg, #21f6ff 0 52%, #ff2bd6 52% 100%);
+  /* Outline only - transparent fill with cyan stroke */
+  color: transparent;
 
   /* cyan outline (Chrome/Safari) */
   -webkit-text-stroke: 2px rgba(35, 240, 255, .88);
@@ -6049,8 +6085,8 @@
             <div class="larsql-rule" aria-hidden="true"></div>
             <div class="larsql-tagline">Language-Augmented Relational SQL</div>
             <div class="larsql-wordwrap">
-              <div class="larsql-word">LARsqL</div>
-              <div class="larsql-reflect" aria-hidden="true">LARsqL</div>
+              <div class="larsql-word">LarsqL</div>
+              <div class="larsql-reflect" aria-hidden="true">LarsqL</div>
             </div>
           </div>
 
@@ -6112,8 +6148,7 @@
         <header>
           <div class="container nav">
             <div class="brand">
-              <img src="lars-logo-square.png" alt="LARS logo">
-              <span>LARS</span>
+              <div class="brand-wordmark">LarsqL</div>
             </div>
             <div class="nav-actions">
               <a href="#how-it-works">How It Works</a>

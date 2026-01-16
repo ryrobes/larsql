@@ -9,7 +9,14 @@ export function renderSidebar(navData, currentPage) {
     <aside class="toc-sidebar">
       <!-- Brand/Logo -->
       <a href="index.html" class="toc-brand">
-        <span>LARsqL</span>
+        <div class="larsql-hero">
+          <div class="larsql-rule" aria-hidden="true"></div>
+          <div class="larsql-tagline">Language-Augmented Relational SQL</div>
+          <div class="larsql-wordwrap">
+            <div class="larsql-word">LarsqL</div>
+            <div class="larsql-reflect" aria-hidden="true">LarsqL</div>
+          </div>
+        </div>
       </a>
 
       <!-- Navigation Groups -->

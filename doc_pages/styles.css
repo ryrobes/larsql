@@ -100,17 +100,9 @@ iconify-icon {
   display: block;
 }
 
+/* Scanline effect removed - was causing browser performance issues */
 .page::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(transparent 94%, rgba(28, 246, 255, 0.05) 96%),
-    linear-gradient(90deg, transparent 94%, rgba(28, 246, 255, 0.05) 96%);
-  background-size: 48px 48px;
-  opacity: 0.25;
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 /* Main content offset for sidebar - responsive width */
@@ -177,28 +169,73 @@ iconify-icon {
 
 /* Brand/Logo in sidebar */
 .toc-brand {
-  display: flex;
-  align-items: center;
+  display: block;
   flex-shrink: 0;
-  font-family: "Outrun future";
-  height: 55px;
-  font-size: 28px;
-  gap: 10px;
-  padding: 0 0 20px 0;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   text-decoration: none;
 }
 
-.toc-brand img {
-  width: 45px;
-  height: 45px;
-  filter: drop-shadow(0 0 8px rgba(28, 246, 255, 0.4));
+/* LarsqL Hero Wordmark - scaled for docs sidebar */
+.larsql-hero {
+  width: 100%;
+  height: 72px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  margin-top: 0;
+  margin-left: 8px;
 }
 
-.toc-brand span {
-  font-family: "Outrun future";
-  color: #d9f7ff;
+/* The gradient underline accent - hidden in compact mode */
+.larsql-rule {
+  display: none;
+}
+
+/* Tagline text */
+.larsql-tagline {
+  position: absolute;
+  left: 0;
+  bottom: 2px;
+  font-family: 'Quicksand', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: rgba(235, 238, 245, 0.70);
+  text-shadow:
+    0 0 18px rgba(120, 120, 255, 0.16),
+    0 2px 0 rgba(0, 0, 0, 0.25);
+  filter: blur(0.15px);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Wordmark container */
+.larsql-wordwrap {
+  position: absolute;
+  left: 0;
+  top: -2px;
+  text-align: left;
+}
+
+/* Main wordmark text - outline only (no fill) */
+.larsql-word {
+  font-family: "Outrun future", system-ui, sans-serif;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  /* Outline only - transparent fill with cyan stroke */
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(35, 240, 255, 0.88);
+  /* Glow + shadows */
+  text-shadow:
+    0 0 10px rgba(35, 240, 255, 0.55),
+    0 0 12px rgba(35, 240, 255, 0.25),
+    2px 2px 0 rgba(255, 43, 214, 0.10),
+    0 4px 20px rgba(0, 0, 0, 0.55);
+  filter: drop-shadow(0 0 4px rgba(35, 240, 255, 0.20));
+}
+
+/* Reflection effect - hidden in compact docs sidebar */
+.larsql-reflect {
+  display: none;
 }
 
 /* Navigation groups */

@@ -1025,42 +1025,46 @@ def main():
         help='Run in headless mode (default: True)'
     )
 
-    # TUI command - Launch Alice-powered terminal dashboard
-    tui_parser = subparsers.add_parser('tui', help='Launch interactive TUI dashboard for cascade monitoring')
-    tui_parser.add_argument('--cascade', '-c', default=None,
-                           help='Path to cascade file to monitor (generates visual dashboard)')
-    tui_parser.add_argument('--session', '-s', default=None,
-                           help='Session ID to monitor')
-    tui_parser.add_argument('--port', type=int, default=None,
-                           help='Run as web server on specified port (optional)')
-    tui_parser.add_argument('--background', '-b', default=None,
-                           help='Background image path for dashboard')
-
-    # Alice command group - Generate/manage TUI dashboards
-    alice_parser = subparsers.add_parser('alice', help='Generate Alice TUI dashboards from cascades')
-    alice_subparsers = alice_parser.add_subparsers(dest='alice_command', help='Alice subcommands')
-
-    # alice generate
-    alice_gen_parser = alice_subparsers.add_parser(
-        'generate',
-        help='Generate Alice YAML dashboard from a cascade definition'
-    )
-    alice_gen_parser.add_argument('cascade', help='Path to cascade JSON/YAML file')
-    alice_gen_parser.add_argument('--output', '-o', help='Output file path (prints to stdout if not specified)')
-    alice_gen_parser.add_argument('--session', '-s', default=None, help='Session ID placeholder')
-    alice_gen_parser.add_argument('--background', '-b', default=None, help='Background image path')
-
-    # alice run / alice watch (alias)
-    alice_run_parser = alice_subparsers.add_parser(
-        'run',
-        aliases=['watch'],
-        help='Generate dashboard and launch Alice TUI (auto-detects latest session)'
-    )
-    alice_run_parser.add_argument('cascade', help='Path to cascade JSON/YAML file')
-    alice_run_parser.add_argument('--session', '-s', default=None,
-                                  help='Session ID to monitor (default: auto-detect latest)')
-    alice_run_parser.add_argument('--port', type=int, default=None, help='Run as web server on port')
-    alice_run_parser.add_argument('--background', '-b', default=None, help='Background image path')
+    # ==========================================================================
+    # Alice TUI Commands (COMMENTED OUT for initial release)
+    # Uncomment when alice/ directory is restored
+    # ==========================================================================
+    # # TUI command - Launch Alice-powered terminal dashboard
+    # tui_parser = subparsers.add_parser('tui', help='Launch interactive TUI dashboard for cascade monitoring')
+    # tui_parser.add_argument('--cascade', '-c', default=None,
+    #                        help='Path to cascade file to monitor (generates visual dashboard)')
+    # tui_parser.add_argument('--session', '-s', default=None,
+    #                        help='Session ID to monitor')
+    # tui_parser.add_argument('--port', type=int, default=None,
+    #                        help='Run as web server on specified port (optional)')
+    # tui_parser.add_argument('--background', '-b', default=None,
+    #                        help='Background image path for dashboard')
+    #
+    # # Alice command group - Generate/manage TUI dashboards
+    # alice_parser = subparsers.add_parser('alice', help='Generate Alice TUI dashboards from cascades')
+    # alice_subparsers = alice_parser.add_subparsers(dest='alice_command', help='Alice subcommands')
+    #
+    # # alice generate
+    # alice_gen_parser = alice_subparsers.add_parser(
+    #     'generate',
+    #     help='Generate Alice YAML dashboard from a cascade definition'
+    # )
+    # alice_gen_parser.add_argument('cascade', help='Path to cascade JSON/YAML file')
+    # alice_gen_parser.add_argument('--output', '-o', help='Output file path (prints to stdout if not specified)')
+    # alice_gen_parser.add_argument('--session', '-s', default=None, help='Session ID placeholder')
+    # alice_gen_parser.add_argument('--background', '-b', default=None, help='Background image path')
+    #
+    # # alice run / alice watch (alias)
+    # alice_run_parser = alice_subparsers.add_parser(
+    #     'run',
+    #     aliases=['watch'],
+    #     help='Generate dashboard and launch Alice TUI (auto-detects latest session)'
+    # )
+    # alice_run_parser.add_argument('cascade', help='Path to cascade JSON/YAML file')
+    # alice_run_parser.add_argument('--session', '-s', default=None,
+    #                               help='Session ID to monitor (default: auto-detect latest)')
+    # alice_run_parser.add_argument('--port', type=int, default=None, help='Run as web server on port')
+    # alice_run_parser.add_argument('--background', '-b', default=None, help='Background image path')
 
     # ==========================================================================
     # Workspace Management Commands
@@ -1427,18 +1431,19 @@ def main():
         else:
             browser_parser.print_help()
             sys.exit(1)
-    elif args.command == 'tui':
-        # Launch Alice TUI dashboard
-        cmd_tui(args)
-    elif args.command == 'alice':
-        # Alice TUI dashboard generation
-        if args.alice_command == 'generate':
-            cmd_alice_generate(args)
-        elif args.alice_command in ('run', 'watch'):
-            cmd_alice_run(args)
-        else:
-            alice_parser.print_help()
-            sys.exit(1)
+    # Alice TUI commands (COMMENTED OUT for initial release)
+    # elif args.command == 'tui':
+    #     # Launch Alice TUI dashboard
+    #     cmd_tui(args)
+    # elif args.command == 'alice':
+    #     # Alice TUI dashboard generation
+    #     if args.alice_command == 'generate':
+    #         cmd_alice_generate(args)
+    #     elif args.alice_command in ('run', 'watch'):
+    #         cmd_alice_run(args)
+    #     else:
+    #         alice_parser.print_help()
+    #         sys.exit(1)
     elif args.command == 'init':
         cmd_init(args)
     elif args.command == 'doctor':
@@ -1488,43 +1493,47 @@ def cmd_render_mermaid(args):
         sys.exit(1)
 
 
-def cmd_tui(args):
-    """Launch Alice TUI dashboard for cascade monitoring."""
-    from lars.tui import launch_tui
-    launch_tui(port=getattr(args, 'port', None))
-
-
-def cmd_alice_generate(args):
-    """Generate Alice YAML dashboard from cascade definition."""
-    from lars.alice_generator import generate_and_save
-    import time
-
-    session_id = args.session or f"{{{{SESSION_ID}}}}"
-
-    result = generate_and_save(
-        cascade_path=args.cascade,
-        output_path=args.output,
-        session_id=session_id,
-        background_image=args.background
-    )
-
-    if args.output:
-        print(f"Generated Alice dashboard: {result}")
-    else:
-        print(result)
-
-
-def cmd_alice_run(args):
-    """Generate dashboard and launch Alice TUI."""
-    from lars.tui import launch_tui
-
-    # session_id=None means auto-detect latest session for the cascade
-    launch_tui(
-        cascade=args.cascade,
-        session_id=args.session,  # None = auto-detect latest
-        port=args.port,
-        background_image=args.background
-    )
+# ==========================================================================
+# Alice TUI Functions (COMMENTED OUT for initial release)
+# Uncomment when alice/ directory is restored
+# ==========================================================================
+# def cmd_tui(args):
+#     """Launch Alice TUI dashboard for cascade monitoring."""
+#     from lars.tui import launch_tui
+#     launch_tui(port=getattr(args, 'port', None))
+#
+#
+# def cmd_alice_generate(args):
+#     """Generate Alice YAML dashboard from cascade definition."""
+#     from lars.alice_generator import generate_and_save
+#     import time
+#
+#     session_id = args.session or f"{{{{SESSION_ID}}}}"
+#
+#     result = generate_and_save(
+#         cascade_path=args.cascade,
+#         output_path=args.output,
+#         session_id=session_id,
+#         background_image=args.background
+#     )
+#
+#     if args.output:
+#         print(f"Generated Alice dashboard: {result}")
+#     else:
+#         print(result)
+#
+#
+# def cmd_alice_run(args):
+#     """Generate dashboard and launch Alice TUI."""
+#     from lars.tui import launch_tui
+#
+#     # session_id=None means auto-detect latest session for the cascade
+#     launch_tui(
+#         cascade=args.cascade,
+#         session_id=args.session,  # None = auto-detect latest
+#         port=args.port,
+#         background_image=args.background
+#     )
 
 
 def _maybe_render_startup_splash():
