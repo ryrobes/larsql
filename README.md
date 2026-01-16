@@ -23,8 +23,6 @@ Express intent, not patterns — especially when you don't know what you're look
 - **Cached + cost-attributed**: query LLM calls via `all_data` / `sql_query_log`
 - **Optional Studio UI**: inspect runs, takes, costs, and "what the model saw" (not required)
 
-
-
 ## One line. That's all it takes.
 
 **Before:** Regex, LIKE patterns, and brittle keyword matching.
@@ -106,6 +104,16 @@ psql postgresql://localhost:15432/default
 That's it. Run semantic queries from DBeaver, DataGrip, psql, Tableau, or any PostgreSQL client.
 For a full end-to-end setup (ClickHouse + sample data + Studio UI), see the [Quickstart Guide](https://larsql.com/docs.html#quickstart).
 
+<details>
+<summary>Screenshot: DataGrip connected over pgwire</summary>
+
+<p>
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg">
+    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg" width="520" alt="DataGrip querying LARS via PostgreSQL wire protocol" />
+  </a>
+</p>
+</details>
+
 ## How It Works
 
 LARS uses **query rewriting** - your semantic SQL is transformed into standard SQL with UDF calls that execute LLM operations. Your database stays untouched.
@@ -129,6 +137,16 @@ WHERE is_sql_udf = true
 ORDER BY timestamp DESC
 LIMIT 20;
 ```
+
+<details>
+<summary>Screenshot: costs + context (optional Studio UI)</summary>
+
+<p>
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg">
+    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg" width="100%" alt="Studio showing context inspector, query logs, takes, and cost analytics" />
+  </a>
+</p>
+</details>
 
 Every semantic operator is backed by a cascade file under `cascades/semantic_sql/` - edit YAML to change behavior or create your own operator.
 If you want a visual view of the same execution data, Studio is a UI over these logs (optional).
@@ -268,12 +286,12 @@ lars serve studio
 ```
 
 <details>
-<summary>Screenshots (optional)</summary>
+<summary>Screenshots: Studio overview</summary>
 
 <p>
-  <img src="https://larsql.com/screenshot-2026-01-11_17-39-40.png" width="32%" alt="Studio: Cascade runner" />
-  <img src="https://larsql.com/screenshot-2026-01-11_17-42-02.png" width="32%" alt="Studio: Context inspector" />
-  <img src="https://larsql.com/screenshot-2026-01-11_17-43-51.png" width="32%" alt="Studio: Cost explorer" />
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg">
+    <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg" width="100%" alt="Studio overview screenshots" />
+  </a>
 </p>
 </details>
 
