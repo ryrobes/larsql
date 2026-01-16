@@ -2,9 +2,9 @@
 
 [![PyPI version](https://badge.fury.io/py/larsql.svg)](https://badge.fury.io/py/larsql)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: O'SASSY](https://img.shields.io/badge/O'SASSY%20(basically%20MIT)-8A2BE2)](https://osaasy.dev/)
 
-LARS is a **declarative agent framework** for building long-running, iterative LLM workflows with first-class SQL integration. It bridges natural language and databases through **Semantic SQL** - extending standard SQL with LLM-powered operators.
+At it's core LARS is a **declarative agent framework** for building long-running, iterative LLM workflows with first-class SQL integration. It bridges natural language and databases through **Semantic SQL** - extending standard SQL with LLM-powered operators.
 
 ## Features
 
@@ -13,7 +13,7 @@ LARS is a **declarative agent framework** for building long-running, iterative L
 - **Multi-Database Support** - DuckDB, PostgreSQL, MySQL, ClickHouse, and more
 - **PostgreSQL Wire Protocol** - Connect with any SQL client (DBeaver, psql, Tableau)
 - **Built-in Tools** - Charts, artifacts, human-in-the-loop, code execution
-- **Vector Search** - Semantic search with embeddings via ClickHouse or Elasticsearch
+- **Vector Search** - Semantic search with embeddings via ClickHouse or Elasticsearch (batteries included)
 
 ## Installation
 
@@ -39,7 +39,7 @@ pip install larsql[all]
 ### 1. Set up your environment
 
 ```bash
-# Set your LLM API key (OpenRouter, OpenAI, etc.)
+# Set your LLM API key (OpenRouter)
 export OPENROUTER_API_KEY=sk-or-v1-...
 ```
 

@@ -47,6 +47,7 @@ dependencies = [
     "requests",
     "ruamel.yaml",
     "sqlglot",
+    "clickhouse-driver",
 ]
 
 [project.urls]
