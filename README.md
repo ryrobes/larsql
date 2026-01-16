@@ -21,6 +21,7 @@ Express intent, not patterns — especially when you don't know what you're look
 - **Use your existing SQL client**: PostgreSQL wire protocol (`lars serve sql`)
 - **Your data never moves**: DuckDB federation across Postgres/MySQL/BigQuery/Snowflake/S3/files
 - **Cached + cost-attributed**: query LLM calls via `all_data` / `sql_query_log`
+- **Optional Studio UI**: inspect runs, takes, costs, and "what the model saw" (not required)
 
 ## One line. That's all it takes.
 
@@ -128,6 +129,7 @@ LIMIT 20;
 ```
 
 Every semantic operator is backed by a cascade file under `cascades/semantic_sql/` - edit YAML to change behavior or create your own operator.
+If you want a visual view of the same execution data, Studio is a UI over these logs (optional).
 
 ## Wait, it gets weirder.
 
@@ -250,17 +252,28 @@ lars run cascades/example.yaml --input '{"task": "analyze sales data"}'
 lars run cascades/example.yaml --model "anthropic/claude-sonnet-4"
 ```
 
-## Studio Web UI
+## Studio Web UI (Optional)
 
 ```bash
 # Launch the visual interface
 lars serve studio
 
 # Access at http://localhost:5050
-# - SQL Query IDE with semantic operators
-# - Visual cascade builder
-# - Session explorer
+# - SQL IDE with semantic operators
+# - Cascade runner (incl. takes + winners)
+# - Context inspector ("what the model saw")
+# - Cost explorer (by query/cascade/model)
 ```
+
+<details>
+<summary>Screenshots (optional)</summary>
+
+<p>
+  <img src="https://larsql.com/screenshot-2026-01-11_17-39-40.png" width="32%" alt="Studio: Cascade runner" />
+  <img src="https://larsql.com/screenshot-2026-01-11_17-42-02.png" width="32%" alt="Studio: Context inspector" />
+  <img src="https://larsql.com/screenshot-2026-01-11_17-43-51.png" width="32%" alt="Studio: Cost explorer" />
+</p>
+</details>
 
 ## Documentation
 
@@ -269,6 +282,7 @@ lars serve studio
 - [Docs hub](https://larsql.com/docs.html) - Full reference
 
 - [Quickstart Guide](https://larsql.com/docs.html#quickstart) - Get running in 10 minutes
+- [Studio Web UI](https://larsql.com/docs.html#quickstart#studio) - Optional UI for debugging cost/context/takes
 - [Semantic SQL](https://larsql.com/docs.html#semantic-sql) - Query rewriting, caching, annotations, observability
 - [Built-in Operators](https://larsql.com/docs.html#operators) - All 50+ operators
 - [Vector Search & Embedding](https://larsql.com/docs.html#embedding) - SIMILAR_TO, LARS EMBED, hybrid search
