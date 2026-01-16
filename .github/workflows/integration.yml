@@ -58,6 +58,9 @@ jobs:
         env:
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           lars db migrate
@@ -71,6 +74,9 @@ jobs:
           LARS_ROOT: ${{ github.workspace }}
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           pytest tests/ -v --tb=short -m "not integration and not requires_llm" --timeout=120 || true
@@ -81,6 +87,9 @@ jobs:
           LARS_ROOT: ${{ github.workspace }}
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           pytest tests/ -v --tb=short -m "requires_clickhouse" --timeout=180
@@ -91,6 +100,9 @@ jobs:
           LARS_ROOT: ${{ github.workspace }}
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -102,6 +114,9 @@ jobs:
           LARS_ROOT: ${{ github.workspace }}
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -111,6 +126,9 @@ jobs:
         env:
           LARS_CLICKHOUSE_HOST: localhost
           LARS_CLICKHOUSE_PORT: 9000
+          LARS_CLICKHOUSE_USER: default
+          LARS_CLICKHOUSE_PASSWORD: ""
+          LARS_CLICKHOUSE_DATABASE: default
           LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
