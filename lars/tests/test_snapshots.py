@@ -47,10 +47,10 @@ def test_cascade_snapshot(snapshot_file):
     result = validator.validate(snapshot_name, verbose=False)
 
     # Assert test passed
-    if not result["passed"]:
+    if not result.passed:
         # Build detailed failure message
         failure_messages = []
-        for failure in result["failures"]:
+        for failure in result.failures:
             msg = f"{failure.get('type', 'unknown')}: {failure.get('message', 'Unknown failure')}"
 
             if 'expected' in failure and 'actual' in failure:

@@ -5,7 +5,7 @@ logs
 **/__pycache__/**
 data
 studio/backend/__pycache__/
-data/log_1764838357_9fd7041e.parquet
+data/*.parquet
 images
 memories
 browsers
@@ -22,10 +22,7 @@ sql_connections/discovery_metadata.json
 studio/backend/workshop_temp/
 node_modules
 marimo/docs
-
 research_dbs/market_research.duckdb.wal
 *.log 
 .tmp_*
-
 .playwright-mcp
-studio/backend/{{ outputs\['setup_output']\['result']\['output_dir'] }}

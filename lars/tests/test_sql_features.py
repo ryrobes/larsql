@@ -134,12 +134,12 @@ class TestEXPLAIN:
         result = rewrite_lars_syntax(query, duckdb_conn=None)
         assert "ERROR" in result or "SELECT" in result
 
-    def test_explain_only_for_map(self):
-        """Should reject EXPLAIN for RUN."""
+    def test_explain_works_for_run(self):
+        """EXPLAIN should work for both MAP and RUN."""
         query = "EXPLAIN LARS RUN 'cascade.yaml' USING (SELECT * FROM t)"
-
-        with pytest.raises(LARSSyntaxError, match="only supported for LARS MAP"):
-            rewrite_lars_syntax(query, duckdb_conn=duckdb.connect())
+        result = rewrite_lars_syntax(query, duckdb_conn=duckdb.connect())
+        # Should return a query plan, not raise an error
+        assert "query_plan" in result or "Query Plan" in result
 
 
 class TestMAPDISTINCT:

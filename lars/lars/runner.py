@@ -3403,6 +3403,7 @@ To call this tool, output a JSON code block:
         xml_name_attr_patterns = [
             (r'<function_call\s+name=["\'](\w+)["\']\s*(?:/)?\s*>', 'function_call'),
             (r'<function_call\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</function_call>', 'function_call_full'),
+            (r'<tool_call\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</tool_call>', 'tool_full'),  # <tool_call name="...">
             (r'<tool\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</tool>', 'tool_full'),
             (r'<action\s+name=["\'](\w+)["\']\s*>\s*([\s\S]*?)\s*</action>', 'action_full'),
         ]
@@ -3425,9 +3426,13 @@ To call this tool, output a JSON code block:
                             if not isinstance(arguments, dict):
                                 arguments = {"value": arguments}
                         except json.JSONDecodeError:
+                            # Strip outer <parameters> wrapper if present
+                            params_match = re.search(r'<parameters>\s*([\s\S]*?)\s*</parameters>', xml_content, re.IGNORECASE)
+                            params_content = params_match.group(1) if params_match else xml_content
+
                             # Try parsing as XML parameters
                             param_pattern = r'<(\w+)>([\s\S]*?)</\1>'
-                            param_matches = re.findall(param_pattern, xml_content, re.DOTALL)
+                            param_matches = re.findall(param_pattern, params_content, re.DOTALL)
                             if param_matches:
                                 for param_name, param_value in param_matches:
                                     param_value = param_value.strip()

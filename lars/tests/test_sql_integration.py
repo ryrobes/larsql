@@ -9,7 +9,7 @@ import duckdb
 import os
 import tempfile
 from lars.sql_tools.udf import register_lars_udf, clear_udf_cache
-from lars.sql_rewriter import rewrite_lars_syntax
+from lars.sql_rewriter import rewrite_lars_syntax, _parse_lars_statement
 
 
 @pytest.fixture

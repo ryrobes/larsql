@@ -56,6 +56,7 @@ TEST_IDS = [f.stem for f in TEST_CASCADES]
 TEST_INPUTS = {
     "test_basic_flow": {"test_value": "hello_world"},
     "test_takes_eval": {"topic": "future of AI"},
+    "test_candidates_eval": {"topic": "future of AI"},  # Takes/evaluator test
     "test_ward_validation": {},
     "test_loop_until": {},
     "test_deterministic": {},
@@ -76,6 +77,30 @@ def skip_if_no_llm():
     """Skip test if LLM API is not available."""
     if not has_openrouter_key():
         pytest.skip("OPENROUTER_API_KEY not set - skipping live cascade test")
+
+
+@pytest.fixture(autouse=True)
+def disable_background_analytics():
+    """Disable background analytics during tests to avoid thread pool shutdown errors."""
+    # Save original values
+    orig_relevance = os.environ.get('LARS_ENABLE_RELEVANCE_ANALYSIS')
+    orig_analytics = os.environ.get('LARS_DISABLE_ANALYTICS')
+
+    # Disable to prevent "cannot schedule new futures after shutdown" errors
+    os.environ['LARS_ENABLE_RELEVANCE_ANALYSIS'] = 'false'
+    os.environ['LARS_DISABLE_ANALYTICS'] = 'true'
+
+    yield
+
+    # Restore original values
+    if orig_relevance is not None:
+        os.environ['LARS_ENABLE_RELEVANCE_ANALYSIS'] = orig_relevance
+    else:
+        os.environ.pop('LARS_ENABLE_RELEVANCE_ANALYSIS', None)
+    if orig_analytics is not None:
+        os.environ['LARS_DISABLE_ANALYTICS'] = orig_analytics
+    else:
+        os.environ.pop('LARS_DISABLE_ANALYTICS', None)
 
 
 @pytest.fixture

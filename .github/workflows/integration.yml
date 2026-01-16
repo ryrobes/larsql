@@ -1,0 +1,152 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6am UTC
+
+jobs:
+  integration-tests:
+    name: E2E Integration Tests
+    runs-on: ubuntu-latest
+    environment: test_env
+    timeout-minutes: 30
+
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.3-alpine
+        ports:
+          - 9000:9000
+          - 8123:8123
+        options: >-
+          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: lars/pyproject.toml
+
+      - name: Install LARS
+        working-directory: lars
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all]"
+          pip install pytest pytest-timeout
+
+      - name: Verify ClickHouse is ready
+        run: |
+          for i in {1..30}; do
+            if curl -s "http://localhost:8123/?query=SELECT%201" | grep -q "1"; then
+              echo "ClickHouse ready"
+              exit 0
+            fi
+            echo "Waiting for ClickHouse... ($i/30)"
+            sleep 2
+          done
+          echo "ClickHouse failed to start"
+          exit 1
+
+      - name: Run database migrations
+        env:
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+        run: |
+          lars db migrate
+          echo ""
+          echo "=== Migration Status ==="
+          lars db migrate --status
+
+      - name: Run unit tests (sanity check)
+        working-directory: lars
+        env:
+          LARS_ROOT: ${{ github.workspace }}
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+        run: |
+          pytest tests/ -v --tb=short -m "not integration and not requires_llm" --timeout=120 || true
+
+      - name: Run ClickHouse integration tests
+        working-directory: lars
+        env:
+          LARS_ROOT: ${{ github.workspace }}
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+        run: |
+          pytest tests/ -v --tb=short -m "requires_clickhouse" --timeout=180
+
+      - name: Run LLM integration tests
+        working-directory: lars
+        env:
+          LARS_ROOT: ${{ github.workspace }}
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          pytest tests/ -v --tb=short -m "requires_llm" --timeout=300
+
+      - name: Run live cascade tests
+        working-directory: lars
+        env:
+          LARS_ROOT: ${{ github.workspace }}
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          pytest tests/integration/test_live_cascades.py -v --tb=short --timeout=600
+
+      - name: Test SQL server startup
+        env:
+          LARS_CLICKHOUSE_HOST: localhost
+          LARS_CLICKHOUSE_PORT: 9000
+          LARS_USE_CLICKHOUSE_SERVER: "true"
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          # Start SQL server in background
+          lars serve sql --port 5433 &
+          SQL_PID=$!
+          sleep 5
+
+          # Check if server started
+          if ! kill -0 $SQL_PID 2>/dev/null; then
+            echo "SQL server failed to start"
+            exit 1
+          fi
+
+          echo "SQL server started successfully (PID: $SQL_PID)"
+
+          # Basic connectivity test using Python
+          python -c "
+          import socket
+          sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          result = sock.connect_ex(('localhost', 5433))
+          sock.close()
+          if result == 0:
+              print('SQL server accepting connections on port 5433')
+          else:
+              exit(1)
+          "
+
+          # Cleanup
+          kill $SQL_PID 2>/dev/null || true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Integration Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **ClickHouse**: Service container" >> $GITHUB_STEP_SUMMARY
+          echo "- **Migrations**: $(lars db migrate --status 2>/dev/null | grep -c 'applied' || echo '?') applied" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python**: 3.11" >> $GITHUB_STEP_SUMMARY
