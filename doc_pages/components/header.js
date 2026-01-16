@@ -18,7 +18,7 @@ export function renderHeader(navData, currentPage) {
                 ${link.title}
               </a>
             `).join('')}
-            <a href="https://github.com/ryrobes/lars" class="btn" target="_blank" rel="noopener">
+            <a href="https://github.com/ryrobes/larsql" class="btn" target="_blank" rel="noopener">
               <iconify-icon icon="mdi:github"></iconify-icon>
               GitHub
             </a>

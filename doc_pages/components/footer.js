@@ -9,8 +9,8 @@ export function renderFooter() {
       <div class="container">
         <p>
           LARS &copy; ${year} |
-          <a href="https://github.com/ryrobes/lars" target="_blank" rel="noopener">GitHub</a> |
-          <a href="https://github.com/ryrobes/lars/issues" target="_blank" rel="noopener">Report Issues</a>
+          <a href="https://github.com/ryrobes/larsql" target="_blank" rel="noopener">GitHub</a> |
+          <a href="https://github.com/ryrobes/larsql/issues" target="_blank" rel="noopener">Report Issues</a>
         </p>
       </div>
     </footer>

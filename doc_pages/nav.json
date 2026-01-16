@@ -329,6 +329,6 @@
   ],
   "externalLinks": [
     { "title": "Home", "url": "index.html", "icon": "mdi:home" },
-    { "title": "GitHub", "url": "https://github.com/ryrobes/lars", "icon": "mdi:github" }
+    { "title": "GitHub", "url": "https://github.com/ryrobes/larsql", "icon": "mdi:github" }
   ]
 }
