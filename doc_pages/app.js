@@ -1,4 +1,4 @@
-// RVBBIT Documentation - Main Application
+// LARS Documentation - Main Application
 // SPA-style documentation with shared components
 
 import { renderSidebar, updateSidebarActive } from './components/sidebar.js';
@@ -30,7 +30,7 @@ class DocsApp {
       // Setup global link handlers
       this.setupLinkHandlers();
 
-      console.log('RVBBIT Docs initialized');
+      console.log('LARS Docs initialized');
 
     } catch (error) {
       console.error('Failed to initialize docs:', error);
@@ -80,7 +80,7 @@ class DocsApp {
 
     // Update document title
     const pageTitle = this.getPageTitle(pageId);
-    document.title = pageTitle ? `${pageTitle} - RVBBIT Documentation` : 'RVBBIT Documentation';
+    document.title = pageTitle ? `${pageTitle} - LARS Documentation` : 'LARS Documentation';
 
     // Scroll to top of content
     const content = document.getElementById('docs-content');

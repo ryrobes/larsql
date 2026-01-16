@@ -5,7 +5,7 @@
 
 ## ✅ Completed
 
-1. **rvbbit/toon_utils.py** - Core utilities with encode/decode/telemetry
+1. **lars/toon_utils.py** - Core utilities with encode/decode/telemetry
 2. **pyproject.toml** - Added `toon-format>=0.9.0` dependency
 3. **runner.py** - Context injection with TOON support
 
@@ -13,7 +13,7 @@
 
 ### Task 4: Update semantic_sql/executor.py
 
-**File:** `rvbbit/rvbbit/semantic_sql/executor.py`
+**File:** `lars/lars/semantic_sql/executor.py`
 
 **Location:** Around line 25-65 in `execute_cascade_udf()` function
 
@@ -46,7 +46,7 @@ if TOON_AVAILABLE:
 
 ### Task 5: Update prompts.py with totoon filter
 
-**File:** `rvbbit/rvbbit/prompts.py`
+**File:** `lars/lars/prompts.py`
 
 **Add after the `_to_json` function (around line 27):**
 
@@ -89,7 +89,7 @@ self.env.filters['totoon'] = _to_toon   # NEW - Alias
 
 ### Task 6: Add TOON Response Decoder to agent.py
 
-**File:** `rvbbit/rvbbit/agent.py`
+**File:** `lars/lars/agent.py`
 
 **Add helper function after imports (around line 20):**
 
@@ -154,7 +154,7 @@ content = _parse_llm_response_content(response.get("content"))
 
 ### Task 7: Update unified_logs.py to Track TOON Telemetry
 
-**File:** `rvbbit/rvbbit/unified_logs.py`
+**File:** `lars/lars/unified_logs.py`
 
 **Add parameters to log() function signature (around line 357):**
 
@@ -202,7 +202,7 @@ row = {
 
 ### Task 8: Create Idempotent SQL Migration
 
-**File:** `rvbbit/rvbbit/migrations/add_toon_telemetry_columns.sql`
+**File:** `lars/lars/migrations/add_toon_telemetry_columns.sql`
 
 ```sql
 -- Add TOON telemetry columns to all_data table
@@ -210,40 +210,40 @@ row = {
 -- Date: 2026-01-05
 
 -- Add data format tracking
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS data_format String DEFAULT ''
     COMMENT 'Data encoding format: toon, json, or empty';
 
 -- Add size metrics
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS data_size_json Nullable(UInt32)
     COMMENT 'Data size in characters (JSON baseline)';
 
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS data_size_toon Nullable(UInt32)
     COMMENT 'Data size in characters (TOON encoded)';
 
 -- Add token savings metric
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS data_token_savings_pct Nullable(Float32)
     COMMENT 'Token savings percentage (TOON vs JSON)';
 
 -- Add encoding performance
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS toon_encoding_ms Nullable(Float32)
     COMMENT 'Time to encode data as TOON (milliseconds)';
 
 -- Add decoder telemetry
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS toon_decode_attempted Nullable(Bool)
     COMMENT 'Whether TOON decoding was attempted on response';
 
-ALTER TABLE rvbbit.all_data
+ALTER TABLE lars.all_data
     ADD COLUMN IF NOT EXISTS toon_decode_success Nullable(Bool)
     COMMENT 'Whether TOON decoding succeeded (if attempted)';
 
 -- Optional: Create materialized view for TOON analytics
-CREATE MATERIALIZED VIEW IF NOT EXISTS rvbbit.toon_savings_mv
+CREATE MATERIALIZED VIEW IF NOT EXISTS lars.toon_savings_mv
 ENGINE = SummingMergeTree()
 ORDER BY (session_id, data_format)
 AS
@@ -255,7 +255,7 @@ SELECT
     sum(data_size_toon) as total_toon_size,
     avg(data_token_savings_pct) as avg_savings_pct,
     sum(toon_encoding_ms) as total_encoding_time_ms
-FROM rvbbit.all_data
+FROM lars.all_data
 WHERE data_format != ''
 GROUP BY session_id, data_format;
 ```
@@ -264,23 +264,23 @@ GROUP BY session_id, data_format;
 
 ```bash
 # Via CLI (if migration command exists)
-rvbbit db migrate
+lars db migrate
 
 # Or manually via ClickHouse client
-clickhouse-client --query "$(cat rvbbit/migrations/add_toon_telemetry_columns.sql)"
+clickhouse-client --query "$(cat lars/migrations/add_toon_telemetry_columns.sql)"
 ```
 
 ---
 
 ### Task 9: Write Tests
 
-**File:** `rvbbit/rvbbit/tests/test_toon_integration.py`
+**File:** `lars/lars/tests/test_toon_integration.py`
 
 ```python
 """Tests for TOON format integration."""
 
 import pytest
-from rvbbit.toon_utils import (
+from lars.toon_utils import (
     encode, decode, format_for_llm_context,
     _should_use_toon, TOON_AVAILABLE, _looks_like_toon
 )
@@ -368,7 +368,7 @@ class TestTOONEncoding:
 
 
 class TestTOONIntegration:
-    """Test TOON integration with RVBBIT components."""
+    """Test TOON integration with LARS components."""
 
     def test_format_for_llm_context_auto(self):
         """Test auto-format selection."""
@@ -408,8 +408,8 @@ class TestTOONIntegration:
 @pytest.mark.requires_clickhouse
 def test_toon_cascade_execution(tmp_path):
     """Test full cascade with TOON encoding."""
-    from rvbbit.runner import RVBBITRunner
-    from rvbbit.cascade import Cascade
+    from lars.runner import LARSRunner
+    from lars.cascade import Cascade
 
     # Create test cascade
     cascade_yaml = """
@@ -440,7 +440,7 @@ cells:
 
     # Run cascade
     cascade = Cascade.from_file(str(cascade_file))
-    runner = RVBBITRunner(cascade)
+    runner = LARSRunner(cascade)
     result = runner.run({})
 
     # Verify execution
@@ -489,7 +489,7 @@ cells:
 ```markdown
 ### TOON Format Integration
 
-RVBBIT uses **TOON (Token-Oriented Object Notation)** as the preferred transport
+LARS uses **TOON (Token-Oriented Object Notation)** as the preferred transport
 format for SQL data to LLMs, achieving 45-60% token savings vs JSON.
 
 **Automatic TOON Encoding:**
@@ -506,8 +506,8 @@ format for SQL data to LLMs, achieving 45-60% token savings vs JSON.
 
 **Configuration:**
 ```bash
-export RVBBIT_DATA_FORMAT=auto          # auto, toon, json
-export RVBBIT_TOON_MIN_ROWS=5           # Minimum rows for TOON
+export LARS_DATA_FORMAT=auto          # auto, toon, json
+export LARS_TOON_MIN_ROWS=5           # Minimum rows for TOON
 ```
 
 **Telemetry:**
@@ -517,7 +517,7 @@ SELECT
     data_format,
     COUNT(*) as operations,
     AVG(data_token_savings_pct) as avg_savings
-FROM rvbbit.all_data
+FROM lars.all_data
 WHERE data_format = 'toon'
 GROUP BY data_format;
 ```
@@ -533,43 +533,43 @@ If you want to apply these changes quickly, here are the exact steps:
 
 ```bash
 # Edit around line 60-70
-nano rvbbit/rvbbit/semantic_sql/executor.py
+nano lars/lars/semantic_sql/executor.py
 ```
 
 ### 2. Prompts
 
 ```bash
 # Edit around line 27 and 52
-nano rvbbit/rvbbit/prompts.py
+nano lars/lars/prompts.py
 ```
 
 ### 3. Agent
 
 ```bash
 # Edit around line 20 and response handling
-nano rvbbit/rvbbit/agent.py
+nano lars/lars/agent.py
 ```
 
 ### 4. Unified Logs
 
 ```bash
 # Edit around line 357 and 500
-nano rvbbit/rvbbit/unified_logs.py
+nano lars/lars/unified_logs.py
 ```
 
 ### 5. Migration
 
 ```bash
 # Create and run
-nano rvbbit/rvbbit/migrations/add_toon_telemetry_columns.sql
-clickhouse-client --query "$(cat rvbbit/rvbbit/migrations/add_toon_telemetry_columns.sql)"
+nano lars/lars/migrations/add_toon_telemetry_columns.sql
+clickhouse-client --query "$(cat lars/lars/migrations/add_toon_telemetry_columns.sql)"
 ```
 
 ### 6. Tests
 
 ```bash
-nano rvbbit/rvbbit/tests/test_toon_integration.py
-pytest rvbbit/tests/test_toon_integration.py -v
+nano lars/lars/tests/test_toon_integration.py
+pytest lars/tests/test_toon_integration.py -v
 ```
 
 ---
@@ -594,11 +594,11 @@ After complete implementation:
 pip install -e .
 
 # Run quick test
-python -c "from rvbbit.toon_utils import encode; print(encode([{'id': 1, 'name': 'test'}]))"
+python -c "from lars.toon_utils import encode; print(encode([{'id': 1, 'name': 'test'}]))"
 
 # Run cascade test
-rvbbit run examples/toon_demo.yaml
+lars run examples/toon_demo.yaml
 
 # Check telemetry
-rvbbit sql query "SELECT data_format, COUNT(*) FROM all_data GROUP BY data_format"
+lars sql query "SELECT data_format, COUNT(*) FROM all_data GROUP BY data_format"
 ```

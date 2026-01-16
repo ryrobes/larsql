@@ -162,9 +162,9 @@ const ContextAssessmentPanel = ({ timeRange }) => {
             Shadow assessment tables haven't been created yet.
             Run the migrations to create the tables:
           </p>
-          <code>rvbbit db init</code>
+          <code>lars db init</code>
           <p className="help-text">
-            Then run cascades with <code>RVBBIT_SHADOW_ASSESSMENT_ENABLED=true</code> to collect data.
+            Then run cascades with <code>LARS_SHADOW_ASSESSMENT_ENABLED=true</code> to collect data.
           </p>
         </div>
       </div>
@@ -182,7 +182,7 @@ const ContextAssessmentPanel = ({ timeRange }) => {
             No context shadow assessments found in the last {timeRange} days.
           </p>
           <p className="help-text">
-            Run cascades with <code>RVBBIT_SHADOW_ASSESSMENT_ENABLED=true</code> to collect
+            Run cascades with <code>LARS_SHADOW_ASSESSMENT_ENABLED=true</code> to collect
             context assessment data for analysis.
           </p>
         </div>

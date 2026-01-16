@@ -1,6 +1,6 @@
 # Provider Abstraction Plan
 
-This document outlines a plan to modularize RVBBIT's LLM provider system, enabling direct calls to providers like OpenAI, Anthropic, and Google while maintaining the same unified experience currently provided by OpenRouter.
+This document outlines a plan to modularize LARS's LLM provider system, enabling direct calls to providers like OpenAI, Anthropic, and Google while maintaining the same unified experience currently provided by OpenRouter.
 
 ## Current Architecture
 
@@ -44,7 +44,7 @@ OpenRouter /api/v1/generation?id=X (delayed ~3-5s)
 ### Module Structure
 
 ```
-rvbbit/
+lars/
 ├── providers/
 │   ├── __init__.py           # Registry: get_provider(), list_providers()
 │   ├── base.py               # Abstract base classes
@@ -293,7 +293,7 @@ class Config(BaseModel):
 
     # Default provider (for models without explicit provider prefix)
     default_provider: str = Field(
-        default_factory=lambda: os.getenv("RVBBIT_DEFAULT_PROVIDER", "openrouter")
+        default_factory=lambda: os.getenv("LARS_DEFAULT_PROVIDER", "openrouter")
     )
 
     # OpenRouter (existing, renamed for clarity)

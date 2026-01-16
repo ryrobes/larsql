@@ -679,7 +679,7 @@ ORDER BY avg_cost_pct DESC
 ## My Thoughts
 
 This would be **groundbreaking** - no other LLM framework has:
-1. **Context cost attribution** (unique to RVBBIT!)
+1. **Context cost attribution** (unique to LARS!)
 2. **Statistical anomaly detection** (Z-scores, not just percentages)
 3. **Genus/species taxonomy** (compare apples to apples)
 4. **Granular drill-down** (cascade → cell → message)

@@ -1,7 +1,7 @@
 /**
  * React Router Configuration
  *
- * Central route definition for the RVBBIT dashboard.
+ * Central route definition for the LARS dashboard.
  * Uses React Router v7 with lazy loading for code splitting.
  */
 import React, { lazy, Suspense } from 'react';
@@ -158,7 +158,7 @@ export const router = createBrowserRouter([
         element: withSuspense(WarrenView),
       },
 
-      // Apps - RVBBIT Apps (cascade-powered interfaces)
+      // Apps - LARS Apps (cascade-powered interfaces)
       {
         path: 'apps',
         element: withSuspense(AppsView),

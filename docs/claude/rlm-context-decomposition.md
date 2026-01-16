@@ -1,6 +1,6 @@
 # RLM-Style Context Decomposition
 
-This document describes RVBBIT's native implementation of the RLM (Recursive Language Model) pattern for processing large contexts through model-driven code generation.
+This document describes LARS's native implementation of the RLM (Recursive Language Model) pattern for processing large contexts through model-driven code generation.
 
 ## Overview
 
@@ -14,9 +14,9 @@ RLM is a paradigm from MIT research where instead of the framework deciding how 
 
 The model then writes Python code that chunks, analyzes, and synthesizes information—deciding dynamically how to process the context based on its structure and the task at hand.
 
-### Why Implement This in RVBBIT?
+### Why Implement This in LARS?
 
-RVBBIT already has sophisticated context management:
+LARS already has sophisticated context management:
 
 - **Intra-cell**: Sliding window, observation masking, loop compression
 - **Inter-cell**: Heuristic, semantic, LLM, and hybrid selection strategies
@@ -31,9 +31,9 @@ These work well for the 95% case. RLM-style decomposition is useful for the rema
 
 ### Design Philosophy
 
-Rather than importing the external RLM library, we implemented the pattern using existing RVBBIT primitives:
+Rather than importing the external RLM library, we implemented the pattern using existing LARS primitives:
 
-| RLM Concept | RVBBIT Implementation |
+| RLM Concept | LARS Implementation |
 |-------------|----------------------|
 | REPL environment | `rlm_exec` tool with injected namespace |
 | `llm_query()` | Internal function calling `Agent.run()` |
@@ -46,7 +46,7 @@ Rather than importing the external RLM library, we implemented the pattern using
 - Cost tracking per sub-LLM call
 - Integrates with existing tool registry
 - No external dependencies
-- Respects RVBBIT's explicit context philosophy
+- Respects LARS's explicit context philosophy
 
 ---
 
@@ -243,7 +243,7 @@ cells:
 **Usage:**
 
 ```bash
-rvbbit run cascades/analyze_docs.cascade.yaml \
+lars run cascades/analyze_docs.cascade.yaml \
   --input '{"context": "...", "task": "Summarize the main arguments"}'
 ```
 
@@ -321,7 +321,7 @@ cells:
 
 ---
 
-## Comparison: RLM vs Native RVBBIT
+## Comparison: RLM vs Native LARS
 
 ### When to Use RLM-Style
 
@@ -338,7 +338,7 @@ cells:
 
 ### Cost Comparison
 
-**Native RVBBIT (single cell):**
+**Native LARS (single cell):**
 - 1 LLM call with managed context
 - Full lineage preserved
 - Predictable cost
@@ -445,7 +445,7 @@ def llm_query(prompt: str, model: str = None) -> str:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     RVBBIT Runner                           │
+│                     LARS Runner                           │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Deterministic Cell                                         │
@@ -484,8 +484,8 @@ def llm_query(prompt: str, model: str = None) -> str:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RVBBIT_CONTEXT_SELECTOR_MODEL` | `google/gemini-2.5-flash-lite` | Model for sub-LLM calls |
-| `RVBBIT_PROVIDER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint |
+| `LARS_CONTEXT_SELECTOR_MODEL` | `google/gemini-2.5-flash-lite` | Model for sub-LLM calls |
+| `LARS_PROVIDER_BASE_URL` | `https://openrouter.ai/api/v1` | API endpoint |
 | `OPENROUTER_API_KEY` | required | API key |
 
 ### Cost Control
@@ -605,7 +605,7 @@ cells:
 
 | File | Description |
 |------|-------------|
-| `rvbbit/traits/rlm_tools.py` | Tool implementations |
+| `lars/traits/rlm_tools.py` | Tool implementations |
 | `cascades/rlm_direct_test.cascade.yaml` | Working example (deterministic) |
 | `cascades/rlm_simple_test.cascade.yaml` | Example with LLM code generation |
 | `cascades/rlm_context_processor.cascade.yaml` | Full-featured LLM-driven processor |
@@ -615,11 +615,11 @@ cells:
 
 ## Summary
 
-RLM-style context decomposition in RVBBIT provides:
+RLM-style context decomposition in LARS provides:
 
 - **Model-driven analysis**: The LLM decides how to process context
 - **Recursive sub-queries**: `llm_query()` for chunk analysis
 - **Native integration**: Full observability, cost tracking, existing tool access
 - **Flexible chunking**: Multiple strategies for different content types
 
-Use it when you have genuinely massive contexts that exceed normal management strategies. For typical workflows, RVBBIT's native context management remains more efficient and preserves better lineage.
+Use it when you have genuinely massive contexts that exceed normal management strategies. For typical workflows, LARS's native context management remains more efficient and preserves better lineage.

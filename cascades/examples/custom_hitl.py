@@ -2,10 +2,10 @@ import os
 import sys
 import json
 
-# Ensure we can import rvbbit
+# Ensure we can import lars
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from rvbbit import run_cascade, register_skill
+from lars import run_cascade, register_skill
 
 # Example of a CUSTOM Callback implementation
 # This demonstrates how an app could inject its own logic

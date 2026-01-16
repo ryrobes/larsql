@@ -27,7 +27,7 @@ Build a **Cost & Reliability Explorer** page that transforms pre-computed analyt
 - **Trends:** Did cost increase? By how much? Why?
 - **Actions:** What should I do about it?
 
-### RVBBIT's Unique Capabilities
+### LARS's Unique Capabilities
 
 **We have data no one else has:**
 1. **Context attribution** - Track which messages were injected into each LLM call
@@ -1142,7 +1142,7 @@ http://localhost:3000/#/receipts
 Query to verify:
 ```bash
 python -c "
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 db = get_db()
 
 print('CASCADE_ANALYTICS:', db.query('SELECT COUNT(*) as cnt FROM cascade_analytics')[0]['cnt'], 'records')
@@ -1161,7 +1161,7 @@ Should show dozens of analytics records ready to display!
 A data-dense operational intelligence dashboard that:
 - Shows cost/reliability KPIs with statistical context
 - Generates human-readable insights (no raw data dumps!)
-- Surfaces RVBBIT's unique context attribution
+- Surfaces LARS's unique context attribution
 - Enables drill-down from cascade → cell → message
 - Matches Studio's dark, information-rich aesthetic
 

@@ -1,5 +1,5 @@
 """
-RVBBIT UI Backend - Flask server for cascade exploration and analytics
+LARS UI Backend - Flask server for cascade exploration and analytics
 
 Data source: ClickHouse unified_logs table (real-time + historical)
 
@@ -22,22 +22,22 @@ from flask_cors import CORS
 import pandas as pd
 from queue import Empty
 
-# CRITICAL: Set RVBBIT_ROOT before any imports
+# CRITICAL: Set LARS_ROOT before any imports
 # When running from dashboard/backend, we need to point to the repo root
 # This ensures cascade files, skills, and other resources are found correctly
-if 'RVBBIT_ROOT' not in os.environ:
-    # Detect repo root: go up two levels from dashboard/backend to get to rvbbit/
+if 'LARS_ROOT' not in os.environ:
+    # Detect repo root: go up two levels from dashboard/backend to get to lars/
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-    os.environ['RVBBIT_ROOT'] = repo_root
-    print(f"[Backend] Set RVBBIT_ROOT={repo_root}")
+    os.environ['LARS_ROOT'] = repo_root
+    print(f"[Backend] Set LARS_ROOT={repo_root}")
 
 # Note: live_store.py is now a stub - all data comes from ClickHouse directly
 
-# Add rvbbit package to path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'rvbbit')))
-from rvbbit.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
-from rvbbit.config import get_clickhouse_url
-from rvbbit.loaders import load_config_file
+# Add lars package to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'lars')))
+from lars.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
+from lars.config import get_clickhouse_url
+from lars.loaders import load_config_file
 from urllib.parse import urlparse
 
 # Set query source for all queries from the UI backend
@@ -229,27 +229,27 @@ def timestamp_to_float(ts):
 
 
 # Configuration - reads from environment or uses defaults
-# RVBBIT_ROOT-based configuration (single source of truth)
+# LARS_ROOT-based configuration (single source of truth)
 # Calculate default root relative to this file's location (dashboard/backend/app.py -> repo root)
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
+LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
 
 # All paths are absolute to avoid issues with working directory changes
-LOG_DIR = os.path.abspath(os.getenv("RVBBIT_LOG_DIR", os.path.join(RVBBIT_ROOT, "logs")))
-DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
-GRAPH_DIR = os.path.abspath(os.getenv("RVBBIT_GRAPH_DIR", os.path.join(RVBBIT_ROOT, "graphs")))
-IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_ROOT, "images")))
-AUDIO_DIR = os.path.abspath(os.getenv("RVBBIT_AUDIO_DIR", os.path.join(RVBBIT_ROOT, "audio")))
-EXAMPLES_DIR = os.path.abspath(os.getenv("RVBBIT_EXAMPLES_DIR", os.path.join(RVBBIT_ROOT, "cascades", "examples")))
-SKILLS_DIR = os.path.abspath(os.getenv("RVBBIT_SKILLS_DIR", os.path.join(RVBBIT_ROOT, "skills")))
-CASCADES_DIR = os.path.abspath(os.getenv("RVBBIT_CASCADES_DIR", os.path.join(RVBBIT_ROOT, "cascades")))
-# Also search inside the rvbbit package for examples (supports YAML cascade files)
-PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(RVBBIT_ROOT, "rvbbit", "examples"))
+LOG_DIR = os.path.abspath(os.getenv("LARS_LOG_DIR", os.path.join(LARS_ROOT, "logs")))
+DATA_DIR = os.path.abspath(os.getenv("LARS_DATA_DIR", os.path.join(LARS_ROOT, "data")))
+GRAPH_DIR = os.path.abspath(os.getenv("LARS_GRAPH_DIR", os.path.join(LARS_ROOT, "graphs")))
+IMAGE_DIR = os.path.abspath(os.getenv("LARS_IMAGE_DIR", os.path.join(LARS_ROOT, "images")))
+AUDIO_DIR = os.path.abspath(os.getenv("LARS_AUDIO_DIR", os.path.join(LARS_ROOT, "audio")))
+EXAMPLES_DIR = os.path.abspath(os.getenv("LARS_EXAMPLES_DIR", os.path.join(LARS_ROOT, "cascades", "examples")))
+SKILLS_DIR = os.path.abspath(os.getenv("LARS_SKILLS_DIR", os.path.join(LARS_ROOT, "skills")))
+CASCADES_DIR = os.path.abspath(os.getenv("LARS_CASCADES_DIR", os.path.join(LARS_ROOT, "cascades")))
+# Also search inside the lars package for examples (supports YAML cascade files)
+PACKAGE_EXAMPLES_DIR = os.path.abspath(os.path.join(LARS_ROOT, "lars", "examples"))
 # Playground scratchpad for auto-generated cascades from the image playground
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 # Orphan cascade detection threshold (seconds since last activity)
-ORPHAN_THRESHOLD_SECONDS = int(os.getenv('RVBBIT_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
+ORPHAN_THRESHOLD_SECONDS = int(os.getenv('LARS_ORPHAN_THRESHOLD_SECONDS', '300'))  # 5 minutes default
 
 
 def detect_and_mark_orphaned_cascades():
@@ -378,7 +378,7 @@ class ClickHouseConnection:
         self._db = get_db()
         self._query_count = 0
         self._total_time = 0.0
-        self._verbose = os.getenv('RVBBIT_SQL_VERBOSE', 'false').lower() == 'true'
+        self._verbose = os.getenv('LARS_SQL_VERBOSE', 'false').lower() == 'true'
 
     def execute(self, query, params=None):
         """Execute query with logging. Returns a result wrapper."""
@@ -810,7 +810,7 @@ def get_cascade_definitions():
 
             # Descriptions for known virtual/dynamic cascades (no YAML file)
             VIRTUAL_CASCADE_DESCRIPTIONS = {
-                'sql_udf': 'SQL UDF calls via rvbbit() function',
+                'sql_udf': 'SQL UDF calls via lars() function',
                 'calliope': 'Conversational cascade builder',
                 'analyze_context_relevance': 'Context relevance analysis (system)',
             }
@@ -2983,7 +2983,7 @@ def get_mermaid_graph(session_id):
 
     Priority: FILE FIRST (real-time) > DATABASE (fallback)
 
-    The .mmd file is written synchronously on every update by RVBBITRunner._update_graph().
+    The .mmd file is written synchronously on every update by LARSRunner._update_graph().
     With ClickHouse, DB writes are also immediate, but file is preferred for live updates.
 
     Query params:
@@ -3136,7 +3136,7 @@ def get_static_mermaid_from_cascade(cascade_path=None):
     2. POST /api/mermaid/static with JSON body: {"cascade_path": "..."}
 
     Args:
-        cascade_path: Path to cascade file (relative to RVBBIT_ROOT or absolute)
+        cascade_path: Path to cascade file (relative to LARS_ROOT or absolute)
 
     Returns:
         {
@@ -3155,9 +3155,9 @@ def get_static_mermaid_from_cascade(cascade_path=None):
     """
     try:
         # Import here to avoid circular dependency
-        from rvbbit.visualizer import generate_mermaid_string_from_config
-        from rvbbit.cascade import load_cascade_config
-        from rvbbit.config import get_config
+        from lars.visualizer import generate_mermaid_string_from_config
+        from lars.cascade import load_cascade_config
+        from lars.config import get_config
 
         # Handle POST request with JSON body
         if request.method == 'POST':
@@ -3169,20 +3169,20 @@ def get_static_mermaid_from_cascade(cascade_path=None):
         if not cascade_path:
             return jsonify({'error': 'cascade_path is required'}), 400
 
-        # Resolve path (support relative to RVBBIT_ROOT)
+        # Resolve path (support relative to LARS_ROOT)
         config = get_config()
-        rvbbit_root = Path(config.root_dir)
+        lars_root = Path(config.root_dir)
 
         # Try as absolute path first
         resolved_path = Path(cascade_path)
         if not resolved_path.is_absolute():
-            # Try relative to RVBBIT_ROOT
-            resolved_path = rvbbit_root / cascade_path
+            # Try relative to LARS_ROOT
+            resolved_path = lars_root / cascade_path
 
         # Also check common directories
         if not resolved_path.exists():
             for subdir in ['cascades/examples', 'cascades', 'skills']:
-                take = rvbbit_root / subdir / cascade_path
+                take = lars_root / subdir / cascade_path
                 if take.exists():
                     resolved_path = take
                     break
@@ -3192,10 +3192,10 @@ def get_static_mermaid_from_cascade(cascade_path=None):
                 'error': f'Cascade file not found: {cascade_path}',
                 'searched_paths': [
                     str(Path(cascade_path)),
-                    str(rvbbit_root / cascade_path),
-                    str(rvbbit_root / 'cascades' / 'examples' / cascade_path),
-                    str(rvbbit_root / 'cascades' / cascade_path),
-                    str(rvbbit_root / 'skills' / cascade_path),
+                    str(lars_root / cascade_path),
+                    str(lars_root / 'cascades' / 'examples' / cascade_path),
+                    str(lars_root / 'cascades' / cascade_path),
+                    str(lars_root / 'skills' / cascade_path),
                 ]
             }), 404
 
@@ -3252,7 +3252,7 @@ def get_pareto_frontier(session_id):
     including frontier points, dominated points, and winner selection.
 
     The data is read from graphs/pareto_{session_id}.json which is written
-    by RVBBITRunner when pareto_frontier is enabled in takes config.
+    by LARSRunner when pareto_frontier is enabled in takes config.
     """
     try:
         # Look for Pareto data file
@@ -3378,10 +3378,10 @@ def run_cascade():
             return jsonify({'error': 'cascade_path or cascade_yaml required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit import run_cascade as execute_cascade
-        from rvbbit.session_naming import generate_woodland_id
+        from lars import run_cascade as execute_cascade
+        from lars.session_naming import generate_woodland_id
         import tempfile
 
         if not session_id:
@@ -3395,7 +3395,7 @@ def run_cascade():
             # Create temp file in SAME DIRECTORY as original (for sub-cascade resolution)
             # DO NOT modify the original file - user must explicitly save!
             print(f"[run-cascade] Studio mode: Creating temp file in original directory")
-            full_original_path = os.path.join(RVBBIT_ROOT, cascade_path)
+            full_original_path = os.path.join(LARS_ROOT, cascade_path)
             original_dir = os.path.dirname(full_original_path)
 
             # Create temp file with .tmp_ prefix in same directory
@@ -3421,12 +3421,12 @@ def run_cascade():
         elif cascade_path and not cascade_yaml:
             # FILE MODE: Just use the existing file
             print(f"[run-cascade] File mode: Using existing file {cascade_path}")
-            cascade_path = os.path.join(RVBBIT_ROOT, cascade_path)
+            cascade_path = os.path.join(LARS_ROOT, cascade_path)
 
         import threading
-        from rvbbit.event_hooks import ResearchSessionAutoSaveHooks
-        from rvbbit.session_naming import generate_woodland_id
-        from rvbbit.caller_context import build_ui_metadata
+        from lars.event_hooks import ResearchSessionAutoSaveHooks
+        from lars.session_naming import generate_woodland_id
+        from lars.caller_context import build_ui_metadata
 
         # Generate caller tracking for UI invocations
         caller_id = f"ui-{generate_woodland_id()}"
@@ -3443,7 +3443,7 @@ def run_cascade():
         def run_in_background():
             try:
                 # Enable checkpoint system for HITL tools
-                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
+                os.environ['LARS_USE_CHECKPOINTS'] = 'true'
 
                 # Use auto-save hooks for research session tracking
                 hooks = ResearchSessionAutoSaveHooks()
@@ -3470,12 +3470,12 @@ def run_cascade():
 
                 # Update session state to ERROR
                 try:
-                    from rvbbit.session_state import (
+                    from lars.session_state import (
                         get_session_state_manager,
                         SessionStatus,
                         SessionState
                     )
-                    from rvbbit.unified_logs import log_unified
+                    from lars.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()
@@ -3576,12 +3576,12 @@ def playground_run_from():
             return jsonify({'error': 'cell_name and cascade_yaml required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit import run_cascade as execute_cascade
-        from rvbbit.echo import Echo, _session_manager
-        from rvbbit.loaders import load_config_string
-        from rvbbit.event_hooks import ResearchSessionAutoSaveHooks
+        from lars import run_cascade as execute_cascade
+        from lars.echo import Echo, _session_manager
+        from lars.loaders import load_config_string
+        from lars.event_hooks import ResearchSessionAutoSaveHooks
         import uuid
         import shutil
         import threading
@@ -3605,7 +3605,7 @@ def playground_run_from():
         print(f"[Playground RunFrom] Upstream: {upstream_cells}, Target+downstream: {target_and_downstream}")
 
         # Create new session ID using woodland naming system
-        from rvbbit.session_naming import generate_woodland_id
+        from lars.session_naming import generate_woodland_id
         new_session_id = f"exp_{generate_woodland_id()}"
 
         # Copy images from cached session to new session for upstream cells
@@ -3670,7 +3670,7 @@ def playground_run_from():
         # Run in background
         def run_in_background():
             try:
-                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
+                os.environ['LARS_USE_CHECKPOINTS'] = 'true'
 
                 hooks = ResearchSessionAutoSaveHooks()
 
@@ -3690,11 +3690,11 @@ def playground_run_from():
 
                 # Update session state to ERROR
                 try:
-                    from rvbbit.session_state import (
+                    from lars.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from rvbbit.unified_logs import log_unified
+                    from lars.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()
@@ -3909,7 +3909,7 @@ def browse_cascade_files():
                         model = cell.get('model', '')
                         if model:
                             try:
-                                from rvbbit.model_registry import ModelRegistry
+                                from lars.model_registry import ModelRegistry
                                 if ModelRegistry.is_image_output_model(model):
                                     is_image_cascade = True
                                     break
@@ -4329,7 +4329,7 @@ def playground_session_stream(session_id):
                             # Zombie detected! Mark as orphaned
                             print(f"[session-stream] ZOMBIE DETECTED: {session_id} (heartbeat {elapsed:.0f}s ago, lease {lease_seconds}s)")
                             try:
-                                from rvbbit.session_state import update_session_status, SessionStatus
+                                from lars.session_state import update_session_status, SessionStatus
                                 update_session_status(
                                     session_id=session_id,
                                     status=SessionStatus.ORPHANED,
@@ -4536,9 +4536,9 @@ def introspect_cascade_endpoint():
             allowed_dirs = [EXAMPLES_DIR, SKILLS_DIR, CASCADES_DIR, PACKAGE_EXAMPLES_DIR, PLAYGROUND_SCRATCHPAD_DIR]
             filepath_abs = os.path.abspath(filepath)
 
-            # Also allow relative paths from RVBBIT_ROOT
+            # Also allow relative paths from LARS_ROOT
             if not filepath_abs.startswith('/'):
-                filepath_abs = os.path.abspath(os.path.join(RVBBIT_ROOT, filepath))
+                filepath_abs = os.path.abspath(os.path.join(LARS_ROOT, filepath))
 
             is_allowed = any(filepath_abs.startswith(os.path.abspath(d)) for d in allowed_dirs)
             if not is_allowed:
@@ -4577,9 +4577,9 @@ def cancel_cascade():
             return jsonify({'error': 'session_id required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.session_state import (
+        from lars.session_state import (
             request_session_cancellation,
             get_session,
             update_session_status,
@@ -4717,9 +4717,9 @@ def get_blocked_sessions():
 
         # Import checkpoint manager
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.checkpoints import get_checkpoint_manager
+        from lars.checkpoints import get_checkpoint_manager
 
         cm = get_checkpoint_manager()
         pending = cm.get_pending_checkpoints()
@@ -4772,9 +4772,9 @@ def freeze_test():
             return jsonify({'error': 'session_id and snapshot_name required'}), 400
 
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.testing import freeze_snapshot
+        from lars.testing import freeze_snapshot
 
         result = freeze_snapshot(session_id, snapshot_name, description)
 
@@ -4799,9 +4799,9 @@ def hotornot_stats():
     """Get Hot or Not evaluation statistics."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import get_evaluation_stats
+        from lars.hotornot import get_evaluation_stats
 
         stats = get_evaluation_stats()
         return jsonify(stats)
@@ -4817,9 +4817,9 @@ def hotornot_queue():
     """Get unevaluated takes for the Hot or Not UI."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import get_unevaluated_takes
+        from lars.hotornot import get_unevaluated_takes
 
         limit = request.args.get('limit', 50, type=int)
         show_all = request.args.get('show_all', 'false').lower() == 'true'
@@ -4896,9 +4896,9 @@ def hotornot_take_group(session_id, cell_name):
     """Get all takes for a specific session+cell for comparison."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import get_take_group
+        from lars.hotornot import get_take_group
 
         result = get_take_group(session_id, cell_name)
 
@@ -4918,9 +4918,9 @@ def hotornot_rate():
     """Submit a binary evaluation (good/bad)."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import log_binary_eval, flush_evaluations
+        from lars.hotornot import log_binary_eval, flush_evaluations
 
         data = request.json or {}
         session_id = data.get('session_id')
@@ -4963,9 +4963,9 @@ def hotornot_prefer():
     """Submit a preference evaluation (A/B comparison)."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import log_preference_eval, flush_evaluations
+        from lars.hotornot import log_preference_eval, flush_evaluations
 
         data = request.json or {}
         session_id = data.get('session_id')
@@ -5014,9 +5014,9 @@ def hotornot_flag():
     """Flag a session for review."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import log_flag_eval, flush_evaluations
+        from lars.hotornot import log_flag_eval, flush_evaluations
 
         data = request.json or {}
         session_id = data.get('session_id')
@@ -5053,9 +5053,9 @@ def hotornot_evaluations():
     """Get all evaluations with optional filtering."""
     try:
         import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../rvbbit'))
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../lars'))
 
-        from rvbbit.hotornot import query_evaluations
+        from lars.hotornot import query_evaluations
 
         where = request.args.get('where')
         limit = request.args.get('limit', 100, type=int)
@@ -5551,7 +5551,7 @@ def transcribe_voice():
 
         # Import voice module
         try:
-            from rvbbit.voice import transcribe_from_base64
+            from lars.voice import transcribe_from_base64
         except ImportError as e:
             return jsonify({'error': f'Voice module not available: {e}'}), 500
 
@@ -5619,7 +5619,7 @@ def transcribe_voice_file():
 
         # Import voice module
         try:
-            from rvbbit.voice import transcribe_from_base64
+            from lars.voice import transcribe_from_base64
         except ImportError as e:
             return jsonify({'error': f'Voice module not available: {e}'}), 500
 
@@ -5659,7 +5659,7 @@ def voice_status():
     }
     """
     try:
-        from rvbbit.voice import is_available, get_stt_config
+        from lars.voice import is_available, get_stt_config
 
         config = get_stt_config()
 
@@ -5854,14 +5854,14 @@ def get_session_human_inputs(session_id):
 @app.route('/api/available-tools', methods=['GET'])
 def get_available_tools():
     """
-    Get list of available tools (skills) from RVBBIT.
+    Get list of available tools (skills) from LARS.
     Returns both registered Python tools and cascade tools.
     Fully introspects all available tools like manifest/Quartermaster does.
     """
     try:
-        # Import rvbbit to trigger all tool registrations
-        import rvbbit
-        from rvbbit.skill_registry import get_registry
+        # Import lars to trigger all tool registrations
+        import lars
+        from lars.skill_registry import get_registry
 
         tools = []
         registry = get_registry()
@@ -5902,7 +5902,7 @@ def get_available_tools():
             })
 
         # Add cascade tools from skills directory
-        skills_dir = os.path.join(RVBBIT_ROOT, 'skills')
+        skills_dir = os.path.join(LARS_ROOT, 'skills')
         if os.path.exists(skills_dir):
             for ext in CASCADE_EXTENSIONS:
                 for path in glob.glob(os.path.join(skills_dir, f'**/*.{ext}'), recursive=True):
@@ -5949,7 +5949,7 @@ def get_available_tools():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # Comprehensive fallback list if rvbbit import fails
+        # Comprehensive fallback list if lars import fails
         fallback_tools = [
             # Special
             {'name': 'manifest', 'description': 'Auto-select tools based on context (Quartermaster)', 'type': 'special'},
@@ -6000,7 +6000,7 @@ def get_available_models():
     Get list of available models from ClickHouse.
     Replaces OpenRouter API + file cache with database query.
     """
-    from rvbbit.db_adapter import get_db
+    from lars.db_adapter import get_db
 
     # Get query params
     include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
@@ -6047,7 +6047,7 @@ def get_available_models():
             })
 
         # Get default model from environment
-        default_model = os.environ.get('RVBBIT_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+        default_model = os.environ.get('LARS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
 
         return jsonify({'models': models, 'default_model': default_model})
 
@@ -6061,7 +6061,7 @@ def get_available_models():
             {'id': 'openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'provider': 'openai', 'tier': 'fast', 'popular': True, 'is_active': True},
             {'id': 'google/gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'provider': 'google', 'tier': 'fast', 'popular': True, 'is_active': True},
         ]
-        default_model = os.environ.get('RVBBIT_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
+        default_model = os.environ.get('LARS_DEFAULT_MODEL', 'google/gemini-2.5-flash-lite')
         return jsonify({'models': fallback_models, 'default_model': default_model, 'error': str(e), 'fallback': True})
 
 
@@ -6071,7 +6071,7 @@ def get_image_generation_models():
     Get list of models that can generate images from ClickHouse.
     Replaces ModelRegistry with database query.
     """
-    from rvbbit.db_adapter import get_db
+    from lars.db_adapter import get_db
 
     try:
         db = get_db()
@@ -6175,8 +6175,8 @@ def log_connection_stats():
 
 
 if __name__ == '__main__':
-    print("🌊 RVBBIT UI Backend Starting...")
-    print(f"   RVBBIT Root: {RVBBIT_ROOT}")
+    print("🌊 LARS UI Backend Starting...")
+    print(f"   LARS Root: {LARS_ROOT}")
     print(f"   Data Dir: {DATA_DIR}")
     print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
@@ -6186,7 +6186,7 @@ if __name__ == '__main__':
     # Run database housekeeping (schema creation, migrations) ONCE at startup
     # This ensures cascade runs via API are fast (they skip housekeeping)
     print("🔧 Running database housekeeping...")
-    from rvbbit.db_adapter import ensure_housekeeping
+    from lars.db_adapter import ensure_housekeeping
     ensure_housekeeping()
     print("✅ Database housekeeping complete")
     print()
@@ -6248,13 +6248,13 @@ if __name__ == '__main__':
     # Auto-sync tool manifest on backend startup
     try:
         print("🔧 Syncing tool manifest to database...")
-        from rvbbit.tools_mgmt import sync_tools_to_db
+        from lars.tools_mgmt import sync_tools_to_db
         sync_tools_to_db()
         print("✅ Tool manifest synced")
         print()
     except Exception as e:
         print(f"⚠️  Tool manifest sync failed: {e}")
-        print("   Run 'rvbbit tools sync' manually if needed")
+        print("   Run 'lars tools sync' manually if needed")
         print()
 
 
@@ -6394,7 +6394,7 @@ def branch_research_session_api():
             return jsonify({'error': 'parent_research_session_id and branch_checkpoint_index required'}), 400
 
         # Import branching logic
-        from rvbbit.skills.branching import launch_branch_cascade
+        from lars.skills.branching import launch_branch_cascade
 
         # Get parent session to find cascade path
         conn = get_db_connection()
@@ -6670,7 +6670,7 @@ def save_research_session_api():
             description = f"Research session with {len(checkpoints)} interactions and {len(tools_used)} tool calls"
 
         # Get mermaid graph
-        from rvbbit.config import get_config
+        from lars.config import get_config
         cfg = get_config()
         graph_path = os.path.join(cfg.graph_dir, f"{session_id}.mmd")
         mermaid_graph = ""
@@ -6797,7 +6797,7 @@ if SERVE_STATIC:
 # ==============================================================================
 
 if __name__ == '__main__':
-    print(f"🌊 RVBBIT Studio Backend")
+    print(f"🌊 LARS Studio Backend")
     print(f"Backend: http://localhost:5050")
     print(f"Frontend: http://localhost:5550")
     if SERVE_STATIC:

@@ -32,29 +32,29 @@ SELECT * FROM vector_search_elastic('Venezuela', 'bird_line', 10, 0.5, 0.8, 0.2)
 
 ## Goal: Elegant SQL Sugar
 
-### A. RVBBIT EMBED Statement (Side-Effectful Indexing)
+### A. LARS EMBED Statement (Side-Effectful Indexing)
 
-Follows RVBBIT MAP/RUN pattern for consistency:
+Follows LARS MAP/RUN pattern for consistency:
 
 ```sql
 -- ClickHouse backend:
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT CAST(id AS VARCHAR) AS id, text AS text FROM bird_line)
 WITH (backend='clickhouse', batch_size=50);
 
 -- Elastic backend:
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT CAST(id AS VARCHAR) AS id, text AS text FROM bird_line)
-WITH (backend='elastic', batch_size=50, index='rvbbit_embeddings');
+WITH (backend='elastic', batch_size=50, index='lars_embeddings');
 
 -- File-based (from CSV, parquet, etc.):
-RVBBIT EMBED documents.content
+LARS EMBED documents.content
 USING (SELECT id, content AS text FROM read_csv('docs.csv'))
 WITH (backend='clickhouse');
 ```
 
 **Benefits:**
-- Consistent with RVBBIT MAP/RUN syntax
+- Consistent with LARS MAP/RUN syntax
 - Explicit id + text columns (no inference bugs)
 - Supports arbitrary queries (not just tables)
 - Clear backend selection
@@ -140,10 +140,10 @@ WITH (backend='elastic')     -- Clear
 
 ### 3. USING Query Pattern
 
-Reuse RVBBIT MAP/RUN pattern for consistency:
+Reuse LARS MAP/RUN pattern for consistency:
 
 ```sql
-RVBBIT EMBED table.column
+LARS EMBED table.column
 USING (
   SELECT id_column AS id,    -- Must alias to 'id'
          text_column AS text  -- Must alias to 'text'
@@ -179,9 +179,9 @@ read_json_auto(vector_search_json_3('query', 'bird_line.text', 10))
 
 ## Implementation Phases
 
-### Phase 1: RVBBIT EMBED Statement Parser
+### Phase 1: LARS EMBED Statement Parser
 
-**Goal:** Parse and rewrite RVBBIT EMBED syntax
+**Goal:** Parse and rewrite LARS EMBED syntax
 
 **Files to Create/Modify:**
 
@@ -189,8 +189,8 @@ read_json_auto(vector_search_json_3('query', 'bird_line.text', 10))
 
 ```python
 @dataclass
-class RVBBITEmbedStatement:
-    """Parsed RVBBIT EMBED statement."""
+class LARSEmbedStatement:
+    """Parsed LARS EMBED statement."""
     field_ref: str              # "bird_line.text"
     table_name: str             # "bird_line" (extracted)
     column_name: str            # "text" (extracted)
@@ -198,16 +198,16 @@ class RVBBITEmbedStatement:
     with_options: Dict[str, Any]  # backend, batch_size, etc.
 
 def _is_embed_statement(query: str) -> bool:
-    """Check if query is RVBBIT EMBED."""
+    """Check if query is LARS EMBED."""
     clean = query.strip().upper()
-    return 'RVBBIT EMBED' in clean
+    return 'LARS EMBED' in clean
 
-def _parse_rvbbit_embed(query: str) -> RVBBITEmbedStatement:
+def _parse_lars_embed(query: str) -> LARSEmbedStatement:
     """
-    Parse RVBBIT EMBED statement.
+    Parse LARS EMBED statement.
 
     Syntax:
-        RVBBIT EMBED table.column
+        LARS EMBED table.column
         USING (SELECT id, text FROM ...)
         WITH (backend='clickhouse', batch_size=50)
     """
@@ -216,7 +216,7 @@ def _parse_rvbbit_embed(query: str) -> RVBBITEmbedStatement:
     # Extract WITH options
     # Validate id + text columns in USING query
 
-def _rewrite_embed(stmt: RVBBITEmbedStatement) -> str:
+def _rewrite_embed(stmt: LARSEmbedStatement) -> str:
     """
     Rewrite EMBED statement to embed_batch() call.
 
@@ -235,7 +235,7 @@ def _rewrite_embed(stmt: RVBBITEmbedStatement) -> str:
         )
         """
     elif backend == 'elastic':
-        index = stmt.with_options.get('index', 'rvbbit_embeddings')
+        index = stmt.with_options.get('index', 'lars_embeddings')
         return f"""
         SELECT embed_batch_elastic(
             '{stmt.table_name}',
@@ -246,15 +246,15 @@ def _rewrite_embed(stmt: RVBBITEmbedStatement) -> str:
         )
         """
     else:
-        raise RVBBITSyntaxError(f"Unknown backend: {backend}")
+        raise LARSSyntaxError(f"Unknown backend: {backend}")
 ```
 
 **Integration:**
 
 ```python
-# In rewrite_rvbbit_syntax():
+# In rewrite_lars_syntax():
 if _is_embed_statement(normalized):
-    stmt = _parse_rvbbit_embed(normalized)
+    stmt = _parse_lars_embed(normalized)
     return _rewrite_embed(stmt)
 ```
 
@@ -504,11 +504,11 @@ def _rewrite_vector_search_functions(sql: str) -> str:
 
 ## Detailed Syntax Specification
 
-### RVBBIT EMBED Statement
+### LARS EMBED Statement
 
 **Full Syntax:**
 ```sql
-RVBBIT EMBED <table>.<column>
+LARS EMBED <table>.<column>
 USING (<select_query>)
 [WITH (<options>)]
 ```
@@ -520,7 +520,7 @@ USING (<select_query>)
 **Optional WITH Options:**
 - `backend`: `'clickhouse'` (default) or `'elastic'`
 - `batch_size`: Integer (default: 100)
-- `index`: String for Elastic index name (default: `'rvbbit_embeddings'`)
+- `index`: String for Elastic index name (default: `'lars_embeddings'`)
 - `model`: Embedding model override (default from config)
 
 **USING Query Requirements:**
@@ -533,16 +533,16 @@ USING (<select_query>)
 
 ```sql
 -- Minimal (ClickHouse):
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 
 -- With options:
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 WITH (backend='elastic', batch_size=200, index='articles_idx')
 
 -- With metadata:
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (
   SELECT
     id::VARCHAR AS id,
@@ -552,7 +552,7 @@ USING (
 )
 
 -- From file:
-RVBBIT EMBED docs.text
+LARS EMBED docs.text
 USING (SELECT row_number AS id, content AS text FROM read_csv('docs.csv'))
 WITH (backend='clickhouse')
 ```
@@ -811,17 +811,17 @@ SELECT * FROM vector_search_elastic_6(
 )
 ```
 
-### Example 3: RVBBIT EMBED
+### Example 3: LARS EMBED
 
 **Input:**
 ```sql
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT id::VARCHAR AS id, text AS text FROM bird_line LIMIT 100)
 WITH (backend='elastic', batch_size=50)
 ```
 
 **Parse Steps:**
-1. Detect `RVBBIT EMBED`
+1. Detect `LARS EMBED`
 2. Extract field ref: `bird_line.text` → table='bird_line', column='text'
 3. Extract USING query: `SELECT id::VARCHAR AS id, text AS text FROM bird_line LIMIT 100`
 4. Extract WITH options: `{backend: 'elastic', batch_size: 50}`
@@ -833,7 +833,7 @@ SELECT embed_batch_elastic(
   'bird_line',
   'text',
   (SELECT id::VARCHAR AS id, text AS text FROM bird_line LIMIT 100),
-  'rvbbit_embeddings',
+  'lars_embeddings',
   50
 )
 ```
@@ -861,13 +861,13 @@ Single identifiers are treated as strings (backwards compat).
 
 **Problem:**
 ```sql
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT content FROM articles)  -- Missing 'id'!
 ```
 
 **Solution:** Validation error:
 ```
-RVBBIT EMBED requires USING query to return:
+LARS EMBED requires USING query to return:
   - id: VARCHAR (primary key)
   - text: VARCHAR (content to embed)
 
@@ -908,10 +908,10 @@ Error: Field reference must be table.column, got 3 parts
 
 ## Implementation Order
 
-### Sprint 1: RVBBIT EMBED Statement (3-4 hours)
+### Sprint 1: LARS EMBED Statement (3-4 hours)
 
 1. ✅ Add detection to `sql_rewriter.py` (`_is_embed_statement()`)
-2. ✅ Implement parser (`_parse_rvbbit_embed()`)
+2. ✅ Implement parser (`_parse_lars_embed()`)
 3. ✅ Implement rewriter (`_rewrite_embed()`)
 4. ✅ Add field reference parser (`field_reference.py`)
 5. ✅ Integration tests
@@ -919,7 +919,7 @@ Error: Field reference must be table.column, got 3 parts
 
 **Deliverable:**
 ```sql
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT id::VARCHAR AS id, text FROM bird_line)
 WITH (backend='clickhouse')
 ```
@@ -974,9 +974,9 @@ def test_parse_field_reference():
     assert parse_field_reference("a.b.c") is None  # Too many parts
 
 # test_embed_parser.py
-def test_parse_rvbbit_embed():
-    sql = "RVBBIT EMBED t.c USING (SELECT id, text FROM t)"
-    stmt = _parse_rvbbit_embed(sql)
+def test_parse_lars_embed():
+    sql = "LARS EMBED t.c USING (SELECT id, text FROM t)"
+    stmt = _parse_lars_embed(sql)
     assert stmt.table_name == "t"
     assert stmt.column_name == "c"
 
@@ -995,7 +995,7 @@ def test_rewrite_vector_search():
 def test_embed_and_search_clickhouse():
     # 1. Embed documents
     embed_sql = """
-        RVBBIT EMBED docs.content
+        LARS EMBED docs.content
         USING (SELECT id::VARCHAR AS id, content AS text FROM docs)
     """
     execute(embed_sql)
@@ -1011,7 +1011,7 @@ def test_embed_and_search_clickhouse():
 
 ```sql
 -- Test 1: Embed from CSV
-RVBBIT EMBED documents.text
+LARS EMBED documents.text
 USING (SELECT row_number AS id, content AS text FROM read_csv('docs.csv'))
 WITH (backend='clickhouse');
 
@@ -1034,13 +1034,13 @@ ORDER BY score DESC;
 ### 1. Missing Required Columns
 
 ```sql
-RVBBIT EMBED t.c
+LARS EMBED t.c
 USING (SELECT content FROM t)  -- Missing 'id'!
 ```
 
 **Error:**
 ```
-RVBBIT EMBED Error: USING query must return columns:
+LARS EMBED Error: USING query must return columns:
   - id: VARCHAR (primary key)
   - text: VARCHAR (content to embed)
 
@@ -1069,12 +1069,12 @@ Hint: Remove quotes to use field reference syntax
 ### 3. Backend Not Available
 
 ```sql
-RVBBIT EMBED t.c USING (...) WITH (backend='elastic')
+LARS EMBED t.c USING (...) WITH (backend='elastic')
 ```
 
 **If Elastic not configured:**
 ```
-RVBBIT EMBED Error: Elastic backend not available
+LARS EMBED Error: Elastic backend not available
 
 Required environment: ELASTICSEARCH_URL
 Current: Not set
@@ -1096,7 +1096,7 @@ SELECT embed_batch('bird_line', 'text', ...)
 SELECT * FROM read_json_auto(vector_search_json_3(...))
 
 -- New sugar (also works):
-RVBBIT EMBED bird_line.text USING (...)
+LARS EMBED bird_line.text USING (...)
 SELECT * FROM VECTOR_SEARCH('query', bird_line.text, 10)
 ```
 
@@ -1110,11 +1110,11 @@ SELECT * FROM VECTOR_SEARCH('query', bird_line.text, 10)
 
 ```sql
 -- Future: Infer primary key from table metadata
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT * FROM articles)  -- Auto-detect 'id' column
 
 -- Current: Must be explicit
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 ```
 
@@ -1122,7 +1122,7 @@ USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 
 ```sql
 -- Embed multiple columns from same table:
-RVBBIT EMBED articles.(title, content, summary)
+LARS EMBED articles.(title, content, summary)
 USING (SELECT id::VARCHAR AS id, title, content, summary FROM articles)
 ```
 
@@ -1140,7 +1140,7 @@ WITH (threshold=0.7)
 
 ```sql
 -- Incremental embedding (only new rows):
-RVBBIT EMBED articles.content INCREMENTAL
+LARS EMBED articles.content INCREMENTAL
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles WHERE embedded_at IS NULL)
 ```
 
@@ -1151,14 +1151,14 @@ USING (SELECT id::VARCHAR AS id, content AS text FROM articles WHERE embedded_at
 **Goal:** Add elegant SQL sugar for embedding and vector search operations
 
 **Approach:**
-1. **RVBBIT EMBED** - Follows existing RVBBIT MAP/RUN pattern
+1. **LARS EMBED** - Follows existing LARS MAP/RUN pattern
 2. **VECTOR_SEARCH/HYBRID_SEARCH** - Table functions with field reference syntax
 3. **Token-based parsing** - Consistent with unified operator system
 4. **Field references** - Natural table.column syntax (IDE-friendly)
 
 **Benefits:**
 - Cleaner, more intuitive SQL
-- Consistent with RVBBIT syntax patterns
+- Consistent with LARS syntax patterns
 - Token-based (robust)
 - Backwards compatible (additive)
 - IDE autocomplete for table.column

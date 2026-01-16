@@ -16,17 +16,17 @@ import threading
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-# Add parent directory to path to import rvbbit
+# Add parent directory to path to import lars
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit.checkpoints import get_checkpoint_manager, CheckpointStatus
+    from lars.checkpoints import get_checkpoint_manager, CheckpointStatus
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit checkpoint modules: {e}")
+    print(f"Warning: Could not import lars checkpoint modules: {e}")
     get_checkpoint_manager = None
     CheckpointStatus = None
 
@@ -111,8 +111,8 @@ def get_audible_status(session_id: str) -> dict:
 
 # Get IMAGE_DIR from environment or default
 _DEFAULT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../../.."))
-RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
-IMAGE_DIR = os.path.abspath(os.getenv("RVBBIT_IMAGE_DIR", os.path.join(RVBBIT_ROOT, "images")))
+LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
+IMAGE_DIR = os.path.abspath(os.getenv("LARS_IMAGE_DIR", os.path.join(LARS_ROOT, "images")))
 
 
 def resolve_image_paths_to_urls(ui_spec, session_id):
@@ -443,7 +443,7 @@ def respond_to_checkpoint_endpoint(checkpoint_id):
 
         # Flush logger buffer to ensure data is visible
         try:
-            from rvbbit.unified_logs import get_unified_logger
+            from lars.unified_logs import get_unified_logger
             logger = get_unified_logger()
             logger.flush()
             print(f"[CHECKPOINT] Flushed unified logger after checkpoint response")

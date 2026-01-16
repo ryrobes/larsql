@@ -2,7 +2,7 @@
 -- Populating Embeddings for VECTOR_SEARCH
 -- ============================================================================
 --
--- VECTOR_SEARCH requires embeddings to be stored in the rvbbit_embeddings
+-- VECTOR_SEARCH requires embeddings to be stored in the lars_embeddings
 -- table in ClickHouse. This example shows how to populate embeddings for
 -- your tables.
 --
@@ -35,7 +35,7 @@ INSERT INTO products VALUES
 -- For now, use this Python script to populate embeddings:
 
 /*
-from rvbbit.skills.embedding_storage import agent_embed, clickhouse_store_embedding
+from lars.skills.embedding_storage import agent_embed, clickhouse_store_embedding
 import duckdb
 
 # Connect to your database
@@ -74,7 +74,7 @@ SELECT
     COUNT(*) as embedding_count,
     embedding_model,
     embedding_dim
-FROM rvbbit_embeddings
+FROM lars_embeddings
 GROUP BY source_table, embedding_model, embedding_dim;
 */
 

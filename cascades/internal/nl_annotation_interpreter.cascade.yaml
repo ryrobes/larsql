@@ -48,7 +48,7 @@ cells:
               overrides = json.loads(content.strip())
               
               # Import and validate
-              from rvbbit.skills.cascade_validator import _validate_cascade_overrides_internal
+              from lars.skills.cascade_validator import _validate_cascade_overrides_internal
               validation = _validate_cascade_overrides_internal(overrides)
               result = {
                   "valid": validation["valid"],
@@ -60,7 +60,7 @@ cells:
               result = {"valid": False, "reason": f"Validation error: {str(e)}"}
       loop_until_prompt: "Produce valid JSON that passes cascade schema validation."
     instructions: |
-      You are an RVBBIT cascade configuration expert. Parse the natural language
+      You are an LARS cascade configuration expert. Parse the natural language
       hints and produce structured cascade override configuration.
       
       SQL QUERY:
@@ -73,7 +73,7 @@ cells:
       
       SCOPE: {{ input.scope }} (global = applies to all operators, local = applies to next operator only)
       
-      # RVBBIT CASCADE DSL REFERENCE
+      # LARS CASCADE DSL REFERENCE
       
       You can override ANY valid cascade configuration. Here are the key structures:
       

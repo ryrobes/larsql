@@ -1,17 +1,17 @@
-# RVBBIT SQL Features Reference
+# LARS SQL Features Reference
 
-Complete guide to RVBBIT's SQL enhancements for LLM-powered data processing.
+Complete guide to LARS's SQL enhancements for LLM-powered data processing.
 
 ---
 
 ## Overview
 
-RVBBIT extends SQL with native LLM integration through custom syntax and UDFs:
+LARS extends SQL with native LLM integration through custom syntax and UDFs:
 
 | Feature | Status | Description |
 |---------|--------|-------------|
 | **Schema-Aware Outputs** | ✅ Stable | Typed column extraction from LLM results |
-| **EXPLAIN RVBBIT MAP** | ✅ Stable | Cost estimation before execution |
+| **EXPLAIN LARS MAP** | ✅ Stable | Cost estimation before execution |
 | **MAP DISTINCT** | ✅ Stable | SQL-native deduplication |
 | **Cache TTL** | ✅ Stable | Time-based cache expiry |
 | **MAP PARALLEL** | ⏸️ Deferred | True concurrency (DuckDB limitation) |
@@ -38,7 +38,7 @@ RVBBIT extends SQL with native LLM integration through custom syntax and UDFs:
 
 #### Option A: Explicit Schema (Recommended)
 ```sql
-RVBBIT MAP 'cascade.yaml' AS (
+LARS MAP 'cascade.yaml' AS (
     column1 TYPE1,
     column2 TYPE2,
     column3 TYPE3
@@ -48,7 +48,7 @@ USING (SELECT * FROM table);
 
 #### Option B: Inferred from Cascade
 ```sql
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM table)
 WITH (infer_schema = true);
 ```
@@ -89,7 +89,7 @@ cells:
 **SQL Query**:
 ```sql
 -- Explicit schema
-RVBBIT MAP 'traits/extract_product_info.yaml' AS (
+LARS MAP 'traits/extract_product_info.yaml' AS (
     brand VARCHAR,
     category VARCHAR,
     price_tier VARCHAR,
@@ -109,7 +109,7 @@ USING (
 **Inferred Schema**:
 ```sql
 -- Automatically reads output_schema from YAML
-RVBBIT MAP 'traits/extract_product_info.yaml'
+LARS MAP 'traits/extract_product_info.yaml'
 USING (SELECT product_name FROM products LIMIT 100)
 WITH (infer_schema = true);
 ```
@@ -124,14 +124,14 @@ WITH (infer_schema = true);
 
 ---
 
-## 2. EXPLAIN RVBBIT MAP
+## 2. EXPLAIN LARS MAP
 
 ### Purpose
 Analyze queries and estimate costs **before** execution.
 
 ### Syntax
 ```sql
-EXPLAIN RVBBIT MAP 'cascade.yaml'
+EXPLAIN LARS MAP 'cascade.yaml'
 USING (SELECT * FROM table LIMIT N);
 ```
 
@@ -147,11 +147,11 @@ USING (SELECT * FROM table LIMIT N);
   │  └─ Cost Estimate: $0.000704 per row → $0.07 total
   ├─ Cache Hit Rate: 0% (first run, all rows will call LLM)
   └─ Rewritten SQL:
-      WITH rvbbit_input AS (
+      WITH lars_input AS (
         SELECT product_name FROM products LIMIT 100
       ),
-      rvbbit_raw AS (
-        SELECT i.*, rvbbit_run(...) AS _raw_result FROM rvbbit_input i
+      lars_raw AS (
+        SELECT i.*, lars_run(...) AS _raw_result FROM lars_input i
       )
       ...
 ```
@@ -167,16 +167,16 @@ USING (SELECT * FROM table LIMIT N);
 
 ```sql
 -- Estimate cost for large batch
-EXPLAIN RVBBIT MAP 'traits/classify_sentiment.yaml'
+EXPLAIN LARS MAP 'traits/classify_sentiment.yaml'
 USING (SELECT review_text FROM reviews LIMIT 10000);
 
 -- With schema inference
-EXPLAIN RVBBIT MAP 'traits/extract_brand.yaml'
+EXPLAIN LARS MAP 'traits/extract_brand.yaml'
 USING (SELECT product_name FROM products)
 WITH (infer_schema = true);
 
 -- With DISTINCT (shows dedupe impact)
-EXPLAIN RVBBIT MAP DISTINCT 'cascade.yaml'
+EXPLAIN LARS MAP DISTINCT 'cascade.yaml'
 USING (SELECT text FROM documents);
 ```
 
@@ -210,14 +210,14 @@ Eliminate duplicate inputs before LLM processing to save costs.
 
 #### Option A: DISTINCT Keyword
 ```sql
-RVBBIT MAP DISTINCT 'cascade.yaml'
+LARS MAP DISTINCT 'cascade.yaml'
 USING (SELECT * FROM table);
 ```
 Deduplicates on **all columns** in USING query.
 
 #### Option B: Dedupe by Specific Column(s)
 ```sql
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM table)
 WITH (dedupe_by='column_name');
 ```
@@ -248,7 +248,7 @@ USING (SELECT DISTINCT ON (product_name) * FROM (
 
 ```sql
 -- Dedupe all columns
-RVBBIT MAP DISTINCT 'traits/extract_brand.yaml'
+LARS MAP DISTINCT 'traits/extract_brand.yaml'
 USING (
     SELECT product_name, category
     FROM products
@@ -256,7 +256,7 @@ USING (
 -- Only processes unique (product_name, category) combinations
 
 -- Dedupe by specific column
-RVBBIT MAP 'traits/analyze_customer.yaml'
+LARS MAP 'traits/analyze_customer.yaml'
 USING (
     SELECT customer_id, email, purchase_date
     FROM transactions
@@ -265,7 +265,7 @@ WITH (dedupe_by='customer_id');
 -- Only processes each customer once (keeps first occurrence)
 
 -- Combine with schema
-RVBBIT MAP DISTINCT 'cascade.yaml' AS (
+LARS MAP DISTINCT 'cascade.yaml' AS (
     result VARCHAR,
     score DOUBLE
 )
@@ -293,7 +293,7 @@ Control cache lifetime to balance cost savings with data freshness.
 
 ### Syntax
 ```sql
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM table)
 WITH (cache='duration');
 ```
@@ -312,17 +312,17 @@ WITH (cache='duration');
 
 ```sql
 -- Short-lived cache for real-time data
-RVBBIT MAP 'traits/sentiment_analysis.yaml'
+LARS MAP 'traits/sentiment_analysis.yaml'
 USING (SELECT tweet_text FROM tweets_realtime)
 WITH (cache='5m');
 
 -- Daily cache for stable reference data
-RVBBIT MAP 'traits/extract_brand.yaml'
+LARS MAP 'traits/extract_brand.yaml'
 USING (SELECT product_name FROM products)
 WITH (cache='1d');
 
 -- No cache (always call LLM)
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM data)
 WITH (cache='0s');
 ```
@@ -345,7 +345,7 @@ WITH (cache='0s');
 
 ```sql
 -- Dedupe inputs + cache results for 1 day
-RVBBIT MAP DISTINCT 'cascade.yaml'
+LARS MAP DISTINCT 'cascade.yaml'
 USING (SELECT product FROM catalog)
 WITH (dedupe_by='product', cache='1d');
 ```
@@ -360,42 +360,42 @@ WITH (dedupe_by='product', cache='1d');
 
 ```sql
 -- 1. Basic MAP
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM t);
 
 -- 2. With alias
-RVBBIT MAP 'cascade.yaml' AS result_col
+LARS MAP 'cascade.yaml' AS result_col
 USING (SELECT * FROM t);
 
 -- 3. With typed schema
-RVBBIT MAP 'cascade.yaml' AS (col1 VARCHAR, col2 DOUBLE)
+LARS MAP 'cascade.yaml' AS (col1 VARCHAR, col2 DOUBLE)
 USING (SELECT * FROM t);
 
 -- 4. With inferred schema
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM t)
 WITH (infer_schema = true);
 
 -- 5. With DISTINCT
-RVBBIT MAP DISTINCT 'cascade.yaml'
+LARS MAP DISTINCT 'cascade.yaml'
 USING (SELECT * FROM t);
 
 -- 6. With dedupe_by
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM t)
 WITH (dedupe_by='col_name');
 
 -- 7. With cache TTL
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM t)
 WITH (cache='1d');
 
 -- 8. EXPLAIN (no execution)
-EXPLAIN RVBBIT MAP 'cascade.yaml'
+EXPLAIN LARS MAP 'cascade.yaml'
 USING (SELECT * FROM t LIMIT 100);
 
 -- 9. EVERYTHING COMBINED
-EXPLAIN RVBBIT MAP DISTINCT 'cascade.yaml' AS (
+EXPLAIN LARS MAP DISTINCT 'cascade.yaml' AS (
     brand VARCHAR,
     confidence DOUBLE
 )
@@ -417,20 +417,20 @@ WITH (dedupe_by='product', cache='1d', infer_schema=false);
 
 ## 6. UDF Reference
 
-### rvbbit_udf()
+### lars_udf()
 
 **Simple LLM extraction** - Single LLM call per row
 
 ```sql
 SELECT
     product_name,
-    rvbbit_udf('Extract brand', product_name) as brand
+    lars_udf('Extract brand', product_name) as brand
 FROM products;
 ```
 
 **Signature**:
 ```python
-rvbbit_udf(
+lars_udf(
     instructions: str,      # What to ask the LLM
     input_value: str,       # Data to process
     model: str = None,      # Optional model override
@@ -443,14 +443,14 @@ rvbbit_udf(
 
 **Returns**: VARCHAR (LLM response as string)
 
-### rvbbit_cascade_udf() / rvbbit_run()
+### lars_cascade_udf() / lars_run()
 
 **Full cascade execution** - Multi-phase workflows with validation, soundings, tools
 
 ```sql
 SELECT
     customer_id,
-    rvbbit_run(
+    lars_run(
         'cascades/fraud_check.yaml',
         json_object('customer_id', customer_id)
     ) as fraud_result
@@ -459,7 +459,7 @@ FROM transactions;
 
 **Signature**:
 ```python
-rvbbit_cascade_udf(
+lars_cascade_udf(
     cascade_path: str,       # Path to cascade YAML
     inputs_json: str,        # JSON string of inputs
     use_cache: bool = True,
@@ -473,7 +473,7 @@ rvbbit_cascade_udf(
 ```sql
 SELECT
     customer_id,
-    rvbbit_run(
+    lars_run(
         'cascades/fraud_check.yaml',
         json_object('customer_id', customer_id),
         'risk_score'  -- Extract just this field
@@ -489,7 +489,7 @@ FROM transactions;
 
 ```sql
 -- Create enriched product catalog with typed outputs
-RVBBIT MAP 'traits/extract_product_info.yaml' AS (
+LARS MAP 'traits/extract_product_info.yaml' AS (
     brand VARCHAR,
     category VARCHAR,
     price_tier VARCHAR,
@@ -514,7 +514,7 @@ WITH (cache='1d');  -- Cache for 24 hours
 
 ```sql
 -- Dedupe customers before analysis
-RVBBIT MAP DISTINCT 'cascades/customer_satisfaction.yaml' AS (
+LARS MAP DISTINCT 'cascades/customer_satisfaction.yaml' AS (
     sentiment VARCHAR,
     satisfaction_score DOUBLE,
     likely_to_churn BOOLEAN
@@ -536,11 +536,11 @@ WITH (dedupe_by='customer_id', cache='12h');
 
 ```sql
 -- Check cost first
-EXPLAIN RVBBIT MAP 'cascades/clean_address.yaml'
+EXPLAIN LARS MAP 'cascades/clean_address.yaml'
 USING (SELECT address FROM contacts LIMIT 50000);
 
 -- If acceptable, run with deduplication
-RVBBIT MAP DISTINCT 'cascades/clean_address.yaml' AS (
+LARS MAP DISTINCT 'cascades/clean_address.yaml' AS (
     street VARCHAR,
     city VARCHAR,
     state VARCHAR,
@@ -558,11 +558,11 @@ WITH (dedupe_by='address', cache='7d');
 ### 1. Always Use LIMIT
 ```sql
 -- GOOD: Explicit limit
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM huge_table LIMIT 100);
 
 -- AUTO: Limit added automatically if missing (default: 1000)
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM huge_table);
 -- Becomes: ... LIMIT 1000
 ```
@@ -570,19 +570,19 @@ USING (SELECT * FROM huge_table);
 ### 2. Dedupe Before Processing
 ```sql
 -- GOOD: 10K products → 2K unique brands → 2K LLM calls
-RVBBIT MAP DISTINCT 'extract_brand.yaml'
+LARS MAP DISTINCT 'extract_brand.yaml'
 USING (SELECT product_name FROM products)
 WITH (dedupe_by='product_name');
 
 -- BAD: 10K LLM calls
-RVBBIT MAP 'extract_brand.yaml'
+LARS MAP 'extract_brand.yaml'
 USING (SELECT product_name FROM products);
 ```
 
 ### 3. Use EXPLAIN for Cost Control
 ```sql
 -- Always EXPLAIN large batches first
-EXPLAIN RVBBIT MAP 'expensive_cascade.yaml'
+EXPLAIN LARS MAP 'expensive_cascade.yaml'
 USING (SELECT * FROM massive_table LIMIT 10000);
 -- Check: "Cost Estimate: $X.XX total"
 -- Decide if acceptable before running
@@ -591,38 +591,38 @@ USING (SELECT * FROM massive_table LIMIT 10000);
 ### 4. Leverage Cache with Appropriate TTL
 ```sql
 -- Static reference data: Long TTL
-RVBBIT MAP 'extract_brand.yaml'
+LARS MAP 'extract_brand.yaml'
 USING (SELECT product FROM catalog)
 WITH (cache='7d');
 
 -- Real-time data: Short TTL
-RVBBIT MAP 'sentiment.yaml'
+LARS MAP 'sentiment.yaml'
 USING (SELECT tweet FROM twitter_stream)
 WITH (cache='5m');
 
 -- One-off analysis: No cache
-RVBBIT MAP 'analyze.yaml'
+LARS MAP 'analyze.yaml'
 USING (SELECT * FROM temp_data)
 WITH (cache='0s');
 ```
 
 ### 5. Choose Right Granularity
 ```sql
--- Fine-grained: rvbbit_udf for simple extraction
+-- Fine-grained: lars_udf for simple extraction
 SELECT
     product_name,
-    rvbbit_udf('Extract brand', product_name) as brand,
-    rvbbit_udf('Classify category', product_name) as category
+    lars_udf('Extract brand', product_name) as brand,
+    lars_udf('Classify category', product_name) as category
 FROM products;
 
--- Coarse-grained: rvbbit_run for complex multi-step
+-- Coarse-grained: lars_run for complex multi-step
 SELECT
     product_name,
-    rvbbit_run('cascades/full_analysis.yaml', json_object('product', product_name))
+    lars_run('cascades/full_analysis.yaml', json_object('product', product_name))
 FROM products;
 
--- Structured: RVBBIT MAP with schema for typed outputs
-RVBBIT MAP 'cascades/full_analysis.yaml' AS (
+-- Structured: LARS MAP with schema for typed outputs
+LARS MAP 'cascades/full_analysis.yaml' AS (
     brand VARCHAR,
     category VARCHAR,
     sentiment DOUBLE
@@ -646,7 +646,7 @@ USING (SELECT product_name FROM products);
 **Debug query**:
 ```sql
 -- See raw JSON structure
-RVBBIT MAP 'cascade.yaml'
+LARS MAP 'cascade.yaml'
 USING (SELECT * FROM table LIMIT 1);
 -- Inspect the 'result' column to see actual JSON structure
 ```
@@ -662,7 +662,7 @@ USING (SELECT * FROM table LIMIT 1);
 
 **Clear cache**:
 ```python
-from rvbbit.sql_tools.udf import clear_udf_cache
+from lars.sql_tools.udf import clear_udf_cache
 clear_udf_cache()
 ```
 
@@ -685,7 +685,7 @@ clear_udf_cache()
 ```sql
 SELECT
     product,
-    rvbbit_udf('Extract brand and category', product) as result
+    lars_udf('Extract brand and category', product) as result
 FROM products;
 
 -- Result: product | result
@@ -701,7 +701,7 @@ FROM (/* above query */) t;
 
 **After**:
 ```sql
-RVBBIT MAP 'traits/extract_brand_category.yaml' AS (
+LARS MAP 'traits/extract_brand_category.yaml' AS (
     brand VARCHAR,
     category VARCHAR
 )
@@ -721,13 +721,13 @@ WITH unique_products AS (
 )
 SELECT
     product_name,
-    rvbbit_udf('Extract brand', product_name) as brand
+    lars_udf('Extract brand', product_name) as brand
 FROM unique_products;
 ```
 
 **After**:
 ```sql
-RVBBIT MAP DISTINCT 'traits/extract_brand.yaml' AS brand
+LARS MAP DISTINCT 'traits/extract_brand.yaml' AS brand
 USING (SELECT product_name FROM products);
 -- Deduplication happens automatically!
 ```
@@ -741,7 +741,7 @@ USING (SELECT product_name FROM products);
 ```sql
 -- Step 1: Enrich all products
 CREATE TEMP TABLE enriched_products AS
-RVBBIT MAP 'traits/classify.yaml' AS (
+LARS MAP 'traits/classify.yaml' AS (
     category VARCHAR,
     subcategory VARCHAR,
     confidence DOUBLE
@@ -763,7 +763,7 @@ ORDER BY product_count DESC;
 
 ```sql
 -- Only process high-value transactions
-RVBBIT MAP 'cascades/fraud_check.yaml' AS (
+LARS MAP 'cascades/fraud_check.yaml' AS (
     risk_score DOUBLE,
     is_suspicious BOOLEAN,
     explanation VARCHAR
@@ -785,7 +785,7 @@ WITH (cache='1h');
 
 ```sql
 -- When PARALLEL is fully implemented:
-RVBBIT MAP PARALLEL 5 'cascade_with_soundings.yaml' AS (
+LARS MAP PARALLEL 5 'cascade_with_soundings.yaml' AS (
     best_answer VARCHAR,
     confidence DOUBLE
 )
@@ -804,7 +804,7 @@ USING (SELECT question FROM support_tickets LIMIT 100);
 - Cache TTL for time-based expiry
 
 ### 🚧 In Progress
-- Table materialization: `CREATE TABLE AS RVBBIT MAP`
+- Table materialization: `CREATE TABLE AS LARS MAP`
 - Enhanced EXPLAIN with query optimization hints
 
 ### 🔮 Future
@@ -819,9 +819,9 @@ USING (SELECT question FROM support_tickets LIMIT 100);
 
 ## 13. FAQ
 
-**Q: What's the difference between RVBBIT MAP and rvbbit_udf?**
+**Q: What's the difference between LARS MAP and lars_udf?**
 
-A: `rvbbit_udf()` is a simple scalar function (one LLM call per row). RVBBIT MAP syntax provides:
+A: `lars_udf()` is a simple scalar function (one LLM call per row). LARS MAP syntax provides:
 - Cleaner SQL syntax
 - Auto-LIMIT safety
 - Schema-aware outputs
@@ -850,14 +850,14 @@ A: Yes! EXPLAIN will load the cascade and show inferred schema in the plan.
 
 ```sql
 -- Template
-[EXPLAIN] RVBBIT MAP [DISTINCT] [PARALLEL N] 'cascade.yaml'
+[EXPLAIN] LARS MAP [DISTINCT] [PARALLEL N] 'cascade.yaml'
   [AS identifier | AS (col TYPE, ...)]
   USING (SELECT ...)
   [WITH (option=value, ...)];
 
 -- Examples
 EXPLAIN                           -- Cost estimate only
-RVBBIT MAP                        -- Execute cascade
+LARS MAP                        -- Execute cascade
 DISTINCT                          -- Dedupe all columns
 PARALLEL 10                       -- Concurrency (deferred)
 'traits/extract.yaml'             -- Cascade path
@@ -876,5 +876,5 @@ WITH (                            -- Options
 **See Also**:
 - `examples/sql_syntax_examples.sql` - Complete syntax examples
 - `examples/test_schema_output.yaml` - Example cascade with output_schema
-- `RVBBIT_MAP_QUICKSTART.md` - Original MAP syntax guide
+- `LARS_MAP_QUICKSTART.md` - Original MAP syntax guide
 - `TRAIT_SQL_SYNTAX.md` - trait:: namespace syntax with dot accessors

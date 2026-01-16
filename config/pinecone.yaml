@@ -1,6 +1,6 @@
 # Pinecone Vector Database Configuration
 #
-# Connection details for RVBBIT's Pinecone integration.
+# Connection details for LARS's Pinecone integration.
 # Used by embed_batch_pinecone and vector_search_pinecone cascades.
 
 connection:
@@ -8,8 +8,8 @@ connection:
   api_key_env: PINECONE_API_KEY
 
   # Index details
-  host: https://rvbbit-roiw3h8.svc.aped-4627-b74a.pinecone.io
-  index_name: rvbbit
+  host: https://lars-roiw3h8.svc.aped-4627-b74a.pinecone.io
+  index_name: lars
 
   # Vector configuration
   dimension: 4096  # Matches Qwen embedding model

@@ -26,8 +26,8 @@ def format_timestamp(dt):
 def get_db():
     """Get ClickHouse database adapter."""
     try:
-        from rvbbit.db_adapter import get_db as rvbbit_get_db
-        return rvbbit_get_db()
+        from lars.db_adapter import get_db as lars_get_db
+        return lars_get_db()
     except Exception as e:
         print(f"[watchers_api] Failed to get DB: {e}")
         return None
@@ -79,7 +79,7 @@ def list_watchers():
     try:
         # Get watches
         query = f"""
-            SELECT * FROM rvbbit.watches FINAL
+            SELECT * FROM lars.watches FINAL
             {where_sql}
             ORDER BY name
             LIMIT %(limit)s OFFSET %(offset)s
@@ -90,7 +90,7 @@ def list_watchers():
         rows = db.query(query, params)
 
         # Get total count
-        count_query = f"SELECT COUNT(*) as cnt FROM rvbbit.watches FINAL {where_sql}"
+        count_query = f"SELECT COUNT(*) as cnt FROM lars.watches FINAL {where_sql}"
         count_params = {k: v for k, v in params.items() if k not in ('limit', 'offset')}
         count_result = db.query(count_query, count_params)
         total = count_result[0]['cnt'] if count_result else 0
@@ -101,14 +101,14 @@ def list_watchers():
                 SUM(CASE WHEN enabled = 1 AND consecutive_errors = 0 THEN 1 ELSE 0 END) as enabled_count,
                 SUM(CASE WHEN enabled = 0 THEN 1 ELSE 0 END) as disabled_count,
                 SUM(CASE WHEN consecutive_errors > 0 THEN 1 ELSE 0 END) as error_count
-            FROM rvbbit.watches FINAL
+            FROM lars.watches FINAL
         """
         status_counts = db.query(status_query)
 
         # Get action type counts
         action_query = """
             SELECT action_type, COUNT(*) as cnt
-            FROM rvbbit.watches FINAL
+            FROM lars.watches FINAL
             GROUP BY action_type
         """
         action_counts = {r['action_type']: r['cnt'] for r in db.query(action_query)}
@@ -177,7 +177,7 @@ def get_watcher(watch_name):
     try:
         # Get watch details
         watch_query = """
-            SELECT * FROM rvbbit.watches FINAL
+            SELECT * FROM lars.watches FINAL
             WHERE name = %(name)s
             LIMIT 1
         """
@@ -190,7 +190,7 @@ def get_watcher(watch_name):
 
         # Get recent executions
         exec_query = """
-            SELECT * FROM rvbbit.watch_executions
+            SELECT * FROM lars.watch_executions
             WHERE watch_name = %(name)s
             ORDER BY triggered_at DESC
             LIMIT 50
@@ -213,7 +213,7 @@ def get_watcher(watch_name):
                         cell_name,
                         role,
                         node_type
-                    FROM rvbbit.unified_logs
+                    FROM lars.unified_logs
                     WHERE session_id IN ({placeholders})
                       AND content_json IS NOT NULL
                       AND content_json != ''
@@ -319,7 +319,7 @@ def toggle_watcher(watch_name):
         return jsonify({'error': 'Database not available'}), 503
 
     try:
-        from rvbbit.watcher import get_watch, set_watch_enabled
+        from lars.watcher import get_watch, set_watch_enabled
 
         watch = get_watch(watch_name)
         if not watch:
@@ -349,7 +349,7 @@ def trigger_watcher(watch_name):
         return jsonify({'error': 'Database not available'}), 503
 
     try:
-        from rvbbit.watcher import get_watch, WatchDaemon
+        from lars.watcher import get_watch, WatchDaemon
 
         watch = get_watch(watch_name)
         if not watch:
@@ -361,7 +361,7 @@ def trigger_watcher(watch_name):
 
         # Get the most recent execution
         exec_query = """
-            SELECT * FROM rvbbit.watch_executions
+            SELECT * FROM lars.watch_executions
             WHERE watch_name = %(name)s
             ORDER BY triggered_at DESC
             LIMIT 1
@@ -394,7 +394,7 @@ def trigger_watcher(watch_name):
 def delete_watcher(watch_name):
     """Delete a watch."""
     try:
-        from rvbbit.watcher import drop_watch, get_watch
+        from lars.watcher import drop_watch, get_watch
 
         watch = get_watch(watch_name)
         if not watch:
@@ -449,7 +449,7 @@ def list_executions():
 
     try:
         query = f"""
-            SELECT * FROM rvbbit.watch_executions
+            SELECT * FROM lars.watch_executions
             {where_sql}
             ORDER BY triggered_at DESC
             LIMIT %(limit)s OFFSET %(offset)s

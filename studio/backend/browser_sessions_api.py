@@ -27,19 +27,19 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Add parent directory to path to import rvbbit
+# Add parent directory to path to import lars
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-# Go up 2 levels: backend -> dashboard, then add rvbbit package
+# Go up 2 levels: backend -> dashboard, then add lars package
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit.config import get_config
-    from rvbbit.session_registry import get_session_registry, SessionRegistry
+    from lars.config import get_config
+    from lars.session_registry import get_session_registry, SessionRegistry
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit modules: {e}")
+    print(f"Warning: Could not import lars modules: {e}")
     get_config = None
     get_session_registry = None
     SessionRegistry = None
@@ -205,10 +205,10 @@ def _create_session(session_id: str | None = None) -> dict:
 
         try:
             # Use the pure Python browser module
-            from rvbbit.browser.session import BrowserSession as PythonBrowserSession
-            from rvbbit.browser.streaming import frame_emitter
+            from lars.browser.session import BrowserSession as PythonBrowserSession
+            from lars.browser.streaming import frame_emitter
 
-            # Get the browsers directory from rvbbit config
+            # Get the browsers directory from lars config
             browsers_dir = _get_browsers_dir()
             logger.debug(f"[BROWSER API] Using browsers_dir: {browsers_dir}")
 
@@ -263,7 +263,7 @@ def _create_session(session_id: str | None = None) -> dict:
 
         except ImportError as e:
             logger.error(f"[BROWSER API] Browser module not available: {e}")
-            return {"success": False, "error": f"Browser module not available. Install with: pip install rvbbit[browser]. Error: {e}"}
+            return {"success": False, "error": f"Browser module not available. Install with: pip install lars[browser]. Error: {e}"}
         except Exception as e:
             logger.error(f"[BROWSER API] Failed to create browser session: {e}", exc_info=True)
             return {"success": False, "error": f"Failed to create browser session: {str(e)}"}
@@ -854,7 +854,7 @@ def list_live_sessions():
     Queries the BrowserSessionManager for running sessions.
     """
     try:
-        from rvbbit.browser_manager import get_browser_manager
+        from lars.browser_manager import get_browser_manager
         manager = get_browser_manager()
 
         sessions = []
@@ -892,7 +892,7 @@ def proxy_mjpeg_stream(session_id):
     This allows the dashboard to display real-time browser view.
     """
     try:
-        from rvbbit.browser_manager import get_browser_manager
+        from lars.browser_manager import get_browser_manager
         import requests
 
         manager = get_browser_manager()
@@ -909,7 +909,7 @@ def proxy_mjpeg_stream(session_id):
             stream_url = f"{session.base_url}{session.streams.mjpeg}"
         else:
             # Default stream path
-            stream_url = f"{session.base_url}/stream/rvbbit/{session_id}/{session_id}"
+            stream_url = f"{session.base_url}/stream/lars/{session_id}/{session_id}"
 
         def generate():
             """Generator that proxies the MJPEG stream."""
@@ -940,7 +940,7 @@ def proxy_mjpeg_stream(session_id):
 def get_live_screenshot(session_id):
     """Get the current screenshot from a live browser session."""
     try:
-        from rvbbit.browser_manager import get_browser_manager
+        from lars.browser_manager import get_browser_manager
 
         manager = get_browser_manager()
         session = manager.get_session(session_id)
@@ -1097,7 +1097,7 @@ def delete_flow(flow_id):
 @browser_sessions_bp.route('/api/browser-flows/<flow_id>/register', methods=['POST'])
 def register_flow_as_tool(flow_id):
     """
-    Register a flow as a RVBBIT skill (tool).
+    Register a flow as a LARS skill (tool).
 
     This creates a dynamic tool that can be used in cascades.
     """
@@ -1112,7 +1112,7 @@ def register_flow_as_tool(flow_id):
             flow_data = json.load(f)
 
         # Import the flow registration function
-        from rvbbit.rabbitize_flows import register_flow_as_skill
+        from lars.rabbitize_flows import register_flow_as_skill
 
         tool_name = register_flow_as_skill(flow_data)
 
@@ -1168,7 +1168,7 @@ def kill_all_rabbitize_sessions():
 # Unified Session Registry Endpoints
 # =============================================================================
 # These endpoints work with the shared session registry that tracks sessions
-# from both the UI and from RVBBIT cascades.
+# from both the UI and from LARS cascades.
 
 @browser_sessions_bp.route('/api/rabbitize/registry/sessions', methods=['GET'])
 def list_registry_sessions():
@@ -1562,7 +1562,7 @@ def proxy_stream(session_id, stream_path):
             session_id = list(_sessions.keys())[0]
 
     try:
-        from rvbbit.browser.streaming import frame_emitter
+        from lars.browser.streaming import frame_emitter
         import asyncio
         import queue
 

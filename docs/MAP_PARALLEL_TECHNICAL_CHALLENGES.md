@@ -8,10 +8,10 @@
 
 ## Goal
 
-Enable true concurrent execution for `RVBBIT MAP PARALLEL N`:
+Enable true concurrent execution for `LARS MAP PARALLEL N`:
 
 ```sql
-RVBBIT MAP PARALLEL 10 'cascade.yaml'
+LARS MAP PARALLEL 10 'cascade.yaml'
 USING (SELECT * FROM products LIMIT 100);
 ```
 
@@ -39,9 +39,9 @@ USING (SELECT * FROM products LIMIT 100);
 **Code**:
 ```sql
 SELECT unnest(
-  CAST(rvbbit_map_parallel(...) AS JSON)
+  CAST(lars_map_parallel(...) AS JSON)
 ) as row_data
-FROM rvbbit_result
+FROM lars_result
 ```
 
 **Error**: `UNNEST() can only be applied to lists, structs and NULL, not JSON`
@@ -57,7 +57,7 @@ FROM rvbbit_result
 **Code**:
 ```sql
 SELECT * FROM read_json_auto([
-  (SELECT rvbbit_map_parallel(...))
+  (SELECT lars_map_parallel(...))
 ])
 ```
 
@@ -76,7 +76,7 @@ SELECT * FROM read_json_auto([
 SELECT unnest(
   json_transform_strict(result_json_array, '[]')
 ) as row_data
-FROM rvbbit_result
+FROM lars_result
 ```
 
 **Error**: `Too many values in array of JSON structure` or `Empty object in JSON structure`
@@ -93,7 +93,7 @@ FROM rvbbit_result
 ```sql
 SELECT
   json_extract(result_json_array, '$[' || idx || ']') as row_json
-FROM rvbbit_result,
+FROM lars_result,
 LATERAL (
   SELECT unnest(generate_series(0, json_array_length(...) - 1)) as idx
 )
@@ -114,7 +114,7 @@ LATERAL (
 **Code**:
 ```sql
 SELECT unnest(result_json_array::JSON, recursive := true)
-FROM rvbbit_result
+FROM lars_result
 ```
 
 **Error**: `UNNEST() can only be applied to lists, structs and NULL, not JSON`
@@ -133,7 +133,7 @@ SELECT list_transform(
   range(json_array_length(result_json_array)),
   idx -> json_extract(result_json_array, '$[' || idx || ']')
 ) as rows_list
-FROM rvbbit_result
+FROM lars_result
 ```
 
 **Error**: `Cannot extract field from "unnest(rows_list).*" because it is not a struct`
@@ -148,7 +148,7 @@ FROM rvbbit_result
 
 **Code**:
 ```python
-def rvbbit_map_parallel_exec(..., conn):
+def lars_map_parallel_exec(..., conn):
     # Execute in parallel
     results_df = pd.DataFrame(results)
 
@@ -159,7 +159,7 @@ def rvbbit_map_parallel_exec(..., conn):
 ```
 
 ```sql
-SELECT rvbbit_map_parallel_exec(..., '_temp_results_abc123') as metadata;
+SELECT lars_map_parallel_exec(..., '_temp_results_abc123') as metadata;
 SELECT * FROM _temp_results_abc123;
 ```
 
@@ -181,16 +181,16 @@ SELECT * FROM _temp_results_abc123;
 
 **Code**:
 ```python
-def rvbbit_map_parallel_exec(...):
+def lars_map_parallel_exec(...):
     results = [...]  # Parallel execution
     return pd.DataFrame(results)  # Return DataFrame
 
 # Register as table-valued function
-connection.create_function("rvbbit_map_parallel_exec", func)
+connection.create_function("lars_map_parallel_exec", func)
 ```
 
 ```sql
-SELECT * FROM rvbbit_map_parallel_exec(
+SELECT * FROM lars_map_parallel_exec(
   'cascade.yaml',
   (SELECT json_group_array(...) FROM ...),
   10,
@@ -248,8 +248,8 @@ DuckDB table functions have specific restrictions:
 ```python
 # In postgres_server.py:handle_query()
 
-if _is_rvbbit_statement(query):
-    stmt = _parse_rvbbit_statement(query)
+if _is_lars_statement(query):
+    stmt = _parse_lars_statement(query)
 
     if stmt.mode == 'MAP' and stmt.parallel:
         # SPECIAL HANDLING for MAP PARALLEL
@@ -301,7 +301,7 @@ if _is_rvbbit_statement(query):
 **Implementation**: Would require:
 1. C++ DuckDB extension development
 2. Table function that spawns threads internally
-3. Bind to RVBBIT's Python runner
+3. Bind to LARS's Python runner
 
 **Pros**:
 - True native DuckDB integration
@@ -324,7 +324,7 @@ if _is_rvbbit_statement(query):
 **Implementation**:
 ```sql
 -- Step 1: Execute and materialize
-RVBBIT MAP PARALLEL 10 'cascade.yaml'
+LARS MAP PARALLEL 10 'cascade.yaml'
 USING (SELECT * FROM products LIMIT 100)
 WITH (as_table='results');
 
@@ -358,9 +358,9 @@ Behind the scenes, Step 1:
 
 **Implementation**:
 ```python
-from rvbbit.client import RVBBITClient
+from lars.client import LARSClient
 
-client = RVBBITClient('http://localhost:5001')
+client = LARSClient('http://localhost:5001')
 
 # Execute in parallel (Python-side)
 df = client.map_parallel(
@@ -466,7 +466,7 @@ SELECT * FROM my_table_function(column_value)
 ### Architecture
 
 ```
-User Query: RVBBIT MAP PARALLEL 10 'cascade.yaml' USING (...)
+User Query: LARS MAP PARALLEL 10 'cascade.yaml' USING (...)
     ↓
 postgres_server.py:handle_query()
     ↓
@@ -474,7 +474,7 @@ Detect: stmt.mode == 'MAP' and stmt.parallel
     ↓
 Python Execution Path:
   1. Execute USING query → DataFrame A
-  2. Call rvbbit_map_parallel_exec(A, workers=10) → DataFrame B
+  2. Call lars_map_parallel_exec(A, workers=10) → DataFrame B
   3. Register DataFrame B in DuckDB
   4. Return results to client
     ↓
@@ -486,11 +486,11 @@ Skip DuckDB query execution
 ```python
 # In postgres_server.py:handle_query(), around line 683
 
-# Rewrite RVBBIT syntax
-from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement, _parse_rvbbit_statement
+# Rewrite LARS syntax
+from lars.sql_rewriter import rewrite_lars_syntax, _is_lars_statement, _parse_lars_statement
 
-if _is_rvbbit_statement(query):
-    stmt = _parse_rvbbit_statement(query)
+if _is_lars_statement(query):
+    stmt = _parse_lars_statement(query)
 
     # SPECIAL PATH: MAP PARALLEL
     if stmt.mode == 'MAP' and stmt.parallel:
@@ -507,8 +507,8 @@ if _is_rvbbit_statement(query):
             rows_json = json.dumps(input_df.to_dict('records'))
 
             # 3. Execute in parallel (Python-side)
-            from rvbbit.sql_tools.udf import rvbbit_map_parallel_exec
-            result_df = rvbbit_map_parallel_exec(
+            from lars.sql_tools.udf import lars_map_parallel_exec
+            result_df = lars_map_parallel_exec(
                 cascade_path=stmt.cascade_path,
                 rows_json_array=rows_json,
                 max_workers=stmt.parallel,
@@ -530,10 +530,10 @@ if _is_rvbbit_statement(query):
         except Exception as e:
             # Log error and fall back to sequential
             print(f"[{self.session_id}]   ⚠️  MAP PARALLEL failed, falling back to sequential: {e}")
-            # Fall through to normal rewrite_rvbbit_syntax
+            # Fall through to normal rewrite_lars_syntax
 
-    # NORMAL PATH: All other RVBBIT queries
-    query = rewrite_rvbbit_syntax(query, duckdb_conn=self.duckdb_conn)
+    # NORMAL PATH: All other LARS queries
+    query = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
 ```
 
 ### Why This Works
@@ -563,7 +563,7 @@ if _is_rvbbit_statement(query):
 ### Current Approach
 
 **What we ship**:
-1. Syntax **accepted**: `RVBBIT MAP PARALLEL N` parses correctly
+1. Syntax **accepted**: `LARS MAP PARALLEL N` parses correctly
 2. Behavior: Falls back to sequential execution
 3. Documentation: Clear about limitation
 
@@ -577,7 +577,7 @@ if _is_rvbbit_statement(query):
 -- ⚠️  NOTE: MAP PARALLEL syntax is accepted but currently executes sequentially
 --     due to DuckDB architectural limitations. True parallelism coming soon!
 
-RVBBIT MAP PARALLEL 10 'cascade.yaml'
+LARS MAP PARALLEL 10 'cascade.yaml'
 USING (SELECT * FROM products LIMIT 100);
 -- Works, but executes sequentially (same speed as MAP without PARALLEL)
 ```
@@ -615,7 +615,7 @@ All attempted code is preserved in git history:
 - Server integration: postgres_server.py line 683
 
 **Search for**:
-- `rvbbit_map_parallel` - Multiple implementations tried
+- `lars_map_parallel` - Multiple implementations tried
 - `unnest` - Various unnest attempts
 - `json_transform` - JSON parsing attempts
 - `CREATE TEMP TABLE` - Temp table timing issues
@@ -640,7 +640,7 @@ This code **works perfectly** when called from Python. The challenge is purely a
 ### Parallel Execution is Already Implemented
 
 The parallel execution logic exists and works:
-- `sql_tools/udf.py:rvbbit_map_parallel_exec()` - ThreadPoolExecutor implementation
+- `sql_tools/udf.py:lars_map_parallel_exec()` - ThreadPoolExecutor implementation
 - `traits/system.py:map_cascade()` - Reference pattern
 - Proven in production for array-based mapping
 
@@ -676,8 +676,8 @@ The parallel execution logic exists and works:
 ## References
 
 - DuckDB Documentation: https://duckdb.org/docs/sql/functions/overview
-- ThreadPoolExecutor Pattern: `rvbbit/traits/system.py:224-298`
-- ContextVar Handling: `rvbbit/traits/state_tools.py:1-40`
+- ThreadPoolExecutor Pattern: `lars/traits/system.py:224-298`
+- ContextVar Handling: `lars/traits/state_tools.py:1-40`
 - Failed Implementations: This file's commit history
 
 **Last Updated**: 2025-12-27

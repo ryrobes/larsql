@@ -1,11 +1,11 @@
 """
-Tests for rvbbit.utils module.
+Tests for lars.utils module.
 
 Tests hash computation, fingerprinting, and tool schema generation.
 These are deterministic, framework-level tests that don't require LLM calls.
 """
 import pytest
-from rvbbit.utils import (
+from lars.utils import (
     compute_species_hash,
     compute_genus_hash,
     _compute_input_fingerprint,

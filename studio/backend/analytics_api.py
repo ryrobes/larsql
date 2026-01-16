@@ -12,10 +12,10 @@ import sys
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 analytics_bp = Blueprint('analytics', __name__)
 

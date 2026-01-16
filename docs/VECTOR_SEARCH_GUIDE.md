@@ -10,11 +10,11 @@
 
 ```sql
 -- ClickHouse backend (fastest, pure semantic):
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles);
 
 -- Elasticsearch backend (hybrid semantic + keyword support):
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 WITH (backend='elastic', index='articles_idx');
 ```
@@ -66,12 +66,12 @@ Not sure? → Start with VECTOR_SEARCH (fastest, works great)
 
 ---
 
-## RVBBIT EMBED Statement
+## LARS EMBED Statement
 
 ### Syntax
 
 ```sql
-RVBBIT EMBED <table>.<column>
+LARS EMBED <table>.<column>
 USING (<select_query>)
 [WITH (<options>)]
 ```
@@ -94,33 +94,33 @@ USING (<select_query>)
 |--------|------|---------|-------------|
 | `backend` | String | `'clickhouse'` | Backend: `'clickhouse'` or `'elastic'` |
 | `batch_size` | Integer | `100` | Rows per batch |
-| `index` | String | `'rvbbit_embeddings'` | Elastic index name (elastic only) |
+| `index` | String | `'lars_embeddings'` | Elastic index name (elastic only) |
 
 ### Examples
 
 **Basic (ClickHouse):**
 ```sql
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT id::VARCHAR AS id, text FROM bird_line);
 ```
 
 **With Batch Size:**
 ```sql
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles LIMIT 10000)
 WITH (backend='clickhouse', batch_size=50);
 ```
 
 **Elasticsearch:**
 ```sql
-RVBBIT EMBED products.description
+LARS EMBED products.description
 USING (SELECT id::VARCHAR AS id, description AS text FROM products)
 WITH (backend='elastic', batch_size=200, index='products_idx');
 ```
 
 **With Metadata:**
 ```sql
-RVBBIT EMBED documents.body
+LARS EMBED documents.body
 USING (
   SELECT
     id::VARCHAR AS id,
@@ -132,7 +132,7 @@ USING (
 
 **From CSV File:**
 ```sql
-RVBBIT EMBED docs.content
+LARS EMBED docs.content
 USING (
   SELECT
     row_number::VARCHAR AS id,
@@ -144,7 +144,7 @@ USING (
 **Background Embedding (async):**
 ```sql
 BACKGROUND
-RVBBIT EMBED large_corpus.text
+LARS EMBED large_corpus.text
 USING (SELECT id::VARCHAR AS id, text FROM large_corpus)
 WITH (batch_size=500);
 ```
@@ -494,7 +494,7 @@ SELECT embed_batch(
 
 **After (elegant):**
 ```sql
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT id::VARCHAR AS id, text FROM bird_line LIMIT 100);
 ```
 
@@ -539,9 +539,9 @@ When a table has multiple embedded columns, VECTOR_SEARCH automatically filters 
 
 ```sql
 -- Embed multiple columns:
-RVBBIT EMBED articles.title USING (...);
-RVBBIT EMBED articles.content USING (...);
-RVBBIT EMBED articles.summary USING (...);
+LARS EMBED articles.title USING (...);
+LARS EMBED articles.content USING (...);
+LARS EMBED articles.summary USING (...);
 
 -- Search specific column:
 SELECT * FROM VECTOR_SEARCH('climate', articles.content, 10);
@@ -560,7 +560,7 @@ Run expensive embedding/search operations asynchronously:
 ```sql
 -- Embed large dataset in background:
 BACKGROUND
-RVBBIT EMBED large_corpus.text
+LARS EMBED large_corpus.text
 USING (SELECT id::VARCHAR AS id, text FROM large_corpus)
 WITH (batch_size=500);
 
@@ -582,7 +582,7 @@ SELECT * FROM VECTOR_SEARCH('query', already_embedded.text, 10);
 
 ```sql
 -- Step 1: Embed documents
-RVBBIT EMBED documents.content
+LARS EMBED documents.content
 USING (
   SELECT
     id::VARCHAR AS id,
@@ -605,7 +605,7 @@ ORDER BY score DESC;
 
 ```sql
 -- Embed product descriptions:
-RVBBIT EMBED products.description
+LARS EMBED products.description
 USING (SELECT id::VARCHAR AS id, description AS text FROM products WHERE active = true);
 
 -- Find similar products:
@@ -623,7 +623,7 @@ ORDER BY vs.score DESC;
 
 ```sql
 -- Embed articles in multiple languages:
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (
   SELECT
     id::VARCHAR AS id,
@@ -646,7 +646,7 @@ ORDER BY score DESC;
 
 ```sql
 -- Embed with Elastic for hybrid search:
-RVBBIT EMBED products.description
+LARS EMBED products.description
 USING (SELECT id::VARCHAR AS id, description AS text FROM products)
 WITH (backend='elastic');
 
@@ -701,7 +701,7 @@ ORDER BY score DESC;
 
 ```sql
 -- Embed only new/updated rows:
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (
   SELECT id::VARCHAR AS id, content AS text
   FROM articles
@@ -719,10 +719,10 @@ WHERE embedded_at IS NULL OR updated_at > embedded_at;
 
 ```sql
 -- Embed both title and content:
-RVBBIT EMBED articles.title
+LARS EMBED articles.title
 USING (SELECT id::VARCHAR AS id, title AS text FROM articles);
 
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles);
 
 -- Search title only:
@@ -779,13 +779,13 @@ LIMIT 10;
 
 **Problem:**
 ```sql
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT content FROM articles)  -- Missing 'id'!
 ```
 
 **Fix:**
 ```sql
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (SELECT id::VARCHAR AS id, content AS text FROM articles)
 --             ^^^^^^^^^^^^^^^ required    ^^^^^^^^^^^^^^^^^^^^ required
 ```
@@ -816,7 +816,7 @@ SELECT * FROM VECTOR_SEARCH('query', articles.content, 10)
 export ELASTICSEARCH_URL=http://localhost:9200
 
 # Restart SQL server:
-rvbbit serve sql
+lars serve sql
 ```
 
 ### Search Returns No Results
@@ -857,7 +857,7 @@ WITH (batch_size=500)
 ```sql
 -- Don't wait for embedding to finish:
 BACKGROUND
-RVBBIT EMBED large_table.text
+LARS EMBED large_table.text
 USING (SELECT id::VARCHAR AS id, text FROM large_table);
 ```
 
@@ -906,7 +906,7 @@ HYBRID_SEARCH('product SKU 12345', products.desc, 20, 0.5, 0.2, 0.8)
 Embed extra fields as metadata:
 
 ```sql
-RVBBIT EMBED articles.content
+LARS EMBED articles.content
 USING (
   SELECT
     id::VARCHAR AS id,
@@ -956,7 +956,7 @@ SELECT embed_batch(
 
 ```sql
 -- New (declarative):
-RVBBIT EMBED bird_line.text
+LARS EMBED bird_line.text
 USING (SELECT id::VARCHAR AS id, text FROM bird_line);
 ```
 
@@ -982,9 +982,9 @@ SELECT * FROM VECTOR_SEARCH('query', bird_line.text, 10);
 
 ## Summary
 
-**RVBBIT EMBED:**
+**LARS EMBED:**
 - Natural `table.column` syntax
-- Consistent with RVBBIT MAP/RUN
+- Consistent with LARS MAP/RUN
 - Explicit `id` and `text` columns (no ambiguity)
 - Backend selection (ClickHouse or Elastic)
 
@@ -1013,7 +1013,7 @@ SELECT * FROM VECTOR_SEARCH('query', bird_line.text, 10);
 
 1. **Embed your data:**
    ```sql
-   RVBBIT EMBED your_table.your_column
+   LARS EMBED your_table.your_column
    USING (SELECT id::VARCHAR AS id, your_column AS text FROM your_table);
    ```
 

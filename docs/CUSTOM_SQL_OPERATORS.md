@@ -1,6 +1,6 @@
-# Creating Custom SQL Operators in RVBBIT
+# Creating Custom SQL Operators in LARS
 
-**New in 2026:** RVBBIT now supports **user-defined SQL operators** through cascade files. No Python code changes required!
+**New in 2026:** LARS now supports **user-defined SQL operators** through cascade files. No Python code changes required!
 
 The template inference system automatically converts operator patterns like `{{ text }} MEANS {{ criterion }}` into structured pattern matching, making it trivial to add new semantic SQL syntax.
 
@@ -371,7 +371,7 @@ Semantic operations are expensive. Caching is critical.
 
 ```bash
 # Run cascade directly:
-rvbbit run cascades/my_operators/similar_to.yaml \
+lars run cascades/my_operators/similar_to.yaml \
   --input '{"text1": "sustainable", "text2": "eco-friendly"}'
 ```
 
@@ -379,7 +379,7 @@ rvbbit run cascades/my_operators/similar_to.yaml \
 
 ```bash
 # Start SQL server:
-rvbbit serve sql --port 15432
+lars serve sql --port 15432
 
 # Connect and test:
 psql -h localhost -p 15432 -d mydb
@@ -424,7 +424,7 @@ This shows the rewritten SQL before execution.
 
 **Debug:**
 ```python
-from rvbbit.sql_tools.block_operators import load_block_operator_specs
+from lars.sql_tools.block_operators import load_block_operator_specs
 
 specs = load_block_operator_specs(force=True)
 print(f"Loaded {len(specs)} operator specs")

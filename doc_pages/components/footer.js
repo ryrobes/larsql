@@ -8,9 +8,9 @@ export function renderFooter() {
     <footer>
       <div class="container">
         <p>
-          RVBBIT &copy; ${year} |
-          <a href="https://github.com/ryrobes/rvbbit" target="_blank" rel="noopener">GitHub</a> |
-          <a href="https://github.com/ryrobes/rvbbit/issues" target="_blank" rel="noopener">Report Issues</a>
+          LARS &copy; ${year} |
+          <a href="https://github.com/ryrobes/lars" target="_blank" rel="noopener">GitHub</a> |
+          <a href="https://github.com/ryrobes/lars/issues" target="_blank" rel="noopener">Report Issues</a>
         </p>
       </div>
     </footer>

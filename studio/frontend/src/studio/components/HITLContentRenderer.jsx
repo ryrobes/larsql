@@ -13,7 +13,7 @@ import './HITLContentRenderer.css';
  *
  * Features:
  * - Iframe isolation (prevents CSS/layout conflicts)
- * - Base RVBBIT theme CSS
+ * - Base LARS theme CSS
  * - Auto-resizing based on content height
  * - Template variable replacement
  * - HTMX support (for display only, not interaction)

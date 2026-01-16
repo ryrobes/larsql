@@ -1,4 +1,4 @@
-# TOON Integration Guide for RVBBIT
+# TOON Integration Guide for LARS
 
 **Status:** ✅ Ready to Implement
 **Package:** [`toon-format/toon-python`](https://github.com/toon-format/toon-python) v0.9.0-beta.1
@@ -26,7 +26,7 @@ pip install toon-format
 pip install git+https://github.com/toon-format/toon-python.git
 ```
 
-### Add to RVBBIT Dependencies
+### Add to LARS Dependencies
 **File:** `pyproject.toml` or `setup.py`
 
 ```toml
@@ -72,10 +72,10 @@ print(f"Saves {savings['savings_percent']:.1f}% tokens")
 
 ### 3.1 Add TOON Helper Module
 
-**New File:** `rvbbit/toon_utils.py`
+**New File:** `lars/toon_utils.py`
 
 ```python
-"""TOON format utilities for RVBBIT."""
+"""TOON format utilities for LARS."""
 
 import json
 from typing import Any, Dict, List, Optional, Union
@@ -255,7 +255,7 @@ def get_token_savings(data: Any) -> Optional[Dict[str, Any]]:
 
 ### 3.2 Update `sql_data()` Tool
 
-**File:** `rvbbit/traits/data_tools.py`
+**File:** `lars/traits/data_tools.py`
 
 ```python
 from ..toon_utils import format_for_llm_context
@@ -341,7 +341,7 @@ def sql_data(
 
 ### 3.3 Update Context Injection
 
-**File:** `rvbbit/runner.py`
+**File:** `lars/runner.py`
 
 ```python
 from .toon_utils import format_for_llm_context
@@ -411,7 +411,7 @@ def _build_injection_messages(self, config: ContextSourceConfig, trace: 'TraceNo
 
 ### 3.4 Add Jinja2 `totoon` Filter
 
-**File:** `rvbbit/prompts.py`
+**File:** `lars/prompts.py`
 
 ```python
 from .toon_utils import encode as toon_encode, TOON_AVAILABLE
@@ -455,7 +455,7 @@ cells:
 
 ### 3.5 Auto-TOON for SQL Aggregate Operators
 
-**File:** `rvbbit/semantic_sql/executor.py`
+**File:** `lars/semantic_sql/executor.py`
 
 ```python
 from ..toon_utils import format_for_llm_context, TOON_AVAILABLE
@@ -489,14 +489,14 @@ def execute_cascade_udf(cascade_path: str, inputs: Dict[str, Any], ...):
 
 ```bash
 # Global default format
-export RVBBIT_DATA_FORMAT=auto  # auto, toon, json (default: auto)
+export LARS_DATA_FORMAT=auto  # auto, toon, json (default: auto)
 
 # Per-tool overrides
-export RVBBIT_SQL_DATA_FORMAT=toon
-export RVBBIT_CONTEXT_FORMAT=auto
+export LARS_SQL_DATA_FORMAT=toon
+export LARS_CONTEXT_FORMAT=auto
 
 # Minimum rows threshold for auto-TOON
-export RVBBIT_TOON_MIN_ROWS=5  # Default: 5
+export LARS_TOON_MIN_ROWS=5  # Default: 5
 ```
 
 ### 4.2 Cascade-Level Config
@@ -537,11 +537,11 @@ cells:
 
 ### 5.1 Unit Tests
 
-**File:** `rvbbit/tests/test_toon_integration.py`
+**File:** `lars/tests/test_toon_integration.py`
 
 ```python
 import pytest
-from rvbbit.toon_utils import (
+from lars.toon_utils import (
     encode, decode, format_for_llm_context,
     _should_use_toon, TOON_AVAILABLE
 )
@@ -606,7 +606,7 @@ def test_fallback_to_json():
 @pytest.mark.skipif(not TOON_AVAILABLE, reason="toon-format not installed")
 def test_token_savings():
     """Verify actual token savings."""
-    from rvbbit.toon_utils import get_token_savings
+    from lars.toon_utils import get_token_savings
 
     data = [{"id": i, "name": f"User {i}"} for i in range(100)]
     savings = get_token_savings(data)
@@ -675,7 +675,7 @@ def test_toon_cascade_execution():
 ```python
 import time
 import json
-from rvbbit.toon_utils import encode, format_for_llm_context, get_token_savings
+from lars.toon_utils import encode, format_for_llm_context, get_token_savings
 
 # Generate test datasets
 def generate_sql_results(rows, cols):
@@ -767,7 +767,7 @@ for name, data in datasets.items():
 
 1. Document best practices
 2. Update Studio UI to show TOON previews
-3. Add `rvbbit analyze-toon-savings` CLI command
+3. Add `lars analyze-toon-savings` CLI command
 4. Consider deprecating JSON-only mode
 
 ---
@@ -993,7 +993,7 @@ cells:
 
 ### Implementation
 - [ ] Add `toon-format` to dependencies
-- [ ] Create `rvbbit/toon_utils.py`
+- [ ] Create `lars/toon_utils.py`
 - [ ] Update `sql_data()` with format parameter
 - [ ] Add `format_for_llm_context()` to context injection
 - [ ] Add `totoon` Jinja2 filter
@@ -1055,9 +1055,9 @@ cells:
    - Cost analytics (TOON vs JSON)
 
 3. **CLI Tools**
-   - `rvbbit toon-analyze <cascade>` - Estimate savings
-   - `rvbbit toon-convert <file>` - Convert JSON to TOON
-   - `rvbbit toon-validate <file>` - Validate TOON syntax
+   - `lars toon-analyze <cascade>` - Estimate savings
+   - `lars toon-convert <file>` - Convert JSON to TOON
+   - `lars toon-validate <file>` - Validate TOON syntax
 
 ### Long-Term (6-12 Months)
 1. **Streaming TOON Encoder**
@@ -1078,15 +1078,15 @@ cells:
 
 ### Environment Variables
 ```bash
-RVBBIT_DATA_FORMAT=auto         # auto, toon, json
-RVBBIT_SQL_DATA_FORMAT=toon
-RVBBIT_CONTEXT_FORMAT=auto
-RVBBIT_TOON_MIN_ROWS=5
+LARS_DATA_FORMAT=auto         # auto, toon, json
+LARS_SQL_DATA_FORMAT=toon
+LARS_CONTEXT_FORMAT=auto
+LARS_TOON_MIN_ROWS=5
 ```
 
 ### Python API
 ```python
-from rvbbit.toon_utils import encode, decode, format_for_llm_context
+from lars.toon_utils import encode, decode, format_for_llm_context
 
 # Basic encoding
 toon_str = encode(data)
@@ -1095,7 +1095,7 @@ toon_str = encode(data)
 formatted = format_for_llm_context(data, format="auto")
 
 # Token savings
-from rvbbit.toon_utils import get_token_savings
+from lars.toon_utils import get_token_savings
 savings = get_token_savings(data)
 ```
 
@@ -1112,7 +1112,7 @@ savings = get_token_savings(data)
 pip install toon-format
 
 # Analyze potential savings
-rvbbit toon-analyze cascades/my_flow.yaml
+lars toon-analyze cascades/my_flow.yaml
 
 # Convert file
 toon input.json -o output.toon

@@ -90,7 +90,7 @@ Telemetry is currently stored in `metadata_json` as a nested object:
 ```sql
 SELECT
     extractKeyValuePairs(metadata_json)['toon_telemetry'] as telemetry
-FROM rvbbit.unified_logs
+FROM lars.unified_logs
 WHERE metadata_json LIKE '%toon_telemetry%'
 LIMIT 10;
 ```
@@ -101,7 +101,7 @@ LIMIT 10;
 
 ### Test 1: Direct Encoding
 ```python
-from rvbbit.toon_utils import format_for_llm_context
+from lars.toon_utils import format_for_llm_context
 
 data = [{"id": i, "name": f"Product {i}"} for i in range(20)]
 formatted, metrics = format_for_llm_context(data, format="auto")
@@ -114,7 +114,7 @@ formatted, metrics = format_for_llm_context(data, format="auto")
 
 ### Test 2: Jinja2 Filter
 ```python
-from rvbbit.prompts import _engine
+from lars.prompts import _engine
 
 template = "{{ data | totoon }}"
 result = _engine.render(template, {"data": [{"id": 1}]})
@@ -124,7 +124,7 @@ result = _engine.render(template, {"data": [{"id": 1}]})
 
 ### Test 3: Response Decoder
 ```python
-from rvbbit.agent import _parse_llm_response_content
+from lars.agent import _parse_llm_response_content
 
 toon_response = "[2]{id,value}:\n  1,test\n  2,demo"
 parsed = _parse_llm_response_content(toon_response)
@@ -154,8 +154,8 @@ parsed = _parse_llm_response_content(toon_response)
 
 ### Environment Variables
 ```bash
-export RVBBIT_DATA_FORMAT=auto    # auto, toon, json
-export RVBBIT_TOON_MIN_ROWS=5     # Minimum rows for TOON
+export LARS_DATA_FORMAT=auto    # auto, toon, json
+export LARS_TOON_MIN_ROWS=5     # Minimum rows for TOON
 ```
 
 ### Cascade-Level
@@ -181,7 +181,7 @@ instructions: |
 ### 1. Basic TOON Encoding
 ```bash
 python3 -c "
-from rvbbit.toon_utils import encode
+from lars.toon_utils import encode
 data = [{'id': i, 'name': f'Item {i}'} for i in range(50)]
 result, metrics = encode(data)
 print(f'Savings: {metrics[\"token_savings_pct\"]}%')
@@ -190,12 +190,12 @@ print(f'Savings: {metrics[\"token_savings_pct\"]}%')
 
 ### 2. Run Demo Cascade
 ```bash
-rvbbit run examples/toon_demo.yaml --input '{"row_count": 100}'
+lars run examples/toon_demo.yaml --input '{"row_count": 100}'
 ```
 
 ### 3. Test with SQL Operator
 ```bash
-rvbbit sql query "
+lars sql query "
 SELECT
     (id % 5) as category,
     semantic_summarize(to_json(list('Item ' || id::VARCHAR))) as summary
@@ -211,7 +211,7 @@ Expected: TOON format automatically applied to the 20-item arrays passed to `sem
 clickhouse-client --query "
 SELECT
     metadata_json
-FROM rvbbit.unified_logs
+FROM lars.unified_logs
 WHERE metadata_json LIKE '%toon%'
 LIMIT 1
 FORMAT JSONEachRow
@@ -226,7 +226,7 @@ FORMAT JSONEachRow
 
 The telemetry data currently sits in `metadata_json`. To populate the dedicated columns, add this extraction where the runner logs agent responses:
 
-**File:** `rvbbit/rvbbit/runner.py`
+**File:** `lars/lars/runner.py`
 **Location:** Where `log_message()` is called with agent response
 
 ```python
@@ -250,7 +250,7 @@ log_message(
 Once telemetry is in dedicated columns, create the materialized view:
 
 ```sql
-CREATE MATERIALIZED VIEW rvbbit.toon_savings_mv
+CREATE MATERIALIZED VIEW lars.toon_savings_mv
 ENGINE = SummingMergeTree()
 ORDER BY (session_id, data_format, date)
 AS
@@ -262,7 +262,7 @@ SELECT
     sum(data_size_json) as total_json_size,
     sum(data_size_toon) as total_toon_size,
     avg(data_token_savings_pct) as avg_savings_pct
-FROM rvbbit.unified_logs
+FROM lars.unified_logs
 WHERE data_format = 'toon'
 GROUP BY session_id, data_format, date;
 ```

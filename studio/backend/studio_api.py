@@ -16,38 +16,38 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 # SQL Query imports
 try:
-    from rvbbit.config import get_config
-    from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
+    from lars.config import get_config
+    from lars.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit SQL modules: {e}")
+    print(f"Warning: Could not import lars SQL modules: {e}")
     load_sql_connections = None
     load_discovery_metadata = None
     get_config = None
 
 # Notebook imports
 try:
-    from rvbbit import run_cascade
-    from rvbbit.skills.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
-    from rvbbit.sql_tools.session_db import get_session_db, cleanup_session_db
-    from rvbbit.agent import Agent
-    from rvbbit.unified_logs import log_unified
+    from lars import run_cascade
+    from lars.skills.data_tools import sql_data, python_data, js_data, clojure_data, lars_data
+    from lars.sql_tools.session_db import get_session_db, cleanup_session_db
+    from lars.agent import Agent
+    from lars.unified_logs import log_unified
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit notebook modules: {e}")
+    print(f"Warning: Could not import lars notebook modules: {e}")
     run_cascade = None
     sql_data = None
     python_data = None
     js_data = None
     clojure_data = None
-    rvbbit_data = None
+    lars_data = None
     Agent = None
     log_unified = None
 
@@ -55,13 +55,13 @@ studio_bp = Blueprint('studio', __name__, url_prefix='/api/studio')
 
 # Configuration
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
-DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
+LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
+DATA_DIR = os.path.abspath(os.getenv("LARS_DATA_DIR", os.path.join(LARS_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
-SKILLS_DIR = os.path.join(RVBBIT_ROOT, "skills")
-CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
-EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "cascades", "examples")
-CELL_TYPES_DIR = os.path.join(RVBBIT_ROOT, "cell_types")
+SKILLS_DIR = os.path.join(LARS_ROOT, "skills")
+CASCADES_DIR = os.path.join(LARS_ROOT, "cascades")
+EXAMPLES_DIR = os.path.join(LARS_ROOT, "cascades", "examples")
+CELL_TYPES_DIR = os.path.join(LARS_ROOT, "cell_types")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -157,7 +157,7 @@ def list_connections():
 
         # Get samples directory for table counts
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else LARS_ROOT, "sql_connections", "samples")
 
         result = []
         for name, config in connections.items():
@@ -239,7 +239,7 @@ def get_schema(connection):
 
         # Get samples directory
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else LARS_ROOT, "sql_connections", "samples")
         conn_samples_dir = os.path.join(samples_dir, connection)
 
         if not os.path.exists(conn_samples_dir):
@@ -247,7 +247,7 @@ def get_schema(connection):
                 "connection": connection,
                 "type": config.type,
                 "schemas": [],
-                "error": "Schema not indexed. Run 'rvbbit sql chart' to index."
+                "error": "Schema not indexed. Run 'lars sql chart' to index."
             })
 
         # Build schema tree from samples directory structure
@@ -599,7 +599,7 @@ def execute_sql_query():
     try:
         # Import run_sql tool
         try:
-            from rvbbit.sql_tools.tools import run_sql
+            from lars.sql_tools.tools import run_sql
         except ImportError:
             return jsonify({"error": "SQL tools not available"}), 500
 
@@ -854,7 +854,7 @@ def is_data_cascade(cascade_dict):
     if not cells:
         return False
 
-    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'rvbbit_data', 'set_state'}
+    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'lars_data', 'set_state'}
     for cell in cells:
         tool = cell.get('tool')
         if not tool:
@@ -966,7 +966,7 @@ def load_notebook():
         if not path:
             return jsonify({'error': 'Path is required'}), 400
 
-        full_path = os.path.join(RVBBIT_ROOT, path)
+        full_path = os.path.join(LARS_ROOT, path)
 
         if not os.path.exists(full_path):
             return jsonify({'error': f'Notebook not found: {path}'}), 404
@@ -1019,7 +1019,7 @@ def save_notebook():
         if not notebook and not raw_yaml:
             return jsonify({'error': 'Notebook content or raw_yaml is required'}), 400
 
-        full_path = os.path.join(RVBBIT_ROOT, path)
+        full_path = os.path.join(LARS_ROOT, path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
         with open(full_path, 'w') as f:
@@ -1126,7 +1126,7 @@ def run_cell():
         # Generate woodland session ID if not provided
         if not data.get('session_id'):
             try:
-                from rvbbit.session_naming import auto_generate_session_id
+                from lars.session_naming import auto_generate_session_id
                 session_id = auto_generate_session_id()
             except ImportError:
                 session_id = f"cell_{uuid.uuid4().hex[:8]}"  # Fallback
@@ -1242,8 +1242,8 @@ def run_cell():
                     _cell_name=cell_name,
                     _session_id=session_id
                 )
-            elif tool == 'rvbbit_data':
-                result = rvbbit_data(
+            elif tool == 'lars_data':
+                result = lars_data(
                     cell_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
@@ -1262,7 +1262,7 @@ def run_cell():
             result = None
 
         # If execution failed and auto-fix is enabled, try to fix
-        if execution_error and auto_fix_config.get('enabled', False) and tool != 'rvbbit_data':
+        if execution_error and auto_fix_config.get('enabled', False) and tool != 'lars_data':
             try:
                 result = attempt_auto_fix(
                     tool=tool,
@@ -1338,7 +1338,7 @@ def get_session_state(session_id):
         List of state entries with key, value, cell_name, timestamp
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
 
@@ -1412,7 +1412,7 @@ def get_cell_messages(session_id, cell_name):
         List of messages with role, content, tool_calls, timestamps
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
 
@@ -1512,7 +1512,7 @@ def get_session_cascade(session_id):
         Cascade definition and inputs from when the session ran
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
 
@@ -1773,8 +1773,8 @@ def _fetch_ollama_models_from_db():
         Dict mapping host/alias to list of model dicts
     """
     try:
-        # Use ClickHouse connection from rvbbit (not DuckDB)
-        from rvbbit.db_adapter import get_db
+        # Use ClickHouse connection from lars (not DuckDB)
+        from lars.db_adapter import get_db
 
         db = get_db()
         if not db:
@@ -1864,7 +1864,7 @@ def _fetch_vertex_models_from_db():
         List of model dicts compatible with OpenRouter schema
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
         if not db:
@@ -1950,7 +1950,7 @@ def _fetch_bedrock_models_from_db():
         List of model dicts compatible with OpenRouter schema
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
         if not db:
@@ -2044,7 +2044,7 @@ def get_tools():
         }
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
         db = get_db()
 
         # Fetch all tools from database
@@ -2133,15 +2133,15 @@ def get_tools():
 @studio_bp.route('/cell-types', methods=['GET'])
 def get_cell_types():
     """
-    Load declarative cell type definitions from $RVBBIT_ROOT/cell_types/ directory.
-    Cell types are user-space files - run `rvbbit init` to create defaults.
+    Load declarative cell type definitions from $LARS_ROOT/cell_types/ directory.
+    Cell types are user-space files - run `lars init` to create defaults.
     Returns list of cell types with metadata and templates.
     """
     try:
         cell_types_dir = Path(CELL_TYPES_DIR)
 
         if not cell_types_dir.exists():
-            return jsonify([])  # Empty is fine - user needs to run `rvbbit init`
+            return jsonify([])  # Empty is fine - user needs to run `lars init`
 
         cell_types = []
 

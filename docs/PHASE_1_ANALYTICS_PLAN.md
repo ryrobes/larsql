@@ -92,7 +92,7 @@ Session C: 50 rows → $0.25 cost
 
 ---
 
-### 2. Analytics Worker: `rvbbit/analytics_worker.py`
+### 2. Analytics Worker: `lars/analytics_worker.py`
 
 **Purpose:** Post-cascade analysis job that computes all metrics
 
@@ -308,7 +308,7 @@ except Exception:
 
 ### Step 1: Create `cascade_analytics` Table (Migration)
 
-**File:** `rvbbit/migrations/create_cascade_analytics_table.sql`
+**File:** `lars/migrations/create_cascade_analytics_table.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS cascade_analytics (
@@ -376,7 +376,7 @@ ALTER TABLE cascade_analytics ADD INDEX idx_outlier is_cost_outlier TYPE set GRA
 
 ### Step 2: Implement Analytics Worker
 
-**File:** `rvbbit/analytics_worker.py` (new file, ~400 lines)
+**File:** `lars/analytics_worker.py` (new file, ~400 lines)
 
 **Core Functions:**
 1. `analyze_cascade_execution(session_id)` - Main entry point
@@ -390,7 +390,7 @@ ALTER TABLE cascade_analytics ADD INDEX idx_outlier is_cost_outlier TYPE set GRA
 
 ### Step 3: Trigger from Runner
 
-**File:** `rvbbit/runner.py` (after line 4476, after output save)
+**File:** `lars/runner.py` (after line 4476, after output save)
 
 ```python
 # Trigger analytics worker (async, non-blocking)
@@ -596,8 +596,8 @@ FROM cascade_analytics
 ### Test 1: Input Complexity Clustering
 ```bash
 # Run cascades with different input sizes
-rvbbit run examples/extract_brand.yaml --input '{"product": "iPhone"}' --session test_small
-rvbbit run examples/extract_brand.yaml --input '{"product": "..."x10000}' --session test_large
+lars run examples/extract_brand.yaml --input '{"product": "iPhone"}' --session test_small
+lars run examples/extract_brand.yaml --input '{"product": "..."x10000}' --session test_large
 
 # Check clustering
 SELECT
@@ -619,7 +619,7 @@ WHERE session_id IN ('test_small', 'test_large')
 ### Test 2: Anomaly Detection
 ```bash
 # Force an expensive run (use expensive model or long prompt)
-rvbbit run examples/test.yaml --session test_expensive
+lars run examples/test.yaml --session test_expensive
 
 # Check if flagged as outlier
 SELECT

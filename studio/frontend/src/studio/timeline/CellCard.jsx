@@ -105,7 +105,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
 
   // Extract model - from cell YAML or cellState (executed) or default
   // Only show for LLM cells (deterministic data cells don't use models)
-  const isLLMCell = !!(cell.tool === 'rvbbit_data' || cell.instructions);
+  const isLLMCell = !!(cell.tool === 'lars_data' || cell.instructions);
   const modelToDisplay = isLLMCell ? (cell.model || cellState?.model || defaultModel) : null;
 
   // Extract takes config from YAML (before execution)
@@ -209,7 +209,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
-    rvbbit_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    lars_data: { label: 'LLM (Data)', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     bodybuilder: { label: 'Bodybuilder', icon: 'mdi:dumbbell', color: '#ff6b35' },
     browser: { label: 'Browser', icon: 'mdi:web', color: '#f87171' }, // Native browser automation
     linux_shell: { label: 'Shell', icon: 'mdi:console', color: '#94a3b8' }, // Generic shell

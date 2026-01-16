@@ -1,0 +1,24 @@
+# =============================================================================
+# Hello World Cascade
+# =============================================================================
+# A simple example demonstrating LARS basics.
+#
+# Run with:
+#   lars run cascades/examples/hello_world.yaml
+#   lars run cascades/examples/hello_world.yaml --input '{"name": "Alice"}'
+
+cascade_id: hello_world
+description: A simple greeting cascade to verify your setup works.
+
+inputs_schema:
+  name: The name to greet (optional, defaults to "World")
+
+cells:
+  - name: greet
+    instructions: |
+      Generate a friendly greeting for {{ input.name | default("World") }}.
+
+      Be creative but keep it brief (1-2 sentences).
+      Include a fun fact or observation to make it memorable.
+    rules:
+      max_turns: 1

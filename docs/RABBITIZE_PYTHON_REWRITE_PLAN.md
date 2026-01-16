@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Rewrite the Node.js/Playwright browser automation system as a pure Python module within RVBBIT. This eliminates the npm/node dependency, enables `pip install rvbbit[browser]`, and maintains full compatibility with existing UI (including MJPEG streaming).
+Rewrite the Node.js/Playwright browser automation system as a pure Python module within LARS. This eliminates the npm/node dependency, enables `pip install lars[browser]`, and maintains full compatibility with existing UI (including MJPEG streaming).
 
 **Estimated Size**: ~1,400 lines Python vs ~5,800 lines JavaScript
 **Key Dependencies**: `playwright`, `fastapi`, `uvicorn`, `Pillow`, `numpy`
@@ -13,25 +13,25 @@ Rewrite the Node.js/Playwright browser automation system as a pure Python module
 
 ### Current (Node.js)
 ```
-Python (RVBBIT) ──HTTP──▶ Express.js ──▶ PlaywrightSession.js ──▶ Chromium
+Python (LARS) ──HTTP──▶ Express.js ──▶ PlaywrightSession.js ──▶ Chromium
                               │
                               └── MJPEG Stream ──▶ Browser UI
 ```
 
 ### Proposed (Pure Python)
 ```
-Python (RVBBIT) ──direct──▶ BrowserSession ──▶ Playwright-Python ──▶ Chromium
+Python (LARS) ──direct──▶ BrowserSession ──▶ Playwright-Python ──▶ Chromium
                                   │
                                   └── FastAPI ──▶ MJPEG Stream ──▶ Browser UI
 ```
 
 ### Two Usage Modes
 
-**Mode A: Direct Python API** (new, preferred for RVBBIT internals)
+**Mode A: Direct Python API** (new, preferred for LARS internals)
 ```python
-from rvbbit.browser import BrowserSession
+from lars.browser import BrowserSession
 
-async with BrowserSession(client_id="rvbbit", test_id="my-flow") as session:
+async with BrowserSession(client_id="lars", test_id="my-flow") as session:
     await session.initialize("https://example.com")
     await session.execute([":move-mouse", ":to", 400, 300])
     await session.execute([":click"])
@@ -41,10 +41,10 @@ async with BrowserSession(client_id="rvbbit", test_id="my-flow") as session:
 **Mode B: HTTP Server** (backward compatible with existing UI)
 ```bash
 # Start server
-rvbbit browser serve --port 3037
+lars browser serve --port 3037
 
 # Or programmatically
-from rvbbit.browser.server import start_server
+from lars.browser.server import start_server
 start_server(port=3037)
 ```
 
@@ -53,7 +53,7 @@ start_server(port=3037)
 ## Module Structure
 
 ```
-rvbbit/browser/
+lars/browser/
 ├── __init__.py              # Public API exports
 ├── session.py               # BrowserSession class (~400 lines)
 ├── commands.py              # Command handlers (~250 lines)
@@ -62,7 +62,7 @@ rvbbit/browser/
 ├── artifacts.py             # Screenshot/file management (~100 lines)
 ├── streaming.py             # MJPEG frame emitter (~100 lines)
 ├── server.py                # FastAPI REST + MJPEG server (~250 lines)
-└── tools.py                 # RVBBIT trait registration (~150 lines)
+└── tools.py                 # LARS trait registration (~150 lines)
 
 Total: ~1,490 lines
 ```
@@ -205,7 +205,7 @@ class BrowserSession:
             self._screenshot_task = asyncio.create_task(self._screenshot_loop())
 
         # Initialize stability detector
-        from rvbbit.browser.stability import StabilityDetector
+        from lars.browser.stability import StabilityDetector
         self.stability_detector = StabilityDetector()
 
         return {
@@ -221,7 +221,7 @@ class BrowserSession:
 
     async def execute(self, command: list) -> dict:
         """Execute a browser command."""
-        from rvbbit.browser.commands import execute_command
+        from lars.browser.commands import execute_command
         import time
 
         start_time = time.time()
@@ -262,7 +262,7 @@ class BrowserSession:
 
     async def extract_dom(self) -> tuple[str, dict]:
         """Extract page content as markdown and element coordinates."""
-        from rvbbit.browser.dom_extractor import extract_dom
+        from lars.browser.dom_extractor import extract_dom
         return await extract_dom(self.page)
 
     async def close(self) -> dict:
@@ -392,7 +392,7 @@ from typing import Protocol, TYPE_CHECKING
 import asyncio
 
 if TYPE_CHECKING:
-    from rvbbit.browser.session import BrowserSession
+    from lars.browser.session import BrowserSession
 
 
 class CommandHandler(Protocol):
@@ -1006,13 +1006,13 @@ import asyncio
 import json
 import logging
 
-from rvbbit.browser.session import BrowserSession
-from rvbbit.browser.streaming import frame_emitter, mjpeg_generator
+from lars.browser.session import BrowserSession
+from lars.browser.streaming import frame_emitter, mjpeg_generator
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="RVBBIT Browser Server",
+    title="LARS Browser Server",
     description="Playwright-based browser automation with MJPEG streaming",
     version="1.0.0",
 )
@@ -1026,7 +1026,7 @@ sessions: Dict[str, BrowserSession] = {}
 class StartRequest(BaseModel):
     url: str
     session_id: Optional[str] = None
-    client_id: str = "rvbbit"
+    client_id: str = "lars"
     test_id: str = "interactive"
     headless: bool = True
     record_video: bool = False
@@ -1308,13 +1308,13 @@ async def start_server_async(host: str = "0.0.0.0", port: int = 3037):
 
 ---
 
-### 7. RVBBIT Tool Integration (`tools.py`)
+### 7. LARS Tool Integration (`tools.py`)
 
 ```python
 """
-RVBBIT trait (tool) registration for browser automation.
+LARS trait (tool) registration for browser automation.
 
-These tools integrate with RVBBIT's cascade system, providing
+These tools integrate with LARS's cascade system, providing
 browser automation capabilities to LLM agents.
 """
 
@@ -1323,13 +1323,13 @@ import json
 import asyncio
 from pathlib import Path
 
-from rvbbit import register_trait
-from rvbbit.caller_context import get_caller_context
+from lars import register_trait
+from lars.caller_context import get_caller_context
 
 
 async def _get_or_create_session():
     """Get existing session or create new one from context."""
-    from rvbbit.browser.session import BrowserSession
+    from lars.browser.session import BrowserSession
 
     ctx = get_caller_context()
     state = ctx.state if ctx else {}
@@ -1341,7 +1341,7 @@ async def _get_or_create_session():
     # Check for managed session (started by runner)
     if "_browser_port" in state:
         # Use HTTP client to talk to server
-        from rvbbit.browser.client import BrowserClient
+        from lars.browser.client import BrowserClient
         return BrowserClient(f"http://localhost:{state['_browser_port']}")
 
     return None
@@ -1399,8 +1399,8 @@ async def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
         result = rabbitize_start("https://news.ycombinator.com")
         # Agent now sees screenshot of Hacker News homepage
     """
-    from rvbbit.browser.session import BrowserSession
-    from rvbbit.browser.streaming import frame_emitter
+    from lars.browser.session import BrowserSession
+    from lars.browser.streaming import frame_emitter
 
     ctx = get_caller_context()
     state = ctx.state if ctx else {}
@@ -1414,7 +1414,7 @@ async def rabbitize_start(url: str, session_name: Optional[str] = None) -> dict:
 
     # Create session
     session = BrowserSession(
-        client_id="rvbbit",
+        client_id="lars",
         test_id=session_name or "interactive",
         frame_callback=frame_callback,
     )
@@ -1719,15 +1719,15 @@ class ArtifactManager:
 def get_runs_directory() -> Path:
     """Get the rabbitize-runs directory."""
     import os
-    from rvbbit.config import RVBBIT_ROOT
+    from lars.config import LARS_ROOT
 
     # Check environment variable first
     runs_dir = os.environ.get("RABBITIZE_RUNS_DIR")
     if runs_dir:
         return Path(runs_dir)
 
-    # Default to RVBBIT_ROOT / rabbitize-runs
-    return RVBBIT_ROOT / "rabbitize-runs"
+    # Default to LARS_ROOT / rabbitize-runs
+    return LARS_ROOT / "rabbitize-runs"
 
 
 def list_sessions(client_id: Optional[str] = None, test_id: Optional[str] = None) -> List[dict]:
@@ -1787,44 +1787,44 @@ def list_sessions(client_id: Optional[str] = None, test_id: Optional[str] = None
 
 ```python
 """
-RVBBIT Browser Automation Module
+LARS Browser Automation Module
 
 Pure Python browser automation using Playwright, with MJPEG streaming support.
 
 Usage:
     # Direct Python API
-    from rvbbit.browser import BrowserSession
+    from lars.browser import BrowserSession
 
-    async with BrowserSession(client_id="rvbbit", test_id="my-test") as session:
+    async with BrowserSession(client_id="lars", test_id="my-test") as session:
         await session.initialize("https://example.com")
         await session.execute([":move-mouse", ":to", 400, 300])
         await session.execute([":click"])
         markdown, coords = await session.extract_dom()
 
     # HTTP Server (for MJPEG streaming)
-    from rvbbit.browser import start_server
+    from lars.browser import start_server
     start_server(port=3037)
 
     # Or via CLI
-    # rvbbit browser serve --port 3037
+    # lars browser serve --port 3037
 
-The module provides tools that integrate with RVBBIT cascades:
+The module provides tools that integrate with LARS cascades:
 - rabbitize_start: Start browser session
 - control_browser: Execute commands (click, type, scroll, etc.)
 - rabbitize_extract: Get page content as markdown
 - rabbitize_close: Close session
 """
 
-from rvbbit.browser.session import BrowserSession
-from rvbbit.browser.server import start_server, app
-from rvbbit.browser.streaming import frame_emitter, mjpeg_generator
-from rvbbit.browser.commands import execute_command, HANDLERS as COMMAND_HANDLERS
-from rvbbit.browser.stability import StabilityDetector
-from rvbbit.browser.dom_extractor import extract_dom
-from rvbbit.browser.artifacts import ArtifactManager, get_runs_directory, list_sessions
+from lars.browser.session import BrowserSession
+from lars.browser.server import start_server, app
+from lars.browser.streaming import frame_emitter, mjpeg_generator
+from lars.browser.commands import execute_command, HANDLERS as COMMAND_HANDLERS
+from lars.browser.stability import StabilityDetector
+from lars.browser.dom_extractor import extract_dom
+from lars.browser.artifacts import ArtifactManager, get_runs_directory, list_sessions
 
-# Register tools with RVBBIT
-from rvbbit.browser import tools  # noqa: F401 - Registers traits on import
+# Register tools with LARS
+from lars.browser import tools  # noqa: F401 - Registers traits on import
 
 __all__ = [
     # Core
@@ -1855,7 +1855,7 @@ __all__ = [
 
 ## CLI Integration
 
-Add to `rvbbit/cli.py`:
+Add to `lars/cli.py`:
 
 ```python
 @app.command()
@@ -1869,7 +1869,7 @@ def browser_serve(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Server host"),
 ):
     """Start the browser automation server."""
-    from rvbbit.browser import start_server
+    from lars.browser import start_server
     console.print(f"[green]Starting browser server on {host}:{port}[/green]")
     console.print(f"[dim]MJPEG streams available at http://{host}:{port}/stream/<session_id>[/dim]")
     start_server(host=host, port=port)
@@ -1877,7 +1877,7 @@ def browser_serve(
 @browser.command("sessions")
 def browser_sessions():
     """List browser sessions."""
-    from rvbbit.browser import list_sessions
+    from lars.browser import list_sessions
     sessions = list_sessions()
     # Display in table format...
 ```
@@ -1901,7 +1901,7 @@ browser = [
 
 Post-install hook (or document):
 ```bash
-# After pip install rvbbit[browser]
+# After pip install lars[browser]
 playwright install chromium
 ```
 
@@ -1910,7 +1910,7 @@ playwright install chromium
 ## Migration Plan
 
 ### Phase 1: Core Functionality (Week 1)
-- [ ] Create `rvbbit/browser/` package structure
+- [ ] Create `lars/browser/` package structure
 - [ ] Implement `BrowserSession` class
 - [ ] Implement command handlers
 - [ ] Basic screenshot capture
@@ -1924,7 +1924,7 @@ playwright install chromium
 
 ### Phase 3: DOM & Tools (Week 3)
 - [ ] DOM extraction (`dom_extractor.py`)
-- [ ] RVBBIT tool registration (`tools.py`)
+- [ ] LARS tool registration (`tools.py`)
 - [ ] Artifact management
 - [ ] Test with existing cascades
 
@@ -1945,7 +1945,7 @@ playwright install chromium
 - Same artifact structure (`rabbitize-runs/{client}/{test}/{session}/`)
 
 ### Migration Path for Existing Users
-1. Install new version: `pip install rvbbit[browser]`
+1. Install new version: `pip install lars[browser]`
 2. Install Playwright: `playwright install chromium`
 3. Update any direct Node.js references to use Python API
 4. Existing cascades work unchanged (tools have same names)
@@ -1968,7 +1968,7 @@ playwright install chromium
 ### Integration Tests
 - Full session lifecycle (start → commands → close)
 - MJPEG streaming with concurrent clients
-- RVBBIT cascade integration
+- LARS cascade integration
 - Artifact generation and cleanup
 
 ### E2E Tests
@@ -1990,7 +1990,7 @@ playwright install chromium
 | `stability.py` | ~120 | Pixel-diff page idle detection |
 | `dom_extractor.py` | ~120 | DOM → markdown + coordinates |
 | `artifacts.py` | ~100 | File management |
-| `tools.py` | ~200 | RVBBIT trait registration |
+| `tools.py` | ~200 | LARS trait registration |
 | `__init__.py` | ~50 | Package exports |
 | **Total** | **~1,590** | vs ~5,815 in Node.js |
 

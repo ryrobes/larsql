@@ -1,0 +1,40 @@
+# Local Model - Deterministic Demo
+# Direct tool invocation without LLM mediation (fast, cheap, predictable)
+#
+# Run with:
+#   lars run examples/local_model_deterministic.yaml --input '{"text": "Apple announced new iPhone features in California."}'
+
+cascade_id: local_model_deterministic
+description: Run local models directly without LLM (deterministic cells)
+
+inputs_schema:
+  text: Text to analyze
+
+cells:
+  - name: sentiment
+    tool: local_sentiment
+    inputs:
+      text: "{{ input.text }}"
+    handoffs: [entities]
+
+  - name: entities
+    tool: local_ner
+    inputs:
+      text: "{{ input.text }}"
+    handoffs: [summary]
+
+  - name: summary
+    tool: python_data
+    inputs:
+      code: |
+        # Access prior cell outputs via data.cell_name
+        # Local model tools now return raw dicts/lists
+        sentiment = data.sentiment
+        entities = data.entities
+
+        result = {
+            "text": input.get("text"),
+            "sentiment": sentiment[0] if isinstance(sentiment, list) else sentiment,
+            "entities": entities,
+            "entity_count": len(entities) if isinstance(entities, list) else 0
+        }

@@ -26,7 +26,7 @@
 
 ### What Are We Building?
 
-**ExploreView** is a **Perplexity-style interactive research interface** for RVBBIT cascades. It provides a **clean, real-time view of LLM execution** where:
+**ExploreView** is a **Perplexity-style interactive research interface** for LARS cascades. It provides a **clean, real-time view of LLM execution** where:
 
 - The LLM communicates **only** through `request_decision` tool calls
 - Each decision creates rich UI (text, buttons, charts, forms)
@@ -1305,7 +1305,7 @@ export default ExploreView;
 ### Phase 3: Testing & Polish
 
 **Step 3.1** - Integration Test (45 min)
-- Run real cascade: `rvbbit run examples/htmx_demo.yaml --input '{"task": "..."}'`
+- Run real cascade: `lars run examples/htmx_demo.yaml --input '{"task": "..."}'`
 - Navigate to `/#/explore?session=test_explore`
 - Verify:
   - Ghost messages appear for tool calls
@@ -1598,7 +1598,7 @@ export function buildArtifactHTML(bodyHTML) {
 - Backend updates its cache → database ✅
 - Cascade polls its stale cache → never sees update ❌
 
-**Solution Applied** (`rvbbit/checkpoints.py:537-546`):
+**Solution Applied** (`lars/checkpoints.py:537-546`):
 ```python
 # In wait_for_response() polling loop:
 if self.use_db:
@@ -1814,8 +1814,8 @@ const { logs, ghostMessages } = useExplorePolling('test_session');
 **Test 1: Full Cascade Loop**
 ```bash
 # Start cascade
-cd /home/ryanr/repos/rvbbit
-rvbbit run examples/htmx_demo.yaml --input '{"task": "Climate tech"}' --session explore_test_001
+cd /home/ryanr/repos/lars
+lars run examples/htmx_demo.yaml --input '{"task": "Climate tech"}' --session explore_test_001
 ```
 
 **Expected Flow**:

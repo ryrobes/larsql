@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit package to path
-rvbbit_path = Path(__file__).parent.parent.parent / "rvbbit"
-sys.path.insert(0, str(rvbbit_path))
+# Add lars package to path
+lars_path = Path(__file__).parent.parent.parent / "lars"
+sys.path.insert(0, str(lars_path))
 
 credits_bp = Blueprint('credits', __name__)
 
@@ -42,7 +42,7 @@ def get_credits():
         }
     """
     try:
-        from rvbbit.credits import get_credit_analytics, force_log_credit_snapshot
+        from lars.credits import get_credit_analytics, force_log_credit_snapshot
 
         # Check if refresh requested
         refresh = request.args.get('refresh', '').lower() == 'true'
@@ -93,7 +93,7 @@ def get_credits_history():
         }
     """
     try:
-        from rvbbit.credits import get_credit_history
+        from lars.credits import get_credit_history
         from datetime import datetime
 
         limit = int(request.args.get('limit', 100))
@@ -132,7 +132,7 @@ def refresh_credits():
         }
     """
     try:
-        from rvbbit.credits import force_log_credit_snapshot
+        from lars.credits import force_log_credit_snapshot
 
         result = force_log_credit_snapshot(source="manual")
 
@@ -165,7 +165,7 @@ def get_live_credits():
         }
     """
     try:
-        from rvbbit.credits import fetch_openrouter_credits
+        from lars.credits import fetch_openrouter_credits
 
         result = fetch_openrouter_credits()
 

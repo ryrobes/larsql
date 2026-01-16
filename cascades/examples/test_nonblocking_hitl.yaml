@@ -5,7 +5,7 @@
 #   - await_input: false → Show UI but continue automatically (progress display)
 #   - await_input: true → Show UI and wait for response (default for pure hitl)
 #
-# Run headless: rvbbit run examples/test_nonblocking_hitl.yaml --input '{"test": "hello"}'
+# Run headless: lars run examples/test_nonblocking_hitl.yaml --input '{"test": "hello"}'
 # Run in apps:  Navigate to /apps/test_nonblocking_hitl/
 
 cascade_id: test_nonblocking_hitl

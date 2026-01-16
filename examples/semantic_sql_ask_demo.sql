@@ -294,7 +294,7 @@ LIMIT 5;
 -- Supabase AI: ❌ No SQL operator syntax
 -- Databricks:  ❌ Fixed AI functions only
 --
--- RVBBIT ASK:  ✅ ANY prompt, ANY column, pure SQL
+-- LARS ASK:  ✅ ANY prompt, ANY column, pure SQL
 -- ============================================================================
 
 

@@ -13,7 +13,7 @@ import { ROUTES } from '../../routes.helpers';
 import './ExploreView.css';
 
 /**
- * ExploreView - Perplexity-style research interface for RVBBIT cascades
+ * ExploreView - Perplexity-style research interface for LARS cascades
  *
  * Features:
  * - Live "ghost messages" showing tool calls/results in real-time

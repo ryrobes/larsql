@@ -1,7 +1,7 @@
 #!/bin/bash
-# Start Elasticsearch in Docker with 16GB memory for Rvbbit search
+# Start Elasticsearch in Docker with 16GB memory for Lars search
 
-CONTAINER_NAME="rvbbit-elasticsearch"
+CONTAINER_NAME="lars-elasticsearch"
 ES_VERSION="8.11.3"
 ES_PORT="9200"
 KIBANA_PORT="5601"

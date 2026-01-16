@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 signals_bp = Blueprint('signals', __name__)
@@ -31,7 +31,7 @@ def list_signals():
         List of signals
     """
     try:
-        from rvbbit.signals import get_signal_manager, SignalStatus
+        from lars.signals import get_signal_manager, SignalStatus
 
         # Parse query params
         status_filter = request.args.get('status')
@@ -77,7 +77,7 @@ def list_waiting_signals():
         List of waiting signals with session/cascade details
     """
     try:
-        from rvbbit.signals import list_waiting_signals
+        from lars.signals import list_waiting_signals
 
         signals = list_waiting_signals()
 
@@ -134,7 +134,7 @@ def fire_signal_by_name(signal_name: str):
         Count of signals fired and details
     """
     try:
-        from rvbbit.signals import fire_signal, get_signal_manager
+        from lars.signals import fire_signal, get_signal_manager
 
         data = request.get_json(silent=True) or {}
         payload = data.get('payload')
@@ -187,7 +187,7 @@ def fire_signal_by_id(signal_id: str):
         Updated signal details
     """
     try:
-        from rvbbit.signals import get_signal_manager, SignalStatus
+        from lars.signals import get_signal_manager, SignalStatus
 
         data = request.get_json(silent=True) or {}
         payload = data.get('payload')
@@ -206,7 +206,7 @@ def fire_signal_by_id(signal_id: str):
             }), 400
 
         # Fire the signal using signal_name but filtered to session_id
-        from rvbbit.signals import fire_signal
+        from lars.signals import fire_signal
         count = fire_signal(
             signal_name=signal.signal_name,
             payload=payload,
@@ -244,7 +244,7 @@ def cancel_signal(signal_id: str):
         Updated signal details
     """
     try:
-        from rvbbit.signals import get_signal_manager, SignalStatus
+        from lars.signals import get_signal_manager, SignalStatus
 
         data = request.get_json(silent=True) or {}
         reason = data.get('reason', 'Cancelled via UI')

@@ -1,17 +1,17 @@
 # RLM-Style Context Processor
 #
 # This cascade implements the "model as context programmer" pattern from RLM,
-# but using native RVBBIT primitives. The model writes Python code to decompose
+# but using native LARS primitives. The model writes Python code to decompose
 # and analyze large contexts, with access to sub-LLM calls via rlm_exec.
 #
 # Key differences from external RLM:
-# - Uses RVBBIT's rlm_exec (full observability)
+# - Uses LARS's rlm_exec (full observability)
 # - Tracks provenance of summarized content
 # - Integrates with unified_logs for cost tracking
 # - Can use any tool in the registry
 #
 # Usage:
-#   rvbbit run cascades/rlm_context_processor.cascade.yaml \
+#   lars run cascades/rlm_context_processor.cascade.yaml \
 #     --input '{"context": "...", "task": "..."}'
 
 cascade_id: rlm_context_processor

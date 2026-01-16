@@ -15,18 +15,18 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit.config import get_config
-    from rvbbit.sql_tools.config import load_sql_connections, load_discovery_metadata
+    from lars.config import get_config
+    from lars.sql_tools.config import load_sql_connections, load_discovery_metadata
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit modules: {e}")
+    print(f"Warning: Could not import lars modules: {e}")
     load_sql_connections = None
     load_discovery_metadata = None
     get_config = None
@@ -35,8 +35,8 @@ sql_query_bp = Blueprint('sql_query', __name__, url_prefix='/api/sql')
 
 # History storage
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
-DATA_DIR = os.path.abspath(os.getenv("RVBBIT_DATA_DIR", os.path.join(RVBBIT_ROOT, "data")))
+LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
+DATA_DIR = os.path.abspath(os.getenv("LARS_DATA_DIR", os.path.join(LARS_ROOT, "data")))
 HISTORY_DB_PATH = os.path.join(DATA_DIR, "sql_query_history.duckdb")
 
 
@@ -116,7 +116,7 @@ def inspect_sql_query():
         return jsonify({"error": "Missing 'sql' (string)"}), 400
 
     try:
-        from rvbbit.sql_tools.sql_inspector import inspect_sql_query as _inspect
+        from lars.sql_tools.sql_inspector import inspect_sql_query as _inspect
         return jsonify(_inspect(sql))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -149,7 +149,7 @@ def list_connections():
 
         # Get samples directory for table counts
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else LARS_ROOT, "sql_connections", "samples")
 
         result = []
         for name, config in connections.items():
@@ -232,7 +232,7 @@ def get_schema(connection):
 
         # Get samples directory
         cfg = get_config() if get_config else None
-        samples_dir = os.path.join(cfg.root_dir if cfg else RVBBIT_ROOT, "sql_connections", "samples")
+        samples_dir = os.path.join(cfg.root_dir if cfg else LARS_ROOT, "sql_connections", "samples")
         conn_samples_dir = os.path.join(samples_dir, connection)
 
         if not os.path.exists(conn_samples_dir):
@@ -240,7 +240,7 @@ def get_schema(connection):
                 "connection": connection,
                 "type": config.type,
                 "schemas": [],
-                "error": "Schema not indexed. Run 'rvbbit sql chart' to index."
+                "error": "Schema not indexed. Run 'lars sql chart' to index."
             })
 
         # Build schema tree from samples directory structure

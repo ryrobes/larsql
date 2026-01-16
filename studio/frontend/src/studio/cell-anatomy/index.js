@@ -1,4 +1,4 @@
-// Cell Anatomy - Visualizes the internal structure of a WRVBBITcell
+// Cell Anatomy - Visualizes the internal structure of a WLARScell
 export { default as CellAnatomyPanel } from './CellAnatomyPanel';
 
 // Layer components (for customization)

@@ -61,7 +61,7 @@ cells:
                 # We need to find the actual file
                 if img_path.startswith('/api/images/'):
                     # Convert API path to filesystem path
-                    from rvbbit.config import get_config
+                    from lars.config import get_config
                     cfg = get_config()
                     rel_path = img_path.replace('/api/images/', '')
                     actual_path = os.path.join(cfg.image_dir, rel_path)

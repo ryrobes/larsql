@@ -3,7 +3,7 @@
 # a comprehensive catalog of items and their prices.
 #
 # Usage:
-#   rvbbit run cascades/product_catalog_extract.yaml --input '{"image_dir": "/path/to/images"}'
+#   lars run cascades/product_catalog_extract.yaml --input '{"image_dir": "/path/to/images"}'
 
 cascade_id: product_catalog_extract
 description: |

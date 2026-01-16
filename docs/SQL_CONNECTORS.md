@@ -1,6 +1,6 @@
 # SQL Connectors Reference
 
-RVBBIT supports connecting to 18+ data sources through DuckDB's federation capabilities. All connections are configured via YAML files in the `sql_connections/` directory.
+LARS supports connecting to 18+ data sources through DuckDB's federation capabilities. All connections are configured via YAML files in the `sql_connections/` directory.
 
 ## Table of Contents
 
@@ -65,13 +65,13 @@ export POSTGRES_PASSWORD="secret"
 3. Run schema discovery:
 
 ```bash
-rvbbit sql crawl
+lars sql crawl
 ```
 
 4. Query your data:
 
 ```bash
-rvbbit sql query "SELECT * FROM my_postgres.public.users LIMIT 10"
+lars sql query "SELECT * FROM my_postgres.public.users LIMIT 10"
 ```
 
 ---
@@ -874,16 +874,16 @@ After configuring connections, run schema discovery to index tables for search:
 
 ```bash
 # Basic discovery
-rvbbit sql crawl
+lars sql crawl
 
 # With custom session ID
-rvbbit sql crawl --session my_discovery
+lars sql crawl --session my_discovery
 
 # With environment variables for all connections
 MONGODB_URI="mongodb://..." \
 AWS_ACCESS_KEY_ID="..." \
 AWS_SECRET_ACCESS_KEY="..." \
-rvbbit sql crawl
+lars sql crawl
 ```
 
 Discovery will:

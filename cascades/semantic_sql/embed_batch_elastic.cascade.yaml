@@ -17,7 +17,7 @@ inputs_schema:
   column_name: Column name (for metadata)
   rows_json: JSON array of {id, text} objects
   batch_size: 'Texts per API call (default: 50)'
-  index_name: 'Elasticsearch index (default: rvbbit_embeddings)'
+  index_name: 'Elasticsearch index (default: lars_embeddings)'
 sql_function:
   name: embed_batch_elastic
   description: Batch embed rows and store in Elasticsearch for hybrid search
@@ -39,7 +39,7 @@ sql_function:
   - name: index_name
     type: VARCHAR
     optional: true
-    default: rvbbit_embeddings
+    default: lars_embeddings
     description: Elasticsearch index name
   returns: VARCHAR
   shape: SCALAR
@@ -52,7 +52,7 @@ cells:
 - name: batch_embed_elastic
   tool: python_data
   inputs:
-    code: "import time\nimport json\nimport logging\nfrom rvbbit.skills.embedding_storage\
+    code: "import time\nimport json\nimport logging\nfrom lars.skills.embedding_storage\
       \ import (\n    agent_embed_batch,\n    elasticsearch_bulk_store_embeddings\n\
       )\n\nlogger = logging.getLogger(__name__)\nstart_time = time.time()\n\n# Get\
       \ injected context for SQL Trail correlation\n_session_id = input.get('_session_id')\n\
@@ -60,7 +60,7 @@ cells:
       _cell_name = input.get('_cell_name')\n\ntable_name = input.get('table_name',\
       \ 'unknown')\ncolumn_name = input.get('column_name', 'unknown')\nrows_json =\
       \ input.get('rows_json', '[]')\nbatch_size = input.get('batch_size') or 50\n\
-      index_name = input.get('index_name') or 'rvbbit_embeddings'\n\ntry:\n    rows\
+      index_name = input.get('index_name') or 'lars_embeddings'\n\ntry:\n    rows\
       \ = json.loads(rows_json) if isinstance(rows_json, str) else rows_json\nexcept:\n\
       \    result = json.dumps({\"error\": \"Invalid JSON in rows_json\"})\nelse:\n\
       \    if not rows:\n        result = json.dumps({\"rows_embedded\": 0, \"message\"\

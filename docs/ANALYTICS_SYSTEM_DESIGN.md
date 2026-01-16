@@ -1,4 +1,4 @@
-# RVBBIT Post-Cascade Analytics System Design
+# LARS Post-Cascade Analytics System Design
 
 **Author:** Claude Sonnet 4.5
 **Date:** 2025-12-27
@@ -152,7 +152,7 @@ ALTER TABLE cascade_analytics ADD INDEX idx_regression is_regression TYPE set GR
 ```
 Cascade Completes
       ↓
-RVBBITRunner.run()
+LARSRunner.run()
       ↓ (after status update)
   ┌───────────────────────────────────┐
   │  Trigger Analytics Worker         │
@@ -175,7 +175,7 @@ RVBBITRunner.run()
                 └─→ (Optional) Trigger Alerts if anomaly detected
 ```
 
-### Implementation File: `rvbbit/analytics_worker.py`
+### Implementation File: `lars/analytics_worker.py`
 
 ```python
 """
@@ -946,7 +946,7 @@ Add analytics trigger to runner.py (see above)
 
 ## Conclusion
 
-The analytics system would transform RVBBIT from **descriptive** ("this run cost $0.05") to **prescriptive** ("this run is unusually expensive for medium inputs; consider using Model X which wins 85% and costs 30% less").
+The analytics system would transform LARS from **descriptive** ("this run cost $0.05") to **prescriptive** ("this run is unusually expensive for medium inputs; consider using Model X which wins 85% and costs 30% less").
 
 **Recommended Priority:**
 1. ✅ **Quick Win**: Z-scores + input clustering (1-2 days)

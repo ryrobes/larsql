@@ -2,7 +2,7 @@
 Live Cascade Integration Tests
 ==============================
 
-These tests run actual RVBBIT cascades with real LLM calls to verify
+These tests run actual LARS cascades with real LLM calls to verify
 that all framework features work correctly end-to-end.
 
 Each test cascade is self-verifying: it ends with a deterministic
@@ -34,9 +34,9 @@ import pytest
 from pathlib import Path
 from uuid import uuid4
 
-# Add rvbbit to path
-RVBBIT_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(RVBBIT_ROOT / "rvbbit"))
+# Add lars to path
+LARS_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(LARS_ROOT / "lars"))
 
 # Integration test directory
 INTEGRATION_DIR = Path(__file__).parent
@@ -107,7 +107,7 @@ class TestLiveCascades:
         skip_if_no_llm()
 
         # Import here to avoid import errors when LLM not available
-        from rvbbit import run_cascade
+        from lars import run_cascade
 
         # Get test inputs
         cascade_name = cascade_file.stem
@@ -210,7 +210,7 @@ class TestDeterministicOnly:
         if not cascade_file.exists():
             pytest.skip("test_deterministic.yaml not found")
 
-        from rvbbit import run_cascade
+        from lars import run_cascade
 
         result = run_cascade(
             str(cascade_file),
@@ -232,7 +232,7 @@ class TestDeterministicOnly:
         if not cascade_file.exists():
             pytest.skip("test_data_cascade.yaml not found")
 
-        from rvbbit import run_cascade
+        from lars import run_cascade
 
         result = run_cascade(
             str(cascade_file),

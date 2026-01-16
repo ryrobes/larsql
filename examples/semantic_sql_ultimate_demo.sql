@@ -1,7 +1,7 @@
 -- ============================================================================
 -- ULTIMATE SEMANTIC SQL DEMO - Everything Together
 -- ============================================================================
--- Showcasing the complete power of RVBBIT Semantic SQL:
+-- Showcasing the complete power of LARS Semantic SQL:
 -- - 28 operators working together
 -- - Scalar + Aggregate + Vector search
 -- - Information extraction + Analysis + Transformation

@@ -1,4 +1,4 @@
-# TOON Format Integration Analysis for RVBBIT SQL Semantic Layer
+# TOON Format Integration Analysis for LARS SQL Semantic Layer
 
 **Date:** 2026-01-05
 **Status:** Research & Design Document
@@ -9,7 +9,7 @@
 
 **TOON (Token-Oriented Object Notation)** is a data encoding format optimized for LLM inputs that achieves **~37-40% token savings** vs JSON while **improving accuracy** (74% vs 70% in benchmarks). It combines YAML-style indentation with CSV-style tabular arrays, providing explicit structural metadata that helps LLMs parse data more reliably.
 
-**Key Finding:** RVBBIT's SQL semantic layer sends substantial amounts of tabular data to LLMs through multiple pathways. TOON encoding could significantly reduce costs and potentially improve semantic operator accuracy.
+**Key Finding:** LARS's SQL semantic layer sends substantial amounts of tabular data to LLMs through multiple pathways. TOON encoding could significantly reduce costs and potentially improve semantic operator accuracy.
 
 **Critical Blocker:** The Python TOON package (`toon-format`) is currently a stub with `NotImplementedError`. We have three options:
 1. Implement a lightweight TOON encoder in Python (recommended)
@@ -82,14 +82,14 @@ context:
 
 ---
 
-## 2. RVBBIT SQL Data Flow to LLMs
+## 2. LARS SQL Data Flow to LLMs
 
 ### 2.1 Critical Injection Points
 
 Based on comprehensive codebase analysis, SQL data reaches LLMs through these pathways:
 
 #### **Point 1: `sql_data()` Tool Output**
-**File:** `rvbbit/traits/data_tools.py:318-323`
+**File:** `lars/traits/data_tools.py:318-323`
 
 ```python
 return {
@@ -115,7 +115,7 @@ SQL Query → pandas DataFrame → df.to_dict('records') → encode_toon() → T
 ---
 
 #### **Point 2: Context Injection (Cell-to-Cell)**
-**File:** `rvbbit/runner.py:1630-1633`
+**File:** `lars/runner.py:1630-1633`
 
 ```python
 if "output" in config.include:
@@ -152,7 +152,7 @@ if "output" in config.include:
 ---
 
 #### **Point 3: Jinja2 Template Rendering**
-**File:** `rvbbit/prompts.py:19-26`
+**File:** `lars/prompts.py:19-26`
 
 ```python
 def _to_json(value):
@@ -220,7 +220,7 @@ DuckDB aggregates → JSON array → Cascade input
 ---
 
 #### **Point 5: Polyglot Cell Data Passing**
-**File:** `rvbbit/traits/data_tools.py:658-679`
+**File:** `lars/traits/data_tools.py:658-679`
 
 ```python
 def _prepare_inputs_for_polyglot(prior_outputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -257,7 +257,7 @@ def _prepare_inputs_for_polyglot(prior_outputs: Dict[str, Any]) -> Dict[str, Any
 
 **Implementation:**
 ```python
-# rvbbit/toon_encoder.py (new file)
+# lars/toon_encoder.py (new file)
 
 def encode_toon(data, indent=0):
     """
@@ -417,7 +417,7 @@ def encode_toon(data):
 ### Phase 1: Core TOON Encoder (Week 1)
 
 **Deliverables:**
-1. `rvbbit/toon_encoder.py` - Pure Python encoder
+1. `lars/toon_encoder.py` - Pure Python encoder
 2. Unit tests with SQL-like data structures
 3. Benchmark script comparing token counts
 
@@ -450,7 +450,7 @@ data = {
 **Changes Required:**
 
 #### 2.1 Add TOON Encoding to `sql_data()`
-**File:** `rvbbit/traits/data_tools.py`
+**File:** `lars/traits/data_tools.py`
 
 ```python
 from ..toon_encoder import encode_toon
@@ -498,7 +498,7 @@ def sql_data(query: str, connection: str = None, materialize: bool = True,
 ---
 
 #### 2.2 Add Context Formatting Helper
-**File:** `rvbbit/runner.py`
+**File:** `lars/runner.py`
 
 ```python
 from .toon_encoder import encode_toon
@@ -542,7 +542,7 @@ def _build_injection_messages(self, config: ContextSourceConfig, trace: 'TraceNo
 ---
 
 #### 2.3 Add Jinja2 `totoon` Filter
-**File:** `rvbbit/prompts.py`
+**File:** `lars/prompts.py`
 
 ```python
 from .toon_encoder import encode_toon
@@ -574,7 +574,7 @@ instructions: |
 ---
 
 #### 2.4 Auto-TOON for SQL Aggregate Operators
-**File:** `rvbbit/semantic_sql/executor.py`
+**File:** `lars/semantic_sql/executor.py`
 
 ```python
 from ..toon_encoder import encode_toon
@@ -602,11 +602,11 @@ def execute_cascade_udf(cascade_path: str, inputs: Dict[str, Any], ...):
 **Environment Variables:**
 ```bash
 # Global default
-RVBBIT_DATA_FORMAT=toon          # toon, json, auto (default: auto)
+LARS_DATA_FORMAT=toon          # toon, json, auto (default: auto)
 
 # Per-tool override
-RVBBIT_SQL_DATA_FORMAT=toon      # For sql_data() specifically
-RVBBIT_CONTEXT_FORMAT=toon       # For context injection
+LARS_SQL_DATA_FORMAT=toon      # For sql_data() specifically
+LARS_CONTEXT_FORMAT=toon       # For context injection
 ```
 
 **Cascade-Level Config:**
@@ -643,11 +643,11 @@ cells:
 
 ### 5.1 Unit Tests
 
-**File:** `rvbbit/tests/test_toon_encoder.py`
+**File:** `lars/tests/test_toon_encoder.py`
 
 ```python
 import pytest
-from rvbbit.toon_encoder import encode_toon, decode_toon
+from lars.toon_encoder import encode_toon, decode_toon
 
 def test_uniform_array_of_objects():
     data = [
@@ -723,7 +723,7 @@ def test_toon_cascade_execution():
 
 ```python
 import time
-from rvbbit.toon_encoder import encode_toon
+from lars.toon_encoder import encode_toon
 import json
 
 # Test datasets
@@ -788,7 +788,7 @@ GROUP BY category
 
 ### 6.3 Annual Impact (Hypothetical)
 
-If RVBBIT users run **1,000 semantic SQL queries/day** with similar patterns:
+If LARS users run **1,000 semantic SQL queries/day** with similar patterns:
 - Daily savings: 1,000 × $0.40 = **$400**
 - Annual savings: **$146,000**
 
@@ -826,7 +826,7 @@ If RVBBIT users run **1,000 semantic SQL queries/day** with similar patterns:
 - Update example cascades to use TOON
 
 ### Stage 4: Full Migration (Month 3+)
-- Offer migration tool: `rvbbit migrate-to-toon`
+- Offer migration tool: `lars migrate-to-toon`
 - Update semantic SQL operators
 - Deprecate JSON-only mode
 
@@ -961,13 +961,13 @@ Before merging TOON integration:
 
 | File | Purpose | TOON Changes |
 |------|---------|--------------|
-| `rvbbit/toon_encoder.py` | **NEW** - TOON encoder implementation | Core encoder logic |
-| `rvbbit/traits/data_tools.py` | Data cell execution | Add `format` param to `sql_data()` |
-| `rvbbit/runner.py` | Context assembly | Add `_format_output_for_llm()` helper |
-| `rvbbit/prompts.py` | Jinja2 rendering | Add `totoon` filter |
-| `rvbbit/semantic_sql/executor.py` | SQL operator execution | Auto-TOON for aggregates |
-| `rvbbit/config.py` | Global configuration | Add `data_format` setting |
-| `rvbbit/cascade.py` | Cascade schema | Add `config.data_format` field |
+| `lars/toon_encoder.py` | **NEW** - TOON encoder implementation | Core encoder logic |
+| `lars/traits/data_tools.py` | Data cell execution | Add `format` param to `sql_data()` |
+| `lars/runner.py` | Context assembly | Add `_format_output_for_llm()` helper |
+| `lars/prompts.py` | Jinja2 rendering | Add `totoon` filter |
+| `lars/semantic_sql/executor.py` | SQL operator execution | Auto-TOON for aggregates |
+| `lars/config.py` | Global configuration | Add `data_format` setting |
+| `lars/cascade.py` | Cascade schema | Add `config.data_format` field |
 
 ---
 

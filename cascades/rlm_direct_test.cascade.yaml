@@ -4,7 +4,7 @@
 # context/task injection works properly.
 #
 # Test:
-#   rvbbit run cascades/rlm_direct_test.cascade.yaml \
+#   lars run cascades/rlm_direct_test.cascade.yaml \
 #     --input cascades/rlm_test_input.json --session rlm_direct
 
 cascade_id: rlm_direct_test

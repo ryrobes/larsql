@@ -20,7 +20,7 @@ services:
   # ===========================================================================
   minio:
     image: minio/minio:latest
-    container_name: rvbbit-test-minio
+    container_name: lars-test-minio
     ports:
       - "9100:9000"    # S3 API
       - "9101:9001"    # Console UI
@@ -45,7 +45,7 @@ services:
   # ===========================================================================
   mongodb:
     image: mongo:7
-    container_name: rvbbit-test-mongodb
+    container_name: lars-test-mongodb
     ports:
       - "27117:27017"
     environment:
@@ -70,7 +70,7 @@ services:
   # ===========================================================================
   cassandra:
     image: cassandra:4.1
-    container_name: rvbbit-test-cassandra
+    container_name: lars-test-cassandra
     profiles:
       - cassandra
     ports:
@@ -98,7 +98,7 @@ services:
   # ===========================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: rvbbit-test-postgres
+    container_name: lars-test-postgres
     ports:
       - "5532:5432"
     environment:
@@ -121,7 +121,7 @@ services:
   # ===========================================================================
   mysql:
     image: mysql:8
-    container_name: rvbbit-test-mysql
+    container_name: lars-test-mysql
     ports:
       - "3406:3306"
     environment:

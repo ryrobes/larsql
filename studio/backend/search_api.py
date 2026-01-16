@@ -16,15 +16,15 @@ import json
 from typing import Optional
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from rvbbit.db_adapter import get_db
-from rvbbit.config import get_config
-from rvbbit.rag.context import RagContext
-from rvbbit.rag.store import search_chunks, list_sources
-from rvbbit.sql_tools.tools import sql_search
-from rvbbit.memory import get_memory_system
+from lars.db_adapter import get_db
+from lars.config import get_config
+from lars.rag.context import RagContext
+from lars.rag.store import search_chunks, list_sources
+from lars.sql_tools.tools import sql_search
+from lars.memory import get_memory_system
 import math
 
 search_bp = Blueprint('search', __name__, url_prefix='/api/search')
@@ -142,7 +142,7 @@ def rag_search_endpoint():
         print(f"[RAG Search Debug] Index: {rag_id}, Model: {embed_model}, Expected dims: {embedding_dim}")
 
         # Test: Embed the query to see what dimension we actually get
-        from rvbbit.rag.indexer import embed_texts
+        from lars.rag.indexer import embed_texts
         embed_result = embed_texts(
             texts=[query],
             model=embed_model,
@@ -160,7 +160,7 @@ def rag_search_endpoint():
                 "error": f"Cannot search - embedding dimension mismatch",
                 "details": f"Index: {embedding_dim} dims | Current model '{embed_model}': {actual_query_dim} dims",
                 "hint": "Your RAG index was created with different embeddings than what the model currently returns. This can happen if: (1) The model API changed, (2) A different model was actually used during indexing, or (3) Dimensions were truncated.",
-                "solution": f"Re-index to fix: rvbbit rag index <directory> --rag-id {rag_id}"
+                "solution": f"Re-index to fix: lars rag index <directory> --rag-id {rag_id}"
             }), 400
 
         # Execute search
@@ -433,7 +433,7 @@ def memory_search():
             raise
 
         # Search using RAG store directly
-        from rvbbit.rag.store import search_chunks
+        from lars.rag.store import search_chunks
         search_results = search_chunks(rag_ctx, query, k=limit)
 
         # Convert search results to memory format with metadata
@@ -518,9 +518,9 @@ def sql_elastic_search():
 
         # Check if Elasticsearch is available
         try:
-            from rvbbit.elastic import get_elastic_client, hybrid_search_sql_schemas
-            from rvbbit.rag.indexer import embed_texts
-            from rvbbit.config import get_config
+            from lars.elastic import get_elastic_client, hybrid_search_sql_schemas
+            from lars.rag.indexer import embed_texts
+            from lars.config import get_config
 
             es = get_elastic_client()
             if not es.ping():

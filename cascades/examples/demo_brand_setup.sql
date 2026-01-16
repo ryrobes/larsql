@@ -4,8 +4,8 @@
 -- Run this ONCE before running the cascade_udf demo.
 --
 -- USAGE:
---   1. Start the RVBBIT PostgreSQL server: rvbbit server --port 5432
---   2. Connect with any SQL client: psql postgresql://rvbbit@localhost:5432/default
+--   1. Start the LARS PostgreSQL server: lars server --port 5432
+--   2. Connect with any SQL client: psql postgresql://lars@localhost:5432/default
 --   3. Run this file to create the demo table
 --   4. Run the cascade queries below
 
@@ -42,11 +42,11 @@ SELECT * FROM demo_products ORDER BY id;
 -- ============================================================
 
 -- Query 1: Simple scalar UDF (one-shot extraction)
--- This uses rvbbit_udf for a quick LLM call
+-- This uses lars_udf for a quick LLM call
 /*
 SELECT
   product_name,
-  rvbbit_udf('Extract the brand name from this product. Return just the brand name, nothing else.', product_name) as brand
+  lars_udf('Extract the brand name from this product. Return just the brand name, nothing else.', product_name) as brand
 FROM demo_products
 ORDER BY id;
 */
@@ -58,7 +58,7 @@ ORDER BY id;
 SELECT
   id,
   product_name,
-  rvbbit_cascade_udf(
+  lars_cascade_udf(
     'examples/demo_brand_extract_v0.yaml',
     json_object('product_name', product_name)
   ) as result
@@ -73,7 +73,7 @@ ORDER BY id;
 SELECT
   id,
   product_name,
-  rvbbit_cascade_udf(
+  lars_cascade_udf(
     'examples/demo_brand_extract_v1.yaml',
     json_object('product_name', product_name)
   ) as result

@@ -163,7 +163,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
   const command = cell.inputs?.command || '';
   const isNativeBrowser = cell.tool === 'browser';
   const isLegacyBrowser = (cell.tool === 'linux_shell' || cell.tool === 'linux_shell_dangerous') &&
-                           (command.includes('rabbitize') || command.includes('rvbbit browser batch'));
+                           (command.includes('rabbitize') || command.includes('lars browser batch'));
   const isBrowserCell = isNativeBrowser || isLegacyBrowser;
 
   const browserArtifacts = React.useMemo(() => {
@@ -258,7 +258,7 @@ function CellNode({ cell, index, cellState, isActive, onNavigate, cost = 0, cost
     js_data: { icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { icon: 'mdi:brain', color: '#a78bfa' },
-    rvbbit_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    lars_data: { icon: 'mdi:sail-boat', color: '#2dd4bf' },
     browser: { icon: 'mdi:web', color: '#f87171' }, // Native browser automation
     linux_shell: { icon: 'mdi:record-circle', color: '#f87171' }, // Legacy browser batches
     linux_shell_dangerous: { icon: 'mdi:record-circle', color: '#f87171' }, // Legacy browser batches (host execution)

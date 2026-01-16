@@ -142,7 +142,7 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
         <Icon icon="mdi:database-search-outline" width={48} className="empty-state-icon" />
         <div className="empty-state-title">No queries found</div>
         <div className="empty-state-text">
-          Execute SQL queries using RVBBIT UDFs to see them here.
+          Execute SQL queries using LARS UDFs to see them here.
         </div>
       </div>
     );
@@ -178,8 +178,8 @@ const QueryExplorer = ({ queries = [], total = 0, onQuerySelect }) => {
           onChange={(e) => setTypeFilter(e.target.value)}
         >
           <option value="all">All Types</option>
-          <option value="rvbbit_udf">rvbbit_udf</option>
-          <option value="rvbbit_cascade_udf">rvbbit_cascade_udf</option>
+          <option value="lars_udf">lars_udf</option>
+          <option value="lars_cascade_udf">lars_cascade_udf</option>
           <option value="llm_aggregate">llm_aggregate</option>
           <option value="semantic_op">semantic_op</option>
         </select>

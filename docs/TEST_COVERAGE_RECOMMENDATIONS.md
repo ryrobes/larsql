@@ -1,6 +1,6 @@
-# Test Coverage Recommendations for RVBBIT
+# Test Coverage Recommendations for LARS
 
-This document outlines recommended tests to improve RVBBIT's test coverage, focusing on **deterministic, framework-level tests** that don't require LLM calls or external services.
+This document outlines recommended tests to improve LARS's test coverage, focusing on **deterministic, framework-level tests** that don't require LLM calls or external services.
 
 ## Current State
 
@@ -15,9 +15,9 @@ This document outlines recommended tests to improve RVBBIT's test coverage, focu
 **File**: `tests/test_utils.py`
 
 ```python
-"""Tests for rvbbit.utils module."""
+"""Tests for lars.utils module."""
 import pytest
-from rvbbit.utils import (
+from lars.utils import (
     compute_species_hash,
     compute_genus_hash,
     _compute_input_fingerprint,
@@ -230,10 +230,10 @@ class TestGetToolSchema:
 **File**: `tests/test_prompts.py`
 
 ```python
-"""Tests for rvbbit.prompts module."""
+"""Tests for lars.prompts module."""
 import pytest
 import json
-from rvbbit.prompts import (
+from lars.prompts import (
     _from_json,
     _to_json,
     _to_toon,
@@ -388,10 +388,10 @@ class TestRenderInstruction:
 **File**: `tests/test_toon_utils.py`
 
 ```python
-"""Tests for rvbbit.toon_utils module."""
+"""Tests for lars.toon_utils module."""
 import pytest
 import json
-from rvbbit.toon_utils import (
+from lars.toon_utils import (
     encode,
     decode,
     _should_use_toon,
@@ -553,9 +553,9 @@ class TestFormatForLlmContext:
 **File**: `tests/test_echo.py`
 
 ```python
-"""Tests for rvbbit.echo module."""
+"""Tests for lars.echo module."""
 import pytest
-from rvbbit.echo import Echo, SessionManager, get_echo
+from lars.echo import Echo, SessionManager, get_echo
 
 
 class TestEcho:
@@ -739,9 +739,9 @@ class TestGetEcho:
 **File**: `tests/test_deterministic.py`
 
 ```python
-"""Tests for rvbbit.deterministic module."""
+"""Tests for lars.deterministic module."""
 import pytest
-from rvbbit.deterministic import (
+from lars.deterministic import (
     parse_tool_target,
     import_python_function,
     resolve_tool_function,
@@ -905,10 +905,10 @@ class TestDeterministicExecutionError:
 **File**: `tests/test_cascade_models.py`
 
 ```python
-"""Tests for rvbbit.cascade Pydantic models."""
+"""Tests for lars.cascade Pydantic models."""
 import pytest
 from pydantic import ValidationError
-from rvbbit.cascade import (
+from lars.cascade import (
     CascadeConfig,
     CellConfig,
     CandidatesConfig,
@@ -1089,7 +1089,7 @@ tests/
     ├── test_live_cascades.py  # (existing) - LLM integration
     └── sql_connections/       # (existing) - DB connectors
 
-rvbbit/rvbbit/tests/
+lars/lars/tests/
 └── test_spec_validator.py     # (existing) - cascade validation
 ```
 

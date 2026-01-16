@@ -4,10 +4,10 @@ import pytest
 import sys
 import os
 
-# Add rvbbit to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'rvbbit'))
+# Add lars to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lars'))
 
-from rvbbit.sql_tools.semantic_operators import (
+from lars.sql_tools.semantic_operators import (
     _has_nl_annotations,
     _parse_nl_annotations,
     _strip_nl_annotation_lines,

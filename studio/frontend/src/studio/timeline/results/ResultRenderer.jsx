@@ -501,7 +501,7 @@ const ResultRenderer = ({ result, error, images }) => {
     );
   }
 
-  // Legacy browser batch result (rabbitize/rvbbit browser batch with file paths)
+  // Legacy browser batch result (rabbitize/lars browser batch with file paths)
   if (result?.screenshots || result?.dom_snapshots || result?.artifacts?.basePath) {
     const screenshots = result.screenshots || [];
     const domSnapshots = result.dom_snapshots || [];

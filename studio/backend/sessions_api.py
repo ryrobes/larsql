@@ -16,10 +16,10 @@ import sys
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from rvbbit.session_state import (
+from lars.session_state import (
     SessionStatus,
     BlockedType,
     SessionState,
@@ -30,7 +30,7 @@ from rvbbit.session_state import (
     request_session_cancellation,
     cleanup_zombie_sessions,
 )
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 sessions_bp = Blueprint('sessions', __name__)
 
@@ -387,7 +387,7 @@ def _check_is_zombie(session: SessionState) -> bool:
 
 # Descriptions for known virtual cascades (matches app.py VIRTUAL_CASCADE_DESCRIPTIONS)
 VIRTUAL_CASCADE_DESCRIPTIONS = {
-    'sql_udf': 'SQL UDF calls via rvbbit() function',
+    'sql_udf': 'SQL UDF calls via lars() function',
     'calliope': 'Conversational cascade builder',
     'analyze_context_relevance': 'Context relevance analysis (system)',
 }
@@ -747,7 +747,7 @@ def list_blocked_sessions():
                 # Need to check if the checkpoint has research_cockpit metadata
                 # This requires fetching the checkpoint - let's check via blocked_on (checkpoint_id)
                 try:
-                    from rvbbit.checkpoints import get_checkpoint_manager
+                    from lars.checkpoints import get_checkpoint_manager
                     checkpoint_manager = get_checkpoint_manager()
                     if session.blocked_on:  # blocked_on contains checkpoint_id
                         checkpoint = checkpoint_manager.get_checkpoint(session.blocked_on)

@@ -1,8 +1,8 @@
 """
 SQL Server API - HTTP endpoint for external SQL clients.
 
-This allows ANY HTTP client to execute SQL queries against RVBBIT DuckDB
-with full access to rvbbit_udf() and rvbbit_cascade_udf().
+This allows ANY HTTP client to execute SQL queries against LARS DuckDB
+with full access to lars_udf() and lars_cascade_udf().
 
 Perfect for:
 - Python clients (pandas, SQLAlchemy-like usage)
@@ -22,11 +22,11 @@ sql_server_api = Blueprint('sql_server_api', __name__)
 @sql_server_api.route('/api/sql/execute', methods=['POST'])
 def execute_sql():
     """
-    Execute SQL query with RVBBIT UDFs.
+    Execute SQL query with LARS UDFs.
 
     POST /api/sql/execute
     {
-      "query": "SELECT rvbbit_udf('Extract brand', product_name) FROM products LIMIT 10",
+      "query": "SELECT lars_udf('Extract brand', product_name) FROM products LIMIT 10",
       "session_id": "optional_session_id",
       "format": "json|csv|records"
     }
@@ -45,7 +45,7 @@ def execute_sql():
         import requests
 
         response = requests.post('http://localhost:5050/api/sql/execute', json={
-            "query": "SELECT rvbbit_udf('Extract brand', 'Apple iPhone 15') as brand"
+            "query": "SELECT lars_udf('Extract brand', 'Apple iPhone 15') as brand"
         })
 
         print(response.json()['data'])
@@ -76,20 +76,20 @@ def execute_sql():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from rvbbit.sql_tools.session_db import get_session_db
-        from rvbbit.sql_tools.udf import register_rvbbit_udf
-        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax, _is_rvbbit_statement
+        from lars.sql_tools.session_db import get_session_db
+        from lars.sql_tools.udf import register_lars_udf
+        from lars.sql_rewriter import rewrite_lars_syntax, _is_lars_statement
 
         # Get or create session DuckDB
         conn = get_session_db(session_id)
 
-        # Register RVBBIT UDFs (idempotent - won't re-register)
-        register_rvbbit_udf(conn)
+        # Register LARS UDFs (idempotent - won't re-register)
+        register_lars_udf(conn)
 
-        # Set caller context for RVBBIT queries (enables cost tracking and debugging)
-        if _is_rvbbit_statement(query):
-            from rvbbit.session_naming import generate_woodland_id
-            from rvbbit.caller_context import set_caller_context, build_sql_metadata
+        # Set caller context for LARS queries (enables cost tracking and debugging)
+        if _is_lars_statement(query):
+            from lars.session_naming import generate_woodland_id
+            from lars.caller_context import set_caller_context, build_sql_metadata
 
             caller_id = f"http-{generate_woodland_id()}"
             metadata = build_sql_metadata(
@@ -99,8 +99,8 @@ def execute_sql():
             )
             set_caller_context(caller_id, metadata)
 
-        # Rewrite RVBBIT MAP/RUN syntax to standard SQL
-        query = rewrite_rvbbit_syntax(query)
+        # Rewrite LARS MAP/RUN syntax to standard SQL
+        query = rewrite_lars_syntax(query)
 
         # Execute query
         result_df = conn.execute(query).fetchdf()
@@ -173,7 +173,7 @@ def list_sessions():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from rvbbit.sql_tools.session_db import _session_dbs
+        from lars.sql_tools.session_db import _session_dbs
 
         sessions = []
         for session_id, conn in _session_dbs.items():
@@ -217,7 +217,7 @@ def list_tables_in_session(session_id):
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from rvbbit.sql_tools.session_db import get_session_db
+        from lars.sql_tools.session_db import get_session_db
 
         conn = get_session_db(session_id)
 
@@ -269,7 +269,7 @@ def get_table_schema(session_id, table_name):
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from rvbbit.sql_tools.session_db import get_session_db
+        from lars.sql_tools.session_db import get_session_db
 
         conn = get_session_db(session_id)
 
@@ -296,7 +296,7 @@ def health_check():
     Returns:
     {
       "status": "ok",
-      "rvbbit_udf_registered": true,
+      "lars_udf_registered": true,
       "cascade_udf_registered": true
     }
     """
@@ -305,21 +305,21 @@ def health_check():
         import os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-        from rvbbit.sql_tools.session_db import get_session_db
-        from rvbbit.sql_tools.udf import register_rvbbit_udf
+        from lars.sql_tools.session_db import get_session_db
+        from lars.sql_tools.udf import register_lars_udf
 
         # Test UDF registration
         test_session = f"health_check_{uuid.uuid4().hex[:8]}"
         conn = get_session_db(test_session)
-        register_rvbbit_udf(conn)
+        register_lars_udf(conn)
 
         # Test simple UDF
-        simple_result = conn.execute("SELECT rvbbit_udf('Test', 'input') as test").fetchone()
+        simple_result = conn.execute("SELECT lars_udf('Test', 'input') as test").fetchone()
         simple_udf_works = simple_result is not None
 
         # Test cascade UDF
         cascade_result = conn.execute("""
-            SELECT rvbbit_cascade_udf(
+            SELECT lars_cascade_udf(
                 'skills/process_single_item.yaml',
                 '{"item": "test"}'
             ) as test
@@ -327,12 +327,12 @@ def health_check():
         cascade_udf_works = cascade_result is not None
 
         # Cleanup test session
-        from rvbbit.sql_tools.session_db import cleanup_session_db
+        from lars.sql_tools.session_db import cleanup_session_db
         cleanup_session_db(test_session, delete_file=True)
 
         return jsonify({
             "status": "ok",
-            "rvbbit_udf_registered": simple_udf_works,
+            "lars_udf_registered": simple_udf_works,
             "cascade_udf_registered": cascade_udf_works,
             "version": "1.0.0"
         })

@@ -1,6 +1,6 @@
 {
   "include": [
-    "rvbbit/rvbbit",
+    "lars/lars",
     "alice/alice",
     "studio/backend"
   ],
@@ -13,7 +13,7 @@
     "**/.pytest_cache",
     "**/dist",
     "**/*.egg-info",
-    "rvbbit/rvbbit/echo_integration_example.py",
+    "lars/lars/echo_integration_example.py",
     "scripts"
   ],
   "typeCheckingMode": "basic",

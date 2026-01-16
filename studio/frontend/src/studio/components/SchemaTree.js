@@ -259,7 +259,7 @@ function SchemaTree() {
       <div className="schema-tree-empty">
         No SQL connections configured.
         <br />
-        Run <code>rvbbit sql chart</code> to index schemas.
+        Run <code>lars sql chart</code> to index schemas.
       </div>
     );
   }

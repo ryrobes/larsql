@@ -16,7 +16,7 @@ inputs_schema:
   threshold: Min similarity 0-1 (optional)
   semantic_weight: 'Vector similarity weight (default: 0.7)'
   keyword_weight: 'BM25 keyword weight (default: 0.3)'
-  index_name: 'Elasticsearch index (default: rvbbit_embeddings)'
+  index_name: 'Elasticsearch index (default: lars_embeddings)'
 sql_function:
   name: vector_search_elastic
   description: Hybrid semantic + keyword search in Elasticsearch
@@ -50,7 +50,7 @@ sql_function:
   - name: index_name
     type: VARCHAR
     optional: true
-    default: rvbbit_embeddings
+    default: lars_embeddings
     description: Elasticsearch index name
   returns: TABLE
   shape: AGGREGATE
@@ -64,7 +64,7 @@ cells:
 - name: hybrid_search
   tool: python_data
   inputs:
-    code: "import logging\nfrom rvbbit.skills.embedding_storage import (\n    agent_embed,\n\
+    code: "import logging\nfrom lars.skills.embedding_storage import (\n    agent_embed,\n\
       \    elasticsearch_vector_search\n)\n\nlogger = logging.getLogger(__name__)\n\
       \n# Get injected context for SQL Trail correlation\n_session_id = input.get('_session_id')\n\
       _caller_id = input.get('_caller_id')\n_cascade_id = input.get('_cascade_id')\n\
@@ -72,7 +72,7 @@ cells:
       \ = input.get('source_table')\nlimit = input.get('limit_') or 10\nthreshold\
       \ = input.get('threshold')\nsemantic_weight = input.get('semantic_weight') or\
       \ 0.7\nkeyword_weight = input.get('keyword_weight') or 0.3\nindex_name = input.get('index_name')\
-      \ or 'rvbbit_embeddings'\n\nif not query or not query.strip():\n    result =\
+      \ or 'lars_embeddings'\n\nif not query or not query.strip():\n    result =\
       \ []\nelse:\n    try:\n        # Generate query embedding (cost-tracked via\
       \ Agent)\n        embed_result = agent_embed(\n            text=query,\n   \
       \         _session_id=_session_id,\n            _caller_id=_caller_id,\n   \

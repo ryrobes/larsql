@@ -1,39 +1,39 @@
 #!/bin/bash
 
-# Rvbbit UI Startup Script
+# Lars UI Startup Script
 # Starts both backend and frontend servers
 
-echo "🌊 Starting Rvbbit UI..."
+echo "🌊 Starting Lars UI..."
 echo ""
 
-# Detect Rvbbit root (default to repo root, 2 levels up from this script)
+# Detect Lars root (default to repo root, 2 levels up from this script)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Set RVBBIT_ROOT (can be overridden by environment)
-export RVBBIT_ROOT="${RVBBIT_ROOT:-$DEFAULT_ROOT}"
+# Set LARS_ROOT (can be overridden by environment)
+export LARS_ROOT="${LARS_ROOT:-$DEFAULT_ROOT}"
 
 echo "Configuration:"
-echo "  RVBBIT_ROOT: $RVBBIT_ROOT"
+echo "  LARS_ROOT: $LARS_ROOT"
 echo ""
 echo "Data directories:"
-echo "  data/      → $RVBBIT_ROOT/data"
-echo "  logs/      → $RVBBIT_ROOT/logs"
-echo "  graphs/    → $RVBBIT_ROOT/graphs"
-echo "  states/    → $RVBBIT_ROOT/states"
-echo "  images/    → $RVBBIT_ROOT/images"
+echo "  data/      → $LARS_ROOT/data"
+echo "  logs/      → $LARS_ROOT/logs"
+echo "  graphs/    → $LARS_ROOT/graphs"
+echo "  states/    → $LARS_ROOT/states"
+echo "  images/    → $LARS_ROOT/images"
 echo ""
 echo "Content directories:"
-echo "  examples/  → $RVBBIT_ROOT/examples"
-echo "  tackle/    → $RVBBIT_ROOT/tackle"
-echo "  cascades/  → $RVBBIT_ROOT/cascades"
+echo "  examples/  → $LARS_ROOT/examples"
+echo "  tackle/    → $LARS_ROOT/tackle"
+echo "  cascades/  → $LARS_ROOT/cascades"
 echo ""
 
 # Check if data directory exists
-if [ ! -d "$RVBBIT_ROOT/data" ]; then
-    echo "⚠️  Warning: Unified logs not found at $RVBBIT_ROOT/data"
+if [ ! -d "$LARS_ROOT/data" ]; then
+    echo "⚠️  Warning: Unified logs not found at $LARS_ROOT/data"
     echo "   Run some cascades first to generate data:"
-    echo "   rvbbit run examples/simple_flow.json --input '{}'"
+    echo "   lars run examples/simple_flow.json --input '{}'"
     echo ""
 fi
 
@@ -80,7 +80,7 @@ cd ..
 
 echo ""
 echo "════════════════════════════════════════════"
-echo "✅ Rvbbit UI Started"
+echo "✅ Lars UI Started"
 echo "════════════════════════════════════════════"
 echo ""
 echo "🌐 Open: http://localhost:5550"

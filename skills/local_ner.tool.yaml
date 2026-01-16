@@ -1,6 +1,6 @@
 # Local Model Tool: Named Entity Recognition
 # Runs locally using HuggingFace transformers
-# Install dependencies: pip install rvbbit[local-models]
+# Install dependencies: pip install lars[local-models]
 
 tool_id: local_ner
 description: |

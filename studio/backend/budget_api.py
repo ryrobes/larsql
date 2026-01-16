@@ -43,7 +43,7 @@ def get_budget_status(session_id):
         })
 
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
         db = get_db()
 
         # Get enforcement events with new first-class fields

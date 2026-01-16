@@ -25,18 +25,18 @@ def sanitize_for_json(obj):
         return [sanitize_for_json(item) for item in obj]
     return obj
 
-# Add parent directory to path to import rvbbit
+# Add parent directory to path to import lars
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit.config import get_config
-    from rvbbit.db_adapter import get_db
+    from lars.config import get_config
+    from lars.db_adapter import get_db
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit modules: {e}")
+    print(f"Warning: Could not import lars modules: {e}")
     get_config = None
     get_db = None
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Test complete Pinecone integration."""
 
-from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+from lars.sql_rewriter import rewrite_lars_syntax
 
 print("=" * 80)
 print("PINECONE INTEGRATION TEST")
@@ -11,7 +11,7 @@ test_cases = [
     # Pinecone EMBED (default namespace)
     ("PINECONE EMBED (default namespace)",
      """
-     RVBBIT EMBED bird_line.text
+     LARS EMBED bird_line.text
      USING (SELECT id::VARCHAR AS id, text FROM bird_line LIMIT 10)
      WITH (backend='pinecone')
      """,
@@ -20,7 +20,7 @@ test_cases = [
     # Pinecone EMBED (custom namespace)
     ("PINECONE EMBED (custom namespace)",
      """
-     RVBBIT EMBED products.description
+     LARS EMBED products.description
      USING (SELECT id::VARCHAR AS id, description AS text FROM products)
      WITH (backend='pinecone', namespace='products_v2', batch_size=50)
      """,
@@ -49,7 +49,7 @@ for test_name, sql, expected_parts in test_cases:
     print(f"\n[{test_name}]")
     print(f"Input: {sql.strip()[:80]}...")
 
-    result = rewrite_rvbbit_syntax(sql)
+    result = rewrite_lars_syntax(sql)
     print(f"Output: {result[:200]}...")
 
     all_found = all(part in result for part in expected_parts)
@@ -76,7 +76,7 @@ if passed == len(test_cases):
     print("  4. KEYWORD_SEARCH  → Elastic (pure keyword)")
     print("  5. PINECONE_SEARCH → Pinecone (managed, scalable)")
     print("\nExample usage:")
-    print("  RVBBIT EMBED bird_line.text")
+    print("  LARS EMBED bird_line.text")
     print("  USING (SELECT id::VARCHAR AS id, text FROM bird_line)")
     print("  WITH (backend='pinecone', namespace='tweets');")
     print()

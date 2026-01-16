@@ -1,0 +1,49 @@
+# =============================================================================
+# LARS Workspace .gitignore
+# =============================================================================
+
+# Environment and secrets
+.env
+.env.local
+*.env
+
+# Runtime directories (generated data)
+logs/
+states/
+graphs/
+images/
+audio/
+videos/
+data/
+session_dbs/
+research_dbs/
+browsers/
+rabbitize-runs/  # Legacy, use browsers/ instead
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+snapshots/
+
+# Keep directory structure
+!**/.gitkeep

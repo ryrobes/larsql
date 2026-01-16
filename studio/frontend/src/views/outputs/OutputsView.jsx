@@ -8,7 +8,7 @@ import TaggedView from './components/TaggedView';
 import './OutputsView.css';
 
 // localStorage key for persisting filters
-const STORAGE_KEY = 'rvbbit-outputs-filters';
+const STORAGE_KEY = 'lars-outputs-filters';
 
 // Load filters from localStorage
 const loadFiltersFromStorage = () => {

@@ -1,1 +1,1 @@
-"""RVBBIT test suite."""
+"""LARS test suite."""

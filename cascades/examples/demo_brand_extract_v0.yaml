@@ -13,12 +13,12 @@
 #   This causes a cost spike that's visible in receipts.
 #
 # RUN WITH:
-#   Normal:  rvbbit run examples/demo_brand_extract_v0.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
-#   Outlier: rvbbit run examples/demo_brand_extract_v0.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
+#   Normal:  lars run examples/demo_brand_extract_v0.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
+#   Outlier: lars run examples/demo_brand_extract_v0.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
 #
 # SQL DEMO:
 #   SELECT product_name,
-#          rvbbit_cascade_udf('examples/demo_brand_extract_v0.yaml',
+#          lars_cascade_udf('examples/demo_brand_extract_v0.yaml',
 #                             json_object('product_name', product_name))
 #   FROM demo_products;
 

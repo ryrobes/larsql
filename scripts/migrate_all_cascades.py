@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Migrate ALL cascade files to new RVBBIT terminology
+Migrate ALL cascade files to new LARS terminology
 Updates: cells → cells, tackle → skills, takes → takes
 """
 import json

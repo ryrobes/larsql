@@ -14,8 +14,8 @@
 # This is a "1-line fix" that dramatically reduces cost for outlier inputs.
 #
 # RUN WITH:
-#   Normal:  rvbbit run examples/demo_brand_extract_v1.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
-#   Outlier: rvbbit run examples/demo_brand_extract_v1.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
+#   Normal:  lars run examples/demo_brand_extract_v1.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
+#   Outlier: lars run examples/demo_brand_extract_v1.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
 #
 # COMPARE COSTS:
 #   Run both v0 and v1 with the "USB-C Cable" input.

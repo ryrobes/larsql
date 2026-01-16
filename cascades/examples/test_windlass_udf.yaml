@@ -1,5 +1,5 @@
-cascade_id: test_rvbbit
-description: Test rvbbit() for LLM-powered data enrichment in SQL
+cascade_id: test_lars
+description: Test lars() for LLM-powered data enrichment in SQL
 cells:
 - name: load_products
   tool: sql_data
@@ -14,12 +14,12 @@ cells:
   tool: sql_data
   inputs:
     query: "SELECT\n  product_name,\n  price,\n\n  -- Extract structured attributes\
-      \ using LLM\n  rvbbit(\n    'Extract the brand name from this product\
+      \ using LLM\n  lars(\n    'Extract the brand name from this product\
       \ title. Return just the brand, nothing else.',\n    product_name\n  ) as brand,\n\
-      \n  rvbbit(\n    'Extract the color from this product title. If no color\
-      \ mentioned, return NULL.',\n    product_name\n  ) as color,\n\n  rvbbit(\n\
+      \n  lars(\n    'Extract the color from this product title. If no color\
+      \ mentioned, return NULL.',\n    product_name\n  ) as color,\n\n  lars(\n\
       \    'Classify this product category in one word: Electronics, Clothing, or\
-      \ Home',\n    product_name\n  ) as category,\n\n  rvbbit(\n    'Based\
+      \ Home',\n    product_name\n  ) as category,\n\n  lars(\n    'Based\
       \ on the product name and price, classify as: budget, mid-range, premium, or\
       \ luxury. Return just one word.',\n    product_name || ' - $' || price\n  )\
       \ as price_tier\n\nFROM _load_products\n"

@@ -4,7 +4,7 @@
 # The LLM generates the code in a prior cell, then we execute it.
 #
 # Test:
-#   rvbbit run cascades/rlm_deterministic_test.cascade.yaml \
+#   lars run cascades/rlm_deterministic_test.cascade.yaml \
 #     --input cascades/rlm_test_input.json --session rlm_det_test
 
 cascade_id: rlm_deterministic_test

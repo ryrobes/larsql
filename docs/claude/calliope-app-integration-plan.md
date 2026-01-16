@@ -175,7 +175,7 @@ useEffect(() => {
 // In App API HTML template
 <script>
   window.parent.postMessage({
-    type: 'rvbbit_app_complete',
+    type: 'lars_app_complete',
     session_id: '{{ session_id }}',
     status: '{{ status }}'
   }, '*');
@@ -183,7 +183,7 @@ useEffect(() => {
 
 // In CalliopeView
 window.addEventListener('message', (event) => {
-  if (event.data?.type === 'rvbbit_app_complete') {
+  if (event.data?.type === 'lars_app_complete') {
     handleAutoFeedback(event.data);
   }
 });
@@ -269,17 +269,17 @@ const AppPreview = ({
   // Listen for postMessage from iframe
   useEffect(() => {
     const handleMessage = (event) => {
-      if (!event.data?.type?.startsWith('rvbbit_')) return;
+      if (!event.data?.type?.startsWith('lars_')) return;
 
       switch (event.data.type) {
-        case 'rvbbit_cell_change':
+        case 'lars_cell_change':
           setCurrentCell(event.data.cell_name);
           onCellChange?.(event.data.cell_name);
           break;
-        case 'rvbbit_session_complete':
+        case 'lars_session_complete':
           onSessionComplete?.(event.data);
           break;
-        case 'rvbbit_session_error':
+        case 'lars_session_error':
           onError?.(event.data);
           break;
       }
@@ -338,15 +338,15 @@ APP_SHELL_TEMPLATE = '''
 <head>
     <!-- ... existing head ... -->
     <script>
-      // RVBBIT App Events - Communicate with parent window
-      window.RVBBIT_APP = {
+      // LARS App Events - Communicate with parent window
+      window.LARS_APP = {
         sessionId: '{{ session_id }}',
         cascadeId: '{{ cascade_id }}',
 
         postEvent: function(type, data) {
           if (window.parent !== window) {
             window.parent.postMessage({
-              type: 'rvbbit_' + type,
+              type: 'lars_' + type,
               session_id: this.sessionId,
               cascade_id: this.cascadeId,
               ...data
@@ -369,7 +369,7 @@ APP_SHELL_TEMPLATE = '''
 
       // Auto-post cell change on page load
       document.addEventListener('DOMContentLoaded', function() {
-        RVBBIT_APP.onCellChange('{{ cell_name }}');
+        LARS_APP.onCellChange('{{ cell_name }}');
       });
     </script>
 </head>
@@ -503,4 +503,4 @@ import AppPreview from '../../components/AppPreview';
 | `studio/frontend/src/components/AppPreview.css` | **NEW** - Styling |
 | `studio/frontend/src/views/calliope/CalliopeView.jsx` | Replace checkpoint panel with AppPreview |
 | `studio/backend/apps_api.py` | Add postMessage events to template |
-| `rvbbit/rvbbit/traits/cascade_builder.py` | (Optional) JSON output format |
+| `lars/lars/traits/cascade_builder.py` | (Optional) JSON output format |

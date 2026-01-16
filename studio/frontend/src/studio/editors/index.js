@@ -23,9 +23,9 @@ registerCellEditor({
     // Legacy: shell commands running browser batch
     if (cell?.tool === 'linux_shell' || cell?.tool === 'linux_shell_dangerous') {
       const command = cell?.inputs?.command || '';
-      const isRvbbitBatch = command.includes('rvbbit browser batch') && command.includes('--commands');
+      const isLarsBatch = command.includes('lars browser batch') && command.includes('--commands');
       const isLegacyRabbitize = command.includes('npx rabbitize') && command.includes('--batch-commands');
-      return isRvbbitBatch || isLegacyRabbitize;
+      return isLarsBatch || isLegacyRabbitize;
     }
 
     return false;

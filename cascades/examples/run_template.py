@@ -2,10 +2,10 @@ import os
 import sys
 import json
 
-# Ensure we can import rvbbit
+# Ensure we can import lars
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from rvbbit import run_cascade, set_provider
+from lars import run_cascade, set_provider
 
 def main():
     # Use a smart model for this logic

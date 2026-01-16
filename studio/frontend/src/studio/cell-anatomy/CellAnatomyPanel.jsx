@@ -13,7 +13,7 @@ import LayerDivider from './components/LayerDivider';
 import './CellAnatomyPanel.css';
 
 /**
- * CellAnatomyPanel - Visualizes the internal structure of a WRVBBITcell
+ * CellAnatomyPanel - Visualizes the internal structure of a WLARScell
  *
  * Shows all the machinery inside a cell:
  * - Entry: Context injection, pre-wards

@@ -19,10 +19,10 @@ import math
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 
 def safe_float(value, default=0.0):
@@ -183,7 +183,7 @@ def get_overview():
         cost_change = ((total_cost - prev_cost) / prev_cost * 100) if prev_cost > 0 else 0
         cache_improvement = cache_hit_rate - prev_cache_rate
 
-        # Query type distribution (high-level: rvbbit_udf, rvbbit_cascade_udf, etc.)
+        # Query type distribution (high-level: lars_udf, lars_cascade_udf, etc.)
         # This chart is NOT filtered by query_type (so you can click to change it)
         # but IS filtered by udf_type if that filter is active
         udf_type_only_filter = f" AND has(udf_types, '{udf_type_filter}')" if udf_type_filter else ''
@@ -464,7 +464,7 @@ def get_query_detail(caller_id: str):
         safe_caller_id = caller_id.replace("'", "''")
         results_check_query = f"""
             SELECT result_table, row_count, column_count
-            FROM rvbbit_results.query_results
+            FROM lars_results.query_results
             WHERE caller_id = '{safe_caller_id}'
             ORDER BY created_at DESC
             LIMIT 1
@@ -555,7 +555,7 @@ def get_query_detail(caller_id: str):
                 'error_message': query_row.get('error_message'),
                 'protocol': query_row.get('protocol'),
                 'timestamp': format_timestamp_utc(query_row.get('timestamp')),
-                # Result availability - stored as actual tables in rvbbit_results database
+                # Result availability - stored as actual tables in lars_results database
                 'has_materialized_result': has_clickhouse_results,
                 'result_table': results_info.get('result_table') if has_clickhouse_results else None,
                 'result_row_count': safe_int(results_info.get('row_count')) if has_clickhouse_results else None,
@@ -981,7 +981,7 @@ def get_query_results(caller_id: str):
     """
     Fetch auto-materialized query results from ClickHouse.
 
-    Results are stored as actual tables in rvbbit_results database.
+    Results are stored as actual tables in lars_results database.
     The query_results table is a log/index pointing to the actual data tables.
 
     Query params:
@@ -1019,7 +1019,7 @@ def get_query_results(caller_id: str):
                 column_count,
                 source_database,
                 created_at
-            FROM rvbbit_results.query_results
+            FROM lars_results.query_results
             WHERE caller_id = '{safe_caller_id}'
             ORDER BY created_at DESC
             LIMIT 1
@@ -1031,7 +1031,7 @@ def get_query_results(caller_id: str):
             # No results in ClickHouse - return 404
             return jsonify({
                 'error': 'No materialized results',
-                'message': 'This query does not have auto-materialized results. Results are saved for queries that use RVBBIT features (cascades, UDFs, semantic operators).'
+                'message': 'This query does not have auto-materialized results. Results are saved for queries that use LARS features (cascades, UDFs, semantic operators).'
             }), 404
 
         log_row = log_data[0]
@@ -1056,7 +1056,7 @@ def get_query_results(caller_id: str):
         col_names = ", ".join([f"`{c}`" for c in columns_list])
         data_query = f"""
             SELECT {col_names}
-            FROM rvbbit_results.{result_table}
+            FROM lars_results.{result_table}
             LIMIT {limit} OFFSET {offset}
         """
 
@@ -1076,7 +1076,7 @@ def get_query_results(caller_id: str):
             row_values = [row_dict.get(col) for col in columns_list]
             rows.append(row_values)
 
-        print(f"[sql_trail_api] Returning {len(rows)} rows from rvbbit_results.{result_table} (total: {total_rows})", flush=True)
+        print(f"[sql_trail_api] Returning {len(rows)} rows from lars_results.{result_table} (total: {total_rows})", flush=True)
 
         return jsonify({
             'columns': columns,
@@ -1123,7 +1123,7 @@ def export_query_results(caller_id: str):
         safe_caller_id = caller_id.replace("'", "''")
         log_query = f"""
             SELECT result_table, columns
-            FROM rvbbit_results.query_results
+            FROM lars_results.query_results
             WHERE caller_id = '{safe_caller_id}'
             ORDER BY created_at DESC
             LIMIT 1
@@ -1145,7 +1145,7 @@ def export_query_results(caller_id: str):
         col_names = ", ".join([f"`{c}`" for c in columns])
         data_query = f"""
             SELECT {col_names}
-            FROM rvbbit_results.{result_table}
+            FROM lars_results.{result_table}
         """
 
         try:

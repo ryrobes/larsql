@@ -1,6 +1,6 @@
-# RVBBIT Production Readiness Analysis
+# LARS Production Readiness Analysis
 
-> Deep-dive analysis of the RVBBIT framework for production deployment, identifying gaps, recommendations, and architectural considerations.
+> Deep-dive analysis of the LARS framework for production deployment, identifying gaps, recommendations, and architectural considerations.
 
 **Analysis Date:** December 2024
 **Framework Version:** Current master branch
@@ -33,14 +33,14 @@
 
 ### What's Working Well
 
-The architectural decisions in RVBBIT are sound for the intended use case:
+The architectural decisions in LARS are sound for the intended use case:
 
 | Decision | Rationale | Assessment |
 |----------|-----------|------------|
 | **CLI-first execution** | Each cascade runs as its own process | Simple, debuggable, horizontally scalable |
 | **Direct ClickHouse access** | All runners talk directly to DB | No single point of failure, simple topology |
 | **BYO scheduler** | Users use cron/k8s/airflow | Avoids lock-in, leverages existing infrastructure |
-| **SQL as interface** | `rvbbit_udf()` in queries | Genuinely clever, enables ad-hoc LLM augmentation |
+| **SQL as interface** | `lars_udf()` in queries | Genuinely clever, enables ad-hoc LLM augmentation |
 | **Declarative YAML cascades** | Git-trackable workflow definitions | Version control, code review, familiar tooling |
 
 ### Primary Gaps
@@ -69,7 +69,7 @@ The framework is closer to production-ready than it might appear. The core execu
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │   ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
-│   │ rvbbit   │  │ rvbbit   │  │ rvbbit   │    CLI Processes     │
+│   │ lars   │  │ lars   │  │ lars   │    CLI Processes     │
 │   │ run A    │  │ run B    │  │ run C    │    (independent)     │
 │   └────┬─────┘  └────┬─────┘  └────┬─────┘                      │
 │        │             │             │                             │
@@ -140,10 +140,10 @@ This is technically correct but not actionable for someone learning the DSL.
 
 ### Recommendations
 
-#### 1.1 Add `rvbbit validate` Command
+#### 1.1 Add `lars validate` Command
 
 ```bash
-$ rvbbit validate my_cascade.yaml
+$ lars validate my_cascade.yaml
 
 Validating: my_cascade.yaml
 
@@ -170,7 +170,7 @@ WARNING at line 12, cell 'process':
 #### 1.2 Pre-Pydantic Validation Layer
 
 ```python
-# New file: rvbbit/validation.py
+# New file: lars/validation.py
 
 @dataclass
 class ValidationError:
@@ -218,7 +218,7 @@ def validate_cascade_file(path: str) -> List[ValidationError]:
 #### 1.3 JSON Schema Export for IDE Validation
 
 ```bash
-$ rvbbit schema export --format jsonschema > cascade-schema.json
+$ lars schema export --format jsonschema > cascade-schema.json
 
 # Users can configure VS Code:
 # .vscode/settings.json
@@ -303,10 +303,10 @@ except (ConnectionError, TimeoutError) as e:
 #### 2.2 Create Error Taxonomy
 
 ```python
-# New file: rvbbit/errors.py
+# New file: lars/errors.py
 
-class RVBBITError(Exception):
-    """Base exception for all RVBBIT errors."""
+class LARSError(Exception):
+    """Base exception for all LARS errors."""
     code: str
     user_message: str
 
@@ -322,19 +322,19 @@ class RVBBITError(Exception):
             "details": self.details
         }
 
-class CascadeValidationError(RVBBITError):
+class CascadeValidationError(LARSError):
     code = "CASCADE_VALIDATION_ERROR"
     user_message = "The cascade definition is invalid"
 
-class ToolExecutionError(RVBBITError):
+class ToolExecutionError(LARSError):
     code = "TOOL_EXECUTION_ERROR"
     user_message = "A tool failed during execution"
 
-class LLMError(RVBBITError):
+class LLMError(LARSError):
     code = "LLM_ERROR"
     user_message = "The LLM request failed"
 
-class DatabaseError(RVBBITError):
+class DatabaseError(LARSError):
     code = "DATABASE_ERROR"
     user_message = "Database operation failed"
 ```
@@ -362,7 +362,7 @@ except CascadeValidationError as e:
 #### 2.4 Structured JSON Output Mode
 
 ```bash
-$ rvbbit run cascade.yaml --output json 2>&1 | jq
+$ lars run cascade.yaml --output json 2>&1 | jq
 {
   "status": "failed",
   "error_code": "TOOL_EXECUTION_ERROR",
@@ -490,7 +490,7 @@ class SessionManager:
         return self.sessions[session_id]
 ```
 
-**Why this is okay for now:** Each CLI invocation is a separate process with its own SessionManager. But if rvbbit ever runs as a long-lived server, this would need fixing.
+**Why this is okay for now:** Each CLI invocation is a separate process with its own SessionManager. But if lars ever runs as a long-lived server, this would need fixing.
 
 **Fix:**
 ```python
@@ -555,7 +555,7 @@ signal.signal(signal.SIGTERM, lambda *_: _shutdown_handler())
 
 ### Threat Model
 
-RVBBIT assumes **trusted users on a trusted network**:
+LARS assumes **trusted users on a trusted network**:
 - Cascade authors are trusted (they can execute arbitrary code)
 - The network is trusted (no authentication on Studio UI)
 - ClickHouse is trusted (direct access, no additional auth layer)
@@ -571,7 +571,7 @@ This is appropriate for intranet/internal tool use cases.
 @studio_bp.route('/load', methods=['GET'])
 def load_notebook():
     path = request.args.get('path')
-    full_path = os.path.join(RVBBIT_ROOT, path)  # No sanitization!
+    full_path = os.path.join(LARS_ROOT, path)  # No sanitization!
     with open(full_path, 'r') as f:
         return f.read()
 ```
@@ -596,7 +596,7 @@ def safe_path(base: str, user_path: str) -> str:
 def load_notebook():
     path = request.args.get('path')
     try:
-        full_path = safe_path(RVBBIT_ROOT, path)
+        full_path = safe_path(LARS_ROOT, path)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     # ... rest of handler
@@ -618,13 +618,13 @@ The following are **intentional** and should be documented as such:
 ```markdown
 ## Security Model
 
-⚠️ **RVBBIT executes code from cascade definitions.**
+⚠️ **LARS executes code from cascade definitions.**
 
 - Only run cascades from trusted sources
 - The Studio UI should only be accessible from trusted networks
 - Treat cascade files like executable scripts (review before running)
 
-RVBBIT is designed for internal/intranet use by trusted teams.
+LARS is designed for internal/intranet use by trusted teams.
 It is NOT designed for multi-tenant or public-facing deployments.
 ```
 
@@ -669,7 +669,7 @@ def handle_error(e: Exception) -> tuple:
 #### 6.1 Health Check Command
 
 ```bash
-$ rvbbit health
+$ lars health
 ClickHouse:  ✓ Connected (localhost:9000, 1.2ms latency)
 API Key:     ✓ OPENROUTER_API_KEY configured
 Directories: ✓ All required directories exist
@@ -684,35 +684,35 @@ This is essential for orchestrators (k8s liveness probes, etc.).
 #### 6.2 Metrics Endpoint
 
 ```bash
-$ rvbbit metrics --format prometheus
-# HELP rvbbit_cascades_total Total cascade executions
-# TYPE rvbbit_cascades_total counter
-rvbbit_cascades_total{status="success"} 1547
-rvbbit_cascades_total{status="failed"} 23
+$ lars metrics --format prometheus
+# HELP lars_cascades_total Total cascade executions
+# TYPE lars_cascades_total counter
+lars_cascades_total{status="success"} 1547
+lars_cascades_total{status="failed"} 23
 
-# HELP rvbbit_cost_usd_total Total cost in USD
-# TYPE rvbbit_cost_usd_total counter
-rvbbit_cost_usd_total 127.45
+# HELP lars_cost_usd_total Total cost in USD
+# TYPE lars_cost_usd_total counter
+lars_cost_usd_total 127.45
 
-# HELP rvbbit_execution_seconds Cascade execution duration
-# TYPE rvbbit_execution_seconds histogram
-rvbbit_execution_seconds_bucket{le="1"} 234
-rvbbit_execution_seconds_bucket{le="5"} 890
+# HELP lars_execution_seconds Cascade execution duration
+# TYPE lars_execution_seconds histogram
+lars_execution_seconds_bucket{le="1"} 234
+lars_execution_seconds_bucket{le="5"} 890
 ...
 ```
 
 #### 6.3 Diagnostic Command
 
 ```bash
-$ rvbbit doctor
+$ lars doctor
 Configuration
-  ✓ RVBBIT_ROOT: /home/user/rvbbit
+  ✓ LARS_ROOT: /home/user/lars
   ✓ OPENROUTER_API_KEY: configured (sk-or-...xxxx)
   ✗ ELEVENLABS_API_KEY: not set (TTS disabled)
 
 ClickHouse Connection
   ✓ Host: localhost:9000
-  ✓ Database: rvbbit (exists)
+  ✓ Database: lars (exists)
   ✓ Tables: 12/12 present
   ✓ Schema version: 3 (current)
 
@@ -722,12 +722,12 @@ Sessions
     - cli_1703890000_def456
     - cli_1703880000_ghi789
 
-  Run `rvbbit sessions cleanup` to remove them.
+  Run `lars sessions cleanup` to remove them.
 
 Browser Sessions (Rabbitize)
   ⚠ 2 orphan processes on ports 13001, 13002
 
-  Run `rvbbit sessions orphans --adopt` to register them.
+  Run `lars sessions orphans --adopt` to register them.
 
 Summary: 2 warnings, 1 issue
 ```
@@ -738,7 +738,7 @@ Summary: 2 warnings, 1 issue
 
 ### Current State
 
-Test files exist in `rvbbit/tests/`:
+Test files exist in `lars/tests/`:
 
 | File | Size | Coverage |
 |------|------|----------|
@@ -798,7 +798,7 @@ What happens when:
 
 ```bash
 # Proposed
-$ rvbbit benchmark \
+$ lars benchmark \
     --cascade examples/simple_flow.json \
     --concurrency 50 \
     --duration 5m \
@@ -815,10 +815,10 @@ Configuration is via environment variables with defaults in `config.py`:
 
 ```python
 clickhouse_host: str = Field(
-    default_factory=lambda: os.getenv("RVBBIT_CLICKHOUSE_HOST", "localhost")
+    default_factory=lambda: os.getenv("LARS_CLICKHOUSE_HOST", "localhost")
 )
 clickhouse_port: int = Field(
-    default_factory=lambda: int(os.getenv("RVBBIT_CLICKHOUSE_PORT", "9000"))
+    default_factory=lambda: int(os.getenv("LARS_CLICKHOUSE_PORT", "9000"))
 )
 ```
 
@@ -860,11 +860,11 @@ if errors:
 #### 8.2 Config File Support
 
 ```yaml
-# rvbbit.yaml (optional, env vars override)
+# lars.yaml (optional, env vars override)
 clickhouse:
   host: clickhouse.internal
   port: 9000
-  database: rvbbit
+  database: lars
 
 llm:
   provider_base_url: https://openrouter.ai/api/v1
@@ -881,7 +881,7 @@ def load_config() -> Config:
     config = Config()
 
     # 2. Override from config file if exists
-    for path in ['rvbbit.yaml', 'rvbbit.yml', '.rvbbit.yaml']:
+    for path in ['lars.yaml', 'lars.yml', '.lars.yaml']:
         if os.path.exists(path):
             with open(path) as f:
                 file_config = yaml.safe_load(f)
@@ -904,51 +904,51 @@ def load_config() -> Config:
 
 ```bash
 # Existing
-rvbbit db status    # Show ClickHouse status
-rvbbit db init      # Initialize schema
+lars db status    # Show ClickHouse status
+lars db init      # Initialize schema
 
 # Proposed additions
-rvbbit db repair    # Fix schema drift, add missing columns
-rvbbit db compact   # Run OPTIMIZE TABLE on all tables
-rvbbit db migrate   # Run pending migrations
-rvbbit db backup    # Export to Parquet files
+lars db repair    # Fix schema drift, add missing columns
+lars db compact   # Run OPTIMIZE TABLE on all tables
+lars db migrate   # Run pending migrations
+lars db backup    # Export to Parquet files
 ```
 
 #### Session Management
 
 ```bash
 # Existing
-rvbbit sessions list
-rvbbit sessions show <id>
-rvbbit sessions cancel <id>
-rvbbit sessions cleanup --dry-run
+lars sessions list
+lars sessions show <id>
+lars sessions cancel <id>
+lars sessions cleanup --dry-run
 
 # Proposed additions
-rvbbit sessions orphans         # Find running processes not in registry
-rvbbit sessions orphans --adopt # Register orphans
-rvbbit sessions kill-all        # Emergency stop all
-rvbbit sessions export <id>     # Export session data to JSON
+lars sessions orphans         # Find running processes not in registry
+lars sessions orphans --adopt # Register orphans
+lars sessions kill-all        # Emergency stop all
+lars sessions export <id>     # Export session data to JSON
 ```
 
 #### Cost Management
 
 ```bash
 # Proposed
-rvbbit costs summary --days 30
-rvbbit costs by-model --days 7
-rvbbit costs by-cascade
-rvbbit costs by-user  # If user tracking added
-rvbbit costs export --format csv --days 30 > costs.csv
+lars costs summary --days 30
+lars costs by-model --days 7
+lars costs by-cascade
+lars costs by-user  # If user tracking added
+lars costs export --format csv --days 30 > costs.csv
 ```
 
 #### Debugging
 
 ```bash
 # Proposed
-rvbbit debug replay <session_id>   # Re-run with verbose logging
-rvbbit debug explain <cascade>     # Show execution plan without running
-rvbbit debug trace <session_id>    # Show full trace tree
-rvbbit debug inputs <session_id>   # Show all inputs/outputs
+lars debug replay <session_id>   # Re-run with verbose logging
+lars debug explain <cascade>     # Show execution plan without running
+lars debug trace <session_id>    # Show full trace tree
+lars debug inputs <session_id>   # Show all inputs/outputs
 ```
 
 ---
@@ -1003,7 +1003,7 @@ Machine A              Machine B              Machine C
 **Implementation:**
 ```bash
 # On each worker (cron or systemd timer)
-cd /opt/rvbbit && git pull --ff-only
+cd /opt/lars && git pull --ff-only
 
 # Or via CI/CD
 # .github/workflows/deploy.yaml
@@ -1021,7 +1021,7 @@ jobs:
 #### Option 2: Database as Source of Truth
 
 ```
-┌─────────────┐   rvbbit cascade push   ┌─────────────┐
+┌─────────────┐   lars cascade push   ┌─────────────┐
 │  Developer  │ ─────────────────────── │  ClickHouse │
 │  (local)    │                         │  (cascades) │
 └─────────────┘                         └──────┬──────┘
@@ -1059,13 +1059,13 @@ ORDER BY (cascade_id);
 
 ```bash
 # Push local cascade to DB
-rvbbit cascades push cascades/my_flow.yaml
+lars cascades push cascades/my_flow.yaml
 
 # Worker fetches from DB
-rvbbit run cascade:my_flow  # Fetches from DB, caches locally
+lars run cascade:my_flow  # Fetches from DB, caches locally
 
 # Or auto-fetch mode
-RVBBIT_CASCADE_SOURCE=database rvbbit run my_flow
+LARS_CASCADE_SOURCE=database lars run my_flow
 ```
 
 #### Option 3: Shared Filesystem
@@ -1109,7 +1109,7 @@ RVBBIT_CASCADE_SOURCE=database rvbbit run my_flow
                                   ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Docker Image (immutable)                  │
-│  /app/cascades/  /app/traits/  rvbbit binary                │
+│  /app/cascades/  /app/traits/  lars binary                │
 └─────────────────────────────────┬───────────────────────────┘
                                   │
               ┌───────────────────┼───────────────────┐
@@ -1139,12 +1139,12 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
 
-  rvbbit:
+  lars:
     build: .
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - RVBBIT_CLICKHOUSE_HOST=clickhouse
-      - RVBBIT_ARTIFACT_STORAGE=s3://mybucket/rvbbit/
+      - LARS_CLICKHOUSE_HOST=clickhouse
+      - LARS_ARTIFACT_STORAGE=s3://mybucket/lars/
     volumes:
       # Mount local cascades for development
       - ./cascades:/app/cascades:ro
@@ -1200,8 +1200,8 @@ videos/
 # config.py
 artifact_storage: str = Field(
     default_factory=lambda: os.getenv(
-        "RVBBIT_ARTIFACT_STORAGE",
-        f"file://{os.path.join(_RVBBIT_ROOT, 'artifacts')}"  # Local default
+        "LARS_ARTIFACT_STORAGE",
+        f"file://{os.path.join(_LARS_ROOT, 'artifacts')}"  # Local default
     )
 )
 
@@ -1238,7 +1238,7 @@ graphs/   → Could add mermaid_content column (already exists)
 
 ### Migration Path
 
-1. **Phase 1:** Add `RVBBIT_ARTIFACT_STORAGE` config with file:// default (backward compatible)
+1. **Phase 1:** Add `LARS_ARTIFACT_STORAGE` config with file:// default (backward compatible)
 2. **Phase 2:** Modify image/audio/video tools to use ArtifactStore
 3. **Phase 3:** Document S3/MinIO setup for distributed deployments
 
@@ -1268,9 +1268,9 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install rvbbit
+# Install lars
 COPY pyproject.toml setup.py ./
-COPY rvbbit/ ./rvbbit/
+COPY lars/ ./lars/
 RUN pip install --no-cache-dir .
 
 # Copy default cascades/traits
@@ -1278,7 +1278,7 @@ COPY cascades/ ./cascades/
 COPY traits/ ./traits/
 
 # Default entrypoint
-ENTRYPOINT ["rvbbit"]
+ENTRYPOINT ["lars"]
 CMD ["--help"]
 ```
 
@@ -1286,30 +1286,30 @@ CMD ["--help"]
 
 ```bash
 #!/bin/bash
-# /usr/local/bin/rvbbit (on host)
+# /usr/local/bin/lars (on host)
 
 # Configuration
-RVBBIT_IMAGE="${RVBBIT_IMAGE:-rvbbit:latest}"
-RVBBIT_ROOT="${RVBBIT_ROOT:-$(pwd)}"
+LARS_IMAGE="${LARS_IMAGE:-lars:latest}"
+LARS_ROOT="${LARS_ROOT:-$(pwd)}"
 
 # Run in Docker, mounting current directory
 exec docker run --rm -it \
-    -v "${RVBBIT_ROOT}:/workspace" \
+    -v "${LARS_ROOT}:/workspace" \
     -w /workspace \
     -e OPENROUTER_API_KEY \
-    -e RVBBIT_CLICKHOUSE_HOST="${RVBBIT_CLICKHOUSE_HOST:-host.docker.internal}" \
-    -e RVBBIT_CLICKHOUSE_PORT \
-    -e RVBBIT_CLICKHOUSE_DATABASE \
+    -e LARS_CLICKHOUSE_HOST="${LARS_CLICKHOUSE_HOST:-host.docker.internal}" \
+    -e LARS_CLICKHOUSE_PORT \
+    -e LARS_CLICKHOUSE_DATABASE \
     --network host \
-    "${RVBBIT_IMAGE}" \
+    "${LARS_IMAGE}" \
     "$@"
 ```
 
 **Usage feels native:**
 ```bash
-$ rvbbit run cascades/my_flow.yaml --input '{"x": 1}'
-$ rvbbit sessions list
-$ rvbbit db status
+$ lars run cascades/my_flow.yaml --input '{"x": 1}'
+$ lars sessions list
+$ lars db status
 ```
 
 #### Docker Compose for Full Stack
@@ -1327,32 +1327,32 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     environment:
-      - CLICKHOUSE_DB=rvbbit
+      - CLICKHOUSE_DB=lars
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  rvbbit-init:
-    image: rvbbit:latest
+  lars-init:
+    image: lars:latest
     depends_on:
       clickhouse:
         condition: service_healthy
     environment:
-      - RVBBIT_CLICKHOUSE_HOST=clickhouse
+      - LARS_CLICKHOUSE_HOST=clickhouse
     command: ["db", "init"]
     restart: "no"
 
   studio:
-    image: rvbbit:latest
+    image: lars:latest
     depends_on:
-      - rvbbit-init
+      - lars-init
     ports:
       - "5050:5050"
     environment:
       - OPENROUTER_API_KEY
-      - RVBBIT_CLICKHOUSE_HOST=clickhouse
+      - LARS_CLICKHOUSE_HOST=clickhouse
     volumes:
       - ./cascades:/app/cascades:ro
       - ./traits:/app/traits:ro
@@ -1376,9 +1376,9 @@ spec:
   template:
     spec:
       containers:
-        - name: rvbbit
+        - name: lars
           image: {{ .Values.image }}
-          command: ["rvbbit", "run"]
+          command: ["lars", "run"]
           args:
             - "/cascades/{{ .Values.cascade_file }}"
             - "--input"
@@ -1387,10 +1387,10 @@ spec:
             - name: OPENROUTER_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: rvbbit-secrets
+                  name: lars-secrets
                   key: openrouter-api-key
-            - name: RVBBIT_CLICKHOUSE_HOST
-              value: clickhouse.rvbbit.svc.cluster.local
+            - name: LARS_CLICKHOUSE_HOST
+              value: clickhouse.lars.svc.cluster.local
           volumeMounts:
             - name: cascades
               mountPath: /cascades
@@ -1398,7 +1398,7 @@ spec:
       volumes:
         - name: cascades
           configMap:
-            name: rvbbit-cascades
+            name: lars-cascades
       restartPolicy: Never
   backoffLimit: 2
 ```
@@ -1407,7 +1407,7 @@ spec:
 
 ## 13. The Cascade-as-Micro-App Pattern
 
-> ⭐ **This is the recommended deployment model for production RVBBIT.**
+> ⭐ **This is the recommended deployment model for production LARS.**
 
 ### The Key Insight
 
@@ -1435,19 +1435,19 @@ This isn't "workflow orchestration" in the Airflow sense - it's closer to **serv
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                    RVBBIT's Approach                             │
+│                    LARS's Approach                             │
 │                                                                  │
 │   Git push → CI builds image → Image IS the deployment          │
 │                                                                  │
 │   k8s/nomad/whatever:                                           │
-│     "Run rvbbit:v1.2.3 with cascade X"                          │
+│     "Run lars:v1.2.3 with cascade X"                          │
 │                                                                  │
 │   Worker spins up with EVERYTHING it needs, runs, dies.         │
 │   No sync. No drift. No "is it there yet?"                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Airflow spent years fighting the "how do DAGs get to workers" problem (git-sync sidecars, S3 sync, shared volumes, "Dev Mode", etc.). RVBBIT side-steps the entire problem: **the cascade IS the deployment artifact**.
+Airflow spent years fighting the "how do DAGs get to workers" problem (git-sync sidecars, S3 sync, shared volumes, "Dev Mode", etc.). LARS side-steps the entire problem: **the cascade IS the deployment artifact**.
 
 ### The Deployment Flow
 
@@ -1509,21 +1509,21 @@ my-llm-workflows/
 │   ├── custom_sql_tools.yaml
 │   └── company_specific.yaml
 ├── Dockerfile
-├── rvbbit.yaml                     # Optional config
+├── lars.yaml                     # Optional config
 └── .github/workflows/build.yaml
 ```
 
 ### Dockerfile
 
 ```dockerfile
-FROM rvbbit/base:latest
+FROM lars/base:latest
 
 # Copy cascade definitions - these are now "compiled in"
 COPY cascades/ /app/cascades/
 COPY traits/ /app/traits/
 
 # Optional: copy config
-COPY rvbbit.yaml /app/rvbbit.yaml
+COPY lars.yaml /app/lars.yaml
 
 # Cascades are now immutable artifacts in this image
 ```
@@ -1571,7 +1571,7 @@ jobs:
 **Local development** (unchanged - still just files):
 ```bash
 cd my-llm-workflows/
-rvbbit run cascades/etl/daily_ingest.yaml --input '{"date": "2024-12-31"}'
+lars run cascades/etl/daily_ingest.yaml --input '{"date": "2024-12-31"}'
 ```
 
 **Production** (Docker image):
@@ -1584,7 +1584,7 @@ docker run ghcr.io/myorg/llm-workflows:v1.2.3 \
 # With environment variables
 docker run \
   -e OPENROUTER_API_KEY \
-  -e RVBBIT_CLICKHOUSE_HOST=clickhouse.internal \
+  -e LARS_CLICKHOUSE_HOST=clickhouse.internal \
   ghcr.io/myorg/llm-workflows:v1.2.3 \
   run /app/cascades/etl/daily_ingest.yaml
 ```
@@ -1609,14 +1609,14 @@ spec:
       template:
         spec:
           containers:
-            - name: rvbbit
+            - name: lars
               image: ghcr.io/myorg/llm-workflows:v1.2.3
-              command: ["rvbbit", "run", "/app/cascades/etl/daily_ingest.yaml"]
+              command: ["lars", "run", "/app/cascades/etl/daily_ingest.yaml"]
               env:
                 - name: OPENROUTER_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: rvbbit-secrets
+                      name: lars-secrets
                       key: api-key
           restartPolicy: OnFailure
 ```
@@ -1653,7 +1653,7 @@ Compare to systems where someone could SSH into a worker and edit a workflow fil
 For convenience, cascades can be registered as named entry points:
 
 ```yaml
-# rvbbit.yaml (baked into image)
+# lars.yaml (baked into image)
 entry_points:
   daily-etl: cascades/etl/daily_ingest.yaml
   weekly-report: cascades/etl/weekly_report.yaml
@@ -1681,11 +1681,11 @@ git clone https://github.com/myorg/llm-workflows
 cd llm-workflows
 
 # Work locally with files (no Docker needed)
-rvbbit run cascades/my_new_flow.yaml --input '{"test": true}'
+lars run cascades/my_new_flow.yaml --input '{"test": true}'
 
 # Iterate...
 vim cascades/my_new_flow.yaml
-rvbbit run cascades/my_new_flow.yaml --input '{"test": true}'
+lars run cascades/my_new_flow.yaml --input '{"test": true}'
 
 # When ready, commit and push
 git add cascades/my_new_flow.yaml
@@ -1700,7 +1700,7 @@ Developers never need to think about Docker during development. They just work w
 
 ### Comparison to Airflow
 
-| Aspect | Airflow | RVBBIT |
+| Aspect | Airflow | LARS |
 |--------|---------|--------|
 | **DAG/Cascade location** | Must sync to all workers | Baked into image |
 | **Version control** | Separate from deployment | Git commit = deployment |
@@ -1731,8 +1731,8 @@ If you need:
 | Item | Effort | Impact |
 |------|--------|--------|
 | Fix path traversal in Studio API | 1 hour | Security |
-| Add `rvbbit validate` command | 1-2 days | UX |
-| Add `rvbbit health` command | 2 hours | Operations |
+| Add `lars validate` command | 1-2 days | UX |
+| Add `lars health` command | 2 hours | Operations |
 
 ### P1 - High Priority
 
@@ -1748,7 +1748,7 @@ If you need:
 | Item | Effort | Impact |
 |------|--------|--------|
 | JSON Schema export for IDE validation | 1 day | UX |
-| Add `rvbbit doctor` command | 1 day | Operations |
+| Add `lars doctor` command | 1 day | Operations |
 | Add graceful shutdown for daemon threads | 4 hours | Reliability |
 | Artifact storage abstraction (S3 support) | 2 days | Distribution |
 
@@ -1769,27 +1769,27 @@ If you need:
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `rvbbit/runner.py` | Main execution engine | ~7000 |
-| `rvbbit/deterministic.py` | Tool-based cell execution | ~800 |
-| `rvbbit/agent.py` | LLM wrapper (LiteLLM) | ~600 |
-| `rvbbit/cascade.py` | Pydantic DSL models | ~1200 |
-| `rvbbit/echo.py` | State management | ~500 |
+| `lars/runner.py` | Main execution engine | ~7000 |
+| `lars/deterministic.py` | Tool-based cell execution | ~800 |
+| `lars/agent.py` | LLM wrapper (LiteLLM) | ~600 |
+| `lars/cascade.py` | Pydantic DSL models | ~1200 |
+| `lars/echo.py` | State management | ~500 |
 
 ### Infrastructure
 
 | File | Purpose |
 |------|---------|
-| `rvbbit/db_adapter.py` | ClickHouse singleton adapter |
-| `rvbbit/unified_logs.py` | Logging to ClickHouse |
-| `rvbbit/config.py` | Configuration management |
-| `rvbbit/signals.py` | Cross-cascade IPC |
-| `rvbbit/session_registry.py` | Browser session tracking |
+| `lars/db_adapter.py` | ClickHouse singleton adapter |
+| `lars/unified_logs.py` | Logging to ClickHouse |
+| `lars/config.py` | Configuration management |
+| `lars/signals.py` | Cross-cascade IPC |
+| `lars/session_registry.py` | Browser session tracking |
 
 ### Server
 
 | File | Purpose |
 |------|---------|
-| `rvbbit/server/postgres_server.py` | PGWire protocol server |
+| `lars/server/postgres_server.py` | PGWire protocol server |
 | `studio/backend/app.py` | Flask web server |
 | `studio/backend/studio_api.py` | Main Studio API |
 
@@ -1797,10 +1797,10 @@ If you need:
 
 | File | Purpose |
 |------|---------|
-| `rvbbit/traits/extras.py` | Shell, code execution |
-| `rvbbit/traits/data_tools.py` | SQL, Python, JS data tools |
-| `rvbbit/traits/system.py` | spawn_cascade, map_cascade |
-| `rvbbit/traits/rabbitize.py` | Browser automation |
+| `lars/traits/extras.py` | Shell, code execution |
+| `lars/traits/data_tools.py` | SQL, Python, JS data tools |
+| `lars/traits/system.py` | spawn_cascade, map_cascade |
+| `lars/traits/rabbitize.py` | Browser automation |
 
 ---
 

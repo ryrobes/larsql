@@ -1,7 +1,7 @@
 /**
- * AppsView - RVBBIT Apps Interface
+ * AppsView - LARS Apps Interface
  *
- * Renders RVBBIT Apps (cascade-powered interfaces) in a full-height iframe.
+ * Renders LARS Apps (cascade-powered interfaces) in a full-height iframe.
  * The apps are server-rendered HTML with htmx, so they run independently
  * from React while still being accessible through the Studio sidebar.
  */
@@ -19,7 +19,7 @@ const AppsView = () => {
       <iframe
         src={appsUrl}
         className="apps-iframe"
-        title="RVBBIT Apps"
+        title="LARS Apps"
       />
     </div>
   );

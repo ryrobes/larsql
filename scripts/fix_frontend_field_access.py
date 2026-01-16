@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix frontend field accesses to use new RVBBIT terminology
+Fix frontend field accesses to use new LARS terminology
 Only updates field accesses (object.cells → object.cells)
 Does NOT change variable names or function parameters
 """

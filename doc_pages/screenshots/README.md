@@ -10,7 +10,7 @@ The landing page needs 5 screenshots (or 1 video + 4 screenshots), strategically
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  RVBBIT                                    [Get Started]     │
+│  LARS                                    [Get Started]     │
 ├────────────────────────────┬─────────────────────────────────┤
 │                            │                                 │
 │  SQL Surface for AI        │   ┌─────────────────────────┐  │
@@ -177,7 +177,7 @@ If you go the video route:
 Current placeholders use placehold.co. To test layout:
 
 ```bash
-cd /home/ryanr/repos/rvbbit/landing_page/v3
+cd /home/ryanr/repos/lars/landing_page/v3
 python -m http.server 8080
 # Open http://localhost:8080
 ```

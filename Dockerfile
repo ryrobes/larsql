@@ -1,4 +1,4 @@
-# RVBBIT Server
+# LARS Server
 # Multi-stage build for Python + Node.js (Rabbitize browser automation)
 
 # =============================================================================
@@ -62,13 +62,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 # Set up workspace
 WORKDIR /app
-ENV RVBBIT_ROOT=/data
+ENV LARS_ROOT=/data
 ENV PYTHONUNBUFFERED=1
 
-# Install Python dependencies (rvbbit package)
-COPY rvbbit/pyproject.toml rvbbit/README.md ./rvbbit/
-COPY rvbbit/rvbbit ./rvbbit/rvbbit
-RUN pip install --no-cache-dir ./rvbbit
+# Install Python dependencies (lars package)
+COPY lars/pyproject.toml lars/README.md ./lars/
+COPY lars/lars ./lars/lars
+RUN pip install --no-cache-dir ./lars
 
 # Install studio backend dependencies
 COPY studio/backend/requirements.txt ./studio/backend/
@@ -100,9 +100,9 @@ COPY tackle ./tackle
 RUN mkdir -p /data/logs /data/graphs /data/states /data/images /data/audio /data/session_dbs
 
 # Default environment (override with docker-compose or -e flags)
-ENV RVBBIT_USE_CLICKHOUSE_SERVER=true
-ENV RVBBIT_CLICKHOUSE_HOST=clickhouse
-ENV RVBBIT_CLICKHOUSE_PORT=9000
+ENV LARS_USE_CLICKHOUSE_SERVER=true
+ENV LARS_CLICKHOUSE_HOST=clickhouse
+ENV LARS_CLICKHOUSE_PORT=9000
 ENV FLASK_ENV=production
 
 # Health check (uses cascade-definitions endpoint as proxy for health)

@@ -18,11 +18,11 @@ import json
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from rvbbit.db_adapter import get_db
-from rvbbit.config import get_config
+from lars.db_adapter import get_db
+from lars.config import get_config
 
 sextant_bp = Blueprint('sextant', __name__, url_prefix='/api/sextant')
 
@@ -649,9 +649,9 @@ def generate_prompt_synopsis(winners: list, losers: list, cascade_id: str, cell_
 
     Returns structured synopsis with patterns and actionable suggestions.
     """
-    from rvbbit.agent import Agent
-    from rvbbit.config import get_config
-    from rvbbit.unified_logs import log_unified
+    from lars.agent import Agent
+    from lars.config import get_config
+    from lars.unified_logs import log_unified
     import uuid
 
     config = get_config()
@@ -804,7 +804,7 @@ def get_suggestions(cascade_id):
 
     Uses the TakeAnalyzer to generate actual prompt improvements.
     """
-    from rvbbit.analyzer import TakeAnalyzer, analyze_and_suggest
+    from lars.analyzer import TakeAnalyzer, analyze_and_suggest
 
     cell_name = request.args.get('cell')
     min_runs = request.args.get('min_runs', 5, type=int)
@@ -882,7 +882,7 @@ def apply_suggestion():
         auto_commit: boolean (optional)
     }
     """
-    from rvbbit.analyzer import PromptSuggestionManager
+    from lars.analyzer import PromptSuggestionManager
 
     data = request.json or {}
     cascade_id = data.get('cascade_id')
@@ -1012,8 +1012,8 @@ def embedding_hotspots(cascade_id, cell_name):
     try:
         import numpy as np
         import json as json_mod
-        from rvbbit.agent import Agent
-        from rvbbit.config import get_config
+        from lars.agent import Agent
+        from lars.config import get_config
 
         config = get_config()
 
@@ -1296,8 +1296,8 @@ def text_heatmap(cascade_id, cell_name):
 
     try:
         import numpy as np
-        from rvbbit.agent import Agent
-        from rvbbit.config import get_config
+        from lars.agent import Agent
+        from lars.config import get_config
 
         config = get_config()
 
@@ -1671,8 +1671,8 @@ def prompt_heatmap(cascade_id, cell_name):
     try:
         import numpy as np
         import json as json_mod
-        from rvbbit.agent import Agent
-        from rvbbit.config import get_config
+        from lars.agent import Agent
+        from lars.config import get_config
 
         config = get_config()
 
@@ -1920,8 +1920,8 @@ def prompt_patterns(cascade_id, cell_name):
     try:
         import numpy as np
         import json as json_mod
-        from rvbbit.agent import Agent
-        from rvbbit.config import get_config
+        from lars.agent import Agent
+        from lars.config import get_config
 
         config = get_config()
 
@@ -2272,7 +2272,7 @@ def embedding_search():
         role: string (optional filter: 'assistant', 'user')
     }
     """
-    from rvbbit.agent import Agent
+    from lars.agent import Agent
 
     data = request.json or {}
     query_text = data.get('query', '')
@@ -2627,7 +2627,7 @@ def get_prompt_evolution(session_id):
 
                 # Build parent winners list for DNA inheritance bar
                 # IMPORTANT: Only use the last N winners (active training set), not entire gene pool
-                winner_limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
+                winner_limit = int(os.environ.get("LARS_WINNER_HISTORY_LIMIT", "5"))
                 active_gene_pool = gene_pool[-winner_limit:] if len(gene_pool) > winner_limit else gene_pool
 
                 parent_winners = []
@@ -2722,7 +2722,7 @@ def get_prompt_evolution(session_id):
 
         # 7. Mark the "active training set" (last 5 winners by timestamp)
         # This shows which winners would be used for training the NEXT generation
-        winner_limit = int(os.environ.get("RVBBIT_WINNER_HISTORY_LIMIT", "5"))
+        winner_limit = int(os.environ.get("LARS_WINNER_HISTORY_LIMIT", "5"))
 
         # Collect all winner nodes with their timestamps
         winner_nodes = []

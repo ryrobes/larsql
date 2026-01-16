@@ -150,7 +150,7 @@ For full consistency, periodically sync Echo state to AppSession:
 def sync_echo_to_session(session_id, app_session):
     """Sync cascade Echo state to AppSession for UI rendering."""
     try:
-        from rvbbit.echo import get_echo
+        from lars.echo import get_echo
         echo = get_echo(session_id)
 
         # Selectively sync relevant state

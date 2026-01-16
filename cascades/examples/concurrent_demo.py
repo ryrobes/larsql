@@ -3,10 +3,10 @@ import time
 import os
 import sys
 
-# Ensure we can import rvbbit
+# Ensure we can import lars
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
-from rvbbit import run_cascade, set_provider
+from lars import run_cascade, set_provider
 
 def run_flow(flow_name: str, input_data: dict, delay: int):
     time.sleep(delay)
@@ -26,7 +26,7 @@ def main():
     t1.start()
     t2.start()
     
-    print("Flows launched. Run 'python rvbbit/monitor.py' in another terminal to see status.")
+    print("Flows launched. Run 'python lars/monitor.py' in another terminal to see status.")
     
     t1.join()
     t2.join()

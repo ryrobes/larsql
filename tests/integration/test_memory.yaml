@@ -25,7 +25,7 @@ cells:
         # Create a unique secret with timestamp to ensure uniqueness
         unique_id = str(uuid.uuid4())[:8].upper()
         timestamp = str(int(time.time()))[-4:]
-        secret = "RVBBIT_MEM_" + unique_id + "_" + timestamp
+        secret = "LARS_MEM_" + unique_id + "_" + timestamp
         result = {"secret": secret}
     handoffs:
       - store_in_memory
@@ -49,7 +49,7 @@ cells:
     inputs:
       code: |
         # Import memory system
-        from rvbbit.memory import get_memory_system
+        from lars.memory import get_memory_system
 
         memory_system = get_memory_system()
         memory_name = "inttest_memory_bank"
@@ -59,7 +59,7 @@ cells:
 
         # Query the memory for secret-related content
         if mem_exists:
-            query_results = memory_system.query(memory_name, "secret code RVBBIT", limit=10)
+            query_results = memory_system.query(memory_name, "secret code LARS", limit=10)
             metadata = memory_system.get_metadata(memory_name)
             msg_count = metadata.get('message_count', 0)
         else:
@@ -95,7 +95,7 @@ cells:
         msg_count = mem_result.get('message_count', 0) if isinstance(mem_result, dict) else 0
 
         # Check 1: Secret was generated with correct format
-        if secret and 'RVBBIT_MEM_' in secret:
+        if secret and 'LARS_MEM_' in secret:
             checks.append({'check': 'secret_generated', 'passed': True})
         else:
             checks.append({'check': 'secret_generated', 'passed': False})
@@ -121,7 +121,7 @@ cells:
             checks.append({'check': 'secret_in_memory', 'passed': True})
         else:
             # Lenient: check if any part of secret pattern found
-            if 'RVBBIT_MEM_' in query_str:
+            if 'LARS_MEM_' in query_str:
                 checks.append({'check': 'secret_in_memory', 'passed': True, 'note': 'Found memory pattern, exact match may differ'})
             else:
                 checks.append({'check': 'secret_in_memory', 'passed': False})

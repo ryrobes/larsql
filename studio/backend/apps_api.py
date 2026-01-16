@@ -1,5 +1,5 @@
 """
-RVBBIT Apps API - Flask blueprint for cascade-powered applications.
+LARS Apps API - Flask blueprint for cascade-powered applications.
 
 Every cascade can be viewed and interacted with as an app. Cells with `htmx`
 get custom rendering, cells without get auto-generated data cards.
@@ -27,21 +27,21 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Tuple
 from flask import Blueprint, request, jsonify, render_template_string, redirect, url_for, send_from_directory
 
-# Add rvbbit to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'rvbbit')))
+# Add lars to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'lars')))
 
 from jinja2 import Environment, BaseLoader, TemplateSyntaxError
 
-# Import RVBBIT components for real cascade execution
+# Import LARS components for real cascade execution
 try:
-    from rvbbit import run_cascade
-    from rvbbit.checkpoints import get_checkpoint_manager
-    RVBBIT_AVAILABLE = True
+    from lars import run_cascade
+    from lars.checkpoints import get_checkpoint_manager
+    LARS_AVAILABLE = True
 except ImportError as e:
-    print(f"[apps_api] RVBBIT import failed: {e}")
+    print(f"[apps_api] LARS import failed: {e}")
     run_cascade = None
     get_checkpoint_manager = None
-    RVBBIT_AVAILABLE = False
+    LARS_AVAILABLE = False
 
 # Track running cascade threads
 _cascade_threads: Dict[str, threading.Thread] = {}
@@ -567,7 +567,7 @@ def get_or_create_session(cascade_id: str, session_id: str) -> Optional[AppSessi
     if session:
         return session
 
-    # Check if there's a checkpoint for this session (means it's a real RVBBIT session)
+    # Check if there's a checkpoint for this session (means it's a real LARS session)
     checkpoint = get_pending_checkpoint(session_id)
 
     # Also check if we can find session logs in ClickHouse to confirm it exists
@@ -631,13 +631,13 @@ def spawn_cascade_for_app(cascade_path: str, session_id: str, inputs: dict):
     """
     Spawn a cascade run in a background thread for an app session.
 
-    This makes the cascade truly run through RVBBIT's runner, so:
-    - It appears in RVBBIT UI as a running cascade
+    This makes the cascade truly run through LARS's runner, so:
+    - It appears in LARS UI as a running cascade
     - All tool calls are properly logged
     - HITL/htmx cells create checkpoints and wait for responses
     """
-    if not RVBBIT_AVAILABLE:
-        print(f"[apps_api] RVBBIT not available, skipping cascade spawn for {session_id}")
+    if not LARS_AVAILABLE:
+        print(f"[apps_api] LARS not available, skipping cascade spawn for {session_id}")
         return
 
     def run_in_thread():
@@ -659,8 +659,8 @@ def spawn_cascade_for_app(cascade_path: str, session_id: str, inputs: dict):
 
 def get_pending_checkpoint(session_id: str) -> Optional[dict]:
     """Get the pending checkpoint for a session, if any."""
-    if not RVBBIT_AVAILABLE or not get_checkpoint_manager:
-        print(f"[apps_api] get_pending_checkpoint: RVBBIT not available")
+    if not LARS_AVAILABLE or not get_checkpoint_manager:
+        print(f"[apps_api] get_pending_checkpoint: LARS not available")
         return None
 
     try:
@@ -684,7 +684,7 @@ def get_pending_checkpoint(session_id: str) -> Optional[dict]:
 
 def respond_to_checkpoint(checkpoint_id: str, response: dict) -> bool:
     """Respond to a checkpoint, resuming the cascade."""
-    if not RVBBIT_AVAILABLE or not get_checkpoint_manager:
+    if not LARS_AVAILABLE or not get_checkpoint_manager:
         return False
 
     try:
@@ -706,7 +706,7 @@ def get_cascade_state_from_clickhouse(session_id: str) -> dict:
     - error_message: Error message if status == 'error'
     """
     try:
-        from rvbbit.db_adapter import get_db
+        from lars.db_adapter import get_db
 
         db = get_db()
 
@@ -1265,7 +1265,7 @@ def execute_tool_cell(cell, session: AppSession, cascade) -> Tuple[Any, Optional
         else:
             # Try to execute via deterministic module
             try:
-                from rvbbit.deterministic import resolve_tool_function, execute_with_retry
+                from lars.deterministic import resolve_tool_function, execute_with_retry
                 tool_func = resolve_tool_function(tool_name, None)
                 result = execute_with_retry(tool_func, rendered_inputs, None, 60)
                 _log_app_execution(session, cell.name, tool_name, rendered_inputs, result)
@@ -1311,9 +1311,9 @@ def execute_tool_cell(cell, session: AppSession, cascade) -> Tuple[Any, Optional
 
 
 def _log_app_execution(session: AppSession, cell_name: str, tool_name: str, inputs: dict, result: Any):
-    """Log app tool execution to ClickHouse for visibility in RVBBIT UI."""
+    """Log app tool execution to ClickHouse for visibility in LARS UI."""
     try:
-        from rvbbit.unified_logs import log_unified
+        from lars.unified_logs import log_unified
 
         # Use the unified logging system
         log_unified(
@@ -1344,7 +1344,7 @@ def _log_app_execution(session: AppSession, cell_name: str, tool_name: str, inpu
 
 def get_cascade_dirs() -> List[Path]:
     """Get directories containing cascade files."""
-    from rvbbit.config import get_config
+    from lars.config import get_config
     root = Path(get_config().root_dir)
 
     dirs = []
@@ -1358,7 +1358,7 @@ def get_cascade_dirs() -> List[Path]:
 
 def scan_cascades() -> List[Dict[str, Any]]:
     """Scan for available cascades."""
-    from rvbbit.loaders import load_config_file
+    from lars.loaders import load_config_file
 
     cascades = []
     seen_ids = set()
@@ -1402,8 +1402,8 @@ def load_cascade_by_id(cascade_id: str):
 
 def load_cascade_with_path(cascade_id: str) -> Optional[Tuple[Any, str]]:
     """Load a cascade by ID and return (cascade, file_path)."""
-    from rvbbit.cascade import load_cascade_config
-    from rvbbit.loaders import load_config_file
+    from lars.cascade import load_cascade_config
+    from lars.loaders import load_config_file
 
     for dir_path in get_cascade_dirs():
         for ext in ['yaml', 'yml', 'json']:
@@ -1443,7 +1443,7 @@ BASECOAT_HEAD = '''
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&family=Google+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Basecoat CSS Variables - Matched to RVBBIT Studio native UI -->
+    <!-- Basecoat CSS Variables - Matched to LARS Studio native UI -->
     <style>
       :root {
         /* Core colors - matched to Studio */
@@ -1558,7 +1558,7 @@ APP_INDEX_TEMPLATE = '''
 <!DOCTYPE html>
 <html class="dark">
 <head>
-    <title>RVBBIT Apps</title>
+    <title>LARS Apps</title>
     ''' + BASECOAT_HEAD + '''
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans">
@@ -1607,7 +1607,7 @@ APP_INPUT_FORM_TEMPLATE = '''
 <!DOCTYPE html>
 <html class="dark">
 <head>
-    <title>{{ cascade.cascade_id }} | RVBBIT Apps</title>
+    <title>{{ cascade.cascade_id }} | LARS Apps</title>
     ''' + BASECOAT_HEAD + '''
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans">
@@ -1719,14 +1719,14 @@ APP_SHELL_TEMPLATE = '''
 <!DOCTYPE html>
 <html class="dark">
 <head>
-    <title>{{ cascade_id }} | RVBBIT Apps</title>
+    <title>{{ cascade_id }} | LARS Apps</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/json-enc.js"></script>
     ''' + BASECOAT_HEAD + '''
 
-    <!-- RVBBIT App Events - postMessage for Calliope iframe integration -->
+    <!-- LARS App Events - postMessage for Calliope iframe integration -->
     <script>
-      window.RVBBIT_APP = {
+      window.LARS_APP = {
         sessionId: '{{ session_id }}',
         cascadeId: '{{ cascade_id }}',
         currentCell: '{{ cell_name }}',
@@ -1735,7 +1735,7 @@ APP_SHELL_TEMPLATE = '''
         postEvent: function(type, data) {
           if (window.parent && window.parent !== window) {
             window.parent.postMessage({
-              type: 'rvbbit_' + type,
+              type: 'lars_' + type,
               session_id: this.sessionId,
               cascade_id: this.cascadeId,
               ...data
@@ -1771,19 +1771,19 @@ APP_SHELL_TEMPLATE = '''
       // Auto-post cell change on page load
       document.addEventListener('DOMContentLoaded', function() {
         var stateData = {{ state | tojson | safe if state else '{}' }};
-        RVBBIT_APP.onCellChange('{{ cell_name }}', stateData);
+        LARS_APP.onCellChange('{{ cell_name }}', stateData);
 
         // Check if session is completed (no pending checkpoints, no running status)
         var status = '{{ status }}';
         if (status === 'completed') {
-          RVBBIT_APP.onComplete(stateData);
+          LARS_APP.onComplete(stateData);
         } else if (status === 'error') {
-          RVBBIT_APP.onError('{{ error.message if error else "Unknown error" }}');
+          LARS_APP.onError('{{ error.message if error else "Unknown error" }}');
         }
       });
 
       // Video loader - picks a random video for loading animations
-      window.RVBBIT_VIDEO = {
+      window.LARS_VIDEO = {
         // Available full-color 800px videos (only these exist)
         largeVideos: [1, 2, 4, 6, 8, 10, 12, 14],
 
@@ -1848,8 +1848,8 @@ APP_SHELL_TEMPLATE = '''
                 // Set random video source on load
                 (function() {
                     var video = document.getElementById('loading-video');
-                    if (video && window.RVBBIT_VIDEO) {
-                        video.querySelector('source').src = window.RVBBIT_VIDEO.getRandomVideo();
+                    if (video && window.LARS_VIDEO) {
+                        video.querySelector('source').src = window.LARS_VIDEO.getRandomVideo();
                         video.load();
                     }
                 })();
@@ -1989,7 +1989,7 @@ def new_session(cascade_id: str):
     save_session(session)
 
     # Spawn the cascade in a background thread
-    # This makes it a REAL cascade execution that shows in RVBBIT UI
+    # This makes it a REAL cascade execution that shows in LARS UI
     spawn_cascade_for_app(cascade_path, session_id, inputs)
 
     return redirect(url_for('apps.view_cell',
@@ -2299,7 +2299,7 @@ def status(cascade_id: str, session_id: str):
             # This ensures we don't show stale progress displays from previous cells
             progress_html = None
             try:
-                from rvbbit.db_adapter import get_db
+                from lars.db_adapter import get_db
                 db = get_db()
                 # Filter by both session_id AND cell_name to get progress display
                 # only for the currently executing cell
@@ -2373,7 +2373,7 @@ def status(cascade_id: str, session_id: str):
             # Try to show the final output from the cascade
             final_output = None
             try:
-                from rvbbit.db_adapter import get_db
+                from lars.db_adapter import get_db
                 db = get_db()
                 output_query = f"""
                     SELECT content_json, cell_name

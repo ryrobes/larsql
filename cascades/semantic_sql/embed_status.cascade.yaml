@@ -34,7 +34,7 @@ cells:
 - name: check_status
   tool: python_data
   inputs:
-    code: "import json\nfrom rvbbit.db_adapter import get_db_adapter\n\ntable_name\
+    code: "import json\nfrom lars.db_adapter import get_db_adapter\n\ntable_name\
       \ = input.get('table_name')\ncolumn_name = input.get('column_name')\nid_column\
       \ = input.get('id_column')\n\nif not all([table_name, column_name, id_column]):\n\
       \    result = json.dumps({\"error\": \"table_name, column_name, and id_column\
@@ -43,7 +43,7 @@ cells:
       \ cnt\n        FROM {table_name}\n        WHERE {column_name} IS NOT NULL AND\
       \ {column_name} != ''\n    \"\"\"\n\n    # Count embedded rows\n    embedded_query\
       \ = f\"\"\"\n        SELECT COUNT(DISTINCT source_id) as cnt, any(embedding_model)\
-      \ as model\n        FROM rvbbit_embeddings\n        WHERE source_table = '{table_name}'\n\
+      \ as model\n        FROM lars_embeddings\n        WHERE source_table = '{table_name}'\n\
       \    \"\"\"\n\n    try:\n        total_result = db.query(total_query, output_format=\"\
       dict\")\n        embedded_result = db.query(embedded_query, output_format=\"\
       dict\")\n\n        rows_total = total_result[0]['cnt'] if total_result else\

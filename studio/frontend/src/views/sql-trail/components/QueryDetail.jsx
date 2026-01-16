@@ -80,7 +80,7 @@ const SEMANTIC_KIND_COLORS = {
 
 // SQL keyword highlighting patterns
 const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|AND|OR|NOT|IN|LIKE|BETWEEN|IS|NULL|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|DISTINCT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|VIEW|INTO|VALUES|SET|CASE|WHEN|THEN|ELSE|END|CAST|COALESCE|NULLIF|EXISTS|ANY|SOME|TRUE|FALSE|ASC|DESC|WITH|RECURSIVE|OVER|PARTITION|ROW_NUMBER|RANK|DENSE_RANK|LEAD|LAG|FIRST_VALUE|LAST_VALUE|COUNT|SUM|AVG|MIN|MAX|ARRAY|STRUCT|UNNEST)\b/gi;
-const SQL_FUNCTIONS = /\b(semantic_\w+|rvbbit_\w+|SUMMARIZE|THEMES|EXTRACT_ENTITIES|CLASSIFY|SENTIMENT|LLM_CASE)\b/gi;
+const SQL_FUNCTIONS = /\b(semantic_\w+|lars_\w+|SUMMARIZE|THEMES|EXTRACT_ENTITIES|CLASSIFY|SENTIMENT|LLM_CASE)\b/gi;
 const SQL_STRINGS = /('(?:''|[^'])*')/g;
 const SQL_NUMBERS = /\b(\d+\.?\d*)\b/g;
 const SQL_COMMENTS = /(--[^\n]*|\/\*[\s\S]*?\*\/)/g;
@@ -1033,7 +1033,7 @@ const ResultsViewer = ({ callerId, resultLocation }) => {
 
           <div className="results-viewer-footer">
             <code className="results-viewer-location-small">
-              rvbbit_results.{results.result_table || resultLocation?.result_table}
+              lars_results.{results.result_table || resultLocation?.result_table}
             </code>
           </div>
         </>

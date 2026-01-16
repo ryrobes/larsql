@@ -4,9 +4,9 @@ The WATCH system enables **intelligent data monitoring** by creating SQL-based s
 
 ## Why Watches Beat Traditional Triggers
 
-Traditional database triggers fire on row-level changes (INSERT, UPDATE, DELETE). RVBBIT watches are fundamentally different:
+Traditional database triggers fire on row-level changes (INSERT, UPDATE, DELETE). LARS watches are fundamentally different:
 
-| Feature | Database Triggers | RVBBIT Watches |
+| Feature | Database Triggers | LARS Watches |
 |---------|------------------|----------------|
 | Scope | Single table, single database | Any query across any connected data source |
 | Intelligence | Exact value matching only | Semantic operators (similarity, themes, summarization) |
@@ -325,16 +325,16 @@ Access the Watchers view at `/watchers` in Studio:
    - CASCADE: Spawns async workflow, stores session ID for deep linking
    - SIGNAL: Fires to signal registry for cross-cascade coordination
    - SQL: Executes statement directly
-5. **Execution tracking** in `rvbbit.watch_executions` table
+5. **Execution tracking** in `lars.watch_executions` table
 
 ## CLI
 
 ```bash
 # Start SQL server with watch daemon
-rvbbit serve sql --port 15432
+lars serve sql --port 15432
 
 # Connect from any PostgreSQL client
-psql -h localhost -p 15432 -U rvbbit -d rvbbit
+psql -h localhost -p 15432 -U lars -d lars
 ```
 
 ## Troubleshooting

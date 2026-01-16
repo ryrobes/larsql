@@ -1,12 +1,12 @@
 #!/bin/bash
-# RVBBIT Frontend Refactoring Script
+# LARS Frontend Refactoring Script
 # Updates React components and code with new terminology
 
 set -e
 
-cd /home/ryanr/repos/rvbbit/dashboard/frontend
+cd /home/ryanr/repos/lars/dashboard/frontend
 
-echo "=== RVBBIT Frontend Refactoring ==="
+echo "=== LARS Frontend Refactoring ==="
 echo ""
 
 # Count files

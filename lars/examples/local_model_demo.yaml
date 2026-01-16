@@ -1,0 +1,30 @@
+# Local Model Demo
+# Demonstrates using local HuggingFace transformers models as tools
+#
+# Run with:
+#   lars run examples/local_model_demo.yaml --input '{"text": "I absolutely love this product!"}'
+#
+# Prerequisites:
+#   pip install lars[local-models]
+
+cascade_id: local_model_demo
+description: Analyze text using local ML models (sentiment + NER)
+
+inputs_schema:
+  text: Text to analyze
+
+cells:
+  - name: analyze
+    instructions: |
+      Analyze this text: "{{ input.text }}"
+
+      Use the available tools to:
+      1. Determine the sentiment (use local_sentiment)
+      2. Extract any named entities (use local_ner)
+
+      Then provide a brief summary of your findings.
+    skills:
+      - local_sentiment
+      - local_ner
+    rules:
+      max_turns: 5

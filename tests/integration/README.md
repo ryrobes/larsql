@@ -1,4 +1,4 @@
-# RVBBIT Live Integration Tests
+# LARS Live Integration Tests
 
 Self-verifying integration tests that run actual cascades with real LLM calls.
 

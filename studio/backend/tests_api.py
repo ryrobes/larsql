@@ -25,7 +25,7 @@ from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 tests_bp = Blueprint('tests', __name__)
@@ -122,14 +122,14 @@ class TestResult:
 
 
 def _get_config():
-    """Get RVBBIT configuration."""
-    from rvbbit.config import get_config
+    """Get LARS configuration."""
+    from lars.config import get_config
     return get_config()
 
 
 def _get_db():
     """Get ClickHouse connection."""
-    from rvbbit.db_adapter import get_db_adapter
+    from lars.db_adapter import get_db_adapter
     return get_db_adapter()
 
 
@@ -206,7 +206,7 @@ def discover_semantic_sql_tests(filter_pattern: Optional[str] = None) -> List[Te
 
 def discover_snapshot_tests(filter_pattern: Optional[str] = None) -> List[TestDefinition]:
     """Discover all cascade snapshot tests."""
-    from rvbbit.testing import SnapshotValidator
+    from lars.testing import SnapshotValidator
 
     validator = SnapshotValidator()
     tests = []
@@ -322,10 +322,10 @@ def _get_duckdb_executor():
     global _duckdb_conn, _duckdb_lock, _rewriter_func
 
     if _duckdb_conn is None:
-        from rvbbit.sql_tools.session_db import get_session_db, get_session_lock
-        from rvbbit.sql_tools.udf import register_rvbbit_udf, register_dynamic_sql_functions
-        from rvbbit.semantic_sql.registry import initialize_registry
-        from rvbbit.sql_rewriter import rewrite_rvbbit_syntax
+        from lars.sql_tools.session_db import get_session_db, get_session_lock
+        from lars.sql_tools.udf import register_lars_udf, register_dynamic_sql_functions
+        from lars.semantic_sql.registry import initialize_registry
+        from lars.sql_rewriter import rewrite_lars_syntax
 
         # Initialize registry for semantic SQL functions
         initialize_registry(force=True)
@@ -337,10 +337,10 @@ def _get_duckdb_executor():
 
         # Register all UDFs
         with _duckdb_lock:
-            register_rvbbit_udf(_duckdb_conn)
+            register_lars_udf(_duckdb_conn)
             register_dynamic_sql_functions(_duckdb_conn)
 
-        _rewriter_func = rewrite_rvbbit_syntax
+        _rewriter_func = rewrite_lars_syntax
 
     return _duckdb_conn, _duckdb_lock, _rewriter_func
 
@@ -372,7 +372,7 @@ def _execute_internal_sql(sql: str, timeout_seconds: int = 120) -> tuple:
         return None, str(e)
 
 
-def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'rvbbit') -> tuple:
+def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'lars') -> tuple:
     """Execute SQL via psql CLI (Simple Query Protocol)."""
     try:
         result = subprocess.run(
@@ -413,7 +413,7 @@ def _execute_psql_simple_sql(sql: str, host: str = 'localhost', port: int = 1543
         return None, str(e)
 
 
-def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'rvbbit') -> tuple:
+def _execute_extended_sql(sql: str, host: str = 'localhost', port: int = 15432, database: str = 'lars') -> tuple:
     """Execute SQL via psycopg2 (Extended Query Protocol)."""
     try:
         import psycopg2
@@ -556,7 +556,7 @@ def _check_expectation(actual: Any, expect: Any) -> bool:
 
 def _run_snapshot_test(test: TestDefinition, mode: str = 'structure') -> TestResult:
     """Execute a single cascade snapshot test."""
-    from rvbbit.testing import SnapshotValidator
+    from lars.testing import SnapshotValidator
 
     start_time = datetime.now(timezone.utc)
     result = TestResult(
@@ -611,7 +611,7 @@ def _run_visual_test(test: TestDefinition, db) -> TestResult:
     """Execute a single visual regression test."""
     import subprocess
     import uuid
-    from rvbbit.visual_compare import compare_sessions, VisualTestResult
+    from lars.visual_compare import compare_sessions, VisualTestResult
 
     start_time = datetime.now(timezone.utc)
     result = TestResult(
@@ -653,7 +653,7 @@ def _run_visual_test(test: TestDefinition, db) -> TestResult:
 
         # Run browser batch via CLI
         cmd = [
-            'rvbbit', 'browser', 'batch',
+            'lars', 'browser', 'batch',
             '--url', test.initial_url or 'http://localhost:5550',
             '--commands', commands_json,
             '--client-id', session_id
@@ -1485,7 +1485,7 @@ def get_bulk_test_history():
 def get_visual_screenshot(filepath: str):
     """
     Serve a screenshot image from the browsers directory.
-    Path should be relative to RVBBIT_ROOT/browsers/
+    Path should be relative to LARS_ROOT/browsers/
     """
     from flask import send_file
     try:

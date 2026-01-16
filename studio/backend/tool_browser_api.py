@@ -1,5 +1,5 @@
 """
-Tool Browser API - Browse and test all available RVBBIT tools
+Tool Browser API - Browse and test all available LARS tools
 
 Provides endpoints for:
 - /api/tools/manifest - Get list of all tools with schemas
@@ -13,10 +13,10 @@ import tempfile
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from rvbbit.skills_manifest import get_skill_manifest
+from lars.skills_manifest import get_skill_manifest
 
 tool_browser_bp = Blueprint('tool_browser', __name__, url_prefix='/api/tools')
 
@@ -106,8 +106,8 @@ def execute_tool():
         with open(cascade_path, 'w') as f:
             json.dump(cascade, f, indent=2)
 
-        # Import rvbbit run_cascade directly (same pattern as app.py run-cascade endpoint)
-        from rvbbit import run_cascade as execute_cascade
+        # Import lars run_cascade directly (same pattern as app.py run-cascade endpoint)
+        from lars import run_cascade as execute_cascade
 
         # Run the cascade in a background thread (async execution)
         # The frontend will track progress via SSE events
@@ -116,7 +116,7 @@ def execute_tool():
         def run_in_background():
             try:
                 # Enable checkpoint system for HITL tools (same as app.py)
-                os.environ['RVBBIT_USE_CHECKPOINTS'] = 'true'
+                os.environ['LARS_USE_CHECKPOINTS'] = 'true'
 
                 # Call with correct signature: cascade_path, inputs, session_id
                 execute_cascade(cascade_path, parameters, session_id)
@@ -129,11 +129,11 @@ def execute_tool():
 
                 # Update session state to ERROR
                 try:
-                    from rvbbit.session_state import (
+                    from lars.session_state import (
                         get_session_state_manager,
                         SessionStatus
                     )
-                    from rvbbit.unified_logs import log_unified
+                    from lars.unified_logs import log_unified
                     from datetime import datetime, timezone
 
                     manager = get_session_state_manager()

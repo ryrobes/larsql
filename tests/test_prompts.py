@@ -1,12 +1,12 @@
 """
-Tests for rvbbit.prompts module.
+Tests for lars.prompts module.
 
 Tests Jinja2 filters and template rendering functionality.
 These are deterministic, framework-level tests that don't require LLM calls.
 """
 import pytest
 import json
-from rvbbit.prompts import (
+from lars.prompts import (
     _from_json,
     _to_json,
     _extract_structure,

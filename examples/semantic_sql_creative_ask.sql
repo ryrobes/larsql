@@ -245,7 +245,7 @@ FROM student_essays;
 -- ============================================================================
 
 -- These queries would require external Python/AI services in any other system
--- With RVBBIT ASK, they're pure SQL:
+-- With LARS ASK, they're pure SQL:
 
 -- 1. Emotional journey mapping
 SELECT

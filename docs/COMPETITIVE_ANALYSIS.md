@@ -1,15 +1,15 @@
-# RVBBIT Competitive Analysis
+# LARS Competitive Analysis
 
 > **Last Updated**: January 2026
 > **Scope**: AI-powered data processing tools and semantic operator frameworks
 
 ## Executive Summary
 
-RVBBIT operates in an emerging market of **AI-native data platforms** that embed LLM capabilities directly into data processing workflows. This document analyzes the competitive landscape across four categories:
+LARS operates in an emerging market of **AI-native data platforms** that embed LLM capabilities directly into data processing workflows. This document analyzes the competitive landscape across four categories:
 
-| Category | Competitors | RVBBIT Positioning |
+| Category | Competitors | LARS Positioning |
 |----------|------------|-------------------|
-| **Text-to-SQL Tools** | AIQuery.co, AI2SQL, Text2SQL.ai | Different market - they translate, RVBBIT executes |
+| **Text-to-SQL Tools** | AIQuery.co, AI2SQL, Text2SQL.ai | Different market - they translate, LARS executes |
 | **Endpoint Security** | AIQuery.io | Different market entirely |
 | **Semantic Operators (Academic)** | LOTUS (Stanford), Palimpzest (MIT) | Same vision, different interface (SQL vs Python) |
 
@@ -62,7 +62,7 @@ The AI + Data space is segmented into distinct categories:
 │  │ ChatGPT         │            │ Palimpzest      │ ← MIT                │
 │  └─────────────────┘            │ (Python decl.)  │                      │
 │         │                       ├─────────────────┤                      │
-│         │                       │ RVBBIT          │ ← SQL syntax         │
+│         │                       │ LARS          │ ← SQL syntax         │
 │         ▼                       │ (SQL + Wire)    │                      │
 │  User gets SQL string           └─────────────────┘                      │
 │  to copy/paste                          │                                │
@@ -83,7 +83,7 @@ The AI + Data space is segmented into distinct categories:
 
 ## Text-to-SQL Tools
 
-These tools help users **write** SQL queries using natural language. They are **not direct competitors** to RVBBIT - they operate as translation layers, while RVBBIT embeds AI into query execution.
+These tools help users **write** SQL queries using natural language. They are **not direct competitors** to LARS - they operate as translation layers, while LARS embeds AI into query execution.
 
 ### AIQuery.co
 
@@ -139,9 +139,9 @@ Results
 | **Privacy** | Credentials stay local, only schema names sent to AI |
 | **Platforms** | Web, Desktop (Windows/macOS/Linux) |
 
-### RVBBIT vs Text-to-SQL Tools
+### LARS vs Text-to-SQL Tools
 
-| Aspect | Text-to-SQL Tools | RVBBIT |
+| Aspect | Text-to-SQL Tools | LARS |
 |--------|------------------|--------|
 | **What AI Does** | Generates SQL string | Executes within SQL |
 | **Output** | Query to copy/paste | Actual results |
@@ -149,7 +149,7 @@ Results
 | **Semantic Operations** | None | 85+ operators |
 | **Example** | "Find urgent tickets" → SQL string | `WHERE description MEANS 'urgent'` → results |
 
-**Key Insight**: Text-to-SQL tools help you **write** `WHERE category = 'urgent'`. RVBBIT lets you **do** `WHERE description MEANS 'urgent'` - semantic matching that SQL can't express.
+**Key Insight**: Text-to-SQL tools help you **write** `WHERE category = 'urgent'`. LARS lets you **do** `WHERE description MEANS 'urgent'` - semantic matching that SQL can't express.
 
 ---
 
@@ -171,9 +171,9 @@ AIQuery.io is an **endpoint security and IT operations platform** built on [osqu
 | **Pricing** | $4.99/device/month |
 | **Target Users** | SOC analysts, IT admins, compliance officers, MSPs |
 
-### Comparison to RVBBIT
+### Comparison to LARS
 
-| Aspect | AIQuery.io | RVBBIT |
+| Aspect | AIQuery.io | LARS |
 |--------|-----------|--------|
 | **Market** | Endpoint security | Data analytics |
 | **Data Source** | Endpoint devices | Databases/warehouses |
@@ -186,7 +186,7 @@ AIQuery.io is an **endpoint security and IT operations platform** built on [osqu
 
 ## Semantic Operator Frameworks
 
-These are RVBBIT's **true competitors** - academic projects that share the same vision of embedding AI directly into data processing as first-class operators.
+These are LARS's **true competitors** - academic projects that share the same vision of embedding AI directly into data processing as first-class operators.
 
 ### LOTUS (Stanford/Berkeley)
 
@@ -354,7 +354,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 
 ### Core Capabilities
 
-| Feature | AIQuery.co | LOTUS | Palimpzest | RVBBIT |
+| Feature | AIQuery.co | LOTUS | Palimpzest | LARS |
 |---------|-----------|-------|------------|--------|
 | **Interface** | Web UI | Pandas API | Python declarative | SQL (wire protocol) |
 | **AI Role** | Query generator | Semantic operators | Semantic operators | Semantic operators |
@@ -364,7 +364,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 
 ### Integration & Deployment
 
-| Feature | AIQuery.co | LOTUS | Palimpzest | RVBBIT |
+| Feature | AIQuery.co | LOTUS | Palimpzest | LARS |
 |---------|-----------|-------|------------|--------|
 | **SQL Client Support** | N/A | No | No | **PostgreSQL wire** |
 | **BI Tool Integration** | No | No | No | **Yes (Tableau, etc.)** |
@@ -373,7 +373,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 
 ### Optimization
 
-| Feature | AIQuery.co | LOTUS | Palimpzest | RVBBIT |
+| Feature | AIQuery.co | LOTUS | Palimpzest | LARS |
 |---------|-----------|-------|------------|--------|
 | **Model Cascades** | No | **Yes** | Via routing | No |
 | **Cost Optimization** | No | No | **Yes (Abacus)** | Manual (hints) |
@@ -383,7 +383,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 
 ### Production Features
 
-| Feature | AIQuery.co | LOTUS | Palimpzest | RVBBIT |
+| Feature | AIQuery.co | LOTUS | Palimpzest | LARS |
 |---------|-----------|-------|------------|--------|
 | **Self-Healing** | No | No | No | **Yes** |
 | **Cost Tracking** | No | No | Yes | **Yes** |
@@ -458,18 +458,18 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### RVBBIT Architecture
+### LARS Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      RVBBIT Architecture                         │
+│                      LARS Architecture                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │   Any SQL Client (DBeaver, Tableau, psql, Python, R, ...)       │
 │       │                                                          │
 │       ▼ PostgreSQL Wire Protocol                                 │
 │   ┌─────────────────────────┐                                    │
-│   │   RVBBIT SQL Server     │                                    │
+│   │   LARS SQL Server     │                                    │
 │   │   (port 15432)          │                                    │
 │   └────┬────────────────────┘                                    │
 │        │                                                          │
@@ -504,7 +504,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 
 ### Semantic Operators by Category
 
-| Category | LOTUS | Palimpzest | RVBBIT |
+| Category | LOTUS | Palimpzest | LARS |
 |----------|-------|------------|--------|
 | **Filtering** | `sem_filter` | `sem_filter` | `MEANS`, `MATCHES`, `~`, `SCORE`, `ABOUT` |
 | **Mapping** | `sem_map` | `sem_map` | `ASK()` |
@@ -515,7 +515,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 | **Search** | `sem_search` | — | `VECTOR_SEARCH()` |
 | **Clustering** | `sem_cluster_by` | — | `CLUSTER()`, `THEME()` |
 
-### RVBBIT-Unique Operators
+### LARS-Unique Operators
 
 | Category | Operators | Purpose |
 |----------|-----------|---------|
@@ -532,7 +532,7 @@ output = dataset.run(max_quality=True, cost_constraint=10.0)  # With constraints
 **Total operator counts**:
 - LOTUS: 9
 - Palimpzest: 6 semantic + relational
-- RVBBIT: **85+**
+- LARS: **85+**
 
 ---
 
@@ -594,7 +594,7 @@ result = (docs
 # Manual grouping needed for aggregation
 ```
 
-#### RVBBIT
+#### LARS
 
 ```sql
 -- Single query does it all
@@ -607,7 +607,7 @@ WHERE content MEANS 'financial fraud'
 GROUP BY fraud_type;
 ```
 
-**Lines of code**: LOTUS ~25, Palimpzest ~15, RVBBIT **7**
+**Lines of code**: LOTUS ~25, Palimpzest ~15, LARS **7**
 
 ---
 
@@ -620,7 +620,7 @@ GROUP BY fraud_type;
 # Would need to iterate over pairs and use sem_map for comparison
 ```
 
-#### RVBBIT
+#### LARS
 
 ```sql
 -- Native CONTRADICTS operator
@@ -645,7 +645,7 @@ WHERE r1.conclusion CONTRADICTS r2.conclusion
 # Not directly supported - requires extensive custom implementation
 ```
 
-#### RVBBIT
+#### LARS
 
 ```sql
 -- Native MDM operators
@@ -662,7 +662,7 @@ GROUP BY DEDUPE(customer_name, address);
 
 ### Comparison Table
 
-| Strategy | LOTUS | Palimpzest | RVBBIT |
+| Strategy | LOTUS | Palimpzest | LARS |
 |----------|-------|------------|--------|
 | **Model Cascades** | ✓✓✓ | Via routing | — |
 | **Code Synthesis** | — | ✓✓✓ | — |
@@ -674,7 +674,7 @@ GROUP BY DEDUPE(customer_name, address);
 | **Token Efficiency** | — | Context reduction | ✓✓ (TOON format) |
 | **Candidates/Ensemble** | — | ✓ (MoA) | ✓✓ (Candidates system) |
 
-### RVBBIT's Caching Strategies
+### LARS's Caching Strategies
 
 | Strategy | Use Case | Description |
 |----------|----------|-------------|
@@ -693,14 +693,14 @@ GROUP BY DEDUPE(customer_name, address);
 | Help non-technical users write SQL | **AIQuery.co** | Simple, purpose-built |
 | Python-first data science workflow | **LOTUS** | Pandas integration, speed |
 | Automatic cost optimization needed | **Palimpzest** | Abacus optimizer |
-| Need SQL client compatibility | **RVBBIT** | PostgreSQL wire protocol |
-| Need logic operators (CONTRADICTS, etc.) | **RVBBIT** | Unique operators |
-| Need MDM capabilities | **RVBBIT** | DEDUPE, GOLDEN_RECORD, etc. |
+| Need SQL client compatibility | **LARS** | PostgreSQL wire protocol |
+| Need logic operators (CONTRADICTS, etc.) | **LARS** | Unique operators |
+| Need MDM capabilities | **LARS** | DEDUPE, GOLDEN_RECORD, etc. |
 | Multi-modal (images, audio) | **Palimpzest** | Native support |
-| Production data platform | **RVBBIT** | Self-healing, cost tracking |
+| Production data platform | **LARS** | Self-healing, cost tracking |
 | Academic reproducibility | **LOTUS or Palimpzest** | Published papers |
-| No-code extensibility | **RVBBIT** | YAML cascades |
-| Enterprise cloud providers | **RVBBIT** | Vertex, Bedrock, Azure |
+| No-code extensibility | **LARS** | YAML cascades |
+| Enterprise cloud providers | **LARS** | Vertex, Bedrock, Azure |
 
 ### Complementary Usage
 
@@ -708,8 +708,8 @@ These tools can work together:
 
 1. **Exploration**: Use Palimpzest for cost-optimized notebook exploration
 2. **Speed**: Use LOTUS when raw throughput matters
-3. **Production**: Export to RVBBIT for SQL pipelines with rich operators
-4. **Integration**: RVBBIT's wire protocol connects to any BI tool
+3. **Production**: Export to LARS for SQL pipelines with rich operators
+4. **Integration**: LARS's wire protocol connects to any BI tool
 
 ---
 
@@ -733,7 +733,7 @@ These tools can work together:
                /          |          \
               ▽───────────▽───────────▽
          OPTIMIZATION              BREADTH
-         (Palimpzest)              (RVBBIT)
+         (Palimpzest)              (LARS)
 ```
 
 ### Key Takeaways
@@ -743,9 +743,9 @@ These tools can work together:
 | **Text-to-SQL Tools** | Accessibility | Non-technical users |
 | **LOTUS** | Speed | High-throughput Pandas workflows |
 | **Palimpzest** | Cost optimization | Budget-conscious exploration |
-| **RVBBIT** | Operator breadth + SQL | Production data platforms |
+| **LARS** | Operator breadth + SQL | Production data platforms |
 
-### RVBBIT's Competitive Position
+### LARS's Competitive Position
 
 **Unique advantages**:
 1. **85+ semantic operators** - 10x more than academic projects
@@ -784,4 +784,4 @@ These tools can work together:
 
 ---
 
-*This document is maintained as part of the RVBBIT project. For updates or corrections, please submit a pull request.*
+*This document is maintained as part of the LARS project. For updates or corrections, please submit a pull request.*

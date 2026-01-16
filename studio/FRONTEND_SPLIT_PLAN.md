@@ -1,4 +1,4 @@
-# RVBBIT Dashboard Frontend Split - Detailed Execution Plan
+# LARS Dashboard Frontend Split - Detailed Execution Plan
 
 **Created**: 2025-12-27
 **Status**: Ready for execution
@@ -9,14 +9,14 @@
 
 ## Executive Summary
 
-**Goal**: Separate the RVBBIT dashboard into two independent React applications:
+**Goal**: Separate the LARS dashboard into two independent React applications:
 
-1. **`frontend/`** - **RVBBIT** (new AppShell system) - The future
+1. **`frontend/`** - **LARS** (new AppShell system) - The future
    - Modern, componentized architecture
    - Zustand state management
    - Polling-based updates
    - Cyberpunk/pure black design system
-   - **This is RVBBIT** - remove all "Windlass" references
+   - **This is LARS** - remove all "Windlass" references
 
 2. **`old_frontend/`** - **Windlass** (legacy system) - Temporary dev-only
    - Original architecture with SSE
@@ -27,7 +27,7 @@
 
 **Why**: URL paths are clashing, tech debt accumulating, new system getting polluted with legacy patterns.
 
-**Strategy**: Physical separation allows clean RVBBIT development while preserving working legacy screens during migration.
+**Strategy**: Physical separation allows clean LARS development while preserving working legacy screens during migration.
 
 ---
 
@@ -58,7 +58,7 @@ dashboard/
 
 ### System Comparison Matrix
 
-| Aspect | RVBBIT (New) | Windlass (Old) |
+| Aspect | LARS (New) | Windlass (Old) |
 |--------|--------------|----------------|
 | **Architecture** | AppShell + view registry | Monolithic App.js routing |
 | **State Management** | Zustand stores | useState + prop drilling |
@@ -97,7 +97,7 @@ return useNewShell ? <AppShell {...callbacks} /> : <LegacyRoutingSystem />;
 
 ### View Migration Status
 
-**RVBBIT (Migrated - 7 views)**:
+**LARS (Migrated - 7 views)**:
 - ✅ Studio - SQL Query IDE / Notebook interface
 - ✅ Console - System analytics dashboard
 - ✅ Cascades - Cascade browser (AG Grid)
@@ -132,7 +132,7 @@ return useNewShell ? <AppShell {...callbacks} /> : <LegacyRoutingSystem />;
 - `POST /api/studio/execute` - Studio cell execution
 - `GET /api/events/stream` - SSE stream (OLD ONLY)
 
-**RVBBIT Pattern** (polling):
+**LARS Pattern** (polling):
 ```javascript
 // studio/hooks/useRunningSessions.js
 useEffect(() => {
@@ -162,7 +162,7 @@ useEffect(() => {
 
 ### Component Inventory
 
-**RVBBIT Design System** (20 components) - `/components`:
+**LARS Design System** (20 components) - `/components`:
 - `Button/` - Button variants
 - `Badge/` - Status badges
 - `Card/` - Card container
@@ -187,9 +187,9 @@ useEffect(() => {
 
 ### CSS/Styling Inventory
 
-**RVBBIT Styles** (currently misnamed):
-- `/src/styles/variables.css` - **Says "Windlass" but IS RVBBIT** (NEEDS RENAMING)
-- `/src/styles/animations.css` - RVBBIT animations
+**LARS Styles** (currently misnamed):
+- `/src/styles/variables.css` - **Says "Windlass" but IS LARS** (NEEDS RENAMING)
+- `/src/styles/animations.css` - LARS animations
 - `/src/styles/index.css` - Global design system
 - `/src/shell/AppShell.css` - Shell styles
 
@@ -214,9 +214,9 @@ useEffect(() => {
 - New system uses Windlass
 
 **RIGHT** (corrected):
-- **RVBBIT** = new system (AppShell, modern, future)
+- **LARS** = new system (AppShell, modern, future)
 - **Windlass** = old system (legacy, being replaced)
-- CSS variables say "Windlass" but should say "RVBBIT"
+- CSS variables say "Windlass" but should say "LARS"
 
 ### Files That Need Renaming
 
@@ -239,18 +239,18 @@ useEffect(() => {
 **Should Be** (RIGHT):
 ```css
 /**
- * RVBBIT Design System
+ * LARS Design System
  * Pure black background with bright neon accents
  */
 :root {
-  /* === RVBBIT Color Palette === */
+  /* === LARS Color Palette === */
   --color-bg-primary: #000000;
   --shadow-glow-cyan: 0 0 20px rgba(0, 229, 255, 0.5);
   /* etc. */
 }
 ```
 
-**Action**: Search all files for "Windlass" references and replace with "RVBBIT" in new frontend.
+**Action**: Search all files for "Windlass" references and replace with "LARS" in new frontend.
 
 ---
 
@@ -262,14 +262,14 @@ useEffect(() => {
 
 ```bash
 # 1. Navigate to dashboard
-cd /home/ryanr/repos/rvbbit/dashboard
+cd /home/ryanr/repos/lars/dashboard
 
 # 2. Check current frontend works
 cd frontend
 npm start  # Should start on port 5550
 
 # In browser, test:
-# - http://localhost:5550/#/studio - RVBBIT view
+# - http://localhost:5550/#/studio - LARS view
 # - http://localhost:5550/#/playground - Windlass view
 # - Both should work
 
@@ -294,7 +294,7 @@ df -h .  # Should have >2GB free (for duplicate node_modules)
 
 ```bash
 # Navigate to dashboard root
-cd /home/ryanr/repos/rvbbit/dashboard
+cd /home/ryanr/repos/lars/dashboard
 
 # Copy entire frontend directory
 cp -r frontend old_frontend
@@ -309,7 +309,7 @@ ls -la old_frontend/  # Should match frontend/
 
 ```json
 {
-  "name": "rvbbit-windlass-legacy",
+  "name": "lars-windlass-legacy",
   "version": "0.1.0-windlass",
   "description": "Windlass UI - Legacy system (dev-only, will be deleted)",
   "private": true,
@@ -325,10 +325,10 @@ ls -la old_frontend/  # Should match frontend/
 ```
 
 **Changes**:
-- Name: `rvbbit-windlass-legacy` (clear it's temporary)
+- Name: `lars-windlass-legacy` (clear it's temporary)
 - Version: Add `-windlass` suffix
 - Description: Mark as legacy, dev-only
-- Port: **5560** (different from RVBBIT)
+- Port: **5560** (different from LARS)
 - Proxy: Keep same backend (5001)
 
 **Install dependencies**:
@@ -355,9 +355,9 @@ npm start  # Should start on port 5560
 
 ---
 
-### Phase 2: Clean Up RVBBIT Frontend (45-60 minutes)
+### Phase 2: Clean Up LARS Frontend (45-60 minutes)
 
-**Goal**: Remove all Windlass (legacy) code from `frontend/`, rebrand as pure RVBBIT.
+**Goal**: Remove all Windlass (legacy) code from `frontend/`, rebrand as pure LARS.
 
 #### Step 2.1: Simplify App.js (30 minutes)
 
@@ -368,7 +368,7 @@ npm start  # Should start on port 5560
 **Create new App.js**:
 
 ```bash
-cd /home/ryanr/repos/rvbbit/dashboard/frontend/src
+cd /home/ryanr/repos/lars/dashboard/frontend/src
 ```
 
 **Backup current App.js**:
@@ -384,7 +384,7 @@ import AppShell from './shell/AppShell';
 import './App.css';
 
 /**
- * RVBBIT Dashboard - Main Application
+ * LARS Dashboard - Main Application
  *
  * Pure AppShell architecture - all routing handled by navigationStore.
  * For legacy Windlass views, use old_frontend/ (dev-only, port 5560).
@@ -461,7 +461,7 @@ const AppShell = ({
 
 // AFTER:
 const AppShell = () => {
-  // No props needed - pure RVBBIT system
+  // No props needed - pure LARS system
   const {
     currentView,
     viewParams,
@@ -508,7 +508,7 @@ const AppShell = () => {
 
 ```javascript
 /**
- * AppShell - RVBBIT Dashboard Application Shell
+ * AppShell - LARS Dashboard Application Shell
  *
  * Provides:
  * - Vertical sidebar navigation
@@ -556,7 +556,7 @@ const VerticalSidebar = ({
 };
 ```
 
-**Remove legacy nav items** (if they exist - keep RVBBIT items only):
+**Remove legacy nav items** (if they exist - keep LARS items only):
 
 ```javascript
 // Keep these nav items:
@@ -618,12 +618,12 @@ initFromUrl: () => {
 
 **Test**: Navigating to `http://localhost:5550/` should redirect to `#/console`.
 
-#### Step 2.5: Rebrand "Windlass" to "RVBBIT" (15 minutes)
+#### Step 2.5: Rebrand "Windlass" to "LARS" (15 minutes)
 
 **Search and replace all "Windlass" references**:
 
 ```bash
-cd /home/ryanr/repos/rvbbit/dashboard/frontend/src
+cd /home/ryanr/repos/lars/dashboard/frontend/src
 
 # Find all files with "Windlass" (case-insensitive)
 grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
@@ -643,7 +643,7 @@ grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
 /**
  * Windlass Design System
  * Pure black background with bright neon accents
- * Cyberpunk/Tron aesthetic for RVBBIT Dashboard
+ * Cyberpunk/Tron aesthetic for LARS Dashboard
  */
 :root {
   /* === Windlass Color Palette === */
@@ -652,12 +652,12 @@ grep -ri "windlass" . --include="*.js" --include="*.jsx" --include="*.css"
 
 /* AFTER */
 /**
- * RVBBIT Design System
+ * LARS Design System
  * Pure black background with bright neon accents
  * Cyberpunk/Tron aesthetic
  */
 :root {
-  /* === RVBBIT Color Palette === */
+  /* === LARS Color Palette === */
   /* ... */
 }
 ```
@@ -677,7 +677,7 @@ grep -r "windlass" styles/
 import Button from '../components/Button';
 
 // AFTER
-// Using RVBBIT design system components
+// Using LARS design system components
 import Button from '../components/Button';
 ```
 
@@ -705,7 +705,7 @@ rm -rf frontend/src/workshop/      # Windlass cascade editor
 # Clean up components/ in Phase 4 after thorough testing
 ```
 
-**Checkpoint**: ✅ RVBBIT frontend is simplified and rebranded
+**Checkpoint**: ✅ LARS frontend is simplified and rebranded
 
 ---
 
@@ -715,22 +715,22 @@ rm -rf frontend/src/workshop/      # Windlass cascade editor
 
 ```bash
 # Terminal 1: Backend
-cd /home/ryanr/repos/rvbbit/dashboard/backend
+cd /home/ryanr/repos/lars/dashboard/backend
 python app.py
 # Output: Backend: http://localhost:5001
 
-# Terminal 2: RVBBIT Frontend
-cd /home/ryanr/repos/rvbbit/dashboard/frontend
+# Terminal 2: LARS Frontend
+cd /home/ryanr/repos/lars/dashboard/frontend
 npm start
 # Output: Compiled successfully! On port 5550
 
 # Terminal 3: Windlass Frontend
-cd /home/ryanr/repos/rvbbit/dashboard/old_frontend
+cd /home/ryanr/repos/lars/dashboard/old_frontend
 npm start
 # Output: Compiled successfully! On port 5560
 ```
 
-#### Test 3.1: RVBBIT Frontend (Port 5550)
+#### Test 3.1: LARS Frontend (Port 5550)
 
 **URL**: `http://localhost:5550`
 
@@ -802,7 +802,7 @@ Console tab:
 
 ```bash
 # In backend terminal, should see requests from both ports:
-# - 127.0.0.1:5550 (RVBBIT)
+# - 127.0.0.1:5550 (LARS)
 # - 127.0.0.1:5560 (Windlass)
 
 # No CORS errors
@@ -812,7 +812,7 @@ Console tab:
 
 #### Test 3.4: Simultaneous Operation
 
-**Run cascade from RVBBIT** (port 5550):
+**Run cascade from LARS** (port 5550):
 - Studio → Execute a cascade
 - Should complete successfully
 
@@ -824,7 +824,7 @@ Console tab:
 - Playground → Execute a cascade
 - Should see real-time updates via SSE
 
-**Check RVBBIT** (port 5550):
+**Check LARS** (port 5550):
 - Refresh or wait for polling cycle
 - Should see cascade in sessions list
 
@@ -841,14 +841,14 @@ Console tab:
 **File**: `dashboard/README.md`
 
 ```markdown
-# RVBBIT Dashboard
+# LARS Dashboard
 
 ## Overview
 
-The RVBBIT Dashboard is split into two applications during migration:
+The LARS Dashboard is split into two applications during migration:
 
-### **RVBBIT** (New System) - `frontend/`
-- **Purpose**: Modern RVBBIT UI with AppShell architecture
+### **LARS** (New System) - `frontend/`
+- **Purpose**: Modern LARS UI with AppShell architecture
 - **Status**: ✅ Active development
 - **Port**: 5550 (dev)
 - **Tech**: React 18, Zustand, Polling
@@ -862,7 +862,7 @@ The RVBBIT Dashboard is split into two applications during migration:
 - **Tech**: React 18, useState, SSE
 - **Design**: Midnight Fjord (ocean theme)
 - **Routes**: All legacy routes (`#/playground`, `#/workshop`, `#/cockpit`, etc.)
-- **Future**: Delete when all views migrated to RVBBIT
+- **Future**: Delete when all views migrated to LARS
 
 ## Quick Start
 
@@ -871,7 +871,7 @@ The RVBBIT Dashboard is split into two applications during migration:
 cd backend
 python app.py  # Port 5001
 
-# Terminal 2: RVBBIT (recommended)
+# Terminal 2: LARS (recommended)
 cd frontend
 npm install  # First time only
 npm start    # Port 5550
@@ -883,7 +883,7 @@ npm start    # Port 5560
 ```
 
 **URLs**:
-- RVBBIT: http://localhost:5550
+- LARS: http://localhost:5550
 - Windlass: http://localhost:5560
 - Backend API: http://localhost:5001
 
@@ -891,7 +891,7 @@ npm start    # Port 5560
 
 ### Where to Add New Features
 
-**ALWAYS** build new features in `frontend/` (RVBBIT system).
+**ALWAYS** build new features in `frontend/` (LARS system).
 
 **NEVER** add features to `old_frontend/` (Windlass is frozen).
 
@@ -902,7 +902,7 @@ See `MIGRATION_GUIDE.md` for detailed steps.
 **Summary**:
 1. Create new view in `frontend/src/views/[viewname]/`
 2. Register in `frontend/src/views/index.js`
-3. Test in RVBBIT (port 5550)
+3. Test in LARS (port 5550)
 4. Verify parity with Windlass version
 5. Mark Windlass view as deprecated (add banner)
 6. Eventually delete from `old_frontend/`
@@ -911,7 +911,7 @@ See `MIGRATION_GUIDE.md` for detailed steps.
 
 **Last Updated**: 2025-12-27
 
-### RVBBIT (Completed - 7/17 views)
+### LARS (Completed - 7/17 views)
 
 - ✅ Console - Analytics dashboard
 - ✅ Studio - SQL/notebook IDE
@@ -936,7 +936,7 @@ See `MIGRATION_GUIDE.md` for detailed steps.
 
 ## Architecture
 
-### RVBBIT System
+### LARS System
 
 **State Management**: Zustand stores
 - `navigationStore` - Routing and view state
@@ -994,7 +994,7 @@ window.location.hash = '#/playground';
 ## Testing
 
 ```bash
-# Test RVBBIT
+# Test LARS
 cd frontend
 npm test
 
@@ -1008,7 +1008,7 @@ npm test
 **Port conflicts**:
 ```bash
 # Find process on port
-lsof -i :5550  # RVBBIT
+lsof -i :5550  # LARS
 lsof -i :5560  # Windlass
 
 # Kill process
@@ -1027,14 +1027,14 @@ npm install
 - Check Network tab for EventSource connection
 - Verify no CORS errors
 
-**Polling not working** (RVBBIT):
+**Polling not working** (LARS):
 - Check backend is running (port 5001)
 - Check Network tab for /api/sessions requests
 - Verify no 404 errors
 
 ## Production Deployment
 
-**RVBBIT Only**: Only `frontend/` should be deployed to production.
+**LARS Only**: Only `frontend/` should be deployed to production.
 
 `old_frontend/` is dev-only and should **never** be deployed.
 
@@ -1049,7 +1049,7 @@ npm run build  # Creates frontend/build/
 
 ## License
 
-Internal RVBBIT project.
+Internal LARS project.
 ```
 
 **Create migration guide**:
@@ -1057,13 +1057,13 @@ Internal RVBBIT project.
 **File**: `dashboard/MIGRATION_GUIDE.md`
 
 ```markdown
-# RVBBIT View Migration Guide
+# LARS View Migration Guide
 
-This guide explains how to migrate a view from Windlass (old_frontend) to RVBBIT (frontend).
+This guide explains how to migrate a view from Windlass (old_frontend) to LARS (frontend).
 
 ## Philosophy
 
-- **RVBBIT**: Modern, componentized, polling-based
+- **LARS**: Modern, componentized, polling-based
 - **Windlass**: Legacy, monolithic, SSE-based
 - **Goal**: Replicate functionality, not implementation
 
@@ -1072,7 +1072,7 @@ This guide explains how to migrate a view from Windlass (old_frontend) to RVBBIT
 1. **Document the view**: Screenshots, feature list, edge cases
 2. **Test in Windlass**: Make sure it works (port 5560)
 3. **Identify dependencies**: What components/hooks does it use?
-4. **Plan the rewrite**: Don't port old patterns, rebuild with RVBBIT patterns
+4. **Plan the rewrite**: Don't port old patterns, rebuild with LARS patterns
 
 ## Migration Steps
 
@@ -1205,7 +1205,7 @@ const navItems = [
 
 **File**: `frontend/src/views/[viewname]/[ViewName]View.css`
 
-Use RVBBIT design system variables:
+Use LARS design system variables:
 
 ```css
 /* Import design system if needed */
@@ -1250,7 +1250,7 @@ Use RVBBIT design system variables:
 ### Step 6: Test the View
 
 ```bash
-# Start RVBBIT
+# Start LARS
 cd frontend
 npm start  # Port 5550
 
@@ -1270,7 +1270,7 @@ http://localhost:5550/#/[viewname]
 ### Step 7: Compare with Windlass
 
 **Open both versions side-by-side**:
-- RVBBIT: `http://localhost:5550/#/[viewname]`
+- LARS: `http://localhost:5550/#/[viewname]`
 - Windlass: `http://localhost:5560/#/[viewname]`
 
 **Verify parity**:
@@ -1278,10 +1278,10 @@ http://localhost:5550/#/[viewname]
 - [ ] Same features work
 - [ ] Same interactions
 - [ ] Same edge case handling
-- [ ] RVBBIT feels faster/cleaner
+- [ ] LARS feels faster/cleaner
 
 **Differences OK**:
-- Styling (RVBBIT design system)
+- Styling (LARS design system)
 - Update mechanism (polling vs SSE)
 - Code structure (Zustand vs useState)
 
@@ -1307,7 +1307,7 @@ const [ViewName]View = () => {
         <a href="http://localhost:5550/#/[viewname]"
            target="_blank"
            style={{ marginLeft: '8px', color: '#000', textDecoration: 'underline' }}>
-          Use RVBBIT version →
+          Use LARS version →
         </a>
       </div>
 
@@ -1323,7 +1323,7 @@ const [ViewName]View = () => {
 Update `dashboard/README.md`:
 
 ```markdown
-### RVBBIT (Completed - 8/17 views)
+### LARS (Completed - 8/17 views)
 
 - ✅ Console
 - ✅ Studio
@@ -1357,7 +1357,7 @@ useEffect(() => {
 }, []);
 ```
 
-**RVBBIT (Polling)**:
+**LARS (Polling)**:
 ```javascript
 useEffect(() => {
   const fetchSessions = async () => {
@@ -1387,7 +1387,7 @@ const MyView = ({ data, onUpdate, onNavigate }) => {
 };
 ```
 
-**RVBBIT (Zustand)**:
+**LARS (Zustand)**:
 ```javascript
 // Create store
 const useMyStore = create((set) => ({
@@ -1411,7 +1411,7 @@ const handleClick = () => {
 };
 ```
 
-**RVBBIT (navigate)**:
+**LARS (navigate)**:
 ```javascript
 const handleClick = () => {
   navigate('studio', { cascade: 'cascade_id', session: 'session_id' });
@@ -1427,7 +1427,7 @@ const handleClick = () => {
 </button>
 ```
 
-**RVBBIT (Design System)**:
+**LARS (Design System)**:
 ```javascript
 import Button from '../../components/Button';
 
@@ -1440,7 +1440,7 @@ import Button from '../../components/Button';
 
 1. **Don't port bugs**: If old view has bugs, fix them in new version
 2. **Simplify**: Old code may be overly complex - simplify during migration
-3. **Reuse components**: Check if RVBBIT components already exist
+3. **Reuse components**: Check if LARS components already exist
 4. **Test edge cases**: Empty states, errors, loading states
 5. **Performance**: New version should be faster (polling is more efficient than SSE for most cases)
 
@@ -1472,7 +1472,7 @@ sleep 5
 cd dashboard/backend
 python app.py &
 
-# Start RVBBIT
+# Start LARS
 cd dashboard/frontend
 npm start &
 
@@ -1483,7 +1483,7 @@ npm start &
 
 **Full system test**:
 
-1. **RVBBIT** (`localhost:5550`):
+1. **LARS** (`localhost:5550`):
    - Loads to console
    - All 7 views work
    - Can execute cascades
@@ -1498,8 +1498,8 @@ npm start &
    - Real-time updates work
 
 3. **Cross-system**:
-   - Cascade run in RVBBIT appears in Windlass (after SSE event)
-   - Cascade run in Windlass appears in RVBBIT (after polling cycle)
+   - Cascade run in LARS appears in Windlass (after SSE event)
+   - Cascade run in Windlass appears in LARS (after polling cycle)
    - Both can execute simultaneously without conflict
 
 **Smoke test checklist**:
@@ -1519,7 +1519,7 @@ cd dashboard
 # Should have:
 ls -la
 # backend/
-# frontend/          ← RVBBIT
+# frontend/          ← LARS
 # old_frontend/      ← Windlass
 # README.md          ← New
 # MIGRATION_GUIDE.md ← New
@@ -1534,12 +1534,12 @@ ls -la
 
 ### Daily Development
 
-**Work on RVBBIT** (default):
+**Work on LARS** (default):
 ```bash
 # Terminal 1: Backend
 cd dashboard/backend && python app.py
 
-# Terminal 2: RVBBIT
+# Terminal 2: LARS
 cd dashboard/frontend && npm start
 
 # Browser: http://localhost:5550
@@ -1555,7 +1555,7 @@ cd dashboard/old_frontend && npm start
 
 ### Adding New Features
 
-**Always in RVBBIT**:
+**Always in LARS**:
 1. Create in `frontend/src/views/[feature]/`
 2. Register in `frontend/src/views/index.js`
 3. Test on port 5550
@@ -1568,7 +1568,7 @@ cd dashboard/old_frontend && npm start
 ### Migrating Views
 
 Follow `MIGRATION_GUIDE.md`:
-1. Create new view in RVBBIT
+1. Create new view in LARS
 2. Test for parity
 3. Mark Windlass view as deprecated
 4. Update migration status in README
@@ -1579,7 +1579,7 @@ Follow `MIGRATION_GUIDE.md`:
 **When all views migrated**:
 
 ```bash
-# Verify all views work in RVBBIT
+# Verify all views work in LARS
 # Check migration status: 17/17 complete
 
 # Delete old_frontend
@@ -1668,8 +1668,8 @@ npm start
 - Bookmark both URLs
 - Use shell aliases:
   ```bash
-  alias rvbbit="cd ~/repos/rvbbit/dashboard/frontend && npm start"
-  alias windlass="cd ~/repos/rvbbit/dashboard/old_frontend && npm start"
+  alias lars="cd ~/repos/lars/dashboard/frontend && npm start"
+  alias windlass="cd ~/repos/lars/dashboard/old_frontend && npm start"
   ```
 
 **Future**: Delete Windlass, back to one port
@@ -1692,7 +1692,7 @@ npm start
 
 - [x] **Phase 0**: Pre-flight checks passed
 - [ ] **Phase 1**: old_frontend created and tested
-- [ ] **Phase 2**: RVBBIT cleaned and rebranded
+- [ ] **Phase 2**: LARS cleaned and rebranded
 - [ ] **Phase 3**: Both systems tested independently
 - [ ] **Phase 4**: Documentation complete
 - [ ] **Phase 5**: Final verification passed
@@ -1709,7 +1709,7 @@ npm start
 
 ### Code Quality
 
-**RVBBIT**:
+**LARS**:
 - App.js: 1640 lines → ~50 lines ✅
 - No SSE connections ✅
 - No "Windlass" references ✅
@@ -1770,7 +1770,7 @@ Both apps: ~720MB (acceptable)
 | Service | Port | URL |
 |---------|------|-----|
 | Backend | 5001 | http://localhost:5001 |
-| RVBBIT | 5550 | http://localhost:5550 |
+| LARS | 5550 | http://localhost:5550 |
 | Windlass | 5560 | http://localhost:5560 |
 
 ### Key Files Modified
@@ -1786,7 +1786,7 @@ Both apps: ~720MB (acceptable)
 - `dashboard/frontend/src/shell/AppShell.jsx` (remove legacy props)
 - `dashboard/frontend/src/shell/VerticalSidebar.jsx` (remove legacy nav)
 - `dashboard/frontend/src/stores/navigationStore.js` (add default redirect)
-- `dashboard/frontend/src/styles/variables.css` (Windlass → RVBBIT)
+- `dashboard/frontend/src/styles/variables.css` (Windlass → LARS)
 - `dashboard/old_frontend/package.json` (port 5560, rename)
 
 **Deleted** (later):
@@ -1808,7 +1808,7 @@ pkill -f "app.py"
 
 # Check ports
 lsof -i :5001  # Backend
-lsof -i :5550  # RVBBIT
+lsof -i :5550  # LARS
 lsof -i :5560  # Windlass
 
 # Search for Windlass references
@@ -1820,7 +1820,7 @@ wc -l dashboard/frontend/src/App.js
 
 ### Design System Variable Reference
 
-**RVBBIT Colors** (`frontend/src/styles/variables.css`):
+**LARS Colors** (`frontend/src/styles/variables.css`):
 
 ```css
 /* Background */

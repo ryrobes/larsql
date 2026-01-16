@@ -1,5 +1,5 @@
 /**
- * Component exports for the RVBBIT dashboard
+ * Component exports for the LARS dashboard
  *
  * Usage:
  *   import { Button, Card, Badge } from '../components';

@@ -14,7 +14,7 @@ import './HTMLSection.css';
  *
  * Features:
  * - Iframe isolation (prevents CSS/layout conflicts)
- * - Base RVBBIT theme CSS (colors, fonts) inherited
+ * - Base LARS theme CSS (colors, fonts) inherited
  * - Auto-resizing based on content height
  * - Template variable replacement ({{ checkpoint_id }}, {{ session_id }})
  * - HTMX initialization and lifecycle management
@@ -183,7 +183,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
     // Security warning in development
     if (process.env.NODE_ENV === 'development') {
       console.warn(
-        '[RVBBIT HTMX] Rendering unsanitized HTML in iframe. ' +
+        '[LARS HTMX] Rendering unsanitized HTML in iframe. ' +
         'This is a security risk and should only be used in trusted development environments.'
       );
     }
@@ -275,7 +275,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         // HTMX is now loaded via script tag in iframe, no manual init needed
         // Just wait a moment for it to auto-initialize
         setTimeout(() => {
-          console.log('[RVBBIT HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
+          console.log('[LARS HTMX] iframe HTMX loaded:', !!iframeWindow.htmx);
         }, 100);
 
         // Auto-resize iframe to content height
@@ -327,7 +327,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
               lastContentHeight = contentHeight;
               setIframeHeight(`${targetHeight}px`);
             } catch (err) {
-              console.warn('[RVBBIT HTMX] Could not resize iframe:', err);
+              console.warn('[LARS HTMX] Could not resize iframe:', err);
             }
           }, 150); // Longer debounce for stability
         };
@@ -363,19 +363,19 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
         iframeDocument.addEventListener('htmx:configRequest', (e) => {
           e.detail.headers['X-Checkpoint-Id'] = checkpointId;
           e.detail.headers['X-Session-Id'] = sessionId;
-          console.log('[RVBBIT HTMX iframe] Request:', e.detail.path);
+          console.log('[LARS HTMX iframe] Request:', e.detail.path);
         });
 
         // Handle errors
         iframeDocument.addEventListener('htmx:responseError', (e) => {
-          console.error('[RVBBIT HTMX iframe] Request error:', e.detail);
+          console.error('[LARS HTMX iframe] Request error:', e.detail);
           const status = e.detail.xhr?.status || 'unknown';
           const statusText = e.detail.xhr?.statusText || 'error';
           setError(`HTMX request failed: ${status} ${statusText}`);
         });
 
         // Store cleanup functions
-        iframe._rvbbitCleanup = () => {
+        iframe._larsCleanup = () => {
           resizeObserver.disconnect();
         };
       };
@@ -385,12 +385,12 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
       // Cleanup
       return () => {
         iframe.removeEventListener('load', handleLoad);
-        if (iframe._rvbbitCleanup) {
-          iframe._rvbbitCleanup();
+        if (iframe._larsCleanup) {
+          iframe._larsCleanup();
         }
       };
     } catch (err) {
-      console.error('[RVBBIT HTMX] iframe setup error:', err);
+      console.error('[LARS HTMX] iframe setup error:', err);
       setError(`Failed to render HTML: ${err.message}`);
     }
   }, [spec.content, checkpointId, sessionId, spec.cell_name, spec.cascade_id]);
@@ -483,11 +483,11 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
  * Build complete iframe HTML document with base theme CSS and HTMX
  */
 function buildIframeDocument(bodyHTML, checkpointId, sessionId) {
-  // RVBBIT Basecoat Theme - Complete styling for all components
+  // LARS Basecoat Theme - Complete styling for all components
   // Matches the AppShell design system with cyberpunk aesthetic
   const baseCSS = `
 /**
- * RVBBIT Basecoat Theme - AppShell Design System
+ * LARS Basecoat Theme - AppShell Design System
  * Pure black backgrounds, neon cyan/purple accents, glass morphism
  */
 
@@ -1224,7 +1224,7 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.9/dist/basecoat.cdn.min.css">
   <script src="https://cdn.jsdelivr.net/npm/basecoat-css@0.3.9/dist/js/all.min.js" defer></script>
 
-  <!-- 3. RVBBIT Theme Overrides LAST (variables + minimal resets) -->
+  <!-- 3. LARS Theme Overrides LAST (variables + minimal resets) -->
   <style>${baseCSS}</style>
 
   <!-- Visualization libraries for LLM-generated charts and tables -->
@@ -1253,13 +1253,13 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
     //console.log('[HTMX iframe INIT] AG Grid loaded:', typeof agGrid !== 'undefined');
     //console.log('[HTMX iframe INIT] Mermaid loaded:', typeof mermaid !== 'undefined');
 
-    // Initialize Mermaid.js with dark theme matching RVBBIT aesthetics
+    // Initialize Mermaid.js with dark theme matching LARS aesthetics
     if (typeof mermaid !== 'undefined') {
       mermaid.initialize({
         startOnLoad: true,
         theme: 'dark',
         themeVariables: {
-          // RVBBIT color palette
+          // LARS color palette
           primaryColor: '#1a1a2e',
           primaryTextColor: '#f1f5f9',
           primaryBorderColor: '#00e5ff',
@@ -1298,7 +1298,7 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
         },
         fontFamily: "'Google Sans Mono', 'IBM Plex Mono', monospace"
       });
-      //console.log('[HTMX iframe] Mermaid initialized with RVBBIT dark theme');
+      //console.log('[HTMX iframe] Mermaid initialized with LARS dark theme');
     }
 
     // Wait for HTMX to fully initialize
@@ -1658,7 +1658,7 @@ function processTemplateVariables(html, context) {
       return value;
     }
     // Keep unmatched placeholders and log warning
-    console.warn(`[RVBBIT HTMX] Unknown template variable: ${key}`);
+    console.warn(`[LARS HTMX] Unknown template variable: ${key}`);
     return match;
   });
 }

@@ -86,7 +86,7 @@ All other node types → 100% NULL
 
 ### 1. Update `compute_species_hash()` Logic
 
-**File:** `rvbbit/utils.py`
+**File:** `lars/utils.py`
 
 **Current:**
 ```python
@@ -109,7 +109,7 @@ def compute_species_hash(phase_config, input_data):
 
 ### 2. Add `compute_genus_hash()` Function
 
-**File:** `rvbbit/utils.py`
+**File:** `lars/utils.py`
 
 ```python
 def compute_genus_hash(cascade_config: Dict[str, Any], input_data: Optional[Dict[str, Any]] = None) -> str:
@@ -288,7 +288,7 @@ log_unified(
 
 ### 4. Migration: Add genus_hash Column
 
-**File:** `rvbbit/migrations/add_genus_hash_columns.sql`
+**File:** `lars/migrations/add_genus_hash_columns.sql`
 
 ```sql
 -- Migration: Add genus_hash for cascade-level identity
@@ -494,7 +494,7 @@ GROUP BY input_fingerprint, input_category
 
 ## Code Changes Required
 
-### A. `rvbbit/utils.py`
+### A. `lars/utils.py`
 
 **Add genus_hash function:**
 ```python
@@ -571,7 +571,7 @@ def compute_species_hash(phase_config: Optional[Dict[str, Any]], input_data: Opt
     return hashlib.sha256(spec_json.encode('utf-8')).hexdigest()[:16]
 ```
 
-### B. `rvbbit/runner.py`
+### B. `lars/runner.py`
 
 **Change 1:** Compute genus_hash at cascade start
 
@@ -634,11 +634,11 @@ This already happens in many places, but ensure EVERY log_unified() call for a c
 
 ```python
 # Run a simple cascade
-rvbbit run examples/simple_flow.json --session test_species_001
+lars run examples/simple_flow.json --session test_species_001
 
 # Check if species_hash is populated
 python -c "
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 db = get_db()
 
@@ -668,12 +668,12 @@ for row in result:
 
 ```python
 # Run same cascade twice with same inputs
-rvbbit run examples/simple_flow.json --input '{"data": "test"}' --session test_hash_a
-rvbbit run examples/simple_flow.json --input '{"data": "test"}' --session test_hash_b
+lars run examples/simple_flow.json --input '{"data": "test"}' --session test_hash_a
+lars run examples/simple_flow.json --input '{"data": "test"}' --session test_hash_b
 
 # Check if hashes match
 python -c "
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 db = get_db()
 
@@ -698,7 +698,7 @@ if len(sessions) == 2:
 ```python
 # After running 100+ cascades, check NULL rates
 python -c "
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 db = get_db()
 
@@ -830,7 +830,7 @@ cascade_sessions:
 
 **Taxonomy parallel:**
 ```
-Kingdom → RVBBIT Framework
+Kingdom → LARS Framework
   Class → Cascade Type (extract_brand, analyze_data, etc.)
     Genus → Cascade Invocation (same cascade + same inputs)  ← NEW!
       Species → Cell Execution (same cell + same config)      ← Fix NULLs

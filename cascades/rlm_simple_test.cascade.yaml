@@ -4,7 +4,7 @@
 # rlm_exec, which provides llm_query() for sub-LLM calls.
 #
 # Test with:
-#   rvbbit run cascades/rlm_simple_test.cascade.yaml \
+#   lars run cascades/rlm_simple_test.cascade.yaml \
 #     --input cascades/rlm_test_input.json --session rlm_test
 
 cascade_id: rlm_simple_test

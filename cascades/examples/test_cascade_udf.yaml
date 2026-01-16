@@ -12,7 +12,7 @@ cells:
   tool: sql_data
   inputs:
     query: "SELECT\n  customer_id,\n  customer_name,\n  transaction_amount,\n\n  --\
-      \ Run COMPLETE cascade per row (includes 3 takes + validation!)\n  rvbbit_run(\n\
+      \ Run COMPLETE cascade per row (includes 3 takes + validation!)\n  lars_run(\n\
       \    'skills/fraud_assessment_with_takes.yaml',\n    json_object(\n    \
       \  'customer_id', customer_id,\n      'customer_name', customer_name,\n    \
       \  'transaction_amount', transaction_amount\n    )\n  ) as fraud_analysis_json\n\

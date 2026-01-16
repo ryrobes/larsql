@@ -14,13 +14,13 @@
 # staying within context budget while maintaining semantic access to all content.
 #
 # Configuration:
-#   RVBBIT_EPHEMERAL_RAG_ENABLED=true (default)
-#   RVBBIT_EPHEMERAL_RAG_THRESHOLD=100000 (chars, default ~100K)
-#   RVBBIT_EPHEMERAL_RAG_CHUNK_SIZE=1500 (chars per chunk)
-#   RVBBIT_EPHEMERAL_RAG_CHUNK_OVERLAP=200 (overlap between chunks)
+#   LARS_EPHEMERAL_RAG_ENABLED=true (default)
+#   LARS_EPHEMERAL_RAG_THRESHOLD=100000 (chars, default ~100K)
+#   LARS_EPHEMERAL_RAG_CHUNK_SIZE=1500 (chars per chunk)
+#   LARS_EPHEMERAL_RAG_CHUNK_OVERLAP=200 (overlap between chunks)
 #
 # Run with:
-#   rvbbit run cascades/examples/ephemeral_rag_demo.yaml \
+#   lars run cascades/examples/ephemeral_rag_demo.yaml \
 #     --input '{"topic": "climate change policy"}'
 
 cascade_id: ephemeral_rag_demo

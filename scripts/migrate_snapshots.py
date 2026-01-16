@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Migrate snapshot JSON files to use new RVBBIT terminology
+Migrate snapshot JSON files to use new LARS terminology
 """
 import json
 from pathlib import Path

@@ -1,5 +1,5 @@
 """
-Tests for rvbbit.ephemeral_rag module.
+Tests for lars.ephemeral_rag module.
 
 Tests the automatic indexing system for large content that would otherwise
 overflow LLM context windows. These tests verify:
@@ -13,7 +13,7 @@ overflow LLM context windows. These tests verify:
 Note: These tests mock ClickHouse interactions to avoid database dependencies.
 """
 from unittest.mock import patch, MagicMock
-from rvbbit.ephemeral_rag import (
+from lars.ephemeral_rag import (
     EphemeralRagManager,
     LargeContentReplacement,
     ChunkInfo,
@@ -618,7 +618,7 @@ class TestEphemeralRagManagerCleanup:
 class TestIsEphemeralRagEnabled:
     """Tests for the enabled check function."""
 
-    @patch('rvbbit.config.get_config')
+    @patch('lars.config.get_config')
     def test_enabled_when_config_true(self, mock_get_config):
         """Should return True when config.ephemeral_rag_enabled is True."""
         mock_cfg = MagicMock()
@@ -627,7 +627,7 @@ class TestIsEphemeralRagEnabled:
 
         assert is_ephemeral_rag_enabled() is True
 
-    @patch('rvbbit.config.get_config')
+    @patch('lars.config.get_config')
     def test_disabled_when_config_false(self, mock_get_config):
         """Should return False when config.ephemeral_rag_enabled is False."""
         mock_cfg = MagicMock()

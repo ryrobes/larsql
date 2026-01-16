@@ -34,7 +34,7 @@ function hashCellInputs(cell, cascadeInputs, priorOutputHashes) {
  *
  * Manages cascade editing, execution, and state for the Studio view.
  * Supports both LLM-powered and deterministic cells (sql_data, python_data,
- * js_data, clojure_data, rvbbit_data) that can be edited, run, and saved.
+ * js_data, clojure_data, lars_data) that can be edited, run, and saved.
  *
  * Polyglot support: Data flows between languages via JSON serialization.
  * - SQL: rows as array of objects, accessed via _cell_name tables
@@ -654,9 +654,9 @@ Use Jinja2 templates to reference data:
 
 Provide your analysis below:
 `,
-            rvbbit_data: `# LLM Cell Cell (Data Tool)
+            lars_data: `# LLM Cell Cell (Data Tool)
 # Access prior cells with: {{outputs.cell_name}}
-# Full RVBBIT power: takes, reforge, wards, model selection
+# Full LARS power: takes, reforge, wards, model selection
 
 instructions: |
   Analyze the data and return structured results.

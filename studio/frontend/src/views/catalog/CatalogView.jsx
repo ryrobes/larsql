@@ -191,7 +191,7 @@ const MultiSelectFilter = ({ label, options, selected, onChange, color }) => {
 };
 
 /**
- * CatalogView - Unified browser for all RVBBIT system components
+ * CatalogView - Unified browser for all LARS system components
  */
 const CatalogView = () => {
   const navigate = useNavigate();

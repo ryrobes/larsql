@@ -284,7 +284,7 @@ function PromptPhylogenyInner({ nodes: rawNodes, edges: rawEdges, metadata, load
           <div className="empty-detail">
             <p><strong>Missing species_hash data</strong></p>
             <p>This session doesn't have species_hash logged. This field is required for evolution tracking.</p>
-            <p>Make sure you're running a recent version of RVBBIT that logs species_hash.</p>
+            <p>Make sure you're running a recent version of LARS that logs species_hash.</p>
             <details style={{ marginTop: '12px', fontSize: '12px', color: '#64748b' }}>
               <summary style={{ cursor: 'pointer' }}>What is species_hash?</summary>
               <p style={{ marginTop: '8px', lineHeight: '1.5' }}>

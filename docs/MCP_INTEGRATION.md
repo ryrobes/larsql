@@ -1,12 +1,12 @@
-# MCP Integration for RVBBIT
+# MCP Integration for LARS
 
 ## Overview
 
-RVBBIT now supports **Model Context Protocol (MCP)** servers as a 6th tool type! MCP tools are discovered, registered, and used exactly like Harbor (HuggingFace Spaces), declarative tools, or any other RVBBIT tool.
+LARS now supports **Model Context Protocol (MCP)** servers as a 6th tool type! MCP tools are discovered, registered, and used exactly like Harbor (HuggingFace Spaces), declarative tools, or any other LARS tool.
 
 **Key Design Decision**: We treat MCP as a **discovery protocol**, not a runtime protocol. MCP servers are introspected at startup/refresh, and their tools are registered in the trait_registry. This means:
 
-✅ **All RVBBIT features work with MCP tools**:
+✅ **All LARS features work with MCP tools**:
 - Tool RAG search (semantic discovery)
 - Quartermaster (intelligent tool selection)
 - Tool caching
@@ -78,7 +78,7 @@ Create `config/mcp_servers.yaml`:
 
 ```bash
 # YAML format (recommended)
-export RVBBIT_MCP_SERVERS_YAML='
+export LARS_MCP_SERVERS_YAML='
 - name: filesystem
   transport: stdio
   command: npx
@@ -86,14 +86,14 @@ export RVBBIT_MCP_SERVERS_YAML='
 '
 
 # JSON format (legacy support)
-export RVBBIT_MCP_SERVERS_JSON='[{"name":"filesystem","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]'
+export LARS_MCP_SERVERS_JSON='[{"name":"filesystem","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]'
 ```
 
 ### Environment Variables
 
-- `RVBBIT_MCP_ENABLED` - Enable/disable MCP integration (default: `true`)
-- `RVBBIT_MCP_SERVERS_YAML` - YAML array of server configs (recommended)
-- `RVBBIT_MCP_SERVERS_JSON` - JSON array of server configs (legacy support)
+- `LARS_MCP_ENABLED` - Enable/disable MCP integration (default: `true`)
+- `LARS_MCP_SERVERS_YAML` - YAML array of server configs (recommended)
+- `LARS_MCP_SERVERS_JSON` - JSON array of server configs (legacy support)
 
 ## Usage
 
@@ -130,7 +130,7 @@ cells:
 **Direct Tool Calls** (Python):
 
 ```python
-from rvbbit import get_trait
+from lars import get_trait
 
 # MCP tool registered like any other tool
 read_file = get_trait("read_file")
@@ -354,7 +354,7 @@ register_trait(tool.name, mcp_tool_wrapper)
 
 ### stdio Servers
 
-- Processes run with RVBBIT's user permissions
+- Processes run with LARS's user permissions
 - Environment variables can contain secrets
 - Use `${VAR}` syntax for secret substitution
 
@@ -369,12 +369,12 @@ register_trait(tool.name, mcp_tool_wrapper)
 ### Phase 2 (CLI Commands)
 
 ```bash
-rvbbit mcp list                    # List configured servers
-rvbbit mcp status                  # Show server health
-rvbbit mcp introspect filesystem   # Show tools from server
-rvbbit mcp manifest                # All MCP tools
-rvbbit mcp refresh                 # Re-discover
-rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
+lars mcp list                    # List configured servers
+lars mcp status                  # Show server health
+lars mcp introspect filesystem   # Show tools from server
+lars mcp manifest                # All MCP tools
+lars mcp refresh                 # Re-discover
+lars mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
 ```
 
 ### Phase 3 (Advanced Features)
@@ -386,9 +386,9 @@ rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
 - [ ] Resource caching
 - [ ] Prompt template library
 
-## Comparison: RVBBIT vs Traditional MCP Clients
+## Comparison: LARS vs Traditional MCP Clients
 
-| Feature | RVBBIT Approach | Traditional MCP Client |
+| Feature | LARS Approach | Traditional MCP Client |
 |---------|----------------|------------------------|
 | Tool Discovery | At startup (cached) | Runtime (every call) |
 | Tool Selection | Quartermaster + RAG | Manual or basic |
@@ -398,7 +398,7 @@ rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
 | Multi-tool | All types unified | MCP only |
 | Complexity | Same as any tool | Special MCP code path |
 
-**Key Insight**: By treating MCP as a **discovery mechanism** rather than a runtime protocol, we get all RVBBIT benefits for free!
+**Key Insight**: By treating MCP as a **discovery mechanism** rather than a runtime protocol, we get all LARS benefits for free!
 
 ## Testing
 
@@ -427,7 +427,7 @@ rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
 4. **Run**:
    ```bash
    echo "Hello MCP!" > /tmp/test.txt
-   rvbbit run test_mcp.yaml
+   lars run test_mcp.yaml
    ```
 
 ### Expected Behavior
@@ -460,11 +460,11 @@ rvbbit mcp test filesystem read_file --args '{"path": "/tmp/test.txt"}'
 
 ## Summary
 
-MCP integration in RVBBIT:
+MCP integration in LARS:
 - ✅ **Simple**: Configure once, tools work everywhere
 - ✅ **Unified**: MCP tools = Harbor tools = Python tools
 - ✅ **Observable**: Progress in unified logs, visible in UI
 - ✅ **Scalable**: Discovery cached, minimal overhead
 - ✅ **Compatible**: Works with all MCP servers (stdio/HTTP)
 
-**The RVBBIT Way**: Absorb MCP tools into the existing architecture rather than bolt on a separate system!
+**The LARS Way**: Absorb MCP tools into the existing architecture rather than bolt on a separate system!

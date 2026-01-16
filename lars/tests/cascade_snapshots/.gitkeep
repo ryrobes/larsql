@@ -1,0 +1,4 @@
+# Cascade Snapshots
+# 
+# This directory will contain frozen cascade executions for testing.
+# Snapshots are created with: lars test freeze <session_id> --name <name>

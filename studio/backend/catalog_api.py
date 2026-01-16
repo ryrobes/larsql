@@ -1,5 +1,5 @@
 """
-Catalog API - Unified browser for all RVBBIT system components
+Catalog API - Unified browser for all LARS system components
 
 Provides endpoints for browsing:
 - Tools (skills) - Python functions, cascade tools, memory tools, local models
@@ -20,24 +20,24 @@ import math
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit.db_adapter import get_db
-    from rvbbit.config import get_config
+    from lars.db_adapter import get_db
+    from lars.config import get_config
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit modules: {e}")
+    print(f"Warning: Could not import lars modules: {e}")
     get_db = None
     get_config = None
 
 # Import skills manifest for local model tools
 try:
-    from rvbbit.skills_manifest import get_skill_manifest
+    from lars.skills_manifest import get_skill_manifest
 except ImportError:
     get_skill_manifest = None
 
@@ -469,7 +469,7 @@ def get_catalog():
         try:
             mcp_count = 0
             config = get_config() if get_config else {}
-            mcp_servers_path = os.path.join(os.environ.get('RVBBIT_ROOT', '.'), 'config', 'mcp_servers.yaml')
+            mcp_servers_path = os.path.join(os.environ.get('LARS_ROOT', '.'), 'config', 'mcp_servers.yaml')
 
             if os.path.exists(mcp_servers_path):
                 import yaml
@@ -565,7 +565,7 @@ def get_catalog():
             sql_connections_count = 0
             sql_tables_count = 0
             cfg = get_config() if get_config else {}
-            root_dir = os.environ.get('RVBBIT_ROOT', '.')
+            root_dir = os.environ.get('LARS_ROOT', '.')
             sql_dir = os.path.join(root_dir, 'sql_connections')
 
             # Load discovery metadata for summary
@@ -928,7 +928,7 @@ def get_catalog_item(item_id: str):
             cascade_file = row.get('cascade_file')
             if cascade_file and os.path.exists(cascade_file):
                 try:
-                    from rvbbit.loaders import load_config_file
+                    from lars.loaders import load_config_file
                     cascade_def = load_config_file(cascade_file)
                 except:
                     pass
@@ -976,7 +976,7 @@ def get_catalog_item(item_id: str):
 
         elif category == 'mcp':
             # Read from config file
-            mcp_servers_path = os.path.join(os.environ.get('RVBBIT_ROOT', '.'), 'config', 'mcp_servers.yaml')
+            mcp_servers_path = os.path.join(os.environ.get('LARS_ROOT', '.'), 'config', 'mcp_servers.yaml')
             if not os.path.exists(mcp_servers_path):
                 return jsonify({'error': 'MCP configuration not found'}), 404
 
@@ -1030,7 +1030,7 @@ def get_catalog_item(item_id: str):
             # Get SQL connection config from file
             from pathlib import Path
 
-            root_dir = os.environ.get('RVBBIT_ROOT', '.')
+            root_dir = os.environ.get('LARS_ROOT', '.')
             sql_dir = os.path.join(root_dir, 'sql_connections')
 
             # Find the connection config file
@@ -1089,7 +1089,7 @@ def get_catalog_item(item_id: str):
             # Get SQL table metadata from samples
             from pathlib import Path
 
-            root_dir = os.environ.get('RVBBIT_ROOT', '.')
+            root_dir = os.environ.get('LARS_ROOT', '.')
             samples_dir = os.path.join(root_dir, 'sql_connections', 'samples')
 
             # Parse qualified name: db.schema.table or db.table

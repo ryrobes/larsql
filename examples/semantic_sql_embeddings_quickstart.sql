@@ -2,7 +2,7 @@
 -- Semantic SQL + Embeddings: Quick Start Demo
 -- ============================================================================
 --
--- This demo shows how to use RVBBIT's new embedding operators:
+-- This demo shows how to use LARS's new embedding operators:
 -- - EMBED(text) - Generate 4096-dim embeddings
 -- - VECTOR_SEARCH(query, table, limit) - Semantic search
 -- - SIMILAR_TO - Cosine similarity operator
@@ -10,7 +10,7 @@
 -- Prerequisites:
 -- 1. OPENROUTER_API_KEY environment variable set
 -- 2. ClickHouse running (for vector storage)
--- 3. RVBBIT server running: rvbbit serve sql --port 15432
+-- 3. LARS server running: lars serve sql --port 15432
 --
 -- Connect:
 --   psql postgresql://localhost:15432/default
@@ -37,7 +37,7 @@ INSERT INTO products VALUES
 (5, 'Recycled Notebook', 'Notebook made from 100% recycled paper. Vegan leather cover.', 14.99);
 
 -- Generate embeddings for all products
--- (This stores embeddings in ClickHouse rvbbit_embeddings table)
+-- (This stores embeddings in ClickHouse lars_embeddings table)
 SELECT
     id,
     name,
@@ -108,7 +108,7 @@ FROM takes c
 JOIN products p ON p.id = c.id
 WHERE
     p.price < 40  -- Cheap SQL filter
-    -- LLM semantic reasoning (these are the new operators from RVBBIT_SEMANTIC_SQL.md)
+    -- LLM semantic reasoning (these are the new operators from LARS_SEMANTIC_SQL.md)
     AND p.description MEANS 'eco-friendly AND affordable AND high quality'
     AND p.description NOT MEANS 'greenwashing or misleading claims'
 ORDER BY c.similarity DESC, p.price ASC
@@ -128,8 +128,8 @@ SELECT
     p.name,
     p.price,
     sp.similarity,
-    -- Note: SUMMARIZE, THEMES, SENTIMENT are existing RVBBIT operators
-    -- See RVBBIT_SEMANTIC_SQL.md for details
+    -- Note: SUMMARIZE, THEMES, SENTIMENT are existing LARS operators
+    -- See LARS_SEMANTIC_SQL.md for details
     CASE
         WHEN sp.similarity > 0.8 THEN 'Highly Similar'
         WHEN sp.similarity > 0.6 THEN 'Moderately Similar'
@@ -215,7 +215,7 @@ LIMIT 1;
 --    - Search: SELECT * FROM VECTOR_SEARCH('query', 'your_table', 10)
 --
 -- 2. Combine with existing operators:
---    - MEANS, ABOUT, IMPLIES, CONTRADICTS (see RVBBIT_SEMANTIC_SQL.md)
+--    - MEANS, ABOUT, IMPLIES, CONTRADICTS (see LARS_SEMANTIC_SQL.md)
 --    - SUMMARIZE, THEMES, SENTIMENT (LLM aggregates)
 --
 -- 3. Hybrid queries:
@@ -226,8 +226,8 @@ LIMIT 1;
 -- 4. Read the docs:
 --    - SEMANTIC_SQL_EMBEDDING_IMPLEMENTATION.md - Implementation details
 --    - SEMANTIC_SQL_RAG_VISION.md - Architecture vision
---    - RVBBIT_SEMANTIC_SQL.md - All semantic operators
+--    - LARS_SEMANTIC_SQL.md - All semantic operators
 --
 -- ============================================================================
 
-Does our global caller_id map map to session_id? if so we need to make sure that the rvbbit meta cascades (relevance, etc).
+Does our global caller_id map map to session_id? if so we need to make sure that the lars meta cascades (relevance, etc).

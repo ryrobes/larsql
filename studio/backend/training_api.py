@@ -7,8 +7,8 @@ Works with the universal training system - mark any cascade execution as trainab
 
 import logging
 from flask import Blueprint, request, jsonify
-from rvbbit.db_adapter import get_db
-from rvbbit.training_system import mark_as_trainable, get_training_stats
+from lars.db_adapter import get_db
+from lars.training_system import mark_as_trainable, get_training_stats
 
 logger = logging.getLogger(__name__)
 training_bp = Blueprint('training', __name__)
@@ -331,7 +331,7 @@ def run_confidence_assessment():
 
     def assess_in_background():
         try:
-            from rvbbit.confidence_worker import assess_trace_ids_confidence
+            from lars.confidence_worker import assess_trace_ids_confidence
             result = assess_trace_ids_confidence(trace_ids, force=force)
             logger.info(f"[Training API] Confidence assessment complete: {result}")
         except Exception as e:

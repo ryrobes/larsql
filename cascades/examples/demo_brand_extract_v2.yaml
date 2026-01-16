@@ -23,9 +23,9 @@
 #   Set BRAVE_SEARCH_API_KEY in your environment
 #
 # RUN WITH:
-#   Normal:  rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
-#   Outlier: rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
-#   Unknown: rvbbit run examples/demo_brand_extract_v2.yaml --input '{"product_name": "JSAUX Steam Deck Dock"}'
+#   Normal:  lars run examples/demo_brand_extract_v2.yaml --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
+#   Outlier: lars run examples/demo_brand_extract_v2.yaml --input '{"product_name": "USB-C Cable 6ft Black"}'
+#   Unknown: lars run examples/demo_brand_extract_v2.yaml --input '{"product_name": "JSAUX Steam Deck Dock"}'
 
 cascade_id: demo_brand_extract_v2
 description: |

@@ -15,6 +15,7 @@
     <li><a href="#prerequisites">Prerequisites</a></li>
     <li><a href="#installation">Step 1: Install LARS</a></li>
     <li><a href="#clickhouse">Step 2: Start ClickHouse</a></li>
+    <li><a href="#elasticsearch">Optional: Start Elasticsearch</a></li>
     <li><a href="#workspace">Step 3: Initialize Workspace</a></li>
     <li><a href="#environment">Step 4: Configure Environment</a></li>
     <li><a href="#db-init">Step 5: Initialize Database</a></li>
@@ -203,6 +204,191 @@ docker compose ps</pre>
   <ul>
     <li><strong>9000</strong>: Native protocol (used by LARS)</li>
     <li><strong>8123</strong>: HTTP interface (useful for debugging)</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     OPTIONAL: ELASTICSEARCH
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="elasticsearch">Optional: Start Elasticsearch</h2>
+
+<p>
+  <strong>Elasticsearch is optional</strong> but enables powerful additional features:
+</p>
+
+<ul>
+  <li><strong>Hybrid Search</strong>: Combine semantic (vector) search with keyword (BM25) matching</li>
+  <li><strong>Better RAG</strong>: More precise document retrieval for SQL schema and document search</li>
+  <li><strong>KEYWORD_SEARCH</strong>: Pure BM25 search for exact term matching (SKUs, model numbers, codes)</li>
+  <li><strong>HYBRID_SEARCH</strong>: Tunable blend of semantic understanding + exact keyword matches</li>
+</ul>
+
+<div class="info-box tip">
+  <div class="info-box-title">When to Add Elasticsearch</div>
+  <p>
+    Skip this for now if you're just getting started. You can add Elasticsearch later when you need:
+  </p>
+  <ul>
+    <li>Hybrid semantic + keyword search (e.g., finding products by concept AND model number)</li>
+    <li>Better RAG precision for document Q&A systems</li>
+    <li>SQL schema search across large databases</li>
+  </ul>
+</div>
+
+<h3>Option A: Simple Docker Command</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Start Elasticsearch with single-node mode</span>
+docker run -d --name lars-elasticsearch \
+  -p 9200:9200 \
+  -p 9300:9300 \
+  -e "discovery.type=single-node" \
+  -e "xpack.security.enabled=false" \
+  -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+  -e "cluster.routing.allocation.disk.threshold_enabled=false" \
+  -v lars-es-data:/usr/share/elasticsearch/data \
+  docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+
+<span class="cmt"># Wait for Elasticsearch to be ready (about 30 seconds)</span>
+echo "Waiting for Elasticsearch..."
+until curl -s http://localhost:9200/_cluster/health > /dev/null 2>&1; do
+  sleep 2
+done
+echo "Elasticsearch is ready!"
+
+<span class="cmt"># Verify it's running</span>
+curl http://localhost:9200/_cluster/health | jq</pre>
+  </div>
+</div>
+
+<h3>Option B: Docker Compose (With Kibana UI)</h3>
+
+<p>For a complete setup including Kibana for monitoring:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">docker-compose.elastic.yml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">version</span>: <span class="str">'3.8'</span>
+
+<span class="key">services</span>:
+  <span class="key">elasticsearch</span>:
+    <span class="key">image</span>: <span class="str">docker.elastic.co/elasticsearch/elasticsearch:8.11.3</span>
+    <span class="key">container_name</span>: <span class="str">lars-elasticsearch</span>
+    <span class="key">environment</span>:
+      - <span class="str">discovery.type=single-node</span>
+      - <span class="str">xpack.security.enabled=false</span>
+      - <span class="str">"ES_JAVA_OPTS=-Xms512m -Xmx512m"</span>
+      - <span class="str">cluster.routing.allocation.disk.threshold_enabled=false</span>
+    <span class="key">ports</span>:
+      - <span class="str">"9200:9200"</span>   <span class="cmt"># HTTP API</span>
+      - <span class="str">"9300:9300"</span>   <span class="cmt"># Transport protocol</span>
+    <span class="key">volumes</span>:
+      - <span class="str">lars-es-data:/usr/share/elasticsearch/data</span>
+    <span class="key">healthcheck</span>:
+      <span class="key">test</span>: [<span class="str">"CMD-SHELL"</span>, <span class="str">"curl -f http://localhost:9200/_cluster/health || exit 1"</span>]
+      <span class="key">interval</span>: <span class="str">10s</span>
+      <span class="key">timeout</span>: <span class="str">5s</span>
+      <span class="key">retries</span>: <span class="num">5</span>
+
+  <span class="key">kibana</span>:
+    <span class="key">image</span>: <span class="str">docker.elastic.co/kibana/kibana:8.11.3</span>
+    <span class="key">container_name</span>: <span class="str">lars-kibana</span>
+    <span class="key">environment</span>:
+      - <span class="str">ELASTICSEARCH_HOSTS=http://elasticsearch:9200</span>
+      - <span class="str">xpack.security.enabled=false</span>
+    <span class="key">ports</span>:
+      - <span class="str">"5601:5601"</span>   <span class="cmt"># Kibana UI</span>
+    <span class="key">depends_on</span>:
+      <span class="key">elasticsearch</span>:
+        <span class="key">condition</span>: <span class="str">service_healthy</span>
+
+<span class="key">volumes</span>:
+  <span class="key">lars-es-data</span>:</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Start with Docker Compose</span>
+docker compose -f docker-compose.elastic.yml up -d
+
+<span class="cmt"># Check status</span>
+docker compose -f docker-compose.elastic.yml ps</pre>
+  </div>
+</div>
+
+<h3>Configure Environment Variable</h3>
+
+<p>Add this to your <code>.env</code> file to enable Elasticsearch:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang config">.env</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># =============================================================================</span>
+<span class="cmt"># OPTIONAL: Elasticsearch for Hybrid Search</span>
+<span class="cmt"># =============================================================================</span>
+<span class="cmt"># If set, LARS will automatically use Elasticsearch for:</span>
+<span class="cmt">#   - HYBRID_SEARCH() - semantic + keyword search</span>
+<span class="cmt">#   - KEYWORD_SEARCH() - pure BM25 keyword search</span>
+<span class="cmt">#   - ELASTIC_SEARCH() - pure semantic on Elastic</span>
+<span class="cmt">#   - SQL schema indexing for better RAG</span>
+<span class="key">LARS_ELASTICSEARCH_HOST</span>=<span class="str">http://localhost:9200</span></pre>
+  </div>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">Automatic Detection</div>
+  <p>
+    When <code>LARS_ELASTICSEARCH_HOST</code> is set, LARS automatically:
+  </p>
+  <ul>
+    <li>Registers <code>HYBRID_SEARCH</code>, <code>KEYWORD_SEARCH</code>, and <code>ELASTIC_SEARCH</code> functions</li>
+    <li>Enables the <code>backend='elastic'</code> option for <code>LARS EMBED</code> statements</li>
+    <li>Uses Elasticsearch for SQL schema search (better autocomplete and discovery)</li>
+  </ul>
+  <p>
+    If the environment variable is not set, these features simply won't be available,
+    and LARS will use ClickHouse for all vector search operations.
+  </p>
+</div>
+
+<h3>Verify Elasticsearch</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Check cluster health</span>
+curl http://localhost:9200/_cluster/health | jq
+
+<span class="cmt"># Expected output:</span>
+<span class="cmt"># {</span>
+<span class="cmt">#   "status": "green",</span>
+<span class="cmt">#   "number_of_nodes": 1,</span>
+<span class="cmt">#   ...</span>
+<span class="cmt"># }</span></pre>
+  </div>
+</div>
+
+<div class="info-box note">
+  <div class="info-box-title">Elasticsearch Ports</div>
+  <ul>
+    <li><strong>9200</strong>: HTTP API (used by LARS)</li>
+    <li><strong>9300</strong>: Transport protocol (internal cluster communication)</li>
+    <li><strong>5601</strong>: Kibana UI (if using docker-compose)</li>
   </ul>
 </div>
 

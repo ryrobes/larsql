@@ -1,6 +1,6 @@
 # MCP Server Configuration
 #
-# Configure Model Context Protocol servers for RVBBIT.
+# Configure Model Context Protocol servers for LARS.
 # Servers are auto-discovered at startup and their tools registered in skill_registry.
 #
 # Copy this file to mcp_servers.yaml to activate.

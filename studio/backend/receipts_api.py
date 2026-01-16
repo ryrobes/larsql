@@ -18,10 +18,10 @@ import math
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path
+# Add lars to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 
 def safe_float(value, default=0.0):

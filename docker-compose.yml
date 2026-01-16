@@ -1,17 +1,17 @@
-# RVBBIT Docker Compose - Tiered Deployment
+# LARS Docker Compose - Tiered Deployment
 #
 # USAGE:
-#   Default (RVBBIT + ClickHouse):
+#   Default (LARS + ClickHouse):
 #     docker compose up
 #
 #   Full stack (+ Elasticsearch/Kibana):
 #     docker compose --profile full up
 #
 #   Standalone (BYOI - you provide ClickHouse):
-#     RVBBIT_CLICKHOUSE_HOST=your-clickhouse.example.com docker compose up rvbbit
+#     LARS_CLICKHOUSE_HOST=your-clickhouse.example.com docker compose up lars
 #
 #   Scale workers:
-#     docker compose up --scale rvbbit=3
+#     docker compose up --scale lars=3
 #
 # ENVIRONMENT:
 #   Copy .env.example to .env and configure your API keys
@@ -19,13 +19,13 @@
 
 services:
   # ===========================================================================
-  # RVBBIT SERVER
+  # LARS SERVER
   # ===========================================================================
-  rvbbit:
+  lars:
     build:
       context: .
       dockerfile: Dockerfile
-    image: rvbbit:latest
+    image: lars:latest
     ports:
       - "5001:5001"
     environment:
@@ -33,10 +33,10 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in .env}
 
       # ClickHouse connection
-      - RVBBIT_USE_CLICKHOUSE_SERVER=true
-      - RVBBIT_CLICKHOUSE_HOST=${RVBBIT_CLICKHOUSE_HOST:-clickhouse}
-      - RVBBIT_CLICKHOUSE_PORT=${RVBBIT_CLICKHOUSE_PORT:-9000}
-      - RVBBIT_CLICKHOUSE_DATABASE=${RVBBIT_CLICKHOUSE_DATABASE:-rvbbit}
+      - LARS_USE_CLICKHOUSE_SERVER=true
+      - LARS_CLICKHOUSE_HOST=${LARS_CLICKHOUSE_HOST:-clickhouse}
+      - LARS_CLICKHOUSE_PORT=${LARS_CLICKHOUSE_PORT:-9000}
+      - LARS_CLICKHOUSE_DATABASE=${LARS_CLICKHOUSE_DATABASE:-lars}
 
       # Optional integrations
       - HF_TOKEN=${HF_TOKEN:-}
@@ -44,15 +44,15 @@ services:
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
 
       # Model configuration
-      - RVBBIT_DEFAULT_MODEL=${RVBBIT_DEFAULT_MODEL:-google/gemini-2.5-flash-lite}
-      - RVBBIT_PROVIDER_BASE_URL=${RVBBIT_PROVIDER_BASE_URL:-https://openrouter.ai/api/v1}
+      - LARS_DEFAULT_MODEL=${LARS_DEFAULT_MODEL:-google/gemini-2.5-flash-lite}
+      - LARS_PROVIDER_BASE_URL=${LARS_PROVIDER_BASE_URL:-https://openrouter.ai/api/v1}
     volumes:
-      - rvbbit-data:/data
+      - lars-data:/data
       # Development: mount local cascades
       # - ./cascades:/app/cascades
       # - ./skills:/app/skills
     networks:
-      - rvbbit
+      - lars
     restart: unless-stopped
     deploy:
       resources:
@@ -71,12 +71,12 @@ services:
   # ===========================================================================
   clickhouse:
     image: clickhouse/clickhouse-server:24.3-alpine
-    container_name: rvbbit-clickhouse
+    container_name: lars-clickhouse
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native protocol
     environment:
-      - CLICKHOUSE_DB=rvbbit
+      - CLICKHOUSE_DB=lars
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
       - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
@@ -84,7 +84,7 @@ services:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
     networks:
-      - rvbbit
+      - lars
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 10s
@@ -108,7 +108,7 @@ services:
   # ===========================================================================
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: rvbbit-elasticsearch
+    container_name: lars-elasticsearch
     profiles:
       - full
     environment:
@@ -122,7 +122,7 @@ services:
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     networks:
-      - rvbbit
+      - lars
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -135,7 +135,7 @@ services:
   # ===========================================================================
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.3
-    container_name: rvbbit-kibana
+    container_name: lars-kibana
     profiles:
       - full
     environment:
@@ -144,18 +144,18 @@ services:
     ports:
       - "5601:5601"
     networks:
-      - rvbbit
+      - lars
     depends_on:
       elasticsearch:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  rvbbit-data:
+  lars-data:
   clickhouse-data:
   clickhouse-logs:
   elasticsearch-data:
 
 networks:
-  rvbbit:
+  lars:
     driver: bridge

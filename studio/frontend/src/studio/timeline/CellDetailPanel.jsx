@@ -158,7 +158,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
   const isPython = cell.tool === 'python_data';
   const isJs = cell.tool === 'js_data';
   const isClojure = cell.tool === 'clojure_data';
-  const isRvbbit = cell.tool === 'rvbbit_data';
+  const isLars = cell.tool === 'lars_data';
   const isHitl = !!cell.hitl;
   const isLLMCell = !cell.tool && !cell.hitl && cell.instructions;
 
@@ -168,7 +168,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
     js_data: { language: 'javascript', codeKey: 'code', source: 'inputs' },
     clojure_data: { language: 'clojure', codeKey: 'code', source: 'inputs' },
     llm_cell: { language: 'markdown', codeKey: 'instructions', source: 'cell' },
-    rvbbit_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
+    lars_data: { language: 'yaml', codeKey: 'code', source: 'inputs' },
     bodybuilder: { language: 'markdown', codeKey: 'request', source: 'inputs' }, // Natural language LLM request
     browser: { language: 'yaml', codeKey: 'inputs', source: 'inputs_yaml' }, // Browser automation - show all inputs as YAML
     linux_shell: { language: 'shell', codeKey: 'command', source: 'inputs' }, // Shell commands
@@ -838,7 +838,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
         </div>
 
         <div className="cell-detail-header-center">
-          {isRvbbit && (
+          {isLars && (
             <>
               <button
                 className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
@@ -856,7 +856,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
               </button>
             </>
           )}
-          {!isRvbbit && !hasCustomEditors && (
+          {!isLars && !hasCustomEditors && (
             <div className="cell-detail-mode-label">
               <Icon icon="mdi:code-braces" width="16" />
               Code Editor
@@ -870,7 +870,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
               </button>
             </div>
           )}
-          {!isRvbbit && hasCustomEditors && (
+          {!isLars && hasCustomEditors && (
             <>
               <button
                 className={`cell-detail-tab ${activeTab === 'code' ? 'active' : ''}`}
@@ -921,7 +921,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
 
       {/* Tab Content */}
       <div className="cell-detail-body">
-        {activeTab === 'config' && isRvbbit ? (
+        {activeTab === 'config' && isLars ? (
           <div className="cell-detail-config">
             <div className="cell-detail-config-section">
               <h4>LLM Configuration</h4>

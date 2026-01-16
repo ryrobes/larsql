@@ -9,7 +9,7 @@ export function renderHeader(navData, currentPage) {
       <div class="container">
         <nav class="nav">
           <a href="#overview" class="brand" data-link>
-            <span class="brand-text">RVBBIT</span>
+            <span class="brand-text">LARS</span>
           </a>
           <div class="nav-actions">
             <a href="#overview" class="active" data-link>Docs</a>
@@ -18,7 +18,7 @@ export function renderHeader(navData, currentPage) {
                 ${link.title}
               </a>
             `).join('')}
-            <a href="https://github.com/ryrobes/rvbbit" class="btn" target="_blank" rel="noopener">
+            <a href="https://github.com/ryrobes/lars" class="btn" target="_blank" rel="noopener">
               <iconify-icon icon="mdi:github"></iconify-icon>
               GitHub
             </a>

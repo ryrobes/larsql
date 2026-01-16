@@ -4,8 +4,8 @@
 # to outpaint them to 16:9 aspect ratio.
 #
 # Usage:
-#   rvbbit run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/path/to/images"}'
-#   rvbbit run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/photos", "output_dir": "/photos/wide"}'
+#   lars run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/path/to/images"}'
+#   lars run cascades/folder_outpaint_16x9.yaml --input '{"folder": "/photos", "output_dir": "/photos/wide"}'
 
 cascade_id: folder_outpaint_16x9
 description: Outpaint all non-16:9 images in a folder to 16:9 using Gemini 3 Flash

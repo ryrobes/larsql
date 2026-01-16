@@ -319,7 +319,7 @@ Save this as `cleanup.sh` and run from `studio/frontend/`:
 #!/bin/bash
 set -e
 
-echo "=== RVBBIT Frontend Cleanup - Option 1 ==="
+echo "=== LARS Frontend Cleanup - Option 1 ==="
 echo "This will DELETE 210+ orphaned files. Press Ctrl+C to abort."
 read -p "Continue? (y/N) " -n 1 -r
 echo

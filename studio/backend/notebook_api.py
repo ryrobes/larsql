@@ -17,29 +17,29 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
-_RVBBIT_DIR = os.path.join(_REPO_ROOT, "rvbbit")
-if _RVBBIT_DIR not in sys.path:
-    sys.path.insert(0, _RVBBIT_DIR)
+_LARS_DIR = os.path.join(_REPO_ROOT, "lars")
+if _LARS_DIR not in sys.path:
+    sys.path.insert(0, _LARS_DIR)
 
 try:
-    from rvbbit import run_cascade
-    from rvbbit.config import get_config
-    from rvbbit.skills.data_tools import sql_data, python_data, js_data, clojure_data, rvbbit_data
-    from rvbbit.sql_tools.session_db import get_session_db, cleanup_session_db
-    from rvbbit.agent import Agent
-    from rvbbit.unified_logs import log_unified
+    from lars import run_cascade
+    from lars.config import get_config
+    from lars.skills.data_tools import sql_data, python_data, js_data, clojure_data, lars_data
+    from lars.sql_tools.session_db import get_session_db, cleanup_session_db
+    from lars.agent import Agent
+    from lars.unified_logs import log_unified
 except ImportError as e:
-    print(f"Warning: Could not import rvbbit modules: {e}")
+    print(f"Warning: Could not import lars modules: {e}")
     run_cascade = None
     get_config = None
     sql_data = None
     python_data = None
     js_data = None
     clojure_data = None
-    rvbbit_data = None
+    lars_data = None
     Agent = None
     log_unified = None
 
@@ -47,10 +47,10 @@ notebook_bp = Blueprint('notebook', __name__, url_prefix='/api/notebook')
 
 # Default paths
 _DEFAULT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-RVBBIT_ROOT = os.path.abspath(os.getenv("RVBBIT_ROOT", _DEFAULT_ROOT))
-SKILLS_DIR = os.path.join(RVBBIT_ROOT, "skills")
-CASCADES_DIR = os.path.join(RVBBIT_ROOT, "cascades")
-EXAMPLES_DIR = os.path.join(RVBBIT_ROOT, "cascades", "examples")
+LARS_ROOT = os.path.abspath(os.getenv("LARS_ROOT", _DEFAULT_ROOT))
+SKILLS_DIR = os.path.join(LARS_ROOT, "skills")
+CASCADES_DIR = os.path.join(LARS_ROOT, "cascades")
+EXAMPLES_DIR = os.path.join(LARS_ROOT, "cascades", "examples")
 PLAYGROUND_SCRATCHPAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'playground_scratchpad'))
 
 
@@ -311,7 +311,7 @@ def is_data_cascade(cascade_dict):
     if not cells:
         return False
 
-    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'rvbbit_data', 'set_state'}
+    data_tools = {'sql_data', 'python_data', 'js_data', 'clojure_data', 'lars_data', 'set_state'}
     for cell in cells:
         tool = cell.get('tool')
         if not tool:
@@ -427,7 +427,7 @@ def load_notebook():
             return jsonify({'error': 'Path is required'}), 400
 
         # Resolve full path
-        full_path = os.path.join(RVBBIT_ROOT, path)
+        full_path = os.path.join(LARS_ROOT, path)
 
         if not os.path.exists(full_path):
             return jsonify({'error': f'Notebook not found: {path}'}), 404
@@ -469,7 +469,7 @@ def save_notebook():
             return jsonify({'error': 'Notebook content is required'}), 400
 
         # Resolve full path
-        full_path = os.path.join(RVBBIT_ROOT, path)
+        full_path = os.path.join(LARS_ROOT, path)
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -706,8 +706,8 @@ def run_cell():
                     _cell_name=cell_name,
                     _session_id=session_id
                 )
-            elif tool == 'rvbbit_data':
-                result = rvbbit_data(
+            elif tool == 'lars_data':
+                result = lars_data(
                     cell_yaml=rendered_inputs.get('code', ''),
                     _outputs=prior_outputs,
                     _state={},
@@ -727,8 +727,8 @@ def run_cell():
             result = None  # Clear result so we attempt fix
 
         # If execution failed and auto-fix is enabled, try to fix
-        # Skip auto-fix for rvbbit_data (LLM cells) - too meta
-        if execution_error and auto_fix_config.get('enabled', False) and tool != 'rvbbit_data':
+        # Skip auto-fix for lars_data (LLM cells) - too meta
+        if execution_error and auto_fix_config.get('enabled', False) and tool != 'lars_data':
             try:
                 result = attempt_auto_fix(
                     tool=tool,

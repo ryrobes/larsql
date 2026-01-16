@@ -1,12 +1,12 @@
 """
-Tests for rvbbit.echo module.
+Tests for lars.echo module.
 
 Tests session state container and history management.
 These are deterministic, framework-level tests that don't require LLM calls.
 """
 import pytest
 from unittest.mock import MagicMock
-from rvbbit.echo import Echo, SessionManager, get_echo
+from lars.echo import Echo, SessionManager, get_echo
 
 
 # =============================================================================

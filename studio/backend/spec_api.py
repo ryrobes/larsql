@@ -43,7 +43,7 @@ def validate_cascade():
         }
     """
     try:
-        from rvbbit.spec_validator import validate_yaml_string, ValidationContext
+        from lars.spec_validator import validate_yaml_string, ValidationContext
 
         data = request.get_json() or {}
         yaml_content = data.get('cascade_yaml', '')
@@ -98,7 +98,7 @@ def get_context():
         }
     """
     try:
-        from rvbbit.skills_manifest import get_skill_manifest
+        from lars.skills_manifest import get_skill_manifest
 
         manifest = get_skill_manifest()
 
@@ -148,8 +148,8 @@ def validate_cell():
     """
     try:
         from ruamel.yaml import YAML
-        from rvbbit.cascade import CellConfig, CascadeConfig
-        from rvbbit.spec_validator import validate_cascade, ValidationContext, ValidationResult, ValidationIssue
+        from lars.cascade import CellConfig, CascadeConfig
+        from lars.spec_validator import validate_cascade, ValidationContext, ValidationResult, ValidationIssue
 
         yaml = YAML(typ='safe')
         data = request.get_json() or {}

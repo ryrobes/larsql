@@ -1,5 +1,5 @@
 /**
- * Session ID naming system for RVBBIT/RVBBIT.
+ * Session ID naming system for LARS/LARS.
  *
  * Generates memorable session IDs using woodland creature themes.
  * Format: <adjective>-<creature>-<hash6>
@@ -28,7 +28,7 @@ const WOODLAND_ADJECTIVES = [
 ];
 
 const WOODLAND_CREATURES = [
-  // Rabbits (featured for RVBBIT!)
+  // Rabbits (featured for LARS!)
   'rabbit', 'hare', 'bunny', 'cottontail', 'jackrabbit', 'snowshoe',
   // Small mammals
   'fox', 'squirrel', 'chipmunk', 'mouse', 'vole', 'hedgehog', 'badger',
@@ -96,6 +96,6 @@ export function generateSessionId(style = 'woodland') {
  * @returns {string} Session ID
  */
 export function autoGenerateSessionId() {
-  const style = localStorage.getItem('rvbbit_session_id_style') || 'woodland';
+  const style = localStorage.getItem('lars_session_id_style') || 'woodland';
   return generateSessionId(style);
 }

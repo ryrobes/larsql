@@ -42,7 +42,7 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
       return { initialUrl, commands, clientId: null, testId: null };
     }
 
-    // Legacy: parse rvbbit browser batch shell command
+    // Legacy: parse lars browser batch shell command
     const command = cell?.inputs?.command || '';
 
     // Parse --url "..." (new format) or --batch-url "..." (legacy)

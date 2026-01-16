@@ -1,6 +1,6 @@
 # Brand Extraction Demo
 
-A purpose-built demo cascade that showcases RVBBIT's key features:
+A purpose-built demo cascade that showcases LARS's key features:
 
 - **Deterministic cells** (Python + SQL alongside LLM)
 - **Candidates** (best-of-3 extraction with evaluator)
@@ -8,7 +8,7 @@ A purpose-built demo cascade that showcases RVBBIT's key features:
 - **Context control** (the "leaky context" anti-pattern)
 - **Receipts** (cost tracking to identify outliers)
 - **Multi-turn tool use** (web search for low-confidence cases)
-- **SQL integration** (rvbbit_udf / rvbbit_cascade_udf)
+- **SQL integration** (lars_udf / lars_cascade_udf)
 
 ## The Demo Story
 
@@ -34,11 +34,11 @@ visible in the UI - you can see each candidate trying different search strategie
 
 ```bash
 # Normal input (specific brand)
-rvbbit run examples/demo_brand_extract_v0.yaml \
+lars run examples/demo_brand_extract_v0.yaml \
   --input '{"product_name": "Sony WH-1000XM5 Headphones"}'
 
 # Outlier input (broad query - triggers the leak in v0)
-rvbbit run examples/demo_brand_extract_v0.yaml \
+lars run examples/demo_brand_extract_v0.yaml \
   --input '{"product_name": "USB-C Cable 6ft Black"}'
 ```
 
@@ -46,19 +46,19 @@ rvbbit run examples/demo_brand_extract_v0.yaml \
 
 ```bash
 # v0 with outlier - watch the cost spike
-rvbbit run examples/demo_brand_extract_v0.yaml \
+lars run examples/demo_brand_extract_v0.yaml \
   --input '{"product_name": "USB-C Cable 6ft Black"}' \
   --session demo_v0_outlier
 
 # v1 with same input - cost back to normal
-rvbbit run examples/demo_brand_extract_v1.yaml \
+lars run examples/demo_brand_extract_v1.yaml \
   --input '{"product_name": "USB-C Cable 6ft Black"}' \
   --session demo_v1_outlier
 ```
 
 Then check receipts:
 ```bash
-rvbbit sql query "SELECT session_id, SUM(cost) as total_cost FROM all_data WHERE session_id LIKE 'demo_%%' GROUP BY session_id"
+lars sql query "SELECT session_id, SUM(cost) as total_cost FROM all_data WHERE session_id LIKE 'demo_%%' GROUP BY session_id"
 ```
 
 ## SQL Demo (The Mic Drop)
@@ -67,10 +67,10 @@ rvbbit sql query "SELECT session_id, SUM(cost) as total_cost FROM all_data WHERE
 
 ```bash
 # Start the PostgreSQL-compatible server
-rvbbit server --port 5432
+lars server --port 5432
 
 # In another terminal, connect with any SQL client
-psql postgresql://rvbbit@localhost:5432/default
+psql postgresql://lars@localhost:5432/default
 
 # Run the setup script
 \i examples/demo_brand_setup.sql
@@ -83,7 +83,7 @@ psql postgresql://rvbbit@localhost:5432/default
 SELECT
   id,
   product_name,
-  rvbbit_cascade_udf(
+  lars_cascade_udf(
     'examples/demo_brand_extract_v0.yaml',
     json_object('product_name', product_name)
   ) as result
@@ -99,7 +99,7 @@ Row 6 ("USB-C Cable") will spike in cost. Check receipts to see why.
 -- Quick one-shot extraction (no cascade, just LLM)
 SELECT
   product_name,
-  rvbbit_udf('Extract the brand name. Return just the brand.', product_name) as brand
+  lars_udf('Extract the brand name. Return just the brand.', product_name) as brand
 FROM demo_products;
 ```
 
@@ -167,7 +167,7 @@ rules:
 
 ```bash
 # Try with an ambiguous product
-rvbbit run examples/demo_brand_extract_v2.yaml \
+lars run examples/demo_brand_extract_v2.yaml \
   --input '{"product_name": "JSAUX Steam Deck Dock"}'
 ```
 

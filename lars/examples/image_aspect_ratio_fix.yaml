@@ -1,0 +1,121 @@
+# Image Aspect Ratio Fixer
+#
+# This cascade demonstrates how to:
+# 1. List images in a folder
+# 2. Filter to find non-16:9 aspect ratio images
+# 3. Send each image to a vision LLM for analysis
+# 4. Generate instructions for repainting to 16:9
+# 5. Save processed images with unique filenames
+#
+# Usage:
+#   lars run examples/image_aspect_ratio_fix.yaml --input '{"folder": "/path/to/images"}'
+#   lars run examples/image_aspect_ratio_fix.yaml --input '{"folder": "/photos", "output_dir": "/photos/processed"}'
+
+cascade_id: image_aspect_ratio_fix
+description: Find images that aren't 16:9, analyze them, and save processed versions
+
+inputs_schema:
+  folder: Path to folder containing images
+  output_dir: Directory for processed images (optional, defaults to {folder}/processed_16x9)
+  target_aspect: Target aspect ratio (default 16:9)
+
+cells:
+  # Step 1: Set up output directory
+  - name: setup_output
+    tool: python_data
+    inputs:
+      code: |
+        import os
+
+        folder = "{{ input.folder }}"
+        output_dir = "{{ input.output_dir | default('') }}"
+
+        if not output_dir:
+            output_dir = os.path.join(folder, "processed_16x9")
+
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+
+        result = {
+            "output_dir": output_dir,
+            "source_folder": folder
+        }
+
+  # Step 2: List all images that are NOT 16:9
+  - name: find_non_16x9_images
+    tool: list_images
+    inputs:
+      path: "{{ input.folder }}"
+      recursive: false
+      filter_aspect: "not_16:9"
+
+  # Step 3: Check if we have any images to process
+  - name: check_images
+    instructions: |
+      Check if we found any non-16:9 images to process.
+
+      Found {{ outputs['find_non_16x9_images']['count'] }} non-16:9 images.
+      Filtered out {{ outputs['find_non_16x9_images']['filtered_out'] }} images that were already 16:9.
+      Output directory: {{ outputs['setup_output']['result']['output_dir'] }}
+
+      Images to process:
+      {% for img in outputs['find_non_16x9_images']['images'] %}
+      - {{ img.filename }} ({{ img.width }}x{{ img.height }}, {{ img.aspect_name }})
+      {% endfor %}
+
+      If count is 0, route to "no_images".
+      Otherwise, route to "process_images" and confirm we'll process them.
+
+      Use the route_to tool.
+    handoffs: [no_images, process_images]
+    skills: []
+
+  # Dead-end for no images
+  - name: no_images
+    instructions: |
+      Report that all images in {{ input.folder }} are already 16:9 aspect ratio.
+      No processing needed.
+
+  # Step 4: Map over each non-16:9 image
+  - name: process_images
+    tool: map_cascade
+    inputs:
+      cascade: "lars/examples/image_repaint_single.yaml"
+      map_over: "{{ outputs.find_non_16x9_images.paths | tojson }}"
+      input_key: "image_path"
+      # Pass output_dir to each child cascade via additional_inputs
+      additional_inputs:
+        output_dir: "{{ outputs['setup_output']['result']['output_dir'] }}"
+      mode: "aggregate"
+      max_parallel: 3
+      on_error: "collect_errors"
+
+  # Step 5: Summarize results
+  - name: summarize
+    instructions: |
+      Create a summary of the image processing results.
+
+      SOURCE FOLDER: {{ outputs['setup_output']['result']['source_folder'] }}
+      OUTPUT FOLDER: {{ outputs['setup_output']['result']['output_dir'] }}
+
+      IMAGES FOUND: {{ outputs['find_non_16x9_images']['count'] }} non-16:9 images
+      ALREADY 16:9: {{ outputs['find_non_16x9_images']['filtered_out'] }} images (skipped)
+
+      PROCESSING RESULTS:
+      {{ outputs.process_images | tojson }}
+
+      Create a clear summary showing:
+      1. How many images were processed successfully
+      2. The output files created (with their new 16:9 dimensions)
+      3. Key analysis highlights (extension directions, compositions)
+      4. Any errors that occurred
+
+      Format as a readable report.
+    context:
+      from:
+        - cell: find_non_16x9_images
+          include: [output]
+        - cell: setup_output
+          include: [output]
+        - cell: process_images
+          include: [output]

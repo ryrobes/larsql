@@ -1,11 +1,11 @@
 """
-Tests for rvbbit.deterministic module.
+Tests for lars.deterministic module.
 
 Tests tool parsing, resolution, and input rendering.
 These are deterministic, framework-level tests that don't require LLM calls.
 """
 import pytest
-from rvbbit.deterministic import (
+from lars.deterministic import (
     parse_tool_target,
     import_python_function,
     render_inputs,

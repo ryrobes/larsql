@@ -6,17 +6,17 @@ This script prevents cascade/skill/example files from creeping into
 the Python package directories where they don't belong.
 
 Canonical locations:
-- $RVBBIT_ROOT/cascades/         - User cascades (including cascades/examples/)
-- $RVBBIT_ROOT/skills/           - Skill definitions (JSON/YAML)
+- $LARS_ROOT/cascades/         - User cascades (including cascades/examples/)
+- $LARS_ROOT/skills/           - Skill definitions (JSON/YAML)
 
 NOT allowed:
-- $RVBBIT_ROOT/rvbbit/examples/  - Should not exist
-- $RVBBIT_ROOT/rvbbit/skills/*.yaml|json - Only Python code allowed here
-- $RVBBIT_ROOT/rvbbit/cascades/  - Should not exist
+- $LARS_ROOT/lars/examples/  - Should not exist
+- $LARS_ROOT/lars/skills/*.yaml|json - Only Python code allowed here
+- $LARS_ROOT/lars/cascades/  - Should not exist
 - Any "tackle" terminology in config
 
 Exception:
-- rvbbit/rvbbit/skills/basecoat_components.json is allowed (bundled implementation data)
+- lars/lars/skills/basecoat_components.json is allowed (bundled implementation data)
 
 Usage:
     python scripts/check_file_organization.py
@@ -27,18 +27,18 @@ import os
 import sys
 import glob
 
-def get_rvbbit_root():
-    """Get RVBBIT_ROOT from env or detect from script location."""
-    if "RVBBIT_ROOT" in os.environ:
-        return os.environ["RVBBIT_ROOT"]
-    # Assume script is in $RVBBIT_ROOT/scripts/
+def get_lars_root():
+    """Get LARS_ROOT from env or detect from script location."""
+    if "LARS_ROOT" in os.environ:
+        return os.environ["LARS_ROOT"]
+    # Assume script is in $LARS_ROOT/scripts/
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def check_file_organization():
     """Check that user content is in canonical locations."""
-    rvbbit_root = get_rvbbit_root()
-    python_pkg = os.path.join(rvbbit_root, "rvbbit")
+    lars_root = get_lars_root()
+    python_pkg = os.path.join(lars_root, "lars")
 
     violations = []
 
@@ -54,7 +54,7 @@ def check_file_organization():
         violations.append(f"Directory should not exist: {pkg_cascades}")
         violations.append("  -> Move contents to cascades/")
 
-    # Check 3: No user content (YAML/JSON) in rvbbit/skills/ (only Python allowed)
+    # Check 3: No user content (YAML/JSON) in lars/skills/ (only Python allowed)
     # Exception: basecoat_components.json is bundled implementation data
     allowed_in_pkg_skills = {"basecoat_components.json"}
     pkg_skills = os.path.join(python_pkg, "skills")
@@ -64,10 +64,10 @@ def check_file_organization():
                 basename = os.path.basename(f)
                 if basename not in allowed_in_pkg_skills:
                     violations.append(f"User content in Python package: {f}")
-                    violations.append("  -> Move to $RVBBIT_ROOT/skills/")
+                    violations.append("  -> Move to $LARS_ROOT/skills/")
 
-    # Check 4: No rvbbit/rvbbit/examples or rvbbit/rvbbit/cascades
-    inner_pkg = os.path.join(python_pkg, "rvbbit")
+    # Check 4: No lars/lars/examples or lars/lars/cascades
+    inner_pkg = os.path.join(python_pkg, "lars")
     if os.path.isdir(inner_pkg):
         for subdir in ["examples", "cascades"]:
             path = os.path.join(inner_pkg, subdir)
@@ -75,13 +75,13 @@ def check_file_organization():
                 violations.append(f"Directory should not exist: {path}")
 
     # Check 5: No root-level examples/ directory (should be cascades/examples/)
-    root_examples = os.path.join(rvbbit_root, "examples")
+    root_examples = os.path.join(lars_root, "examples")
     if os.path.isdir(root_examples):
         violations.append(f"Directory should not exist at root: {root_examples}")
         violations.append("  -> Should be cascades/examples/")
 
     # Check 6: No "tackle" terminology in config.py
-    config_path = os.path.join(python_pkg, "rvbbit", "config.py")
+    config_path = os.path.join(python_pkg, "lars", "config.py")
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             content = f.read()

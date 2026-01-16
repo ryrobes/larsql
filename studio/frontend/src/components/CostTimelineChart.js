@@ -27,7 +27,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
   // Load granularity from localStorage, default to 'day'
   const [granularity, setGranularityState] = useState(() => {
     try {
-      return localStorage.getItem('rvbbit_cost_analytics_granularity') || 'day';
+      return localStorage.getItem('lars_cost_analytics_granularity') || 'day';
     } catch (err) {
       return 'day';
     }
@@ -37,7 +37,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
   const setGranularity = (newGranularity) => {
     setGranularityState(newGranularity);
     try {
-      localStorage.setItem('rvbbit_cost_analytics_granularity', newGranularity);
+      localStorage.setItem('lars_cost_analytics_granularity', newGranularity);
     } catch (err) {
       console.error('Failed to save granularity preference:', err);
     }

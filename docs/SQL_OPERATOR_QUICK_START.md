@@ -162,7 +162,7 @@ shape: SCALAR  # Using in GROUP BY aggregate context - should be AGGREGATE
 ```bash
 # After adding cascade:
 pkill -f postgres_server  # Kill old server
-rvbbit serve sql          # Start fresh (loads new cascades)
+lars serve sql          # Start fresh (loads new cascades)
 ```
 
 ---
@@ -171,7 +171,7 @@ rvbbit serve sql          # Start fresh (loads new cascades)
 
 ```bash
 # 1. Test cascade directly:
-rvbbit run cascades/my_ops/is_toxic.yaml \
+lars run cascades/my_ops/is_toxic.yaml \
   --input '{"text": "you are terrible"}'
 
 # 2. Test in SQL:

@@ -70,7 +70,7 @@ const CellNode = React.memo(({ cell, isBranch, isMerge, status }) => {
     js_data: { label: 'JS', icon: 'mdi:language-javascript', color: '#f7df1e' },
     clojure_data: { label: 'Clj', icon: 'simple-icons:clojure', color: '#63b132' },
     llm_cell: { label: 'LLM', icon: 'mdi:brain', color: '#a78bfa' },
-    rvbbit_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
+    lars_data: { label: 'LLM', icon: 'mdi:sail-boat', color: '#2dd4bf' },
     linux_shell: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
     linux_shell_dangerous: { label: 'Shell', icon: 'mdi:console', color: '#f87171' },
     hitl_screen: { label: 'HITL', icon: 'mdi:monitor-dashboard', color: '#f97316' },

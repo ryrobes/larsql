@@ -1,0 +1,217 @@
+# LARS Cascade Monitor - Alice TUI Dashboard
+# Launch with: lars tui
+background_image: capecod.jpg
+background_darken: 0.5
+#background_darken: 0.7
+
+blocks:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # STATS SOURCE - Hidden block that fetches summary stats every 5 seconds
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: stats_source
+    type: continuous
+    command: |
+      while true; do
+        lars sql query "
+          SELECT
+            countIf(status='running') as running,
+            countIf(status='blocked') as blocked,
+            countIf(status='completed') as completed,
+            countIf(status='error') as errors,
+            countIf(status='orphaned') as orphaned
+          FROM session_state FINAL
+        " --format json 2>/dev/null
+        sleep 5
+      done
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+    visible: false
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: '"running":'
+          metric: running
+        - type: extract_number
+          prefix: '"blocked":'
+          metric: blocked
+        - type: extract_number
+          prefix: '"completed":'
+          metric: completed
+        - type: extract_number
+          prefix: '"errors":'
+          metric: errors
+        - type: extract_number
+          prefix: '"orphaned":'
+          metric: orphaned
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # TITLE BAR - LARS banner at top
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: title_bar
+    type: panel
+    x: 2
+    y: 1
+    width: 140
+    height: 3
+    content:
+      - "[bold cyan]LARS Cascade Monitor[/bold cyan] | [green]Running: {{stats_source.running}}[/green] | [yellow]Blocked: {{stats_source.blocked}}[/yellow] | [blue]Completed: {{stats_source.completed}}[/blue] | [red]Errors: {{stats_source.errors}}[/red] | [magenta]Orphaned: {{stats_source.orphaned}}[/magenta]"
+    block_map:
+      title: ""
+      overlay_color: "#1a1a2e"
+      darken_factor: 0.85
+      border: false
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SESSIONS LIST - Main table showing recent cascade sessions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: sessions_list
+    type: continuous
+    command: |
+      while true; do
+        lars sql query "
+          SELECT
+            substring(session_id, 1, 25) as session,
+            substring(cascade_id, 1, 20) as cascade,
+            status,
+            substring(current_cell, 1, 15) as phase,
+            substring(toString(started_at), 12, 8) as started
+          FROM session_state FINAL
+          ORDER BY updated_at DESC
+          LIMIT 25
+        " --format table 2>/dev/null
+        sleep 5
+      done
+    x: 2
+    y: 5
+    width: 85
+    height: 32
+    block_map:
+      title: "Recent Sessions"
+      overlay_color: "#16213e"
+      darken_factor: 0.7
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ACTIVE CASCADES - Prominently show running/blocked sessions
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: active_cascades
+    type: continuous
+    command: |
+      while true; do
+        echo "[bold green]Active Cascades[/bold green]"
+        echo ""
+        lars sql query "
+          SELECT
+            status,
+            substring(cascade_id, 1, 18) as cascade,
+            substring(current_cell, 1, 12) as phase,
+            substring(session_id, 1, 20) as session
+          FROM session_state FINAL
+          WHERE status IN ('running', 'blocked', 'starting')
+          ORDER BY started_at DESC
+          LIMIT 8
+        " --format table 2>/dev/null
+        echo ""
+        echo "[dim]Press 'q' to quit, 'r' to reload[/dim]"
+        sleep 3
+      done
+    x: 90
+    y: 5
+    width: 52
+    height: 18
+    block_map:
+      title: "Active Now"
+      overlay_color: "#0f3460"
+      darken_factor: 0.6
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ERRORS PANEL - Show recent errors
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: errors_panel
+    type: continuous
+    command: |
+      while true; do
+        echo "[bold red]Recent Errors[/bold red]"
+        echo ""
+        lars sql query "
+          SELECT
+            substring(session_id, 1, 20) as session,
+            substring(cascade_id, 1, 15) as cascade,
+            substring(error_cell, 1, 12) as cell,
+            substring(toString(updated_at), 12, 5) as time
+          FROM session_state FINAL
+          WHERE status = 'error'
+          ORDER BY updated_at DESC
+          LIMIT 5
+        " --format table 2>/dev/null
+        sleep 10
+      done
+    x: 90
+    y: 24
+    width: 52
+    height: 13
+    block_map:
+      title: "Errors"
+      overlay_color: "#4a0000"
+      darken_factor: 0.6
+      border: true
+      padding: 1
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # COST SUMMARY - Today's spending
+  # ═══════════════════════════════════════════════════════════════════════════
+  - block_id: cost_source
+    type: continuous
+    command: |
+      while true; do
+        lars sql query "
+          SELECT
+            round(sum(cost), 4) as total_cost,
+            count(*) as messages,
+            sum(tokens_in) as tokens_in,
+            sum(tokens_out) as tokens_out
+          FROM unified_logs
+          WHERE toDate(timestamp) = today()
+        " --format json 2>/dev/null
+        sleep 30
+      done
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+    visible: false
+    data_extraction:
+      patterns:
+        - type: extract_number
+          prefix: '"total_cost":'
+          metric: cost
+        - type: extract_number
+          prefix: '"messages":'
+          metric: messages
+        - type: extract_number
+          prefix: '"tokens_in":'
+          metric: tokens_in
+        - type: extract_number
+          prefix: '"tokens_out":'
+          metric: tokens_out
+
+  - block_id: cost_panel
+    type: panel
+    x: 2
+    y: 38
+    width: 140
+    height: 4
+    content:
+      - "[bold]Today's Usage:[/bold] [green]${{cost_source.cost:.4f}}[/green] | Messages: {{cost_source.messages}} | Tokens In: {{cost_source.tokens_in}} | Tokens Out: {{cost_source.tokens_out}}"
+    block_map:
+      title: ""
+      overlay_color: "#1a1a2e"
+      darken_factor: 0.85
+      border: false
+      padding: 1

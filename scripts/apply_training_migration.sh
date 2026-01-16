@@ -7,7 +7,7 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
-MIGRATION_FILE="$REPO_ROOT/rvbbit/migrations/create_universal_training_system.sql"
+MIGRATION_FILE="$REPO_ROOT/lars/migrations/create_universal_training_system.sql"
 
 echo "🔧 Applying Universal Training System Migration..."
 echo "   Migration file: $MIGRATION_FILE"
@@ -24,7 +24,7 @@ echo "✅ ClickHouse connection OK"
 echo ""
 
 # Get database name from environment or use default
-CLICKHOUSE_DB="${RVBBIT_CLICKHOUSE_DATABASE:-rvbbit}"
+CLICKHOUSE_DB="${LARS_CLICKHOUSE_DATABASE:-lars}"
 echo "🗄️  Database: $CLICKHOUSE_DB"
 echo ""
 

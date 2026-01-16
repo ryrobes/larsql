@@ -1,6 +1,6 @@
-# RVBBIT Cascade DSL Reference
+# LARS Cascade DSL Reference
 
-This document describes the complete structure of RVBBIT cascade configurations.
+This document describes the complete structure of LARS cascade configurations.
 Use this reference to generate valid cascade override mutations.
 
 ## Top-Level: CascadeConfig

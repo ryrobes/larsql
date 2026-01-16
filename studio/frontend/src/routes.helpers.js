@@ -56,7 +56,7 @@ export const ROUTES = {
   WARREN: '/warren',
   warrenWithSession: (sessionId) => `/warren/${encodeURIComponent(sessionId)}`,
 
-  // Apps - RVBBIT Apps (cascade-powered interfaces)
+  // Apps - LARS Apps (cascade-powered interfaces)
   APPS: '/apps',
 
   // Catalog - System Components Browser

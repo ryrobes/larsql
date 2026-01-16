@@ -23,7 +23,7 @@
 
 ## Files Modified
 
-### 1. `rvbbit/utils.py`
+### 1. `lars/utils.py`
 
 **Added:**
 - `compute_genus_hash()` - Cascade-level hash function
@@ -33,7 +33,7 @@
 - `compute_species_hash()` - Now handles deterministic cells (tool + code)
 - Returns `"unknown_species"` instead of `None` for robustness
 
-### 2. `rvbbit/runner.py`
+### 2. `lars/runner.py`
 
 **Lines 4384-4415:** Compute genus_hash at cascade start
 ```python
@@ -60,7 +60,7 @@ log_message(..., species_hash=phase_species_hash)
 log_unified(..., species_hash=phase_species_hash)
 ```
 
-### 3. `rvbbit/migrations/add_genus_hash_columns.sql`
+### 3. `lars/migrations/add_genus_hash_columns.sql`
 
 **Created new migration:**
 - Adds `genus_hash String` to `cascade_sessions`
@@ -68,7 +68,7 @@ log_unified(..., species_hash=phase_species_hash)
 - Bloom filter indexes for fast filtering
 - Safely repeatable (IF NOT EXISTS)
 
-### 4. `rvbbit/migrations/README.md`
+### 4. `lars/migrations/README.md`
 
 **Updated:**
 - Added entry for `add_genus_hash_columns.sql`
@@ -116,7 +116,7 @@ CELL LEVEL:
 ## Hash Taxonomy
 
 ```
-Kingdom → RVBBIT Framework
+Kingdom → LARS Framework
   Class → Cascade Type (extract_brand, analyze_data)
     Genus → Cascade Invocation                    ← NEW! 🌳
       Species → Cell Execution                    ← FIXED! 🧬
@@ -245,12 +245,12 @@ cells:
 EOF
 
 # Run twice with same input
-rvbbit run /tmp/verify_hashes.yaml --input '{"data": "verify"}' --session verify_a
-rvbbit run /tmp/verify_hashes.yaml --input '{"data": "verify"}' --session verify_b
+lars run /tmp/verify_hashes.yaml --input '{"data": "verify"}' --session verify_a
+lars run /tmp/verify_hashes.yaml --input '{"data": "verify"}' --session verify_b
 
 # Check hashes match
 python -c "
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 db = get_db()
 

@@ -8,9 +8,9 @@ import time
 from flask import Blueprint, jsonify, request
 import os
 
-# Add rvbbit to path for imports
+# Add lars to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from rvbbit.db_adapter import get_db
+from lars.db_adapter import get_db
 
 message_flow_bp = Blueprint('message_flow', __name__)
 

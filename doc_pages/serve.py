@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple development server for RVBBIT docs.
+Simple development server for LARS docs.
 Serves files with correct MIME types for ES modules.
 
 Usage:
@@ -44,7 +44,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         super().end_headers()
 
-print(f"\\n  RVBBIT Documentation Server")
+print(f"\\n  LARS Documentation Server")
 print(f"  ===========================")
 print(f"  Serving at: http://localhost:{PORT}")
 print(f"  Press Ctrl+C to stop\\n")

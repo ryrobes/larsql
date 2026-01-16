@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RVBBIT Studio is a React/Flask web UI for the RVBBIT agent framework. It provides real-time visualization of cascade executions, including candidates (Tree of Thought), reforge iterations, and cost tracking.
+LARS Studio is a React/Flask web UI for the LARS agent framework. It provides real-time visualization of cascade executions, including candidates (Tree of Thought), reforge iterations, and cost tracking.
 
 **Tech Stack:**
 - **Backend**: Flask + DuckDB (Python 3.x)
@@ -18,7 +18,7 @@ RVBBIT Studio is a React/Flask web UI for the RVBBIT agent framework. It provide
 
 ```bash
 # Using CLI (recommended)
-rvbbit serve studio --dev    # Runs backend on port 5050
+lars serve studio --dev    # Runs backend on port 5050
 
 # Or manually:
 # Terminal 1 - Backend
@@ -29,7 +29,7 @@ cd frontend && npm start      # Runs on port 5550 (proxies to 5050)
 
 # Production mode (serves built frontend)
 cd frontend && npm run build
-rvbbit serve studio           # Runs with Gunicorn + static files
+lars serve studio           # Runs with Gunicorn + static files
 ```
 
 ### Frontend
@@ -53,14 +53,14 @@ python app.py                     # Start Flask server
 ### Environment Variables
 
 ```bash
-# Point to RVBBIT data (optional - defaults to repo root)
-export RVBBIT_ROOT=/path/to/rvbbit
-export RVBBIT_DATA_DIR=$RVBBIT_ROOT/data      # Parquet logs
-export RVBBIT_GRAPH_DIR=$RVBBIT_ROOT/graphs   # Mermaid graphs
-export RVBBIT_IMAGE_DIR=$RVBBIT_ROOT/images   # Generated images
+# Point to LARS data (optional - defaults to repo root)
+export LARS_ROOT=/path/to/lars
+export LARS_DATA_DIR=$LARS_ROOT/data      # Parquet logs
+export LARS_GRAPH_DIR=$LARS_ROOT/graphs   # Mermaid graphs
+export LARS_IMAGE_DIR=$LARS_ROOT/images   # Generated images
 
 # SQL debugging
-export RVBBIT_SQL_VERBOSE=true   # Log all SQL queries
+export LARS_SQL_VERBOSE=true   # Log all SQL queries
 ```
 
 ## Architecture
@@ -68,7 +68,7 @@ export RVBBIT_SQL_VERBOSE=true   # Log all SQL queries
 ### Data Flow
 
 ```
-RVBBIT Cascade Execution
+LARS Cascade Execution
     ↓
 SSE Events → LiveStore (in-memory DuckDB)  ← Real-time UI updates
     ↓
@@ -173,7 +173,7 @@ Navigation uses URL hash for bookmarkable views:
 
 ```bash
 # Enable verbose SQL logging
-export RVBBIT_SQL_VERBOSE=true
+export LARS_SQL_VERBOSE=true
 python app.py
 ```
 

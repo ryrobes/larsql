@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive YAML migration for RVBBIT
+Comprehensive YAML migration for LARS
 Updates ALL YAML files in the repository with new terminology
 """
 import yaml
@@ -53,8 +53,8 @@ def migrate_value(value: Union[Dict, list, str, Any]) -> Union[Dict, list, str, 
         # Update string content (for SQL queries, paths, etc.)
         updated = value
         updated = updated.replace('skills/', 'skills/')
-        updated = updated.replace('rvbbit_cascade_udf', 'rvbbit_run')
-        updated = updated.replace('rvbbit_udf', 'rvbbit')
+        updated = updated.replace('lars_cascade_udf', 'lars_run')
+        updated = updated.replace('lars_udf', 'lars')
         # Be careful with cell_name in SQL - only in specific contexts
         # Don't blindly replace "cell" as it's a common word
         return updated

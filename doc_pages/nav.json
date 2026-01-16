@@ -10,7 +10,7 @@
           "title": "Quickstart Guide",
           "sections": [
             { "anchor": "prerequisites", "title": "Prerequisites" },
-            { "anchor": "installation", "title": "Install RVBBIT" },
+            { "anchor": "installation", "title": "Install LARS" },
             { "anchor": "clickhouse", "title": "Start ClickHouse" },
             { "anchor": "workspace", "title": "Initialize Workspace" },
             { "anchor": "environment", "title": "Configure Environment" },
@@ -30,7 +30,7 @@
           "sections": [
             { "anchor": "the-problem", "title": "The Problem Everyone Faces" },
             { "anchor": "the-insight", "title": "Stop Retrying, Start Filtering" },
-            { "anchor": "what-is-rvbbit", "title": "What is RVBBIT?" },
+            { "anchor": "what-is-lars", "title": "What is LARS?" },
             { "anchor": "five-properties", "title": "Five Self-* Properties" },
             { "anchor": "architecture", "title": "Core Architecture" },
             { "anchor": "installation", "title": "Installation" },
@@ -198,7 +198,7 @@
           "sections": [
             { "anchor": "what-is-toon", "title": "What is TOON?" },
             { "anchor": "format", "title": "Format Specification" },
-            { "anchor": "usage", "title": "Usage in RVBBIT" },
+            { "anchor": "usage", "title": "Usage in LARS" },
             { "anchor": "configuration", "title": "Configuration" },
             { "anchor": "when-to-use", "title": "When to Use TOON" },
             { "anchor": "telemetry", "title": "Telemetry & Analytics" }
@@ -329,6 +329,6 @@
   ],
   "externalLinks": [
     { "title": "Home", "url": "index.html", "icon": "mdi:home" },
-    { "title": "GitHub", "url": "https://github.com/ryrobes/rvbbit", "icon": "mdi:github" }
+    { "title": "GitHub", "url": "https://github.com/ryrobes/lars", "icon": "mdi:github" }
   ]
 }

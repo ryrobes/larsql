@@ -115,7 +115,7 @@ const OverviewPanel = ({
         <Icon icon="mdi:database-off" width={48} className="empty-state-icon" />
         <div className="empty-state-title">No data available</div>
         <div className="empty-state-text">
-          Run some SQL queries with RVBBIT UDFs to see analytics here.
+          Run some SQL queries with LARS UDFs to see analytics here.
         </div>
       </div>
     );

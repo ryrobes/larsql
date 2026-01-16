@@ -7,7 +7,7 @@
 # 3. The LLM uses the search tool to find relevant information
 #
 # Run with:
-#   rvbbit run cascades/examples/ephemeral_rag_test.yaml --input '{"query": "renewable energy"}'
+#   lars run cascades/examples/ephemeral_rag_test.yaml --input '{"query": "renewable energy"}'
 
 cascade_id: ephemeral_rag_test
 description: Test cascade to verify ephemeral RAG auto-indexing works

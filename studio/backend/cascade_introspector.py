@@ -233,7 +233,7 @@ def _classify_cell(cell: dict, cell_name: str) -> Tuple[str, dict]:
     is_image_model = False
     if model:
         try:
-            from rvbbit.model_registry import ModelRegistry
+            from lars.model_registry import ModelRegistry
             is_image_model = ModelRegistry.is_image_output_model(model)
         except ImportError:
             # Fallback: check common image model patterns

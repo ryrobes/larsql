@@ -16,9 +16,9 @@ import './AppPreview.css';
  * is self-contained and works correctly.
  *
  * Communication happens via postMessage:
- * - rvbbit_cell_change: When user navigates to a new cell
- * - rvbbit_session_complete: When the app session completes
- * - rvbbit_session_error: When an error occurs
+ * - lars_cell_change: When user navigates to a new cell
+ * - lars_session_complete: When the app session completes
+ * - lars_session_error: When an error occurs
  */
 const AppPreview = ({
   cascadeId,
@@ -46,7 +46,7 @@ const AppPreview = ({
       }
 
       const data = event.data;
-      if (!data?.type?.startsWith('rvbbit_')) return;
+      if (!data?.type?.startsWith('lars_')) return;
 
       // Verify this message is for our cascade (session can be any - apps_api manages it)
       if (data.cascade_id && data.cascade_id !== cascadeId) return;
@@ -57,7 +57,7 @@ const AppPreview = ({
       }
 
       switch (data.type) {
-        case 'rvbbit_cell_change':
+        case 'lars_cell_change':
           setCurrentCell(data.cell_name);
           onCellChange?.(data.cell_name, data.state);
           if (data.state) {
@@ -65,7 +65,7 @@ const AppPreview = ({
           }
           break;
 
-        case 'rvbbit_session_complete':
+        case 'lars_session_complete':
           onSessionComplete?.({
             status: 'completed',
             state: data.state,
@@ -73,7 +73,7 @@ const AppPreview = ({
           });
           break;
 
-        case 'rvbbit_session_error':
+        case 'lars_session_error':
           setError(data.error);
           onError?.({
             message: data.error,
