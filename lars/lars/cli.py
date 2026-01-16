@@ -3026,7 +3026,7 @@ def cmd_db_migrate(args):
                 checksum_status = '' if m.get('checksum_match', True) else ' [MODIFIED]'
                 always_run = ' [always_run]' if m.get('always_run') else ''
 
-                print(f"  {status_icon} {m['version']:03d} {m['name']}")
+                styled_print(f"  {status_icon} {m['version']:03d} {m['name']}")
                 print(f"       Status: {m['status']}{checksum_status}{always_run}")
                 if m.get('executed_at'):
                     print(f"       Executed: {m['executed_at']}")
