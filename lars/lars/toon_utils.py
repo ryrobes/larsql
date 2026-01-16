@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 # Try to import toon-format package
 try:
-    from toon_format import encode as toon_encode
-    from toon_format import decode as toon_decode
-    from toon_format import estimate_savings
+    from lars.vendor.toon_format import encode as toon_encode
+    from lars.vendor.toon_format import decode as toon_decode
+    from lars.vendor.toon_format import estimate_savings
     TOON_AVAILABLE = True
 except ImportError:
     TOON_AVAILABLE = False

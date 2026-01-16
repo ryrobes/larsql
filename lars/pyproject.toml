@@ -3,11 +3,26 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lars"
+name = "larsql"
 version = "2.0.0"
-description = "LARS: Declarative agent framework for Python"
+description = "LARS: Declarative agent framework with first class SQL integration"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [{name = "Ryan Robitaille", email = "ryan.robitaille@gmail.com"}]
+license = {text = "MIT"}
+keywords = ["agents", "llm", "workflows", "declarative", "sql", "semantic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
 dependencies = [
     "litellm",
     "chdb",
@@ -28,17 +43,16 @@ dependencies = [
     "gunicorn[gevent]",
     "jsonschema",
     "openpyxl",
-    "readchar",  # For Hot or Not interactive rating UI
-    "miniaudio",  # For ElevenLabs TTS audio playback
-    "requests",  # For ElevenLabs API calls and Rabbitize REST API
-    "ruamel.yaml",  # For YAML cascade/tool definition support
-    "sqlglot",  # For SQL fingerprinting and UDF type extraction in SQL Trail
-    ##"toon-format",  # Token-efficient data encoding for LLM contexts
-    "toon-format @ git+https://github.com/toon-format/toon-python.git" # tool-python not fully released yet
+    "readchar",
+    "requests",
+    "ruamel.yaml",
+    "sqlglot",
 ]
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[project.urls]
+Homepage = "https://github.com/ryrobes/larsql"
+Repository = "https://github.com/ryrobes/larsql"
+Documentation = "https://larsql.com/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lars"]
@@ -47,10 +61,6 @@ packages = ["lars"]
 include = [
     "lars/**/*",
 ]
-
-# Include starter files in the package
-[tool.hatch.build.targets.wheel.force-include]
-"lars/starter" = "lars/starter"
 
 [project.optional-dependencies]
 # Extra dependencies for specific features

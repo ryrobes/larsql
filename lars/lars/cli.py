@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sys
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 from .console_style import S, styled_print
@@ -13,11 +14,24 @@ from .console_style import S, styled_print
 SPLASH_DIR = Path(__file__).resolve().parent.parent / "tui_images"
 
 
+def _get_version() -> str:
+    """Get package version from metadata."""
+    try:
+        return pkg_version("larsql")
+    except Exception:
+        return "unknown"
+
+
 def main():
     _maybe_render_startup_splash()
     parser = argparse.ArgumentParser(
         description="LARS - Declarative Agent Framework",
         formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=f"lars {_get_version()}"
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
