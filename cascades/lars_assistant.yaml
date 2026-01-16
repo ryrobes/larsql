@@ -29,15 +29,15 @@ auto_context:
     window: 8
     mask_observations_after: 5
 
-#model: x-ai/grok-4
-model: minimax/minimax-m2.1
+model: x-ai/grok-4
+#model: minimax/minimax-m2.1
 
 cells:
 - name: assistant_loop
   ui_mode: research_cockpit
   skills: manifest
-  #model: x-ai/grok-4
-  model: minimax/minimax-m2.1
+  model: x-ai/grok-4
+  #model: minimax/minimax-m2.1
   manifest_refresh: "per_turn"  # Re-assess tools each turn
   manifest_context: "full"      # Quartermaster sees full context
   manifest_limit: 50            # Consider up to 50 tools

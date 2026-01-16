@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '@iconify/react';
 import {
   ResponsiveContainer,
@@ -36,6 +36,103 @@ const formatDuration = (ms) => {
   return `${(ms / 60000).toFixed(1)}m`;
 };
 
+/**
+ * FilterDropdown - Compact dropdown for filtering by type
+ */
+const FilterDropdown = ({
+  items,
+  value,
+  onChange,
+  labelKey,
+  placeholder = 'Filter...',
+  formatCount = formatNumber
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const filteredItems = search
+    ? items.filter(item =>
+        (item[labelKey] || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : items;
+
+  const selectedItem = value ? items.find(item => item[labelKey] === value) : null;
+
+  return (
+    <div className="filter-dropdown" ref={dropdownRef}>
+      {value ? (
+        <button
+          className="filter-dropdown-active"
+          onClick={() => onChange(null)}
+          title="Clear filter"
+        >
+          <span className="filter-dropdown-value">{value}</span>
+          <Icon icon="mdi:close" width={12} />
+        </button>
+      ) : (
+        <button
+          className="filter-dropdown-trigger"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <Icon icon="mdi:filter-variant" width={14} />
+          <span>Filter</span>
+          <Icon icon="mdi:chevron-down" width={14} />
+        </button>
+      )}
+
+      {isOpen && (
+        <div className="filter-dropdown-menu">
+          <div className="filter-dropdown-search">
+            <Icon icon="mdi:magnify" width={14} />
+            <input
+              type="text"
+              placeholder={placeholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="filter-dropdown-list">
+            {filteredItems.length === 0 ? (
+              <div className="filter-dropdown-empty">No matches</div>
+            ) : (
+              filteredItems.map((item, idx) => (
+                <button
+                  key={idx}
+                  className={`filter-dropdown-item ${value === item[labelKey] ? 'active' : ''}`}
+                  onClick={() => {
+                    onChange(item[labelKey]);
+                    setIsOpen(false);
+                    setSearch('');
+                  }}
+                >
+                  <span className="filter-dropdown-item-label">{item[labelKey]}</span>
+                  <span className="filter-dropdown-item-count">{formatCount(item.count)}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const formatDate = (value, options) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -49,6 +146,12 @@ const TypeTooltip = ({ active, payload }) => {
   return (
     <div className="sql-trail-tooltip">
       <div className="sql-trail-tooltip-title">{item.query_type || 'Unknown'}</div>
+      {item._isOthers && item._otherTypes && (
+        <div className="sql-trail-tooltip-subtitle">
+          {item._otherTypes.length} types: {item._otherTypes.slice(0, 5).join(', ')}
+          {item._otherTypes.length > 5 && ` +${item._otherTypes.length - 5} more`}
+        </div>
+      )}
       <div className="sql-trail-tooltip-row">
         <span>Queries</span>
         <span>{formatNumber(item.count)}</span>
@@ -76,6 +179,12 @@ const UdfTypeTooltip = ({ active, payload }) => {
   return (
     <div className="sql-trail-tooltip">
       <div className="sql-trail-tooltip-title">{item.udf_type || 'Unknown'}</div>
+      {item._isOthers && item._otherTypes && (
+        <div className="sql-trail-tooltip-subtitle">
+          {item._otherTypes.length} types: {item._otherTypes.slice(0, 5).join(', ')}
+          {item._otherTypes.length > 5 && ` +${item._otherTypes.length - 5} more`}
+        </div>
+      )}
       <div className="sql-trail-tooltip-row">
         <span>Invocations</span>
         <span>{formatNumber(item.count)}</span>
@@ -138,8 +247,37 @@ const OverviewPanel = ({
     calls: point.llm_calls ?? point.llm_calls_count ?? 0,
     cost: point.total_cost ?? point.cost ?? 0
   }));
-  const typeData = [...queries_by_type].sort((a, b) => (b.count || 0) - (a.count || 0));
-  const udfTypesData = [...udf_types_data].sort((a, b) => (b.count || 0) - (a.count || 0));
+  // Limit query types to fit in chart, bucket the rest as "Others"
+  const MAX_QUERY_TYPES = 10;
+  const sortedTypeData = [...queries_by_type].sort((a, b) => (b.count || 0) - (a.count || 0));
+  const typeData = sortedTypeData.length > MAX_QUERY_TYPES
+    ? [
+        ...sortedTypeData.slice(0, MAX_QUERY_TYPES),
+        {
+          query_type: 'Others',
+          count: sortedTypeData.slice(MAX_QUERY_TYPES).reduce((sum, t) => sum + (t.count || 0), 0),
+          cost: sortedTypeData.slice(MAX_QUERY_TYPES).reduce((sum, t) => sum + (t.cost || 0), 0),
+          _isOthers: true,
+          _otherTypes: sortedTypeData.slice(MAX_QUERY_TYPES).map(t => t.query_type)
+        }
+      ]
+    : sortedTypeData;
+
+  // Limit UDF types similarly
+  const MAX_UDF_TYPES = 10;
+  const sortedUdfData = [...udf_types_data].sort((a, b) => (b.count || 0) - (a.count || 0));
+  const udfTypesData = sortedUdfData.length > MAX_UDF_TYPES
+    ? [
+        ...sortedUdfData.slice(0, MAX_UDF_TYPES),
+        {
+          udf_type: 'Others',
+          count: sortedUdfData.slice(MAX_UDF_TYPES).reduce((sum, t) => sum + (t.count || 0), 0),
+          cost: sortedUdfData.slice(MAX_UDF_TYPES).reduce((sum, t) => sum + (t.cost || 0), 0),
+          _isOthers: true,
+          _otherTypes: sortedUdfData.slice(MAX_UDF_TYPES).map(t => t.udf_type)
+        }
+      ]
+    : sortedUdfData;
   const granularityOptions = [
     { value: 'minute', label: 'Minutes' },
     { value: 'hourly', label: 'Hourly' },
@@ -251,8 +389,15 @@ const OverviewPanel = ({
             <div className="overview-card-title">
               <Icon icon="mdi:shape-outline" width={14} />
               <span>Queries by Type</span>
+              <span className="overview-card-count">{sortedTypeData.length}</span>
             </div>
-            <span className="overview-card-subtitle">{typeData.length} types</span>
+            <FilterDropdown
+              items={sortedTypeData}
+              value={queryTypeFilter}
+              onChange={onQueryTypeFilter}
+              labelKey="query_type"
+              placeholder="Search types..."
+            />
           </div>
           {typeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={340}>
@@ -295,19 +440,30 @@ const OverviewPanel = ({
                 <Bar
                   dataKey="count"
                   radius={[0, 6, 6, 0]}
-                  onClick={(data) => onQueryTypeFilter && onQueryTypeFilter(data.query_type)}
-                  style={{ cursor: 'pointer' }}
+                  onClick={(data) => {
+                    // Don't filter on "Others" bucket - use dropdown instead
+                    if (!data._isOthers && onQueryTypeFilter) {
+                      onQueryTypeFilter(data.query_type);
+                    }
+                  }}
                 >
                   {typeData.map((entry, index) => {
                     const isSelected = queryTypeFilter === entry.query_type;
                     const hasFilter = queryTypeFilter !== null;
+                    const isOthers = entry._isOthers;
                     let fill = 'url(#sqlTrailTypeGradient)';
                     if (isSelected) {
                       fill = 'url(#sqlTrailTypeGradientSelected)';
                     } else if (hasFilter) {
                       fill = 'url(#sqlTrailTypeGradientDim)';
                     }
-                    return <Cell key={`cell-${index}`} fill={fill} />;
+                    return (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={fill}
+                        style={{ cursor: isOthers ? 'default' : 'pointer' }}
+                      />
+                    );
                   })}
                   <LabelList
                     dataKey="cost"
@@ -339,13 +495,20 @@ const OverviewPanel = ({
             <div className="overview-card-title">
               <Icon icon="mdi:function-variant" width={14} />
               <span>UDF Invocations</span>
+              <span className="overview-card-count">{sortedUdfData.length}</span>
             </div>
-            <span className="overview-card-subtitle">{udfTypesData.length} types</span>
+            <FilterDropdown
+              items={sortedUdfData}
+              value={udfTypeFilter}
+              onChange={onUdfTypeFilter}
+              labelKey="udf_type"
+              placeholder="Search UDFs..."
+            />
           </div>
           {udfTypesData.length > 0 ? (
             <ResponsiveContainer width="100%" height={340}>
               <BarChart
-                data={udfTypesData.slice(0, 12)}
+                data={udfTypesData}
                 layout="vertical"
                 margin={{ top: 8, right: 60, left: 8, bottom: 0 }}
               >
@@ -383,19 +546,30 @@ const OverviewPanel = ({
                 <Bar
                   dataKey="count"
                   radius={[0, 6, 6, 0]}
-                  onClick={(data) => onUdfTypeFilter && onUdfTypeFilter(data.udf_type)}
-                  style={{ cursor: 'pointer' }}
+                  onClick={(data) => {
+                    // Don't filter on "Others" bucket - use dropdown instead
+                    if (!data._isOthers && onUdfTypeFilter) {
+                      onUdfTypeFilter(data.udf_type);
+                    }
+                  }}
                 >
-                  {udfTypesData.slice(0, 12).map((entry, index) => {
+                  {udfTypesData.map((entry, index) => {
                     const isSelected = udfTypeFilter === entry.udf_type;
                     const hasFilter = udfTypeFilter !== null;
+                    const isOthers = entry._isOthers;
                     let fill = 'url(#sqlTrailUdfGradient)';
                     if (isSelected) {
                       fill = 'url(#sqlTrailUdfGradientSelected)';
                     } else if (hasFilter) {
                       fill = 'url(#sqlTrailUdfGradientDim)';
                     }
-                    return <Cell key={`cell-${index}`} fill={fill} />;
+                    return (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={fill}
+                        style={{ cursor: isOthers ? 'default' : 'pointer' }}
+                      />
+                    );
                   })}
                   <LabelList
                     dataKey="cost"
