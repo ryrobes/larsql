@@ -108,7 +108,7 @@ For a full end-to-end setup (ClickHouse + sample data + Studio UI), see the [Qui
 <summary>Screenshot: DataGrip connected over pgwire</summary>
 
 <p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg">
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/datagrip.jpg">
     <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/datagrip.jpg" width="520" alt="DataGrip querying LARS via PostgreSQL wire protocol" />
   </a>
 </p>
@@ -142,7 +142,7 @@ LIMIT 20;
 <summary>Screenshot: costs + context (optional Studio UI)</summary>
 
 <p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg">
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/gh-image1.jpg">
     <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image1.jpg" width="100%" alt="Studio showing context inspector, query logs, takes, and cost analytics" />
   </a>
 </p>
@@ -289,7 +289,7 @@ lars serve studio
 <summary>Screenshots: Studio overview</summary>
 
 <p>
-  <a href="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg">
+  <a href="https://raw.githubusercontent.com/ryrobes/larsql/refs/heads/master/gh_jpg/gh-image2.jpg">
     <img src="https://raw.githubusercontent.com/ryrobes/larsql/master/gh_jpg/gh-image2.jpg" width="100%" alt="Studio overview screenshots" />
   </a>
 </p>
