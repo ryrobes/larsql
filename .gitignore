@@ -3,6 +3,9 @@ states
 logs
 *.pyc
 **/__pycache__/**
+.cache
+.code
+.vscode
 data
 studio/backend/__pycache__/
 data/*.parquet
