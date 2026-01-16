@@ -1,0 +1,22 @@
+# Snowflake Connection Example
+# Requires: Snowflake account with appropriate permissions
+
+connection_name: snowflake_prod
+type: snowflake
+
+# Required
+account: xy12345.us-east-1    # Your Snowflake account identifier
+user: service_account
+password_env: SNOWFLAKE_PASSWORD
+
+# Optional
+database: ANALYTICS           # Default database
+warehouse: COMPUTE_WH         # Snowflake warehouse
+role: ANALYST                 # Snowflake role
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50
+
+# Query syntax: SELECT * FROM snowflake_prod.{schema}.{table}

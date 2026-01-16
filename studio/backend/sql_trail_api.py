@@ -186,17 +186,28 @@ def get_overview():
         # Query type distribution (high-level: lars_udf, lars_cascade_udf, etc.)
         # This chart is NOT filtered by query_type (so you can click to change it)
         # but IS filtered by udf_type if that filter is active
-        udf_type_only_filter = f" AND has(udf_types, '{udf_type_filter}')" if udf_type_filter else ''
+        # NOTE: Must JOIN with unified_logs for accurate cost data (same as KPIs query)
+        udf_type_only_filter = f" AND has(q.udf_types, '{udf_type_filter}')" if udf_type_filter else ''
         udf_dist_query = f"""
             SELECT
-                query_type,
+                q.query_type,
                 COUNT(*) as cnt,
-                SUM(total_cost) as sum_cost,
-                AVG(duration_ms) as avg_duration
-            FROM sql_query_log
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
-              AND query_type != 'plain_sql'{udf_type_only_filter}
-            GROUP BY query_type
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
+                AVG(q.duration_ms) as avg_duration
+            FROM sql_query_log q
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+              AND q.query_type != 'plain_sql'{udf_type_only_filter}
+            GROUP BY q.query_type
             ORDER BY cnt DESC
         """
         udf_distribution = db.query(udf_dist_query)
@@ -204,16 +215,27 @@ def get_overview():
         # UDF types distribution (granular: unnest udf_types array for actual cascade names)
         # This chart is NOT filtered by udf_type (so you can click to change it)
         # but IS filtered by query_type if that filter is active
-        query_type_only_filter = f" AND query_type = '{query_type_filter}'" if query_type_filter else ''
+        # NOTE: Must JOIN with unified_logs for accurate cost data (same as KPIs query)
+        query_type_only_filter = f" AND q.query_type = '{query_type_filter}'" if query_type_filter else ''
         udf_types_query = f"""
             SELECT
                 udf_type,
                 COUNT(*) as cnt,
-                SUM(total_cost) as sum_cost,
-                AVG(duration_ms) as avg_duration
-            FROM sql_query_log
-            ARRAY JOIN udf_types as udf_type
-            WHERE timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){query_type_only_filter}
+                SUM(COALESCE(c.total_cost, 0)) as sum_cost,
+                AVG(q.duration_ms) as avg_duration
+            FROM sql_query_log q
+            ARRAY JOIN q.udf_types as udf_type
+            LEFT JOIN (
+                SELECT
+                    caller_id,
+                    SUM(cost) as total_cost
+                FROM unified_logs
+                WHERE caller_id LIKE 'sql-%%'
+                  AND timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}')
+                  AND request_id IS NOT NULL AND request_id != ''
+                GROUP BY caller_id
+            ) c ON q.caller_id = c.caller_id
+            WHERE q.timestamp >= toDateTime('{current_start.strftime('%Y-%m-%d %H:%M:%S')}'){query_type_only_filter}
             GROUP BY udf_type
             ORDER BY cnt DESC
             LIMIT 20

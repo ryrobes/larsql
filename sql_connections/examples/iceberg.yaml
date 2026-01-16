@@ -1,0 +1,22 @@
+# Apache Iceberg Table Connection Example
+# Query Iceberg tables via REST catalog or file-based
+
+connection_name: iceberg_events
+type: iceberg
+
+# Option 1: REST Catalog (recommended for production)
+catalog_type: rest
+catalog_uri: http://iceberg-rest-catalog:8181
+
+# Option 2: File-based Iceberg table
+# table_path: s3://data-lake/iceberg/events/
+
+# For S3-based tables, provide credentials
+# access_key_env: AWS_ACCESS_KEY_ID
+# secret_key_env: AWS_SECRET_ACCESS_KEY
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM iceberg_events.{namespace}.{table}

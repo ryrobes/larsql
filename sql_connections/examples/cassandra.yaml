@@ -1,0 +1,27 @@
+# Cassandra Connection Example
+# Query Cassandra keyspaces as SQL tables
+# Data is materialized into DuckDB on first access
+
+connection_name: cassandra_events
+type: cassandra
+
+# Required: List of Cassandra host addresses
+cassandra_hosts:
+  - cassandra-node1.example.com
+  - cassandra-node2.example.com
+  - cassandra-node3.example.com
+
+# Required: Keyspace name
+cassandra_keyspace: events
+
+# Optional: Authentication
+user: app_user
+password_env: CASSANDRA_PASSWORD
+
+enabled: true
+read_only: true
+sample_row_limit: 1000
+distinct_value_threshold: 50
+
+# Query syntax: SELECT * FROM cassandra_events.{table_name}
+# Note: Data is materialized at connection time, not live queries

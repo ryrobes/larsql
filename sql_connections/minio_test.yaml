@@ -1,0 +1,18 @@
+# MinIO S3-compatible storage (local docker)
+# Requires:
+#   export MINIO_ACCESS_KEY="minioadmin"
+#   export MINIO_SECRET_KEY="minioadmin"
+# Start container: docker compose -f docker-compose.sql-tests.yml up -d minio
+# Setup data: python tests/fixtures/setup_minio.py
+connection_name: minio_test
+type: s3
+bucket: test-data
+prefix: "parquet"
+endpoint_url: http://localhost:9100
+access_key_env: MINIO_ACCESS_KEY
+secret_key_env: MINIO_SECRET_KEY
+file_pattern: "*.parquet"
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50

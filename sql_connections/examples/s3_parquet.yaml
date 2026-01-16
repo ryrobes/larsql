@@ -1,0 +1,28 @@
+# S3 Parquet Files Connection Example
+# Query parquet files stored in S3/R2/MinIO
+
+connection_name: data_lake
+type: s3
+
+# Required
+bucket: company-data-lake
+
+# Optional path prefix within bucket
+prefix: analytics/parquet/
+
+# AWS credentials (env vars)
+access_key_env: AWS_ACCESS_KEY_ID
+secret_key_env: AWS_SECRET_ACCESS_KEY
+region: us-east-1
+
+# File pattern to include (default: *.parquet)
+file_pattern: "*.parquet"
+
+# For S3-compatible services (MinIO, R2, etc.)
+# endpoint_url: https://your-minio-server.com:9000
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM data_lake.{filename_without_extension}

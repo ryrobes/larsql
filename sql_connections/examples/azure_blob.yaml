@@ -1,0 +1,24 @@
+# Azure Blob Storage Connection Example
+# Query parquet/CSV files stored in Azure containers
+
+connection_name: azure_warehouse
+type: azure
+
+# Required: Azure container name
+bucket: analytics-container
+
+# Optional: Path prefix within container
+prefix: curated/
+
+# Azure connection string (stored in env var for security)
+connection_string_env: AZURE_STORAGE_CONNECTION_STRING
+# Example: DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net
+
+# Optional: File pattern to match (default: *.parquet)
+file_pattern: "**/*.parquet"
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM azure_warehouse.{filename}

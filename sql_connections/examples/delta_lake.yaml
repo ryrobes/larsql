@@ -1,0 +1,18 @@
+# Delta Lake Table Connection Example
+# Query Delta Lake tables stored in S3/Azure/local
+
+connection_name: delta_sales
+type: delta
+
+# Required: Path to Delta table (can be S3, Azure, or local path)
+table_path: s3://data-lake/delta/sales/
+
+# For S3-based Delta tables, provide credentials
+access_key_env: AWS_ACCESS_KEY_ID
+secret_key_env: AWS_SECRET_ACCESS_KEY
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM delta_sales.sales

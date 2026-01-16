@@ -6604,8 +6604,9 @@ class ClientConnection:
                 params = portal['params']
                 query_upper = query.upper().strip()
 
-                # For non-SELECT queries (SET, BEGIN, COMMIT, etc.), return NoData
+                # For non-SELECT queries (SET, BEGIN, COMMIT, DDL, DML, etc.), return NoData
                 is_non_select = (
+                    # Transaction control
                     query_upper.startswith('SET ') or
                     query_upper.startswith('RESET ') or
                     query_upper.startswith('BEGIN') or
@@ -6613,12 +6614,31 @@ class ClientConnection:
                     query_upper.startswith('ROLLBACK') or
                     query_upper.startswith('START TRANSACTION') or
                     query_upper.startswith('END') or
+                    # Session/connection
                     query_upper.startswith('DISCARD') or
                     query_upper.startswith('DEALLOCATE') or
                     query_upper.startswith('CLOSE') or
                     query_upper.startswith('LISTEN') or
                     query_upper.startswith('UNLISTEN') or
-                    query_upper.startswith('NOTIFY')
+                    query_upper.startswith('NOTIFY') or
+                    # DDL - Data Definition Language
+                    query_upper.startswith('CREATE ') or
+                    query_upper.startswith('DROP ') or
+                    query_upper.startswith('ALTER ') or
+                    query_upper.startswith('TRUNCATE ') or
+                    # DML - Data Manipulation Language (non-SELECT)
+                    query_upper.startswith('INSERT ') or
+                    query_upper.startswith('UPDATE ') or
+                    query_upper.startswith('DELETE ') or
+                    # Privileges
+                    query_upper.startswith('GRANT ') or
+                    query_upper.startswith('REVOKE ') or
+                    # Other
+                    query_upper.startswith('VACUUM') or
+                    query_upper.startswith('ANALYZE') or
+                    query_upper.startswith('REINDEX') or
+                    query_upper.startswith('CLUSTER') or
+                    query_upper.startswith('REFRESH ')
                 )
 
                 if is_non_select:
@@ -7546,6 +7566,45 @@ class ClientConnection:
 
             print(f"[{self.session_id}]      Converted query: {duckdb_query[:80]}...")
             print(f"[{self.session_id}]      Parameters: {params}")
+
+            # DDL/DML commands - Execute without returning rows
+            # These commands don't return result sets, only CommandComplete
+            ddl_dml_prefixes = (
+                # DDL - Data Definition Language
+                'CREATE ', 'DROP ', 'ALTER ', 'TRUNCATE ',
+                # DML - Data Manipulation Language (non-SELECT)
+                'INSERT ', 'UPDATE ', 'DELETE ',
+                # Privileges
+                'GRANT ', 'REVOKE ',
+                # Maintenance
+                'VACUUM', 'ANALYZE', 'REINDEX', 'CLUSTER', 'REFRESH ',
+            )
+            if any(query_upper.startswith(prefix) for prefix in ddl_dml_prefixes):
+                # Determine the command tag (e.g., "CREATE VIEW", "DROP TABLE", etc.)
+                # Extract first two words for compound commands like "CREATE VIEW"
+                words = query_upper.split()
+                if len(words) >= 2 and words[0] in ('CREATE', 'DROP', 'ALTER', 'TRUNCATE'):
+                    # Handle special cases like "CREATE OR REPLACE VIEW"
+                    if words[0] == 'CREATE' and len(words) >= 4 and words[1] == 'OR' and words[2] == 'REPLACE':
+                        command_tag = f"CREATE {words[3]}"
+                    else:
+                        command_tag = f"{words[0]} {words[1]}"
+                elif words[0] == 'INSERT':
+                    command_tag = "INSERT 0 0"  # PostgreSQL format: INSERT oid count
+                elif words[0] == 'UPDATE':
+                    command_tag = "UPDATE 0"
+                elif words[0] == 'DELETE':
+                    command_tag = "DELETE 0"
+                else:
+                    command_tag = words[0] if words else "OK"
+
+                styled_print(f"[{self.session_id}]      Detected DDL/DML command: {command_tag}")
+                # Execute without fetching results
+                self.duckdb_conn.execute(duckdb_query, params)
+                # Send only CommandComplete - no RowDescription or DataRows
+                self.sock.sendall(CommandComplete.encode(command_tag))
+                styled_print(f"[{self.session_id}]      {S.OK} DDL/DML executed, sent CommandComplete({command_tag})")
+                return
 
             # Handle special catalog queries that need actual data (not just empty results)
             import pandas as pd

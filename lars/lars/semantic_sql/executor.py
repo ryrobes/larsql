@@ -860,71 +860,41 @@ def semantic_classify_cascade(text: str, topics_json: str) -> str:
         return result.strip()
 
 
-def register_cascade_udfs(connection) -> None:
+def register_cascade_udfs(connection, existing: set | None = None) -> None:
     """
     Register cascade-based UDFs with a DuckDB connection.
 
     These are alternatives to the direct-call UDFs in llm_aggregates.py.
     They route through the cascade system for full observability.
+
+    Args:
+        connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names (for batch efficiency)
     """
-    try:
-        # Boolean functions (SCALAR)
-        connection.create_function(
-            "cascade_matches",
-            semantic_matches_cascade,
-            return_type="BOOLEAN"
-        )
-        connection.create_function(
-            "cascade_implies",
-            semantic_implies_cascade,
-            return_type="BOOLEAN"
-        )
-        connection.create_function(
-            "cascade_contradicts",
-            semantic_contradicts_cascade,
-            return_type="BOOLEAN"
-        )
+    from ..sql_tools.udf import get_registered_functions, safe_create_function
 
-        # Score function (SCALAR)
-        connection.create_function(
-            "cascade_score",
-            semantic_score_cascade,
-            return_type="DOUBLE"
-        )
+    # Get existing functions if not provided
+    if existing is None:
+        existing = get_registered_functions(connection)
 
-        # Aggregate functions (via JSON input)
-        connection.create_function(
-            "cascade_summarize",
-            semantic_summarize_cascade,
-            return_type="VARCHAR"
-        )
-        connection.create_function(
-            "cascade_themes",
-            semantic_themes_cascade,
-            return_type="VARCHAR"
-        )
-        connection.create_function(
-            "cascade_cluster",
-            semantic_cluster_cascade,
-            return_type="VARCHAR"
-        )
-        connection.create_function(
-            "cascade_classify",
-            semantic_classify_cascade,
-            return_type="VARCHAR"
-        )
+    # Boolean functions (SCALAR)
+    safe_create_function(connection, "cascade_matches", semantic_matches_cascade, existing, return_type="BOOLEAN")
+    safe_create_function(connection, "cascade_implies", semantic_implies_cascade, existing, return_type="BOOLEAN")
+    safe_create_function(connection, "cascade_contradicts", semantic_contradicts_cascade, existing, return_type="BOOLEAN")
 
-        # Generic cascade executor
-        connection.create_function(
-            "run_cascade",
-            execute_cascade_udf,
-            return_type="VARCHAR"
-        )
+    # Score function (SCALAR)
+    safe_create_function(connection, "cascade_score", semantic_score_cascade, existing, return_type="DOUBLE")
 
-        log.info("[cascade_udf] Registered cascade-based UDFs")
+    # Aggregate functions (via JSON input)
+    safe_create_function(connection, "cascade_summarize", semantic_summarize_cascade, existing, return_type="VARCHAR")
+    safe_create_function(connection, "cascade_themes", semantic_themes_cascade, existing, return_type="VARCHAR")
+    safe_create_function(connection, "cascade_cluster", semantic_cluster_cascade, existing, return_type="VARCHAR")
+    safe_create_function(connection, "cascade_classify", semantic_classify_cascade, existing, return_type="VARCHAR")
 
-    except Exception as e:
-        log.warning(f"[cascade_udf] Failed to register UDFs: {e}")
+    # Generic cascade executor
+    safe_create_function(connection, "run_cascade", execute_cascade_udf, existing, return_type="VARCHAR")
+
+    log.info("[cascade_udf] Registered cascade-based UDFs")
 
 
 # Feature flag to enable cascade-based UDFs

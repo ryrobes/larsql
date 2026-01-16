@@ -41,6 +41,59 @@ _udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 _cascade_udf_cache: Dict[str, Tuple[str, float, Optional[float]]] = {}
 
 
+# =============================================================================
+# UDF Registration Utilities
+# =============================================================================
+
+def get_registered_functions(conn: duckdb.DuckDBPyConnection) -> set:
+    """
+    Query DuckDB for all registered scalar function names.
+
+    This allows checking before attempting registration to avoid
+    "Function already exists!" errors when multiple sessions share
+    a persistent database.
+
+    Returns:
+        Set of function names currently registered in the database.
+    """
+    try:
+        result = conn.execute(
+            "SELECT function_name FROM duckdb_functions() WHERE function_type = 'scalar'"
+        ).fetchall()
+        return {row[0] for row in result}
+    except Exception:
+        # If query fails, return empty set (will attempt registration)
+        return set()
+
+
+def safe_create_function(
+    conn: duckdb.DuckDBPyConnection,
+    name: str,
+    func,
+    existing: set,
+    **kwargs
+) -> bool:
+    """
+    Register a UDF only if it doesn't already exist.
+
+    Args:
+        conn: DuckDB connection
+        name: Function name to register
+        func: Python function to register
+        existing: Pre-fetched set of existing function names
+        **kwargs: Additional args passed to create_function (return_type, null_handling, etc.)
+
+    Returns:
+        True if function was newly registered, False if already existed.
+    """
+    if name in existing:
+        return False  # Already exists, skip silently
+
+    conn.create_function(name, func, **kwargs)
+    existing.add(name)  # Update set for subsequent checks in same batch
+    return True
+
+
 def _make_cache_key(instructions: str, input_value: str, model: str | None = None) -> str:
     """Create cache key for UDF result."""
     cache_str = f"{instructions}|{input_value}|{model or 'default'}"
@@ -906,7 +959,7 @@ def lars_materialize_table(
         return json_module.dumps({"error": str(e), "status": "failed"})
 
 
-def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
+def register_embedding_udfs(connection: duckdb.DuckDBPyConnection, existing: set | None = None):
     """
     Register embedding-based UDFs for Semantic SQL.
 
@@ -917,6 +970,7 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
 
     Args:
         connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names (for batch efficiency)
 
     Note:
         These UDFs are backed by cascades in cascades/semantic_sql/:
@@ -924,6 +978,9 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
         - vector_search.cascade.yaml
         - similar_to.cascade.yaml
     """
+    # Get existing functions if not provided
+    if existing is None:
+        existing = get_registered_functions(connection)
     import logging
     import json as json_module
 
@@ -1078,27 +1135,15 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
             logger.error(traceback.format_exc())
             return None
 
-    try:
-        # Register 1-arg version (default model, no storage)
-        connection.create_function(
-            "semantic_embed",
-            semantic_embed_udf_1,
-            return_type="DOUBLE[]",
-            null_handling="special"
-        )
+    # Register 1-arg version (default model, no storage)
+    if safe_create_function(connection, "semantic_embed", semantic_embed_udf_1, existing,
+                            return_type="DOUBLE[]", null_handling="special"):
         logger.debug("Registered semantic_embed UDF (1-arg version)")
 
-        # Register 4-arg version (with table/ID for auto-storage)
-        connection.create_function(
-            "semantic_embed_with_storage",
-            semantic_embed_with_storage_udf,
-            return_type="DOUBLE[]",
-            null_handling="special"
-        )
+    # Register 4-arg version (with table/ID for auto-storage)
+    if safe_create_function(connection, "semantic_embed_with_storage", semantic_embed_with_storage_udf, existing,
+                            return_type="DOUBLE[]", null_handling="special"):
         logger.debug("Registered semantic_embed_with_storage UDF (4-arg version)")
-
-    except Exception as e:
-        logger.warning(f"Could not register semantic_embed: {e}")
 
     # =========================================================================
     # UDF 2: vector_search_json(query, table, limit?, threshold?) → VARCHAR
@@ -1187,15 +1232,12 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                 f.write('[]')
                 return f.name
 
-    try:
-        # Register all arity versions with suffixes (DuckDB doesn't support overloading)
-        # Like llm_aggregates, we use _N suffix for N arguments
-        connection.create_function("vector_search_json_2", vector_search_json_udf_2, return_type="VARCHAR", null_handling="special")
-        connection.create_function("vector_search_json_3", vector_search_json_udf_3, return_type="VARCHAR", null_handling="special")
-        connection.create_function("vector_search_json_4", vector_search_json_udf_4, return_type="VARCHAR", null_handling="special")
-        logger.debug("Registered vector_search_json UDF (2, 3, 4-arg versions)")
-    except Exception as e:
-        logger.warning(f"Could not register vector_search_json: {e}")
+    # Register all arity versions with suffixes (DuckDB doesn't support overloading)
+    # Like llm_aggregates, we use _N suffix for N arguments
+    safe_create_function(connection, "vector_search_json_2", vector_search_json_udf_2, existing, return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "vector_search_json_3", vector_search_json_udf_3, existing, return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "vector_search_json_4", vector_search_json_udf_4, existing, return_type="VARCHAR", null_handling="special")
+    logger.debug("Registered vector_search_json UDFs")
 
     # =========================================================================
     # UDF 3: similar_to(text1, text2) → DOUBLE
@@ -1219,16 +1261,9 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
             logger.error(f"similar_to failed: {e}")
             return None
 
-    try:
-        connection.create_function(
-            "similar_to",
-            similar_to_udf,
-            return_type="DOUBLE",
-            null_handling="special"
-        )
+    if safe_create_function(connection, "similar_to", similar_to_udf, existing,
+                            return_type="DOUBLE", null_handling="special"):
         logger.debug("Registered similar_to UDF")
-    except Exception as e:
-        logger.warning(f"Could not register similar_to: {e}")
 
     # =========================================================================
     # UDF 4: vector_search_elastic(query, table?, limit?) → VARCHAR (file path)
@@ -1303,13 +1338,10 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                 f.write('[]')
                 return f.name
 
-    try:
-        connection.create_function("vector_search_elastic_1", vector_search_elastic_udf_1, return_type="VARCHAR", null_handling="special")
-        connection.create_function("vector_search_elastic_2", vector_search_elastic_udf_2, return_type="VARCHAR", null_handling="special")
-        connection.create_function("vector_search_elastic_3", vector_search_elastic_udf_3, return_type="VARCHAR", null_handling="special")
-        logger.debug("Registered vector_search_elastic UDF (1, 2, 3-arg versions)")
-    except Exception as e:
-        logger.warning(f"Could not register vector_search_elastic: {e}")
+    safe_create_function(connection, "vector_search_elastic_1", vector_search_elastic_udf_1, existing, return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "vector_search_elastic_2", vector_search_elastic_udf_2, existing, return_type="VARCHAR", null_handling="special")
+    safe_create_function(connection, "vector_search_elastic_3", vector_search_elastic_udf_3, existing, return_type="VARCHAR", null_handling="special")
+    logger.debug("Registered vector_search_elastic UDFs")
 
     # =========================================================================
     # UDF 5: skill(name, args) → VARCHAR (file path to JSON)
@@ -1380,11 +1412,8 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
                 json.dump([{"_skill": skill_name, "error": str(e)}], f)
                 return f.name
 
-    try:
-        connection.create_function("skill", skill_udf, return_type="VARCHAR", null_handling="special")
+    if safe_create_function(connection, "skill", skill_udf, existing, return_type="VARCHAR", null_handling="special"):
         logger.debug("Registered skill UDF")
-    except Exception as e:
-        logger.warning(f"Could not register skill UDF: {e}")
 
     # =========================================================================
     # UDF 6: skill_json(name, args) → VARCHAR (JSON content directly)
@@ -1448,11 +1477,8 @@ def register_embedding_udfs(connection: duckdb.DuckDBPyConnection):
             logger.error(f"skill_json UDF failed: {e}")
             return json.dumps([{"_skill": skill_name, "error": str(e)}])
 
-    try:
-        connection.create_function("skill_json", skill_json_udf, return_type="VARCHAR", null_handling="special")
+    if safe_create_function(connection, "skill_json", skill_json_udf, existing, return_type="VARCHAR", null_handling="special"):
         logger.debug("Registered skill_json UDF")
-    except Exception as e:
-        logger.warning(f"Could not register skill_json UDF: {e}")
 
     logger.info("Registered 8 embedding/skill UDFs for Semantic SQL")
 
@@ -1481,12 +1507,15 @@ def register_lars_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, A
             FROM products
         ''').fetchdf()
     """
-    # Check if already registered for this connection
+    # Check if already registered for this connection (Python-side optimization)
     conn_id = id(connection)
     if conn_id in _registered_connections:
-        return  # Already registered, skip
+        return  # Already registered in this Python session, skip
 
     config = config or {}
+
+    # Get existing functions from DuckDB (handles multi-session case for persistent DBs)
+    existing = get_registered_functions(connection)
 
     # Default config
     default_model = config.get("model")
@@ -1506,122 +1535,61 @@ def register_lars_udf(connection: duckdb.DuckDBPyConnection, config: Dict[str, A
             use_cache=cache_enabled
         )
 
-    # Register as DuckDB UDF (simple API - DuckDB infers types for simple UDF)
-    try:
-        connection.create_function(
-            "lars",
-            udf_wrapper
-        )
-        # Register alias
-        connection.create_function(
-            "lars_udf",
-            udf_wrapper
-        )
-        _registered_connections.add(conn_id)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register lars: {e}")
+    # Register core UDFs
+    safe_create_function(connection, "lars", udf_wrapper, existing)
+    safe_create_function(connection, "lars_udf", udf_wrapper, existing)
 
-    # Register cascade UDF separately (with explicit return type)
-    try:
-        def cascade_udf_wrapper(cascade_path: str, inputs_json: str) -> str:
-            """Wrapper for cascade UDF - explicit return type."""
-            return lars_cascade_udf_impl(cascade_path, inputs_json)
+    # Cascade UDF wrapper
+    def cascade_udf_wrapper(cascade_path: str, inputs_json: str) -> str:
+        """Wrapper for cascade UDF - explicit return type."""
+        return lars_cascade_udf_impl(cascade_path, inputs_json)
 
-        connection.create_function(
-            "lars_run",
-            cascade_udf_wrapper,
-            return_type="VARCHAR"
-        )
-        # Register alias
-        connection.create_function(
-            "lars_cascade_udf",
-            cascade_udf_wrapper,
-            return_type="VARCHAR"
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register lars_run: {e}")
+    safe_create_function(connection, "lars_run", cascade_udf_wrapper, existing, return_type="VARCHAR")
+    safe_create_function(connection, "lars_cascade_udf", cascade_udf_wrapper, existing, return_type="VARCHAR")
 
-    # Register batch RUN UDF (for LARS RUN syntax)
-    try:
-        def run_batch_wrapper(cascade_path: str, rows_json: str, table_name: str) -> str:
-            """Wrapper for batch RUN - creates temp table and runs cascade."""
-            return lars_run_batch(cascade_path, rows_json, table_name, connection)
+    # Batch RUN UDF wrapper
+    def run_batch_wrapper(cascade_path: str, rows_json: str, table_name: str) -> str:
+        """Wrapper for batch RUN - creates temp table and runs cascade."""
+        return lars_run_batch(cascade_path, rows_json, table_name, connection)
 
-        connection.create_function(
-            "lars_run_batch",
-            run_batch_wrapper,
-            return_type="VARCHAR"
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register lars_run_batch: {e}")
+    safe_create_function(connection, "lars_run_batch", run_batch_wrapper, existing, return_type="VARCHAR")
 
-    # Register parallel MAP UDF (for LARS MAP PARALLEL syntax)
-    try:
-        # Register as scalar function returning JSON (VARCHAR)
-        # Caller uses read_json() to convert result to table
-        connection.create_function(
-            "lars_map_parallel_exec",
-            lars_map_parallel_exec,
-            return_type="VARCHAR"
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register lars_map_parallel_exec: {e}")
+    # Parallel MAP UDF (returns JSON, caller uses read_json() to convert to table)
+    safe_create_function(connection, "lars_map_parallel_exec", lars_map_parallel_exec, existing, return_type="VARCHAR")
 
-    # Register table materialization UDF (for CREATE TABLE AS / WITH as_table)
-    try:
-        def materialize_wrapper(table_name: str, rows_json: str) -> str:
-            """Wrapper for table materialization."""
-            return lars_materialize_table(table_name, rows_json, connection)
+    # Table materialization UDF wrapper
+    def materialize_wrapper(table_name: str, rows_json: str) -> str:
+        """Wrapper for table materialization."""
+        return lars_materialize_table(table_name, rows_json, connection)
 
-        connection.create_function(
-            "lars_materialize_table",
-            materialize_wrapper,
-            return_type="VARCHAR"
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register lars_materialize_table: {e}")
+    safe_create_function(connection, "lars_materialize_table", materialize_wrapper, existing, return_type="VARCHAR")
+
+    # Mark this Python connection as registered
+    _registered_connections.add(conn_id)
 
     # Register embedding operators (EMBED, VECTOR_SEARCH, SIMILAR_TO)
-    try:
-        register_embedding_udfs(connection)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register embedding UDFs: {e}")
+    # Pass existing set for consistent checking
+    register_embedding_udfs(connection, existing)
 
     # Register LLM aggregate implementation functions
     try:
         from .llm_aggregates import register_llm_aggregates
-        register_llm_aggregates(connection, config)
+        register_llm_aggregates(connection, config, existing)
     except ImportError:
         pass  # Module not available yet
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register LLM aggregates: {e}")
 
     # Register dimension compute UDFs for GROUP BY dimension functions
     try:
         from .llm_aggregates import register_dimension_compute_udfs
-        register_dimension_compute_udfs(connection)
+        register_dimension_compute_udfs(connection, existing)
     except ImportError:
         pass  # Module not available yet
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register dimension compute UDFs: {e}")
 
     # Register background job status UDFs
-    try:
-        _register_job_status_udfs(connection)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Could not register job status UDFs: {e}")
+    _register_job_status_udfs(connection, existing)
 
 
-def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection):
+def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection, existing: set | None = None):
     """
     Register table-valued UDFs for checking background job status and logs.
 
@@ -1631,6 +1599,10 @@ def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection):
 
     Implementation: Python scalar functions return JSON, SQL TABLE macros
     wrap them with from_json+unnest to produce proper table output.
+
+    Args:
+        connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names (for batch efficiency)
 
     UDFs:
         job(job_id) - Get status of a single job (table function)
@@ -1648,6 +1620,9 @@ def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection):
         SELECT * FROM analysis('analysis-swift-fox-abc123')
         SELECT * FROM analyses()
     """
+    # Get existing functions if not provided
+    if existing is None:
+        existing = get_registered_functions(connection)
     import json
 
     def _safe_value(v):
@@ -2007,10 +1982,10 @@ def _register_job_status_udfs(connection: duckdb.DuckDBPyConnection):
             }])
 
     # Register scalar JSON functions (internal use)
-    connection.create_function("_job_json", job_json, [str], str)
-    connection.create_function("_jobs_json", jobs_json, [], str)
-    connection.create_function("_await_job_json", await_job_json, [str, float], str)
-    connection.create_function("_messages_json", messages_json, [str], str)
+    safe_create_function(connection, "_job_json", job_json, existing, parameters=[str], return_type=str)
+    safe_create_function(connection, "_jobs_json", jobs_json, existing, parameters=[], return_type=str)
+    safe_create_function(connection, "_await_job_json", await_job_json, existing, parameters=[str, float], return_type=str)
+    safe_create_function(connection, "_messages_json", messages_json, existing, parameters=[str], return_type=str)
 
     # Create TABLE macros that wrap the JSON functions
     # These allow: SELECT * FROM job('id')
@@ -2154,44 +2129,48 @@ def get_udf_cache_stats() -> Dict[str, Any]:
     return stats
 
 
-def register_dynamic_sql_functions(connection):
+def register_dynamic_sql_functions(connection, existing: set | None = None):
     """
     Dynamically register all SQL functions from cascade registry.
-    
+
     This discovers cascades in cascades/semantic_sql/*.yaml and registers
     them as DuckDB UDFs. Enables user-defined operators without code changes!
-    
+
     Called once per DuckDB connection during postgres_server startup.
+
+    Args:
+        connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names (for batch efficiency)
     """
     try:
         from ..semantic_sql.registry import initialize_registry, get_sql_function_registry
         from ..semantic_sql.executor import execute_cascade_udf
-        
+
         # Initialize registry to discover all cascades
         initialize_registry(force=True)
         registry = get_sql_function_registry()
-        
-        print(f"[DynamicUDF] Registering {len(registry)} SQL functions from cascade registry...")
 
-        # Avoid any name-based hardcoding: detect what's already registered in DuckDB.
-        # DuckDB doesn't support create_function overloading and errors if a name exists,
-        # so we pre-skip existing names to keep startup clean and deterministic.
-        try:
-            existing_names = {row[0].lower() for row in connection.execute("PRAGMA functions").fetchall()}
-        except Exception:
-            existing_names = set()
+        # Use provided existing set or query DuckDB for registered functions
+        if existing is not None:
+            existing_names = {name.lower() for name in existing}
+        else:
+            existing_names = {name.lower() for name in get_registered_functions(connection)}
         
+        registered_count = 0
+        skipped_count = 0
+
         for name, entry in registry.items():
             # Skip AGGREGATE-shaped functions UNLESS they return TABLE
             # TABLE-returning aggregates (like vector_search_elastic) should be registered
             # Only skip scalar aggregates (like llm_consensus) that have numbered UDFs
             if entry.shape.upper() == 'AGGREGATE' and entry.returns.upper() != 'TABLE':
-                print(f"[DynamicUDF]   ⊘ Skipping aggregate (handled by numbered UDFs): {name}")
+                skipped_count += 1
                 continue
 
             # Skip any function name that already exists in DuckDB (built-in or previously registered).
             # This replaces prior hardcoded skip lists and keeps us aligned with "cascades all the way down".
             if str(name).lower() in existing_names:
+                skipped_count += 1
                 continue
 
             # Create wrapper that calls execute_cascade_udf
@@ -2251,13 +2230,18 @@ def register_dynamic_sql_functions(connection):
                     # Table-valued functions return JSON arrays that get parsed by read_json_auto
                     # Register as VARCHAR (returns JSON string)
                     return_type = 'VARCHAR'
-                    styled_print(f"[DynamicUDF]   {S.INFO}  Registering TABLE function as VARCHAR: {name} (returns JSON for read_json_auto)")
 
                 # Special handling for sql_statement mode: register as TABLE function
                 # sql_statement functions return temp file paths, wrap with read_json_auto()
                 if entry.output_mode == 'sql_statement':
                     # Register internal scalar function with _file suffix
                     internal_name = f"_{name}_file"
+
+                    # Skip if internal function already exists
+                    if internal_name.lower() in existing_names:
+                        skipped_count += 1
+                        continue
+
                     connection.create_function(
                         internal_name,
                         udf_func,
@@ -2276,8 +2260,8 @@ def register_dynamic_sql_functions(connection):
                         CREATE OR REPLACE MACRO {name}({macro_args}) AS TABLE
                         SELECT * FROM read_json_auto({internal_name}({internal_call_args}))
                     ''')
-                    print(f"[DynamicUDF]   [OK] TABLE: {name}({macro_args}) → read_json_auto({internal_name}(...))")
                     existing_names.add(str(name).lower())
+                    registered_count += 1
                     continue  # Skip normal registration
 
                 connection.create_function(
@@ -2285,19 +2269,19 @@ def register_dynamic_sql_functions(connection):
                     udf_func,
                     return_type=return_type
                 )
-                print(f"[DynamicUDF]   [OK] Registered: {name}() → {entry.cascade_path}")
                 existing_names.add(str(name).lower())
+                registered_count += 1
 
                 # ALSO register without "semantic_" prefix for SQL convenience
                 if name.startswith('semantic_'):
                     short_name = name.replace('semantic_', '')
-                    try:
-                        if short_name.lower() not in existing_names:
+                    if short_name.lower() not in existing_names:
+                        try:
                             connection.create_function(short_name, udf_func, return_type=return_type)
                             existing_names.add(short_name.lower())
-                            print(f"[DynamicUDF]   [OK] Alias: {short_name}() → {name}()")
-                    except Exception:
-                        pass  # Might conflict with hardcoded functions, that's OK
+                            registered_count += 1
+                        except Exception:
+                            pass  # Might conflict with hardcoded functions, that's OK
 
                 # ALSO register additional aliases from operator patterns
                 # Extract function names from patterns like "TLDR({{ text }})" or "CONDENSE(...)"
@@ -2309,18 +2293,24 @@ def register_dynamic_sql_functions(connection):
                         alias_name = func_match.group(1).lower()
                         # Only register if different from main function name and short_name
                         if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
-                            try:
-                                if alias_name not in existing_names:
+                            if alias_name not in existing_names:
+                                try:
                                     connection.create_function(alias_name, udf_func, return_type=return_type)
                                     existing_names.add(alias_name)
-                                    print(f"[DynamicUDF]   [OK] Alias: {alias_name}() → {name}()")
-                            except Exception:
-                                pass  # Might conflict, that's OK
+                                    registered_count += 1
+                                except Exception:
+                                    pass  # Might conflict, that's OK
 
             except Exception as e:
-                print(f"[DynamicUDF]   ✗ Failed to register {name}: {e}")
-        
-        print(f"[DynamicUDF] [OK] Dynamic registration complete")
+                # Only log unexpected errors (not "already exists")
+                if "already exists" not in str(e).lower():
+                    import logging
+                    logging.getLogger(__name__).debug(f"[DynamicUDF] Could not register {name}: {e}")
+                skipped_count += 1
+
+        # Only print summary if we actually registered something new
+        if registered_count > 0:
+            print(f"[DynamicUDF] Registered {registered_count} new SQL functions")
         
     except Exception as e:
         print(f"[DynamicUDF] ERROR: Dynamic registration failed: {e}")

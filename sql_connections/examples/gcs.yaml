@@ -1,0 +1,23 @@
+# Google Cloud Storage Connection Example
+# Query parquet/CSV files stored in GCS buckets
+
+connection_name: gcs_data_lake
+type: gcs
+
+# Required: GCS bucket name
+bucket: company-data-lake
+
+# Optional: Path prefix within bucket
+prefix: analytics/processed/
+
+# GCP credentials (service account JSON file path)
+credentials_env: GOOGLE_APPLICATION_CREDENTIALS
+
+# Optional: File pattern to match (default: *.parquet)
+file_pattern: "*.parquet"
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM gcs_data_lake.{filename}

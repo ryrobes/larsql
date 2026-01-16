@@ -1,0 +1,9 @@
+# BigQuery connection to rabbitize project
+# Uses GOOGLE_APPLICATION_CREDENTIALS env var (supports JSON string or file path)
+connection_name: bigquery_rabbitize
+type: bigquery
+project_id: rabbitize
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50

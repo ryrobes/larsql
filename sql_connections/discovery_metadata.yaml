@@ -1,0 +1,12 @@
+last_discovery: '2026-01-15T21:31:59.419675'
+rag_id: d8477acf692d
+databases_indexed:
+- csv_files
+- bigquery_rabbitize
+- mongodb_test
+- minio_test
+- research_dbs
+- lars
+table_count: 80
+total_columns: 1416
+embed_model: qwen/qwen3-embedding-8b

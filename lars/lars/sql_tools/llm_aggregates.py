@@ -2064,7 +2064,7 @@ Synthesize these into a single coherent summary:"""
 # UDF Registration
 # ============================================================================
 
-def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
+def register_llm_aggregates(connection, config: Dict[str, Any] | None = None, existing: set | None = None):
     """
     Register LLM aggregate helper functions as DuckDB UDFs.
 
@@ -2073,14 +2073,24 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
     the query rewriter, which transforms them to use these scalar UDFs
     with LIST() collection.
 
+    Args:
+        connection: DuckDB connection to register with
+        config: Optional configuration dict
+        existing: Pre-fetched set of existing function names (for batch efficiency)
+
     Note: DuckDB doesn't support Python default arguments, so we register
     multiple wrapper functions for each arity (1-arg, 2-arg, etc.)
     """
     import duckdb
     import logging
+    from .udf import get_registered_functions, safe_create_function
 
     config = config or {}
     log = logging.getLogger(__name__)
+
+    # Get existing functions if not provided
+    if existing is None:
+        existing = get_registered_functions(connection)
 
     # ========== LLM_SUMMARIZE ==========
     # Different function names for each arity (DuckDB doesn't support overloading)
@@ -2099,10 +2109,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_summarize_2", summarize_2),    # 2 args
         ("llm_summarize_3", summarize_3),    # 3 args
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_CLASSIFY ==========
     # Different function names for each arity
@@ -2117,10 +2124,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_classify_2", classify_2),    # 2 args
         ("llm_classify_3", classify_3),    # 3 args
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_SENTIMENT ==========
     # Always 1 arg
@@ -2128,10 +2132,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
     def sentiment_1(values_json: str) -> float:
         return llm_sentiment_impl(values_json)
 
-    try:
-        connection.create_function("llm_sentiment_1", sentiment_1, return_type="DOUBLE")
-    except Exception as e:
-        log.warning(f"Could not register llm_sentiment_1: {e}")
+    safe_create_function(connection, "llm_sentiment_1", sentiment_1, existing, return_type="DOUBLE")
 
     # ========== LLM_THEMES ==========
     # Different function names for each arity
@@ -2146,10 +2147,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_themes_1", themes_1),    # 1 arg
         ("llm_themes_2", themes_2),    # 2 args
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_AGG ==========
     # Always 2 args
@@ -2157,10 +2155,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
     def agg_2(prompt: str, values_json: str) -> str:
         return llm_agg_impl(prompt, values_json)
 
-    try:
-        connection.create_function("llm_agg_2", agg_2, return_type="VARCHAR")
-    except Exception as e:
-        log.warning(f"Could not register llm_agg_2: {e}")
+    safe_create_function(connection, "llm_agg_2", agg_2, existing, return_type="VARCHAR")
 
     # ========== SCALAR LLM FUNCTIONS ==========
     # These go directly to DuckDB (no rewriter), so we register both
@@ -2172,10 +2167,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         return llm_matches_impl(text, criteria)
 
     for name in ["llm_matches", "matches"]:
-        try:
-            connection.create_function(name, matches_2, return_type="BOOLEAN")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, matches_2, existing, return_type="BOOLEAN")
 
     # LLM_SCORE / SCORE - semantic scoring (0.0-1.0)
     # NEW: Updated to (text, criteria) order to match cascade YAMLs
@@ -2183,10 +2175,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         return llm_score_impl(text, criteria)
 
     for name in ["llm_score", "score"]:
-        try:
-            connection.create_function(name, score_2, return_type="DOUBLE")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, score_2, existing, return_type="DOUBLE")
 
     # ========== MATCH_PAIR - for fuzzy JOINs ==========
     # match_pair(left, right) or match_pair(left, right, relationship)
@@ -2201,16 +2190,10 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("match_pair", match_pair_3),      # 3-arg version (with relationship)
         ("llm_match_pair", match_pair_3),  # Alias
     ]:
-        try:
-            connection.create_function(name, func, return_type="BOOLEAN")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="BOOLEAN")
 
     # Also register 2-arg version with default relationship
-    try:
-        connection.create_function("match_pair_2", match_pair_2, return_type="BOOLEAN")
-    except Exception as e:
-        log.warning(f"Could not register match_pair_2: {e}")
+    safe_create_function(connection, "match_pair_2", match_pair_2, existing, return_type="BOOLEAN")
 
     # ========== IMPLIES - logical implication ==========
 
@@ -2225,10 +2208,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("implies_3", implies_3),
         ("llm_implies", implies_2),
     ]:
-        try:
-            connection.create_function(name, func, return_type="BOOLEAN")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="BOOLEAN")
 
     # ========== CONTRADICTS - contradiction detection ==========
 
@@ -2243,10 +2223,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("contradicts_3", contradicts_3),
         ("llm_contradicts", contradicts_2),
     ]:
-        try:
-            connection.create_function(name, func, return_type="BOOLEAN")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="BOOLEAN")
 
     # ========== MATCH_TEMPLATE - flexible templated matching ==========
     # match_template(template, arg1, arg2, ...)
@@ -2267,19 +2244,13 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_match_template", match_template_3),  # Alias
         ("match_template_4", match_template_4),
     ]:
-        try:
-            connection.create_function(name, func, return_type="BOOLEAN")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="BOOLEAN")
 
     # ========== CLASSIFY_SINGLE - classify single text into one of N topics ==========
     def classify_single_2(text: str, topics_json: str) -> str:
         return classify_single_impl(text, topics_json)
 
-    try:
-        connection.create_function("classify_single", classify_single_2, return_type="VARCHAR")
-    except Exception as e:
-        log.warning(f"Could not register classify_single: {e}")
+    safe_create_function(connection, "classify_single", classify_single_2, existing, return_type="VARCHAR")
 
     # ========== SEMANTIC_CASE - multi-way semantic classification ==========
     # semantic_case(text, cond1, result1, cond2, result2, ..., default)
@@ -2335,10 +2306,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("llm_case_9", semantic_case_9),
         ("llm_case_10", semantic_case_10),
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_DEDUPE (Semantic Deduplication) ==========
 
@@ -2355,10 +2323,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("dedupe_2", dedupe_2),
         # Note: llm_dedupe_1/2 are now registered dynamically by _register_dynamic_aggregate_variants
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_CLUSTER (Semantic Clustering) ==========
 
@@ -2380,10 +2345,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("cluster_3", cluster_3),
         # Note: llm_cluster_1/2/3 are now registered dynamically by _register_dynamic_aggregate_variants
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_CLUSTER_LABEL (For GROUP BY MEANING) ==========
 
@@ -2404,10 +2366,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("meaning_3", cluster_label_3),
         ("meaning_4", cluster_label_4),
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_CONSENSUS (Find Common Ground) ==========
 
@@ -2423,10 +2382,7 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("consensus", consensus_1),
         ("consensus_2", consensus_2),
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
     # ========== LLM_OUTLIERS (Find Unusual Items) ==========
 
@@ -2447,19 +2403,16 @@ def register_llm_aggregates(connection, config: Dict[str, Any] | None = None):
         ("outliers_2", outliers_2),
         ("outliers_3", outliers_3),
     ]:
-        try:
-            connection.create_function(name, func, return_type="VARCHAR")
-        except Exception as e:
-            log.warning(f"Could not register {name}: {e}")
+        safe_create_function(connection, name, func, existing, return_type="VARCHAR")
 
 
     # ========== DYNAMIC AGGREGATE REGISTRATION ==========
     # Automatically register numbered variants for any AGGREGATE cascade
     # This ensures new aggregate cascades work without hardcoded Python registration
-    _register_dynamic_aggregate_variants(connection, log)
+    _register_dynamic_aggregate_variants(connection, log, existing)
 
 
-def _register_dynamic_aggregate_variants(connection, log):
+def _register_dynamic_aggregate_variants(connection, log, existing: set):
     """
     Dynamically register numbered aggregate function variants from cascade metadata.
 
@@ -2480,7 +2433,6 @@ def _register_dynamic_aggregate_variants(connection, log):
 
     cascade_registry = get_sql_function_registry()
 
-    print(f"[DynamicAgg] Registering dynamic aggregate variants...")
     registered_count = 0
 
     for cascade_name, entry in cascade_registry.items():
@@ -2516,20 +2468,17 @@ def _register_dynamic_aggregate_variants(connection, log):
 
             wrapper_func = make_wrapper(cascade_name, args, arity)
 
-            # Register the function
-            try:
-                connection.create_function(func_name, wrapper_func, return_type="VARCHAR")
-                print(f"[DynamicAgg]   [OK] {func_name}() → {cascade_name}")
+            # Register the function (skip if already exists)
+            from .udf import safe_create_function
+            if safe_create_function(connection, func_name, wrapper_func, existing, return_type="VARCHAR"):
                 registered_count += 1
-            except Exception as e:
-                # Skip if already registered (shouldn't happen with new naming)
-                if "already" not in str(e).lower():
-                    log.warning(f"Could not register {func_name}: {e}")
 
-    print(f"[DynamicAgg] [OK] Dynamic aggregate registration complete ({registered_count} functions)")
+    # Only print if we actually registered something new
+    if registered_count > 0:
+        print(f"[DynamicAgg] Registered {registered_count} new aggregate variants")
 
 
-def register_dimension_compute_udfs(connection):
+def register_dimension_compute_udfs(connection, existing: set | None = None):
     """
     Register dimension compute UDFs for semantic GROUP BY.
 
@@ -2540,17 +2489,26 @@ def register_dimension_compute_udfs(connection):
     Each dimension cascade (e.g., topics_dimension, sentiment_dimension)
     gets a {name}_compute function registered.
 
+    Args:
+        connection: DuckDB connection to register with
+        existing: Pre-fetched set of existing function names (for batch efficiency)
+
     IMPORTANT: Uses the same execution path as execute_cascade_udf() for proper
     logging, caller_id propagation, SQL Trail tracking, and caching.
     """
     import json
     import logging
     from lars.semantic_sql.registry import get_sql_function_registry
+    from .udf import get_registered_functions, safe_create_function
 
     log = logging.getLogger(__name__)
-    print(f"[dimension_compute] v2026.01.03.A Registering dimension compute UDFs...", flush=True)
+
+    # Get existing functions if not provided
+    if existing is None:
+        existing = get_registered_functions(connection)
 
     registry = get_sql_function_registry()
+    total_registered = 0
 
     for func_name, entry in registry.items():
         # Only register compute functions for DIMENSION-shaped cascades
@@ -2795,15 +2753,14 @@ def register_dimension_compute_udfs(connection):
 
         registered_count = 0
         for arity, fn_name, wrapper in wrappers:
-            try:
-                connection.create_function(fn_name, wrapper, return_type="VARCHAR")
+            if safe_create_function(connection, fn_name, wrapper, existing, return_type="VARCHAR"):
                 log.debug(f"[dimension_compute] Registered {fn_name} (arity={arity})")
                 registered_count += 1
-            except Exception as e:
-                log.warning(f"[dimension_compute] Could not register {fn_name}: {e}")
+                total_registered += 1
 
-        if registered_count > 0:
-            log.info(f"[dimension_compute] Registered {compute_name}[_2,_3,_4] for {func_name}")
+    # Only print summary if we actually registered something
+    if total_registered > 0:
+        print(f"[dimension_compute] Registered {total_registered} new dimension UDFs")
 
 
 def clear_agg_cache():

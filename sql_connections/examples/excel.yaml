@@ -1,0 +1,17 @@
+# Excel File Connection Example
+# Query data from Excel (.xlsx) files
+
+connection_name: reports
+type: excel
+
+# Required: Path to Excel file
+file_path: /data/reports/quarterly.xlsx
+
+# Optional: Specific sheet name (if not specified, all sheets are loaded)
+sheet_name: Q4_2024
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM reports.Q4_2024

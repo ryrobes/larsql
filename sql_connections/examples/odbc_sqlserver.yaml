@@ -1,0 +1,20 @@
+# ODBC Connection Example (SQL Server)
+# Connect to any ODBC-compatible database (SQL Server, Oracle, etc.)
+
+connection_name: sqlserver_erp
+type: odbc
+
+# Option 1: Use ODBC DSN (configured in system ODBC manager)
+odbc_dsn: ERP_PROD
+
+# Option 2: Use connection string (stored in env var)
+# odbc_connection_string_env: SQLSERVER_CONN_STRING
+# Example: Driver={ODBC Driver 17 for SQL Server};Server=myserver;Database=mydb;Uid=myuser;Pwd=mypass;
+
+database: ERP_DB
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM sqlserver_erp.{schema}_{table}
