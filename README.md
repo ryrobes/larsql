@@ -5,17 +5,24 @@
 [![License: O'SASSY](https://img.shields.io/badge/license-O'SASSY%20(basically%20MIT)-8A2BE2)](https://osaasy.dev/)
 [![Docs](https://img.shields.io/badge/docs-larsql.com-cyan)](https://larsql.com/)
 
-**Add AI operators directly to your SQL queries.**
+**Your team knows SQL. Why learn Python for AI?**
+
+**Add AI operators directly to your SQL queries** — from your existing SQL client, on your existing databases.
 
 ```sql
 SELECT * FROM support_tickets
-WHERE description MEANS 'urgent customer issue'
+WHERE description MEANS 'urgent customer issue';
 ```
 
-That's it. No embeddings to manage. No vector databases to configure. No Python glue code.
-Just SQL with semantic understanding.
+That's it. No notebooks. No orchestration code. No vector database to provision.
+Just SQL with semantic understanding (and a declarative workflow engine underneath).
+Express intent, not patterns — especially when you don't know what you're looking for.
 
-## The Simplest Example
+- **Use your existing SQL client**: PostgreSQL wire protocol (`lars serve sql`)
+- **Your data never moves**: DuckDB federation across Postgres/MySQL/BigQuery/Snowflake/S3/files
+- **Cached + cost-attributed**: query LLM calls via `all_data` / `sql_query_log`
+
+## One line. That's all it takes.
 
 **Before:** Regex, LIKE patterns, and brittle keyword matching.
 
@@ -63,6 +70,11 @@ SELECT TOPICS(title, 5) AS topic, COUNT(*) AS count
 FROM articles
 GROUP BY topic
 
+-- Vector similarity search
+SELECT * FROM docs
+WHERE title SIMILAR_TO 'quarterly earnings report'
+LIMIT 10
+
 -- Ask arbitrary questions
 SELECT
   product_name,
@@ -82,13 +94,14 @@ pip install larsql
 export OPENROUTER_API_KEY=sk-or-v1-...
 
 # Start the SQL server (PostgreSQL wire protocol)
-lars serve sql
+lars serve sql --port 15432
 
 # Connect with any SQL client
-psql -h localhost -p 5432 -U lars -d memory
+psql postgresql://localhost:15432/default
 ```
 
 That's it. Run semantic queries from DBeaver, DataGrip, psql, Tableau, or any PostgreSQL client.
+For a full end-to-end setup (ClickHouse + sample data + Studio UI), see the [Quickstart Guide](https://larsql.com/docs.html#quickstart).
 
 ## How It Works
 
@@ -104,7 +117,19 @@ UDF runs LLM → returns true/false
 
 Results are **cached** - same query on same data costs zero after the first run.
 
-## But Wait, There's More
+Every semantic UDF call is also logged (model, tokens, cost, duration) into queryable "magic tables":
+
+```sql
+SELECT session_id, cell_name, model, cost, duration_ms
+FROM all_data
+WHERE is_sql_udf = true
+ORDER BY timestamp DESC
+LIMIT 20;
+```
+
+Every semantic operator is backed by a cascade file under `cascades/semantic_sql/` - edit YAML to change behavior or create your own operator.
+
+## Wait, it gets weirder.
 
 Semantic SQL is just the beginning. Under the hood, LARS is a **declarative agent framework** for building sophisticated LLM workflows.
 
@@ -241,11 +266,17 @@ lars serve studio
 
 **Full documentation at [larsql.com](https://larsql.com/)**
 
-- [Quickstart Guide](https://larsql.com/docs#quickstart) - Get running in 10 minutes
-- [Semantic SQL](https://larsql.com/docs#semantic-sql) - All 50+ operators
-- [Cascade DSL](https://larsql.com/docs#cascade-dsl) - Workflow configuration
-- [Takes & Evaluation](https://larsql.com/docs#candidates) - Parallel execution patterns
-- [Tools Reference](https://larsql.com/docs#tools) - Available skills
+- [Docs hub](https://larsql.com/docs.html) - Full reference
+
+- [Quickstart Guide](https://larsql.com/docs.html#quickstart) - Get running in 10 minutes
+- [Semantic SQL](https://larsql.com/docs.html#semantic-sql) - Query rewriting, caching, annotations, observability
+- [Built-in Operators](https://larsql.com/docs.html#operators) - All 50+ operators
+- [Vector Search & Embedding](https://larsql.com/docs.html#embedding) - SIMILAR_TO, LARS EMBED, hybrid search
+- [Cascade DSL](https://larsql.com/docs.html#cascade-dsl) - Workflow configuration
+- [Takes & Evaluation](https://larsql.com/docs.html#candidates) - Parallel execution patterns
+- [SQL Connections](https://larsql.com/docs.html#sql-connections) - Connect 18+ data sources via DuckDB
+- [AI Providers](https://larsql.com/docs.html#providers) - OpenRouter, Vertex AI, Bedrock, Azure, Ollama
+- [Tools Reference](https://larsql.com/docs.html#tools) - Available skills & integrations
 
 ## Example: Create Your Own Operator
 

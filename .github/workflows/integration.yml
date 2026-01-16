@@ -12,6 +12,17 @@ jobs:
     environment: test_env
     timeout-minutes: 30
 
+    # Set ClickHouse env vars at JOB level so they're available for all steps
+    # including Python module imports that happen before step-level env vars
+    env:
+      LARS_ROOT: ${{ github.workspace }}
+      LARS_CLICKHOUSE_HOST: localhost
+      LARS_CLICKHOUSE_PORT: 9000
+      LARS_CLICKHOUSE_USER: default
+      LARS_CLICKHOUSE_PASSWORD: ""
+      LARS_CLICKHOUSE_DATABASE: default
+      LARS_USE_CLICKHOUSE_SERVER: "true"
+
     services:
       clickhouse:
         image: clickhouse/clickhouse-server:24.3-alpine
@@ -55,13 +66,6 @@ jobs:
           exit 1
 
       - name: Run database migrations
-        env:
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           lars db migrate
           echo ""
@@ -70,40 +74,17 @@ jobs:
 
       - name: Run unit tests (sanity check)
         working-directory: lars
-        env:
-          LARS_ROOT: ${{ github.workspace }}
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           pytest tests/ -v --tb=short -m "not integration and not requires_llm" --timeout=120 || true
 
       - name: Run ClickHouse integration tests
         working-directory: lars
-        env:
-          LARS_ROOT: ${{ github.workspace }}
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
         run: |
           pytest tests/ -v --tb=short -m "requires_clickhouse" --timeout=180
 
       - name: Run LLM integration tests
         working-directory: lars
         env:
-          LARS_ROOT: ${{ github.workspace }}
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           pytest tests/ -v --tb=short -m "requires_llm" --timeout=300
@@ -111,25 +92,12 @@ jobs:
       - name: Run live cascade tests
         working-directory: lars
         env:
-          LARS_ROOT: ${{ github.workspace }}
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           pytest tests/integration/test_live_cascades.py -v --tb=short --timeout=600
 
       - name: Test SQL server startup
         env:
-          LARS_CLICKHOUSE_HOST: localhost
-          LARS_CLICKHOUSE_PORT: 9000
-          LARS_CLICKHOUSE_USER: default
-          LARS_CLICKHOUSE_PASSWORD: ""
-          LARS_CLICKHOUSE_DATABASE: default
-          LARS_USE_CLICKHOUSE_SERVER: "true"
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           # Start SQL server in background
