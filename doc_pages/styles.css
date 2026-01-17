@@ -763,6 +763,67 @@ pre code {
 }
 
 /* --------------------------------------------------------------------------
+   Expandable/Collapsible Sections
+   -------------------------------------------------------------------------- */
+details.expandable-section {
+  background: linear-gradient(135deg, rgba(122, 92, 255, 0.06), rgba(122, 92, 255, 0.02));
+  border: 1px solid rgba(122, 92, 255, 0.2);
+  border-left: 3px solid var(--purple);
+  border-radius: var(--radius-sm);
+  margin: 28px 0;
+  overflow: hidden;
+}
+
+details.expandable-section summary {
+  padding: 18px 22px;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  transition: background 0.2s ease;
+}
+
+details.expandable-section summary::-webkit-details-marker {
+  display: none;
+}
+
+details.expandable-section summary::before {
+  content: "▶";
+  font-size: 0.7rem;
+  color: var(--purple);
+  transition: transform 0.2s ease;
+}
+
+details.expandable-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+details.expandable-section summary:hover {
+  background: rgba(122, 92, 255, 0.08);
+}
+
+details.expandable-section .expandable-content {
+  padding: 0 22px 22px 22px;
+  border-top: 1px solid rgba(122, 92, 255, 0.15);
+}
+
+details.expandable-section .expandable-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--purple);
+  opacity: 0.8;
+}
+
+details.expandable-section .expandable-title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
    Tables (landing page style)
    -------------------------------------------------------------------------- */
 table {

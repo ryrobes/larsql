@@ -9,18 +9,14 @@
           "id": "quickstart",
           "title": "Quickstart Guide",
           "sections": [
-            { "anchor": "prerequisites", "title": "Prerequisites" },
-            { "anchor": "installation", "title": "Install LARS" },
+            { "anchor": "install", "title": "Install" },
+            { "anchor": "configure", "title": "Configure" },
             { "anchor": "clickhouse", "title": "Start ClickHouse" },
-            { "anchor": "workspace", "title": "Initialize Workspace" },
-            { "anchor": "environment", "title": "Configure Environment" },
-            { "anchor": "db-init", "title": "Initialize Database" },
-            { "anchor": "verify", "title": "Verify Setup" },
-            { "anchor": "first-cascade", "title": "Run Your First Cascade" },
-            { "anchor": "sample-data", "title": "Connect Sample Data" },
-            { "anchor": "studio", "title": "Launch Studio Web UI" },
+            { "anchor": "initialize", "title": "Initialize Project" },
             { "anchor": "sql-server", "title": "Start SQL Server" },
+            { "anchor": "studio", "title": "Launch Studio" },
             { "anchor": "next-steps", "title": "Next Steps" },
+            { "anchor": "elasticsearch", "title": "Elasticsearch (Optional)" },
             { "anchor": "troubleshooting", "title": "Troubleshooting" }
           ]
         },

@@ -1,96 +1,40 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      LARS QUICKSTART GUIDE
-     Complete end-to-end setup in 10 minutes
+     Streamlined setup matching README
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <h1 id="top">Quickstart Guide</h1>
 <p class="section-intro">
-  Get LARS running with a working database, sample data, and both the Web UI and SQL server in under 10 minutes.
-  This guide assumes you have <strong>Docker</strong> and <strong>Python 3.10+</strong> installed.
+  Get LARS running in minutes. This guide covers the essential setup — install, configure, and start querying.
 </p>
 
 <div class="toc">
   <strong>On This Page</strong>
   <ul>
-    <li><a href="#prerequisites">Prerequisites</a></li>
-    <li><a href="#installation">Step 1: Install LARS</a></li>
-    <li><a href="#clickhouse">Step 2: Start ClickHouse</a></li>
-    <li><a href="#elasticsearch">Optional: Start Elasticsearch</a></li>
-    <li><a href="#workspace">Step 3: Initialize Workspace</a></li>
-    <li><a href="#environment">Step 4: Configure Environment</a></li>
-    <li><a href="#db-init">Step 5: Initialize Database</a></li>
-    <li><a href="#verify">Step 6: Verify Setup</a></li>
-    <li><a href="#first-cascade">Step 7: Run Your First Cascade</a></li>
-    <li><a href="#sample-data">Step 8: Connect Sample Data</a></li>
-    <li><a href="#studio">Step 9: Launch Studio Web UI</a></li>
-    <li><a href="#sql-server">Step 10: Start SQL Server</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#configure">Configure</a></li>
+    <li><a href="#clickhouse">Start ClickHouse</a></li>
+    <li><a href="#initialize">Initialize Project</a></li>
+    <li><a href="#sql-server">Start SQL Server</a></li>
+    <li><a href="#studio">Launch Studio (Optional)</a></li>
     <li><a href="#next-steps">Next Steps</a></li>
+    <li><a href="#elasticsearch">Elasticsearch (Optional)</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
   </ul>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     PREREQUISITES
+     INSTALL
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="prerequisites">Prerequisites</h2>
-
-<p>Before starting, ensure you have:</p>
-
-<table class="props-table">
-  <thead>
-    <tr>
-      <th>Requirement</th>
-      <th>Version</th>
-      <th>Check Command</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>Python</strong></td>
-      <td>3.10 or higher</td>
-      <td><code>python --version</code></td>
-    </tr>
-    <tr>
-      <td><strong>Docker</strong></td>
-      <td>20.10 or higher</td>
-      <td><code>docker --version</code></td>
-    </tr>
-    <tr>
-      <td><strong>OpenRouter API Key</strong></td>
-      <td>-</td>
-      <td><a href="https://openrouter.ai/keys" target="_blank">Get one here</a></td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="info-box tip">
-  <div class="info-box-title">Virtual Environment Recommended</div>
-  <p>We recommend using a virtual environment to avoid conflicts with other Python packages:</p>
-  <div class="code-block">
-    <div class="code-block-content">
-      <pre>python -m venv venv
-source venv/bin/activate  <span class="cmt"># On Windows: venv\Scripts\activate</span></pre>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 1: INSTALLATION
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="installation">Step 1: Install LARS</h2>
+<h2 id="install">Install</h2>
 
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Install LARS</span>
-pip install larsql
-
-<span class="cmt"># Verify installation</span>
-lars --version</pre>
+    <pre>pip install larsql</pre>
   </div>
 </div>
 
@@ -101,101 +45,61 @@ lars --version</pre>
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># With local HuggingFace model support</span>
-pip install larsql[local-models]
-
-<span class="cmt"># With browser automation (Playwright)</span>
+    <pre><span class="cmt"># With browser automation (Playwright)</span>
 pip install larsql[browser]
 
-<span class="cmt"># Everything</span>
-pip install larsql[all]
+<span class="cmt"># With local models (HuggingFace)</span>
+pip install larsql[local-models]
 
-<span class="cmt"># From source (for development)</span>
-git clone https://github.com/ryrobes/larsql
-cd lars/lars
-pip install -e .</pre>
+<span class="cmt"># Everything</span>
+pip install larsql[all]</pre>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 2: CLICKHOUSE
+     CONFIGURE
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="clickhouse">Step 2: Start ClickHouse</h2>
+<h2 id="configure">Configure</h2>
+
+<p>Set your LLM API key. <a href="https://openrouter.ai/keys" target="_blank">OpenRouter</a> is recommended (see <a href="#providers" data-link>AI Providers</a> for alternatives):</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>export OPENROUTER_API_KEY=sk-or-v1-...</pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     CLICKHOUSE
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="clickhouse">Start ClickHouse</h2>
 
 <p>
   LARS requires <strong>ClickHouse</strong> for logging, analytics, and vector search.
-  There is no embedded fallback - this is a required dependency.
+  Run it with Docker:
 </p>
 
-<h3>Option A: Simple Docker Command (Recommended for Quick Start)</h3>
-
 <div class="code-block">
   <div class="code-block-header">
     <span class="code-block-lang bash">Bash</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># Start ClickHouse with persistent storage</span>
-docker run -d --name lars-clickhouse \
-  -p 9000:9000 \
+    <pre>docker run -d \
+  --name lars-clickhouse \
+  --ulimit nofile=262144:262144 \
   -p 8123:8123 \
+  -p 9000:9000 \
+  -p 9009:9009 \
+  -v clickhouse-data:/var/lib/clickhouse \
+  -v clickhouse-logs:/var/log/clickhouse-server \
   -e CLICKHOUSE_USER=lars \
   -e CLICKHOUSE_PASSWORD=lars \
-  -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
-  -v lars-clickhouse-data:/var/lib/clickhouse \
-  clickhouse/clickhouse-server:latest
-
-<span class="cmt"># Verify it's running</span>
-docker ps | grep lars-clickhouse</pre>
-  </div>
-</div>
-
-<h3>Option B: Docker Compose (For Full Stack)</h3>
-
-<p>For a more complete setup with everything configured:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang yaml">docker-compose.yml</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="key">version</span>: <span class="str">'3.8'</span>
-
-<span class="key">services</span>:
-  <span class="key">clickhouse</span>:
-    <span class="key">image</span>: <span class="str">clickhouse/clickhouse-server:24.3-alpine</span>
-    <span class="key">container_name</span>: <span class="str">lars-clickhouse</span>
-    <span class="key">ports</span>:
-      - <span class="str">"8123:8123"</span>   <span class="cmt"># HTTP interface</span>
-      - <span class="str">"9000:9000"</span>   <span class="cmt"># Native protocol</span>
-    <span class="key">environment</span>:
-      - <span class="str">CLICKHOUSE_DB=lars</span>
-      - <span class="str">CLICKHOUSE_USER=lars</span>
-      - <span class="str">CLICKHOUSE_PASSWORD=lars</span>
-      - <span class="str">CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1</span>
-    <span class="key">volumes</span>:
-      - <span class="str">clickhouse-data:/var/lib/clickhouse</span>
-    <span class="key">healthcheck</span>:
-      <span class="key">test</span>: [<span class="str">"CMD"</span>, <span class="str">"clickhouse-client"</span>, <span class="str">"--query"</span>, <span class="str">"SELECT 1"</span>]
-      <span class="key">interval</span>: <span class="str">10s</span>
-      <span class="key">timeout</span>: <span class="str">5s</span>
-      <span class="key">retries</span>: <span class="num">5</span>
-
-<span class="key">volumes</span>:
-  <span class="key">clickhouse-data</span>:</pre>
-  </div>
-</div>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Start with Docker Compose</span>
-docker compose up -d
-
-<span class="cmt"># Check status</span>
-docker compose ps</pre>
+  clickhouse/clickhouse-server:25.11</pre>
   </div>
 </div>
 
@@ -208,10 +112,259 @@ docker compose ps</pre>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     OPTIONAL: ELASTICSEARCH
+     INITIALIZE
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<h2 id="elasticsearch">Optional: Start Elasticsearch</h2>
+<h2 id="initialize">Initialize Project</h2>
+
+<p>Create a project directory with starter files and initialize the database:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Create and enter project directory</span>
+lars init my_lars_project ; cd my_lars_project
+
+<span class="cmt"># Initialize the database schema</span>
+lars db init</pre>
+  </div>
+</div>
+
+<p>This creates the following structure:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Directory Structure</span>
+  </div>
+  <div class="code-block-content">
+    <pre>my_lars_project/
+├── .env                  <span class="cmt"># Environment config (auto-generated)</span>
+├── cascades/             <span class="cmt"># Workflow definitions</span>
+│   └── examples/         <span class="cmt"># Sample cascades</span>
+├── skills/               <span class="cmt"># Custom tools</span>
+├── sql_connections/      <span class="cmt"># Database connections</span>
+├── data/                 <span class="cmt"># Local data files</span>
+├── session_dbs/          <span class="cmt"># Persistent session databases</span>
+└── logs/                 <span class="cmt"># Execution logs</span></pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Auto-Configuration</div>
+  <p>
+    <code>lars init</code> automatically creates a <code>.env</code> file with
+    <code>LARS_ROOT</code> set to your project's absolute path. Just add your API key
+    if you haven't already exported it.
+  </p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     SQL SERVER
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="sql-server">Start SQL Server</h2>
+
+<p>
+  Start the PostgreSQL wire-protocol server. This lets any SQL client
+  (DBeaver, DataGrip, psql, Tableau) connect and use LARS's semantic operators.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars serve sql --port 15432</pre>
+  </div>
+</div>
+
+<h3>Connect with psql</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Connect (default credentials: lars/lars)</span>
+psql postgresql://localhost:15432/default</pre>
+  </div>
+</div>
+
+<h3>Connect with Any SQL Client</h3>
+
+<p>Use these connection settings in DBeaver, DataGrip, or any PostgreSQL client:</p>
+
+<table class="props-table">
+  <thead>
+    <tr>
+      <th>Setting</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Host</td>
+      <td><code>localhost</code></td>
+    </tr>
+    <tr>
+      <td>Port</td>
+      <td><code>15432</code></td>
+    </tr>
+    <tr>
+      <td>Database</td>
+      <td><code>default</code></td>
+    </tr>
+    <tr>
+      <td>Username</td>
+      <td><code>lars</code></td>
+    </tr>
+    <tr>
+      <td>Password</td>
+      <td><code>lars</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Try a Semantic Query</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang sql">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Create a test table</span>
+<span class="kw">CREATE TABLE</span> products (
+  id <span class="kw">INTEGER</span>,
+  name <span class="kw">VARCHAR</span>,
+  description <span class="kw">TEXT</span>
+);
+
+<span class="kw">INSERT INTO</span> products <span class="kw">VALUES</span>
+  (1, <span class="str">'EcoBottle'</span>, <span class="str">'Reusable water bottle made from recycled ocean plastic'</span>),
+  (2, <span class="str">'QuickCharge'</span>, <span class="str">'Fast USB-C charger with 65W output'</span>),
+  (3, <span class="str">'GreenPack'</span>, <span class="str">'Backpack made from sustainable bamboo fiber'</span>);
+
+<span class="cmt">-- Semantic search - find eco-friendly products</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> products
+<span class="kw">WHERE</span> description <span class="fn">MEANS</span> <span class="str">'eco-friendly'</span>;</pre>
+  </div>
+</div>
+
+<p>That's it! You're running semantic queries from a standard SQL client.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     STUDIO (OPTIONAL)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="studio">Launch Studio (Optional)</h2>
+
+<p>Start the LARS Studio web interface for a visual SQL IDE, cascade runner, and cost analytics:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars serve studio
+<span class="cmt"># Runs at http://localhost:5050</span></pre>
+  </div>
+</div>
+
+<p>Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a></p>
+
+<h3>Studio Features</h3>
+
+<div class="feature-grid">
+  <div class="feature-item">
+    <iconify-icon icon="mdi:database-search" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>SQL Query IDE</h4>
+      <p>Write and execute SQL with schema browser and semantic operators</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:history" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Session Explorer</h4>
+      <p>Browse execution history, costs, and "what the model saw"</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:graph" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Cascade Runner</h4>
+      <p>Run and visualize multi-step workflows with takes evaluation</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     NEXT STEPS
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="next-steps">Next Steps</h2>
+
+<p>You now have a working LARS installation. Here's what to explore next:</p>
+
+<div class="feature-grid">
+  <div class="feature-item">
+    <iconify-icon icon="mdi:brain" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#semantic-sql" data-link>Semantic SQL</a></h4>
+      <p>Query rewriting, caching, and all the semantic operators</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:function" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#operators" data-link>Built-in Operators</a></h4>
+      <p>50+ operators for filtering, logic, aggregation, and more</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:database-cog" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#sql-connections" data-link>SQL Connections</a></h4>
+      <p>Connect PostgreSQL, BigQuery, Snowflake, S3, and more</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:code-json" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#cascade-dsl" data-link>Cascade DSL</a></h4>
+      <p>Build multi-step LLM workflows in YAML</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:server" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#providers" data-link>AI Providers</a></h4>
+      <p>Configure Ollama, Vertex AI, AWS Bedrock, or Azure</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:vector-combine" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4><a href="#embedding" data-link>Vector Search</a></h4>
+      <p>Embed data and use SIMILAR_TO for similarity search</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     ELASTICSEARCH (OPTIONAL - EXPANDABLE)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h2 id="elasticsearch">Elasticsearch (Optional)</h2>
+
+<details class="expandable-section">
+  <summary>
+    <span class="expandable-label">Optional Setup</span>
+    <span class="expandable-title">Add Elasticsearch for Hybrid Search</span>
+  </summary>
+  <div class="expandable-content">
 
 <p>
   <strong>Elasticsearch is optional</strong> but enables powerful additional features:
@@ -236,7 +389,7 @@ docker compose ps</pre>
   </ul>
 </div>
 
-<h3>Option A: Simple Docker Command</h3>
+<h3>Start Elasticsearch with Docker</h3>
 
 <div class="code-block">
   <div class="code-block-header">
@@ -259,14 +412,11 @@ echo "Waiting for Elasticsearch..."
 until curl -s http://localhost:9200/_cluster/health > /dev/null 2>&1; do
   sleep 2
 done
-echo "Elasticsearch is ready!"
-
-<span class="cmt"># Verify it's running</span>
-curl http://localhost:9200/_cluster/health | jq</pre>
+echo "Elasticsearch is ready!"</pre>
   </div>
 </div>
 
-<h3>Option B: Docker Compose (With Kibana UI)</h3>
+<h3>Docker Compose (With Kibana UI)</h3>
 
 <p>For a complete setup including Kibana for monitoring:</p>
 
@@ -320,10 +470,7 @@ curl http://localhost:9200/_cluster/health | jq</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Start with Docker Compose</span>
-docker compose -f docker-compose.elastic.yml up -d
-
-<span class="cmt"># Check status</span>
-docker compose -f docker-compose.elastic.yml ps</pre>
+docker compose -f docker-compose.elastic.yml up -d</pre>
   </div>
 </div>
 
@@ -336,15 +483,7 @@ docker compose -f docker-compose.elastic.yml ps</pre>
     <span class="code-block-lang config">.env</span>
   </div>
   <div class="code-block-content">
-    <pre><span class="cmt"># =============================================================================</span>
-<span class="cmt"># OPTIONAL: Elasticsearch for Hybrid Search</span>
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># If set, LARS will automatically use Elasticsearch for:</span>
-<span class="cmt">#   - HYBRID_SEARCH() - semantic + keyword search</span>
-<span class="cmt">#   - KEYWORD_SEARCH() - pure BM25 keyword search</span>
-<span class="cmt">#   - ELASTIC_SEARCH() - pure semantic on Elastic</span>
-<span class="cmt">#   - SQL schema indexing for better RAG</span>
-<span class="key">LARS_ELASTICSEARCH_HOST</span>=<span class="str">http://localhost:9200</span></pre>
+    <pre><span class="key">LARS_ELASTICSEARCH_HOST</span>=<span class="str">http://localhost:9200</span></pre>
   </div>
 </div>
 
@@ -372,14 +511,7 @@ docker compose -f docker-compose.elastic.yml ps</pre>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Check cluster health</span>
-curl http://localhost:9200/_cluster/health | jq
-
-<span class="cmt"># Expected output:</span>
-<span class="cmt"># {</span>
-<span class="cmt">#   "status": "green",</span>
-<span class="cmt">#   "number_of_nodes": 1,</span>
-<span class="cmt">#   ...</span>
-<span class="cmt"># }</span></pre>
+curl http://localhost:9200/_cluster/health | jq</pre>
   </div>
 </div>
 
@@ -392,749 +524,8 @@ curl http://localhost:9200/_cluster/health | jq
   </ul>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 3: WORKSPACE
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="workspace">Step 3: Initialize Workspace</h2>
-
-<p>Create a new LARS workspace with starter files and examples:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
   </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Create and enter your project directory</span>
-mkdir my-lars-project
-cd my-lars-project
-
-<span class="cmt"># Initialize LARS workspace</span>
-lars init .
-
-<span class="cmt"># Or create in a new directory</span>
-lars init my-project</pre>
-  </div>
-</div>
-
-<p>This creates the following structure:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang">Directory Structure</span>
-  </div>
-  <div class="code-block-content">
-    <pre>my-lars-project/
-├── .env.example          <span class="cmt"># Environment template</span>
-├── .gitignore            <span class="cmt"># Git ignore patterns</span>
-├── README.md             <span class="cmt"># Quick reference</span>
-├── cascades/
-│   └── examples/
-│       ├── hello_world.yaml   <span class="cmt"># Simple greeting cascade</span>
-│       └── sql_demo.yaml      <span class="cmt"># SQL + analysis example</span>
-├── skills/               <span class="cmt"># Custom tools go here</span>
-├── cell_types/           <span class="cmt"># Cell type references</span>
-├── config/
-│   └── mcp_servers.example.yaml
-├── data/                 <span class="cmt"># RAG index files</span>
-├── logs/                 <span class="cmt"># Execution logs</span>
-├── states/               <span class="cmt"># Session snapshots</span>
-├── graphs/               <span class="cmt"># Mermaid diagrams</span>
-├── images/               <span class="cmt"># Multi-modal outputs</span>
-├── audio/                <span class="cmt"># Voice recordings</span>
-├── session_dbs/          <span class="cmt"># Session DuckDB files</span>
-└── research_dbs/         <span class="cmt"># Research databases</span></pre>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 4: ENVIRONMENT
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="environment">Step 4: Configure Environment</h2>
-
-<p>Copy the example environment file and configure your API keys:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Copy the template</span>
-cp .env.example .env
-
-<span class="cmt"># Edit with your favorite editor</span>
-nano .env  <span class="cmt"># or: code .env, vim .env</span></pre>
-  </div>
-</div>
-
-<p>At minimum, set these values:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang config">.env</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># =============================================================================</span>
-<span class="cmt"># REQUIRED: Workspace Root</span>
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># IMPORTANT: Set this to your project directory's absolute path!</span>
-<span class="cmt"># All LARS data (logs, states, databases) is stored relative to this path.</span>
-<span class="key">LARS_ROOT</span>=<span class="str">/home/user/my-lars-project</span>
-
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># REQUIRED: LLM Provider</span>
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># Get your key at: https://openrouter.ai/keys</span>
-<span class="key">OPENROUTER_API_KEY</span>=<span class="str">sk-or-v1-your-key-here</span>
-
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># REQUIRED: ClickHouse Database</span>
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># These match the Docker setup from Step 2</span>
-<span class="key">LARS_CLICKHOUSE_HOST</span>=<span class="str">localhost</span>
-<span class="key">LARS_CLICKHOUSE_PORT</span>=<span class="num">9000</span>
-<span class="key">LARS_CLICKHOUSE_DATABASE</span>=<span class="str">lars</span>
-<span class="key">LARS_CLICKHOUSE_USER</span>=<span class="str">lars</span>
-<span class="key">LARS_CLICKHOUSE_PASSWORD</span>=<span class="str">lars</span>
-
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># OPTIONAL: Model Customization</span>
-<span class="cmt"># =============================================================================</span>
-<span class="cmt"># LARS_DEFAULT_MODEL=anthropic/claude-sonnet-4</span>
-<span class="cmt"># LARS_DEFAULT_EMBED_MODEL=qwen/qwen3-embedding-8b</span></pre>
-  </div>
-</div>
-
-<div class="info-box warning">
-  <div class="info-box-title">LARS_ROOT is Important!</div>
-  <p>
-    <code>LARS_ROOT</code> should point to your project directory's <strong>absolute path</strong>.
-    All data files (logs, session databases, states) are stored relative to this path.
-    If you run LARS from different directories without setting this, your data may end up scattered.
-  </p>
-</div>
-
-<div class="info-box tip">
-  <div class="info-box-title">Automatic Setup</div>
-  <p>
-    When you run <code>lars init</code>, it automatically creates a <code>.env</code> file with
-    <code>LARS_ROOT</code> set to the workspace's absolute path. Just add your API key!
-  </p>
-</div>
-
-<div class="info-box warning">
-  <div class="info-box-title">Keep Your API Key Secret</div>
-  <p>
-    Never commit your <code>.env</code> file to version control. The <code>.gitignore</code>
-    created by <code>lars init</code> already excludes it.
-  </p>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 5: DB INIT
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="db-init">Step 5: Initialize Database</h2>
-
-<p>Create the ClickHouse tables and run migrations:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Initialize the database schema</span>
-lars db init</pre>
-  </div>
-</div>
-
-<p>You should see output like:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang">Output</span>
-  </div>
-  <div class="code-block-content">
-    <pre>============================================================
-CLICKHOUSE SCHEMA INITIALIZATION
-============================================================
-
-Connection: clickhouse://lars:***@localhost:9000/lars
-
-Creating database 'lars' if not exists...
-✓ Database ready
-
-Running migrations...
-  [001] unified_logs.sql ... ✓
-  [002] checkpoints.sql ... ✓
-  [003] training_preferences.sql ... ✓
-  ...
-
-✓ Schema initialization complete!</pre>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 6: VERIFY
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="verify">Step 6: Verify Setup</h2>
-
-<p>Run the diagnostic command to check everything is configured correctly:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Run diagnostics</span>
-lars doctor</pre>
-  </div>
-</div>
-
-<p>A healthy setup shows:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang">Output</span>
-  </div>
-  <div class="code-block-content">
-    <pre>LARS Health Check
-==================
-
-✓ Python version: 3.12.0
-✓ LARS version: 0.9.0
-✓ Workspace: /home/user/my-lars-project
-✓ ClickHouse connection: OK
-✓ OpenRouter API key: configured
-✓ Default model: x-ai/grok-4.1-fast
-
-All checks passed!</pre>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 7: FIRST CASCADE
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="first-cascade">Step 7: Run Your First Cascade</h2>
-
-<p>Test your setup by running the hello_world example:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Run with default input</span>
-lars run cascades/examples/hello_world.yaml
-
-<span class="cmt"># Run with custom input</span>
-lars run cascades/examples/hello_world.yaml --input '{"name": "Alice"}'</pre>
-  </div>
-</div>
-
-<p>You should see the cascade execute and produce a greeting.</p>
-
-<h3>What Just Happened?</h3>
-
-<p>Let's look at the cascade file:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang yaml">cascades/examples/hello_world.yaml</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="key">cascade_id</span>: <span class="str">hello_world</span>
-<span class="key">description</span>: <span class="str">A simple greeting cascade to verify your setup works.</span>
-
-<span class="key">inputs_schema</span>:
-  <span class="key">name</span>: <span class="str">The name to greet (optional, defaults to "World")</span>
-
-<span class="key">cells</span>:
-  - <span class="key">name</span>: <span class="str">greet</span>
-    <span class="key">instructions</span>: |
-      Generate a friendly greeting for {{ input.name | default("World") }}.
-
-      Be creative but keep it brief (1-2 sentences).
-      Include a fun fact or observation to make it memorable.
-    <span class="key">rules</span>:
-      <span class="key">max_turns</span>: <span class="num">1</span></pre>
-  </div>
-</div>
-
-<p>Key concepts:</p>
-<ul>
-  <li><strong>cascade_id</strong>: Unique identifier for this workflow</li>
-  <li><strong>inputs_schema</strong>: Documents expected inputs</li>
-  <li><strong>cells</strong>: List of execution steps</li>
-  <li><strong>instructions</strong>: Jinja2-templated prompt for the LLM</li>
-  <li><strong>{{ input.name }}</strong>: Reference to input data</li>
-</ul>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 8: SAMPLE DATA
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="sample-data">Step 8: Connect Sample Data</h2>
-
-<p>
-  LARS can query any database through SQL connections. Let's set up a sample DuckDB
-  database with data you can immediately query.
-</p>
-
-<h3>Create Sample Database</h3>
-
-<p>First, create a DuckDB database with sample data:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Create sample database with DuckDB CLI (or Python)</span>
-duckdb data/sample.duckdb << 'EOF'
-<span class="cmt">-- Create customers table</span>
-CREATE TABLE customers (
-    id INTEGER PRIMARY KEY,
-    name VARCHAR NOT NULL,
-    email VARCHAR NOT NULL,
-    company VARCHAR,
-    industry VARCHAR,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO customers VALUES
-    (1, 'Alice Chen', 'alice@acme.com', 'Acme Corp', 'Technology', '2024-01-15'),
-    (2, 'Bob Smith', 'bob@globaltech.io', 'GlobalTech', 'Technology', '2024-01-20'),
-    (3, 'Carol Davis', 'carol@greenco.org', 'GreenCo', 'Sustainability', '2024-02-01'),
-    (4, 'David Lee', 'david@finserv.com', 'FinServ Inc', 'Finance', '2024-02-10'),
-    (5, 'Eva Martinez', 'eva@healthplus.net', 'HealthPlus', 'Healthcare', '2024-02-15'),
-    (6, 'Frank Johnson', 'frank@retailmax.com', 'RetailMax', 'Retail', '2024-03-01'),
-    (7, 'Grace Kim', 'grace@edulearn.edu', 'EduLearn', 'Education', '2024-03-05'),
-    (8, 'Henry Wilson', 'henry@mfgpro.com', 'MfgPro', 'Manufacturing', '2024-03-10');
-
-<span class="cmt">-- Create orders table</span>
-CREATE TABLE orders (
-    id INTEGER PRIMARY KEY,
-    customer_id INTEGER REFERENCES customers(id),
-    product VARCHAR NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    status VARCHAR DEFAULT 'pending',
-    order_date DATE NOT NULL
-);
-
-INSERT INTO orders VALUES
-    (1, 1, 'Enterprise License', 5000.00, 'completed', '2024-02-01'),
-    (2, 1, 'Support Package', 1200.00, 'completed', '2024-02-15'),
-    (3, 2, 'Team License', 2500.00, 'completed', '2024-02-20'),
-    (4, 3, 'Starter Plan', 500.00, 'completed', '2024-03-01'),
-    (5, 4, 'Enterprise License', 5000.00, 'pending', '2024-03-05'),
-    (6, 5, 'Team License', 2500.00, 'completed', '2024-03-10'),
-    (7, 6, 'Starter Plan', 500.00, 'cancelled', '2024-03-12'),
-    (8, 7, 'Education License', 1000.00, 'completed', '2024-03-15'),
-    (9, 2, 'Support Package', 1200.00, 'completed', '2024-03-20'),
-    (10, 8, 'Enterprise License', 5000.00, 'pending', '2024-03-25');
-
-<span class="cmt">-- Create products table</span>
-CREATE TABLE products (
-    id INTEGER PRIMARY KEY,
-    name VARCHAR NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) NOT NULL,
-    category VARCHAR
-);
-
-INSERT INTO products VALUES
-    (1, 'Enterprise License', 'Full-featured enterprise solution with unlimited users', 5000.00, 'License'),
-    (2, 'Team License', 'Team plan for up to 50 users', 2500.00, 'License'),
-    (3, 'Starter Plan', 'Basic plan for small teams up to 10 users', 500.00, 'License'),
-    (4, 'Education License', 'Discounted license for educational institutions', 1000.00, 'License'),
-    (5, 'Support Package', 'Premium 24/7 support with dedicated account manager', 1200.00, 'Service'),
-    (6, 'Training Workshop', 'On-site training for your team', 3000.00, 'Service'),
-    (7, 'Consulting Hours', 'Expert consulting at hourly rate', 250.00, 'Service');
-EOF</pre>
-  </div>
-</div>
-
-<div class="info-box tip">
-  <div class="info-box-title">No DuckDB CLI?</div>
-  <p>Install DuckDB CLI with <code>pip install duckdb</code> or download from
-  <a href="https://duckdb.org/docs/installation" target="_blank">duckdb.org</a>.
-  Alternatively, use Python:</p>
-  <div class="code-block">
-    <div class="code-block-content">
-      <pre>python -c "import duckdb; duckdb.connect('data/sample.duckdb').execute(open('create_sample.sql').read())"</pre>
-    </div>
-  </div>
-</div>
-
-<h3>Create SQL Connection</h3>
-
-<p>Create a connection file for the sample database:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Create sql_connections directory if it doesn't exist</span>
-mkdir -p sql_connections
-
-<span class="cmt"># Create connection file</span>
-cat > sql_connections/sample_data.yaml << 'EOF'
-<span class="cmt"># Sample Data Connection</span>
-<span class="cmt"># A DuckDB database with customers, orders, and products for testing</span>
-
-connection_name: sample_data
-type: duckdb
-database: ./data/sample.duckdb
-enabled: true
-read_only: true
-sample_row_limit: 100
-distinct_value_threshold: 50
-EOF</pre>
-  </div>
-</div>
-
-<h3>Discover Schema</h3>
-
-<p>Run schema discovery to index your database:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Crawl and index all connected databases</span>
-lars sql crawl</pre>
-  </div>
-</div>
-
-<p>This creates metadata files in <code>sql_connections/samples/</code> that enable:</p>
-<ul>
-  <li>Schema browsing in the Studio UI</li>
-  <li>SQL autocomplete</li>
-  <li>Semantic search across your schemas</li>
-</ul>
-
-<h3>Query Your Data</h3>
-
-<p>Test the connection with a query:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Query the sample database</span>
-lars sql query "SELECT * FROM sample_data.customers"
-
-<span class="cmt"># Join tables</span>
-lars sql query "
-SELECT
-  c.name,
-  c.company,
-  SUM(o.amount) as total_spent
-FROM sample_data.customers c
-JOIN sample_data.orders o ON c.id = o.customer_id
-WHERE o.status = 'completed'
-GROUP BY c.name, c.company
-ORDER BY total_spent DESC
-"
-
-<span class="cmt"># Use semantic SQL (if you have embedding model configured)</span>
-lars sql query "
-SELECT * FROM sample_data.products
-WHERE description ABOUT 'enterprise features'
-"</pre>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 9: STUDIO
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="studio">Step 9: Launch Studio Web UI</h2>
-
-<p>Start the LARS Studio web interface:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Start Studio (production mode)</span>
-lars serve studio --port 5050
-
-<span class="cmt"># Or development mode (hot reload)</span>
-lars serve studio --dev</pre>
-  </div>
-</div>
-
-<p>Open your browser to <a href="http://localhost:5050" target="_blank">http://localhost:5050</a></p>
-
-<h3>Studio Features</h3>
-
-<div class="feature-grid">
-  <div class="feature-item">
-    <iconify-icon icon="mdi:database-search" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>SQL Query IDE</h4>
-      <p><code>/sql-query</code> - Write and execute SQL with schema browser</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:notebook-multiple" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Polyglot Notebooks</h4>
-      <p><code>/sql-query?mode=notebook</code> - Mix SQL, Python, JS, and LLM cells</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:graph" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Playground Canvas</h4>
-      <p><code>/playground</code> - Visual drag-and-drop cascade builder</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:history" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Session Explorer</h4>
-      <p><code>/sessions</code> - Browse execution history and costs</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:chat" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4>Calliope</h4>
-      <p><code>/calliope</code> - Build cascades through conversation</p>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     STEP 10: SQL SERVER
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="sql-server">Step 10: Start SQL Server</h2>
-
-<p>
-  LARS includes a PostgreSQL wire-protocol server that lets you connect any SQL client
-  (DBeaver, DataGrip, psql, etc.) and use Semantic SQL operators.
-</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Start the PostgreSQL-compatible SQL server</span>
-lars serve sql --port 15432
-
-<span class="cmt"># Or shorter alias</span>
-lars sql server --port 15432</pre>
-  </div>
-</div>
-
-<h3>Connect with psql</h3>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Connect with psql</span>
-psql -h localhost -p 15432 -U lars -d lars
-
-<span class="cmt"># Run a query</span>
-SELECT * FROM sample_data.customers LIMIT 5;</pre>
-  </div>
-</div>
-
-<h3>Connect with Any SQL Client</h3>
-
-<p>Use these connection settings in DBeaver, DataGrip, or any PostgreSQL client:</p>
-
-<table class="props-table">
-  <thead>
-    <tr>
-      <th>Setting</th>
-      <th>Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Host</td>
-      <td><code>localhost</code></td>
-    </tr>
-    <tr>
-      <td>Port</td>
-      <td><code>15432</code></td>
-    </tr>
-    <tr>
-      <td>Database</td>
-      <td><code>lars</code></td>
-    </tr>
-    <tr>
-      <td>Username</td>
-      <td><code>lars</code></td>
-    </tr>
-    <tr>
-      <td>Password</td>
-      <td><code>lars</code></td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="info-box tip">
-  <div class="info-box-title">Semantic SQL in Any Client</div>
-  <p>
-    Once connected, you can use LARS's semantic operators directly in your favorite SQL client:
-  </p>
-  <div class="code-block">
-    <div class="code-block-content">
-      <pre><span class="cmt">-- Semantic search</span>
-<span class="kw">SELECT</span> * <span class="kw">FROM</span> sample_data.products
-<span class="kw">WHERE</span> description <span class="fn">ABOUT</span> <span class="str">'team collaboration'</span>;
-
-<span class="cmt">-- LLM aggregation</span>
-<span class="kw">SELECT</span> category, <span class="fn">summarize</span>(description) <span class="kw">AS</span> summary
-<span class="kw">FROM</span> sample_data.products
-<span class="kw">GROUP BY</span> category;</pre>
-    </div>
-  </div>
-</div>
-
-<h3>Session Persistence</h3>
-
-<p>
-  The <strong>database name</strong> you use when connecting determines whether your session is ephemeral or persistent:
-</p>
-
-<table class="props-table">
-  <thead>
-    <tr>
-      <th>Database Name</th>
-      <th>Behavior</th>
-      <th>Tables Persist?</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><code>memory</code>, <code>default</code>, <code>:memory:</code></td>
-      <td>In-memory, ephemeral</td>
-      <td>No - lost on disconnect</td>
-    </tr>
-    <tr>
-      <td>Any other name (e.g., <code>myproject</code>, <code>analytics</code>)</td>
-      <td>File-based, persistent</td>
-      <td>Yes - survives restarts</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="info-box note">
-  <div class="info-box-title">Persistent Sessions</div>
-  <p>
-    When you use a custom database name, LARS creates a DuckDB file at
-    <code>$LARS_ROOT/session_dbs/{database_name}.duckdb</code>.
-    Any tables you create will persist across connections and server restarts.
-  </p>
-</div>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Connection Examples</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># Ephemeral session - tables lost on disconnect</span>
-psql -h localhost -p 15432 -U lars -d memory
-
-<span class="cmt"># Persistent session - tables saved to session_dbs/myproject.duckdb</span>
-psql -h localhost -p 15432 -U lars -d myproject
-
-<span class="cmt"># Another persistent session - tables saved to session_dbs/analytics.duckdb</span>
-psql -h localhost -p 15432 -U lars -d analytics
-
-<span class="cmt"># In persistent sessions, tables survive across connections:</span>
-CREATE TABLE metrics (id INT, value FLOAT);
-INSERT INTO metrics VALUES (1, 42.5);
-<span class="cmt"># Disconnect and reconnect - table still exists!</span></pre>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     NEXT STEPS
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<h2 id="next-steps">Next Steps</h2>
-
-<p>You now have a fully working LARS installation. Here's what to explore next:</p>
-
-<div class="feature-grid">
-  <div class="feature-item">
-    <iconify-icon icon="mdi:book-open-page-variant" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#core-concepts" data-link>Core Concepts</a></h4>
-      <p>Understand Cascades, Cells, State, and Context</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:code-json" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#cascade-dsl" data-link>Cascade DSL</a></h4>
-      <p>Learn the full configuration options</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:database-cog" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#sql-connections" data-link>SQL Connections</a></h4>
-      <p>Connect your own PostgreSQL, BigQuery, Snowflake, etc.</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:brain" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#semantic-sql" data-link>Semantic SQL</a></h4>
-      <p>Use LLM-powered operators in your queries</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:tools" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#tools" data-link>Tools (Skills)</a></h4>
-      <p>Create custom tools for your workflows</p>
-    </div>
-  </div>
-  <div class="feature-item">
-    <iconify-icon icon="mdi:server" class="feature-icon"></iconify-icon>
-    <div class="feature-content">
-      <h4><a href="#providers" data-link>AI Providers</a></h4>
-      <p>Configure Ollama, Vertex AI, AWS Bedrock, or Azure</p>
-    </div>
-  </div>
-</div>
-
-<h3>Example Cascades to Try</h3>
-
-<p>Explore the examples in <code>cascades/examples/</code>:</p>
-
-<div class="code-block">
-  <div class="code-block-header">
-    <span class="code-block-lang bash">Bash</span>
-  </div>
-  <div class="code-block-content">
-    <pre><span class="cmt"># SQL analysis cascade</span>
-lars run cascades/examples/sql_demo.yaml
-
-<span class="cmt"># List all examples</span>
-ls cascades/examples/</pre>
-  </div>
-</div>
+</details>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      TROUBLESHOOTING
@@ -1174,16 +565,16 @@ docker restart lars-clickhouse</pre>
 
 <div class="info-box warning">
   <div class="info-box-title">Error: API key not configured</div>
-  <p>Ensure your <code>.env</code> file exists and is loaded:</p>
+  <p>Ensure your environment variable is set:</p>
   <div class="code-block">
     <div class="code-block-content">
-      <pre><span class="cmt"># Check if .env exists</span>
-cat .env | grep OPENROUTER
+      <pre><span class="cmt"># Check if set</span>
+echo $OPENROUTER_API_KEY
 
-<span class="cmt"># Or export directly</span>
-export OPENROUTER_API_KEY=sk-or-v1-your-key
+<span class="cmt"># Or add to .env file</span>
+echo "OPENROUTER_API_KEY=sk-or-v1-your-key" >> .env
 
-<span class="cmt"># Verify</span>
+<span class="cmt"># Verify setup</span>
 lars doctor</pre>
     </div>
   </div>
@@ -1193,17 +584,14 @@ lars doctor</pre>
 
 <div class="info-box warning">
   <div class="info-box-title">Error: Port already in use</div>
-  <p>If ports 9000 or 5050 are in use:</p>
+  <p>If ports are in use, specify different ports:</p>
   <div class="code-block">
     <div class="code-block-content">
       <pre><span class="cmt"># Find what's using the port</span>
-lsof -i :9000
+lsof -i :15432
 
-<span class="cmt"># Use a different port for ClickHouse</span>
-docker run -d --name lars-ch \
-  -p 9001:9000 \
-  -e LARS_CLICKHOUSE_PORT=9001 \
-  clickhouse/clickhouse-server:latest
+<span class="cmt"># Use a different port for SQL server</span>
+lars serve sql --port 15433
 
 <span class="cmt"># Use a different port for Studio</span>
 lars serve studio --port 5051</pre>
@@ -1211,11 +599,11 @@ lars serve studio --port 5051</pre>
   </div>
 </div>
 
-<h3>Common Commands Reference</h3>
+<h3>Quick Reference</h3>
 
 <div class="code-block">
   <div class="code-block-header">
-    <span class="code-block-lang bash">Quick Reference</span>
+    <span class="code-block-lang bash">Common Commands</span>
   </div>
   <div class="code-block-content">
     <pre><span class="cmt"># Health check</span>
@@ -1224,22 +612,18 @@ lars doctor
 <span class="cmt"># Database status</span>
 lars db status
 
-<span class="cmt"># List sessions</span>
-lars sessions list
-
-<span class="cmt"># Query ClickHouse directly</span>
-lars sql query "SELECT COUNT(*) FROM all_data"
+<span class="cmt"># Run a cascade</span>
+lars run cascades/examples/hello_world.yaml
 
 <span class="cmt"># View help</span>
-lars --help
-lars run --help</pre>
+lars --help</pre>
   </div>
 </div>
 
 <div class="info-box tip">
   <div class="info-box-title">Need More Help?</div>
   <p>
-    Check out the full documentation or open an issue on
+    Check the full documentation or open an issue on
     <a href="https://github.com/ryrobes/larsql/issues" target="_blank">GitHub</a>.
   </p>
 </div>
