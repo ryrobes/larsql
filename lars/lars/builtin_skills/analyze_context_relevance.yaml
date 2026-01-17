@@ -1,0 +1,206 @@
+cascade_id: analyze_context_relevance
+
+# Exclude from meta-analysis to prevent self-referential loops
+internal: true
+
+description: |
+  Meta-analysis cascade that evaluates context message relevance using ensemble scoring.
+
+  Takes an LLM output + its context messages, and scores each context message
+  based on how much it actually contributed to generating the output.
+
+  Uses 3 different models in parallel, then reconciles to pick the best 2 assessments
+  and aggregate them - improving accuracy and filtering out outliers/errors.
+
+  This enables cost-value optimization: identify expensive context that provides
+  little value and can be safely removed.
+
+inputs_schema:
+  output_content: "The assistant's response text that was generated"
+  context_messages: "Array of {hash, content, tokens, cost, role} objects representing context"
+
+cells:
+  - name: rank_relevance
+    rules:
+      max_attempts: 2
+    takes:
+      factor: 2
+      mode: aggregate  # Combine all outputs instead of picking winner
+      models:
+        #- google/gemini-2.5-flash-lite
+        #- anthropic/claude-haiku-4.5
+        #- deepseek/deepseek-v3.2
+        #- allenai/olmo-3-7b-think
+        - x-ai/grok-4.1-fast
+        #- openai/gpt-5-mini
+        #- google/gemini-2.5-flash
+        - google/gemini-3-flash-preview
+    #model_strategy: random
+    mutate: false
+    instructions: |
+      IMPORTANT: Return ONLY the raw JSON array. Do NOT wrap in markdown code fences.
+      Do NOT include any explanatory text before or after the JSON.
+      Your ENTIRE response should be valid JSON that starts with [ and ends with ].
+
+
+      You are a meta-analyst evaluating which context messages were most useful in generating an LLM response.
+
+      **The Response That Was Generated:**
+      {{ input.output_content }}
+
+      **Context Messages That Were Provided:**
+      {% for msg in input.context_messages %}
+      {{ loop.index }}. [{{ msg.hash[:8] }}] Role: {{ msg.role|upper }} ({{ msg.tokens }} tokens, ${{ "%.6f"|format(msg.cost) }})
+         {{ msg.content[:500] }}{% if msg.content|length > 500 %}...{% endif %}
+
+      {% endfor %}
+
+      **Your Task:**
+      For each context message, score its relevance (0-100) based on:
+      - **Direct usage (50 points)**: Information from it appears verbatim or paraphrased in response
+      - **Reasoning influence (30 points)**: Shaped the logic, conclusions, or approach taken
+      - **Background context (20 points)**: Provided necessary domain knowledge or constraints
+
+      **IMPORTANT: System messages (role=system) often contain the core task instructions.**
+      If a system message defines WHAT to do, HOW to do it, or the OUTPUT format - it's critical!
+      Score system messages based on how much the response follows their instructions, not just
+      whether their text appears verbatim.
+
+      **Tool definitions deserve special consideration:**
+      - If tools were CALLED: the tool definition is highly relevant (enabled the action)
+      - If tools were AVAILABLE but not called: still somewhat relevant if the task could have used them
+      - Score based on whether the tool definitions shaped the decision space
+
+      Examples:
+      - System: "Extract brand from product title" -> Response extracts brand -> Score 100 (defines entire task!)
+      - System: "Available tools: X, Y, Z" -> Response uses tool X -> Score 90 (enabled the action)
+      - System: "Available tools: X, Y, Z" -> Response doesn't use tools -> Score 10-30 (shaped options)
+      - User: "Analyze this data: [data]" -> Response analyzes that data -> Score 100 (provides input)
+      - Assistant: "Here are results: [results]" -> Response references results -> Score 80 (reused)
+
+      Score 0 means: "This context was completely unused and could be removed"
+      Score 100 means: "This context was critical and heavily used throughout"
+
+      **Output Format (STRICT JSON ARRAY - NO MARKDOWN FENCES):**
+      CRITICAL: You MUST return a JSON ARRAY, even if there is only one context message!
+      CRITICAL: Return ONLY raw JSON, NO markdown code fences (no ```json ... ```)!
+
+      CORRECT (one message):
+      [
+        {
+          "hash": "abc12345",
+          "score": 85,
+          "reason": "Information about X directly cited in response."
+        }
+      ]
+
+      CORRECT (multiple messages):
+      [
+        {
+          "hash": "abc12345",
+          "score": 85,
+          "reason": "Information about X directly cited in response. Influenced conclusion Y."
+        },
+        {
+          "hash": "def67890",
+          "score": 15,
+          "reason": "Provided background but not directly used. Could likely be removed."
+        }
+      ]
+
+      WRONG (will fail validation):
+      {
+        "hash": "abc12345",
+        "score": 85,
+        "reason": "..."
+      }
+
+      Be honest and critical. The goal is to identify waste, not justify everything.
+      Low scores help users optimize costs. High scores validate necessary context.
+
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          hash:
+            type: string
+            description: Message hash (first 8+ chars)
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: Relevance score
+          reason:
+            type: string
+            description: Why this score was given
+        required: [hash, score, reason]
+
+    handoffs: [reconcile_scores]
+
+  - name: reconcile_scores
+    model: google/gemini-2.5-flash-lite
+    rules:
+      max_attempts: 2
+    context:
+      from: [rank_relevance]
+      include: [output]
+    instructions: |
+      IMPORTANT: Return ONLY the raw JSON array. Do NOT wrap in markdown code fences.
+      Your ENTIRE response should be valid JSON that starts with [ and ends with ].
+
+      You have received 3 independent relevance assessments from different models.
+      Your job is to reconcile them into a single, high-quality combined assessment.
+
+      **The 3 Assessments:**
+      {{ outputs.rank_relevance.result }}
+
+      **Reconciliation Process:**
+      1. For each message hash, collect all scores from the 3 assessments
+      2. Identify any OUTLIER scores (scores that differ by >30 points from the other two)
+      3. For the final score: DISCARD the outlier (if any) and AVERAGE the best 2 scores
+      4. For the reason: Combine the most insightful reasoning from the 2 selected assessments
+      5. If one assessment is clearly malformed or missing entries, ignore it entirely
+
+      **Quality Checks:**
+      - If all 3 scores are within 20 points of each other: average all 3 (high consensus)
+      - If one score is wildly different (>30 points): discard it, average the other 2
+      - If all 3 disagree significantly: use the MEDIAN score and note the disagreement
+
+      **Output the final reconciled scores as a JSON array:**
+      [
+        {
+          "hash": "abc12345",
+          "score": 82,
+          "reason": "Combined: [reasoning from best assessments]. Consensus: high/medium/low",
+          "individual_scores": [85, 80, 82],
+          "consensus": "high"
+        }
+      ]
+
+      The "consensus" field should be:
+      - "high" if all 3 within 15 points
+      - "medium" if within 30 points
+      - "low" if >30 point spread (outlier discarded)
+
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          hash:
+            type: string
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+          reason:
+            type: string
+          individual_scores:
+            type: array
+            items:
+              type: number
+          consensus:
+            type: string
+            enum: [high, medium, low]
+        required: [hash, score, reason]

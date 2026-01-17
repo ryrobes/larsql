@@ -1144,6 +1144,38 @@ def main():
         help='Show detailed information'
     )
 
+    # Bootstrap command - Initialize everything for a fresh installation
+    bootstrap_parser = subparsers.add_parser(
+        'bootstrap',
+        help='Initialize database, sync tools, and refresh models (for fresh installations)'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-db',
+        action='store_true',
+        help='Skip database initialization'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-tools',
+        action='store_true',
+        help='Skip tools sync'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-models',
+        action='store_true',
+        help='Skip models refresh'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-verification',
+        action='store_true',
+        help='Skip model verification (faster)'
+    )
+    bootstrap_parser.add_argument(
+        '--workers', '-w',
+        type=int,
+        default=10,
+        help='Number of parallel workers for model verification (default: 10)'
+    )
+
     # Preprocess args: `lars ssql "SELECT..."` → `lars ssql query "SELECT..."`
     # This allows users to run queries directly without the `query` subcommand
     if len(sys.argv) >= 3 and sys.argv[1] == 'ssql':
@@ -1491,6 +1523,8 @@ def main():
         cmd_eject(args)
     elif args.command == 'doctor':
         cmd_doctor(args)
+    elif args.command == 'bootstrap':
+        cmd_bootstrap(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -6661,7 +6695,68 @@ def cmd_doctor(args):
     print()
 
     # -------------------------------------------------------------------------
-    # 4. Summary
+    # 4. Catalog Data (Tools & Models)
+    # -------------------------------------------------------------------------
+    print("Catalog Data:")
+    print("-" * 50)
+
+    try:
+        from .db_adapter import get_db_adapter
+
+        db = get_db_adapter()
+
+        # Check tools sync status
+        try:
+            tools_result = db.query(
+                "SELECT count() as cnt FROM tool_manifest_vectors FINAL",
+                output_format="dict"
+            )
+            tools_count = tools_result[0]['cnt'] if tools_result else 0
+            if tools_count > 0:
+                print(f"  Tools:           {tools_count:,} synced")
+            else:
+                print(f"  Tools:           NOT SYNCED")
+                warnings.append("Tools not synced. Run 'lars tools sync' to populate tool catalog.")
+        except Exception as e:
+            if "doesn't exist" in str(e).lower():
+                print(f"  Tools:           TABLE MISSING")
+                warnings.append("tool_manifest_vectors table missing. Run 'lars db init'.")
+            else:
+                print(f"  Tools:           ERROR ({e})")
+
+        # Check models sync status
+        try:
+            models_result = db.query(
+                "SELECT count() as cnt FROM openrouter_models FINAL",
+                output_format="dict"
+            )
+            models_count = models_result[0]['cnt'] if models_result else 0
+            if models_count > 0:
+                # Also check active models
+                active_result = db.query(
+                    "SELECT count() as cnt FROM openrouter_models FINAL WHERE is_active = 1",
+                    output_format="dict"
+                )
+                active_count = active_result[0]['cnt'] if active_result else 0
+                print(f"  Models:          {models_count:,} total ({active_count:,} active)")
+            else:
+                print(f"  Models:          NOT SYNCED")
+                warnings.append("Models not synced. Run 'lars models refresh' to populate model catalog.")
+        except Exception as e:
+            if "doesn't exist" in str(e).lower():
+                print(f"  Models:          TABLE MISSING")
+                warnings.append("openrouter_models table missing. Run 'lars db init'.")
+            else:
+                print(f"  Models:          ERROR ({e})")
+
+    except Exception:
+        # Database not available, skip this section
+        print(f"  (Skipped - database not available)")
+
+    print()
+
+    # -------------------------------------------------------------------------
+    # 5. Summary
     # -------------------------------------------------------------------------
     print("=" * 50)
 
@@ -6703,6 +6798,111 @@ def cmd_doctor(args):
     # Exit with error code if there are issues
     if issues:
         sys.exit(1)
+
+
+def cmd_bootstrap(args):
+    """Initialize everything for a fresh LARS installation.
+
+    Runs: lars db init, lars tools sync, lars models refresh
+    """
+    import time
+
+    print()
+    print("LARS Bootstrap - Fresh Installation Setup")
+    print("=" * 50)
+    print()
+
+    steps_completed = 0
+    steps_total = 3
+    if args.skip_db:
+        steps_total -= 1
+    if args.skip_tools:
+        steps_total -= 1
+    if args.skip_models:
+        steps_total -= 1
+
+    if steps_total == 0:
+        print("All steps skipped. Nothing to do.")
+        return
+
+    start_time = time.time()
+
+    # -------------------------------------------------------------------------
+    # Step 1: Database Initialization
+    # -------------------------------------------------------------------------
+    if not args.skip_db:
+        print(f"[{steps_completed + 1}/{steps_total}] Initializing database...")
+        print("-" * 50)
+        try:
+            from lars.db_adapter import ensure_housekeeping
+
+            ensure_housekeeping()
+            print("  Database initialized successfully.")
+            steps_completed += 1
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            print()
+            print("  Make sure ClickHouse is running. To start:")
+            print()
+            print("  docker run -d --name lars-clickhouse \\")
+            print("    -p 9000:9000 -p 8123:8123 \\")
+            print("    -e CLICKHOUSE_USER=lars \\")
+            print("    -e CLICKHOUSE_PASSWORD=lars \\")
+            print("    -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \\")
+            print("    -v lars-clickhouse-data:/var/lib/clickhouse \\")
+            print("    clickhouse/clickhouse-server:latest")
+            print()
+            sys.exit(1)
+        print()
+
+    # -------------------------------------------------------------------------
+    # Step 2: Tools Sync
+    # -------------------------------------------------------------------------
+    if not args.skip_tools:
+        print(f"[{steps_completed + 1}/{steps_total}] Syncing tools to database...")
+        print("-" * 50)
+        try:
+            from lars.tools_mgmt import sync_tools_to_db
+
+            sync_tools_to_db(force=True)
+            steps_completed += 1
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            sys.exit(1)
+        print()
+
+    # -------------------------------------------------------------------------
+    # Step 3: Models Refresh
+    # -------------------------------------------------------------------------
+    if not args.skip_models:
+        print(f"[{steps_completed + 1}/{steps_total}] Refreshing model catalog...")
+        print("-" * 50)
+        try:
+            from lars.models_mgmt import refresh_models
+
+            refresh_models(
+                skip_verification=args.skip_verification,
+                workers=args.workers
+            )
+            steps_completed += 1
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            sys.exit(1)
+        print()
+
+    # -------------------------------------------------------------------------
+    # Summary
+    # -------------------------------------------------------------------------
+    elapsed = time.time() - start_time
+    print("=" * 50)
+    print(f"Bootstrap complete! ({steps_completed}/{steps_total} steps)")
+    print(f"Elapsed time: {elapsed:.1f}s")
+    print()
+    print("Next steps:")
+    print("  - Run 'lars doctor' to verify installation")
+    print("  - Run 'lars serve studio' to start the web UI")
+    print("  - Run 'lars run cascades/examples/hello_world.yaml' to test")
+    print()
 
 
 if __name__ == "__main__":
