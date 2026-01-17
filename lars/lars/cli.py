@@ -6244,15 +6244,36 @@ def cmd_init(args):
         sql_conn_starter = starter_dir / 'sql_connections'
         if sql_conn_starter.exists():
             (workspace / 'sql_connections').mkdir(parents=True, exist_ok=True)
+            # Copy top-level YAML files
             for conn_file in sql_conn_starter.glob('*.yaml'):
                 copy_file(f'sql_connections/{conn_file.name}')
+            # Copy examples directory if it exists
+            examples_src = sql_conn_starter / 'examples'
+            examples_dst = workspace / 'sql_connections' / 'examples'
+            if examples_src.exists() and examples_src.is_dir():
+                if examples_dst.exists():
+                    print(f"  Skipped: sql_connections/examples (already exists)")
+                else:
+                    shutil.copytree(examples_src, examples_dst)
+                    print(f"  Copied:  sql_connections/examples/")
 
-    # Copy sample data SQL script (unless --minimal)
+    # Copy sample data (SQL scripts and CSV files) (unless --minimal)
     if not args.minimal:
         data_starter = starter_dir / 'data'
         if data_starter.exists():
+            (workspace / 'data').mkdir(parents=True, exist_ok=True)
+            # Copy SQL files
             for sql_file in data_starter.glob('*.sql'):
                 copy_file(f'data/{sql_file.name}')
+            # Copy csv_files directory if it exists
+            csv_src = data_starter / 'csv_files'
+            csv_dst = workspace / 'data' / 'csv_files'
+            if csv_src.exists() and csv_src.is_dir():
+                if csv_dst.exists():
+                    print(f"  Skipped: data/csv_files (already exists)")
+                else:
+                    shutil.copytree(csv_src, csv_dst)
+                    print(f"  Copied:  data/csv_files/")
 
     # Copy scripts (unless --minimal)
     if not args.minimal:
