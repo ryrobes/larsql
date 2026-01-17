@@ -94,7 +94,7 @@ FROM products
 # install
 pip install larsql
 
-# set your LLM API key (OpenRouter, or see docs site for others)
+# set your LLM API key (OpenRouter - see docs site for others)
 export OPENROUTER_API_KEY=sk-or-v1-...
 
 # set up clickhouse (docker or existing DB)

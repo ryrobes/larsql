@@ -232,7 +232,8 @@ def ensure_rag_index(
 
     # Scan directory for take files
     takes = _list_take_files(abs_dir, rag_config.recursive, include, exclude)
-    console.print(f"[dim]Found {len(takes)} take files for RAG indexing[/dim]")
+    console.print(f"[dim]Found {len(takes)} data files for RAG indexing[/dim]")
+    console.print("[dim](will likely take little while on the first run..._)[/dim]")
 
     # Track stats
     indexed_files = 0
