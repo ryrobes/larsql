@@ -17,14 +17,14 @@ cells:
     instructions: |
       Solve this: What is 15 + 27?
 
-      Use <thinking> tags to show your work:
-      <thinking>
+      Use <work> tags to show your calculation steps:
+      <work>
       Show your step-by-step calculation here.
-      </thinking>
+      </work>
 
-      Then give the final answer after the thinking tags.
+      Then give the final answer after the work tags.
     output_extraction:
-      pattern: "<thinking>(.*?)</thinking>"
+      pattern: "<work>(.*?)</work>"
       store_as: reasoning
       format: text
       required: false

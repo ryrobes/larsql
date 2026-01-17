@@ -352,6 +352,136 @@ class LazyAttachManager:
         for schema_name, tables in needed_clickhouse_tables.items():
             self._ensure_clickhouse_tables(schema_name, tables)
 
+    def attach_all(self, type_filter: Optional[str] = None) -> List[Dict[str, str]]:
+        """
+        Attach all configured connections at once.
+
+        This is used by LARS_AUTO_ATTACH_ALL to eagerly attach all databases
+        on session start, making them visible in SQL client object browsers.
+
+        Args:
+            type_filter: Optional type to filter (e.g., 'postgres', 'mysql')
+
+        Returns:
+            List of dicts with {connection, type, status, message} for each attempt
+        """
+        results: List[Dict[str, str]] = []
+        already_attached = self._attached_catalogs()
+
+        for name, cfg in sorted(self._configs.items()):
+            # Skip if type filter doesn't match
+            if type_filter and cfg.type != type_filter:
+                continue
+
+            # Skip types that don't create catalogs (handled differently)
+            if cfg.type in ("csv_folder", "duckdb_folder"):
+                # These are schema/table-based, not catalog-based
+                # For duckdb_folder, we could enumerate files and attach each
+                if cfg.type == "duckdb_folder":
+                    try:
+                        attached_files = self._attach_all_duckdb_folder_files(cfg)
+                        for file_name in attached_files:
+                            results.append({
+                                "connection": file_name,
+                                "type": "duckdb_file",
+                                "status": "attached",
+                                "message": f"from {name}/"
+                            })
+                    except Exception as e:
+                        results.append({
+                            "connection": name,
+                            "type": cfg.type,
+                            "status": "failed",
+                            "message": str(e)
+                        })
+                continue
+
+            # Already attached?
+            if name in already_attached:
+                results.append({
+                    "connection": name,
+                    "type": cfg.type,
+                    "status": "already_attached",
+                    "message": ""
+                })
+                continue
+
+            # Skip if previously failed
+            if name in self._failed_configs:
+                results.append({
+                    "connection": name,
+                    "type": cfg.type,
+                    "status": "skipped",
+                    "message": "previously failed"
+                })
+                continue
+
+            # Try to attach
+            try:
+                self._attach_config(cfg)
+                results.append({
+                    "connection": name,
+                    "type": cfg.type,
+                    "status": "attached",
+                    "message": ""
+                })
+            except Exception as e:
+                self._failed_configs.add(name)
+                results.append({
+                    "connection": name,
+                    "type": cfg.type,
+                    "status": "failed",
+                    "message": str(e)[:100]  # Truncate long error messages
+                })
+
+        return results
+
+    def _attach_all_duckdb_folder_files(self, cfg: SqlConnectionConfig) -> List[str]:
+        """Attach all .duckdb files from a duckdb_folder connection."""
+        attached = []
+        if not cfg.folder_path or not os.path.isdir(cfg.folder_path):
+            return attached
+
+        for db_file in Path(cfg.folder_path).glob("*.duckdb"):
+            db_name = sanitize_name(db_file.stem)
+            if db_name in self._attached_catalogs():
+                continue
+            try:
+                _attach_duckdb_read_only_with_snapshot_fallback(
+                    self._conn, db_file, db_name
+                )
+                attached.append(db_name)
+            except Exception as e:
+                log.debug("[lazy_attach] Failed to attach %s: %s", db_file.name, e)
+
+        return attached
+
+    def get_available_connections(self) -> List[Dict[str, str]]:
+        """
+        Get list of all configured connections with their status.
+
+        Returns:
+            List of dicts with {name, type, enabled, status} for each connection
+        """
+        attached = self._attached_catalogs()
+        results = []
+
+        for name, cfg in sorted(self._configs.items()):
+            status = "available"
+            if name in attached:
+                status = "attached"
+            elif name in self._failed_configs:
+                status = "failed"
+
+            results.append({
+                "name": name,
+                "type": cfg.type,
+                "enabled": cfg.enabled,
+                "status": status
+            })
+
+        return results
+
     # ---------------------------------------------------------------------
     # Attachment helpers
     # ---------------------------------------------------------------------
@@ -1404,6 +1534,12 @@ def _lazy_attach_enabled() -> bool:
 def _lazy_attach_csv_materialize() -> bool:
     val = os.environ.get("LARS_LAZY_ATTACH_CSV_MATERIALIZE", "0").strip().lower()
     return val in ("1", "true", "yes", "on")
+
+
+def _auto_attach_all_enabled() -> bool:
+    """Check if auto-attach-all is enabled (default: enabled)."""
+    val = os.environ.get("LARS_AUTO_ATTACH_ALL", "1").strip().lower()
+    return val not in ("0", "false", "no", "off")
 
 
 def _attach_duckdb_read_only_with_snapshot_fallback(duckdb_conn, db_file: Path, db_name: str, max_retries: int = 2) -> None:

@@ -175,8 +175,22 @@ class ClientConnection:
             # Non-fatal if config loading fails.
             try:
                 from ..sql_tools.config import load_sql_connections
-                from ..sql_tools.lazy_attach import LazyAttachManager
+                from ..sql_tools.lazy_attach import LazyAttachManager, _auto_attach_all_enabled
                 self._lazy_attach = LazyAttachManager(self.duckdb_conn, load_sql_connections())
+
+                # Auto-attach all configured connections on session start (enabled by default)
+                # This makes databases visible in SQL client object browsers immediately
+                if _auto_attach_all_enabled():
+                    try:
+                        results = self._lazy_attach.attach_all()
+                        attached = [r for r in results if r["status"] == "attached"]
+                        failed = [r for r in results if r["status"] == "failed"]
+                        if attached:
+                            styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
+                        if failed:
+                            styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
+                    except Exception as e:
+                        styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
             except Exception:
                 self._lazy_attach = None
 
@@ -5452,6 +5466,30 @@ class ClientConnection:
                     return
                 except Exception as e:
                     styled_print(f"[{self.session_id}]   {S.WARN}  SHOW RESULTS failed: {e}")
+                    result_df = pd.DataFrame({'error': [str(e)]})
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    return
+
+            # SHOW CONNECTIONS - list configured SQL connections and their status
+            if 'CONNECTIONS' in query_upper:
+                try:
+                    if self._lazy_attach is not None:
+                        connections = self._lazy_attach.get_available_connections()
+                        if connections:
+                            result_df = pd.DataFrame(connections)
+                        else:
+                            result_df = pd.DataFrame({
+                                'info': ['No SQL connections configured. Add YAML files to sql_connections/']
+                            })
+                    else:
+                        result_df = pd.DataFrame({
+                            'info': ['Lazy attach manager not initialized']
+                        })
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    styled_print(f"[{self.session_id}]   {S.OK} SHOW CONNECTIONS: {len(result_df)} entries")
+                    return
+                except Exception as e:
+                    styled_print(f"[{self.session_id}]   {S.WARN}  SHOW CONNECTIONS failed: {e}")
                     result_df = pd.DataFrame({'error': [str(e)]})
                     send_query_results(self.sock, result_df, self.transaction_status)
                     return

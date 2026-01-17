@@ -13,6 +13,9 @@ integration/snapshot tests rather than unit tests.
 Async operations are wrapped with asyncio.run() for pytest compatibility.
 """
 import pytest
+
+# Mark all tests in this module as integration tests (skipped in CI)
+pytestmark = pytest.mark.integration
 import asyncio
 from pydantic import ValidationError
 

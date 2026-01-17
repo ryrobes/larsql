@@ -33,11 +33,11 @@ def test_cell_config_validation():
     from lars.cascade import CellConfig
 
     # Should fail: neither tool nor instructions
-    with pytest.raises(ValueError, match="must have either"):
+    with pytest.raises(ValueError, match="must have exactly one of"):
         CellConfig(name="bad_cell")
 
     # Should fail: both tool and instructions
-    with pytest.raises(ValueError, match="can only have ONE of"):
+    with pytest.raises(ValueError, match="can only have ONE"):
         CellConfig(
             name="bad_cell",
             tool="mytool",
@@ -142,19 +142,18 @@ def test_render_inputs_basic():
 
     result = render_inputs(templates, context)
     assert result["name"] == "test"
-    # Note: plain numeric strings from Jinja2 are kept as strings
-    # JSON parsing only happens for JSON-like structures
-    assert result["count"] == "42"
+    # NativeEnvironment returns native Python objects, so integers stay as integers
+    assert result["count"] == 42
 
 
 def test_render_inputs_json_parsing():
-    """Test that JSON values are parsed correctly."""
+    """Test that template values are parsed correctly."""
     from lars.deterministic import render_inputs
 
     templates = {
-        "data": "{{ input.data | tojson }}",
-        "flag": "true",
-        "list": "[1, 2, 3]"
+        "data": "{{ input.data }}",  # NativeEnvironment returns native dict
+        "flag": "true",  # Literal string (no {{ }}) - stays as string
+        "list": "[1, 2, 3]"  # Literal string (no {{ }}) - stays as string
     }
 
     context = {
@@ -162,9 +161,11 @@ def test_render_inputs_json_parsing():
     }
 
     result = render_inputs(templates, context)
+    # NativeEnvironment returns native Python objects for template expressions
     assert result["data"] == {"key": "value"}
-    assert result["flag"] is True
-    assert result["list"] == [1, 2, 3]
+    # Literal strings without {{ }} pass through unchanged
+    assert result["flag"] == "true"
+    assert result["list"] == "[1, 2, 3]"
 
 
 def test_determine_routing_with_route_key():

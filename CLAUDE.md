@@ -170,6 +170,10 @@ LARS_DEFAULT_MODEL=anthropic/claude-sonnet-4
 LARS_CLICKHOUSE_HOST=clickhouse
 LARS_ELASTICSEARCH_HOST=http://localhost:9200
 
+# Optional - SQL Server (PGwire)
+LARS_AUTO_ATTACH_ALL=1       # Auto-attach all connections on session start (default: enabled)
+LARS_LAZY_ATTACH=1           # Enable lazy attach on query reference (default: enabled)
+
 # Optional - Integrations
 HF_TOKEN=hf_...              # HuggingFace Spaces
 ELEVENLABS_API_KEY=...       # Text-to-speech
@@ -233,6 +237,17 @@ psql -h localhost -p 5432 -U lars -d memory
 **Session routing:**
 - Database `memory` or `default` → ephemeral in-memory DuckDB
 - Any other name → persistent file at `session_dbs/{name}.duckdb`
+
+**Auto-attach (enabled by default):**
+On session start, all configured `sql_connections/*.yaml` are automatically attached to DuckDB. This makes external databases immediately visible in SQL client object browsers (DBeaver, DataGrip, etc.).
+
+```sql
+-- List all configured connections and their status
+SHOW CONNECTIONS;
+
+-- Disable auto-attach via environment variable
+-- LARS_AUTO_ATTACH_ALL=0
+```
 
 ### Query Rewriting Pipeline
 

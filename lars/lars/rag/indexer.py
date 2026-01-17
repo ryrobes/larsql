@@ -12,14 +12,14 @@ Uses ClickHouse's cosineDistance() for vector search - no Python similarity need
 import hashlib
 import json
 import os
-import time
-import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 
 from ..cascade import RagConfig
 from ..config import get_config
@@ -27,6 +27,10 @@ from ..agent import Agent
 from .context import RagContext
 
 console = Console()
+
+# Embedding batch configuration
+EMBED_BATCH_SIZE = 256  # Chunks per API call (most providers support 100-2048)
+EMBED_MAX_PARALLEL = 6  # Concurrent API calls
 
 
 @dataclass
@@ -174,6 +178,135 @@ def embed_texts(
     )
 
 
+def embed_texts_parallel(
+    texts: List[str],
+    model: Optional[str] = None,
+    session_id: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    cell_name: Optional[str] = None,
+    cascade_id: Optional[str] = None,
+    batch_size: int = EMBED_BATCH_SIZE,
+    max_parallel: int = EMBED_MAX_PARALLEL,
+) -> Dict[str, Any]:
+    """
+    Embed texts in parallel batches with progress feedback.
+
+    Splits texts into smaller batches and processes them concurrently
+    for better performance and resilience.
+
+    Returns dict with: embeddings, model, dim, tokens (total)
+    """
+    if not texts:
+        return {"embeddings": [], "model": model, "dim": 0, "tokens": 0}
+
+    # Split into batches (batch_index, batch_texts)
+    batches: List[List[str]] = [
+        texts[i:i + batch_size]
+        for i in range(0, len(texts), batch_size)
+    ]
+    total_batches = len(batches)
+
+    # If only one batch, just do it directly (no overhead)
+    if total_batches == 1:
+        result = embed_texts(
+            texts=texts,
+            model=model,
+            session_id=session_id,
+            trace_id=trace_id,
+            parent_id=parent_id,
+            cell_name=cell_name,
+            cascade_id=cascade_id,
+        )
+        return result
+
+    # Results storage - pre-allocate for correct ordering
+    batch_results: List[Optional[List[List[float]]]] = [None] * total_batches
+    embedding_dim = None
+    embedding_model = model
+    total_tokens = 0
+    failed_batches: List[Tuple[int, str]] = []
+
+    def process_batch(batch_idx: int, batch_texts: List[str]) -> Tuple[int, Dict[str, Any]]:
+        """Process a single batch and return (batch_index, result)."""
+        result = embed_texts(
+            texts=batch_texts,
+            model=model,
+            session_id=session_id,
+            trace_id=trace_id,
+            parent_id=parent_id,
+            cell_name=cell_name,
+            cascade_id=cascade_id,
+        )
+        return batch_idx, result
+
+    console.print(f"[dim]Embedding {len(texts):,} chunks in {total_batches} batches ({batch_size}/batch, {max_parallel} parallel)...[/dim]")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task(
+            f"[cyan]Embedding batches",
+            total=total_batches
+        )
+
+        with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+            # Submit all batches
+            futures = {
+                executor.submit(process_batch, idx, batch_texts): idx
+                for idx, batch_texts in enumerate(batches)
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                batch_idx = futures[future]
+                try:
+                    idx, result = future.result()
+                    batch_results[idx] = result["embeddings"]
+
+                    # Capture metadata from first successful result
+                    if embedding_dim is None:
+                        embedding_dim = result.get("dim")
+                        embedding_model = result.get("model", model)
+
+                    total_tokens += result.get("tokens", 0)
+
+                except Exception as e:
+                    failed_batches.append((batch_idx, str(e)))
+                    console.print(f"[yellow][WARN] Batch {batch_idx + 1} failed: {e}[/yellow]")
+
+                progress.advance(task)
+
+    # Check for failures
+    if failed_batches:
+        failed_indices = [idx for idx, _ in failed_batches]
+        raise RuntimeError(
+            f"Embedding failed for {len(failed_batches)} batches: {failed_indices}. "
+            f"First error: {failed_batches[0][1]}"
+        )
+
+    # Flatten results in correct order
+    all_embeddings: List[List[float]] = []
+    for batch_embeddings in batch_results:
+        if batch_embeddings:
+            all_embeddings.extend(batch_embeddings)
+
+    console.print(f"[dim]Embedded {len(all_embeddings):,} chunks ({total_tokens:,} tokens)[/dim]")
+
+    return {
+        "embeddings": all_embeddings,
+        "model": embedding_model,
+        "dim": embedding_dim or 0,
+        "tokens": total_tokens,
+    }
+
+
 def ensure_rag_index(
     rag_config: RagConfig,
     cascade_path: Optional[str],
@@ -233,7 +366,6 @@ def ensure_rag_index(
     # Scan directory for take files
     takes = _list_take_files(abs_dir, rag_config.recursive, include, exclude)
     console.print(f"[dim]Found {len(takes)} data files for RAG indexing[/dim]")
-    console.print("[dim](will likely take little while on the first run..._)[/dim]")
 
     # Track stats
     indexed_files = 0
@@ -300,11 +432,10 @@ def ensure_rag_index(
             all_text_chunks.append(chunk.text)
             chunk_file_mapping.append(len(files_to_process) - 1)  # Index into files_to_process
 
-    # Phase 2: Batch embed all chunks in one API call
+    # Phase 2: Embed all chunks in parallel batches
     all_embeddings = []
     if all_text_chunks:
-        console.print(f"[dim]Embedding {len(all_text_chunks)} chunks in single batch...[/dim]")
-        embed_result = embed_texts(
+        embed_result = embed_texts_parallel(
             texts=all_text_chunks,
             model=embed_model,
             session_id=session_id,

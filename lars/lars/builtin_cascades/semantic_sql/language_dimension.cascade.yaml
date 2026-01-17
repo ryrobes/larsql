@@ -23,6 +23,7 @@ sql_function:
   args:
     - name: text
       type: VARCHAR
+      role: dimension_source
   returns: VARCHAR
   shape: DIMENSION
   operators:

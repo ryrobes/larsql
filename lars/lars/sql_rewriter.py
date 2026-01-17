@@ -1050,10 +1050,11 @@ FROM lars_raw r
 
         if select_idx is not None:
             # Replace from SELECT onwards
+            select_cols_str = ',\n  '.join(select_cols)
             rewritten = '\n'.join(lines[:select_idx]) + f"""
 SELECT
   r.* EXCLUDE (_raw_result),
-  {',\n  '.join(select_cols)}
+  {select_cols_str}
 FROM lars_raw r
             """.strip()
 
