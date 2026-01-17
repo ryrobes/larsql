@@ -4,6 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: O'SASSY](https://img.shields.io/badge/license-O'SASSY%20(basically%20MIT)-8A2BE2)](https://osaasy.dev/)
 [![Docs](https://img.shields.io/badge/docs-larsql.com-cyan)](https://larsql.com/)
+[![License: O'SASSY](https://img.shields.io/badge/WORK%20IN%20PROGRESS!-8A2BE2)](https://larsql.com/)
 
 **Your team knows SQL. Why learn Python for AI?**
 

@@ -48,6 +48,8 @@ dependencies = [
     "ruamel.yaml",
     "sqlglot",
     "clickhouse-driver",
+    "clickhouse-connect",
+    "pandas",
     "flask",
     "flask-cors",
 ]
