@@ -370,8 +370,8 @@ const SqlTrailView = () => {
 
             {activeView === 'explorer' && (
               <QueryExplorer
-                queries={queriesData.queries}
-                total={queriesData.total}
+                queries={queriesData.queries.filter(q => q.query_type !== 'domain')}
+                total={queriesData.queries.filter(q => q.query_type !== 'domain').length}
                 onQuerySelect={handleQuerySelect}
               />
             )}
@@ -385,7 +385,7 @@ const SqlTrailView = () => {
 
             {activeView === 'patterns' && (
               <PatternsPanel
-                patterns={patternsData.patterns}
+                patterns={patternsData.patterns.filter(p => p.query_type !== 'domain')}
                 onPatternClick={(pattern) => {
                   // Could filter explorer by fingerprint
                   console.log('Pattern clicked:', pattern);
