@@ -511,6 +511,7 @@ def execute_cascade_udf(
     from ..session_naming import generate_woodland_id
     from ..caller_context import get_caller_id
     from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
+    from ..sql_tools.cache_adapter import get_cache
 
     # Get caller_id from context (set by postgres_server for SQL queries)
     caller_id = get_caller_id()
@@ -536,9 +537,47 @@ def execute_cascade_udf(
         # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
         cache_name = fn.cache_name
 
+        # Determine cache key strategy (fingerprint vs content-based)
+        cache_config = fn.cache_key_config or {}
+        cache_strategy = cache_config.get("strategy", "content")
+        use_fingerprint_cache = cache_strategy == "fingerprint" and fn.fingerprint_args
+        fingerprint_cache_key = None
+
+        if use_fingerprint_cache:
+            # Build fingerprint-based cache key
+            from .fingerprint import compute_fingerprint, make_fingerprint_cache_key, FingerprintMethod
+            fp_config = fn.fingerprint_config or {}
+            method_str = fp_config.get("method", "hybrid")
+            try:
+                method = FingerprintMethod(method_str)
+            except ValueError:
+                method = FingerprintMethod.HYBRID
+
+            fp_arg_name = fn.fingerprint_args[0]
+            fp_value = cleaned_inputs.get(fp_arg_name, "")
+            fingerprint = compute_fingerprint(str(fp_value), method)
+
+            # Build task from non-fingerprint args
+            task_parts = []
+            for arg_name, arg_value in sorted(cleaned_inputs.items()):
+                if arg_name not in fn.fingerprint_args:
+                    task_parts.append(str(arg_value))
+            task = "|".join(task_parts)
+
+            fingerprint_cache_key = make_fingerprint_cache_key(cache_name, fingerprint, task)
+            print(f"[cascade_udf] Fingerprint caching: {fp_arg_name}={fp_value!r} → fp={fingerprint!r} → key={fingerprint_cache_key[:12]}")
+
         # Check cache (only if no takes - takes bypass cache for fresh sampling)
         if use_cache and not takes_config:
-            found, cached = get_cached_result(cache_name, cleaned_inputs)
+            if use_fingerprint_cache and fingerprint_cache_key:
+                # Use fingerprint-based cache lookup
+                cache = get_cache()
+                found, cached, _ = cache.get(cache_name, {"__fingerprint_key__": fingerprint_cache_key})
+                print(f"[cascade_udf] Fingerprint cache lookup: key={fingerprint_cache_key[:12]} found={found}")
+            else:
+                # Use content-based cache lookup
+                found, cached = get_cached_result(cache_name, cleaned_inputs)
+
             if found:
                 log.debug(f"[cascade_udf] Cache hit for {cascade_id} (cache_name={cache_name})")
                 # Track cache hit for SQL Trail
@@ -630,7 +669,11 @@ def execute_cascade_udf(
 
             # Cache the SQL statement (not the results file)
             if use_cache and not takes_config:
-                set_cached_result(cache_name, cleaned_inputs, sql_statement)
+                if use_fingerprint_cache and fingerprint_cache_key:
+                    cache = get_cache()
+                    cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_statement)
+                else:
+                    set_cached_result(cache_name, cleaned_inputs, sql_statement)
 
             return temp_path
 
@@ -643,7 +686,11 @@ def execute_cascade_udf(
 
             # Cache the SQL fragment
             if use_cache and not takes_config:
-                set_cached_result(cache_name, cleaned_inputs, sql_fragment)
+                if use_fingerprint_cache and fingerprint_cache_key:
+                    cache = get_cache()
+                    cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_fragment)
+                else:
+                    set_cached_result(cache_name, cleaned_inputs, sql_fragment)
 
             # Bind and execute
             bound_sql = bind_sql_parameters(sql_fragment, cleaned_inputs, fn.args)
@@ -654,7 +701,11 @@ def execute_cascade_udf(
         if fn.output_mode == 'sql_raw':
             sql_raw = str(output).strip()
             if use_cache and not takes_config:
-                set_cached_result(cache_name, cleaned_inputs, sql_raw)
+                if use_fingerprint_cache and fingerprint_cache_key:
+                    cache = get_cache()
+                    cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, sql_raw)
+                else:
+                    set_cached_result(cache_name, cleaned_inputs, sql_raw)
             return sql_raw
 
         # Post-process based on return type (for output_mode: value)
@@ -677,7 +728,12 @@ def execute_cascade_udf(
 
         # Cache result (but not takes runs - they're for fresh sampling)
         if use_cache and not takes_config:
-            set_cached_result(cache_name, cleaned_inputs, output)
+            if use_fingerprint_cache and fingerprint_cache_key:
+                cache = get_cache()
+                cache.set(cache_name, {"__fingerprint_key__": fingerprint_cache_key}, output)
+                print(f"[cascade_udf] Cached with fingerprint key: {fingerprint_cache_key[:12]}")
+            else:
+                set_cached_result(cache_name, cleaned_inputs, output)
 
         # Return as JSON if complex, otherwise as string
         if isinstance(output, (dict, list)):

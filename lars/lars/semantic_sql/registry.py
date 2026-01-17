@@ -415,7 +415,9 @@ def _make_fingerprint_cache_key(
             task_parts.append(str(arg_value))
     task = "|".join(task_parts)
 
-    return make_fingerprint_cache_key(cache_name, fingerprint, task)
+    cache_key = make_fingerprint_cache_key(cache_name, fingerprint, task)
+    print(f"[fingerprint] fn={cache_name} fp_arg={fp_arg_name!r} value={fp_value!r} → fingerprint={fingerprint!r} task={task[:50]!r} → key={cache_key[:12]}")
+    return cache_key
 
 
 def get_cached_result(name: str, args: Dict[str, Any]) -> Tuple[bool, Any]:
@@ -558,6 +560,9 @@ async def execute_sql_function(
     # For fingerprint strategy, use fingerprint-based cache key
     use_fingerprint_cache = cache_strategy == "fingerprint" and fn.fingerprint_args
 
+    # Debug: log cache strategy
+    print(f"[sql_fn] {name}: cache_strategy={cache_strategy!r} fingerprint_args={fn.fingerprint_args!r} use_fingerprint={use_fingerprint_cache}")
+
     # Use cache_name to allow cache sharing (e.g., ask_data + ask_data_sql)
     cache_name = fn.cache_name
 
@@ -579,6 +584,7 @@ async def execute_sql_function(
         # For fingerprint strategy, check cache using fingerprint-based key
         if use_fingerprint_cache:
             found, cached, _ = cache.get(cache_name, {"__fingerprint_key__": cache_key})
+            print(f"[sql_fn] Fingerprint cache lookup: key={cache_key[:12]} found={found}")
             if found:
                 log.debug(f"[sql_fn] Cache hit (fingerprint key) for {name} (cache_name={cache_name})")
         # For structure strategy, check cache using structure-based key
