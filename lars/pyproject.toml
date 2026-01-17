@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "larsql"
-version = "2.2.12"
+version = "2.2.13"
 description = "LARS: Declarative agent framework with first class SQL integration"
 readme = "README.md"
 requires-python = ">=3.10"
