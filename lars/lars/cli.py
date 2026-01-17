@@ -5631,33 +5631,21 @@ def cmd_serve_studio(args):
     """Start LARS Studio web UI backend."""
     import subprocess
 
-    # Find studio directory relative to this file or LARS_ROOT
-    studio_backend_dir = None
+    # Studio backend lives in the package at lars/lars/studio/backend/
+    # This is the single source of truth - edit there for both dev and prod.
+    # Frontend source (for npm start) lives at repo's studio/frontend/ (not bundled).
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    studio_backend_dir = os.path.join(package_dir, 'studio', 'backend')
+    frontend_build_dir = os.path.join(package_dir, 'studio', 'frontend_build')
 
-    # Try relative to LARS_ROOT if set
-    lars_root = os.environ.get('LARS_ROOT')
-    if lars_root:
-        take = os.path.join(lars_root, 'studio', 'backend')
-        if os.path.exists(take):
-            studio_backend_dir = take
-
-    # Try relative to this file (lars package location)
-    if not studio_backend_dir:
-        package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        # Go up to repo root
-        repo_root = os.path.dirname(package_dir)
-        take = os.path.join(repo_root, 'studio', 'backend')
-        if os.path.exists(take):
-            studio_backend_dir = take
-
-    if not studio_backend_dir:
+    if not os.path.exists(studio_backend_dir):
         styled_print(f"{S.ERR} Could not find studio/backend directory.")
-        print("   Set LARS_ROOT environment variable or run from the lars repo.")
+        print(f"   Expected at: {studio_backend_dir}")
+        print("   This may indicate a broken installation. Try reinstalling lars.")
         sys.exit(1)
 
     # Check for built frontend
-    frontend_build_dir = os.path.join(os.path.dirname(studio_backend_dir), 'frontend', 'build')
-    has_built_frontend = os.path.exists(frontend_build_dir) and os.path.exists(
+    has_built_frontend = frontend_build_dir and os.path.exists(
         os.path.join(frontend_build_dir, 'index.html')
     )
 
@@ -6510,11 +6498,33 @@ def cmd_doctor(args):
     else:
         print(f"  Structure:       OK (all expected directories present)")
 
-    # Count cascades and skills
-    cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
-    skills_count = len(list((root_path / 'skills').rglob('*.yaml'))) + len(list((root_path / 'skills').rglob('*.json'))) + len(list((root_path / 'skills').rglob('*.py')))
-    print(f"  Cascades:        {cascade_count} files")
-    print(f"  Skills:          {skills_count} files")
+    # Count user cascades and skills
+    user_cascade_count = len(list((root_path / 'cascades').rglob('*.yaml'))) + len(list((root_path / 'cascades').rglob('*.json')))
+    user_skills_count = len(list((root_path / 'skills').rglob('*.yaml'))) + len(list((root_path / 'skills').rglob('*.json'))) + len(list((root_path / 'skills').rglob('*.py')))
+
+    # Count builtin cascades and skills
+    from .config import get_builtin_cascades_dir, get_builtin_skills_dir
+    builtin_cascades_dir = Path(get_builtin_cascades_dir())
+    builtin_skills_dir = Path(get_builtin_skills_dir())
+
+    builtin_cascade_count = 0
+    builtin_skills_count = 0
+    builtin_operators_count = 0
+
+    if builtin_cascades_dir.exists():
+        builtin_cascade_count = len(list(builtin_cascades_dir.rglob('*.yaml'))) + len(list(builtin_cascades_dir.rglob('*.json')))
+        # Count semantic SQL operators specifically
+        semantic_sql_dir = builtin_cascades_dir / 'semantic_sql'
+        if semantic_sql_dir.exists():
+            builtin_operators_count = len(list(semantic_sql_dir.glob('*.yaml')))
+
+    if builtin_skills_dir.exists():
+        builtin_skills_count = len(list(builtin_skills_dir.rglob('*.yaml'))) + len(list(builtin_skills_dir.rglob('*.json')))
+
+    print(f"  User cascades:   {user_cascade_count} files")
+    print(f"  User skills:     {user_skills_count} files")
+    print(f"  Builtin cascades: {builtin_cascade_count} files (including {builtin_operators_count} semantic SQL operators)")
+    print(f"  Builtin skills:  {builtin_skills_count} files")
 
     print()
 

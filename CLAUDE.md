@@ -55,17 +55,18 @@ Test markers: `requires_llm`, `requires_clickhouse`, `integration`
 ### Studio (Web UI)
 
 ```bash
-# Quick start
+# Quick start (backend only, use with npm start for frontend dev)
 lars serve studio --dev
 
-# Or manually:
-cd studio/backend && python app.py      # Port 5050
+# Frontend development (in separate terminal)
 cd studio/frontend && npm start         # Port 5550 (proxies to 5050)
 
 # Production build
-cd studio/frontend && npm run build
+./scripts/build-studio-frontend.sh
 lars serve studio
 ```
+
+Note: Backend source lives in `lars/lars/studio/backend/` (single source for both dev and prod).
 
 ### Docker
 
