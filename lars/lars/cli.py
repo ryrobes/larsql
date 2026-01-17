@@ -5653,7 +5653,7 @@ def cmd_serve_studio(args):
     # Use current working directory as workspace (user's project dir)
     from lars.config import get_config
     config = get_config()
-    workspace_root = config.lars_root
+    workspace_root = config.root_dir
 
     styled_print(f"{S.CASCADE} LARS Studio")
     print(f"   Workspace: {workspace_root}")
