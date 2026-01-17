@@ -192,7 +192,23 @@ def main():
     # db init (ensure schema exists)
     db_init_parser = db_subparsers.add_parser(
         'init',
-        help='Initialize ClickHouse schema (create tables if needed)'
+        help='Initialize ClickHouse schema and run full bootstrap (tools, models, sql crawl, doctor)'
+    )
+    db_init_parser.add_argument(
+        '--only',
+        action='store_true',
+        help='Only initialize database schema, skip bootstrap steps'
+    )
+    db_init_parser.add_argument(
+        '--skip-verification',
+        action='store_true',
+        help='Skip model verification during bootstrap (faster)'
+    )
+    db_init_parser.add_argument(
+        '--workers', '-w',
+        type=int,
+        default=10,
+        help='Number of parallel workers for model refresh (default: 10)'
     )
 
     # db migrate (run pending migrations)
@@ -333,7 +349,7 @@ def main():
     sql_crawl_parser = sql_subparsers.add_parser(
         'crawl',
         help='Discover and index all SQL database schemas (crawl connections and build RAG index)',
-        aliases=['discover', 'scan']  # Allow 'lars sql discover' or 'lars sql scan'
+        aliases=['discover', 'scan', 'refresh']  # Allow 'lars sql refresh' to match 'lars models refresh'
     )
     sql_crawl_parser.add_argument(
         '--session',
@@ -702,7 +718,8 @@ def main():
     # tools sync
     tools_sync_parser = tools_subparsers.add_parser(
         'sync',
-        help='Sync tool manifest to database'
+        help='Sync tool manifest to database',
+        aliases=['refresh']  # Allow 'lars tools refresh' to match 'lars models refresh'
     )
     tools_sync_parser.add_argument(
         '--force',
@@ -1147,7 +1164,7 @@ def main():
     # Bootstrap command - Initialize everything for a fresh installation
     bootstrap_parser = subparsers.add_parser(
         'bootstrap',
-        help='Initialize database, sync tools, and refresh models (for fresh installations)'
+        help='Full setup: sync tools, refresh models, discover SQL schemas, run doctor'
     )
     bootstrap_parser.add_argument(
         '--skip-db',
@@ -1163,6 +1180,11 @@ def main():
         '--skip-models',
         action='store_true',
         help='Skip models refresh'
+    )
+    bootstrap_parser.add_argument(
+        '--skip-sql-crawl',
+        action='store_true',
+        help='Skip SQL schema discovery'
     )
     bootstrap_parser.add_argument(
         '--skip-verification',
@@ -1288,7 +1310,7 @@ def main():
             cmd_sql(args)
         elif args.sql_command == 'server' or args.sql_command == 'serve':
             cmd_sql_server(args)
-        elif args.sql_command in ('crawl', 'discover', 'scan'):
+        elif args.sql_command in ('crawl', 'discover', 'scan', 'refresh'):
             cmd_sql_crawl(args)
         elif args.sql_command in ('semantic', 'sem', 'ssql'):
             cmd_sql_semantic(args)
@@ -1427,7 +1449,7 @@ def main():
             models_parser.print_help()
             sys.exit(1)
     elif args.command == 'tools':
-        if args.tools_command == 'sync':
+        if args.tools_command in ('sync', 'refresh'):
             cmd_tools_sync(args)
         elif args.tools_command == 'list':
             cmd_tools_list(args)
@@ -3028,7 +3050,7 @@ def cmd_db_status(args):
 
 
 def cmd_db_init(args):
-    """Initialize ClickHouse schema (create tables and run migrations)."""
+    """Initialize ClickHouse schema and optionally run full bootstrap."""
     from lars.config import get_clickhouse_url
     from lars.db_adapter import ensure_housekeeping
 
@@ -3049,8 +3071,6 @@ def cmd_db_init(args):
         print()
         styled_print(f"{S.OK} Schema initialization complete!")
         print()
-        print("Run 'lars db status' to view table statistics.")
-        print()
 
     except Exception as e:
         print(f"✗ Schema initialization failed: {e}")
@@ -3058,6 +3078,30 @@ def cmd_db_init(args):
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+    # If --only flag, stop here
+    if getattr(args, 'only', False):
+        print("Run 'lars db status' to view table statistics.")
+        print()
+        return
+
+    # Otherwise, continue with full bootstrap (tools, models, sql crawl, doctor)
+    print()
+    print("="*60)
+    print("CONTINUING WITH BOOTSTRAP...")
+    print("="*60)
+    print()
+
+    # Create a fake args object for bootstrap with the flags we need
+    class BootstrapArgs:
+        skip_db = True  # Already done
+        skip_tools = False
+        skip_models = False
+        skip_sql_crawl = False
+        skip_verification = getattr(args, 'skip_verification', False)
+        workers = getattr(args, 'workers', 10)
+
+    cmd_bootstrap(BootstrapArgs())
 
 
 def cmd_db_migrate(args):
@@ -6824,7 +6868,7 @@ def cmd_doctor(args):
 def cmd_bootstrap(args):
     """Initialize everything for a fresh LARS installation.
 
-    Runs: lars db init, lars tools sync, lars models refresh
+    Runs: lars db init, lars tools sync, lars models refresh, lars sql crawl
     """
     import time
 
@@ -6834,12 +6878,14 @@ def cmd_bootstrap(args):
     print()
 
     steps_completed = 0
-    steps_total = 3
+    steps_total = 4
     if args.skip_db:
         steps_total -= 1
     if args.skip_tools:
         steps_total -= 1
     if args.skip_models:
+        steps_total -= 1
+    if args.skip_sql_crawl:
         steps_total -= 1
 
     if steps_total == 0:
@@ -6912,6 +6958,22 @@ def cmd_bootstrap(args):
         print()
 
     # -------------------------------------------------------------------------
+    # Step 4: SQL Schema Discovery
+    # -------------------------------------------------------------------------
+    if not args.skip_sql_crawl:
+        print(f"[{steps_completed + 1}/{steps_total}] Discovering SQL schemas...")
+        print("-" * 50)
+        try:
+            from lars.sql_tools.discovery import discover_all_schemas
+
+            discover_all_schemas(session_id=None)
+            steps_completed += 1
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            print("  (This step is optional - you can run 'lars sql crawl' later)")
+        print()
+
+    # -------------------------------------------------------------------------
     # Summary
     # -------------------------------------------------------------------------
     elapsed = time.time() - start_time
@@ -6919,8 +6981,24 @@ def cmd_bootstrap(args):
     print(f"Bootstrap complete! ({steps_completed}/{steps_total} steps)")
     print(f"Elapsed time: {elapsed:.1f}s")
     print()
+
+    # -------------------------------------------------------------------------
+    # Run Doctor to verify installation
+    # -------------------------------------------------------------------------
+    print()
+    print("=" * 50)
+    print("VERIFYING INSTALLATION...")
+    print("=" * 50)
+    print()
+
+    # Create a fake args object for doctor
+    class DoctorArgs:
+        fix = False
+
+    cmd_doctor(DoctorArgs())
+
+    print()
     print("Next steps:")
-    print("  - Run 'lars doctor' to verify installation")
     print("  - Run 'lars serve studio' to start the web UI")
     print("  - Run 'lars run cascades/examples/hello_world.yaml' to test")
     print()

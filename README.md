@@ -92,14 +92,36 @@ FROM products
 # Install
 pip install larsql
 
-# Set your LLM API key (OpenRouter, or see docs for others)
+# Set your LLM API key (OpenRouter, or see docs site for others)
 export OPENROUTER_API_KEY=sk-or-v1-...
+
+# set up clickhouse (docker or existing DB, change mem/cpu as needed)
+docker run -d \
+  --name lars-clickhouse \
+  --ulimit nofile=262144:262144 \
+  -p 8123:8123 \
+  -p 9000:9000 \
+  -p 9009:9009 \
+  -v clickhouse-data:/var/lib/clickhouse \
+  -v clickhouse-logs:/var/log/clickhouse-server \
+  -e CLICKHOUSE_USER=lars \
+  -e CLICKHOUSE_PASSWORD=lars \
+  --memory=8g \
+  --cpus=4 \
+  clickhouse/clickhouse-server:25.11
+
+# init the database and refresh the metadata
+lars db init 
 
 # Start the SQL server (PostgreSQL wire protocol)
 lars serve sql --port 15432
 
 # Connect with any SQL client
 psql postgresql://localhost:15432/default
+
+# Optional - start the web UI admin/studio tool
+lars serve studio
+# runs at http://localhost:5050
 ```
 
 That's it. Run semantic queries from DBeaver, DataGrip, psql, Tableau, or any PostgreSQL client.
