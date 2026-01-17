@@ -11,6 +11,7 @@ import KPICard from '../receipts/components/KPICard';
 import { useCredits } from '../../hooks/useCredits';
 import { ROUTES } from '../../routes.helpers';
 import './CascadesView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -264,7 +265,7 @@ const CascadesView = () => {
   const fetchCascades = async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:5050/api/cascade-definitions');
+      const res = await fetch(`${API_BASE_URL}/api/cascade-definitions`);
       const data = await res.json();
 
       if (data.error) {
@@ -286,7 +287,7 @@ const CascadesView = () => {
     try {
       setLoading(true);
       // Use sessions API instead - much faster (no expensive batch queries)
-      const res = await fetch(`http://localhost:5050/api/sessions?cascade_id=${cascadeId}&limit=100`);
+      const res = await fetch(`${API_BASE_URL}/api/sessions?cascade_id=${cascadeId}&limit=100`);
       const data = await res.json();
 
       if (data.error) {
@@ -338,7 +339,7 @@ const CascadesView = () => {
   // Fetch global KPIs (for base cascades page)
   const fetchGlobalKpis = async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/console/kpis');
+      const res = await fetch(`${API_BASE_URL}/api/console/kpis`);
       const data = await res.json();
 
       if (data.error) {

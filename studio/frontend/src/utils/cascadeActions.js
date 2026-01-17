@@ -3,6 +3,7 @@
  *
  * Reusable functions for cascade lifecycle management across views.
  */
+import { API_BASE_URL } from '../config/api';
 
 /**
  * Cancel a running cascade
@@ -20,7 +21,7 @@ export async function cancelCascade(sessionId, reason = 'User requested cancella
   try {
     console.log('[cancelCascade] Requesting cancellation for:', sessionId, { force });
 
-    const res = await fetch('http://localhost:5050/api/cancel-cascade', {
+    const res = await fetch(`${API_BASE_URL}/api/cancel-cascade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -79,7 +80,7 @@ export async function startCascade(cascadePath, inputs = {}, sessionId = null) {
       body.session_id = sessionId;
     }
 
-    const res = await fetch('http://localhost:5050/api/run-cascade', {
+    const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

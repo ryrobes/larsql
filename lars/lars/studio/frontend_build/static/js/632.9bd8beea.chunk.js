@@ -1,2 +1,0 @@
-"use strict";(self.webpackChunklars_ui=self.webpackChunklars_ui||[]).push([[632],{10632:(s,a,p)=>{p.r(a),p.d(a,{default:()=>t});p(65043);var e=p(70579);const t=()=>{const s="5550"===window.location.port?"http://localhost:5050/apps/":"/apps/";return(0,e.jsx)("div",{className:"apps-view",children:(0,e.jsx)("iframe",{src:s,className:"apps-iframe",title:"LARS Apps"})})}}}]);
-//# sourceMappingURL=632.9bd8beea.chunk.js.map

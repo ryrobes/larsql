@@ -6,6 +6,7 @@ import CascadeSwimlane from './components/CascadeSwimlane';
 import CellDetailModal from './components/CellDetailModal';
 import TaggedView from './components/TaggedView';
 import './OutputsView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // localStorage key for persisting filters
 const STORAGE_KEY = 'lars-outputs-filters';
@@ -74,7 +75,7 @@ const OutputsView = () => {
   // Fetch available tags
   const fetchAvailableTags = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:5050/api/outputs/tags');
+      const response = await fetch(`${API_BASE_URL}/api/outputs/tags`);
       const data = await response.json();
       if (data.tags) {
         setAvailableTags(data.tags);
@@ -117,7 +118,7 @@ const OutputsView = () => {
       }
       // Note: Tag filtering for swimlanes could be added later if needed
 
-      const response = await fetch(`http://localhost:5050/api/outputs/swimlanes?${params}`);
+      const response = await fetch(`${API_BASE_URL}/api/outputs/swimlanes?${params}`);
       const data = await response.json();
 
       if (data.error) {
@@ -142,7 +143,7 @@ const OutputsView = () => {
   useEffect(() => {
     const fetchAllCascadeIds = async () => {
       try {
-        const response = await fetch('http://localhost:5050/api/outputs/cascade-ids');
+        const response = await fetch(`${API_BASE_URL}/api/outputs/cascade-ids`);
         const data = await response.json();
         if (data.cascade_ids) {
           // Extract just the cascade_id strings from the response objects
@@ -162,7 +163,7 @@ const OutputsView = () => {
     setExpandedLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:5050/api/outputs/cascade/${cascadeId}/runs?limit=50`);
+      const response = await fetch(`${API_BASE_URL}/api/outputs/cascade/${cascadeId}/runs?limit=50`);
       const data = await response.json();
 
       if (data.error) {
@@ -192,7 +193,7 @@ const OutputsView = () => {
   const fetchCellDetail = useCallback(async (messageId) => {
     setCellDetailLoading(true);
     try {
-      const response = await fetch(`http://localhost:5050/api/outputs/cell/${messageId}`);
+      const response = await fetch(`${API_BASE_URL}/api/outputs/cell/${messageId}`);
       const data = await response.json();
 
       if (data.error) {

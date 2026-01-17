@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { deriveCellState } from '../utils/deriveCellState';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * useTimelinePolling - Poll session execution logs for Timeline builder
@@ -61,7 +62,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
 
       if (isReplayMode) {
         // REPLAY MODE: Fetch all data once (full replacement)
-        url = `http://localhost:5050/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
       } else {
         // LIVE MODE: Incremental updates using cursor
         const now = new Date();
@@ -69,7 +70,7 @@ export function useTimelinePolling(sessionId, isRunning, isReplayMode = false) {
         const lookbackTimestamp = lookbackTime.toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
         const effectiveCursor = cursorRef.current < lookbackTimestamp ? cursorRef.current : lookbackTimestamp;
 
-        url = `http://localhost:5050/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
+        url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(effectiveCursor)}`;
       }
 
       const response = await fetch(url);

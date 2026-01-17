@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './NgramAnalysis.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * NgramBar - Visual bar showing winner/loser frequency
@@ -96,7 +97,7 @@ const NgramAnalysis = ({ cascadeId, cellName, speciesHash }) => {
         params.append('species_hash', speciesHash);
       }
 
-      const url = `http://localhost:5050/api/sextant/prompt-patterns/${cascadeId}/${cellName}${params.toString() ? '?' + params.toString() : ''}`;
+      const url = `${API_BASE_URL}/api/sextant/prompt-patterns/${cascadeId}/${cellName}${params.toString() ? '?' + params.toString() : ''}`;
       console.log('[NgramAnalysis] Fetching from:', url);
 
       const res = await fetch(url);

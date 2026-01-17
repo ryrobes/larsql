@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './CascadeBrowserModal.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * CascadeBrowserModal - Modal for browsing and loading cascade files (Studio version)
@@ -29,7 +30,7 @@ function CascadeBrowserModal({ isOpen, onClose, onLoad }) {
     setError(null);
 
     // Fetch from Studio API (includes all cascade files, not just data cascades)
-    fetch('http://localhost:5050/api/playground/browse')
+    fetch(`${API_BASE_URL}/api/playground/browse`)
       .then(res => res.json())
       .then(data => {
         if (data.error) {

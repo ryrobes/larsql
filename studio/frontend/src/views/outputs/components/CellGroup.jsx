@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
 import './CellGroup.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * Get base content type (handles hierarchical types like 'tool_call:request_decision')
@@ -77,14 +78,14 @@ const getImageUrl = (images, content) => {
   if (images && images.length > 0) {
     const img = images[0];
     if (typeof img === 'string') {
-      return img.startsWith('http') ? img : `http://localhost:5050${img}`;
+      return img.startsWith('http') ? img : `${API_BASE_URL}${img}`;
     }
     if (img.url) {
-      return img.url.startsWith('http') ? img.url : `http://localhost:5050${img.url}`;
+      return img.url.startsWith('http') ? img.url : `${API_BASE_URL}${img.url}`;
     }
   }
   if (content && typeof content === 'object' && content.url) {
-    return content.url.startsWith('http') ? content.url : `http://localhost:5050${content.url}`;
+    return content.url.startsWith('http') ? content.url : `${API_BASE_URL}${content.url}`;
   }
   return null;
 };

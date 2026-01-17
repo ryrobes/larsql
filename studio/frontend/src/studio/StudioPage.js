@@ -17,6 +17,7 @@ import CascadeBrowserModal from './components/CascadeBrowserModal';
 import ContextExplorerSidebar from './components/ContextExplorerSidebar';
 import './editors'; // Initialize cell editor registry
 import './StudioPage.css';
+import { API_BASE_URL } from '../config/api';
 
 function StudioPage() {
   // Get route parameters from React Router
@@ -539,7 +540,7 @@ function StudioPage() {
 
         try {
           // First, check if this session is currently running
-          const statusRes = await fetch(`http://localhost:5050/api/sessions/${initialSession}`);
+          const statusRes = await fetch(`${API_BASE_URL}/api/sessions/${initialSession}`);
           const statusData = await statusRes.json();
 
           const isActiveSession = statusData.session_id &&

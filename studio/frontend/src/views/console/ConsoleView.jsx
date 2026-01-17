@@ -9,6 +9,7 @@ import KPICard from '../receipts/components/KPICard';
 import { useCredits } from '../../hooks/useCredits';
 import { ROUTES } from '../../routes.helpers';
 import './ConsoleView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -224,7 +225,7 @@ const ConsoleView = () => {
       }
 
       // Use sessions API with limit parameter
-      const res = await fetch('http://localhost:5050/api/sessions?limit=100');
+      const res = await fetch(`${API_BASE_URL}/api/sessions?limit=100`);
       const data = await res.json();
 
       if (data.error) {
@@ -300,7 +301,7 @@ const ConsoleView = () => {
   // Fetch KPIs from console/kpis API
   const fetchKpis = async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/console/kpis');
+      const res = await fetch(`${API_BASE_URL}/api/console/kpis`);
       const data = await res.json();
 
       if (data.error) {

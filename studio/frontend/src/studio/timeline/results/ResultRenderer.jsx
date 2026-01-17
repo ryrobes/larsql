@@ -8,6 +8,7 @@ import RichMarkdown from '../../../components/RichMarkdown';
 import AnsiRenderer from '../../../components/AnsiRenderer';
 import { Modal } from '../../../components';
 import { configureMonacoTheme, STUDIO_THEME_NAME } from '../../utils/monacoTheme';
+import { API_BASE_URL } from '../../../config/api';
 
 // Create Plot component
 const Plot = createPlotlyComponent(Plotly);
@@ -177,7 +178,7 @@ const ResultRenderer = ({ result, error, images }) => {
             // imagePath is like: "/api/images/shy-pika-4e58df/riverflow_v2_max_preview/image_0.png"
             const imageUrl = imagePath.startsWith('http')
               ? imagePath
-              : `http://localhost:5050${imagePath}`;
+              : `${API_BASE_URL}${imagePath}`;
 
             return (
               <div key={idx} className="cell-detail-image">
@@ -425,7 +426,7 @@ const ResultRenderer = ({ result, error, images }) => {
               {browserImages.map((imageData, idx) => {
                 // imageData is a base64 data URL like "data:image/jpeg;base64,..."
                 const isDataUrl = typeof imageData === 'string' && imageData.startsWith('data:');
-                const imageUrl = isDataUrl ? imageData : `http://localhost:5050${imageData}`;
+                const imageUrl = isDataUrl ? imageData : `${API_BASE_URL}${imageData}`;
                 return (
                   <div
                     key={idx}
@@ -462,7 +463,7 @@ const ResultRenderer = ({ result, error, images }) => {
           <div className="browser-result-section">
             <h4 className="browser-result-section-title">Video Recording</h4>
             <a
-              href={`http://localhost:5050/api/browser-media/${videoPath}`}
+              href={`${API_BASE_URL}/api/browser-media/${videoPath}`}
               target="_blank"
               rel="noopener noreferrer"
               className="browser-result-video-link"
@@ -539,7 +540,7 @@ const ResultRenderer = ({ result, error, images }) => {
             <div className="browser-result-thumbnails">
               {screenshots.map((screenshot, idx) => {
                 const imageUrl = screenshot.path
-                  ? `http://localhost:5050/api/browser-media/${screenshot.path}`
+                  ? `${API_BASE_URL}/api/browser-media/${screenshot.path}`
                   : screenshot.full_path;
                 return (
                   <div
@@ -565,7 +566,7 @@ const ResultRenderer = ({ result, error, images }) => {
               {domSnapshots.map((snapshot, idx) => (
                 <a
                   key={idx}
-                  href={`http://localhost:5050/api/browser-media/${snapshot.path}`}
+                  href={`${API_BASE_URL}/api/browser-media/${snapshot.path}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="browser-result-pill"
@@ -583,7 +584,7 @@ const ResultRenderer = ({ result, error, images }) => {
           <div className="browser-result-section">
             <h4 className="browser-result-section-title">Video Recording</h4>
             <a
-              href={`http://localhost:5050/api/browser-media/${videoPath}`}
+              href={`${API_BASE_URL}/api/browser-media/${videoPath}`}
               target="_blank"
               rel="noopener noreferrer"
               className="browser-result-video-link"

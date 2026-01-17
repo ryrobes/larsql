@@ -13,6 +13,7 @@ import LinearInfluenceView from './components/LinearInfluenceView';
 import EvolveModal from './components/EvolveModal';
 import { ROUTES } from '../../routes.helpers';
 import './EvolutionView.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * EvolutionView - Prompt evolution and optimization observatory
@@ -80,7 +81,7 @@ const EvolutionView = () => {
   const fetchCascades = async () => {
     try {
       setLoadingCascades(true);
-      const res = await fetch('http://localhost:5050/api/sextant/cascades');
+      const res = await fetch(`${API_BASE_URL}/api/sextant/cascades`);
       const data = await res.json();
       setCascades(data.cascades || []);
     } catch (err) {
@@ -97,7 +98,7 @@ const EvolutionView = () => {
       setLoadingSpecies(true);
 
       // Step 1: Try to find ANY session with evolution data to determine cell_name
-      const sessionsRes = await fetch(`http://localhost:5050/api/sessions?cascade_id=${selectedCascade}&limit=20`);
+      const sessionsRes = await fetch(`${API_BASE_URL}/api/sessions?cascade_id=${selectedCascade}&limit=20`);
       const sessionsData = await sessionsRes.json();
 
       let foundCellName = null;
@@ -107,7 +108,7 @@ const EvolutionView = () => {
       // Try each session until we find one with evolution data
       for (const session of sessionsData.sessions || []) {
         const evolutionRes = await fetch(
-          `http://localhost:5050/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
+          `${API_BASE_URL}/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
         );
         const evolutionData = await evolutionRes.json();
 
@@ -127,7 +128,7 @@ const EvolutionView = () => {
 
       // Step 2: Fetch species for this cascade + cell combination
       const speciesRes = await fetch(
-        `http://localhost:5050/api/sextant/species/${selectedCascade}/${foundCellName}`
+        `${API_BASE_URL}/api/sextant/species/${selectedCascade}/${foundCellName}`
       );
       const speciesData = await speciesRes.json();
 
@@ -182,12 +183,12 @@ const EvolutionView = () => {
 
     try {
       // Query sessions and find one with this species_hash
-      const sessionsRes = await fetch(`http://localhost:5050/api/sessions?cascade_id=${selectedCascade}&limit=20`);
+      const sessionsRes = await fetch(`${API_BASE_URL}/api/sessions?cascade_id=${selectedCascade}&limit=20`);
       const sessionsData = await sessionsRes.json();
 
       for (const session of sessionsData.sessions || []) {
         const evolutionRes = await fetch(
-          `http://localhost:5050/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
+          `${API_BASE_URL}/api/sextant/evolution/${session.session_id}?as_of=session&include_future=false`
         );
         const evolutionData = await evolutionRes.json();
 
@@ -260,7 +261,7 @@ const EvolutionView = () => {
       }
 
       const response = await fetch(
-        `http://localhost:5050/api/sextant/evolution/${selectedSession}?${params}`
+        `${API_BASE_URL}/api/sextant/evolution/${selectedSession}?${params}`
       );
 
       if (!response.ok) {

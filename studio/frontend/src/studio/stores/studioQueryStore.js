@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-
-const API_BASE_URL = 'http://localhost:5050/api/studio';
+import { API_STUDIO_URL as API_BASE_URL } from '../../config/api';
 
 const useStudioQueryStore = create(
   persist(

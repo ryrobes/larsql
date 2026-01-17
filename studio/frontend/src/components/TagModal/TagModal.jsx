@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import Modal, { ModalHeader, ModalContent, ModalFooter } from '../Modal/Modal';
 import './TagModal.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * Default tag colors matching the design system
@@ -94,7 +95,7 @@ const TagModal = ({
         payload.tag_color = newTagColor;
       }
 
-      const response = await fetch('http://localhost:5050/api/outputs/tags', {
+      const response = await fetch(`${API_BASE_URL}/api/outputs/tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

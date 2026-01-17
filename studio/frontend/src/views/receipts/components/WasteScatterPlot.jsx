@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './WasteScatterPlot.css';
+import { API_BASE_URL } from '../../../config/api';
 
 const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
   const canvasRef = useRef(null);
@@ -19,7 +20,7 @@ const WasteScatterPlot = ({ sessionId, onMessageSelect }) => {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/relevance-scatter/${sessionId}`
+          `${API_BASE_URL}/api/context-assessment/relevance-scatter/${sessionId}`
         );
         if (!res.ok) throw new Error('Failed to fetch scatter data');
         const json = await res.json();

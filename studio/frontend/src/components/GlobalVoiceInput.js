@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './GlobalVoiceInput.css';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * GlobalVoiceInput - A floating voice input button that inserts text into any focused input
@@ -263,7 +264,7 @@ function GlobalVoiceInput() {
       const format = mimeType.includes('webm') ? 'webm' :
                      mimeType.includes('mp4') ? 'm4a' : 'webm';
 
-      const response = await fetch('http://localhost:5050/api/voice/transcribe', {
+      const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -359,7 +360,7 @@ function GlobalVoiceInput() {
   // Don't render if voice isn't available
   const [voiceAvailable, setVoiceAvailable] = useState(true);
   useEffect(() => {
-    fetch('http://localhost:5050/api/voice/status')
+    fetch(`${API_BASE_URL}/api/voice/status`)
       .then(r => r.json())
       .then(data => setVoiceAvailable(data.available))
       .catch(() => setVoiceAvailable(false));

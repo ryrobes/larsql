@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import Badge from '../../../components/Badge/Badge';
 import { ROUTES } from '../../../routes.helpers';
 import './InsightCard.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * InsightCard - Flat, inline insight display
@@ -44,7 +45,7 @@ const InsightCard = ({ insight }) => {
             cell_name: insight.action.cell_name,
           });
 
-          const res = await fetch(`http://localhost:5050/api/receipts/context-breakdown?${params}`);
+          const res = await fetch(`${API_BASE_URL}/api/receipts/context-breakdown?${params}`);
           const data = await res.json();
 
           if (data.breakdown && data.breakdown.length > 0) {

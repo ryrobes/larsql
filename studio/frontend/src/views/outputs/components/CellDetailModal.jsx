@@ -8,6 +8,7 @@ import TagModal from '../../../components/TagModal/TagModal';
 import { TagChipList } from '../../../components/TagChip/TagChip';
 import { ROUTES } from '../../../routes.helpers';
 import './CellDetailModal.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * Get base content type (handles hierarchical types like tool_call:request_decision)
@@ -252,7 +253,7 @@ const ContentRenderer = ({ content, contentType, images, metadata, renderData })
         {images.map((img, idx) => (
           <img
             key={idx}
-            src={typeof img === 'string' ? `http://localhost:5050${img}` : img.url}
+            src={typeof img === 'string' ? `${API_BASE_URL}${img}` : img.url}
             alt={`Output ${idx + 1}`}
             className="cell-detail-image"
           />
@@ -287,7 +288,7 @@ const ContentRenderer = ({ content, contentType, images, metadata, renderData })
         {screenshotUrl && (
           <div className="request-decision-screenshot">
             <img
-              src={`http://localhost:5050${screenshotUrl}`}
+              src={`${API_BASE_URL}${screenshotUrl}`}
               alt="Decision UI Preview"
               className="screenshot-preview"
               onError={(e) => { e.target.style.display = 'none'; }}
@@ -349,7 +350,7 @@ const ContentRenderer = ({ content, contentType, images, metadata, renderData })
         {screenshotUrl && (
           <div className="request-decision-screenshot">
             <img
-              src={`http://localhost:5050${screenshotUrl}`}
+              src={`${API_BASE_URL}${screenshotUrl}`}
               alt="Decision UI Preview"
               className="screenshot-preview"
               onError={(e) => { e.target.style.display = 'none'; }}
@@ -500,7 +501,7 @@ const CellDetailModal = ({
     }
 
     try {
-      const response = await fetch(`http://localhost:5050/api/outputs/tags/for/${cellDetail.message_id}`);
+      const response = await fetch(`${API_BASE_URL}/api/outputs/tags/for/${cellDetail.message_id}`);
       const data = await response.json();
       if (data.tags) {
         setOutputTags(data.tags);
@@ -534,7 +535,7 @@ const CellDetailModal = ({
 
   const handleRemoveTag = async (tagId) => {
     try {
-      const response = await fetch(`http://localhost:5050/api/outputs/tags/${tagId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/outputs/tags/${tagId}`, {
         method: 'DELETE',
       });
       if (response.ok) {

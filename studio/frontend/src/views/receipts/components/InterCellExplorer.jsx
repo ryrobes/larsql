@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './InterCellExplorer.css';
+import { API_BASE_URL } from '../../../config/api';
 
 const InterCellExplorer = ({ sessionId }) => {
   const [data, setData] = useState(null);
@@ -20,7 +21,7 @@ const InterCellExplorer = ({ sessionId }) => {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/budget-simulation/${sessionId}`
+          `${API_BASE_URL}/api/context-assessment/budget-simulation/${sessionId}`
         );
         if (!res.ok) throw new Error('Failed to fetch budget simulation data');
         const json = await res.json();

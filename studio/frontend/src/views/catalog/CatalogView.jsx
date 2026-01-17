@@ -7,6 +7,7 @@ import { VideoLoader } from '../../components';
 import DetailPanel from './components/DetailPanel';
 import { ROUTES } from '../../routes.helpers';
 import './CatalogView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -220,7 +221,7 @@ const CatalogView = () => {
       }
       params.set('limit', '1000');
 
-      const res = await fetch(`http://localhost:5050/api/catalog?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/catalog?${params.toString()}`);
       const data = await res.json();
 
       if (data.error) {
@@ -248,7 +249,7 @@ const CatalogView = () => {
 
     setDetailLoading(true);
     try {
-      const res = await fetch(`http://localhost:5050/api/catalog/${encodeURIComponent(itemId)}`);
+      const res = await fetch(`${API_BASE_URL}/api/catalog/${encodeURIComponent(itemId)}`);
       const data = await res.json();
 
       if (data.error) {

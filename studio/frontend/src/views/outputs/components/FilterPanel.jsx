@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import './FilterPanel.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * Content type definitions with icons and colors
@@ -50,7 +51,7 @@ const FilterPanel = ({
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch(`http://localhost:5050/api/outputs/content-types?time_filter=${timeFilter}`);
+        const response = await fetch(`${API_BASE_URL}/api/outputs/content-types?time_filter=${timeFilter}`);
         const data = await response.json();
 
         if (data.content_types) {

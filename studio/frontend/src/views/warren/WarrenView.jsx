@@ -6,6 +6,7 @@ import RichMarkdown from '../../components/RichMarkdown';
 import useExplorePolling from '../explore/hooks/useExplorePolling';
 import { ROUTES } from '../../routes.helpers';
 import './WarrenView.css';
+import { API_BASE_URL } from '../../config/api';
 
 const STORAGE_KEY = 'warren_last_session';
 const STORAGE_TIME_KEY = 'warren_last_session_time';
@@ -58,7 +59,7 @@ const WarrenView = () => {
     const elapsed = Date.now() - parseInt(lastTime, 10);
     if (elapsed >= 60 * 60 * 1000) return;
 
-    fetch('http://localhost:5050/api/sessions?limit=100')
+    fetch(`${API_BASE_URL}/api/sessions?limit=100`)
       .then(r => r.json())
       .then(data => {
         const session = data.sessions?.find(s => s.session_id === lastSession);
@@ -324,7 +325,7 @@ const WarrenView = () => {
 
     setIsStarting(true);
     try {
-      const res = await fetch('http://localhost:5050/api/run-cascade', {
+      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +359,7 @@ const WarrenView = () => {
   const handleWarrenResponse = async (response) => {
     if (!checkpoint) return;
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${checkpoint.id}/respond`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${checkpoint.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response }),

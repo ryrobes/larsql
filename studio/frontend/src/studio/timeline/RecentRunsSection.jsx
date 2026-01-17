@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import useStudioCascadeStore from '../stores/studioCascadeStore';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * RecentRunsSection - Browse past executions of the current cascade
@@ -57,7 +58,7 @@ function RecentRunsSection() {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5050/api/sessions?cascade_id=${encodeURIComponent(cascade.cascade_id)}&limit=20`
+          `${API_BASE_URL}/api/sessions?cascade_id=${encodeURIComponent(cascade.cascade_id)}&limit=20`
         );
         const data = await res.json();
 

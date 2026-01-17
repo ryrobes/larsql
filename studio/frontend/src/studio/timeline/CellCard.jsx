@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import ModelIcon, { getProviderColor, getProvider } from '../../components/ModelIcon';
 import { Badge } from '../../components';
 import './CellCard.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * Format milliseconds to human-readable time
@@ -53,7 +54,7 @@ const CellCard = ({ cell, index, cellState, cellLogs = [], isSelected, onSelect,
 
   // Get first image for background decoration
   const firstImage = hasImages ? cellState.images[0] : null;
-  const imageUrl = firstImage ? `http://localhost:5050${firstImage}` : null;
+  const imageUrl = firstImage ? `${API_BASE_URL}${firstImage}` : null;
 
   // Cost metrics for scaling and annotations
   const scale = costMetrics?.scale || 1.0;

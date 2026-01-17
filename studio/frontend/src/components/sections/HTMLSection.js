@@ -4,6 +4,7 @@ import html2canvas from 'html2canvas';
 import AnnotationCanvas from './AnnotationCanvas';
 import AnnotationToolbar from './AnnotationToolbar';
 import './HTMLSection.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * HTMLSection - Renders raw HTML with HTMX support in an isolated iframe
@@ -93,7 +94,7 @@ function HTMLSection({ spec, checkpointId, sessionId, isSavedCheckpoint, onBranc
       console.log('[HTMLSection] Screenshot captured, size:', dataURL.length);
 
       // Send to backend
-      const response = await fetch(`http://localhost:5050/api/checkpoints/${checkpointId}/annotated-screenshot`, {
+      const response = await fetch(`${API_BASE_URL}/api/checkpoints/${checkpointId}/annotated-screenshot`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1433,12 +1434,12 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
             // Build URL from context (fallback to form attribute if context missing)
             let url;
             if (cpId) {
-              url = 'http://localhost:5050/api/checkpoints/' + cpId + '/respond';
+              url = API_BASE_URL + '/api/checkpoints/' + cpId + '/respond';
               console.log('[HTMX iframe] Using checkpoint context for URL:', url);
             } else {
               url = form.getAttribute('hx-post');
               if (url.startsWith('/')) {
-                url = 'http://localhost:5050' + url;
+                url = API_BASE_URL + url;
               }
               console.log('[HTMX iframe] Using form hx-post attribute:', url);
             }
@@ -1523,7 +1524,7 @@ form { display: flex; flex-direction: column; gap: var(--space-md); }
 
           // If path is relative, convert to absolute pointing to backend (port 5050)
           if (path && path.startsWith('/')) {
-            const absoluteURL = 'http://localhost:5050' + path;
+            const absoluteURL = API_BASE_URL + path;
             e.detail.path = absoluteURL;
             console.log('[HTMX iframe] Converted relative URL:', path, '→', absoluteURL);
           }

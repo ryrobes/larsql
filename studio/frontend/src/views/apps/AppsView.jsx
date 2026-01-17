@@ -7,12 +7,13 @@
  */
 import React from 'react';
 import './AppsView.css';
+import { API_BASE_URL } from '../../config/api';
 
 const AppsView = () => {
   // In dev mode (port 5550), use absolute URL to Flask backend
   // In prod, Flask serves both the React app and /apps/ endpoint
   const isDev = window.location.port === '5550';
-  const appsUrl = isDev ? 'http://localhost:5050/apps/' : '/apps/';
+  const appsUrl = isDev ? `${API_BASE_URL}/apps/` : '/apps/';
 
   return (
     <div className="apps-view">

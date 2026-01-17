@@ -7,6 +7,7 @@ import { Icon } from '@iconify/react';
 import { ROUTES } from '../../../routes.helpers';
 import TrainingDetailPanel from './TrainingDetailPanel';
 import './TrainingGrid.css';
+import { API_BASE_URL } from '../../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -49,7 +50,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
   // Handle trainable toggle (inline click)
   const handleTrainableToggle = async (trace_id, currentValue) => {
     try {
-      await fetch('http://localhost:5050/api/training/mark-trainable', {
+      await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,7 +74,7 @@ const TrainingGrid = ({ examples = [], onSelectionChanged, onMarkTrainable }) =>
   // Handle verified toggle (inline click)
   const handleVerifiedToggle = async (trace_id, currentValue) => {
     try {
-      await fetch('http://localhost:5050/api/training/mark-trainable', {
+      await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

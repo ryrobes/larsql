@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../components';
 import WatchDetail from './components/WatchDetail';
 import './WatchersView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -89,7 +90,7 @@ const WatchersView = () => {
       }
       params.set('limit', '500');
 
-      const res = await fetch(`http://localhost:5050/api/watchers?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/watchers?${params.toString()}`);
       const data = await res.json();
 
       if (data.error) {
@@ -118,7 +119,7 @@ const WatchersView = () => {
 
     setDetailLoading(true);
     try {
-      const res = await fetch(`http://localhost:5050/api/watchers/${encodeURIComponent(watchName)}`);
+      const res = await fetch(`${API_BASE_URL}/api/watchers/${encodeURIComponent(watchName)}`);
       const data = await res.json();
 
       if (data.error) {
@@ -138,7 +139,7 @@ const WatchersView = () => {
   // Handle toggle watch
   const handleToggleWatch = useCallback(async (watchName) => {
     try {
-      const res = await fetch(`http://localhost:5050/api/watchers/${encodeURIComponent(watchName)}/toggle`, {
+      const res = await fetch(`${API_BASE_URL}/api/watchers/${encodeURIComponent(watchName)}/toggle`, {
         method: 'POST',
       });
       const data = await res.json();
@@ -161,7 +162,7 @@ const WatchersView = () => {
   // Handle manual trigger
   const handleTriggerWatch = useCallback(async (watchName) => {
     try {
-      const res = await fetch(`http://localhost:5050/api/watchers/${encodeURIComponent(watchName)}/trigger`, {
+      const res = await fetch(`${API_BASE_URL}/api/watchers/${encodeURIComponent(watchName)}/trigger`, {
         method: 'POST',
       });
       const data = await res.json();
@@ -186,7 +187,7 @@ const WatchersView = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:5050/api/watchers/${encodeURIComponent(watchName)}`, {
+      const res = await fetch(`${API_BASE_URL}/api/watchers/${encodeURIComponent(watchName)}`, {
         method: 'DELETE',
       });
       const data = await res.json();

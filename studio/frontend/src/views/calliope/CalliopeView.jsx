@@ -9,6 +9,7 @@ import CascadeSpecGraph from '../../components/CascadeSpecGraph';
 import useExplorePolling from '../explore/hooks/useExplorePolling';
 import { ROUTES } from '../../routes.helpers';
 import './CalliopeView.css';
+import { API_BASE_URL } from '../../config/api';
 
 const STORAGE_KEY = 'calliope_last_session';
 const STORAGE_TIME_KEY = 'calliope_last_session_time';
@@ -99,7 +100,7 @@ const CalliopeView = () => {
     }
 
     // Validate session still exists
-    fetch('http://localhost:5050/api/sessions?limit=100')
+    fetch(`${API_BASE_URL}/api/sessions?limit=100`)
       .then(r => r.json())
       .then(data => {
         const session = data.sessions?.find(s => s.session_id === lastSession);
@@ -131,7 +132,7 @@ const CalliopeView = () => {
       }
 
       // Fallback: fetch from session API
-      fetch(`http://localhost:5050/api/studio/session-cascade/${sessionId}`)
+      fetch(`${API_BASE_URL}/api/studio/session-cascade/${sessionId}`)
         .then(r => r.json())
         .then(data => {
           if (data.input_data?.goal) {
@@ -442,7 +443,7 @@ const CalliopeView = () => {
       console.log('[CalliopeView] Auto-sending feedback to Calliope:', feedback);
 
       try {
-        await fetch(`http://localhost:5050/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
+        await fetch(`${API_BASE_URL}/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -735,7 +736,7 @@ const CalliopeView = () => {
     setIsStarting(true);
 
     try {
-      const res = await fetch('http://localhost:5050/api/run-cascade', {
+      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -772,7 +773,7 @@ const CalliopeView = () => {
     if (!calliopeCheckpoint) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${calliopeCheckpoint.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response }),
@@ -801,7 +802,7 @@ const CalliopeView = () => {
     showToast('Starting test cascade...', { type: 'info' });
 
     try {
-      const res = await fetch('http://localhost:5050/api/run-cascade', {
+      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

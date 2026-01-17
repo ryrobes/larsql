@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '@iconify/react';
+import { API_BASE_URL as API_BASE } from '../../../config/api';
 
-const API_BASE = 'http://localhost:5050';
+
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return '$0.00';

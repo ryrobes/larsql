@@ -17,6 +17,7 @@ import { Button, useToast } from '../../components';
 import CheckpointModal from '../../components/CheckpointModal';
 import { cancelCascade } from '../../utils/cascadeActions';
 import './CascadeNavigator.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Type badge colors (consistent with SchemaTree)
 const TYPE_COLORS = {
@@ -393,9 +394,9 @@ function ArtifactPill({ cellName, artifactType, index, label, thumbnailUrl }) {
     // If it starts with http, use as-is
     if (thumbnailUrl.startsWith('http')) return thumbnailUrl;
     // If it starts with /api, prepend localhost
-    if (thumbnailUrl.startsWith('/api')) return `http://localhost:5050${thumbnailUrl}`;
+    if (thumbnailUrl.startsWith('/api')) return `${API_BASE_URL}${thumbnailUrl}`;
     // Otherwise assume it needs the media endpoint (note: endpoint is browser-media, not rabbitize/media)
-    return `http://localhost:5050/api/browser-media/${thumbnailUrl}`;
+    return `${API_BASE_URL}/api/browser-media/${thumbnailUrl}`;
   };
 
   return (
@@ -512,7 +513,7 @@ function RabbitizeArtifactsTree({ cellName, artifacts, cellState }) {
         return result.screenshots.map(s => {
           if (typeof s === 'string') return s;
           // Build full URL for the media endpoint (note: endpoint is browser-media, not rabbitize/media)
-          if (s?.path) return `http://localhost:5050/api/browser-media/${s.path}`;
+          if (s?.path) return `${API_BASE_URL}/api/browser-media/${s.path}`;
           if (s?.full_path) return s.full_path;
           if (s?.url) return s.url;
           return null;
@@ -671,7 +672,7 @@ function MediaSection({ cells, cellStates, onNavigateToCell }) {
             if (!imagePath) return null;
 
             const imageUrl = imagePath.startsWith('/api')
-              ? `http://localhost:5050${imagePath}`
+              ? `${API_BASE_URL}${imagePath}`
               : imagePath;
 
             return (
@@ -1023,7 +1024,7 @@ function CascadeNavigator() {
 
     const fetchCheckpoint = async () => {
       try {
-        const res = await fetch('http://localhost:5050/api/checkpoints');
+        const res = await fetch(`${API_BASE_URL}/api/checkpoints`);
         const data = await res.json();
 
         if (data.error) {
@@ -1062,7 +1063,7 @@ function CascadeNavigator() {
     if (!pendingCheckpoint) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${pendingCheckpoint.id}/respond`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${pendingCheckpoint.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response }),
@@ -1088,7 +1089,7 @@ function CascadeNavigator() {
     if (!pendingCheckpoint) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${pendingCheckpoint.id}/cancel`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${pendingCheckpoint.id}/cancel`, {
         method: 'POST',
       });
 

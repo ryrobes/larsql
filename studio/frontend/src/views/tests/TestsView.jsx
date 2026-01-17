@@ -9,6 +9,7 @@ import {
 import { VideoLoader } from '../../components';
 import TestDetailPanel from './components/TestDetailPanel';
 import './TestsView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -263,7 +264,7 @@ const TestsView = () => {
         params.set('filter', searchText.trim());
       }
 
-      const res = await fetch(`http://localhost:5050/api/tests?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/tests?${params.toString()}`);
       const data = await res.json();
 
       if (data.error) {
@@ -309,7 +310,7 @@ const TestsView = () => {
   // Fetch stats
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/tests/stats?days=7');
+      const res = await fetch(`${API_BASE_URL}/api/tests/stats?days=7`);
       const data = await res.json();
       if (!data.error) {
         setStats(data);
@@ -322,7 +323,7 @@ const TestsView = () => {
   // Fetch bulk history for sparklines
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/tests/history/bulk?limit=10');
+      const res = await fetch(`${API_BASE_URL}/api/tests/history/bulk?limit=10`);
       const data = await res.json();
       if (!data.error && data.history) {
         setTestHistory(data.history);
@@ -336,13 +337,13 @@ const TestsView = () => {
   const fetchLastRun = useCallback(async () => {
     try {
       // Get the most recent run
-      const runsRes = await fetch('http://localhost:5050/api/tests/runs?limit=1');
+      const runsRes = await fetch(`${API_BASE_URL}/api/tests/runs?limit=1`);
       const runsData = await runsRes.json();
 
       if (runsData.runs && runsData.runs.length > 0) {
         const latestRunId = runsData.runs[0].run_id;
         // Fetch the full run with results
-        const runRes = await fetch(`http://localhost:5050/api/tests/runs/${latestRunId}`);
+        const runRes = await fetch(`${API_BASE_URL}/api/tests/runs/${latestRunId}`);
         const runData = await runRes.json();
 
         if (!runData.error && runData.results) {
@@ -461,7 +462,7 @@ const TestsView = () => {
         snapshot_mode: snapshotMode
       };
 
-      const res = await fetch('http://localhost:5050/api/tests/run', {
+      const res = await fetch(`${API_BASE_URL}/api/tests/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

@@ -24,6 +24,7 @@ import {
   INPUT_NODE_Y,
 } from '../utils/cascadeLayout';
 import './CascadeSpecGraph.css';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * InputsNode - Node representing cascade input parameters
@@ -298,7 +299,7 @@ const CascadeSpecGraph = ({ cells, inputsSchema, cascadeId, cellStatus = {} }) =
     setYamlLoading(true);
 
     try {
-      const res = await fetch(`http://localhost:5050/api/playground/load/${cascadeId}`);
+      const res = await fetch(`${API_BASE_URL}/api/playground/load/${cascadeId}`);
       if (!res.ok) throw new Error('Failed to load cascade');
 
       const config = await res.json();

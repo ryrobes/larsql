@@ -5,6 +5,7 @@ import Badge from '../../../components/Badge/Badge';
 import ContextBreakdownFilterPanel from './ContextBreakdownFilterPanel';
 import { ROUTES } from '../../../routes.helpers';
 import './ContextBreakdownPanel.css';
+import { API_BASE_URL } from '../../../config/api';
 
 // localStorage keys for Context Breakdown filters (separate from Outputs)
 const STORAGE_KEY_TIME_FILTER = 'contextBreakdown_timeFilter';
@@ -132,7 +133,7 @@ const ContextBreakdownPanel = () => {
     setLoading(true);
     try {
       const days = timeFilterToDays(timeFilter);
-      const res = await fetch(`http://localhost:5050/api/receipts/context-breakdown-by-cascade?days=${days}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/context-breakdown-by-cascade?days=${days}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -160,7 +161,7 @@ const ContextBreakdownPanel = () => {
     try {
       const days = timeFilterToDays(timeFilter);
       const res = await fetch(
-        `http://localhost:5050/api/receipts/context-breakdown?days=${days}&session_id=${sessionId}&cascade_id=${cascadeId}`
+        `${API_BASE_URL}/api/receipts/context-breakdown?days=${days}&session_id=${sessionId}&cascade_id=${cascadeId}`
       );
       const data = await res.json();
       if (data.breakdown) {

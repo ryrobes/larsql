@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import VideoLoader from './VideoLoader';
 import './AppPreview.css';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * AppPreview - Renders a generated cascade/app in an iframe using the App API.
@@ -26,7 +27,7 @@ const AppPreview = ({
   onCellChange,
   onError,
   onStateChange,
-  baseUrl = 'http://localhost:5050',
+  baseUrl = API_BASE_URL,
 }) => {
   const iframeRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,7 +42,8 @@ const AppPreview = ({
   useEffect(() => {
     const handleMessage = (event) => {
       // Only accept messages from our app API origin
-      if (!event.origin.includes('localhost:5050') && !event.origin.includes('127.0.0.1:5050')) {
+      const expectedOrigin = new URL(API_BASE_URL).origin;
+      if (event.origin !== expectedOrigin) {
         return;
       }
 

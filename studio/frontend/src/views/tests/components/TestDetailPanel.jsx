@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './TestDetailPanel.css';
+import { API_BASE_URL } from '../../../config/api';
 
 // Test type icons and colors
 const TEST_TYPE_CONFIG = {
@@ -75,7 +76,7 @@ const getScreenshotUrl = (absolutePath) => {
   const browserIndex = absolutePath.indexOf('/browsers/');
   if (browserIndex === -1) return null;
   const relativePath = absolutePath.substring(browserIndex + '/browsers/'.length);
-  return `http://localhost:5050/api/tests/visual/screenshot/${relativePath}`;
+  return `${API_BASE_URL}/api/tests/visual/screenshot/${relativePath}`;
 };
 
 /**
@@ -235,7 +236,7 @@ const TestDetailPanel = ({ test, lastRun, onClose, onRun, isRunning }) => {
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await fetch(`http://localhost:5050/api/tests/${encodeURIComponent(test.test_id)}/history?limit=10`);
+      const res = await fetch(`${API_BASE_URL}/api/tests/${encodeURIComponent(test.test_id)}/history?limit=10`);
       const data = await res.json();
       if (!data.error) {
         setHistory(data.history || []);

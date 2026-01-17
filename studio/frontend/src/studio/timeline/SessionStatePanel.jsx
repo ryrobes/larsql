@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './SessionStatePanel.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * SessionStatePanel - Live display of cascade state (set_state calls)
@@ -42,7 +43,7 @@ function SessionStatePanel({ sessionId, isRunning }) {
     if (!sessionId) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/studio/session-state/${sessionId}`);
+      const res = await fetch(`${API_BASE_URL}/api/studio/session-state/${sessionId}`);
       const data = await res.json();
 
       if (data.error) {

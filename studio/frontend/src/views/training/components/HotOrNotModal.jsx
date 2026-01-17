@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
 import SwipeCard from './SwipeCard';
 import './HotOrNotModal.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * HotOrNotModal - Tinder-style card swiping interface for training curation
@@ -61,7 +62,7 @@ const HotOrNotModal = ({ isOpen, examples, onClose, onComplete }) => {
 
       // Batch mark HOT (trainable + verified)
       if (hotIds.length > 0) {
-        await fetch('http://localhost:5050/api/training/mark-trainable', {
+        await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -76,7 +77,7 @@ const HotOrNotModal = ({ isOpen, examples, onClose, onComplete }) => {
 
       // Batch mark NOT
       if (notIds.length > 0) {
-        await fetch('http://localhost:5050/api/training/mark-trainable', {
+        await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

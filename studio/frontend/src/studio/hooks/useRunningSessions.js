@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * useRunningSessions - Hook for polling running cascade sessions
@@ -16,7 +17,7 @@ const useRunningSessions = (pollInterval = 5000) => {
   const fetchSessions = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:5050/api/running-sessions');
+      const response = await fetch(`${API_BASE_URL}/api/running-sessions`);
       const data = await response.json();
 
       if (data.error) {

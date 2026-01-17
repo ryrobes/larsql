@@ -8,6 +8,7 @@ import ContextBreakdownPanel from './components/ContextBreakdownPanel';
 import ContextAssessmentPanel from './components/ContextAssessmentPanel';
 import { ROUTES } from '../../routes.helpers';
 import './ReceiptsView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Deep equality check for data comparison (prevents unnecessary re-renders)
 const isEqual = (a, b) => {
@@ -68,7 +69,7 @@ const ReceiptsView = () => {
   // Fetch overview data (only update state if data changed)
   const fetchOverview = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/overview?days=${timeRange}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/overview?days=${timeRange}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -86,7 +87,7 @@ const ReceiptsView = () => {
   // Fetch alerts data (only update state if data changed)
   const fetchAlerts = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/alerts?days=${timeRange}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/alerts?days=${timeRange}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -102,7 +103,7 @@ const ReceiptsView = () => {
   // Fetch context breakdown data (only update state if data changed)
   const fetchBreakdown = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/context-breakdown?days=${timeRange}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/context-breakdown?days=${timeRange}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -118,7 +119,7 @@ const ReceiptsView = () => {
   // Fetch time series data for trend chart (only update state if data changed)
   const fetchTimeSeries = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/time-series?days=${timeRange}&granularity=${granularity}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/time-series?days=${timeRange}&granularity=${granularity}`);
       const data = await res.json();
       if (!data.error) {
         const series = data.series || [];
@@ -132,7 +133,7 @@ const ReceiptsView = () => {
   // Fetch cascade breakdown (only update state if data changed)
   const fetchCascadeBreakdown = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/by-cascade?days=${timeRange}&limit=10`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/by-cascade?days=${timeRange}&limit=10`);
       const data = await res.json();
       if (!data.error) {
         const newData = { cascades: data.cascades || [], grand_total: data.grand_total || 0 };
@@ -146,7 +147,7 @@ const ReceiptsView = () => {
   // Fetch model breakdown (only update state if data changed)
   const fetchModelBreakdown = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/by-model?days=${timeRange}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/by-model?days=${timeRange}`);
       const data = await res.json();
       if (!data.error) {
         const newData = { models: data.models || [], grand_total: data.grand_total || 0 };
@@ -160,7 +161,7 @@ const ReceiptsView = () => {
   // Fetch top expensive sessions (only update state if data changed)
   const fetchTopExpensive = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/top-expensive?days=${timeRange}&limit=8`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/top-expensive?days=${timeRange}&limit=8`);
       const data = await res.json();
       if (!data.error) {
         const sessions = data.sessions || [];
@@ -174,7 +175,7 @@ const ReceiptsView = () => {
   // Fetch context efficiency data (only update state if data changed)
   const fetchContextEfficiency = async () => {
     try {
-      const res = await fetch(`http://localhost:5050/api/receipts/context-efficiency?days=${timeRange}`);
+      const res = await fetch(`${API_BASE_URL}/api/receipts/context-efficiency?days=${timeRange}`);
       const data = await res.json();
       if (!data.error) {
         setContextEfficiency(prev => isEqual(prev, data) ? prev : data);

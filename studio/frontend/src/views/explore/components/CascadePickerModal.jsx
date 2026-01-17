@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { Modal, ModalHeader, ModalContent, ModalFooter, Button, Badge } from '../../../components';
 import './CascadePickerModal.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * CascadePickerModal - Simple cascade picker for ExploreView (NEW system)
@@ -42,7 +43,7 @@ const CascadePickerModal = ({ isOpen, onClose, onStart }) => {
   const fetchCascades = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5050/api/cascade-definitions');
+      const res = await fetch(`${API_BASE_URL}/api/cascade-definitions`);
       const data = await res.json();
 
       if (data.error) {
@@ -67,7 +68,7 @@ const CascadePickerModal = ({ isOpen, onClose, onStart }) => {
   const fetchRecentSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5050/api/sessions?limit=50');
+      const res = await fetch(`${API_BASE_URL}/api/sessions?limit=50`);
       const data = await res.json();
 
       if (data.error) {

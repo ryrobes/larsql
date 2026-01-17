@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './Toast.css';
+import { API_BASE_URL } from '../config/api';
 
 function Toast({ id, message, type = 'success', onClose, duration = 5000, cascadeData = null }) {
   const [cost, setCost] = useState(cascadeData?.cost);
@@ -37,7 +38,7 @@ function Toast({ id, message, type = 'success', onClose, duration = 5000, cascad
     if (cascadeData?.sessionId && cost === undefined) {
       const fetchCost = async () => {
         try {
-          const response = await fetch(`http://localhost:5050/api/session-cost/${cascadeData.sessionId}`);
+          const response = await fetch(`${API_BASE_URL}/api/session-cost/${cascadeData.sessionId}`);
           if (response.ok) {
             const data = await response.json();
             if (data.cost !== null && data.cost !== undefined) {

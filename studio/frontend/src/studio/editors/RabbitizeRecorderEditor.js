@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import './RabbitizeRecorderEditor.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * Rabbitize Recorder Editor (Studio-embedded version)
@@ -121,7 +122,7 @@ function RabbitizeRecorderEditor({ cell, onChange, cellName }) {
   const [error, setError] = useState(null);
 
   const streamRef = useRef(null);
-  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+  const apiUrl = process.env.REACT_APP_API_URL || API_BASE_URL;
 
   // Build Rabbitize command array
   const buildCommandArray = (commandType, args) => {

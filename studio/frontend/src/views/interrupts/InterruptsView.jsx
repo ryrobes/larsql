@@ -7,6 +7,7 @@ import CheckpointRenderer from '../../components/CheckpointRenderer';
 import CheckpointModal from '../../components/CheckpointModal';
 import { ROUTES } from '../../routes.helpers';
 import './InterruptsView.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * InterruptsView - Studio-style HITL checkpoint manager
@@ -28,7 +29,7 @@ const InterruptsView = () => {
   // Fetch pending checkpoints
   const fetchCheckpoints = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/checkpoints');
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints`);
       const data = await res.json();
 
       if (data.error) {
@@ -85,7 +86,7 @@ const InterruptsView = () => {
   // Handle checkpoint response
   const handleResponse = async (checkpointId, response) => {
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${checkpointId}/respond`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${checkpointId}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response }),
@@ -114,7 +115,7 @@ const InterruptsView = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${checkpointId}/cancel`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${checkpointId}/cancel`, {
         method: 'POST',
       });
 

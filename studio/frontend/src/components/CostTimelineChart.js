@@ -8,6 +8,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import './CostTimelineChart.css';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * CostTimelineChart - Elegant cost visualization with Bret Victor-inspired design
@@ -63,7 +64,7 @@ function CostTimelineChart({ cascadeFilter = null, cascadeIds = [] }) {
       params.append('limit', '14');
       params.append('granularity', granularity);
 
-      const res = await fetch(`http://localhost:5050/api/analytics/cost-timeline?${params}`);
+      const res = await fetch(`${API_BASE_URL}/api/analytics/cost-timeline?${params}`);
       const result = await res.json();
 
       if (result.error) {

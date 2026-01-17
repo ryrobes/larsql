@@ -11,6 +11,7 @@ import OutputLayer from './components/OutputLayer';
 import SummaryBar from './components/SummaryBar';
 import LayerDivider from './components/LayerDivider';
 import './CellAnatomyPanel.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * CellAnatomyPanel - Visualizes the internal structure of a WLARScell
@@ -366,7 +367,7 @@ const CellAnatomyPanel = ({ cell, cellLogs = [], cellState = {}, onClose, cascad
     // Fetch pareto data from API
     const fetchParetoData = async () => {
       try {
-        const response = await fetch(`http://localhost:5050/api/pareto/${sessionId}`);
+        const response = await fetch(`${API_BASE_URL}/api/pareto/${sessionId}`);
         if (response.ok) {
           const data = await response.json();
           // Only set if this pareto data matches the current cell

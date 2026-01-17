@@ -6,6 +6,7 @@ import IntraCellExplorer from './IntraCellExplorer';
 import WasteScatterPlot from './WasteScatterPlot';
 import CascadeAggregateView from './CascadeAggregateView';
 import './ContextAssessmentPanel.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * ContextAssessmentPanel - Shadow Assessment Analysis (Cell 2)
@@ -35,7 +36,7 @@ const ContextAssessmentPanel = ({ timeRange }) => {
   useEffect(() => {
     const checkTables = async () => {
       try {
-        const res = await fetch('http://localhost:5050/api/context-assessment/table-status');
+        const res = await fetch(`${API_BASE_URL}/api/context-assessment/table-status`);
         const data = await res.json();
         setTableStatus(data);
       } catch (err) {
@@ -51,7 +52,7 @@ const ContextAssessmentPanel = ({ timeRange }) => {
       try {
         setLoading(true);
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/sessions?days=${timeRange}`
+          `${API_BASE_URL}/api/context-assessment/sessions?days=${timeRange}`
         );
         const data = await res.json();
         if (data.error) {
@@ -79,7 +80,7 @@ const ContextAssessmentPanel = ({ timeRange }) => {
     const fetchOverview = async () => {
       try {
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/overview/${selectedSession}`
+          `${API_BASE_URL}/api/context-assessment/overview/${selectedSession}`
         );
         const data = await res.json();
         if (data.error) {
@@ -101,8 +102,8 @@ const ContextAssessmentPanel = ({ timeRange }) => {
     const fetchInterCell = async () => {
       try {
         const url = selectedCell
-          ? `http://localhost:5050/api/context-assessment/inter-cell/${selectedSession}?cell=${selectedCell}`
-          : `http://localhost:5050/api/context-assessment/inter-cell/${selectedSession}`;
+          ? `${API_BASE_URL}/api/context-assessment/inter-cell/${selectedSession}?cell=${selectedCell}`
+          : `${API_BASE_URL}/api/context-assessment/inter-cell/${selectedSession}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) {
@@ -124,8 +125,8 @@ const ContextAssessmentPanel = ({ timeRange }) => {
     const fetchIntraCell = async () => {
       try {
         const url = selectedCell
-          ? `http://localhost:5050/api/context-assessment/intra-cell/${selectedSession}?cell=${selectedCell}`
-          : `http://localhost:5050/api/context-assessment/intra-cell/${selectedSession}`;
+          ? `${API_BASE_URL}/api/context-assessment/intra-cell/${selectedSession}?cell=${selectedCell}`
+          : `${API_BASE_URL}/api/context-assessment/intra-cell/${selectedSession}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) {

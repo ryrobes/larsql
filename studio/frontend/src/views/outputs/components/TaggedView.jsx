@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './TaggedView.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * Get type icon for content type
@@ -54,7 +55,7 @@ const TaggedView = ({ selectedTags = [], onCellClick }) => {
 
     try {
       const params = selectedTags.length > 0 ? `?tags=${selectedTags.join(',')}` : '';
-      const response = await fetch(`http://localhost:5050/api/outputs/tagged${params}`);
+      const response = await fetch(`${API_BASE_URL}/api/outputs/tagged${params}`);
       const data = await response.json();
 
       if (data.error) {
@@ -142,7 +143,7 @@ const TaggedView = ({ selectedTags = [], onCellClick }) => {
                 <div className="tagged-output-preview">
                   {output.content_type === 'image' && output.images?.[0] ? (
                     <img
-                      src={`http://localhost:5050${output.images[0]}`}
+                      src={`${API_BASE_URL}${output.images[0]}`}
                       alt={output.cell_name}
                     />
                   ) : output.content_type === 'chart' ? (

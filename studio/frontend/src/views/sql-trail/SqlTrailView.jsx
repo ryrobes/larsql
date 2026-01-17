@@ -6,8 +6,9 @@ import QueryExplorer from './components/QueryExplorer';
 import QueryDetail from './components/QueryDetail';
 import PatternsPanel from './components/PatternsPanel';
 import './SqlTrailView.css';
+import { API_BASE_URL as API_BASE } from '../../config/api';
 
-const API_BASE = 'http://localhost:5050';
+
 
 // Deep equality check to prevent unnecessary re-renders
 const isEqual = (a, b) => {

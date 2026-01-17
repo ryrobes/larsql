@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import ContextMatrixView from './ContextMatrixView';
 import './ContextExplorerSidebar.css';
+import { API_BASE_URL } from '../../config/api';
 
 // Role badge colors - UNIFIED with message grid and matrix
 const ROLE_COLORS = {
@@ -145,7 +146,7 @@ const ContextExplorerSidebar = ({
 
       setRelevanceLoading(true);
       try {
-        const url = `http://localhost:5050/api/receipts/context-breakdown?session_id=${encodeURIComponent(selectedMessage.session_id)}&cell_name=${encodeURIComponent(selectedMessage.cell_name)}`;
+        const url = `${API_BASE_URL}/api/receipts/context-breakdown?session_id=${encodeURIComponent(selectedMessage.session_id)}&cell_name=${encodeURIComponent(selectedMessage.cell_name)}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();

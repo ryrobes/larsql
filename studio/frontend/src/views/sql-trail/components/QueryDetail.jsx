@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { AgGridReact } from 'ag-grid-react';
 import { ModuleRegistry, AllCommunityModule, themeQuartz } from 'ag-grid-community';
+import { API_BASE_URL as API_BASE } from '../../../config/api';
 
 // Register AG Grid modules
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -25,7 +26,7 @@ const darkGridTheme = themeQuartz.withParams({
   chromeBackgroundColor: '#000000',
 });
 
-const API_BASE = 'http://localhost:5050';
+
 
 const formatCost = (cost) => {
   if (cost === null || cost === undefined) return '$0.00';

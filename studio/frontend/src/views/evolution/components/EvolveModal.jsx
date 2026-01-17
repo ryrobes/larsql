@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
 import './EvolveModal.css';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * DiffView - Shows before/after of prompt evolution
@@ -61,7 +62,7 @@ const EvolveModal = ({ isOpen, onClose, generation, currentBaseline, cascadeId, 
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:5050/api/sextant/evolve-species', {
+      const response = await fetch(`${API_BASE_URL}/api/sextant/evolve-species`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

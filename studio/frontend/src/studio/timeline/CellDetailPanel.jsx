@@ -14,6 +14,7 @@ import { Modal, ModalHeader, ModalContent, ModalFooter, Button } from '../../com
 import useSpecValidation from '../../hooks/useSpecValidation';
 import ValidationPanel from '../../components/validation/ValidationPanel';
 import './CellDetailPanel.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * Format milliseconds to human-readable time
@@ -1579,7 +1580,7 @@ const CellDetailPanel = ({ cell, index, cellState, cellLogs = [], allSessionLogs
                           imageUrl = imagePath;
                           displayPath = `Screenshot ${idx + 1}`;
                         } else if (imagePath.startsWith('/api')) {
-                          imageUrl = `http://localhost:5050${imagePath}`;
+                          imageUrl = `${API_BASE_URL}${imagePath}`;
                           displayPath = imagePath;
                         } else {
                           imageUrl = imagePath;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '../components';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * Hook to fetch and manage OpenRouter credit balance data.
@@ -44,8 +45,8 @@ export function useCredits(options = {}) {
   const fetchCredits = useCallback(async (forceRefresh = false) => {
     try {
       const url = forceRefresh
-        ? 'http://localhost:5050/api/credits?refresh=true'
-        : 'http://localhost:5050/api/credits';
+        ? `${API_BASE_URL}/api/credits?refresh=true`
+        : `${API_BASE_URL}/api/credits`;
 
       const response = await fetch(url);
 

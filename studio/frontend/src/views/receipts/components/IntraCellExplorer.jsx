@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import CompressionTimeline from '../../../components/CompressionTimeline';
 import './IntraCellExplorer.css';
+import { API_BASE_URL } from '../../../config/api';
 
 const IntraCellExplorer = ({ sessionId }) => {
   const [data, setData] = useState(null);
@@ -21,7 +22,7 @@ const IntraCellExplorer = ({ sessionId }) => {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/intra-cell/${sessionId}`
+          `${API_BASE_URL}/api/context-assessment/intra-cell/${sessionId}`
         );
         if (!res.ok) throw new Error('Failed to fetch intra-cell data');
         const json = await res.json();

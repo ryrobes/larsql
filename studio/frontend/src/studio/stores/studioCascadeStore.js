@@ -3,8 +3,7 @@ import { persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { autoGenerateSessionId } from '../../utils/sessionNaming';
 import { deriveCellState } from '../utils/deriveCellState';
-
-const API_BASE_URL = 'http://localhost:5050/api/studio';
+import { API_BASE_URL, API_STUDIO_URL } from '../../config/api';
 
 /**
  * Simple hash function for cell caching.
@@ -240,7 +239,7 @@ const useStudioCascadeStore = create(
       setReplayMode: async (sessionId) => {
         // Load historical cascade structure for this session
         try {
-          const res = await fetch(`${API_BASE_URL}/session-cascade/${sessionId}`);
+          const res = await fetch(`${API_STUDIO_URL}/session-cascade/${sessionId}`);
           const data = await res.json();
 
           if (data.error) {
@@ -323,7 +322,7 @@ const useStudioCascadeStore = create(
 
         try {
           // Use same endpoint as polling
-          const url = `http://localhost:5050/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
+          const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=1970-01-01 00:00:00`;
           const response = await fetch(url);
 
           if (!response.ok) {
@@ -396,7 +395,7 @@ const useStudioCascadeStore = create(
 
         try {
           // First, try to load the cascade structure from the session
-          const res = await fetch(`${API_BASE_URL}/session-cascade/${sessionId}`);
+          const res = await fetch(`${API_STUDIO_URL}/session-cascade/${sessionId}`);
           const data = await res.json();
 
           if (data.error) {
@@ -482,7 +481,7 @@ const useStudioCascadeStore = create(
         // Clean up old session on backend
         if (oldSessionId) {
           try {
-            await fetch(`${API_BASE_URL}/cleanup-session`, {
+            await fetch(`${API_STUDIO_URL}/cleanup-session`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ session_id: oldSessionId })
@@ -539,7 +538,7 @@ const useStudioCascadeStore = create(
 
       loadCascade: async (path) => {
         try {
-          const res = await fetch(`${API_BASE_URL}/load?path=${encodeURIComponent(path)}`);
+          const res = await fetch(`${API_STUDIO_URL}/load?path=${encodeURIComponent(path)}`);
           const data = await res.json();
 
           if (data.error) {
@@ -590,7 +589,7 @@ const useStudioCascadeStore = create(
             payload.raw_yaml = state.cascadeYamlText;
           }
 
-          const res = await fetch(`${API_BASE_URL}/save`, {
+          const res = await fetch(`${API_STUDIO_URL}/save`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1022,7 +1021,7 @@ actions:
           // Get effective auto-fix config for this cell
           const autoFixConfig = get().getEffectiveAutoFixConfig(cellName);
 
-          const res = await fetch(`${API_BASE_URL}/run-cell`, {
+          const res = await fetch(`${API_STUDIO_URL}/run-cell`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1126,7 +1125,7 @@ actions:
           const cascadeYaml = state.cascadeYamlText || yaml.dump(state.cascade, { indent: 2, lineWidth: -1 });
 
           // POST to standard run-cascade endpoint
-          const res = await fetch('http://localhost:5050/api/run-cascade', {
+          const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1326,7 +1325,7 @@ actions:
         });
 
         try {
-          const res = await fetch(`${API_BASE_URL}/list`);
+          const res = await fetch(`${API_STUDIO_URL}/list`);
           const data = await res.json();
 
           if (data.error) {
@@ -1349,7 +1348,7 @@ actions:
       fetchDefaultModel: async () => {
         console.log('[fetchDefaultModel] Starting fetch...');
         try {
-          const res = await fetch(`${API_BASE_URL}/models`);
+          const res = await fetch(`${API_STUDIO_URL}/models`);
           console.log('[fetchDefaultModel] Response status:', res.status);
 
           const data = await res.json();
@@ -1380,7 +1379,7 @@ actions:
         set(state => { state.cellTypesLoading = true; });
 
         try {
-          const res = await fetch(`${API_BASE_URL}/cell-types`);
+          const res = await fetch(`${API_STUDIO_URL}/cell-types`);
           const data = await res.json();
 
           set(state => {

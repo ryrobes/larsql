@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import RichTooltip, { RunningCascadeTooltipContent, Tooltip } from '../components/RichTooltip';
 import { getTopViews, getBottomViews } from '../views';
 import './VerticalSidebar.css';
+import { API_BASE_URL } from '../config/api';
 
 /**
  * VerticalSidebar - Application navigation sidebar
@@ -60,13 +61,13 @@ const VerticalSidebar = ({
         if (!force && fetchedSessionsRef.current.has(session.session_id)) continue;
 
         try {
-          const res = await fetch(`http://localhost:5050/api/session/${session.session_id}/latest-image`);
+          const res = await fetch(`${API_BASE_URL}/api/session/${session.session_id}/latest-image`);
           const data = await res.json();
 
           if (data.image_url) {
             setSessionImages(prev => ({
               ...prev,
-              [session.session_id]: `http://localhost:5050${data.image_url}`
+              [session.session_id]: `${API_BASE_URL}${data.image_url}`
             }));
           }
           fetchedSessionsRef.current.add(session.session_id);

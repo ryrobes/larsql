@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { API_BASE_URL } from '../../../config/api';
 
 /**
  * useExplorePolling - Poll session data for ExploreView (Perplexity-style UI)
@@ -443,7 +444,7 @@ export default function useExplorePolling(sessionId) {
       setIsPolling(true);
 
       // Use Studio's endpoint
-      const url = `http://localhost:5050/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(cursorRef.current)}`;
+      const url = `${API_BASE_URL}/api/playground/session-stream/${sessionId}?after=${encodeURIComponent(cursorRef.current)}`;
       const res = await fetch(url);
 
       if (!res.ok) {
@@ -525,7 +526,7 @@ export default function useExplorePolling(sessionId) {
     if (!sessionId) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints?session_id=${sessionId}`);
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints?session_id=${sessionId}`);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);

@@ -11,6 +11,7 @@ import useExplorePolling from './hooks/useExplorePolling';
 import { cancelCascade } from '../../utils/cascadeActions';
 import { ROUTES } from '../../routes.helpers';
 import './ExploreView.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * ExploreView - Perplexity-style research interface for LARS cascades
@@ -92,7 +93,7 @@ const ExploreView = () => {
     }
 
     // Check if session is still valid (running or blocked)
-    fetch(`http://localhost:5050/api/sessions?limit=100`)
+    fetch(`${API_BASE_URL}/api/sessions?limit=100`)
       .then(r => r.json())
       .then(data => {
         const session = data.sessions?.find(s => s.session_id === lastSession);
@@ -156,7 +157,7 @@ const ExploreView = () => {
     if (!checkpoint) return;
 
     try {
-      const res = await fetch(`http://localhost:5050/api/checkpoints/${checkpoint.id}/respond`, {
+      const res = await fetch(`${API_BASE_URL}/api/checkpoints/${checkpoint.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ response })
@@ -188,7 +189,7 @@ const ExploreView = () => {
 
     // Handle new cascade case
     try {
-      const res = await fetch('http://localhost:5050/api/run-cascade', {
+      const res = await fetch(`${API_BASE_URL}/api/run-cascade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

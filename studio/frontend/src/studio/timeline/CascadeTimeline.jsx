@@ -17,6 +17,7 @@ import {
   CARD_HEIGHT,
 } from '../../utils/cascadeLayout';
 import './CascadeTimeline.css';
+import { API_BASE_URL } from '../../config/api';
 
 /**
  * InputEdgesSVG - Memoized SVG layer for input parameter connections
@@ -471,7 +472,7 @@ const CascadeTimeline = ({ onOpenBrowser, onMessageContextSelect, onLogsUpdate, 
 
     const fetchCheckpoint = async () => {
       try {
-        const res = await fetch('http://localhost:5050/api/checkpoints');
+        const res = await fetch(`${API_BASE_URL}/api/checkpoints`);
         const data = await res.json();
 
         if (data.error) return;

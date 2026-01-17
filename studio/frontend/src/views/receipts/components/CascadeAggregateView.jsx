@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react';
 import { VideoLoader } from '../../../components';
 import './CascadeAggregateView.css';
+import { API_BASE_URL } from '../../../config/api';
 
 const CascadeAggregateView = ({ cascadeId }) => {
   const [data, setData] = useState(null);
@@ -17,7 +18,7 @@ const CascadeAggregateView = ({ cascadeId }) => {
       setLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5050/api/context-assessment/cascade-aggregate/${cascadeId}?days=${days}`
+          `${API_BASE_URL}/api/context-assessment/cascade-aggregate/${cascadeId}?days=${days}`
         );
         if (!res.ok) throw new Error('Failed to fetch aggregate data');
         const json = await res.json();

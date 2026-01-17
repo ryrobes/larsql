@@ -6,6 +6,7 @@ import TrainingGrid from './components/TrainingGrid';
 import HotOrNotModal from './components/HotOrNotModal';
 import SearchableMultiSelect from './components/SearchableMultiSelect';
 import './TrainingView.css';
+import { API_BASE_URL } from '../../config/api';
 
 // localStorage keys
 const STORAGE_KEY_CASCADE_FILTER = 'training_cascadeFilter';
@@ -91,7 +92,7 @@ const TrainingView = () => {
   // Fetch stats (for KPI cards only)
   const fetchStats = async () => {
     try {
-      const res = await fetch('http://localhost:5050/api/training/stats');
+      const res = await fetch(`${API_BASE_URL}/api/training/stats`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -124,7 +125,7 @@ const TrainingView = () => {
         params.append('search', debouncedSearch.trim());
       }
 
-      const res = await fetch(`http://localhost:5050/api/training/filter-options?${params}`);
+      const res = await fetch(`${API_BASE_URL}/api/training/filter-options?${params}`);
       const data = await res.json();
       if (data.error) {
         console.error('Filter options error:', data.error);
@@ -159,7 +160,7 @@ const TrainingView = () => {
       }
       params.append('limit', '500');
 
-      const res = await fetch(`http://localhost:5050/api/training/examples?${params}`);
+      const res = await fetch(`${API_BASE_URL}/api/training/examples?${params}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);
@@ -182,7 +183,7 @@ const TrainingView = () => {
     try {
       const trace_ids = selectedRows.map(row => row.trace_id);
 
-      await fetch('http://localhost:5050/api/training/mark-trainable', {
+      await fetch(`${API_BASE_URL}/api/training/mark-trainable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -231,7 +232,7 @@ const TrainingView = () => {
         };
       }
 
-      const res = await fetch('http://localhost:5050/api/training/assess-confidence', {
+      const res = await fetch(`${API_BASE_URL}/api/training/assess-confidence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
