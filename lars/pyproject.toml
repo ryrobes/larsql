@@ -48,6 +48,7 @@ dependencies = [
     "ruamel.yaml",
     "sqlglot",
     "clickhouse-driver",
+    "flask",
 ]
 
 [project.urls]
