@@ -652,9 +652,9 @@ class ClientConnection:
         # Debug: Check if this is the pg_class table query
         if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
             print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query BEFORE rewrite:")
-            for i, line in enumerate(query.split('\n'), 1):
-                if line.strip():
-                    print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+            # for i, line in enumerate(query.split('\n'), 1):
+            #     if line.strip():
+            #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
             print(f"[DEBUG]   WHERE in original: {'WHERE' in query.upper()}")
 
         for table in MISSING_JOIN_TABLES:
@@ -958,8 +958,8 @@ class ClientConnection:
             # Print full query to see the structure - split into lines for analysis
             lines = result.split('\n')
             print(f"[DEBUG] Rewritten query has {len(lines)} lines:")
-            for i, line in enumerate(lines, 1):
-                print(f"[DEBUG]   Line {i}: {line[:120]}{'...' if len(line) > 120 else ''}")
+            # for i, line in enumerate(lines, 1):
+            #     print(f"[DEBUG]   Line {i}: {line[:120]}{'...' if len(line) > 120 else ''}")
         elif has_pg_inherits:
             print(f"[DEBUG] _rewrite_pg_inherits_subqueries: WARNING - pg_inherits still in result!")
 
@@ -6795,9 +6795,9 @@ class ClientConnection:
                         # Debug: show original query before ANY rewriters for pg_class
                         if 'PG_CLASS' in query_upper and 'RELKIND' in query_upper:
                             print(f"[DEBUG] pg_class: ORIGINAL QUERY STRUCTURE:")
-                            for i, line in enumerate(desc_query.split('\n'), 1):
-                                if line.strip():
-                                    print(f"[DEBUG]   Line {i}: {line.strip()[:100]}")
+                            # for i, line in enumerate(desc_query.split('\n'), 1):
+                            #     if line.strip():
+                            #         print(f"[DEBUG]   Line {i}: {line.strip()[:100]}")
 
                         # Apply standard query rewrites
                         desc_query = self._rewrite_pg_catalog_function_calls(desc_query)
