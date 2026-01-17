@@ -38,6 +38,10 @@ def get_skill_manifest(refresh: bool = False) -> Dict[str, Any]:
     if not refresh and _skills_manifest_cache is not None:
         return _skills_manifest_cache
 
+    # Ensure all builtin skills are registered before scanning
+    from . import _register_all_skills
+    _register_all_skills()
+
     # Ensure declarative tools are registered before scanning
     if not _declarative_tools_registered:
         try:
