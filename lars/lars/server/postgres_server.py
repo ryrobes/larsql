@@ -738,9 +738,9 @@ class ClientConnection:
         # Debug: Check if this is the pg_class table query
         if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
             print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query AFTER rewrite:")
-            for i, line in enumerate(result.split('\n'), 1):
-                if line.strip():
-                    print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+            # for i, line in enumerate(result.split('\n'), 1):
+            #     if line.strip():
+            #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
             print(f"[DEBUG]   WHERE in result: {'WHERE' in result.upper()}")
 
         # Debug: show if WHERE clause is present

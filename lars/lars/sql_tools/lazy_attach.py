@@ -373,27 +373,49 @@ class LazyAttachManager:
             if type_filter and cfg.type != type_filter:
                 continue
 
-            # Skip types that don't create catalogs (handled differently)
-            if cfg.type in ("csv_folder", "duckdb_folder"):
-                # These are schema/table-based, not catalog-based
-                # For duckdb_folder, we could enumerate files and attach each
-                if cfg.type == "duckdb_folder":
-                    try:
-                        attached_files = self._attach_all_duckdb_folder_files(cfg)
-                        for file_name in attached_files:
-                            results.append({
-                                "connection": file_name,
-                                "type": "duckdb_file",
-                                "status": "attached",
-                                "message": f"from {name}/"
-                            })
-                    except Exception as e:
+            # Handle special types that don't create catalogs (schema/table-based)
+            if cfg.type == "csv_folder":
+                try:
+                    table_count = self._attach_all_csv_folder_tables(cfg)
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "attached",
+                        "message": f"{table_count} tables"
+                    })
+                except Exception as e:
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "failed",
+                        "message": str(e)[:100]
+                    })
+                continue
+
+            if cfg.type == "duckdb_folder":
+                try:
+                    attached_files = self._attach_all_duckdb_folder_files(cfg)
+                    for file_name in attached_files:
+                        results.append({
+                            "connection": file_name,
+                            "type": "duckdb_file",
+                            "status": "attached",
+                            "message": f"from {name}/"
+                        })
+                    if not attached_files:
                         results.append({
                             "connection": name,
                             "type": cfg.type,
-                            "status": "failed",
-                            "message": str(e)
+                            "status": "attached",
+                            "message": "0 files"
                         })
+                except Exception as e:
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "failed",
+                        "message": str(e)[:100]
+                    })
                 continue
 
             # Already attached?
@@ -456,6 +478,53 @@ class LazyAttachManager:
 
         return attached
 
+    def _attach_all_csv_folder_tables(self, cfg: SqlConnectionConfig) -> int:
+        """
+        Create schema and materialize all CSV files from a csv_folder connection.
+
+        Returns the number of tables created.
+        """
+        if not cfg.folder_path or not os.path.isdir(cfg.folder_path):
+            return 0
+
+        connection_name = cfg.connection_name
+
+        # Ensure schema exists
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(connection_name)};")
+
+        # Build file map
+        file_map = self._build_csv_file_map(cfg.folder_path)
+        self._csv_file_maps[connection_name] = file_map
+
+        table_count = 0
+        for table_name, csv_file in sorted(file_map.items()):
+            try:
+                if self._csv_table_exists(connection_name, table_name):
+                    table_count += 1  # Already exists, count it
+                    continue
+
+                full_name = f"{_quote_ident(connection_name)}.{_quote_ident(table_name)}"
+
+                if _lazy_attach_csv_materialize():
+                    self._conn.execute(
+                        f"""
+                        CREATE TABLE {full_name} AS
+                        SELECT * FROM read_csv_auto('{_escape_single_quotes(str(csv_file))}', AUTO_DETECT=TRUE, ignore_errors=true)
+                        """.strip()
+                    )
+                else:
+                    self._conn.execute(
+                        f"""
+                        CREATE OR REPLACE VIEW {full_name} AS
+                        SELECT * FROM read_csv_auto('{_escape_single_quotes(str(csv_file))}', AUTO_DETECT=TRUE, ignore_errors=true)
+                        """.strip()
+                    )
+                table_count += 1
+            except Exception as e:
+                log.debug("[lazy_attach] Failed to create csv table %s.%s: %s", connection_name, table_name, e)
+
+        return table_count
+
     def get_available_connections(self) -> List[Dict[str, str]]:
         """
         Get list of all configured connections with their status.
@@ -463,15 +532,33 @@ class LazyAttachManager:
         Returns:
             List of dicts with {name, type, enabled, status} for each connection
         """
-        attached = self._attached_catalogs()
+        attached_catalogs = self._attached_catalogs()
+        attached_schemas = self._get_schemas()
         results = []
 
         for name, cfg in sorted(self._configs.items()):
             status = "available"
-            if name in attached:
-                status = "attached"
-            elif name in self._failed_configs:
-                status = "failed"
+
+            # csv_folder creates schemas, not catalogs
+            if cfg.type == "csv_folder":
+                if name in attached_schemas:
+                    status = "attached"
+                elif name in self._failed_configs:
+                    status = "failed"
+            # duckdb_folder attaches individual files as catalogs
+            elif cfg.type == "duckdb_folder":
+                # Check if any files from this folder are attached
+                if cfg.folder_path and os.path.isdir(cfg.folder_path):
+                    folder_files = {sanitize_name(f.stem) for f in Path(cfg.folder_path).glob("*.duckdb")}
+                    if folder_files & attached_catalogs:
+                        status = "attached"
+                    elif not folder_files:
+                        status = "empty"
+            else:
+                if name in attached_catalogs:
+                    status = "attached"
+                elif name in self._failed_configs:
+                    status = "failed"
 
             results.append({
                 "name": name,
@@ -481,6 +568,16 @@ class LazyAttachManager:
             })
 
         return results
+
+    def _get_schemas(self) -> Set[str]:
+        """Get list of all schema names in the database."""
+        try:
+            rows = self._conn.execute(
+                "SELECT DISTINCT schema_name FROM information_schema.schemata"
+            ).fetchall()
+            return {r[0] for r in rows}
+        except Exception:
+            return set()
 
     # ---------------------------------------------------------------------
     # Attachment helpers
