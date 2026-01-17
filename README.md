@@ -82,6 +82,8 @@ SELECT
   product_name,
   ASK('Is this suitable for children? yes/no', description) AS kid_friendly
 FROM products
+
+-- plus lots more...
 ```
 
 **50+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
@@ -89,13 +91,13 @@ FROM products
 ## Quick Start
 
 ```bash
-# Install
+# install
 pip install larsql
 
-# Set your LLM API key (OpenRouter, or see docs site for others)
+# set your LLM API key (OpenRouter, or see docs site for others)
 export OPENROUTER_API_KEY=sk-or-v1-...
 
-# set up clickhouse (docker or existing DB, change mem/cpu as needed)
+# set up clickhouse (docker or existing DB)
 docker run -d \
   --name lars-clickhouse \
   --ulimit nofile=262144:262144 \
@@ -106,20 +108,21 @@ docker run -d \
   -v clickhouse-logs:/var/log/clickhouse-server \
   -e CLICKHOUSE_USER=lars \
   -e CLICKHOUSE_PASSWORD=lars \
-  --memory=8g \
-  --cpus=4 \
   clickhouse/clickhouse-server:25.11
+
+# create & populate a project directory for the starter files
+lars init my_lars_project ; cd my_lars_project
 
 # init the database and refresh the metadata
 lars db init 
 
-# Start the SQL server (PostgreSQL wire protocol)
+# start the SQL server (PostgreSQL wire protocol)
 lars serve sql --port 15432
 
-# Connect with any SQL client
+# connect with any SQL client (default is lars/lars - proper auth coming soon)
 psql postgresql://localhost:15432/default
 
-# Optional - start the web UI admin/studio tool
+# optional - start the web UI admin / studio tool
 lars serve studio
 # runs at http://localhost:5050
 ```
