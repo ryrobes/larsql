@@ -48,6 +48,11 @@ sql_function:
     - "PARSE({{ text }}, {{ instruction }})"
     - "{{ text }} PARSE {{ instruction }}"
   cache: true
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: ["text"]
+    fingerprint_config:
+      method: hybrid
   test_cases:
     - sql: "SELECT parse('Meeting scheduled for March 15, 2024 at 2pm', 'the date')"
       expect:

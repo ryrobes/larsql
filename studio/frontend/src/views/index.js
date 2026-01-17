@@ -143,7 +143,7 @@ export const views = {
     icon: 'mdi:test-tube',
     label: 'Tests',
     position: 'top',
-    enabled: true,
+    enabled: process.env.NODE_ENV === 'development',
   },
 
   interrupts: {
