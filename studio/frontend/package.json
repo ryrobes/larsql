@@ -1,6 +1,6 @@
 {
   "name": "lars-ui",
-  "version": "2.2.11",
+  "version": "2.2.12",
   "private": true,
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
