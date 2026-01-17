@@ -7013,6 +7013,7 @@ def cmd_bootstrap(args):
     # Create a fake args object for doctor
     class DoctorArgs:
         fix = False
+        verbose = False
 
     cmd_doctor(DoctorArgs())
 

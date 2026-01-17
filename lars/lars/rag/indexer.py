@@ -242,10 +242,12 @@ def ensure_rag_index(
     chunks_reused = 0
     embedding_dim_used = expected_dim
 
-    # Process each file
-    chunks_to_insert = []
-    manifests_to_insert = []
+    # Phase 1: Collect all chunks from all files (no embedding yet)
+    # Structure: list of (file_info, chunk_objs) where file_info has metadata
+    files_to_process = []
     current_rel_paths = set()
+    all_text_chunks = []  # Flat list of all chunk texts for batched embedding
+    chunk_file_mapping = []  # Track which file each chunk belongs to
 
     for path in takes:
         rel_path = path.relative_to(abs_dir).as_posix()
@@ -277,11 +279,32 @@ def ensure_rag_index(
             skipped_files += 1
             continue
 
-        text_chunks = [c.text for c in chunk_objs]
+        content_hash = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
 
-        # Embed using Agent.embed() - handles logging automatically
+        # Store file info for later processing
+        file_info = {
+            "path": path,
+            "rel_path": rel_path,
+            "doc_id": doc_id,
+            "prev": prev,
+            "stat": stat,
+            "content_hash": content_hash,
+            "chunk_objs": chunk_objs,
+            "chunk_start_idx": len(all_text_chunks),  # Track where this file's chunks start
+        }
+        files_to_process.append(file_info)
+
+        # Add chunks to flat list for batched embedding
+        for chunk in chunk_objs:
+            all_text_chunks.append(chunk.text)
+            chunk_file_mapping.append(len(files_to_process) - 1)  # Index into files_to_process
+
+    # Phase 2: Batch embed all chunks in one API call
+    all_embeddings = []
+    if all_text_chunks:
+        console.print(f"[dim]Embedding {len(all_text_chunks)} chunks in single batch...[/dim]")
         embed_result = embed_texts(
-            texts=text_chunks,
+            texts=all_text_chunks,
             model=embed_model,
             session_id=session_id,
             trace_id=trace_id,
@@ -289,7 +312,7 @@ def ensure_rag_index(
             cell_name=cell_name,
             cascade_id=cascade_id,
         )
-        embeddings = embed_result["embeddings"]
+        all_embeddings = embed_result["embeddings"]
         embedding_dim_used = embedding_dim_used or embed_result["dim"]
 
         # Validate dimension consistency
@@ -299,17 +322,29 @@ def ensure_rag_index(
                 f"Delete existing chunks for this rag_id and rebuild."
             )
 
+    # Phase 3: Build insert rows with embeddings
+    chunks_to_insert = []
+    manifests_to_insert = []
+
+    for file_info in files_to_process:
+        doc_id = file_info["doc_id"]
+        rel_path = file_info["rel_path"]
+        prev = file_info["prev"]
+        stat = file_info["stat"]
+        content_hash = file_info["content_hash"]
+        chunk_objs = file_info["chunk_objs"]
+        chunk_start_idx = file_info["chunk_start_idx"]
+
         # Delete old chunks for this doc (if updating)
         if prev:
             db.execute(f"ALTER TABLE rag_chunks DELETE WHERE rag_id = '{rag_id}' AND doc_id = '{prev['doc_id']}'")
 
         # Prepare manifest row
-        content_hash = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
         manifests_to_insert.append({
             "doc_id": doc_id,
             "rag_id": rag_id,
             "rel_path": rel_path,
-            "abs_path": str(path),
+            "abs_path": str(file_info["path"]),
             "file_hash": content_hash,
             "file_size": stat.st_size,
             "mtime": stat.st_mtime,
@@ -317,9 +352,9 @@ def ensure_rag_index(
             "content_hash": content_hash,
         })
 
-        # Prepare chunk rows
+        # Prepare chunk rows with embeddings from the batched result
         for idx, chunk in enumerate(chunk_objs):
-            chunk_id = f"{doc_id}_{idx}"
+            embedding_idx = chunk_start_idx + idx
             chunks_to_insert.append({
                 "rag_id": rag_id,
                 "doc_id": doc_id,
@@ -331,9 +366,9 @@ def ensure_rag_index(
                 "start_line": chunk.start_line,
                 "end_line": chunk.end_line,
                 "file_hash": content_hash,
-                "embedding": embeddings[idx],
+                "embedding": all_embeddings[embedding_idx],
                 "embedding_model": embed_model,
-                "embedding_dim": embedding_dim_used or len(embeddings[idx]),
+                "embedding_dim": embedding_dim_used or len(all_embeddings[embedding_idx]),
             })
 
         indexed_files += 1
