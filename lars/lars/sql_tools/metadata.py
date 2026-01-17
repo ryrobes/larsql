@@ -81,6 +81,17 @@ class TableMetadata:
             rows = self.conn.fetch_all(sql)
             return [(None, row[0]) for row in rows]
 
+        elif config.type == "duckdb":
+            # For attached DuckDB files, query duckdb_tables() filtered by database
+            sql = f"""
+                SELECT table_name
+                FROM duckdb_tables()
+                WHERE database_name = '{alias}'
+                  AND schema_name = 'main'
+            """
+            rows = self.conn.fetch_all(sql)
+            return [(None, row[0]) for row in rows]
+
         # === Cloud Database Types ===
         elif config.type == "bigquery":
             # BigQuery attaches as a database
@@ -270,6 +281,11 @@ class TableMetadata:
             # Query: market_research.table_name (direct, since db is attached)
             full_table_name = f"{schema}.{table_name}"
             display_schema = schema  # db_name
+
+        elif config.type == "duckdb":
+            # For single DuckDB file: alias.table_name
+            full_table_name = f"{alias}.{table_name}"
+            display_schema = alias
 
         elif config.type in ("s3", "azure", "gcs", "http", "mongodb", "cassandra",
                              "excel", "gsheets", "delta", "iceberg", "clickhouse"):

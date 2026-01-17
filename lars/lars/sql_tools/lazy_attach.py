@@ -404,6 +404,9 @@ class LazyAttachManager:
         if cfg.type == "sqlite":
             self._attach_sqlite(cfg)
             return
+        if cfg.type == "duckdb":
+            self._attach_duckdb(cfg)
+            return
         # Phase 1: Cloud databases
         if cfg.type == "bigquery":
             self._attach_bigquery(cfg)
@@ -508,6 +511,25 @@ class LazyAttachManager:
         self._conn.execute(
             f"ATTACH '{_escape_single_quotes(cfg.database)}' AS {alias} (TYPE sqlite);"
         )
+
+    def _attach_duckdb(self, cfg: SqlConnectionConfig) -> None:
+        """Attach a single DuckDB database file."""
+        if not cfg.database:
+            raise ValueError(f"duckdb config missing database path for {cfg.connection_name}")
+
+        db_path = cfg.database
+        # Resolve relative paths
+        if not os.path.isabs(db_path):
+            from lars.config import get_config
+            lars_config = get_config()
+            db_path = os.path.join(lars_config.root_dir, db_path)
+
+        if not os.path.exists(db_path):
+            raise ValueError(f"DuckDB file not found: {db_path}")
+
+        alias = _quote_ident(cfg.connection_name)
+        read_only = "READ_ONLY" if cfg.read_only else ""
+        self._conn.execute(f"ATTACH '{_escape_single_quotes(db_path)}' AS {alias} {read_only};")
 
     # -------------------------------------------------------------------------
     # Phase 1: Cloud Database Connectors

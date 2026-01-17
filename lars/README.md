@@ -82,6 +82,8 @@ SELECT
   product_name,
   ASK('Is this suitable for children? yes/no', description) AS kid_friendly
 FROM products
+
+-- plus lots more...
 ```
 
 **50+ built-in operators** for filtering, logic, transformation, aggregation, data quality, parsing, and more.
@@ -89,17 +91,40 @@ FROM products
 ## Quick Start
 
 ```bash
-# Install
+# install
 pip install larsql
 
-# Set your LLM API key (OpenRouter, or see docs for others)
+# set your LLM API key (OpenRouter, or see docs site for others)
 export OPENROUTER_API_KEY=sk-or-v1-...
 
-# Start the SQL server (PostgreSQL wire protocol)
+# set up clickhouse (docker or existing DB)
+docker run -d \
+  --name lars-clickhouse \
+  --ulimit nofile=262144:262144 \
+  -p 8123:8123 \
+  -p 9000:9000 \
+  -p 9009:9009 \
+  -v clickhouse-data:/var/lib/clickhouse \
+  -v clickhouse-logs:/var/log/clickhouse-server \
+  -e CLICKHOUSE_USER=lars \
+  -e CLICKHOUSE_PASSWORD=lars \
+  clickhouse/clickhouse-server:25.11
+
+# create & populate a project directory for the starter files
+lars init my_lars_project ; cd my_lars_project
+
+# init the database and refresh the metadata
+lars db init 
+
+# start the SQL server (PostgreSQL wire protocol)
 lars serve sql --port 15432
 
-# Connect with any SQL client
+# connect with any SQL client (default is lars/lars - proper auth coming soon)
 psql postgresql://localhost:15432/default
+
+# optional - start the web UI admin / studio tool
+lars serve studio
+# runs at http://localhost:5050
 ```
 
 That's it. Run semantic queries from DBeaver, DataGrip, psql, Tableau, or any PostgreSQL client.

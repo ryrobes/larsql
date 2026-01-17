@@ -105,7 +105,7 @@ class SqlConnectionConfig(BaseModel):
     connection_name: str
     type: Literal[
         # Existing types
-        "postgres", "mysql", "sqlite", "csv_folder", "duckdb_folder", "clickhouse",
+        "postgres", "mysql", "sqlite", "duckdb", "csv_folder", "duckdb_folder", "clickhouse",
         # Phase 1: Native ATTACH cloud databases
         "bigquery", "snowflake", "motherduck",
         # Phase 2: Remote filesystems
@@ -214,6 +214,10 @@ def validate_connection_config(config: SqlConnectionConfig) -> List[str]:
     elif config.type == "sqlite":
         if not config.database:
             errors.append("sqlite requires database (file path)")
+
+    elif config.type == "duckdb":
+        if not config.database:
+            errors.append("duckdb requires database (file path)")
 
     elif config.type == "bigquery":
         if not config.project_id:

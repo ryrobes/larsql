@@ -3054,6 +3054,25 @@ def cmd_db_init(args):
     from lars.config import get_clickhouse_url
     from lars.db_adapter import ensure_housekeeping
 
+    # Check for OPENROUTER_API_KEY if running full bootstrap (not --only)
+    if not getattr(args, 'only', False):
+        api_key = os.environ.get('OPENROUTER_API_KEY', '')
+        if not api_key:
+            print()
+            styled_print(f"{S.ERR} OPENROUTER_API_KEY not set")
+            print()
+            print("Full setup requires an OpenRouter API key for model discovery.")
+            print()
+            print("To fix:")
+            print("  1. Get an API key from https://openrouter.ai/keys")
+            print("  2. Set it in your environment:")
+            print("     export OPENROUTER_API_KEY=sk-or-v1-...")
+            print()
+            print("Or run with --only to just initialize the database schema:")
+            print("  lars db init --only")
+            print()
+            sys.exit(1)
+
     print()
     print("="*60)
     print("CLICKHOUSE SCHEMA INITIALIZATION")

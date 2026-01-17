@@ -113,6 +113,9 @@ class DatabaseConnector:
         elif config.type == "sqlite":
             self._attach_sqlite(config, alias)
 
+        elif config.type == "duckdb":
+            self._attach_duckdb(config, alias)
+
         elif config.type == "csv_folder":
             self._attach_csv_folder(config, alias)
 
@@ -211,6 +214,27 @@ class DatabaseConnector:
         """Attach SQLite database."""
         # SQLite just needs file path
         self.conn.execute(f"ATTACH '{config.database}' AS {alias} (TYPE sqlite);")
+
+    def _attach_duckdb(self, config: SqlConnectionConfig, alias: str):
+        """Attach a single DuckDB database file."""
+        if not config.database:
+            raise ValueError(f"duckdb config missing database path for {config.connection_name}")
+
+        db_path = config.database
+        # Resolve relative paths
+        if not os.path.isabs(db_path):
+            from lars.config import get_config
+            lars_config = get_config()
+            db_path = os.path.join(lars_config.root_dir, db_path)
+
+        if not os.path.exists(db_path):
+            print(f"    [WARN] DuckDB file not found: {db_path}")
+            return
+
+        # Attach DuckDB file directly (DuckDB can attach other DuckDB files)
+        read_only = "READ_ONLY" if config.read_only else ""
+        self.conn.execute(f"ATTACH '{db_path}' AS {alias} {read_only};")
+        print(f"    [OK] Attached DuckDB: {alias} → {db_path}")
 
     # =========================================================================
     # Phase 1: Cloud Database Connectors
