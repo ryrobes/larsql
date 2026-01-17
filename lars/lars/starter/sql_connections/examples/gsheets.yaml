@@ -1,0 +1,21 @@
+# Google Sheets Connection Example
+# Query data directly from Google Sheets
+
+connection_name: budget_sheet
+type: gsheets
+
+# Required: Spreadsheet ID from the URL
+# https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit
+spreadsheet_id: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+
+# Optional: Specific sheet name (defaults to first sheet)
+sheet_name: Sheet1
+
+# Google Sheets API credentials
+credentials_env: GOOGLE_SHEETS_CREDENTIALS
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM budget_sheet.Sheet1

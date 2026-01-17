@@ -1,0 +1,19 @@
+# HTTP/HTTPS File Connection Example
+# Query data files accessible via HTTP URLs
+
+connection_name: public_datasets
+type: http
+
+# Required: Full URL to the data file
+folder_path: https://data.example.com/public/dataset.parquet
+
+# Supported file formats:
+# - .parquet (default)
+# - .csv
+# - .json / .jsonl
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+
+# Query syntax: SELECT * FROM public_datasets.dataset

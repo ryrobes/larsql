@@ -6,14 +6,13 @@ logs
 .cache
 .code
 .vscode
-data
 studio/backend/__pycache__/
-data/*.parquet
 images
 memories
 browsers
 audio
-playground_scratchpad
+/data/
+playground_scratchpad 
 research_dbs
 rabbitize-runs
 session_dbs

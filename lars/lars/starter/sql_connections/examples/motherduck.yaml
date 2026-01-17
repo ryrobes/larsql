@@ -1,0 +1,19 @@
+# Motherduck Connection Example
+# Motherduck is a cloud-native DuckDB service
+# Sign up at: https://motherduck.com
+
+connection_name: motherduck_shared
+type: motherduck
+
+# Required
+database: my_database
+
+# Authentication token (get from Motherduck dashboard)
+motherduck_token_env: MOTHERDUCK_TOKEN
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50
+
+# Query syntax: SELECT * FROM motherduck_shared.{table}

@@ -1,0 +1,10 @@
+connection_name: local_postgres
+type: postgres
+host: localhost
+port: 5432
+database: my_database
+user: postgres
+password: postgres
+enabled: true
+sample_row_limit: 500
+distinct_value_threshold: 100

@@ -1,0 +1,17 @@
+# BigQuery Connection Example
+# Requires: Google Cloud project with BigQuery enabled
+# Auth: Uses GOOGLE_APPLICATION_CREDENTIALS environment variable
+
+connection_name: bq_analytics
+type: bigquery
+project_id: my-gcp-project
+
+# Optional: Specify env var for credentials (defaults to GOOGLE_APPLICATION_CREDENTIALS)
+# credentials_env: GOOGLE_APPLICATION_CREDENTIALS
+
+enabled: true
+read_only: true
+sample_row_limit: 100
+distinct_value_threshold: 50
+
+# Query syntax: SELECT * FROM bq_analytics.{dataset}.{table}

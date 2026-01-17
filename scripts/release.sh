@@ -4,10 +4,11 @@
 # Usage: ./scripts/release.sh [patch|minor|major]
 #
 # This script:
-# 1. Bumps the version in pyproject.toml
-# 2. Commits the version change
-# 3. Creates a git tag
-# 4. Pushes to GitHub (which triggers PyPI publish via GitHub Actions)
+# 1. Bumps the version in pyproject.toml (Python package)
+# 2. Bumps the version in studio/frontend/package.json (React UI)
+# 3. Commits the version change
+# 4. Creates a git tag
+# 5. Pushes to GitHub (which triggers PyPI publish via GitHub Actions)
 #
 
 set -e
@@ -75,13 +76,32 @@ sed -i "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" lars/
 # Verify the change
 VERIFY_VERSION=$(grep -E '^version = ' lars/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
 if [[ "$VERIFY_VERSION" != "$NEW_VERSION" ]]; then
-    echo -e "${RED}Error: Version update failed${NC}"
+    echo -e "${RED}Error: Version update failed in pyproject.toml${NC}"
     git checkout lars/pyproject.toml
     exit 1
 fi
 
+# Update version in frontend package.json
+FRONTEND_PKG="studio/frontend/package.json"
+if [[ -f "$FRONTEND_PKG" ]]; then
+    # Get current frontend version
+    FRONTEND_CURRENT=$(grep -E '^\s*"version":' "$FRONTEND_PKG" | sed 's/.*"version": "\(.*\)".*/\1/')
+    echo -e "${YELLOW}Updating frontend: ${FRONTEND_CURRENT} -> ${NEW_VERSION}${NC}"
+
+    # Update version (matches "version": "x.y.z" pattern)
+    sed -i "s/\"version\": \"${FRONTEND_CURRENT}\"/\"version\": \"${NEW_VERSION}\"/" "$FRONTEND_PKG"
+
+    # Verify frontend update
+    FRONTEND_VERIFY=$(grep -E '^\s*"version":' "$FRONTEND_PKG" | sed 's/.*"version": "\(.*\)".*/\1/')
+    if [[ "$FRONTEND_VERIFY" != "$NEW_VERSION" ]]; then
+        echo -e "${RED}Error: Version update failed in package.json${NC}"
+        git checkout lars/pyproject.toml "$FRONTEND_PKG"
+        exit 1
+    fi
+fi
+
 # Commit and tag
-git add lars/pyproject.toml
+git add lars/pyproject.toml studio/frontend/package.json
 git commit -m "Release v${NEW_VERSION}"
 git tag "v${NEW_VERSION}"
 
