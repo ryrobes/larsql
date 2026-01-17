@@ -5649,7 +5649,14 @@ def cmd_serve_studio(args):
         os.path.join(frontend_build_dir, 'index.html')
     )
 
+    # Ensure LARS_ROOT is set correctly for the subprocess
+    # Use current working directory as workspace (user's project dir)
+    from lars.config import get_config
+    config = get_config()
+    workspace_root = config.lars_root
+
     styled_print(f"{S.CASCADE} LARS Studio")
+    print(f"   Workspace: {workspace_root}")
     print(f"   Backend dir: {studio_backend_dir}")
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
@@ -5666,6 +5673,7 @@ def cmd_serve_studio(args):
         env = os.environ.copy()
         env['FLASK_ENV'] = 'development'
         env['FLASK_DEBUG'] = '1'
+        env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
 
         # Run app.py directly with graceful shutdown handling
         _run_server_subprocess(
@@ -5692,6 +5700,10 @@ def cmd_serve_studio(args):
         print(f"   URL: http://{args.host}:{args.port}")
         print()
 
+        # Set environment with correct LARS_ROOT
+        env = os.environ.copy()
+        env['LARS_ROOT'] = workspace_root  # Pass workspace to subprocess
+
         # Build gunicorn command
         cmd = [
             sys.executable, '-m', 'gunicorn',
@@ -5702,7 +5714,7 @@ def cmd_serve_studio(args):
             'app:app'
         ]
 
-        _run_server_subprocess(cmd)
+        _run_server_subprocess(cmd, env=env)
 
 
 def cmd_serve_sql(args):

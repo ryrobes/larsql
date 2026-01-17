@@ -22,21 +22,23 @@ from flask_cors import CORS
 import pandas as pd
 from queue import Empty
 
-# CRITICAL: Set LARS_ROOT before any imports
-# When running from dashboard/backend, we need to point to the repo root
-# This ensures cascade files, skills, and other resources are found correctly
+# LARS_ROOT should be set by the CLI before launching the backend
+# Only set a fallback if not already set (for direct app.py runs during development)
 if 'LARS_ROOT' not in os.environ:
-    # Detect repo root: go up two levels from dashboard/backend to get to lars/
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-    os.environ['LARS_ROOT'] = repo_root
-    print(f"[Backend] Set LARS_ROOT={repo_root}")
+    # Fallback: use package directory (won't find user cascades, but backend will work)
+    fallback_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+    os.environ['LARS_ROOT'] = fallback_root
+    print(f"[Backend] WARNING: LARS_ROOT not set, using fallback: {fallback_root}")
+    print(f"[Backend] User cascades may not be visible. Run via 'lars serve studio' instead.")
+else:
+    print(f"[Backend] Using LARS_ROOT={os.environ['LARS_ROOT']}")
 
 # Note: live_store.py is now a stub - all data comes from ClickHouse directly
 
 # Add lars package to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'lars')))
 from lars.db_adapter import get_db, set_query_source, set_query_caller, set_query_request_path, set_query_page_ref
-from lars.config import get_clickhouse_url
+from lars.config import get_clickhouse_url, get_builtin_cascades_dir, get_builtin_skills_dir, get_builtin_cell_types_dir
 from lars.loaders import load_config_file
 from urllib.parse import urlparse
 
@@ -530,12 +532,15 @@ def get_cascade_definitions():
             all_cascades = {}
 
             search_paths = [
+                # User workspace paths
                 EXAMPLES_DIR,
-                SKILLS_DIR,      # Legacy skills directory
-                SKILLS_DIR,      # Skills (tools that are cascades)
+                SKILLS_DIR,
                 CASCADES_DIR,
-                PACKAGE_EXAMPLES_DIR,
                 PLAYGROUND_SCRATCHPAD_DIR,
+                # Package builtin paths (always available regardless of workspace)
+                get_builtin_cascades_dir(),
+                get_builtin_skills_dir(),
+                get_builtin_cell_types_dir(),
             ]
 
             for search_dir in search_paths:
