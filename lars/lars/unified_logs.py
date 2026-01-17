@@ -190,7 +190,8 @@ class UnifiedLogger:
                         from .db_adapter import get_db
                         db = get_db()
                         db.batch_update_costs('unified_logs', updates)
-                        print(f"[Unified Log] Updated costs for {len(updates)} messages")
+                        total_cost = sum(u.get('cost') or 0 for u in updates)
+                        print(f"[Unified Log] Updated costs for {len(updates)} messages (${total_cost:.6f})")
                     except Exception as e:
                         print(f"[Unified Log] Cost update error: {e}")
 
