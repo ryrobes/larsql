@@ -49,6 +49,7 @@ dependencies = [
     "sqlglot",
     "clickhouse-driver",
     "flask",
+    "flask-cors",
 ]
 
 [project.urls]

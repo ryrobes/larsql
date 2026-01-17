@@ -886,8 +886,8 @@ def main():
     )
     serve_studio_parser.add_argument(
         '--host',
-        default='127.0.0.1',
-        help='Host to listen on (default: 127.0.0.1)'
+        default='0.0.0.0',
+        help='Host to listen on (default: 0.0.0.0)'
     )
     serve_studio_parser.add_argument(
         '--port',
