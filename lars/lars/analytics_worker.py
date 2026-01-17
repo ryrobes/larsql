@@ -1374,7 +1374,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
     """
     Analyze context message relevance using a cheap LLM.
 
-    Calls skills/analyze_context_relevance.yaml to score each context message
+    Calls analyze_context_relevance.yaml to score each context message
     based on how much it contributed to the generated output.
 
     Updates cell_context_breakdown with relevance_score and relevance_reasoning.
@@ -1491,7 +1491,7 @@ def _analyze_context_relevance(session_id: str, cascade_id: str, cell_name: str,
             logger.warning(f"[analytics_worker] Could not look up parent caller context: {e}")
 
         runner = LARSRunner(
-            config_path='skills/analyze_context_relevance.yaml',
+            config_path='analyze_context_relevance.yaml',
             session_id=analysis_session_id,
             depth=1,  # Mark as sub-cascade
             parent_session_id=session_id,  # Link back to session being analyzed

@@ -650,12 +650,12 @@ class ClientConnection:
         result = query
 
         # Debug: Check if this is the pg_class table query
-        if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
-            print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query BEFORE rewrite:")
-            # for i, line in enumerate(query.split('\n'), 1):
-            #     if line.strip():
-            #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
-            print(f"[DEBUG]   WHERE in original: {'WHERE' in query.upper()}")
+        # if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
+        #     print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query BEFORE rewrite:")
+        #     # for i, line in enumerate(query.split('\n'), 1):
+        #     #     if line.strip():
+        #     #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+        #     print(f"[DEBUG]   WHERE in original: {'WHERE' in query.upper()}")
 
         for table in MISSING_JOIN_TABLES:
             # Two-phase approach: first find the LEFT JOIN start, then find ON condition end
@@ -721,9 +721,9 @@ class ClientConnection:
 
                 # Extract what we're removing for debugging
                 matched_text = result[join_start:on_end]
-                print(f"[DEBUG] _rewrite_missing_table_joins: Removing LEFT JOIN to {table}")
-                print(f"[DEBUG]   Alias: {alias}")
-                print(f"[DEBUG]   Matched ({len(matched_text)} chars): {matched_text[:200]}{'...' if len(matched_text) > 200 else ''}")
+                # print(f"[DEBUG] _rewrite_missing_table_joins: Removing LEFT JOIN to {table}")
+                # print(f"[DEBUG]   Alias: {alias}")
+                # print(f"[DEBUG]   Matched ({len(matched_text)} chars): {matched_text[:200]}{'...' if len(matched_text) > 200 else ''}")
 
                 # Remove the entire LEFT JOIN clause
                 result = result[:join_start] + ' ' + result[on_end:]
@@ -731,25 +731,25 @@ class ClientConnection:
                 # Replace column references like D.description with NULL
                 # Be careful to only replace the alias, not table names
                 result = re.sub(rf'\b{alias}\.(\w+)\b', 'NULL', result, flags=re.IGNORECASE)
-                print(f"[DEBUG]   Alias '{alias}' column refs replaced with NULL")
+                #print(f"[DEBUG]   Alias '{alias}' column refs replaced with NULL")
                 # Continue scanning for additional JOINs to the same missing table (if any)
                 search_from = 0
 
         # Debug: Check if this is the pg_class table query
-        if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
-            print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query AFTER rewrite:")
-            # for i, line in enumerate(result.split('\n'), 1):
-            #     if line.strip():
-            #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
-            print(f"[DEBUG]   WHERE in result: {'WHERE' in result.upper()}")
+        # if 'PG_CLASS' in query.upper() and 'RELKIND' in query.upper() and 'RELNAMESPACE' in query.upper():
+        #     print(f"[DEBUG] _rewrite_missing_table_joins: pg_class query AFTER rewrite:")
+        #     # for i, line in enumerate(result.split('\n'), 1):
+        #     #     if line.strip():
+        #     #         print(f"[DEBUG]   Line {i}: {line.strip()[:80]}")
+        #     print(f"[DEBUG]   WHERE in result: {'WHERE' in result.upper()}")
 
         # Debug: show if WHERE clause is present
-        if 'WHERE' in query.upper() and 'WHERE' not in result.upper():
-            print(f"[DEBUG] WARNING: WHERE clause was lost during JOIN rewriting!")
-            print(f"[DEBUG]   Original had WHERE at position: {query.upper().find('WHERE')}")
-            # Show what was around the WHERE
-            where_pos = query.upper().find('WHERE')
-            print(f"[DEBUG]   Context around WHERE: ...{query[max(0,where_pos-50):where_pos+50]}...")
+        # if 'WHERE' in query.upper() and 'WHERE' not in result.upper():
+        #     print(f"[DEBUG] WARNING: WHERE clause was lost during JOIN rewriting!")
+        #     print(f"[DEBUG]   Original had WHERE at position: {query.upper().find('WHERE')}")
+        #     # Show what was around the WHERE
+        #     where_pos = query.upper().find('WHERE')
+        #     print(f"[DEBUG]   Context around WHERE: ...{query[max(0,where_pos-50):where_pos+50]}...")
 
         return result
 
@@ -841,13 +841,13 @@ class ClientConnection:
             if not has_missing:
                 filtered_parts.append(part)
 
-        if removed_count > 0:
-            print(f"[DEBUG] _strip_union_parts: Removed {removed_count} UNION parts with missing tables")
+        # if removed_count > 0:
+        #     print(f"[DEBUG] _strip_union_parts: Removed {removed_count} UNION parts with missing tables")
 
         if not filtered_parts:
             # All parts had missing tables - return a minimal valid query
             # that matches the structure but returns no rows
-            print(f"[DEBUG] _strip_union_parts: All UNION parts had missing tables, returning first part with FALSE condition")
+            #print(f"[DEBUG] _strip_union_parts: All UNION parts had missing tables, returning first part with FALSE condition")
             # Take first part and add WHERE FALSE
             first_part = parts[0].strip()
             if 'WHERE' in first_part.upper():
@@ -886,8 +886,8 @@ class ClientConnection:
         ]
 
         has_pg_inherits = 'pg_inherits' in query.lower()
-        if has_pg_inherits:
-            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Found pg_inherits in query")
+        # if has_pg_inherits:
+        #     print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Found pg_inherits in query")
 
         for search_pattern in search_patterns:
             while True:
@@ -932,12 +932,12 @@ class ClientConnection:
 
                 if end_pos is None:
                     # Couldn't find closing paren, skip
-                    print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Could not find closing paren")
+                    #print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Could not find closing paren")
                     break
 
                 # Replace the subquery with NULL or empty subquery depending on context
                 old_subquery = result[start_pos:end_pos + 1]
-                print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Replacing subquery: {old_subquery[:80]}...")
+                #print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Replacing subquery: {old_subquery[:80]}...")
 
                 # Check if this subquery is used with IN/NOT IN/EXISTS (need valid subquery, not scalar)
                 # Look at the 30 chars before the subquery
@@ -945,19 +945,19 @@ class ClientConnection:
                 if ' IN' in prefix or 'IN(' in prefix.replace(' ', '') or 'EXISTS' in prefix:
                     # Replace with empty subquery for IN/NOT IN/EXISTS clauses
                     replacement = "(SELECT NULL WHERE FALSE)"
-                    print(f"[DEBUG] Using empty subquery replacement (context: ...{prefix[-20:]})")
+                    #print(f"[DEBUG] Using empty subquery replacement (context: ...{prefix[-20:]})")
                 else:
                     # Replace with NULL scalar for SELECT list columns
                     replacement = "NULL::VARCHAR"
-                    print(f"[DEBUG] Using NULL::VARCHAR replacement (context: ...{prefix[-20:]})")
+                    #print(f"[DEBUG] Using NULL::VARCHAR replacement (context: ...{prefix[-20:]})")
 
                 result = result[:start_pos] + replacement + result[end_pos + 1:]
 
         if has_pg_inherits and 'pg_inherits' not in result.lower():
-            print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Successfully removed all pg_inherits references")
+            #print(f"[DEBUG] _rewrite_pg_inherits_subqueries: Successfully removed all pg_inherits references")
             # Print full query to see the structure - split into lines for analysis
             lines = result.split('\n')
-            print(f"[DEBUG] Rewritten query has {len(lines)} lines:")
+            #print(f"[DEBUG] Rewritten query has {len(lines)} lines:")
             # for i, line in enumerate(lines, 1):
             #     print(f"[DEBUG]   Line {i}: {line[:120]}{'...' if len(line) > 120 else ''}")
         elif has_pg_inherits:
@@ -6793,32 +6793,32 @@ class ClientConnection:
                             desc_query = desc_query.replace(f'${i}', '?')
 
                         # Debug: show original query before ANY rewriters for pg_class
-                        if 'PG_CLASS' in query_upper and 'RELKIND' in query_upper:
-                            print(f"[DEBUG] pg_class: ORIGINAL QUERY STRUCTURE:")
-                            # for i, line in enumerate(desc_query.split('\n'), 1):
-                            #     if line.strip():
-                            #         print(f"[DEBUG]   Line {i}: {line.strip()[:100]}")
+                        # if 'PG_CLASS' in query_upper and 'RELKIND' in query_upper:
+                        #     print(f"[DEBUG] pg_class: ORIGINAL QUERY STRUCTURE:")
+                        #     # for i, line in enumerate(desc_query.split('\n'), 1):
+                        #     #     if line.strip():
+                        #     #         print(f"[DEBUG]   Line {i}: {line.strip()[:100]}")
 
                         # Apply standard query rewrites
                         desc_query = self._rewrite_pg_catalog_function_calls(desc_query)
                         desc_query = self._rewrite_information_schema_catalog_filters(desc_query)
                         # Debug: track WHERE through rewriters for pg_class table queries
                         is_pg_class_table_query = 'PG_CLASS' in query_upper and 'RELKIND' in query_upper
-                        if is_pg_class_table_query:
-                            print(f"[DEBUG] pg_class: ORIGINAL QUERY (first 500 chars):")
-                            print(f"[DEBUG]   {desc_query[:500]}...")
-                            print(f"[DEBUG] pg_class: BEFORE rewriters - WHERE: {'WHERE' in desc_query.upper()}")
+                        # if is_pg_class_table_query:
+                        #     print(f"[DEBUG] pg_class: ORIGINAL QUERY (first 500 chars):")
+                        #     print(f"[DEBUG]   {desc_query[:500]}...")
+                        #     print(f"[DEBUG] pg_class: BEFORE rewriters - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_system_column_refs(desc_query)
-                        if is_pg_class_table_query:
-                            print(f"[DEBUG] pg_class: AFTER system_refs - WHERE: {'WHERE' in desc_query.upper()}")
+                        # if is_pg_class_table_query:
+                        #     print(f"[DEBUG] pg_class: AFTER system_refs - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_missing_table_joins(desc_query)
                         # NOTE: UNION stripping disabled - causes parameter count mismatches
                         # desc_query = self._strip_union_parts_with_missing_tables(desc_query)
-                        if is_pg_class_table_query:
-                            print(f"[DEBUG] pg_class: AFTER missing_joins - WHERE: {'WHERE' in desc_query.upper()}")
+                        # if is_pg_class_table_query:
+                        #     print(f"[DEBUG] pg_class: AFTER missing_joins - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_inherits_subqueries(desc_query)
-                        if is_pg_class_table_query:
-                            print(f"[DEBUG] pg_class: AFTER pg_inherits - WHERE: {'WHERE' in desc_query.upper()}")
+                        # if is_pg_class_table_query:
+                        #     print(f"[DEBUG] pg_class: AFTER pg_inherits - WHERE: {'WHERE' in desc_query.upper()}")
                         desc_query = self._rewrite_pg_get_expr_calls(desc_query)
                         desc_query = self._rewrite_missing_pg_database_columns(desc_query)
 
