@@ -46,7 +46,7 @@ set_query_source('ui_backend')
 # Supported cascade file extensions
 CASCADE_EXTENSIONS = ('json', 'yaml', 'yml')
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)  # Disable default /static - we serve from React build
 CORS(app)
 
 # Configure logging to suppress HTTP 200 responses
@@ -6794,6 +6794,10 @@ def _find_frontend_build():
 
 FRONTEND_BUILD_DIR = _find_frontend_build()
 SERVE_STATIC = os.path.exists(os.path.join(FRONTEND_BUILD_DIR, 'index.html'))
+
+# Debug: always log frontend build status on import
+print(f"[Studio] Frontend build dir: {FRONTEND_BUILD_DIR}")
+print(f"[Studio] Serving static files: {SERVE_STATIC}")
 
 if SERVE_STATIC:
     @app.route('/', defaults={'path': ''})
