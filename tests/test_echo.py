@@ -187,6 +187,40 @@ class TestEchoLineage:
         assert echo.lineage[1]["cell"] == "cell2"
         assert echo.lineage[2]["cell"] == "cell3"
 
+    def test_add_lineage_unwraps_single_key_type_dict(self):
+        """Single-key 'type' dicts should be unwrapped (LLM schema confusion fix)."""
+        echo = Echo("test")
+
+        # LLMs often return {"type": value} when confused by schema syntax
+        echo.add_lineage("cell1", {"type": "500-685-1220"})
+
+        assert echo.lineage[0]["output"] == "500-685-1220"
+
+    def test_add_lineage_unwraps_type_dict_with_complex_value(self):
+        """Single-key 'type' dict with complex value should be unwrapped."""
+        echo = Echo("test")
+
+        echo.add_lineage("cell1", {"type": {"nested": "data", "list": [1, 2, 3]}})
+
+        assert echo.lineage[0]["output"] == {"nested": "data", "list": [1, 2, 3]}
+
+    def test_add_lineage_preserves_multi_key_type_dict(self):
+        """Multi-key dicts with 'type' should NOT be unwrapped."""
+        echo = Echo("test")
+
+        output = {"type": "phone", "value": "500-685-1220"}
+        echo.add_lineage("cell1", output)
+
+        assert echo.lineage[0]["output"] == {"type": "phone", "value": "500-685-1220"}
+
+    def test_add_lineage_preserves_non_type_single_key_dict(self):
+        """Single-key dicts without 'type' should NOT be unwrapped."""
+        echo = Echo("test")
+
+        echo.add_lineage("cell1", {"result": "value"})
+
+        assert echo.lineage[0]["output"] == {"result": "value"}
+
 
 class TestEchoErrors:
     """Tests for Echo error tracking."""

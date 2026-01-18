@@ -430,9 +430,13 @@ def _extract_cascade_output(result: Dict[str, Any]) -> Any:
         last_entry = lineage[-1]
         if isinstance(last_entry, dict) and "output" in last_entry:
             output = last_entry["output"]
-            # If output is itself a dict with a 'result' key, unwrap it
-            if isinstance(output, dict) and "result" in output:
-                output = output["result"]
+            # If output is itself a dict with a 'result' or 'type' key, unwrap it
+            # LLMs often return {"type": value} when confused by schema syntax
+            if isinstance(output, dict):
+                if "result" in output:
+                    output = output["result"]
+                elif len(output) == 1 and "type" in output:
+                    output = output["type"]
 
     # Strategy 2: Fallback to history for LLM cells
     if output is None:

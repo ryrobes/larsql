@@ -257,9 +257,15 @@ class Echo:
                 pass
 
     def add_lineage(self, cell: str, output: Any, trace_id: str | None = None):
+        # Unwrap single-key "type" dicts - LLMs often return {"type": value} when
+        # they misinterpret output_schema's "type" field as a key to use
+        normalized_output = output
+        if isinstance(output, dict) and len(output) == 1 and "type" in output:
+            normalized_output = output["type"]
+
         self.lineage.append({
             "cell": cell,
-            "output": output,
+            "output": normalized_output,
             "trace_id": trace_id
         })
 
