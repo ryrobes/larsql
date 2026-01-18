@@ -3950,7 +3950,8 @@ class ClientConnection:
             import time
             from lars.sql_trail import (
                 log_query_complete,
-                get_cascade_paths, get_cascade_summary, clear_cascade_executions
+                get_cascade_paths, get_cascade_summary, clear_cascade_executions,
+                get_and_clear_cache_counts
             )
             from lars.caller_context import clear_caller_context
 
@@ -3958,6 +3959,9 @@ class ClientConnection:
 
             cascade_paths = get_cascade_paths(caller_id) if caller_id else []
             cascade_summary = get_cascade_summary(caller_id) if caller_id else {}
+
+            # Get accumulated cache counts for this query
+            cache_hits, cache_misses = get_and_clear_cache_counts(caller_id)
 
             result_kwargs = {}
             if result_location:
@@ -3983,6 +3987,8 @@ class ClientConnection:
                 duration_ms=duration_ms,
                 cascade_paths=cascade_paths,
                 cascade_count=cascade_summary.get('cascade_count', 0),
+                cache_hits=cache_hits,
+                cache_misses=cache_misses,
                 **result_kwargs
             )
 
@@ -5638,7 +5644,7 @@ class ClientConnection:
         job_id = f"job-{generate_woodland_id()}"
 
         # Log query start (also generates internal UUID query_id)
-        from ..sql_trail import log_query_start, log_query_complete, log_query_error
+        from ..sql_trail import log_query_start, log_query_complete, log_query_error, get_and_clear_cache_counts
         internal_query_id = log_query_start(
             caller_id=job_id,  # Use job_id as caller_id for lookup
             query_raw=query,
@@ -5742,6 +5748,7 @@ class ClientConnection:
 
                 # Log completion
                 duration_ms = (time.time() - bg_start) * 1000
+                cache_hits, cache_misses = get_and_clear_cache_counts(job_id)
                 log_query_complete(
                     query_id=internal_query_id,
                     status='completed',
@@ -5751,6 +5758,8 @@ class ClientConnection:
                     result_db_path=result_location.get('db_path') if result_location else None,
                     result_schema=result_location.get('schema_name') if result_location else None,
                     result_table=result_location.get('table_name') if result_location else None,
+                    cache_hits=cache_hits,
+                    cache_misses=cache_misses,
                 )
 
                 styled_print(f"[{session_id}] {S.DONE} Background job {job_id} completed: {len(result_df)} rows in {duration_ms:.0f}ms")
@@ -5847,7 +5856,7 @@ class ClientConnection:
         job_id = f"analysis-{generate_woodland_id()}"
 
         # Log query start
-        from ..sql_trail import log_query_start, log_query_complete, log_query_error
+        from ..sql_trail import log_query_start, log_query_complete, log_query_error, get_and_clear_cache_counts
         internal_query_id = log_query_start(
             caller_id=job_id,
             query_raw=f"ANALYZE '{prompt}' {query}",
@@ -6082,6 +6091,7 @@ class ClientConnection:
 
                 # Log completion
                 duration_ms = (time.time() - bg_start) * 1000
+                cache_hits, cache_misses = get_and_clear_cache_counts(job_id)
                 log_query_complete(
                     query_id=internal_query_id,
                     status='completed',
@@ -6091,6 +6101,8 @@ class ClientConnection:
                     result_db_path=result_location.get('db_path') if result_location else None,
                     result_schema=result_location.get('schema_name') if result_location else None,
                     result_table=result_location.get('table_name') if result_location else None,
+                    cache_hits=cache_hits,
+                    cache_misses=cache_misses,
                 )
 
                 styled_print(f"[{session_id}] {S.DONE} Analysis job {job_id} completed in {duration_ms:.0f}ms")
@@ -8275,32 +8287,81 @@ class LARSPostgresServer:
         styled_print(f"{S.PAUSE}  Press Ctrl+C to stop")
         print("=" * 70)
 
+        # Set up signal handler for forceful shutdown
+        import signal
+        import os
+
+        shutdown_count = [0]  # Use list to allow modification in nested function
+
+        def signal_handler(signum, frame):
+            shutdown_count[0] += 1
+            self.running = False
+
+            if shutdown_count[0] == 1:
+                styled_print(f"\n\n{S.STOP}  Shutting down server...")
+                print(f"   Total connections served: {self.client_count}")
+
+                # Signal UDF executors to stop
+                try:
+                    from lars.sql_tools.udf import request_shutdown
+                    request_shutdown()
+                    print("   Signalled UDF executors to stop...")
+                except Exception:
+                    pass
+
+                print("   Press Ctrl+C again to force quit...")
+
+            elif shutdown_count[0] >= 2:
+                print("\n   Force quitting...")
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                os._exit(0)
+
+        # Install signal handlers
+        original_sigint = signal.signal(signal.SIGINT, signal_handler)
+        original_sigterm = signal.signal(signal.SIGTERM, signal_handler)
+
         try:
+            # Set socket timeout so accept() doesn't block forever
+            sock.settimeout(1.0)
+
             while self.running:
-                # Accept new connection (blocking)
-                client_sock, addr = sock.accept()
-                self.client_count += 1
+                try:
+                    # Accept new connection (with timeout)
+                    client_sock, addr = sock.accept()
+                    self.client_count += 1
 
-                styled_print(f"\n{S.LINK} Client #{self.client_count} connected from {addr[0]}:{addr[1]}")
+                    styled_print(f"\n{S.LINK} Client #{self.client_count} connected from {addr[0]}:{addr[1]}")
 
-                # Handle client in separate thread (allows concurrent connections)
-                client = ClientConnection(client_sock, addr, self.session_prefix)
-                thread = threading.Thread(
-                    target=client.handle,
-                    daemon=True,
-                    name=f"Client-{self.client_count}"
-                )
-                thread.start()
+                    # Handle client in separate thread (allows concurrent connections)
+                    client = ClientConnection(client_sock, addr, self.session_prefix)
+                    thread = threading.Thread(
+                        target=client.handle,
+                        daemon=True,
+                        name=f"Client-{self.client_count}"
+                    )
+                    thread.start()
+
+                except socket.timeout:
+                    # Timeout allows checking self.running flag
+                    continue
 
         except KeyboardInterrupt:
-            styled_print(f"\n\n{S.STOP}  Shutting down server...")
-            print(f"   Total connections served: {self.client_count}")
+            # Signal handler should have been called, but handle just in case
+            if shutdown_count[0] == 0:
+                signal_handler(signal.SIGINT, None)
 
         except Exception as e:
             styled_print(f"\n{S.ERR} Server error: {e}")
             traceback.print_exc()
 
         finally:
+            # Restore original signal handlers
+            signal.signal(signal.SIGINT, original_sigint)
+            signal.signal(signal.SIGTERM, original_sigterm)
+
             sock.close()
             self.running = False
             styled_print(f"{S.DONE} Server stopped")

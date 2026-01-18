@@ -444,16 +444,23 @@ class DataRow:
                         value_str = DataRow._to_pg_array(value.tolist())
                     else:
                         # Check if string looks like a Python list representation
+                        # BUT: Don't convert valid JSON arrays - they should pass through as-is
                         value_str = str(value)
                         if value_str.startswith('[') and value_str.endswith(']'):
-                            # Try to convert Python list string to PostgreSQL array format
+                            # First check if it's valid JSON - if so, leave it alone
                             try:
-                                import ast
-                                parsed = ast.literal_eval(value_str)
-                                if isinstance(parsed, (list, tuple)):
-                                    value_str = DataRow._to_pg_array(parsed)
-                            except (ValueError, SyntaxError):
-                                pass  # Keep original string if parsing fails
+                                import json
+                                json.loads(value_str)
+                                # Valid JSON - don't convert to PG array format
+                            except (json.JSONDecodeError, ValueError):
+                                # Not valid JSON - try to convert Python list string to PostgreSQL array format
+                                try:
+                                    import ast
+                                    parsed = ast.literal_eval(value_str)
+                                    if isinstance(parsed, (list, tuple)):
+                                        value_str = DataRow._to_pg_array(parsed)
+                                except (ValueError, SyntaxError):
+                                    pass  # Keep original string if parsing fails
 
                 value_bytes = value_str.encode('utf-8')
                 payload += struct.pack('!I', len(value_bytes))

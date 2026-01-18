@@ -487,6 +487,7 @@ def execute_cascade_udf(
     cascade_id: str,
     inputs_json: str,
     use_cache: bool = True,
+    caller_id_override: str | None = None,
 ) -> str:
     """
     Execute a cascade as a SQL UDF.
@@ -507,6 +508,7 @@ def execute_cascade_udf(
         cascade_id: The cascade ID or function name to execute
         inputs_json: JSON string of inputs for the cascade
         use_cache: Whether to use cached results
+        caller_id_override: Optional caller_id to use (for parallel execution)
 
     Returns:
         JSON string of the cascade result
@@ -517,8 +519,8 @@ def execute_cascade_udf(
     from ..sql_trail import register_cascade_execution, increment_cache_hit, increment_cache_miss
     from ..sql_tools.cache_adapter import get_cache
 
-    # Get caller_id from context (set by postgres_server for SQL queries)
-    caller_id = get_caller_id()
+    # Use override if provided (for parallel execution), otherwise get from context
+    caller_id = caller_id_override if caller_id_override else get_caller_id()
 
     try:
         # Parse inputs

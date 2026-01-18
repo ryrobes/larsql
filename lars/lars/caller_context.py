@@ -6,39 +6,127 @@ Tracks the "caller" that initiated a cascade execution, enabling:
 - Debugging: "What spawned this session?"
 - Analytics: Usage by origin (SQL vs UI vs CLI)
 
-Uses ContextVars for thread-safe context propagation PLUS a global registry
-for DuckDB UDFs (which execute in DuckDB's internal thread pool where contextvars don't work).
+Uses ClickHouse Memory table as the authoritative store for cross-thread access.
+ContextVars and thread-local are kept for fast local access within the same thread.
 """
 
 from contextvars import ContextVar
 from typing import Optional, Dict, Any, Tuple, List
 import threading
+import json
+import logging
+
+log = logging.getLogger(__name__)
 
 
 # ============================================================================
 # Context Variables (Thread-Safe within single thread/coroutine)
 # ============================================================================
+# These provide fast access within the same thread - ClickHouse is the fallback
 
 _caller_id: ContextVar[Optional[str]] = ContextVar('caller_id', default=None)
 _invocation_metadata: ContextVar[Optional[Dict]] = ContextVar('invocation_metadata', default=None)
 
-
-# ============================================================================
-# Global Registry (Cross-Thread Access for DuckDB UDFs)
-# ============================================================================
-# DuckDB executes UDFs in its own thread pool, so contextvars don't work.
-# We use:
-# 1. Thread-local storage (for postgres_server query execution thread)
-# 2. Global fallback registry (keyed by connection_id)
-
+# Thread-local for same-thread access (backup for contextvar)
 _thread_local = threading.local()
-_global_caller_registry: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+
+# Lock for DuckDB attachments registry (still in-memory, not high-frequency)
 _registry_lock = threading.Lock()
 
 # DuckDB attachments for sql_statement execution
 # We store attachment info (not the connection itself) to avoid deadlocks
-# The connection is busy during UDF execution, so we create a sibling connection
 _duckdb_attachments_registry: Dict[str, List[Tuple[str, str]]] = {}  # connection_id -> [(alias, path), ...]
+
+
+# ============================================================================
+# ClickHouse Operations
+# ============================================================================
+
+def _get_db():
+    """Get database adapter, returns None if unavailable."""
+    try:
+        from .db_adapter import get_db
+        return get_db()
+    except Exception:
+        return None
+
+
+def _write_context_to_clickhouse(connection_id: str, caller_id: str, metadata: Dict[str, Any]):
+    """Write caller context to ClickHouse Memory table."""
+    db = _get_db()
+    if not db:
+        return
+
+    try:
+        db.insert_rows('caller_context_active', [{
+            'connection_id': connection_id,
+            'caller_id': caller_id,
+            'metadata_json': json.dumps(metadata) if metadata else '{}',
+        }])
+    except Exception as e:
+        log.debug(f"[caller_context] Failed to write to ClickHouse: {e}")
+
+
+def _read_context_from_clickhouse(connection_id: str | None = None) -> Optional[Tuple[str, Dict]]:
+    """
+    Read caller context from ClickHouse Memory table.
+
+    Args:
+        connection_id: Specific connection to look up, or None for most recent
+
+    Returns:
+        (caller_id, metadata) tuple or None if not found
+    """
+    db = _get_db()
+    if not db:
+        return None
+
+    try:
+        if connection_id:
+            result = db.query(f"""
+                SELECT caller_id, metadata_json
+                FROM caller_context_active
+                WHERE connection_id = '{connection_id}'
+                LIMIT 1
+            """)
+        else:
+            # Fallback: get most recent entry (for UDF threads without connection_id)
+            result = db.query("""
+                SELECT caller_id, metadata_json
+                FROM caller_context_active
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+
+        if result and len(result) > 0:
+            row = result[0]
+            caller_id = row.get('caller_id')
+            metadata_json = row.get('metadata_json', '{}')
+            try:
+                metadata = json.loads(metadata_json) if metadata_json else {}
+            except Exception:
+                metadata = {}
+            return (caller_id, metadata)
+
+    except Exception as e:
+        log.debug(f"[caller_context] Failed to read from ClickHouse: {e}")
+
+    return None
+
+
+def _clear_context_from_clickhouse(connection_id: str):
+    """
+    Clear caller context from ClickHouse.
+
+    Note: We use ReplacingMergeTree with TTL, so explicit deletion isn't needed.
+    - ReplacingMergeTree dedupes entries with same connection_id (newer wins)
+    - TTL auto-cleans entries older than 1 hour
+    - This function is now a no-op, kept for API compatibility
+    """
+    # No-op: ReplacingMergeTree + TTL handles cleanup automatically
+    # Old entries with same connection_id get replaced on insert
+    # Stale entries (no new insert) get TTL'd after 1 hour
+    pass
 
 
 # ============================================================================
@@ -100,17 +188,17 @@ def clear_duckdb_attachments(connection_id: str):
 
 def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: str | None = None):
     """
-    Set caller context for current thread/async context AND all storage layers.
+    Set caller context for current thread AND ClickHouse (cross-thread access).
 
-    Sets in 3 places for maximum compatibility:
-    1. Contextvar (works within same thread/coroutine)
-    2. Thread-local (works for postgres_server's query execution thread)
-    3. Global registry (works across ALL threads, keyed by connection_id)
+    Stores in:
+    1. ContextVar (fast access within same thread/coroutine)
+    2. Thread-local (backup for same thread)
+    3. ClickHouse Memory table (authoritative cross-thread store)
 
     Args:
         caller_id: Unique identifier for the caller (e.g., 'sql-clever-fox-abc123')
         metadata: Invocation metadata dict
-        connection_id: Optional connection ID for DuckDB UDF access (postgres session_id)
+        connection_id: Connection ID for cross-thread access (required for SQL queries)
 
     Example:
         set_caller_context('sql-quick-rabbit-xyz', {
@@ -119,42 +207,40 @@ def set_caller_context(caller_id: str, metadata: Dict[str, Any], connection_id: 
             'triggered_by': 'postgres_server'
         }, connection_id='pg_client_abc123')
     """
-    # 1. Set in contextvar (works within same thread)
+    # 1. Set in contextvar (fast local access)
     _caller_id.set(caller_id)
     _invocation_metadata.set(metadata)
 
-    # 2. Set in thread-local (persists for query execution thread, accessible to DuckDB callbacks)
+    # 2. Set in thread-local (backup)
     _thread_local.caller_id = caller_id
     _thread_local.invocation_metadata = metadata
 
-    # 3. Set in global registry (works across ALL threads if connection_id known)
+    # 3. Write to ClickHouse (authoritative cross-thread store)
     if connection_id:
-        with _registry_lock:
-            _global_caller_registry[connection_id] = (caller_id, metadata)
+        _write_context_to_clickhouse(connection_id, caller_id, metadata)
 
 
 def get_caller_id(connection_id: str | None = None) -> Optional[str]:
     """
-    Get current caller_id from any available storage layer.
+    Get current caller_id, trying local storage first then ClickHouse.
 
-    Tries in priority order:
-    1. Contextvar (same thread/coroutine)
-    2. Thread-local (same thread, works for DuckDB UDF callbacks)
-    3. Global registry with specific connection_id
-    4. Global registry search (any connection - fallback for DuckDB UDFs)
+    Priority order:
+    1. ContextVar (same thread/coroutine) - fastest
+    2. Thread-local (same thread) - fast
+    3. ClickHouse Memory table (cross-thread) - authoritative
 
     Args:
-        connection_id: Optional connection ID to look up in global registry
+        connection_id: Optional connection ID for ClickHouse lookup
 
     Returns:
         caller_id or None if not set
     """
-    # 1. Try contextvar first (works within same thread/coroutine)
+    # 1. Try contextvar first (fastest, same thread)
     ctx_caller = _caller_id.get()
     if ctx_caller:
         return ctx_caller
 
-    # 2. Try thread-local (works for DuckDB UDF callbacks on query thread)
+    # 2. Try thread-local (same thread backup)
     try:
         tl_caller = getattr(_thread_local, 'caller_id', None)
         if tl_caller:
@@ -162,54 +248,85 @@ def get_caller_id(connection_id: str | None = None) -> Optional[str]:
     except AttributeError:
         pass
 
-    # 3. Try global registry with specific connection_id
-    if connection_id:
-        with _registry_lock:
-            entry = _global_caller_registry.get(connection_id)
-            if entry:
-                return entry[0]  # Return caller_id
+    # 3. Fall back to ClickHouse (cross-thread authoritative store)
+    result = _read_context_from_clickhouse(connection_id)
+    if result:
+        return result[0]
 
-    # 4. Last resort: search global registry for ANY caller_id (for DuckDB UDFs)
-    # Since postgres_server queries are serialized (db_lock), this is safe
-    with _registry_lock:
-        if _global_caller_registry:
-            # Return the first (and likely only) caller_id
-            result = next(iter(_global_caller_registry.values()))[0]
-            # DEBUG: Log when we fall back to global registry
-            #print(f"[caller_context] get_caller_id() using global registry fallback: {result}")
-            return result
-
-    # DEBUG: Log when no caller_id is found
-    #print(f"[caller_context] get_caller_id() returning None - no caller context set")
     return None
 
 
-def get_invocation_metadata() -> Optional[Dict]:
+def get_invocation_metadata(connection_id: str | None = None) -> Optional[Dict]:
     """
     Get current invocation metadata from context.
+
+    Args:
+        connection_id: Optional connection ID for ClickHouse lookup
 
     Returns:
         metadata dict or None if not set
     """
-    return _invocation_metadata.get()
+    # Try contextvar first
+    metadata = _invocation_metadata.get()
+    if metadata:
+        return metadata
+
+    # Try thread-local
+    try:
+        tl_metadata = getattr(_thread_local, 'invocation_metadata', None)
+        if tl_metadata:
+            return tl_metadata
+    except AttributeError:
+        pass
+
+    # Fall back to ClickHouse
+    result = _read_context_from_clickhouse(connection_id)
+    if result:
+        return result[1]
+
+    return None
 
 
-def get_caller_context() -> tuple[Optional[str], Optional[Dict]]:
+def get_caller_context(connection_id: str | None = None) -> tuple[Optional[str], Optional[Dict]]:
     """
     Get both caller_id and metadata in one call.
+
+    Args:
+        connection_id: Optional connection ID for ClickHouse lookup
 
     Returns:
         (caller_id, metadata) tuple
     """
-    return _caller_id.get(), _invocation_metadata.get()
+    # Try local first
+    caller_id = _caller_id.get()
+    metadata = _invocation_metadata.get()
+
+    if caller_id:
+        return (caller_id, metadata)
+
+    # Try thread-local
+    try:
+        tl_caller = getattr(_thread_local, 'caller_id', None)
+        tl_metadata = getattr(_thread_local, 'invocation_metadata', None)
+        if tl_caller:
+            return (tl_caller, tl_metadata)
+    except AttributeError:
+        pass
+
+    # Fall back to ClickHouse
+    result = _read_context_from_clickhouse(connection_id)
+    if result:
+        return result
+
+    return (None, None)
 
 
 def clear_caller_context(connection_id: str | None = None):
     """
-    Clear caller context from contextvar AND global registry.
+    Clear caller context from all storage layers.
 
     Args:
-        connection_id: Optional connection ID to remove from global registry
+        connection_id: Connection ID to clear from ClickHouse
 
     Useful for cleanup after execution or in test fixtures.
     """
@@ -217,18 +334,24 @@ def clear_caller_context(connection_id: str | None = None):
     _caller_id.set(None)
     _invocation_metadata.set(None)
 
-    # Clear from global registry
+    # Clear thread-local
+    try:
+        _thread_local.caller_id = None
+        _thread_local.invocation_metadata = None
+    except AttributeError:
+        pass
+
+    # Clear from ClickHouse
     if connection_id:
-        with _registry_lock:
-            _global_caller_registry.pop(connection_id, None)
+        _clear_context_from_clickhouse(connection_id)
 
 
 def has_caller_context() -> bool:
     """
-    Check if caller context is set.
+    Check if caller context is set (local only, fast check).
 
     Returns:
-        True if caller_id is set
+        True if caller_id is set in local context
     """
     return _caller_id.get() is not None
 
@@ -346,3 +469,16 @@ def build_ui_metadata(component: str, action: str, source: str) -> Dict[str, Any
             'cascade_source': source
         }
     }
+
+
+# ============================================================================
+# Legacy Compatibility
+# ============================================================================
+# These are kept for code that directly imports the global registry
+
+_global_caller_registry: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+
+def _sync_to_legacy_registry(connection_id: str, caller_id: str, metadata: Dict):
+    """Sync to legacy in-memory registry for backward compatibility."""
+    with _registry_lock:
+        _global_caller_registry[connection_id] = (caller_id, metadata)

@@ -399,24 +399,24 @@ def transform_messages_for_transport(
     # Always print debug info for visibility
     total_content = sum(len(m.get("content", "")) for m in messages if isinstance(m.get("content"), str))
 
-    if aggregated["total_transforms"] > 0:
-        print(
-            f"[TOON Transport] [OK] {aggregated['total_transforms']} transforms, "
-            f"{aggregated['savings_pct']}% savings "
-            f"({aggregated['total_savings_chars']} chars saved) | "
-            f"Total content: {total_content} chars"
-        )
-        logger.info(
-            f"TOON transport: {aggregated['total_transforms']} transforms, "
-            f"{aggregated['savings_pct']}% savings "
-            f"({aggregated['total_savings_chars']} chars)"
-        )
-    else:
-        print(
-            f"[TOON Transport] ⚪ No transforms (no eligible JSON arrays) | "
-            f"Total content: {total_content} chars | "
-            f"Detected: {aggregated['data_rows']} rows, {aggregated['data_columns']} cols"
-        )
+    # if aggregated["total_transforms"] > 0:
+    #     print(
+    #         f"[TOON Transport] [OK] {aggregated['total_transforms']} transforms, "
+    #         f"{aggregated['savings_pct']}% savings "
+    #         f"({aggregated['total_savings_chars']} chars saved) | "
+    #         f"Total content: {total_content} chars"
+    #     )
+    #     logger.info(
+    #         f"TOON transport: {aggregated['total_transforms']} transforms, "
+    #         f"{aggregated['savings_pct']}% savings "
+    #         f"({aggregated['total_savings_chars']} chars)"
+    #     )
+    # else:
+    #     print(
+    #         f"[TOON Transport] ⚪ No transforms (no eligible JSON arrays) | "
+    #         f"Total content: {total_content} chars | "
+    #         f"Detected: {aggregated['data_rows']} rows, {aggregated['data_columns']} cols"
+    #     )
 
     return transformed_messages, aggregated
 

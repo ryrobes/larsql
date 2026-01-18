@@ -2129,6 +2129,269 @@ def get_udf_cache_stats() -> Dict[str, Any]:
     return stats
 
 
+# =============================================================================
+# Arrow Vectorized UDF Support
+# =============================================================================
+
+import threading
+import atexit
+
+# Global shutdown event for graceful termination of parallel UDF execution
+_shutdown_event = threading.Event()
+
+def request_shutdown():
+    """Signal all parallel UDF executors to stop."""
+    _shutdown_event.set()
+
+def is_shutdown_requested() -> bool:
+    """Check if shutdown has been requested."""
+    return _shutdown_event.is_set()
+
+def reset_shutdown():
+    """Reset shutdown flag (for testing)."""
+    _shutdown_event.clear()
+
+# Register cleanup on interpreter exit
+atexit.register(request_shutdown)
+
+
+def make_vectorized_wrapper(
+    func_name: str,
+    fn_entry,
+    execute_fn,
+):
+    """
+    Create an Arrow vectorized UDF wrapper for parallel batch execution.
+
+    DuckDB's Arrow UDFs receive entire columns as PyArrow arrays in a single call,
+    enabling internal parallelization with ThreadPoolExecutor. This provides
+    automatic parallelism for semantic SQL operators without requiring explicit
+    SQL annotations.
+
+    Args:
+        func_name: The function name (for cache keys and logging)
+        fn_entry: The SQL function registry entry with args, returns, etc.
+        execute_fn: The function to call for each row (execute_cascade_udf)
+
+    Returns:
+        A wrapper function compatible with DuckDB's Arrow UDF interface
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    def vectorized_udf(*arrow_arrays):
+        import pyarrow as pa
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from ..config import get_config
+        from .cache_adapter import get_cache, SemanticCache
+        from ..caller_context import get_caller_id
+
+        # Helper to coerce result to expected type
+        def coerce_result(result, return_type):
+            """Coerce a result value to the expected return type."""
+            try:
+                if return_type == "BOOLEAN":
+                    if isinstance(result, bool):
+                        return result
+                    elif isinstance(result, str):
+                        lowered = result.strip().lower()
+                        if lowered in ("true", "yes", "1"):
+                            return True
+                        elif lowered in ("false", "no", "0"):
+                            return False
+                        else:
+                            return bool(result)
+                    else:
+                        return bool(result) if result is not None else False
+                elif return_type == "DOUBLE":
+                    if isinstance(result, (int, float)):
+                        return float(result)
+                    elif result is None:
+                        return 0.0
+                    else:
+                        return float(str(result).strip())
+                elif return_type == "INTEGER":
+                    if isinstance(result, int):
+                        return result
+                    elif result is None:
+                        return 0
+                    else:
+                        return int(float(str(result).strip()))
+                else:
+                    return str(result) if result is not None else ""
+            except Exception:
+                # If coercion fails, return safe default
+                if return_type == "BOOLEAN":
+                    return False
+                elif return_type in ("DOUBLE", "INTEGER"):
+                    return 0
+                else:
+                    return str(result) if result is not None else ""
+
+        # Check if shutdown requested before starting work
+        if is_shutdown_requested():
+            log.warning(f"[VectorizedUDF] Shutdown requested, skipping {func_name}")
+            return pa.array([], type=pa.string())
+
+        config = get_config()
+        max_workers = config.parallel_workers
+
+        # Get caller_id ONCE at the start - this will read from ClickHouse
+        # which works reliably across threads. We pass it explicitly to workers.
+        caller_id = get_caller_id()
+        if not caller_id:
+            log.warning(f"[VectorizedUDF] {func_name}: No caller_id available for SQL trail tracking")
+
+        # Handle empty input
+        if not arrow_arrays or len(arrow_arrays[0]) == 0:
+            return_type = fn_entry.returns
+            if return_type == "BOOLEAN":
+                return pa.array([], type=pa.bool_())
+            elif return_type == "DOUBLE":
+                return pa.array([], type=pa.float64())
+            elif return_type == "INTEGER":
+                return pa.array([], type=pa.int64())
+            else:
+                return pa.array([], type=pa.string())
+
+        n_rows = len(arrow_arrays[0])
+        arg_names = [a['name'] for a in fn_entry.args]
+
+        # Build list of arg dicts for each row
+        rows = []
+        for i in range(n_rows):
+            row_args = {}
+            for j, name in enumerate(arg_names):
+                if j < len(arrow_arrays):
+                    val = arrow_arrays[j][i]
+                    # Convert PyArrow scalar to Python value
+                    row_args[name] = val.as_py() if hasattr(val, 'as_py') else val
+            rows.append(row_args)
+
+        # Compute cache keys for all rows
+        cache = get_cache()
+        cache_keys = [SemanticCache.make_cache_key(func_name, args) for args in rows]
+
+        # Batch cache lookup
+        cached_results = cache.get_batch(func_name, rows, track_hit=True)
+
+        # Identify cache misses and coerce cache hits
+        misses = []
+        results = [None] * n_rows
+        return_type = fn_entry.returns
+        cache_hit_count = 0
+        for i, (args, cache_key) in enumerate(zip(rows, cache_keys)):
+            found, result, _ = cached_results.get(cache_key, (False, None, ""))
+            if found:
+                # Coerce cached result to expected type
+                results[i] = coerce_result(result, return_type)
+                cache_hit_count += 1
+            else:
+                misses.append((i, args, cache_key))
+
+        # Track cache hits in SQL trail (execute_cascade_udf only handles misses)
+        if cache_hit_count > 0 and caller_id:
+            try:
+                from ..sql_trail import increment_cache_hit
+                for _ in range(cache_hit_count):
+                    increment_cache_hit(caller_id)
+            except Exception as e:
+                log.debug(f"[VectorizedUDF] Failed to track cache hits: {e}")
+
+        # Log cache stats for debugging
+        if cache_hit_count > 0 or len(misses) > 0:
+            log.debug(f"[VectorizedUDF] {func_name}: {cache_hit_count} cache hits, {len(misses)} to execute")
+
+        # Execute cache misses in parallel
+        if misses and not is_shutdown_requested():
+            new_cache_items = []
+
+            # Use thread_name_prefix for easier debugging
+            executor = ThreadPoolExecutor(
+                max_workers=min(max_workers, len(misses)),
+                thread_name_prefix=f"UDF-{func_name}"
+            )
+            try:
+                futures = {}
+                for i, args, cache_key in misses:
+                    # Check shutdown before submitting each task
+                    if is_shutdown_requested():
+                        log.info(f"[VectorizedUDF] Shutdown requested, stopping submission")
+                        break
+                    import json
+                    # Pass caller_id explicitly to ensure cost tracking works in worker threads
+                    future = executor.submit(execute_fn, func_name, json.dumps(args), True, caller_id)
+                    futures[future] = (i, args, cache_key)
+
+                for future in as_completed(futures, timeout=300):  # 5 min timeout per batch
+                    # Check shutdown during result collection
+                    if is_shutdown_requested():
+                        log.info(f"[VectorizedUDF] Shutdown requested, cancelling remaining futures")
+                        for f in futures:
+                            f.cancel()
+                        break
+
+                    i, args, cache_key = futures[future]
+                    try:
+                        result = future.result(timeout=60)  # 60s timeout per result
+
+                        # Coerce result using helper
+                        coerced = coerce_result(result, return_type)
+                        results[i] = coerced
+
+                        # Queue for batch cache write (store raw result, coerce on read)
+                        result_type_str = return_type if return_type in ("BOOLEAN", "DOUBLE", "INTEGER") else "VARCHAR"
+                        new_cache_items.append((args, result, result_type_str))
+
+                    except Exception as e:
+                        log.warning(f"[VectorizedUDF] Error processing row {i}: {e}")
+                        # Return error indicator based on type
+                        results[i] = coerce_result(f"ERROR: {e}", return_type)
+
+            finally:
+                # Shutdown executor - use wait=False if shutdown requested for faster exit
+                executor.shutdown(wait=not is_shutdown_requested(), cancel_futures=is_shutdown_requested())
+
+            # Batch store new results
+            if new_cache_items and not is_shutdown_requested():
+                try:
+                    cache.set_batch(func_name, new_cache_items)
+                except Exception as e:
+                    log.debug(f"[VectorizedUDF] Cache batch set error: {e}")
+
+        # Final safety coercion - ensure all results have correct type for PyArrow
+        # This handles any None values or unexpected types that slipped through
+        return_type = fn_entry.returns
+        coerced_results = [coerce_result(r, return_type) for r in results]
+
+        # Convert to PyArrow array based on return type
+        if return_type == "BOOLEAN":
+            return pa.array(coerced_results, type=pa.bool_())
+        elif return_type == "DOUBLE":
+            return pa.array(coerced_results, type=pa.float64())
+        elif return_type == "INTEGER":
+            return pa.array(coerced_results, type=pa.int64())
+        else:
+            return pa.array(coerced_results, type=pa.string())
+
+    return vectorized_udf
+
+
+def _get_arrow_return_type(duckdb_type: str):
+    """Map DuckDB return type to PyArrow type for Arrow UDF registration."""
+    type_map = {
+        "BOOLEAN": "BOOLEAN",
+        "DOUBLE": "DOUBLE",
+        "FLOAT": "FLOAT",
+        "INTEGER": "INTEGER",
+        "BIGINT": "BIGINT",
+        "VARCHAR": "VARCHAR",
+        "JSON": "VARCHAR",
+        "TABLE": "VARCHAR",
+    }
+    return type_map.get(duckdb_type.upper(), "VARCHAR")
+
+
 def register_dynamic_sql_functions(connection, existing: set | None = None):
     """
     Dynamically register all SQL functions from cascade registry.
@@ -2220,8 +2483,6 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
             
             # Register function with DuckDB
             try:
-                udf_func = make_wrapper(name, entry)
-
                 # Map DuckDB types
                 return_type = entry.returns
                 if return_type == 'JSON':
@@ -2234,6 +2495,9 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                 # Special handling for sql_statement mode: register as TABLE function
                 # sql_statement functions return temp file paths, wrap with read_json_auto()
                 if entry.output_mode == 'sql_statement':
+                    # sql_statement uses scalar wrapper (returns file path)
+                    udf_func = make_wrapper(name, entry)
+
                     # Register internal scalar function with _file suffix
                     internal_name = f"_{name}_file"
 
@@ -2264,11 +2528,30 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     registered_count += 1
                     continue  # Skip normal registration
 
-                connection.create_function(
-                    name,
-                    udf_func,
-                    return_type=return_type
-                )
+                # Determine whether to use Arrow vectorized UDF or scalar UDF
+                # SCALAR shape functions benefit from parallel batch execution
+                use_arrow = entry.shape.upper() == 'SCALAR'
+
+                if use_arrow:
+                    # Create Arrow vectorized wrapper for parallel execution
+                    udf_func = make_vectorized_wrapper(name, entry, execute_cascade_udf)
+
+                    # Register as Arrow UDF
+                    connection.create_function(
+                        name,
+                        udf_func,
+                        return_type=return_type,
+                        type='arrow'  # Arrow vectorized UDF for batch parallelism
+                    )
+                else:
+                    # Use standard scalar wrapper for non-SCALAR functions
+                    udf_func = make_wrapper(name, entry)
+                    connection.create_function(
+                        name,
+                        udf_func,
+                        return_type=return_type
+                    )
+
                 existing_names.add(str(name).lower())
                 registered_count += 1
 
@@ -2277,7 +2560,12 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                     short_name = name.replace('semantic_', '')
                     if short_name.lower() not in existing_names:
                         try:
-                            connection.create_function(short_name, udf_func, return_type=return_type)
+                            if use_arrow:
+                                connection.create_function(
+                                    short_name, udf_func, return_type=return_type, type='arrow'
+                                )
+                            else:
+                                connection.create_function(short_name, udf_func, return_type=return_type)
                             existing_names.add(short_name.lower())
                             registered_count += 1
                         except Exception:
@@ -2295,7 +2583,12 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                         if alias_name != name and (not name.startswith('semantic_') or alias_name != short_name):
                             if alias_name not in existing_names:
                                 try:
-                                    connection.create_function(alias_name, udf_func, return_type=return_type)
+                                    if use_arrow:
+                                        connection.create_function(
+                                            alias_name, udf_func, return_type=return_type, type='arrow'
+                                        )
+                                    else:
+                                        connection.create_function(alias_name, udf_func, return_type=return_type)
                                     existing_names.add(alias_name)
                                     registered_count += 1
                                 except Exception:

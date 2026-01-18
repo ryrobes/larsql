@@ -32,6 +32,16 @@ logger = logging.getLogger(__name__)
 _cascade_registry: Dict[str, List[Dict[str, Any]]] = {}
 _cascade_lock = Lock()
 
+# ============================================================================
+# Cache Counter Accumulator (Thread-Safe)
+# ============================================================================
+# Accumulates cache hits/misses in memory during query execution.
+# Written to ClickHouse at query completion to avoid race conditions with
+# async INSERT/UPDATE (the INSERT might not be flushed when UPDATE runs).
+
+_cache_counters: Dict[str, Dict[str, int]] = {}  # caller_id -> {hits: n, misses: n}
+_cache_counter_lock = Lock()
+
 # Cache for schema checks
 _cascade_columns_exist: Optional[bool] = None
 _result_columns_exist: Optional[bool] = None
@@ -472,7 +482,9 @@ def log_query_complete(
     result_db_name: Optional[str] = None,
     result_db_path: Optional[str] = None,
     result_schema: Optional[str] = None,
-    result_table: Optional[str] = None
+    result_table: Optional[str] = None,
+    cache_hits: Optional[int] = None,
+    cache_misses: Optional[int] = None
 ):
     """
     Update query log with completion data.
@@ -495,6 +507,8 @@ def log_query_complete(
         result_db_path: Full path to DuckDB file (e.g., '/home/user/session_dbs/myproject.duckdb')
         result_schema: Schema name within DuckDB (e.g., '_results_20260103')
         result_table: Table name within schema (e.g., 'q_abc12345')
+        cache_hits: Number of UDF cache hits during query execution
+        cache_misses: Number of UDF cache misses during query execution
     """
     if not query_id:
         return
@@ -511,6 +525,12 @@ def log_query_complete(
 
         if duration_ms is not None:
             updates.append(f"duration_ms = {duration_ms}")
+
+        # Cache metrics (accumulated during query execution)
+        if cache_hits is not None and cache_hits > 0:
+            updates.append(f"cache_hits = {cache_hits}")
+        if cache_misses is not None and cache_misses > 0:
+            updates.append(f"cache_misses = {cache_misses}")
         if rows_output is not None:
             updates.append(f"rows_output = {rows_output}")
         # Cascade tracking columns (added in later migration)
@@ -612,7 +632,7 @@ def increment_cache_hit(caller_id: Optional[str]):
     Increment cache_hits counter for a query.
 
     Called when a UDF returns a cached result instead of calling LLM.
-    Uses ClickHouse atomic increment.
+    Accumulates in memory - written to ClickHouse at query completion.
 
     Args:
         caller_id: The caller_id for the current SQL query
@@ -620,19 +640,10 @@ def increment_cache_hit(caller_id: Optional[str]):
     if not caller_id:
         return
 
-    try:
-        from .db_adapter import get_db
-        db = get_db()
-
-        db.execute(f"""
-            ALTER TABLE sql_query_log
-            UPDATE cache_hits = cache_hits + 1
-            WHERE caller_id = '{caller_id}'
-        """)
-
-    except Exception as e:
-        # Fire-and-forget - don't fail the main path
-        logger.debug(f"SQL Trail: Failed to increment cache hit: {e}")
+    with _cache_counter_lock:
+        if caller_id not in _cache_counters:
+            _cache_counters[caller_id] = {'hits': 0, 'misses': 0}
+        _cache_counters[caller_id]['hits'] += 1
 
 
 def increment_cache_miss(caller_id: Optional[str]):
@@ -640,7 +651,7 @@ def increment_cache_miss(caller_id: Optional[str]):
     Increment cache_misses counter for a query.
 
     Called when a UDF actually invokes LLM (cache miss).
-    Uses ClickHouse atomic increment.
+    Accumulates in memory - written to ClickHouse at query completion.
 
     Args:
         caller_id: The caller_id for the current SQL query
@@ -648,19 +659,32 @@ def increment_cache_miss(caller_id: Optional[str]):
     if not caller_id:
         return
 
-    try:
-        from .db_adapter import get_db
-        db = get_db()
+    with _cache_counter_lock:
+        if caller_id not in _cache_counters:
+            _cache_counters[caller_id] = {'hits': 0, 'misses': 0}
+        _cache_counters[caller_id]['misses'] += 1
 
-        db.execute(f"""
-            ALTER TABLE sql_query_log
-            UPDATE cache_misses = cache_misses + 1
-            WHERE caller_id = '{caller_id}'
-        """)
 
-    except Exception as e:
-        # Fire-and-forget - don't fail the main path
-        logger.debug(f"SQL Trail: Failed to increment cache miss: {e}")
+def get_and_clear_cache_counts(caller_id: Optional[str]) -> Tuple[int, int]:
+    """
+    Get and clear accumulated cache counts for a caller_id.
+
+    Called at query completion to retrieve the final counts.
+
+    Args:
+        caller_id: The caller_id for the current SQL query
+
+    Returns:
+        Tuple of (cache_hits, cache_misses)
+    """
+    if not caller_id:
+        return 0, 0
+
+    with _cache_counter_lock:
+        if caller_id in _cache_counters:
+            counts = _cache_counters.pop(caller_id)
+            return counts['hits'], counts['misses']
+        return 0, 0
 
 
 def increment_llm_call(caller_id: Optional[str]):

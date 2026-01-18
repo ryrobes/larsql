@@ -1188,6 +1188,26 @@ SETTINGS index_granularity = 8192;
 # =============================================================================
 # SQL QUERY LOG TABLE - SQL Trail Analytics
 # =============================================================================
+# CALLER CONTEXT ACTIVE - Memory table for active SQL query contexts
+# =============================================================================
+# Lightweight in-memory table for tracking active caller contexts.
+# Used by parallel UDF execution to retrieve caller_id without complex
+# thread-local/contextvar propagation. Data does not survive restarts.
+
+CALLER_CONTEXT_ACTIVE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS caller_context_active (
+    connection_id String,
+    caller_id String,
+    metadata_json String DEFAULT '{}',
+    created_at DateTime64(6) DEFAULT now64(6)
+)
+ENGINE = ReplacingMergeTree(created_at)
+ORDER BY connection_id
+TTL toDateTime(created_at) + INTERVAL 1 HOUR;
+"""
+
+
+# =============================================================================
 # Tracks SQL queries that invoke LARS UDFs for cost attribution and pattern analysis.
 # The unit of work is the SQL query (via caller_id), not individual LLM sessions.
 # Enables cache analytics, query fingerprinting, and batch economics.
@@ -1334,6 +1354,7 @@ def get_all_schemas() -> dict:
         "output_tags": OUTPUT_TAGS_SCHEMA,
         "sql_query_log": SQL_QUERY_LOG_SCHEMA,
         "semantic_sql_cache": SEMANTIC_SQL_CACHE_SCHEMA,
+        "caller_context_active": CALLER_CONTEXT_ACTIVE_SCHEMA,
     }
 
 

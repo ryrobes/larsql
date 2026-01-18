@@ -176,6 +176,62 @@ class SemanticCache:
 
         return False, None, ""
 
+    def get_batch(
+        self,
+        function_name: str,
+        args_list: List[Dict[str, Any]],
+        track_hit: bool = True
+    ) -> Dict[str, Tuple[bool, Any, str]]:
+        """
+        Get multiple cached results at once for batch operations.
+
+        Args:
+            function_name: The semantic SQL function name
+            args_list: List of argument dictionaries
+            track_hit: Whether to increment hit counter (default True)
+
+        Returns:
+            Dict mapping cache keys to (found, result, result_type) tuples
+        """
+        results = {}
+        for args in args_list:
+            cache_key = self.make_cache_key(function_name, args)
+            found, result, result_type = self.get(function_name, args, track_hit=track_hit)
+            results[cache_key] = (found, result, result_type)
+        return results
+
+    def set_batch(
+        self,
+        function_name: str,
+        items: List[Tuple[Dict[str, Any], Any, str]],
+        ttl_seconds: Optional[int] = None,
+        session_id: str = "",
+        caller_id: str = ""
+    ) -> List[str]:
+        """
+        Cache multiple results at once (writes to both L1 and L2).
+
+        Args:
+            function_name: The semantic SQL function name
+            items: List of (args, result, result_type) tuples
+            ttl_seconds: Time-to-live in seconds (None or 0 = infinite)
+            session_id: Optional session ID for tracking
+            caller_id: Optional caller ID for tracking
+
+        Returns:
+            List of cache keys
+        """
+        cache_keys = []
+        for args, result, result_type in items:
+            cache_key = self.set(
+                function_name, args, result, result_type,
+                ttl_seconds=ttl_seconds,
+                session_id=session_id,
+                caller_id=caller_id
+            )
+            cache_keys.append(cache_key)
+        return cache_keys
+
     def set(
         self,
         function_name: str,

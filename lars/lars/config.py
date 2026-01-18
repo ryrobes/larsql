@@ -552,6 +552,15 @@ class Config(BaseModel):
     )
 
     # =========================================================================
+    # Parallel Execution Configuration
+    # =========================================================================
+    # Number of parallel workers for Arrow vectorized UDF execution
+    # Used by semantic SQL operators (MEANS, ABOUT, etc.) for batch parallelism
+    parallel_workers: int = Field(
+        default_factory=lambda: int(os.getenv("LARS_PARALLEL_WORKERS", "8"))
+    )
+
+    # =========================================================================
     # Deprecated Settings (kept for backward compatibility)
     # =========================================================================
     # These are ignored but kept to avoid breaking code that references them
