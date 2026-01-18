@@ -1,0 +1,39 @@
+cascade_id: pipeline_pass
+internal: true
+description: |
+  No-op pipeline stage that passes data through unchanged.
+
+  Used in CHOOSE ELSE branches when no action is needed but the
+  pipeline should continue with the original data.
+
+  Usage in CHOOSE:
+      THEN CHOOSE BY CLASSIFIER (
+          WHEN 'important' THEN PROCESS 'handle it'
+          ELSE PASS
+      )
+      THEN NEXT_STAGE  -- receives original data unchanged
+
+inputs_schema:
+  _table: Data to pass through (JSON records)
+  _table_columns: Column names
+  _table_row_count: Row count
+
+sql_function:
+  name: PASS
+  description: Pass data through unchanged (no-op)
+  shape: PIPELINE
+  args:
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  operators:
+    - 'THEN PASS'
+  cache: false
+
+cells:
+  - name: passthrough
+    deterministic: true
+    tool: python:lars.pipeline_tools.passthrough
+    inputs:
+      _table: "{{ input._table }}"
+      _table_columns: "{{ input._table_columns }}"

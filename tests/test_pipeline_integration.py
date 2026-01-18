@@ -174,7 +174,24 @@ class TestDuckDBIntegration:
             "score": [0.8, 0.9, 0.95],
         })
 
-        with patch("lars.sql_tools.pipeline_executor.execute_pipeline_stages", return_value=result_df):
+        # Mock the internal execution path that execute_pipeline_with_into uses
+        mock_entry = MagicMock()
+        mock_entry.cascade_path = "/path/to/analyze.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = {
+            "lineage": [
+                {
+                    "cell": "analyze",
+                    "output": {"data": result_df.to_dict(orient="records")}
+                }
+            ]
+        }
+
+        with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry), \
+             patch("lars.runner.LARSRunner", return_value=mock_runner), \
+             patch("lars._register_all_skills"):
             stages = [PipelineStage(name="ANALYZE", args=["test"], original_text="ANALYZE")]
             initial_df = pd.DataFrame({"x": [1, 2, 3]})
 
@@ -202,7 +219,24 @@ class TestDuckDBIntegration:
         # Mock pipeline to return new data
         result_df = pd.DataFrame({"new_col": [1, 2, 3]})
 
-        with patch("lars.sql_tools.pipeline_executor.execute_pipeline_stages", return_value=result_df):
+        # Mock the internal execution path that execute_pipeline_with_into uses
+        mock_entry = MagicMock()
+        mock_entry.cascade_path = "/path/to/analyze.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
+
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = {
+            "lineage": [
+                {
+                    "cell": "analyze",
+                    "output": {"data": result_df.to_dict(orient="records")}
+                }
+            ]
+        }
+
+        with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry), \
+             patch("lars.runner.LARSRunner", return_value=mock_runner), \
+             patch("lars._register_all_skills"):
             stages = [PipelineStage(name="ANALYZE", args=["test"], original_text="ANALYZE")]
             initial_df = pd.DataFrame({"x": [1]})
 
@@ -257,11 +291,12 @@ class TestEndToEndMocked:
 
         mock_entry = MagicMock()
         mock_entry.cascade_path = "/path/to/analyze.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
 
         with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
             stages = [PipelineStage(name="ANALYZE", args=["What sells best?"], original_text="ANALYZE")]
 
-            result_df = execute_pipeline_stages(
+            execute_pipeline_stages(
                 stages=stages,
                 initial_df=sample_data,
                 session_id="test",
@@ -298,6 +333,7 @@ class TestEndToEndMocked:
 
         mock_entry = MagicMock()
         mock_entry.cascade_path = "/path/to/filter.yaml"
+        mock_entry.sql_function = {"args": [{"name": "criterion", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
 
         with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
             stages = [PipelineStage(name="FILTER", args=["only electronics"], original_text="FILTER")]
@@ -341,6 +377,7 @@ class TestEndToEndMocked:
 
         mock_entry = MagicMock()
         mock_entry.cascade_path = "/path/to/enrich.yaml"
+        mock_entry.sql_function = {"args": [{"name": "instructions", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
 
         with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
             stages = [PipelineStage(name="ENRICH", args=["add sentiment and recommendation"], original_text="ENRICH")]
@@ -395,6 +432,7 @@ class TestEndToEndMocked:
 
         mock_entry = MagicMock()
         mock_entry.cascade_path = "/path/to/cascade.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
 
         with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
             stages = [

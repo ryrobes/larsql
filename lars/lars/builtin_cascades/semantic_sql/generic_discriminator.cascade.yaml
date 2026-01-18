@@ -1,0 +1,72 @@
+cascade_id: generic_discriminator
+internal: true
+description: |
+  Built-in discriminator for CHOOSE stages without explicit BY clause.
+  Classifies data against provided conditions using semantic understanding.
+
+  This cascade is automatically invoked when using:
+      THEN CHOOSE (
+          WHEN 'condition 1' THEN CASCADE_A
+          WHEN 'condition 2' THEN CASCADE_B
+      )
+
+  The discriminator analyzes the data and determines which condition
+  best matches, returning the matching condition text.
+
+inputs_schema:
+  _table: Data to classify (JSON records)
+  _table_columns: Column names
+  _table_row_count: Row count
+  _conditions: List of condition strings
+  _conditions_text: Formatted conditions for prompt
+
+sql_function:
+  name: GENERIC_DISCRIMINATOR
+  shape: PIPELINE
+  args:
+    - name: _table
+      type: TABLE
+    - name: _conditions
+      type: JSON
+  returns: VARCHAR
+  cache: false
+
+cells:
+  - name: classify
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a data classifier. Analyze the provided data and determine which condition best describes it.
+
+      DATA SUMMARY:
+      - Rows: {{ input._table_row_count }}
+      - Columns: {{ input._table_columns | join(', ') }}
+
+      DATA SAMPLE (first rows):
+      ```json
+      {{ input._table | tojson | truncate(3000) }}
+      ```
+
+      POSSIBLE CONDITIONS TO MATCH:
+      {{ input._conditions_text }}
+
+      TASK:
+      Analyze the overall patterns, content, and characteristics of this data.
+      Determine which numbered condition (1, 2, 3, etc.) best describes what this data represents or contains.
+
+      Consider:
+      - The semantic meaning of the data values
+      - Patterns across multiple rows
+      - The relationship between columns
+      - What the data as a whole suggests
+
+      RESPONSE FORMAT:
+      Respond with ONLY the exact condition text that best matches (copy it exactly from the list above).
+      If no condition matches well, respond with "none".
+
+      Do not include the number, just the condition text itself.
+
+    rules:
+      max_turns: 1
+
+    output_schema:
+      type: string

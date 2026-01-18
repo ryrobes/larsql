@@ -4576,8 +4576,8 @@
       .pipeline-stage {
         display: flex;
         align-items: center;
-        gap: 16px;
-        padding: 14px 18px;
+        gap: 6px;
+        padding: 5px 18px;
         background: rgba(0, 0, 0, 0.3);
         border-left: 3px solid var(--magenta);
         font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
@@ -7227,53 +7227,58 @@
         <div class="container">
           <div class="analyze-grid">
             <div class="analyze-content reveal">
-              <!-- <h2>Ask questions, <span style="color: var(--orange)">not just queries.</span></h2> -->
               <h2>The question <span style="color: var(--orange)">after the query.</span></h2>
               <p>
-                You ran a query. Now you want to know <em>why</em>. 
-                ANALYZE spawns an agent to investigate—it can run more SQL, write Python, use your tools—then saves findings to a table. Check back later. Fire and forget.
+                You ran a query. Now you want to know <em>why</em>.
+                Pipe your results through <code style="color: var(--magenta);">THEN ANALYZE</code>—an agent investigates, runs more SQL, writes Python, uses your tools—then saves findings. Fire and forget.
               </p>
               <div class="analyze-how">
                 <div class="analyze-step">
                   <span class="analyze-step-num">1</span>
-                  <span>Query runs in the background</span>
+                  <span>Query executes, results flow to pipeline</span>
                 </div>
                 <div class="analyze-step">
                   <span class="analyze-step-num">2</span>
-                  <span>Results + question go to an agent cascade</span>
+                  <span>ANALYZE cascade receives data + question</span>
                 </div>
                 <div class="analyze-step">
                   <span class="analyze-step-num">3</span>
-                  <span>Agent investigates (can run more SQL, Python, etc.)</span>
+                  <span>Agent investigates (more SQL, Python, tools)</span>
                 </div>
                 <div class="analyze-step">
                   <span class="analyze-step-num">4</span>
-                  <span>Analysis saved to <code style="background: rgba(255,189,46,0.15); padding: 2px 6px; border-radius: 4px;">analyze</code> table</span>
+                  <span>Analysis saved to <code style="background: rgba(255,189,46,0.15); padding: 2px 6px; border-radius: 4px;">INTO</code> target table</span>
                 </div>
               </div>
+              <p style="font-size: 0.9rem; color: var(--gray); margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.08);">
+                <iconify-icon icon="mdi:puzzle-outline" style="color: var(--cyan); margin-right: 0.3rem;"></iconify-icon>
+                ANALYZE is just a <a href="#pipelines" style="color: var(--cyan);">pipeline cascade</a>—user-definable YAML that becomes SQL syntax. Build your own stages the same way.
+              </p>
             </div>
             <div class="analyze-code reveal delay-1">
               <div class="code-header">
                 <span class="code-type-badge sql">SQL</span>
-                <span class="code-title">Fire and forget</span>
+                <span class="code-title">Pipeline syntax</span>
               </div>
               <div class="code-content">
-<pre><span class="analyze-keyword">ANALYZE</span> <span class="analyze-question">'Why did churn spike in Q3?'</span>
-<span class="sql-keyword">SELECT</span> month, churn_rate, segment
+<pre><span class="sql-keyword">SELECT</span> month, churn_rate, segment
 <span class="sql-keyword">FROM</span> metrics
-<span class="sql-keyword">WHERE</span> year = 2024;</pre>
+<span class="sql-keyword">WHERE</span> year = 2024
+<span class="analyze-keyword">THEN ANALYZE</span> <span class="analyze-question">'Why did churn spike in Q3?'</span>
+<span class="analyze-with">INTO</span> <span class="analyze-cascade">churn_insights</span>;</pre>
                 <div class="analyze-result">
-                  <div class="analyze-result-label">Later, check the analysis</div>
+                  <div class="analyze-result-label">Results land in your table</div>
                   <div class="analyze-result-text">
-                    <code style="color: var(--ink);">SELECT * FROM analyze WHERE question LIKE '%churn%';</code>
+                    <code style="color: var(--ink);">SELECT * FROM churn_insights;</code>
                   </div>
                 </div>
                 <div class="analyze-custom">
-                  <div class="analyze-custom-label">Bring your own agent</div>
-<pre><span class="analyze-keyword">ANALYZE</span> <span class="analyze-question">'Why did churn spike in Q3?'</span> <span class="analyze-with">WITH</span> <span class="analyze-cascade">CALLIOPE</span>
-<span class="sql-keyword">SELECT</span> month, churn_rate, segment <span class="sql-keyword">FROM</span> metrics;</pre>
+                  <div class="analyze-custom-label">Bring your own cascade</div>
+<pre><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> metrics
+<span class="analyze-keyword">THEN</span> <span class="analyze-cascade">MY_CUSTOM_ANALYZER</span> <span class="analyze-question">'deep dive'</span>
+<span class="analyze-with">INTO</span> <span class="analyze-cascade">custom_analysis</span>;</pre>
                   <p class="analyze-custom-note">
-                    Any cascade can be the analysis engine. Domain expert? Compliance bot? Your call.
+                    Any cascade becomes a pipeline stage. Domain expert? Compliance bot? Define it in YAML, use it in SQL.
                   </p>
                 </div>
               </div>
@@ -7285,6 +7290,17 @@
       <!-- ========== PIPELINE CASCADES ========== -->
       <section id="pipelines" class="pipeline-section">
         <div class="container">
+          <!-- Centered header -->
+          <div class="pipeline-header reveal" style="text-align: center; margin-bottom: 48px;">
+            <h2 style="font-size: clamp(1.8rem, 3vw, 2.4rem); margin: 0 0 16px;">Query first. <span style="color: var(--magenta)">Transform after.</span></h2>
+            <p style="color: var(--muted); font-size: 1.1rem; margin: 0; max-width: 700px; margin-inline: auto;">
+              Chain AI transformations on your results with <code style="color: var(--magenta);">THEN</code>.
+              Dedupe, filter, analyze, speak—pipe data through any stage.
+              Save snapshots at each step with <code style="color: var(--orange);">INTO</code>.
+            </p>
+          </div>
+
+          <!-- Content grid below -->
           <div class="pipeline-grid">
             <div class="pipeline-code reveal">
               <div class="code-header">
@@ -7308,12 +7324,6 @@
               </div>
             </div>
             <div class="pipeline-content reveal delay-1">
-              <h2>Query first. <span style="color: var(--magenta)">Transform after.</span></h2>
-              <p>
-                Chain AI transformations on your results with <code style="color: var(--magenta);">THEN</code>.
-                Dedupe, filter, analyze, speak—pipe data through any stage.
-                Save snapshots at each step with <code style="color: var(--orange);">INTO</code>.
-              </p>
               <div class="pipeline-flow">
                 <div class="pipeline-stage">
                   <span class="pipeline-stage-code"><span class="kw">SELECT</span> * <span class="kw">FROM</span> feedback</span>
@@ -7334,6 +7344,21 @@
                   <span class="pipeline-stage-code"><span class="fn">THEN ANALYZE</span> <span class="into">INTO</span> results</span>
                   <span class="pipeline-stage-label">1 insight</span>
                 </div>
+              </div>
+              <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                <h3 style="font-size: 1rem; color: var(--cyan); margin-bottom: 0.75rem;">
+                  <iconify-icon icon="mdi:call-split" style="margin-right: 0.3rem;"></iconify-icon>
+                  Semantic Routing with CHOOSE
+                </h3>
+                <p style="font-size: 0.9rem; color: var(--gray); margin-bottom: 0.75rem;">
+                  AI classifies your data, routes to different workflows.
+                </p>
+<pre style="font-size: 0.8rem; background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 6px; margin: 0; border-left: 2px solid var(--cyan);"><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> transactions
+<span class="pipeline-keyword">THEN CHOOSE</span> <span class="sql-keyword">BY</span> <span class="str">FRAUD_DETECTOR</span> (
+    <span class="sql-keyword">WHEN</span> <span class="str">'fraudulent'</span> <span class="sql-keyword">THEN</span> <span style="color: var(--red);">BLOCK</span>
+    <span class="sql-keyword">WHEN</span> <span class="str">'suspicious'</span> <span class="sql-keyword">THEN</span> <span style="color: var(--yellow);">REVIEW</span>
+    <span class="sql-keyword">ELSE</span> <span style="color: var(--green);">ALLOW</span>
+);</pre>
               </div>
             </div>
           </div>

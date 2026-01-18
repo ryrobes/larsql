@@ -373,3 +373,28 @@ def filter_rows(
     filtered = df[mask]
 
     return {"data": filtered.to_dict(orient="records")}
+
+
+def passthrough(
+    _table: List[Dict[str, Any]],
+    _table_columns: Optional[List[str]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """
+    Pass data through unchanged.
+
+    Used by the PASS cascade in CHOOSE branches when no action is needed
+    but the pipeline should continue.
+
+    Args:
+        _table: List of records (rows)
+        _table_columns: Available column names
+        **kwargs: Any additional arguments (ignored)
+
+    Returns:
+        Dict with 'data' key containing original rows unchanged
+    """
+    if not _table:
+        return {"data": []}
+
+    return {"data": _table}

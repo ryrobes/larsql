@@ -27,6 +27,7 @@
     <li><a href="#syntax">Syntax Reference</a></li>
     <li><a href="#data-flow">Data Flow</a></li>
     <li><a href="#builtin-stages">Built-in Pipeline Stages</a></li>
+    <li><a href="#conditional-routing">Conditional Routing (CHOOSE)</a></li>
     <li><a href="#per-stage-into">Per-Stage Materialization</a></li>
     <li><a href="#cost-optimization">Cost Optimization</a></li>
     <li><a href="#custom-pipelines">Creating Custom Pipelines</a></li>
@@ -315,6 +316,142 @@ flowchart LR
     <pre><span class="kw">SELECT</span> summary <span class="kw">FROM</span> reports <span class="fn">THEN SPEAK</span>;</pre>
   </div>
 </div>
+
+<h2 id="conditional-routing">Conditional Routing with CHOOSE</h2>
+
+<p>
+  Sometimes you need your pipeline to take different paths based on what the data contains.
+  <code>CHOOSE</code> enables <strong>semantic conditional routing</strong>—an LLM examines
+  your data and decides which branch to execute.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:source-branch"></iconify-icon> Why Conditional Routing?</div>
+  <p>
+    Traditional SQL has <code>CASE</code> for value-based branching. But what if you need to branch
+    based on <em>meaning</em>? "Is this dataset mostly positive or negative?" "Does this batch contain
+    anomalies?" <code>CHOOSE</code> lets an LLM classify your entire result set and route it accordingly.
+  </p>
+</div>
+
+<h3>Basic Syntax</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> quarterly_sales
+<span class="fn">THEN CHOOSE</span> (
+    <span class="kw">WHEN</span> <span class="str">'most products beating targets'</span> <span class="kw">THEN</span> <span class="fn">ANALYZE</span> <span class="str">'what is driving success?'</span>
+    <span class="kw">WHEN</span> <span class="str">'most products missing targets'</span> <span class="kw">THEN</span> <span class="fn">ANALYZE</span> <span class="str">'what needs improvement?'</span>
+    <span class="kw">WHEN</span> <span class="str">'mixed results'</span> <span class="kw">THEN</span> <span class="fn">ANALYZE</span> <span class="str">'identify winners and losers'</span>
+);</pre>
+  </div>
+</div>
+
+<p>
+  The LLM examines the entire dataset, determines which condition best describes it,
+  and executes only that branch's cascade.
+</p>
+
+<h3>With Custom Discriminator</h3>
+
+<p>
+  By default, CHOOSE uses a generic LLM classifier. For specialized classification,
+  provide your own discriminator cascade with <code>BY</code>:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> transactions
+<span class="fn">THEN CHOOSE BY</span> FRAUD_DETECTOR (
+    <span class="kw">WHEN</span> <span class="str">'high_risk'</span> <span class="kw">THEN</span> <span class="fn">BLOCK</span> <span class="str">'fraud_queue'</span>
+    <span class="kw">WHEN</span> <span class="str">'medium_risk'</span> <span class="kw">THEN</span> <span class="fn">FLAG</span> <span class="str">'manual_review'</span>
+    <span class="kw">ELSE</span> <span class="fn">PASS</span>
+)
+<span class="fn">THEN ANALYZE</span> <span class="str">'summarize processed transactions'</span>;</pre>
+  </div>
+</div>
+
+<h3>Special Branch Cascades</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Cascade</th>
+      <th>Behavior</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>PASS</code></td>
+      <td>No-op. Data passes through unchanged. Pipeline continues.</td>
+    </tr>
+    <tr>
+      <td><code>STOP</code></td>
+      <td>Terminates the pipeline gracefully. No further stages execute.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Key Insight: CHOOSE Classifies the Whole Dataset</h3>
+
+<p>
+  Unlike per-row operators, CHOOSE looks at your <em>entire result set</em> to make one routing decision.
+  It answers: "What kind of dataset is this?" not "What is each row?"
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:check-circle"></iconify-icon></div>
+    <h4>Good Use Cases</h4>
+    <ul style="text-align: left; margin-top: 8px; font-size: 0.9rem;">
+      <li>Route based on overall sentiment</li>
+      <li>Branch on data quality assessment</li>
+      <li>Handle batch characteristics</li>
+      <li>Conditional side effects (alert if anomalies)</li>
+    </ul>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:close-circle"></iconify-icon></div>
+    <h4>Not For</h4>
+    <ul style="text-align: left; margin-top: 8px; font-size: 0.9rem;">
+      <li>Per-row classification (use semantic operators)</li>
+      <li>Filtering rows (use FILTER stage)</li>
+      <li>Value-based branching (use SQL CASE)</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Real-World Example: Alert Pipeline</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Scheduled job: check today's system alerts</span>
+<span class="kw">SELECT</span> server, metric, value, severity
+<span class="kw">FROM</span> alerts
+<span class="kw">WHERE</span> timestamp > CURRENT_DATE
+<span class="fn">THEN CHOOSE</span> (
+    <span class="kw">WHEN</span> <span class="str">'contains critical alerts'</span> <span class="kw">THEN</span> <span class="fn">ANALYZE</span> <span class="str">'create incident report for on-call'</span>
+    <span class="kw">WHEN</span> <span class="str">'only warnings'</span> <span class="kw">THEN</span> <span class="fn">ANALYZE</span> <span class="str">'summarize for daily digest'</span>
+    <span class="kw">ELSE</span> <span class="fn">PASS</span>
+)
+<span class="kw">INTO</span> daily_alert_summary;</pre>
+  </div>
+</div>
+
+<p>
+  The discriminator sees all of today's alerts and decides: "Is this a critical situation
+  requiring an incident report, or just routine warnings for the digest?" One classification,
+  one branch, appropriate action.
+</p>
 
 <h2 id="per-stage-into">Per-Stage Materialization</h2>
 

@@ -22,12 +22,12 @@ import tempfile
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .pipeline_parser import PipelineStage
+from .pipeline_parser import PipelineStage, ChooseStage, ChooseBranch
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +227,267 @@ def _deserialize_result(
     return original_df
 
 
+def _match_branch(
+    classification: str,
+    branches: List[ChooseBranch]
+) -> Optional[ChooseBranch]:
+    """
+    Match discriminator output to a branch.
+
+    Uses multi-tier matching:
+    1. Exact match (case-insensitive)
+    2. Substring match (classification contains condition or vice versa)
+    3. Word overlap scoring
+    4. ELSE fallback
+
+    Args:
+        classification: The discriminator's output string
+        branches: List of branches to match against
+
+    Returns:
+        The matched ChooseBranch, or None if no match and no ELSE
+    """
+    classification_lower = classification.lower().strip()
+
+    # First pass: exact match
+    for branch in branches:
+        if branch.is_else:
+            continue
+        if branch.condition.lower().strip() == classification_lower:
+            return branch
+
+    # Second pass: classification contains condition or vice versa
+    # Skip if either is empty (empty string matches everything via 'in')
+    for branch in branches:
+        if branch.is_else:
+            continue
+        cond_lower = branch.condition.lower().strip()
+        if not cond_lower or not classification_lower:
+            continue  # Skip substring matching for empty strings
+        if cond_lower in classification_lower or classification_lower in cond_lower:
+            return branch
+
+    # Third pass: word overlap scoring
+    classification_words = set(classification_lower.split())
+    best_match: Optional[ChooseBranch] = None
+    best_score = 0
+
+    for branch in branches:
+        if branch.is_else:
+            continue
+        cond_words = set(branch.condition.lower().split())
+        overlap = len(classification_words & cond_words)
+        if overlap > best_score:
+            best_score = overlap
+            best_match = branch
+
+    if best_match and best_score > 0:
+        return best_match
+
+    # Fall back to ELSE if present
+    for branch in branches:
+        if branch.is_else:
+            return branch
+
+    return None
+
+
+def _get_generic_discriminator_path() -> str:
+    """Get path to the built-in generic discriminator cascade."""
+    import lars
+
+    package_dir = Path(lars.__file__).parent
+    return str(package_dir / "builtin_cascades" / "semantic_sql" / "generic_discriminator.cascade.yaml")
+
+
+def _run_discriminator(
+    discriminator_name: Optional[str],
+    df: pd.DataFrame,
+    context: "PipelineContext",
+    branches: List[ChooseBranch],
+    session_id: str,
+    caller_id: Optional[str],
+) -> str:
+    """
+    Run the discriminator cascade to classify the data.
+
+    If discriminator_name is None, uses the built-in generic discriminator.
+
+    Args:
+        discriminator_name: Name of the discriminator cascade, or None for generic
+        df: The DataFrame to classify
+        context: Pipeline execution context
+        branches: List of branches (used to extract conditions)
+        session_id: Session ID for cascade execution
+        caller_id: Optional caller ID for tracking
+
+    Returns:
+        Classification string from the discriminator
+    """
+    from ..semantic_sql.registry import get_pipeline_cascade, initialize_registry, _registry
+    from ..runner import LARSRunner
+    from ..semantic_sql.executor import _extract_cascade_output
+    from .. import _register_all_skills
+
+    _register_all_skills()
+
+    # Build condition list for discriminator
+    conditions = [b.condition for b in branches if not b.is_else]
+
+    if discriminator_name:
+        # Use named discriminator cascade
+        cascade_entry = get_pipeline_cascade(discriminator_name)
+        if not cascade_entry:
+            # Try as SCALAR cascade (non-pipeline discriminator)
+            initialize_registry()
+            cascade_entry = _registry.get(discriminator_name)
+
+        if not cascade_entry:
+            raise ValueError(f"Unknown discriminator cascade: {discriminator_name}")
+
+        cascade_path = cascade_entry.cascade_path
+    else:
+        # Use built-in generic discriminator
+        cascade_path = _get_generic_discriminator_path()
+
+    # Serialize data
+    serialized = _serialize_dataframe(df, context)
+    serialized["_conditions"] = conditions
+    serialized["_conditions_text"] = "\n".join(
+        f"{i+1}. {c}" for i, c in enumerate(conditions)
+    )
+
+    # Execute discriminator
+    runner = LARSRunner(
+        cascade_path,
+        session_id=f"{session_id}_discriminator",
+        caller_id=caller_id
+    )
+
+    result = runner.run(input_data=serialized)
+    output = _extract_cascade_output(result)
+
+    # Extract classification string
+    if isinstance(output, dict):
+        return str(output.get("classification", output.get("result", str(output))))
+    return str(output).strip()
+
+
+def _execute_choose_stage(
+    stage: ChooseStage,
+    current_df: pd.DataFrame,
+    context: "PipelineContext",
+    session_id: str,
+    caller_id: Optional[str],
+) -> Tuple[pd.DataFrame, bool]:
+    """
+    Execute a CHOOSE stage with conditional routing.
+
+    Args:
+        stage: The ChooseStage to execute
+        current_df: Current DataFrame from previous stage
+        context: Pipeline execution context
+        session_id: Session ID for cascade execution
+        caller_id: Optional caller ID for tracking
+
+    Returns:
+        Tuple of (result_df, should_stop)
+        - result_df: The DataFrame after branch execution
+        - should_stop: True if pipeline should terminate
+    """
+    from ..semantic_sql.registry import get_pipeline_cascade
+    from ..runner import LARSRunner
+    from ..semantic_sql.executor import _extract_cascade_output
+    from .. import _register_all_skills
+
+    _register_all_skills()
+
+    # Step 1: Run discriminator to classify the data
+    classification = _run_discriminator(
+        discriminator_name=stage.discriminator,
+        df=current_df,
+        context=context,
+        branches=stage.branches,
+        session_id=session_id,
+        caller_id=caller_id,
+    )
+
+    log.info(f"[pipeline] CHOOSE discriminator returned: {classification}")
+
+    # Step 2: Match classification to branch
+    matched_branch = _match_branch(classification, stage.branches)
+
+    if matched_branch is None:
+        log.warning(f"[pipeline] No branch matched classification '{classification}', passing through")
+        return current_df, False
+
+    log.info(f"[pipeline] Matched branch: {matched_branch.cascade_name}")
+
+    # Step 3: Handle special PASS cascade (no-op)
+    if matched_branch.cascade_name == "PASS":
+        return current_df, False
+
+    # Step 4: Handle special STOP cascade
+    if matched_branch.cascade_name == "STOP":
+        return current_df, True
+
+    # Step 5: Execute the branch cascade
+    cascade_entry = get_pipeline_cascade(matched_branch.cascade_name)
+    if not cascade_entry:
+        raise PipelineExecutionError(
+            stage_name=f"CHOOSE->{matched_branch.cascade_name}",
+            stage_index=context.stage_index,
+            inner_error=ValueError(f"Unknown cascade '{matched_branch.cascade_name}'")
+        )
+
+    # Serialize and execute
+    serialized = _serialize_dataframe(current_df, context)
+
+    # Add branch args
+    if matched_branch.cascade_args:
+        sql_func_args = cascade_entry.sql_function.get("args", [])
+        user_arg_names = [a["name"] for a in sql_func_args if not a["name"].startswith("_")]
+        for i, arg_value in enumerate(matched_branch.cascade_args):
+            if i < len(user_arg_names):
+                serialized[user_arg_names[i]] = arg_value
+            else:
+                serialized[f"arg{i}"] = arg_value
+
+    stage_session_id = f"{session_id}_choose_{context.stage_index}"
+    runner = LARSRunner(
+        cascade_entry.cascade_path,
+        session_id=stage_session_id,
+        caller_id=caller_id
+    )
+
+    result = runner.run(input_data=serialized)
+    output = _extract_cascade_output(result)
+
+    # Check for stop signal
+    if output is None:
+        log.info(f"[pipeline] Branch cascade returned None, stopping pipeline")
+        return current_df, True
+
+    if isinstance(output, dict):
+        if output.get("stop") is True:
+            log.info(f"[pipeline] Branch cascade signaled stop")
+            return current_df, True
+        if output.get("data") is not None and len(output["data"]) == 0:
+            # Empty data = stop
+            log.info(f"[pipeline] Branch cascade returned empty data, stopping pipeline")
+            return pd.DataFrame(), True
+
+    # Deserialize result
+    result_df = _deserialize_result(output, current_df)
+
+    # Empty result = stop
+    if len(result_df) == 0:
+        log.info(f"[pipeline] Branch cascade returned empty DataFrame, stopping pipeline")
+        return result_df, True
+
+    return result_df, False
+
+
 def execute_pipeline_stages(
     stages: List[PipelineStage],
     initial_df: pd.DataFrame,
@@ -393,6 +654,49 @@ def execute_pipeline_with_into(
 
     for idx, stage in enumerate(stages):
         log.info(f"[pipeline] Executing stage {idx + 1}/{len(stages)}: {stage.name}")
+
+        # Handle CHOOSE stages specially
+        if isinstance(stage, ChooseStage) or getattr(stage, 'stage_type', None) == 'choose':
+            # Build execution context for CHOOSE
+            context = PipelineContext(
+                stage_index=idx,
+                total_stages=len(stages),
+                previous_stage=previous_stage,
+                original_query=original_query,
+                session_id=session_id,
+                caller_id=caller_id,
+            )
+
+            try:
+                result_df, should_stop = _execute_choose_stage(
+                    stage=stage,  # type: ignore
+                    current_df=current_df,
+                    context=context,
+                    session_id=session_id,
+                    caller_id=caller_id,
+                )
+
+                current_df = result_df
+
+                # Handle INTO for CHOOSE stage
+                if stage.into_table and duckdb_conn is not None:
+                    _save_to_table(duckdb_conn, current_df, stage.into_table)
+
+                if should_stop:
+                    log.info(f"[pipeline] CHOOSE branch signaled stop, ending pipeline")
+                    break
+
+            except PipelineExecutionError:
+                raise
+            except Exception as e:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=e
+                )
+
+            previous_stage = stage.name
+            continue
 
         # Look up the pipeline cascade
         cascade_entry = get_pipeline_cascade(stage.name)
