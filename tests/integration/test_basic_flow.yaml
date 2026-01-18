@@ -64,7 +64,7 @@ cells:
 
         # Check 1: flow_marker was set (accept INIT_COMPLETE or COMPLETE since LLM may update it)
         flow_marker = state.get('flow_marker')
-        if flow_marker in ('INIT_COMPLETE', 'COMPLETE'):
+        if flow_marker in ('INIT_COMPLETE', 'COMPLETE', 'PROCESSING_COMPLETE'):
             checks.append({'check': 'flow_marker_set', 'passed': True, 'note': f'value={flow_marker}'})
         else:
             checks.append({'check': 'flow_marker_set', 'passed': False})

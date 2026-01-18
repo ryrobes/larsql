@@ -1,0 +1,41 @@
+cascade_id: pipeline_stats
+internal: true
+description: |
+  PIPELINE cascade for computing descriptive statistics.
+
+  Uses pure Python/pandas - no LLM calls.
+
+  Usage:
+      SELECT * FROM sales THEN STATS
+      SELECT * FROM sales THEN STATS('revenue, quantity')
+
+inputs_schema:
+  columns: Optional comma-separated list of columns to analyze
+  _table: Query results as JSON records
+  _table_columns: List of column names
+
+sql_function:
+  name: STATS
+  description: Compute descriptive statistics for numeric columns
+  args:
+    - name: columns
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN STATS'
+    - 'THEN STATS {{ columns }}'
+    - 'THEN STATS({{ columns }})'
+  cache: false
+
+cells:
+  - name: compute_stats
+    deterministic: true
+    tool: python:lars.pipeline_tools.compute_stats
+    inputs:
+      _table: "{{ input._table }}"
+      columns: "{{ input.columns | default('') }}"
+      _table_columns: "{{ input._table_columns }}"

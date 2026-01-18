@@ -4111,6 +4111,15 @@ class ClientConnection:
                 self._handle_watch_command(query)
                 return
 
+            # Handle PIPELINE syntax (THEN/INTO for post-query processing)
+            # Syntax: SELECT * FROM table THEN ANALYZE 'prompt' INTO result_table
+            from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+            if has_pipeline_syntax(query):
+                pipeline = parse_pipeline_syntax(query)
+                if pipeline and pipeline.stages:
+                    self._handle_pipeline_query(pipeline, query)
+                    return
+
             # Handle transaction commands (BEGIN, COMMIT, ROLLBACK)
             if query_upper in ['BEGIN', 'BEGIN TRANSACTION', 'BEGIN WORK', 'START TRANSACTION']:
                 self._handle_begin()
@@ -6151,6 +6160,85 @@ class ClientConnection:
         send_query_results(self.sock, job_df, self.transaction_status)
         styled_print(f"[{self.session_id}] {S.SEARCH} Analysis job {job_id} submitted: {prompt[:50]}...")
 
+    def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True):
+        """
+        Handle queries with THEN/INTO pipeline syntax.
+
+        Executes the base SQL, then runs each pipeline stage cascade on the results.
+        Optionally saves to INTO table.
+
+        Args:
+            pipeline: ParsedPipeline from pipeline_parser
+            original_query: Original SQL for error messages
+            extended_query_mode: If True, use Extended Query Protocol response format
+            send_row_description: If True (and extended_query_mode), send RowDescription
+        """
+        import pandas as pd
+        from ..sql_tools.pipeline_executor import execute_pipeline_with_into, PipelineExecutionError
+        from ..sql_tools.semantic_rewriter_v2 import rewrite_semantic_sql_v2
+        from ..sql_tools.semantic_operators import rewrite_semantic_operators
+
+        styled_print(f"[{self.session_id}] {S.PIPELINE} Pipeline query: {len(pipeline.stages)} stages")
+        for stage in pipeline.stages:
+            args_str = f"({', '.join(repr(a) for a in stage.args)})" if stage.args else ""
+            styled_print(f"[{self.session_id}]   {S.RUN} Stage: {stage.name}{args_str}")
+
+        if pipeline.into_table:
+            styled_print(f"[{self.session_id}]   {S.SAVE} INTO: {pipeline.into_table}")
+
+        try:
+            # 1. Execute base SQL with semantic rewriting
+            base_sql = pipeline.base_sql
+
+            # Apply semantic SQL rewrites
+            v2_result = rewrite_semantic_sql_v2(base_sql)
+            if v2_result.changed:
+                base_sql = v2_result.sql_out
+
+            rewritten = rewrite_semantic_operators(base_sql)
+            if rewritten:
+                base_sql = rewritten
+
+            styled_print(f"[{self.session_id}]   {S.QUERY} Executing base: {base_sql[:80]}...")
+
+            # Execute base query
+            result = self.duckdb_conn.execute(base_sql)
+            columns = [desc[0] for desc in result.description]
+            rows = result.fetchall()
+            initial_df = pd.DataFrame(rows, columns=columns)
+
+            styled_print(f"[{self.session_id}]   {S.OK} Base query returned {len(initial_df)} rows")
+
+            # 2. Execute pipeline stages
+            final_df = execute_pipeline_with_into(
+                stages=pipeline.stages,
+                initial_df=initial_df,
+                into_table=pipeline.into_table,
+                duckdb_conn=self.duckdb_conn,
+                session_id=self.session_id,
+                caller_id=getattr(self, '_current_caller_id', None),
+                original_query=original_query,
+                base_into_table=pipeline.base_into_table,
+            )
+
+            styled_print(f"[{self.session_id}]   {S.OK} Pipeline complete: {len(final_df)} rows")
+
+            # 3. Send results to client
+            if extended_query_mode:
+                send_execute_results(self.sock, final_df, send_row_description=send_row_description)
+            else:
+                send_query_results(self.sock, final_df, self.transaction_status)
+
+        except PipelineExecutionError as e:
+            styled_print(f"[{self.session_id}]   {S.ERR} Pipeline failed at stage {e.stage_index}: {e.stage_name}")
+            send_error(self.sock, str(e))
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            styled_print(f"[{self.session_id}]   {S.ERR} Pipeline error: {e}")
+            send_error(self.sock, f"Pipeline query failed: {e}")
+
     def _handle_watch_command(self, query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
         Handle WATCH SQL commands for reactive subscriptions.
@@ -6777,6 +6865,81 @@ class ClientConnection:
                         styled_print(f"[{self.session_id}]      {S.OK} Portal described (WATCH command - NoData)")
                     return
 
+                # PIPELINE syntax (THEN/INTO) - Execute pipeline to determine result columns
+                # Cache result for Execute phase to avoid re-running the pipeline
+                # IMPORTANT: Use original_query for pipeline detection to avoid conflicts
+                # with semantic SQL rewriters that might transform function names (e.g., DEDUPE)
+                from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+                original_query = portal.get('original_query') or query
+                if has_pipeline_syntax(original_query):
+                    styled_print(f"[{self.session_id}]      {S.PIPELINE} PIPELINE query detected in Describe - executing to determine columns")
+                    try:
+                        import pandas as pd
+                        from ..sql_tools.pipeline_executor import execute_pipeline_with_into
+                        from ..sql_tools.semantic_rewriter_v2 import rewrite_semantic_sql_v2
+                        from ..sql_tools.semantic_operators import rewrite_semantic_operators
+
+                        pipeline = parse_pipeline_syntax(original_query)
+                        if pipeline and pipeline.stages:
+                            # Execute base SQL with semantic rewriting
+                            base_sql = pipeline.base_sql
+                            v2_result = rewrite_semantic_sql_v2(base_sql)
+                            if v2_result.changed:
+                                base_sql = v2_result.sql_out
+                            rewritten = rewrite_semantic_operators(base_sql)
+                            if rewritten:
+                                base_sql = rewritten
+
+                            # Execute base query
+                            result = self.duckdb_conn.execute(base_sql)
+                            columns = [desc[0] for desc in result.description]
+                            rows = result.fetchall()
+                            initial_df = pd.DataFrame(rows, columns=columns)
+
+                            # Execute pipeline stages
+                            final_df = execute_pipeline_with_into(
+                                stages=pipeline.stages,
+                                initial_df=initial_df,
+                                into_table=pipeline.into_table,
+                                duckdb_conn=self.duckdb_conn,
+                                session_id=self.session_id,
+                                caller_id=getattr(self, '_current_caller_id', None),
+                                original_query=query,
+                                base_into_table=pipeline.base_into_table,
+                            )
+
+                            # Cache result for Execute
+                            portal['pipeline_result'] = final_df
+
+                            # Send RowDescription with actual columns
+                            desc_columns = []
+                            for col_name, dtype in zip(final_df.columns, final_df.dtypes):
+                                dtype_str = str(dtype).upper()
+                                if 'INT' in dtype_str:
+                                    col_type = 'BIGINT'
+                                elif 'FLOAT' in dtype_str:
+                                    col_type = 'DOUBLE'
+                                elif 'BOOL' in dtype_str:
+                                    col_type = 'BOOLEAN'
+                                else:
+                                    col_type = 'VARCHAR'
+                                desc_columns.append((col_name, col_type))
+
+                            self.sock.sendall(RowDescription.encode(desc_columns))
+                            portal['row_description_sent'] = True
+                            portal['described_columns'] = len(desc_columns)
+                            styled_print(f"[{self.session_id}]      {S.OK} Portal described (PIPELINE - {len(desc_columns)} columns, result cached)")
+                            return
+
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        styled_print(f"[{self.session_id}]      {S.ERR} PIPELINE Describe failed: {e}")
+                        # Fall through to NoData as fallback
+                        self.sock.sendall(NoData.encode())
+                        portal['row_description_sent'] = False
+                        return
+
                 elif query_upper.startswith('SHOW '):
                     # SHOW commands return a single column - provide the correct RowDescription
                     # This prevents the wrapping logic from failing
@@ -7231,6 +7394,25 @@ class ClientConnection:
                 print(f"[{self.session_id}]      Detected WATCH command via Extended Query")
                 self._handle_watch_command(query, extended_query_mode=True, send_row_description=send_row_desc)
                 return
+
+            # PIPELINE syntax (THEN/INTO) - Handle post-query result processing via Extended Query
+            # Check if Describe already executed the pipeline and cached the result
+            if 'pipeline_result' in portal:
+                styled_print(f"[{self.session_id}]      PIPELINE: Using cached result from Describe")
+                cached_df = portal['pipeline_result']
+                # Describe already sent RowDescription, so don't send again
+                send_execute_results(self.sock, cached_df, send_row_description=False)
+                return
+
+            # Use original_query for pipeline detection to avoid conflicts with semantic rewriters
+            from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+            original_query = portal.get('original_query') or query
+            if has_pipeline_syntax(original_query):
+                pipeline = parse_pipeline_syntax(original_query)
+                if pipeline and pipeline.stages:
+                    styled_print(f"[{self.session_id}]      Detected PIPELINE syntax via Extended Query")
+                    self._handle_pipeline_query(pipeline, original_query, extended_query_mode=True, send_row_description=send_row_desc)
+                    return
 
             # pg_get_keywords() - Return empty result
             if 'PG_GET_KEYWORDS' in query_upper:

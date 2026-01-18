@@ -1,0 +1,632 @@
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PIPELINE CASCADES - Post-Query Result Processing
+     Chain AI transformations on query results with THEN/INTO syntax
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<h1>Pipeline Cascades</h1>
+<p class="lead">
+  Chain AI transformations on your query results using simple SQL syntax.
+  Run your query, then pipe the results through ANALYZE, FILTER, ENRICH, SPEAK,
+  or any custom cascade—all in one statement.
+</p>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> The Key Insight</div>
+  <p>
+    <strong>Query first, transform after.</strong> Traditional semantic SQL applies LLM operators row-by-row
+    during the query. Pipeline cascades work differently—they run <em>after</em> your query returns,
+    operating on the entire result set. This enables powerful patterns like summarization,
+    analysis, and multi-stage transformations that would be impossible per-row.
+  </p>
+</div>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#syntax">Syntax Reference</a></li>
+    <li><a href="#data-flow">Data Flow</a></li>
+    <li><a href="#builtin-stages">Built-in Pipeline Stages</a></li>
+    <li><a href="#per-stage-into">Per-Stage Materialization</a></li>
+    <li><a href="#cost-optimization">Cost Optimization</a></li>
+    <li><a href="#custom-pipelines">Creating Custom Pipelines</a></li>
+    <li><a href="#examples">Examples</a></li>
+    <li><a href="#best-practices">Best Practices</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  Pipeline cascades extend SQL with a <code>THEN</code> keyword that chains post-query transformations.
+  Unlike per-row semantic operators (like <code>MEANS</code> or <code>ABOUT</code>), pipeline stages
+  receive the <em>entire result set</em> and return a transformed table.
+</p>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon"><iconify-icon icon="mdi:pipe"></iconify-icon></div>
+    <h4>Chain Transformations</h4>
+    <p>
+      String together multiple stages: filter, analyze, enrich, then speak the results.
+      Each stage's output becomes the next stage's input.
+    </p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon magenta"><iconify-icon icon="mdi:table-arrow-right"></iconify-icon></div>
+    <h4>Table-Level Operations</h4>
+    <p>
+      Stages operate on the full result set—perfect for summarization, clustering,
+      deduplication, and analysis that needs to see all rows at once.
+    </p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon" style="color: var(--green);"><iconify-icon icon="mdi:database-export"></iconify-icon></div>
+    <h4>Intermediate Snapshots</h4>
+    <p>
+      Save results at any stage with <code>INTO table_name</code>. Debug pipelines,
+      create audit trails, or build incremental data products.
+    </p>
+  </div>
+</div>
+
+<h3>Quick Example</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Query your data, then transform the results</span>
+<span class="kw">SELECT</span> product_name, category, revenue, units_sold
+<span class="kw">FROM</span> sales
+<span class="kw">WHERE</span> quarter = <span class="str">'Q4'</span> <span class="kw">AND</span> revenue > <span class="num">10000</span>
+<span class="fn">THEN ANALYZE</span> <span class="str">'What are the top performing product categories and why?'</span>
+<span class="fn">THEN SPEAK</span>
+<span class="kw">INTO</span> quarterly_insights;</pre>
+  </div>
+</div>
+
+<p>This query:</p>
+<ol>
+  <li>Runs the base SQL to get high-revenue Q4 products</li>
+  <li>Pipes results to an AI analysis cascade</li>
+  <li>Converts the analysis to speech</li>
+  <li>Saves everything to the <code>quarterly_insights</code> table</li>
+</ol>
+
+<h2 id="syntax">Syntax Reference</h2>
+
+<p>Pipeline syntax supports two calling conventions:</p>
+
+<h3>Infix Style</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> products
+<span class="fn">THEN ANALYZE</span> <span class="str">'summarize trends'</span>
+<span class="fn">THEN SPEAK</span>;</pre>
+  </div>
+</div>
+
+<h3>Function Style</h3>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> products
+<span class="fn">THEN FILTER</span>(<span class="str">'eco-friendly'</span>, <span class="str">'strict'</span>)
+<span class="fn">THEN TOP</span>(<span class="str">'revenue'</span>, <span class="num">10</span>);</pre>
+  </div>
+</div>
+
+<h3>Grammar</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pattern</th>
+      <th>Description</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>THEN STAGE</code></td>
+      <td>No arguments</td>
+      <td><code>THEN DEDUPE</code></td>
+    </tr>
+    <tr>
+      <td><code>THEN STAGE 'arg'</code></td>
+      <td>Single string argument (infix)</td>
+      <td><code>THEN ANALYZE 'summarize'</code></td>
+    </tr>
+    <tr>
+      <td><code>THEN STAGE('arg1', 'arg2')</code></td>
+      <td>Multiple arguments (function)</td>
+      <td><code>THEN FILTER('urgent', 'strict')</code></td>
+    </tr>
+    <tr>
+      <td><code>THEN STAGE('col', N)</code></td>
+      <td>Mixed string and numeric args</td>
+      <td><code>THEN SAMPLE(5)</code>, <code>THEN TOP('revenue', 10)</code></td>
+    </tr>
+    <tr>
+      <td><code>... INTO table</code></td>
+      <td>Save result to table</td>
+      <td><code>THEN ANALYZE 'x' INTO results</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="data-flow">Data Flow</h2>
+
+<p>
+  Understanding how data flows through a pipeline helps you design efficient transformations.
+</p>
+
+<div class="mermaid-container">
+<pre class="mermaid">
+flowchart LR
+    subgraph Base["Base Query"]
+        SQL["SELECT * FROM sales<br/>WHERE revenue > 1000"]
+    end
+
+    subgraph Stage1["Stage 1: FILTER"]
+        F1["Filter rows by<br/>semantic criteria"]
+    end
+
+    subgraph Stage2["Stage 2: ANALYZE"]
+        A1["LLM analyzes<br/>filtered results"]
+    end
+
+    subgraph Stage3["Stage 3: INTO"]
+        T1["Save to<br/>analysis_results"]
+    end
+
+    SQL -->|"DataFrame<br/>500 rows"| F1
+    F1 -->|"DataFrame<br/>50 rows"| A1
+    A1 -->|"DataFrame<br/>1 row"| T1
+
+    style SQL fill:#0a0d14,stroke:#1cf6ff
+    style F1 fill:#0a0d14,stroke:#ff2fa8
+    style A1 fill:#0a0d14,stroke:#7a5cff
+    style T1 fill:#0a0d14,stroke:#00ff88
+</pre>
+</div>
+
+<h3>DataFrame Serialization</h3>
+
+<p>Pipelines serialize DataFrames for cascade input using an adaptive strategy:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Table Size</th>
+      <th>Serialization</th>
+      <th>Cascade Input</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>&lt; 1,000 rows</td>
+      <td>Inline JSON</td>
+      <td><code>_table</code> contains JSON records</td>
+    </tr>
+    <tr>
+      <td>&ge; 1,000 rows</td>
+      <td>Parquet file</td>
+      <td><code>_table_path</code> contains file path</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  Cascades always receive <code>_table_columns</code> (column names) and <code>_table_row_count</code>
+  for quick inspection without parsing the full data.
+</p>
+
+<h2 id="builtin-stages">Built-in Pipeline Stages</h2>
+
+<p>LARS includes several built-in pipeline cascades:</p>
+
+<h3>ANALYZE</h3>
+<p>Send results to an LLM for analysis and insight extraction.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> customer_feedback
+<span class="fn">THEN ANALYZE</span> <span class="str">'What are the main themes and sentiment trends?'</span>;</pre>
+  </div>
+</div>
+
+<h3>FILTER</h3>
+<p>Semantically filter rows based on natural language criteria.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> support_tickets
+<span class="fn">THEN FILTER</span>(<span class="str">'urgent customer issues requiring immediate attention'</span>);</pre>
+  </div>
+</div>
+
+<h3>DEDUPE</h3>
+<p>Remove duplicate rows, optionally by specific columns. Deterministic (no LLM).</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Dedupe all columns</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> contacts <span class="fn">THEN DEDUPE</span>;
+
+<span class="cmt">-- Dedupe by specific columns</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> contacts <span class="fn">THEN DEDUPE</span>(<span class="str">'email, phone'</span>);</pre>
+  </div>
+</div>
+
+<h3>STATS</h3>
+<p>Calculate statistics for specified columns. Deterministic (no LLM).</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> sales <span class="fn">THEN STATS</span>(<span class="str">'revenue, units_sold'</span>);</pre>
+  </div>
+</div>
+
+<h3>SAMPLE</h3>
+<p>Random sample of N rows. Deterministic (no LLM).</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> large_dataset <span class="fn">THEN SAMPLE</span>(<span class="num">100</span>);</pre>
+  </div>
+</div>
+
+<h3>TOP</h3>
+<p>Top N rows by a column. Deterministic (no LLM).</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> products <span class="fn">THEN TOP</span>(<span class="str">'revenue'</span>, <span class="num">10</span>);</pre>
+  </div>
+</div>
+
+<h3>SPEAK</h3>
+<p>Convert results to speech using text-to-speech. Side-effect stage.</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> summary <span class="kw">FROM</span> reports <span class="fn">THEN SPEAK</span>;</pre>
+  </div>
+</div>
+
+<h2 id="per-stage-into">Per-Stage Materialization</h2>
+
+<p>
+  Save intermediate results at any stage with <code>INTO table_name</code>. This enables
+  debugging, audit trails, and incremental data products.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Save at each stage for debugging</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> raw_data <span class="kw">INTO</span> step0_raw
+<span class="fn">THEN DEDUPE</span>(<span class="str">'email'</span>) <span class="kw">INTO</span> step1_deduped
+<span class="fn">THEN FILTER</span>(<span class="str">'active customers'</span>) <span class="kw">INTO</span> step2_filtered
+<span class="fn">THEN ANALYZE</span> <span class="str">'segment by behavior'</span> <span class="kw">INTO</span> step3_segmented;</pre>
+  </div>
+</div>
+
+<p>After execution, you have four tables to inspect:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Table</th>
+      <th>Contents</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>step0_raw</code></td>
+      <td>Original query results (before any transformations)</td>
+    </tr>
+    <tr>
+      <td><code>step1_deduped</code></td>
+      <td>After deduplication</td>
+    </tr>
+    <tr>
+      <td><code>step2_filtered</code></td>
+      <td>After semantic filtering</td>
+    </tr>
+    <tr>
+      <td><code>step3_segmented</code></td>
+      <td>Final analysis results</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-tip">
+  <div class="callout-title"><iconify-icon icon="mdi:information-outline"></iconify-icon> Audit Trail Pattern</div>
+  <p>
+    Use per-stage INTO for compliance and debugging. Each intermediate table is a
+    snapshot of the data at that point in the pipeline—invaluable when you need to
+    explain how a result was derived.
+  </p>
+</div>
+
+<h2 id="cost-optimization">Cost Optimization</h2>
+
+<p>
+  Pipeline architecture enables <strong>cost-aware query planning</strong>. The key insight:
+  cheap SQL operations should run <em>before</em> expensive LLM operations.
+</p>
+
+<div class="mermaid-container">
+<pre class="mermaid">
+flowchart LR
+    subgraph Cheap["Cheap: SQL (DuckDB)"]
+        S1["1M rows"] --> S2["WHERE..."] --> S3["100 rows"]
+    end
+
+    subgraph Expensive["Expensive: LLM"]
+        S3 --> S4["THEN ANALYZE"] --> S5["1 row"]
+    end
+
+    style Cheap fill:#0a0d14,stroke:#00ff88
+    style Expensive fill:#0a0d14,stroke:#ff2fa8
+</pre>
+</div>
+
+<h3>Cost Comparison</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>LLM Calls</th>
+      <th>Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Per-row semantic operator on 1M rows</td>
+      <td>1,000,000</td>
+      <td>$$$$$</td>
+    </tr>
+    <tr>
+      <td>SQL filter to 100 rows, then ANALYZE</td>
+      <td>1</td>
+      <td>$</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout callout-info">
+  <div class="callout-title"><iconify-icon icon="mdi:currency-usd"></iconify-icon> The Pipeline Advantage</div>
+  <p>
+    <strong>Filter first, analyze second.</strong> Use standard SQL WHERE clauses to reduce
+    your dataset before piping to expensive LLM stages. A 1000x reduction in rows means
+    1000x reduction in LLM costs.
+  </p>
+</div>
+
+<h2 id="custom-pipelines">Creating Custom Pipelines</h2>
+
+<p>
+  Any cascade with <code>shape: PIPELINE</code> becomes available as a pipeline stage.
+  Create your own by adding a cascade file.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">YAML</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># cascades/semantic_sql/my_enricher.cascade.yaml</span>
+<span class="kw">cascade_id</span>: pipeline_enrich_contacts
+<span class="kw">description</span>: Enrich contact records with company data
+
+<span class="kw">sql_function</span>:
+  <span class="kw">name</span>: ENRICH_CONTACTS
+  <span class="kw">shape</span>: PIPELINE
+  <span class="kw">args</span>:
+    - <span class="kw">name</span>: source
+      <span class="kw">type</span>: VARCHAR
+      <span class="kw">optional</span>: true
+    - <span class="kw">name</span>: _table
+      <span class="kw">type</span>: TABLE
+  <span class="kw">returns</span>: TABLE
+  <span class="kw">operators</span>:
+    - <span class="str">'THEN ENRICH_CONTACTS'</span>
+    - <span class="str">'THEN ENRICH_CONTACTS({{ source }})'</span>
+
+<span class="kw">cells</span>:
+  - <span class="kw">name</span>: enrich
+    <span class="kw">model</span>: google/gemini-2.5-flash-lite
+    <span class="kw">instructions</span>: |
+      Enrich these contact records with company information.
+
+      INPUT DATA:
+      {{ input._table | tojson }}
+
+      For each contact, add: company_size, industry, location.
+      Return as JSON array of enriched records.</pre>
+  </div>
+</div>
+
+<p>Now use it in queries:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">SELECT</span> * <span class="kw">FROM</span> leads
+<span class="fn">THEN ENRICH_CONTACTS</span>(<span class="str">'linkedin'</span>)
+<span class="kw">INTO</span> enriched_leads;</pre>
+  </div>
+</div>
+
+<h3>Deterministic Pipelines</h3>
+
+<p>
+  For pure data transformations (no LLM), use a Python tool instead of an LLM cell:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">YAML</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="kw">cascade_id</span>: pipeline_pivot
+<span class="kw">sql_function</span>:
+  <span class="kw">name</span>: PIVOT
+  <span class="kw">shape</span>: PIPELINE
+  <span class="kw">args</span>:
+    - <span class="kw">name</span>: index_col
+      <span class="kw">type</span>: VARCHAR
+    - <span class="kw">name</span>: _table
+      <span class="kw">type</span>: TABLE
+  <span class="kw">returns</span>: TABLE
+
+<span class="kw">cells</span>:
+  - <span class="kw">name</span>: pivot_data
+    <span class="kw">deterministic</span>: true
+    <span class="kw">tool</span>: python:lars.pipeline_tools.pivot
+    <span class="kw">inputs</span>:
+      <span class="kw">_table</span>: <span class="str">"{{ input._table }}"</span>
+      <span class="kw">index_col</span>: <span class="str">"{{ input.index_col }}"</span></pre>
+  </div>
+</div>
+
+<h2 id="examples">Examples</h2>
+
+<h3>Customer Churn Analysis</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Find at-risk customers and analyze patterns</span>
+<span class="kw">SELECT</span>
+    customer_id,
+    last_login,
+    support_tickets,
+    nps_score,
+    subscription_tier
+<span class="kw">FROM</span> customers
+<span class="kw">WHERE</span> last_login < CURRENT_DATE - INTERVAL <span class="str">'30 days'</span>
+  <span class="kw">AND</span> nps_score < <span class="num">7</span>
+<span class="fn">THEN ANALYZE</span> <span class="str">'What patterns indicate churn risk? Suggest interventions.'</span>
+<span class="kw">INTO</span> churn_analysis;</pre>
+  </div>
+</div>
+
+<h3>Content Pipeline</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Process raw content through multiple stages</span>
+<span class="kw">SELECT</span> id, title, body, author
+<span class="kw">FROM</span> articles
+<span class="kw">WHERE</span> status = <span class="str">'pending_review'</span>
+<span class="fn">THEN FILTER</span>(<span class="str">'appropriate for publication, no policy violations'</span>) <span class="kw">INTO</span> filtered
+<span class="fn">THEN ANALYZE</span> <span class="str">'Categorize by topic and suggest tags'</span> <span class="kw">INTO</span> categorized;</pre>
+  </div>
+</div>
+
+<h3>Data Quality Pipeline</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Clean and deduplicate contact list</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> imported_contacts <span class="kw">INTO</span> raw_import
+<span class="fn">THEN DEDUPE</span>(<span class="str">'email'</span>) <span class="kw">INTO</span> unique_contacts
+<span class="fn">THEN STATS</span>(<span class="str">'email, phone, company'</span>) <span class="kw">INTO</span> quality_report;</pre>
+  </div>
+</div>
+
+<h2 id="best-practices">Best Practices</h2>
+
+<h3>1. Filter Early</h3>
+<p>
+  Use standard SQL WHERE clauses to reduce data volume before LLM stages.
+  Every row you filter with SQL is a row you don't pay LLM costs for.
+</p>
+
+<h3>2. Use Per-Stage INTO for Debugging</h3>
+<p>
+  When developing pipelines, save intermediate results to inspect what's happening
+  at each stage. Remove the INTO clauses once the pipeline is working correctly.
+</p>
+
+<h3>3. Choose the Right Stage Type</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Need</th>
+      <th>Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Summarize/analyze results</td>
+      <td><code>THEN ANALYZE</code></td>
+    </tr>
+    <tr>
+      <td>Semantic filtering</td>
+      <td><code>THEN FILTER</code></td>
+    </tr>
+    <tr>
+      <td>Remove duplicates</td>
+      <td><code>THEN DEDUPE</code> (no LLM cost)</td>
+    </tr>
+    <tr>
+      <td>Get statistics</td>
+      <td><code>THEN STATS</code> (no LLM cost)</td>
+    </tr>
+    <tr>
+      <td>Sample data</td>
+      <td><code>THEN SAMPLE(N)</code> (no LLM cost)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4. Keep Pipelines Focused</h3>
+<p>
+  Each pipeline should have a clear purpose. If you find yourself chaining 5+ stages,
+  consider whether you're trying to do too much in one query.
+</p>
+
+<h3>5. Leverage Deterministic Stages</h3>
+<p>
+  Use deterministic stages (DEDUPE, STATS, SAMPLE, TOP) when you don't need AI.
+  They're instant, free, and reproducible.
+</p>

@@ -1,0 +1,42 @@
+cascade_id: pipeline_dedupe
+internal: true
+description: |
+  PIPELINE cascade for removing duplicate rows.
+
+  Uses pure Python/pandas - no LLM calls.
+
+  Usage:
+      SELECT * FROM contacts THEN DEDUPE
+      SELECT * FROM contacts THEN DEDUPE('email')
+      SELECT * FROM contacts THEN DEDUPE('email, phone')
+
+inputs_schema:
+  columns: Comma-separated columns to check for duplicates
+  _table: Query results as JSON records
+  _table_columns: List of column names
+
+sql_function:
+  name: DEDUPE
+  description: Remove duplicate rows
+  args:
+    - name: columns
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN DEDUPE'
+    - 'THEN DEDUPE {{ columns }}'
+    - 'THEN DEDUPE({{ columns }})'
+  cache: false
+
+cells:
+  - name: remove_duplicates
+    deterministic: true
+    tool: python:lars.pipeline_tools.deduplicate
+    inputs:
+      _table: "{{ input._table }}"
+      columns: "{{ input.columns | default('') }}"
+      _table_columns: "{{ input._table_columns }}"

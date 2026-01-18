@@ -178,6 +178,21 @@
           ]
         },
         {
+          "id": "pipelines",
+          "title": "Pipeline Cascades",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "syntax", "title": "Syntax Reference" },
+            { "anchor": "data-flow", "title": "Data Flow" },
+            { "anchor": "builtin-stages", "title": "Built-in Stages" },
+            { "anchor": "per-stage-into", "title": "Per-Stage Materialization" },
+            { "anchor": "cost-optimization", "title": "Cost Optimization" },
+            { "anchor": "custom-pipelines", "title": "Custom Pipelines" },
+            { "anchor": "examples", "title": "Examples" },
+            { "anchor": "best-practices", "title": "Best Practices" }
+          ]
+        },
+        {
           "id": "embedding",
           "title": "Vector Search & Embedding",
           "sections": [

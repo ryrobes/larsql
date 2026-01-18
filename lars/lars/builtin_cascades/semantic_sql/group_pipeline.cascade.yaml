@@ -1,0 +1,49 @@
+cascade_id: pipeline_group
+internal: true
+description: |
+  PIPELINE cascade for grouping and aggregating data.
+
+  Uses pure Python/pandas - no LLM calls.
+
+  Usage:
+      SELECT * FROM sales THEN GROUP('category', 'revenue')           -- sum by default
+      SELECT * FROM sales THEN GROUP('category', 'revenue', 'mean')   -- average
+      SELECT * FROM sales THEN GROUP('region', 'orders', 'count')     -- count
+
+inputs_schema:
+  group_by: Column to group by
+  agg_column: Column to aggregate
+  agg_func: Aggregation function (sum, mean, count, min, max)
+  _table: Query results as JSON records
+  _table_columns: List of column names
+
+sql_function:
+  name: GROUP
+  description: Group by column and aggregate another
+  args:
+    - name: group_by
+      type: VARCHAR
+    - name: agg_column
+      type: VARCHAR
+    - name: agg_func
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN GROUP({{ group_by }}, {{ agg_column }})'
+    - 'THEN GROUP({{ group_by }}, {{ agg_column }}, {{ agg_func }})'
+  cache: false
+
+cells:
+  - name: group_data
+    deterministic: true
+    tool: python:lars.pipeline_tools.group_aggregate
+    inputs:
+      _table: "{{ input._table }}"
+      group_by: "{{ input.group_by }}"
+      agg_column: "{{ input.agg_column }}"
+      agg_func: "{{ input.agg_func | default('sum') }}"
+      _table_columns: "{{ input._table_columns }}"

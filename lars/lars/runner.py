@@ -43,8 +43,8 @@ def _extract_toon_telemetry(response_dict: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     # Debug: print if we have telemetry
-    # if toon_telemetry:
-    #     print(f"[TOON Telemetry] format={result['data_format']}, json_size={result['data_size_json']}, toon_size={result['data_size_toon']}, savings={result['data_token_savings_pct']}%, rows={result['data_rows']}, cols={result['data_columns']}")
+    if toon_telemetry and result['data_size_toon'] != None: # only if we TOONED, fam
+        print(f"[TOON Telemetry] format={result['data_format']}, json_size={result['data_size_json']}, toon_size={result['data_size_toon']}, savings={result['data_token_savings_pct']}%, rows={result['data_rows']}, cols={result['data_columns']}")
 
     return result
 

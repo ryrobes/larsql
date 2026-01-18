@@ -4539,6 +4539,163 @@
         }
       }
 
+      /* ========== PIPELINE SECTION ========== */
+      .pipeline-section {
+        padding: 80px 0;
+        background: linear-gradient(135deg, rgba(255, 47, 168, 0.03) 0%, rgba(0, 0, 0, 0) 50%);
+        border-top: 1px solid rgba(255, 47, 168, 0.1);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.1);
+      }
+
+      .pipeline-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 60px;
+        align-items: center;
+      }
+
+      .pipeline-content h2 {
+        font-size: 2.2rem;
+        margin-bottom: 16px;
+      }
+
+      .pipeline-content p {
+        font-size: 1.1rem;
+        color: var(--muted);
+        line-height: 1.7;
+        margin-bottom: 20px;
+      }
+
+      .pipeline-flow {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        margin-top: 24px;
+      }
+
+      .pipeline-stage {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 18px;
+        background: rgba(0, 0, 0, 0.3);
+        border-left: 3px solid var(--magenta);
+        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+        font-size: 0.85rem;
+      }
+
+      .pipeline-stage:first-child {
+        border-radius: 8px 8px 0 0;
+        border-left-color: var(--cyan);
+      }
+
+      .pipeline-stage:last-child {
+        border-radius: 0 0 8px 8px;
+        border-left-color: var(--green);
+      }
+
+      .pipeline-stage-arrow {
+        color: var(--magenta);
+        font-size: 1.2rem;
+        opacity: 0.7;
+      }
+
+      .pipeline-stage-code {
+        color: var(--ink);
+      }
+
+      .pipeline-stage-code .kw {
+        color: var(--magenta);
+      }
+
+      .pipeline-stage-code .fn {
+        color: var(--cyan);
+      }
+
+      .pipeline-stage-code .str {
+        color: var(--green);
+      }
+
+      .pipeline-stage-code .into {
+        color: var(--orange);
+      }
+
+      .pipeline-stage-label {
+        font-family: "Quicksand", sans-serif;
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-left: auto;
+        opacity: 0.7;
+      }
+
+      .pipeline-code {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 47, 168, 0.2);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .pipeline-code .code-header {
+        padding: 12px 20px;
+        background: rgba(255, 47, 168, 0.08);
+        border-bottom: 1px solid rgba(255, 47, 168, 0.15);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .pipeline-code .code-content {
+        padding: 24px;
+      }
+
+      .pipeline-code pre {
+        margin: 0;
+        font-size: 0.85rem;
+        line-height: 1.8;
+        font-family: "Cascadia Code", "Google Sans Code", "JetBrains Mono", monospace;
+        color: #cde7ff;
+      }
+
+      .pipeline-keyword {
+        color: var(--magenta);
+        font-weight: 600;
+      }
+
+      .pipeline-into {
+        color: var(--orange);
+        font-weight: 600;
+      }
+
+      .pipeline-insight {
+        margin-top: 20px;
+        padding: 16px 20px;
+        background: rgba(28, 246, 255, 0.05);
+        border-radius: 8px;
+        border-left: 3px solid var(--cyan);
+      }
+
+      .pipeline-insight-title {
+        font-size: 0.75rem;
+        color: var(--cyan);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .pipeline-insight-text {
+        font-size: 0.9rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      @media (max-width: 900px) {
+        .pipeline-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+        }
+      }
+
       /* ========== ASK DATA SECTION ========== */
       .askdata-section {
         padding: 80px 0;
@@ -6105,6 +6262,7 @@
           <a href="#askdata" class="toc-link">ASK_DATA</a>
           <a href="#watch" class="toc-link">WATCH</a>
           <a href="#analyze" class="toc-link">ANALYZE</a>
+          <a href="#pipelines" class="toc-link">Pipelines</a>
         </div>
 
         <div class="toc-group" data-group="reliability">
@@ -7117,6 +7275,64 @@
                   <p class="analyze-custom-note">
                     Any cascade can be the analysis engine. Domain expert? Compliance bot? Your call.
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== PIPELINE CASCADES ========== -->
+      <section id="pipelines" class="pipeline-section">
+        <div class="container">
+          <div class="pipeline-grid">
+            <div class="pipeline-code reveal">
+              <div class="code-header">
+                <span class="code-type-badge sql">SQL</span>
+                <span class="code-title">Chain transformations with THEN</span>
+              </div>
+              <div class="code-content">
+<pre><span class="sql-keyword">SELECT</span> * <span class="sql-keyword">FROM</span> customer_feedback
+<span class="sql-keyword">WHERE</span> quarter = <span class="str">'Q4'</span>
+<span class="pipeline-keyword">THEN DEDUPE</span>(<span class="str">'email'</span>) <span class="pipeline-into">INTO</span> deduped
+<span class="pipeline-keyword">THEN FILTER</span>(<span class="str">'urgent issues'</span>) <span class="pipeline-into">INTO</span> urgent
+<span class="pipeline-keyword">THEN ANALYZE</span> <span class="str">'What are the patterns?'</span>
+<span class="pipeline-into">INTO</span> q4_analysis;</pre>
+                <div class="pipeline-insight">
+                  <div class="pipeline-insight-title"><iconify-icon icon="mdi:lightbulb-outline"></iconify-icon> Cost optimization</div>
+                  <div class="pipeline-insight-text">
+                    SQL runs first (free), filtering 10k rows to 50. Then LLM analyzes just 50 rows.
+                    That's 200x less cost than per-row semantic operators.
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="pipeline-content reveal delay-1">
+              <h2>Query first. <span style="color: var(--magenta)">Transform after.</span></h2>
+              <p>
+                Chain AI transformations on your results with <code style="color: var(--magenta);">THEN</code>.
+                Dedupe, filter, analyze, speak—pipe data through any stage.
+                Save snapshots at each step with <code style="color: var(--orange);">INTO</code>.
+              </p>
+              <div class="pipeline-flow">
+                <div class="pipeline-stage">
+                  <span class="pipeline-stage-code"><span class="kw">SELECT</span> * <span class="kw">FROM</span> feedback</span>
+                  <span class="pipeline-stage-label">10,247 rows</span>
+                </div>
+                <div class="pipeline-stage">
+                  <span class="pipeline-stage-arrow">↓</span>
+                  <span class="pipeline-stage-code"><span class="fn">THEN DEDUPE</span></span>
+                  <span class="pipeline-stage-label">3,891 rows</span>
+                </div>
+                <div class="pipeline-stage">
+                  <span class="pipeline-stage-arrow">↓</span>
+                  <span class="pipeline-stage-code"><span class="fn">THEN FILTER</span>(<span class="str">'urgent'</span>)</span>
+                  <span class="pipeline-stage-label">47 rows</span>
+                </div>
+                <div class="pipeline-stage">
+                  <span class="pipeline-stage-arrow">↓</span>
+                  <span class="pipeline-stage-code"><span class="fn">THEN ANALYZE</span> <span class="into">INTO</span> results</span>
+                  <span class="pipeline-stage-label">1 insight</span>
                 </div>
               </div>
             </div>

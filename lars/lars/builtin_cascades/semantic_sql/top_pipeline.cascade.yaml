@@ -1,0 +1,52 @@
+cascade_id: pipeline_top
+internal: true
+description: |
+  PIPELINE cascade for getting top N rows by a column.
+
+  Uses pure Python/pandas - no LLM calls.
+
+  Usage:
+      SELECT * FROM products THEN TOP('sales')        -- top 10 by sales
+      SELECT * FROM products THEN TOP('sales', 5)     -- top 5 by sales
+      SELECT * FROM products THEN TOP('name', 10, 'asc')  -- bottom 10 alphabetically
+
+inputs_schema:
+  column: Column to sort by
+  n: Number of rows (default 10)
+  order: Sort order - 'desc' (default) or 'asc'
+  _table: Query results as JSON records
+  _table_columns: List of column names
+
+sql_function:
+  name: TOP
+  description: Get top N rows by column value
+  args:
+    - name: column
+      type: VARCHAR
+    - name: n
+      type: VARCHAR
+      optional: true
+    - name: order
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN TOP {{ column }}'
+    - 'THEN TOP({{ column }})'
+    - 'THEN TOP({{ column }}, {{ n }})'
+    - 'THEN TOP({{ column }}, {{ n }}, {{ order }})'
+  cache: false
+
+cells:
+  - name: get_top
+    deterministic: true
+    tool: python:lars.pipeline_tools.top_n
+    inputs:
+      _table: "{{ input._table }}"
+      column: "{{ input.column }}"
+      n: "{{ input.n | default('10') }}"
+      ascending: "{{ input.order | default('desc') == 'asc' }}"
+      _table_columns: "{{ input._table_columns }}"

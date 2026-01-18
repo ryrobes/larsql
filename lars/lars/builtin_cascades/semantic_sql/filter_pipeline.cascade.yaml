@@ -1,0 +1,70 @@
+cascade_id: pipeline_filter
+internal: true
+description: |
+  PIPELINE cascade for LLM-based filtering of query results.
+
+  Used with THEN FILTER syntax for semantic filtering:
+      SELECT * FROM products THEN FILTER('only eco-friendly items')
+
+  Uses LLM to evaluate each row against the filter criteria
+  and returns only matching rows with the SAME SCHEMA as input.
+
+inputs_schema:
+  prompt: Filter criteria description
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: FILTER
+  description: Filter query results using LLM-based semantic matching
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN FILTER {{ prompt }}'
+    - 'THEN FILTER({{ prompt }})'
+  cache: false
+
+cells:
+  - name: filter_rows
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Filter the provided data based on the semantic criteria.
+
+      FILTER CRITERIA: {{ input.prompt }}
+
+      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
+      {{ input._table | tojson }}
+
+      Evaluate each row and return ONLY the rows that match the filter criteria.
+
+      CRITICAL: Return JSON with this EXACT structure:
+      {
+        "data": [
+          ... only matching rows, with EXACTLY the same columns as input ...
+        ]
+      }
+
+      Rules:
+      - The "data" key MUST contain an array
+      - Each row MUST have EXACTLY these columns: {{ input._table_columns | join(', ') }}
+      - Do NOT add or remove columns
+      - Do NOT modify values - return rows exactly as they appear in the input
+      - If no rows match, return {"data": []}
+      - Be inclusive - if a row reasonably matches the criteria, include it
+
+    output_schema:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+
+    rules:
+      max_turns: 1

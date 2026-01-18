@@ -1,0 +1,77 @@
+cascade_id: pipeline_speak
+internal: true
+description: |
+  PIPELINE cascade for text-to-speech side-effect.
+
+  Used with THEN SPEAK syntax for reading results aloud:
+      SELECT * FROM alerts THEN ANALYZE 'summarize' THEN SPEAK
+
+  This is a side-effect stage that returns the original data unchanged
+  but triggers TTS output of the analysis or data summary.
+
+inputs_schema:
+  prompt: Optional custom message to speak
+  _table: Query results as JSON records
+  _table_row_count: Number of rows
+
+sql_function:
+  name: SPEAK
+  description: Read query results or analysis aloud via TTS
+  args:
+    - name: prompt
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN SPEAK'
+    - 'THEN SPEAK {{ prompt }}'
+    - 'THEN SPEAK({{ prompt }})'
+  cache: false
+
+cells:
+  - name: generate_speech
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Generate a concise, natural-sounding summary of this data for text-to-speech.
+
+      {% if input.prompt %}
+      CUSTOM MESSAGE: {{ input.prompt }}
+      {% endif %}
+
+      DATA ({{ input._table_row_count }} rows):
+      {{ input._table | tojson }}
+
+      Create a brief, spoken-word summary that:
+      - Is clear and easy to understand when read aloud
+      - Highlights the most important information
+      - Uses natural language (no technical jargon)
+      - Is 2-4 sentences maximum
+
+      Return JSON with the speech text and the original data:
+      {
+        "speech_text": "Your spoken summary here",
+        "data": [... original data rows ...]
+      }
+
+    output_schema:
+      type: object
+      properties:
+        speech_text:
+          type: string
+        data:
+          type: array
+
+    rules:
+      max_turns: 1
+
+  - name: tts_output
+    deterministic: true
+    tackle:
+      - speak_text
+    instructions: |
+      Speak the generated text aloud.
+
+      {{ outputs.generate_speech.speech_text }}

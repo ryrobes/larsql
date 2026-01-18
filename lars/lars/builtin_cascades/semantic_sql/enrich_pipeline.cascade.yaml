@@ -1,0 +1,75 @@
+cascade_id: pipeline_enrich
+internal: true
+description: |
+  PIPELINE cascade for enriching query results with LLM-computed columns.
+
+  Used with THEN ENRICH syntax for adding semantic columns:
+      SELECT * FROM products THEN ENRICH('add sentiment score and category')
+
+  Uses LLM to compute additional columns for each row based on
+  the existing data and the enrichment specification.
+
+inputs_schema:
+  prompt: Description of columns to add
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: ENRICH
+  description: Add LLM-computed columns to query results
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN ENRICH {{ prompt }}'
+    - 'THEN ENRICH({{ prompt }})'
+  cache: false
+
+cells:
+  - name: enrich_rows
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      Enrich the provided data by adding new computed columns.
+
+      ENRICHMENT REQUEST: {{ input.prompt }}
+
+      EXISTING DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
+      {{ input._table | tojson }}
+
+      Add the requested columns to each row.
+
+      CRITICAL: Return JSON with this EXACT structure:
+      {
+        "data": [
+          {
+            ... all original columns preserved exactly ...,
+            "new_column_1": <computed value>,
+            "new_column_2": <computed value>
+          },
+          ...
+        ]
+      }
+
+      Rules:
+      - The "data" key MUST contain an array of objects
+      - PRESERVE all original columns with their exact values
+      - ADD new columns based on the enrichment request
+      - Use sensible column names (snake_case, descriptive)
+      - Be consistent in column names and value types across all rows
+      - New column values should be strings, numbers, or booleans (not nested objects)
+
+    output_schema:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+
+    rules:
+      max_turns: 1

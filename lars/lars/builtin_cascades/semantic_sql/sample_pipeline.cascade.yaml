@@ -1,0 +1,42 @@
+cascade_id: pipeline_sample
+internal: true
+description: |
+  PIPELINE cascade for random sampling.
+
+  Uses pure Python/pandas - no LLM calls.
+
+  Usage:
+      SELECT * FROM big_table THEN SAMPLE        -- default 10 rows
+      SELECT * FROM big_table THEN SAMPLE(100)   -- 100 rows
+      SELECT * FROM big_table THEN SAMPLE('0.1') -- 10% of rows
+
+inputs_schema:
+  n: Number of rows or fraction (as string like '0.1')
+  _table: Query results as JSON records
+  _table_columns: List of column names
+
+sql_function:
+  name: SAMPLE
+  description: Take a random sample of rows
+  args:
+    - name: n
+      type: VARCHAR
+      optional: true
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN SAMPLE'
+    - 'THEN SAMPLE {{ n }}'
+    - 'THEN SAMPLE({{ n }})'
+  cache: false
+
+cells:
+  - name: take_sample
+    deterministic: true
+    tool: python:lars.pipeline_tools.random_sample
+    inputs:
+      _table: "{{ input._table }}"
+      n: "{{ input.n | default('10') }}"
+      _table_columns: "{{ input._table_columns }}"

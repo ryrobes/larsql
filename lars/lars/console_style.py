@@ -80,6 +80,7 @@ class S:
     # === RESOURCE INDICATORS ===
     # Database/storage (replaces: 💾, 🗄️)
     DB = "[bold blue][DB][/bold blue]"
+    QUERY = "[bold blue][QUERY][/bold blue]"
     SAVE = "[bold blue][SAVE][/bold blue]"
     LOAD = "[bold blue][LOAD][/bold blue]"
     STORE = "[bold blue][STORE][/bold blue]"
@@ -113,6 +114,7 @@ class S:
     CELL = "[bold cyan][CELL][/bold cyan]"
     FLOW = "[bold cyan][FLOW][/bold cyan]"
     TAKE = "[bold blue][TAKE][/bold blue]"
+    PIPELINE = "[bold cyan][PIPE][/bold cyan]"
     FOLDER = "[dim][DIR][/dim]"
     FILE = "[dim][FILE][/dim]"
 

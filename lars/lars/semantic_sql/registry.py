@@ -325,6 +325,36 @@ def get_sql_function(name: str) -> Optional[SQLFunctionEntry]:
     return _registry.get(name)
 
 
+def get_pipeline_cascade(name: str) -> Optional[SQLFunctionEntry]:
+    """
+    Get a cascade by name, only if it has shape=PIPELINE.
+
+    Pipeline cascades are used with THEN syntax for post-query processing:
+        SELECT * FROM products THEN ANALYZE 'trends?'
+
+    Args:
+        name: The pipeline stage name (e.g., "ANALYZE")
+
+    Returns:
+        SQLFunctionEntry if found with PIPELINE shape, None otherwise.
+    """
+    initialize_registry()
+    entry = _registry.get(name)
+    if entry and entry.shape == "PIPELINE":
+        return entry
+    return None
+
+
+def list_pipeline_cascades() -> List[str]:
+    """
+    List all registered PIPELINE cascade names.
+
+    Returns names of cascades that can be used with THEN syntax.
+    """
+    initialize_registry()
+    return [name for name, entry in _registry.items() if entry.shape == "PIPELINE"]
+
+
 def list_sql_functions() -> List[str]:
     """List all registered SQL function names."""
     initialize_registry()

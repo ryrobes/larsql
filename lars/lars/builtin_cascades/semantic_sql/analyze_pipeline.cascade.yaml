@@ -1,0 +1,85 @@
+cascade_id: pipeline_analyze
+internal: true
+description: |
+  PIPELINE cascade for analyzing query results with LLM.
+
+  Used with THEN ANALYZE syntax for post-query analysis:
+      SELECT * FROM sales THEN ANALYZE 'what are the trends?'
+
+  Receives the query results as a table and the user's prompt,
+  returns a table with analysis results suitable for SQL clients.
+
+inputs_schema:
+  prompt: User's analysis question
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: ANALYZE
+  description: Analyze query results with LLM based on a prompt
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN ANALYZE {{ prompt }}'
+    - 'THEN ANALYZE({{ prompt }})'
+  cache: false
+
+cells:
+  - name: analyze
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a data analyst. Analyze the provided query results based on the user's question.
+
+      USER QUESTION: {{ input.prompt }}
+
+      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
+      {{ input._table | tojson }}
+
+      Provide analysis and return as a TABLE that SQL clients can display.
+
+      Return your response as JSON with this EXACT structure:
+      {
+        "data": [
+          {"finding": "Key insight 1", "category": "trend|pattern|outlier|recommendation", "detail": "Explanation..."},
+          {"finding": "Key insight 2", "category": "trend|pattern|outlier|recommendation", "detail": "Explanation..."},
+          ...
+        ]
+      }
+
+      Guidelines:
+      - The "data" key MUST contain an array of objects (table rows)
+      - Each object MUST have the same keys (columns): finding, category, detail
+      - Include 3-8 findings covering: direct answer, patterns, outliers, recommendations
+      - Keep findings concise but informative
+      - First finding should directly answer the user's question
+
+    output_schema:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            required:
+              - finding
+              - category
+              - detail
+            properties:
+              finding:
+                type: string
+              category:
+                type: string
+                enum: ["answer", "trend", "pattern", "outlier", "recommendation"]
+              detail:
+                type: string
+
+    rules:
+      max_turns: 1

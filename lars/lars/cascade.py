@@ -1101,6 +1101,28 @@ class SQLFunctionConfig(BaseModel):
               {{ input.texts }}
               Return a concise 2-3 sentence summary.
 
+    Usage (PIPELINE - post-query processing):
+        cascade_id: pipeline_analyze
+        sql_function:
+          name: ANALYZE
+          args:
+            - name: prompt
+              type: VARCHAR
+            - name: _table
+              type: TABLE
+          returns: TABLE
+          shape: PIPELINE
+          operators:
+            - 'THEN ANALYZE {{ prompt }}'
+          cache: false
+
+        cells:
+          - name: analyze
+            instructions: |
+              Analyze this data:
+              {{ input._table | tojson }}
+              User question: {{ input.prompt }}
+
     Operator sugar:
         operators:
           - "{{ input }} MEANS"           # title MEANS 'daytime'
@@ -1124,7 +1146,7 @@ class SQLFunctionConfig(BaseModel):
     # Function signature
     args: List[SQLFunctionArg] = Field(default_factory=list)
     returns: str = "VARCHAR"  # Return type: VARCHAR, INTEGER, DOUBLE, BOOLEAN, JSON
-    shape: Literal["SCALAR", "ROW", "AGGREGATE", "DIMENSION"] = "SCALAR"
+    shape: Literal["SCALAR", "ROW", "AGGREGATE", "DIMENSION", "PIPELINE"] = "SCALAR"
 
     # For AGGREGATE shape: which arg receives the collection (JSON array)
     context_arg: Optional[str] = None
