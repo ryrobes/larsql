@@ -241,6 +241,10 @@ def execute_sql_fragment(
 
     sql = sql_fragment.strip()
 
+    # Strip outer quotes if present (LLMs sometimes wrap SQL in JSON string quotes)
+    if (sql.startswith('"') and sql.endswith('"')) or (sql.startswith("'") and sql.endswith("'")):
+        sql = sql[1:-1]
+
     # Wrap in SELECT if it's just an expression
     if not sql.upper().startswith("SELECT"):
         sql = f"SELECT {sql}"

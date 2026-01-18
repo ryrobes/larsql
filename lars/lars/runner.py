@@ -11131,6 +11131,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
         max_attempts = cell.rules.max_attempts or 1
 
         response_content = ""
+        validation_content = ""  # Separate var for validators (includes tool outputs with "Agent Response:" prefix)
         validation_passed = False
 
         # We iterate turns.
@@ -12279,6 +12280,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
 
                     # Build comprehensive validation content (agent response + tool outputs + follow-up)
                     # This ensures validators see the COMPLETE turn output, not just the agent's text
+                    # IMPORTANT: Use a separate variable for validation - don't overwrite response_content
+                    # as that would leak "Agent Response:" prefix into the final cell output
                     console.print(f"{indent}  [dim cyan][DEBUG] Building validation content: tool_outputs has {len(tool_outputs)} item(s)[/dim cyan]")
                     if tool_outputs:
                         validation_content_parts = []
@@ -12289,9 +12292,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         for tool_output in tool_outputs:
                             validation_content_parts.append(f"\n[{tool_output['tool']}]:\n{tool_output['result']}\n")
 
-                        response_content = "\n".join(validation_content_parts)
-                        console.print(f"{indent}  [dim green][DEBUG] Validation content built: {len(response_content)} chars total[/dim green]")
+                        validation_content = "\n".join(validation_content_parts)
+                        console.print(f"{indent}  [dim green][DEBUG] Validation content built: {len(validation_content)} chars total[/dim green]")
                     else:
+                        validation_content = response_content
                         console.print(f"{indent}  [dim yellow][DEBUG] tool_outputs is empty - validator will only see agent response![/dim yellow]")
 
                     # ========== PER-TURN LOOP_UNTIL VALIDATION ==========
@@ -12301,7 +12305,7 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                     if cell.rules.loop_until and i < max_turns - 1:
                         per_turn_result = self._run_loop_until_validator(
                             validator_spec=cell.rules.loop_until,
-                            content=response_content,
+                            content=validation_content,
                             input_data=input_data,
                             trace=turn_trace,
                             attempt=attempt,
@@ -12575,9 +12579,10 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                 # Check if this is a polyglot validator (inline code)
                 if isinstance(validator_spec, PolyglotValidatorConfig):
                     # Run the polyglot validator directly
+                    # Use validation_content which includes tool outputs for comprehensive validation
                     polyglot_result = self._run_polyglot_validator(
                         validator_spec,
-                        response_content,
+                        validation_content,
                         input_data,
                         validation_trace,
                         validator_name="loop_until"
@@ -12600,8 +12605,9 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # It's a cascade validator - invoke it as a sub-cascade
                         cascade_path = manifest[validator_name]["path"]
                         # Pass both the output AND original input for context (validators can use what they need)
+                        # Use validation_content which includes tool outputs for comprehensive validation
                         validator_input = {
-                            "content": response_content,
+                            "content": validation_content,
                             "original_input": input_data
                         }
 
@@ -12692,8 +12698,8 @@ Return ONLY the corrected Python code. No explanations, no markdown code blocks,
                         # Set trace context for validator
                         set_current_trace(validation_trace)
 
-                        # Call validator with response content
-                        validator_result = validator_tool(content=response_content)
+                        # Call validator with validation content (includes tool outputs for comprehensive validation)
+                        validator_result = validator_tool(content=validation_content)
 
                         # Parse validator result
                         if isinstance(validator_result, str):

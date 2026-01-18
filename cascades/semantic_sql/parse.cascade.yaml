@@ -1,6 +1,7 @@
 # PARSE - General-purpose text extraction with natural language
 #
 # The universal parser. Extract anything from text using plain English.
+# Uses structural caching: generates SQL once per input shape, reuses for similar inputs.
 #
 # SQL Usage:
 #   SELECT PARSE(email_body, 'the deadline date') FROM emails
@@ -18,8 +19,11 @@ description: |
   natural language instructions. Unlike specialized parsers (PARSE_NAME,
   PARSE_ADDRESS), this function handles arbitrary extraction tasks.
 
+  Uses structural caching: analyzes the input shape and generates a reusable
+  SQL expression. Different values with the same shape reuse the cached SQL.
+
 inputs_schema:
-  text: The text to parse
+  text: The text to parse (or its structural pattern for cache hits)
   instruction: What to extract (free-form natural language)
 
 sql_function:
@@ -48,6 +52,12 @@ sql_function:
     - "PARSE({{ text }}, {{ instruction }})"
     - "{{ text }} PARSE {{ instruction }}"
   cache: true
+  output_mode: sql_execute
+  cache_key:
+    strategy: fingerprint
+    fingerprint_args: ["text"]
+    fingerprint_config:
+      method: hybrid
   test_cases:
     - sql: "SELECT parse('Meeting scheduled for March 15, 2024 at 2pm', 'the date')"
       expect:
@@ -66,35 +76,44 @@ sql_function:
       description: "Amount extracted from text"
 
 cells:
-  - name: extract
-    #model: google/gemini-2.5-flash-lite
-
+  - name: generate_sql
     instructions: |
-      Extract the requested information from the text.
+      Generate a DuckDB SQL expression that extracts/transforms data from text.
 
-      TEXT:
+      INPUT TEXT (example of the shape):
       {{ input.text }}
 
-      EXTRACT: {{ input.instruction }}
+      TASK: {{ input.instruction }}
+
+      OUTPUT: Return ONLY a SQL expression using :text as the input parameter.
+      The expression will be executed as: SELECT <your_expression>
 
       RULES:
-      1. Extract ONLY what is requested - be precise
-      2. If extracting a single value, return just that value (no JSON)
-      3. If extracting multiple items, return as JSON array: ["item1", "item2"]
-      4. If extracting structured data with multiple fields, return as JSON object
-      5. If the requested information is not found, return "NOT_FOUND"
-      6. Do not add explanations - return only the extracted value(s)
-      7. Preserve original formatting/spelling of extracted content
+      1. Use :text to reference the input value (it will be bound at runtime)
+      2. Use DuckDB string functions: trim(), regexp_extract(), regexp_replace(),
+         substring(), split_part(), concat(), replace(), upper(), lower(), etc.
+      3. For phone formatting, use regexp_replace to normalize and format
+      4. For date extraction, use regexp_extract with appropriate patterns
+      5. For email extraction, use regexp_extract with email pattern
+      6. Return ONLY the SQL expression - no SELECT, no semicolon, no explanation
+      7. The expression must work for ANY value with the same structural pattern
 
       EXAMPLES:
-      - "the date" from "Meeting on Jan 5th" → "Jan 5th"
-      - "email" from "Contact me at bob@test.com" → "bob@test.com"
-      - "all names" from "John and Mary attended" → ["John", "Mary"]
-      - "price" from "Costs $99.99" → "$99.99"
-      - "reason" from "Rejected due to budget constraints" → "budget constraints"
+
+      Input: "  555 123-4567 " | Task: "properly formatted phone number"
+      Output: regexp_replace(regexp_replace(trim(:text), '\s+', '-'), '(\d{3})-(\d{3})-(\d{4})', '\1-\2-\3')
+
+      Input: "Call me at john@example.com" | Task: "email address"
+      Output: regexp_extract(:text, '([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', 1)
+
+      Input: "Meeting on March 15, 2024" | Task: "the date"
+      Output: regexp_extract(:text, '([A-Z][a-z]+ \d{1,2},? \d{4})', 1)
+
+      Input: "Total: $1,234.56" | Task: "the amount"
+      Output: regexp_extract(:text, '\$?([\d,]+\.?\d*)', 1)
+
+      Input: "John Smith <john@test.com>" | Task: "person name"
+      Output: trim(regexp_extract(:text, '^([^<]+)', 1))
 
     rules:
       max_turns: 1
-
-    output_schema:
-      type: string

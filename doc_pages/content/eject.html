@@ -1,0 +1,495 @@
+<h1>Eject Command</h1>
+<p class="lead">
+  Copy built-in cascades, skills, and cell types to your workspace for customization.
+  Your local versions override the built-ins, enabling full control without modifying the package.
+</p>
+
+<div class="toc">
+  <div class="toc-title">On This Page</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#why-eject">Why Eject?</a></li>
+    <li><a href="#command-reference">Command Reference</a></li>
+    <li><a href="#resource-types">Resource Types</a></li>
+    <li><a href="#common-targets">Common Targets</a></li>
+    <li><a href="#override-mechanism">Override Mechanism</a></li>
+    <li><a href="#examples">Examples</a></li>
+  </ul>
+</div>
+
+<h2 id="overview">Overview</h2>
+
+<p>
+  LARS ships with ~100 semantic SQL operators, example cascades, skills, and cell type definitions
+  bundled inside the Python package. The <code>lars eject</code> command copies these built-in
+  resources to your project workspace where you can modify them.
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Basic Usage</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject &lt;target&gt; [OPTIONS]</pre>
+  </div>
+</div>
+
+<div class="info-box">
+  <div class="info-box-title">Non-Destructive</div>
+  <p>
+    Ejecting never modifies the built-in package files. It only copies files to your workspace.
+    By default, existing files are skipped unless you use <code>--force</code>.
+  </p>
+</div>
+
+<h2 id="why-eject">Why Eject?</h2>
+
+<div class="feature-grid">
+  <div class="feature-item">
+    <iconify-icon icon="mdi:pencil" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Customize Operators</h4>
+      <p>Modify semantic SQL operator prompts, models, or behavior for your domain</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:speedometer" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Optimize Performance</h4>
+      <p>Swap models (e.g., use a faster model for simple operators)</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:content-copy" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Use as Templates</h4>
+      <p>Start from working examples instead of writing from scratch</p>
+    </div>
+  </div>
+  <div class="feature-item">
+    <iconify-icon icon="mdi:source-branch" class="feature-icon"></iconify-icon>
+    <div class="feature-content">
+      <h4>Version Control</h4>
+      <p>Track your customizations in git alongside your project code</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="command-reference">Command Reference</h2>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Syntax</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject &lt;target&gt; [--type TYPE] [--force] [--list]</pre>
+  </div>
+</div>
+
+<h3>Arguments</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Argument</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>target</code></td>
+      <td>What to eject: <code>all</code>, <code>semantic_sql</code>, <code>examples</code>, a specific name, or a glob pattern</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Options</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Option</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>--list</code>, <code>-l</code></td>
+      <td>List all available built-in resources without ejecting</td>
+    </tr>
+    <tr>
+      <td><code>--type</code>, <code>-t</code></td>
+      <td>Filter by resource type: <code>cascades</code>, <code>skills</code>, <code>cell_types</code>, or <code>all</code> (default)</td>
+    </tr>
+    <tr>
+      <td><code>--force</code>, <code>-f</code></td>
+      <td>Overwrite existing files in workspace (default: skip existing)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="resource-types">Resource Types</h2>
+
+<p>
+  LARS organizes built-in resources into three categories, each with its own source and destination:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Count</th>
+      <th>Destination</th>
+      <th>Contents</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>cascades</code></td>
+      <td>~280</td>
+      <td><code>./cascades/</code></td>
+      <td>Semantic SQL operators, examples, assistant workflows</td>
+    </tr>
+    <tr>
+      <td><code>skills</code></td>
+      <td>~40</td>
+      <td><code>./skills/</code></td>
+      <td>Cascade-based tools, declarative tools, validators</td>
+    </tr>
+    <tr>
+      <td><code>cell_types</code></td>
+      <td>~26</td>
+      <td><code>./cell_types/</code></td>
+      <td>Cell type definitions (llm_cell, hitl_screen, browser, etc.)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Cascades Subdirectories</h3>
+
+<p>The cascades directory contains several important subdirectories:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Directory</th>
+      <th>Contents</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>semantic_sql/</code></td>
+      <td>~100 semantic SQL operator cascades (MEANS, ABOUT, SUMMARIZE, etc.)</td>
+    </tr>
+    <tr>
+      <td><code>examples/</code></td>
+      <td>Example cascades for learning and templates</td>
+    </tr>
+    <tr>
+      <td><code>internal/</code></td>
+      <td>Internal helper cascades used by the framework</td>
+    </tr>
+    <tr>
+      <td><code>smart_search/</code></td>
+      <td>Intelligent search cascades</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="common-targets">Common Targets</h2>
+
+<h3>all</h3>
+<p>Eject everything &mdash; all cascades, skills, and cell types.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject all</pre>
+  </div>
+</div>
+
+<h3>semantic_sql</h3>
+<p>Eject all ~100 semantic SQL operator cascades. This is the most common use case.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject semantic_sql</pre>
+  </div>
+</div>
+
+<p>Operators are copied to <code>./cascades/semantic_sql/</code>:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Output</span>
+  </div>
+  <div class="code-block-content">
+    <pre>Ejecting semantic SQL operators...
+  Ejected: cascades/semantic_sql/semantic_matches.cascade.yaml
+  Ejected: cascades/semantic_sql/sentiment.cascade.yaml
+  Ejected: cascades/semantic_sql/summarize.cascade.yaml
+  ...
+
+==================================================
+Ejected 100 files</pre>
+  </div>
+</div>
+
+<h3>examples</h3>
+<p>Eject example cascades to learn from or use as templates.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject examples</pre>
+  </div>
+</div>
+
+<h3>Specific Operator</h3>
+<p>Eject a single operator by name (without the <code>.cascade.yaml</code> extension).</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Eject just the MEANS operator</span>
+lars eject semantic_matches
+
+<span class="cmt"># Eject the SUMMARIZE aggregate</span>
+lars eject summarize</pre>
+  </div>
+</div>
+
+<h3>Pattern Matching</h3>
+<p>Use glob patterns to eject multiple related files.</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Eject all dimension operators</span>
+lars eject "dimension_*"
+
+<span class="cmt"># Eject all sentiment-related operators</span>
+lars eject "sentiment*"
+
+<span class="cmt"># Eject all cluster/clustering operators</span>
+lars eject "cluster*"</pre>
+  </div>
+</div>
+
+<h2 id="override-mechanism">Override Mechanism</h2>
+
+<p>
+  When LARS loads resources, it searches directories in a specific order. The first match wins:
+</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Search Order</span>
+  </div>
+  <div class="code-block-content">
+    <pre>1. ./cascades/          <span class="cmt"># User workspace (highest priority)</span>
+2. $LARS_ROOT/cascades/ <span class="cmt"># Project root if different</span>
+3. builtin_cascades/    <span class="cmt"># Package built-ins (lowest priority)</span></pre>
+  </div>
+</div>
+
+<div class="info-box tip">
+  <div class="info-box-title">Selective Override</div>
+  <p>
+    You don't need to eject everything. Eject only the operators you want to customize.
+    LARS will use your local version for those and the built-in version for the rest.
+  </p>
+</div>
+
+<h3>Example: Customizing MEANS</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Eject the MEANS operator</span>
+lars eject semantic_matches
+
+<span class="cmt"># Now edit your local copy</span>
+vim cascades/semantic_sql/semantic_matches.cascade.yaml</pre>
+  </div>
+</div>
+
+<p>Common customizations:</p>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang yaml">cascades/semantic_sql/semantic_matches.cascade.yaml</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="key">cascade_id</span>: semantic_matches
+<span class="key">sql_function</span>:
+  <span class="key">name</span>: semantic_matches
+  <span class="key">shape</span>: SCALAR
+  <span class="key">returns</span>: BOOLEAN
+
+<span class="key">cells</span>:
+  - <span class="key">name</span>: evaluate
+    <span class="cmt"># Change the model for faster/cheaper evaluation</span>
+    <span class="key">model</span>: google/gemini-2.5-flash-lite  <span class="cmt"># Was: anthropic/claude-sonnet</span>
+
+    <span class="cmt"># Customize the prompt for your domain</span>
+    <span class="key">instructions</span>: |
+      You are evaluating product descriptions for an e-commerce site.
+      Does the text semantically match the given criterion?
+
+      TEXT: {{ input.text }}
+      CRITERION: {{ input.criterion }}
+
+      Consider industry terminology and common variations.
+      Respond with ONLY "true" or "false".</pre>
+  </div>
+</div>
+
+<h2 id="examples">Examples</h2>
+
+<h3>List Available Resources</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject --list</pre>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Output</span>
+  </div>
+  <div class="code-block-content">
+    <pre>Available builtin resources:
+
+CASCADES:
+--------------------------------------------------
+  semantic_sql/ (100 files)
+  examples/ (15 files)
+  internal/ (3 files)
+  smart_search/ (4 files)
+  (root) (12 files)
+
+  Total: 134 files
+
+SKILLS:
+--------------------------------------------------
+  (root) (39 files)
+
+  Total: 39 files
+
+CELL_TYPES:
+--------------------------------------------------
+  (root) (26 files)
+
+  Total: 26 files
+
+Usage examples:
+  lars eject all                    # Eject everything
+  lars eject semantic_sql           # Eject all semantic SQL operators
+  lars eject semantic_matches       # Eject a specific operator
+  lars eject examples               # Eject example cascades
+  lars eject --type skills          # Eject only skills</pre>
+  </div>
+</div>
+
+<h3>Eject Only Skills</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre>lars eject all --type skills</pre>
+  </div>
+</div>
+
+<h3>Force Overwrite</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Reset to built-in versions, overwriting your changes</span>
+lars eject semantic_sql --force</pre>
+  </div>
+</div>
+
+<h3>Eject Cell Types for Customization</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Bash</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># Eject the LLM cell type to customize default behavior</span>
+lars eject llm_cell --type cell_types
+
+<span class="cmt"># Eject browser cell type to modify automation settings</span>
+lars eject browser --type cell_types</pre>
+  </div>
+</div>
+
+<h3>Workflow: Customize an Operator</h3>
+
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang bash">Complete Workflow</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt"># 1. See what's available</span>
+lars eject --list
+
+<span class="cmt"># 2. Eject the operator you want to customize</span>
+lars eject summarize
+
+<span class="cmt"># 3. Edit the local copy</span>
+vim cascades/semantic_sql/summarize.cascade.yaml
+
+<span class="cmt"># 4. Test your changes</span>
+psql -h localhost -p 15432 -d default -c "
+  SELECT SUMMARIZE(description) FROM products GROUP BY category
+"
+
+<span class="cmt"># 5. Commit to version control</span>
+git add cascades/semantic_sql/summarize.cascade.yaml
+git commit -m "Customize SUMMARIZE for product descriptions"</pre>
+  </div>
+</div>
+
+<div class="info-box warning">
+  <div class="info-box-title">Upgrade Considerations</div>
+  <p>
+    When you upgrade LARS, your ejected files remain unchanged. This means you keep your
+    customizations, but you also won't get improvements to built-in operators automatically.
+    Use <code>lars eject &lt;target&gt; --force</code> to reset specific operators to the new
+    built-in versions if needed.
+  </p>
+</div>
+
+<hr>
+
+<h2>Related</h2>
+<ul>
+  <li><a href="#semantic-sql" data-link>Semantic SQL</a> &mdash; How semantic operators work</li>
+  <li><a href="#operators" data-link>Built-in Operators</a> &mdash; Reference for all 100+ operators</li>
+  <li><a href="#tools" data-link>Tools (Skills)</a> &mdash; The skill/tool system</li>
+  <li><a href="#cell-types" data-link>Cell Types</a> &mdash; Cell type definitions</li>
+</ul>

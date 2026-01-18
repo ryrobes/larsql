@@ -226,6 +226,19 @@
           ]
         },
         {
+          "id": "eject",
+          "title": "Eject Command",
+          "sections": [
+            { "anchor": "overview", "title": "Overview" },
+            { "anchor": "why-eject", "title": "Why Eject?" },
+            { "anchor": "command-reference", "title": "Command Reference" },
+            { "anchor": "resource-types", "title": "Resource Types" },
+            { "anchor": "common-targets", "title": "Common Targets" },
+            { "anchor": "override-mechanism", "title": "Override Mechanism" },
+            { "anchor": "examples", "title": "Examples" }
+          ]
+        },
+        {
           "id": "skill-sql",
           "title": "skill:: SQL Syntax",
           "sections": [
