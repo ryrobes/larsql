@@ -627,6 +627,67 @@ def log_query_error(
         logger.debug(f"SQL Trail: Failed to log query error: {e}")
 
 
+def cleanup_orphaned_sql_queries(max_age_minutes: int = 15) -> int:
+    """
+    Mark SQL queries stuck in 'running' as 'killed' if no recent activity.
+
+    Called on SQL server startup to clean up queries that were interrupted
+    by server crashes or restarts. Safe for multi-process environments:
+    only marks queries whose caller_id has no recent activity in unified_logs.
+
+    Args:
+        max_age_minutes: Queries older than this with no activity are considered orphaned.
+                        Default 15 minutes - any real LARS query should have activity
+                        within this window.
+
+    Returns:
+        Number of queries marked as killed.
+    """
+    try:
+        from .db_adapter import get_db
+        db = get_db()
+
+        # Find queries that:
+        # 1. Have status='running'
+        # 2. Started more than max_age_minutes ago
+        # 3. Have no recent entries in unified_logs (no activity from that caller)
+        #
+        # This is safe for multi-process: if a query is actually running on another
+        # server/process, it will have recent unified_logs entries.
+        orphaned = db.execute(f"""
+            SELECT q.query_id, q.caller_id, q.started_at
+            FROM sql_query_log q
+            WHERE q.status = 'running'
+              AND q.started_at < now() - INTERVAL {max_age_minutes} MINUTE
+              AND NOT EXISTS (
+                  SELECT 1 FROM unified_logs u
+                  WHERE u.caller_id = q.caller_id
+                    AND u.timestamp > now() - INTERVAL {max_age_minutes} MINUTE
+              )
+        """).fetchall()
+
+        if not orphaned:
+            return 0
+
+        # Mark each orphaned query as killed
+        for query_id, caller_id, started_at in orphaned:
+            try:
+                db.execute(f"""
+                    ALTER TABLE sql_query_log
+                    UPDATE status = 'killed', completed_at = now64(6)
+                    WHERE query_id = '{query_id}'
+                """)
+                logger.info(f"SQL Trail: Marked orphaned query {query_id[:8]} (caller={caller_id}) as killed")
+            except Exception as e:
+                logger.warning(f"SQL Trail: Failed to mark query {query_id[:8]} as killed: {e}")
+
+        return len(orphaned)
+
+    except Exception as e:
+        logger.warning(f"SQL Trail: Failed to cleanup orphaned queries: {e}")
+        return 0
+
+
 def increment_cache_hit(caller_id: Optional[str]):
     """
     Increment cache_hits counter for a query.

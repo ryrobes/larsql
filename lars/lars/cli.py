@@ -5817,12 +5817,29 @@ def cmd_serve_studio(args):
 def cmd_serve_sql(args):
     """Start LARS PostgreSQL wire protocol server (alias for sql server)."""
     from lars.server import start_postgres_server
+    from lars.db_adapter import ensure_housekeeping
+    from lars.sql_trail import cleanup_orphaned_sql_queries
 
     styled_print(f"{S.RUN} Starting LARS PostgreSQL server...")
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
     print(f"   Session prefix: {args.session_prefix}")
     print()
+
+    # Initialize database (create tables if needed)
+    styled_print(f"{S.CFG} Running database housekeeping...")
+    ensure_housekeeping()
+    print()
+
+    # Cleanup orphaned SQL queries from previous server crashes/restarts
+    styled_print(f"{S.CFG} Checking for orphaned SQL queries...")
+    orphan_count = cleanup_orphaned_sql_queries(max_age_minutes=15)
+    if orphan_count > 0:
+        styled_print(f"{S.OK} Marked {orphan_count} orphaned SQL queries as killed")
+    else:
+        styled_print(f"{S.OK} No orphaned SQL queries found")
+    print()
+
     styled_print(f"{S.TIP} TIP: Connect with:")
     print(f"   psql postgresql://localhost:{args.port}/default")
     print(f"   DBeaver: New Connection → PostgreSQL → localhost:{args.port}")

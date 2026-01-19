@@ -129,6 +129,49 @@ from sql_server_api import sql_server_api
 app.register_blueprint(sql_server_api)
 
 
+# ==============================================================================
+# Startup Initialization - Runs on EVERY boot (dev and production)
+# ==============================================================================
+
+def _run_startup_tasks():
+    """
+    Run essential startup tasks: migrations and tool indexing.
+
+    Called at module level so it runs regardless of whether we're started via:
+    - `python app.py` (dev mode, Flask dev server)
+    - `gunicorn app:app` (production mode)
+
+    All operations are idempotent and safe to run on every boot.
+    """
+    print("🌊 LARS Studio Backend Initializing...")
+
+    # 1. Database housekeeping (schema creation, migrations)
+    print("🔧 Running database housekeeping...")
+    try:
+        from lars.db_adapter import ensure_housekeeping
+        ensure_housekeeping()
+        print("✅ Database housekeeping complete")
+    except Exception as e:
+        print(f"⚠️  Database housekeeping failed: {e}")
+
+    # 2. Tool manifest sync (index available tools/skills)
+    print("🔧 Syncing tool manifest to database...")
+    try:
+        from lars.tools_mgmt import sync_tools_to_db
+        sync_tools_to_db()
+        print("✅ Tool manifest synced")
+    except Exception as e:
+        print(f"⚠️  Tool manifest sync failed: {e}")
+        print("   Run 'lars tools sync' manually if needed")
+
+    print("🌊 LARS Studio Backend Ready")
+    print()
+
+
+# Run startup tasks at module load (works for both dev and production)
+_run_startup_tasks()
+
+
 # Set query context for each request (tracks which endpoint/page made the query)
 @app.before_request
 def set_request_context():
@@ -6179,24 +6222,16 @@ def log_connection_stats():
             print(f"[STATS] Queries: {count} executed, avg {avg_time:.3f}s")
 
 
+# Dev mode extras - additional debug info when running directly via `python app.py`
+# Note: Critical initialization (migrations, tool sync) runs at module level above
 if __name__ == '__main__':
-    print("🌊 LARS UI Backend Starting...")
+    print(f"📂 LARS Paths:")
     print(f"   LARS Root: {LARS_ROOT}")
     print(f"   Data Dir: {DATA_DIR}")
-    print(f"   Graph Dir: {GRAPH_DIR}")
     print(f"   Cascades Dir: {CASCADES_DIR}")
-    print(f"   Package Examples Dir: {PACKAGE_EXAMPLES_DIR}")
     print()
 
-    # Run database housekeeping (schema creation, migrations) ONCE at startup
-    # This ensures cascade runs via API are fast (they skip housekeeping)
-    print("🔧 Running database housekeeping...")
-    from lars.db_adapter import ensure_housekeeping
-    ensure_housekeeping()
-    print("✅ Database housekeeping complete")
-    print()
-
-    # Start connection stats logger in background
+    # Start connection stats logger in background (dev mode only)
     import threading
     stats_thread = threading.Thread(target=log_connection_stats, daemon=True)
     stats_thread.start()
@@ -6204,7 +6239,6 @@ if __name__ == '__main__':
     # Debug: Check ClickHouse data availability
     conn = get_db_connection()
     try:
-        # Quick stats from ClickHouse
         stats = conn.execute("""
             SELECT
                 COUNT(DISTINCT session_id) as sessions,
@@ -6220,26 +6254,11 @@ if __name__ == '__main__':
         print()
 
         # Detect and mark orphaned cascades (killed due to server restart)
-        if stats[0] > 0:  # If we have sessions
+        if stats[0] > 0:
             orphan_count = detect_and_mark_orphaned_cascades()
             if orphan_count == 0:
                 print("✅ No orphaned cascades detected")
             print()
-
-        # Show node types
-        node_types = conn.execute("""
-            SELECT node_type, role, COUNT(*) as count
-            FROM unified_logs
-            GROUP BY node_type, role
-            ORDER BY count DESC
-            LIMIT 10
-        """).fetchall()
-
-        print("📝 Message Types:")
-        for nt, role, count in node_types:
-            role_str = f" (role={role})" if role else ""
-            print(f"   {nt}{role_str}: {count}")
-        print()
 
     except Exception as e:
         print(f"⚠️  Error querying ClickHouse: {e}")
@@ -6249,18 +6268,6 @@ if __name__ == '__main__':
 
     print("🔍 Debug endpoint: http://localhost:5050/api/debug/schema")
     print()
-
-    # Auto-sync tool manifest on backend startup
-    try:
-        print("🔧 Syncing tool manifest to database...")
-        from lars.tools_mgmt import sync_tools_to_db
-        sync_tools_to_db()
-        print("✅ Tool manifest synced")
-        print()
-    except Exception as e:
-        print(f"⚠️  Tool manifest sync failed: {e}")
-        print("   Run 'lars tools sync' manually if needed")
-        print()
 
 
 # ==============================================================================

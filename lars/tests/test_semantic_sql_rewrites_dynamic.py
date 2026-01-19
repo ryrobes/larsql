@@ -338,11 +338,11 @@ def _generate_aggregate_tests(func_name: str, pattern: str, args: List[dict], pa
         ))
 
     elif 'MEANING' in pattern.upper():
-        # Note: CLUSTER is not a valid operator - only MEANING is
+        # MEANING() is a dimension function that rewrites to meaning_compute_* via CTE
         tests.append((
             f"{func_name}_meaning",
             "SELECT MEANING(category, 5, 'by product type') FROM products GROUP BY MEANING(category, 5)",
-            "semantic_cluster"
+            "meaning_compute"  # MEANING uses dimension compute pattern (meaning_compute_2, meaning_compute_3, etc.)
         ))
 
     elif 'SENTIMENT_AGG' in pattern.upper() or 'SENTIMENT' in pattern.upper():

@@ -3910,6 +3910,12 @@ class ClientConnection:
         # Use original_query for detection if available, otherwise use query
         detection_query = original_query if original_query else query
 
+        # Skip catalog/introspection queries - they have no semantic SQL, cost nothing,
+        # and just clutter the SQL Trail UI. Check both original and rewritten query
+        # since catalog detection needs to catch both forms.
+        if self._is_catalog_query(detection_query) or self._is_catalog_query(query):
+            return None, None, None
+
         if not _is_lars_statement(detection_query):
             return None, None, None
 
