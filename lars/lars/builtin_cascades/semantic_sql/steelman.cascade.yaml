@@ -1,0 +1,113 @@
+cascade_id: semantic_steelman
+internal: true
+description: |
+  Construct the strongest possible version of an argument (steelmanning).
+
+  The opposite of a strawman - instead of weakening an argument to attack it,
+  this strengthens it to engage with it fairly. Returns the most charitable,
+  well-reasoned, and defensible version of the position.
+
+  Perfect for:
+  - Intellectual honesty (engage with the best version)
+  - Understanding opposition (why do smart people believe this?)
+  - Debate prep (anticipate the strongest counter)
+  - Policy analysis (what's the best case for this?)
+  - Overcoming bias (truly consider the other side)
+
+inputs_schema:
+  argument: The argument to strengthen
+  context: Optional context about the domain or debate
+
+sql_function:
+  name: steelman
+  description: Construct the strongest version of an argument
+  args:
+    - name: argument
+      type: VARCHAR
+    - name: context
+      type: VARCHAR
+      optional: true
+      description: "Optional context (domain, debate topic, audience)"
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - 'STEELMAN({{ argument }})'
+    - 'STEELMAN({{ argument }}, ''{{ context }}'')'
+    - '{{ argument }} STEELMAN'
+  cache: true
+  test_cases:
+    - sql: SELECT steelman('We should ban all cars from cities')
+      expect:
+        type: regex
+        pattern: .{100,}
+      description: "Produces substantial steelmanned argument"
+    - sql: SELECT steelman('Social media is bad for society')
+      expect:
+        type: contains
+        value: mental
+      description: "Strengthens with specific concerns"
+
+cells:
+  - name: strengthen_argument
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Construct the STRONGEST possible version of this argument.
+
+      ORIGINAL ARGUMENT:
+      {{ input.argument }}
+
+      {% if input.context %}
+      CONTEXT: {{ input.context }}
+      {% endif %}
+
+      Your task is to STEELMAN this position - present it in its most
+      compelling, well-reasoned, and defensible form.
+
+      Guidelines:
+
+      1. **Assume Intelligence**: Imagine the smartest, most informed person
+         making this argument. What would THEY say?
+
+      2. **Add Supporting Evidence**: What facts, data, or examples
+         strengthen this position?
+
+      3. **Address Obvious Objections**: Preemptively handle the most
+         common counterarguments.
+
+      4. **Clarify Scope**: Define reasonable boundaries - the argument
+         probably isn't meant to be absolute.
+
+      5. **Ground in Values**: Connect to underlying principles that
+         reasonable people share.
+
+      6. **Remove Weak Elements**: Drop any parts that are indefensible
+         or distract from the core point.
+
+      7. **Improve Framing**: Present it in the most persuasive way
+         without being manipulative.
+
+      Example:
+
+      Original: "Video games cause violence"
+
+      Steelmanned: "There's reason for concern about the psychological effects
+      of prolonged exposure to violent video games, particularly for developing
+      minds. While correlation isn't causation, multiple studies show that
+      violent game exposure can temporarily increase aggressive thoughts and
+      decrease empathy. The concern isn't that games directly cause mass
+      violence, but that they may be one factor among many that shapes attitudes
+      toward conflict resolution, particularly when combined with other risk
+      factors. Given the precautionary principle and the importance of child
+      development, it's reasonable to advocate for age-appropriate restrictions,
+      parental awareness tools, and further research - not because games are
+      uniquely dangerous, but because we should be thoughtful about any media
+      that depicts violence as entertaining and consequence-free."
+
+      Return ONLY the steelmanned argument as plain text.
+      Aim for 100-300 words depending on complexity.
+      Do not include labels like "Steelmanned:" - just the argument itself.
+      Do NOT wrap your response in JSON or any object structure.
+      Do NOT use markdown code fences.
+      Just output the argument text directly.
+    rules:
+      max_turns: 1

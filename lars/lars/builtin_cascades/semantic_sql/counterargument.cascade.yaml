@@ -1,0 +1,121 @@
+cascade_id: semantic_counterargument
+internal: true
+description: |
+  Generate the strongest counterargument to a position.
+
+  Creates a compelling opposing argument - not a strawman rebuttal,
+  but the kind of thoughtful disagreement that would give pause
+  to someone who holds the original position.
+
+  Perfect for:
+  - Debate prep (what will they say?)
+  - Decision making (what am I not considering?)
+  - Red teaming (attack your own ideas)
+  - Balanced analysis (present both sides)
+  - Intellectual humility (stress-test your beliefs)
+
+inputs_schema:
+  argument: The argument to counter
+  style: Optional style ('academic', 'practical', 'philosophical', 'empirical')
+
+sql_function:
+  name: counterargument
+  description: Generate the strongest counterargument to a position
+  args:
+    - name: argument
+      type: VARCHAR
+    - name: style
+      type: VARCHAR
+      optional: true
+      description: "Style: 'academic', 'practical', 'philosophical', 'empirical'"
+  returns: VARCHAR
+  shape: SCALAR
+  operators:
+    - 'COUNTERARGUMENT({{ argument }})'
+    - 'COUNTERARGUMENT({{ argument }}, ''{{ style }}'')'
+    - '{{ argument }} COUNTERARGUMENT'
+    - 'REBUT({{ argument }})'
+  cache: true
+  test_cases:
+    - sql: SELECT counterargument('We should implement universal basic income')
+      expect:
+        type: regex
+        pattern: .{100,}
+      description: "Produces substantial counterargument"
+    - sql: SELECT counterargument('Remote work is better than office work', 'practical')
+      expect:
+        type: contains
+        value: collaborat
+      description: "Addresses collaboration concerns in practical style"
+
+cells:
+  - name: generate_counter
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Generate the STRONGEST counterargument to this position.
+
+      ARGUMENT TO COUNTER:
+      {{ input.argument }}
+
+      {% if input.style %}
+      STYLE: {{ input.style }}
+      - academic: cite research, use formal reasoning
+      - practical: focus on real-world implementation issues
+      - philosophical: address underlying principles and values
+      - empirical: emphasize data, evidence, and track record
+      {% endif %}
+
+      Your task is to construct a compelling opposing argument that would
+      give a thoughtful proponent of the original position serious pause.
+
+      Guidelines:
+
+      1. **Attack the Strongest Form**: Counter the steelmanned version,
+         not a weak interpretation.
+
+      2. **Be Substantive**: Use evidence, logic, and examples - not just
+         rhetoric or emotion.
+
+      3. **Find the Real Tension**: What's the genuine tradeoff or conflict
+         at the heart of this debate?
+
+      4. **Offer Alternatives**: If you're arguing against X, what's better?
+
+      5. **Acknowledge Validity**: The best counterarguments concede what's
+         true in the original before showing what's wrong.
+
+      6. **Stay Intellectually Honest**: Don't use fallacies or cheap tricks.
+
+      Structure (adapt as needed):
+      - Brief acknowledgment of what the original gets right
+      - Core counterpoint (the main disagreement)
+      - Supporting evidence or reasoning
+      - Consideration of implications
+      - Alternative approach (if applicable)
+
+      Example:
+
+      Argument: "College should be free for everyone"
+
+      Counterargument: "While expanding access to education is a worthy goal,
+      making college universally free may be counterproductive. First, it's
+      regressive: taxpayers including those who didn't attend college would
+      subsidize degrees for higher earners. Data shows college graduates
+      earn significantly more over their lifetimes - they can afford to
+      invest in their own education. Second, it removes price signals that
+      help students make rational choices about which degrees offer good
+      returns. We already see credential inflation and underemployment among
+      graduates. Third, the money could be better spent on K-12 education,
+      vocational training, or targeted aid for low-income students who
+      face real barriers. A more effective approach: expand need-based aid,
+      subsidize high-demand fields, and invest in alternatives to four-year
+      degrees."
+
+      Return ONLY the counterargument as plain text.
+      Aim for 150-350 words.
+      Do not include labels - just the argument itself.
+      Do NOT wrap your response in JSON or any object structure.
+      Do NOT use markdown code fences.
+      Just output the argument text directly.
+    rules:
+      max_turns: 1

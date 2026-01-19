@@ -1,0 +1,112 @@
+cascade_id: semantic_assumes
+internal: true
+description: |
+  Extract implicit assumptions from an argument or claim.
+
+  Surfaces the unstated premises that must be true for an argument to hold.
+  This is intellectual X-ray vision - see what's hiding beneath the surface
+  of any claim, proposal, or reasoning.
+
+  Perfect for:
+  - Policy analysis (what does this proposal assume?)
+  - Critical thinking (what are they not saying?)
+  - Debate prep (where are the weak foundations?)
+  - Risk assessment (what could invalidate this?)
+
+inputs_schema:
+  argument: The argument, claim, or reasoning to analyze
+  focus: Optional focus area for assumptions (e.g., 'economic', 'technical', 'ethical')
+
+sql_function:
+  name: assumes
+  description: Extract hidden assumptions from an argument or claim
+  args:
+    - name: argument
+      type: VARCHAR
+    - name: focus
+      type: VARCHAR
+      optional: true
+      description: "Focus area (e.g., 'economic', 'technical', 'ethical', 'causal')"
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - 'ASSUMES({{ argument }})'
+    - 'ASSUMES({{ argument }}, ''{{ focus }}'')'
+    - '{{ argument }} ASSUMES'
+  cache: true
+  test_cases:
+    - sql: SELECT assumes('We should ban plastic straws to save the oceans')
+      expect:
+        type: contains
+        value: straw
+      description: "Extracts assumptions about plastic straw environmental impact"
+    - sql: SELECT assumes('Lowering interest rates will stimulate economic growth')
+      expect:
+        type: contains
+        value: borrow
+      description: "Extracts causal economic assumptions"
+    - sql: SELECT assumes('AI will replace most jobs within 10 years', 'technical')
+      expect:
+        type: contains
+        value: capab
+      description: "Extracts technical assumptions with focus"
+
+cells:
+  - name: extract_assumptions
+    model: google/gemini-3-flash-preview
+    instructions: |
+      What implicit assumptions does this argument rely on?
+
+      ARGUMENT:
+      {{ input.argument }}
+
+      {% if input.focus %}
+      FOCUS ON: {{ input.focus }} assumptions
+      {% endif %}
+
+      Identify the unstated premises that must be true for this argument to be valid.
+
+      Categories to consider:
+      - **Causal**: X leads to Y (but does it?)
+      - **Factual**: X is true (but is it?)
+      - **Value**: Y is good/desirable (but is it?)
+      - **Scope**: This applies broadly (but does it?)
+      - **Feasibility**: This can be done (but can it?)
+      - **Comparison**: This is better than alternatives (but is it?)
+
+      Rules:
+      - Be specific and non-obvious
+      - Don't just negate the claim
+      - Surface hidden beliefs, not explicit statements
+      - Focus on assumptions that, if false, would undermine the argument
+      - Aim for 3-7 assumptions depending on complexity
+
+      Examples:
+
+      Argument: "We should invest in nuclear power to fight climate change"
+      Assumptions:
+      - Nuclear power produces significantly less CO2 than current energy mix
+      - Climate change is a problem worth solving at high cost
+      - Nuclear waste can be safely managed long-term
+      - Nuclear plants can be built fast enough to matter
+      - The public will accept nuclear power expansion
+      - Alternatives (solar, wind) are insufficient alone
+
+      Argument: "Remote work improves productivity"
+      Assumptions:
+      - Productivity can be accurately measured for remote workers
+      - The work being done is suitable for remote execution
+      - Workers have adequate home office setups
+      - Communication overhead doesn't offset individual gains
+      - Short-term productivity gains persist long-term
+
+      Return a JSON array of assumption strings:
+      ["assumption 1", "assumption 2", ...]
+
+      Return ONLY the JSON array, no explanation or markdown.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: string

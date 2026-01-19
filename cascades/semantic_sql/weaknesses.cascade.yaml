@@ -1,0 +1,129 @@
+cascade_id: semantic_weaknesses
+internal: true
+description: |
+  Identify logical weaknesses, gaps, and vulnerabilities in an argument.
+
+  Finds where reasoning breaks down - logical fallacies, unsupported leaps,
+  missing evidence, scope problems, and other flaws that undermine validity.
+
+  Perfect for:
+  - Peer review (what's wrong with this paper?)
+  - Due diligence (where could this proposal fail?)
+  - Self-critique (what am I missing?)
+  - Debate prep (where will they attack?)
+
+inputs_schema:
+  argument: The argument or reasoning to analyze
+  severity: Optional minimum severity ('minor', 'moderate', 'major') - default returns all
+
+sql_function:
+  name: weaknesses
+  description: Identify logical weaknesses and gaps in an argument
+  args:
+    - name: argument
+      type: VARCHAR
+    - name: severity
+      type: VARCHAR
+      optional: true
+      default: "'all'"
+      description: "Minimum severity: 'minor', 'moderate', 'major', or 'all'"
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - 'WEAKNESSES({{ argument }})'
+    - 'WEAKNESSES({{ argument }}, ''{{ severity }}'')'
+    - '{{ argument }} WEAKNESSES'
+  cache: true
+  test_cases:
+    - sql: SELECT weaknesses('Everyone I know loves this restaurant, so it must be the best in the city')
+      expect:
+        type: contains
+        value: sample
+      description: "Identifies sampling bias / hasty generalization"
+    - sql: SELECT weaknesses('Sales increased after we changed the logo, proving the rebrand worked')
+      expect:
+        type: contains
+        value: caus
+      description: "Identifies post hoc fallacy / correlation vs causation"
+
+cells:
+  - name: find_weaknesses
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Identify the logical weaknesses in this argument.
+
+      ARGUMENT:
+      {{ input.argument }}
+
+      {% if input.severity and input.severity != 'all' %}
+      MINIMUM SEVERITY: {{ input.severity }}
+      {% endif %}
+
+      Look for these types of weaknesses:
+
+      **Logical Fallacies**
+      - Ad hominem, straw man, false dichotomy
+      - Hasty generalization, slippery slope
+      - Appeal to authority/popularity/emotion
+      - Circular reasoning, begging the question
+      - Post hoc ergo propter hoc (correlation ≠ causation)
+
+      **Evidential Gaps**
+      - Claims without supporting evidence
+      - Cherry-picked or unrepresentative data
+      - Outdated or unreliable sources
+      - Missing counterexamples
+
+      **Reasoning Flaws**
+      - Non sequitur (conclusion doesn't follow)
+      - Overgeneralization / overreach
+      - False equivalence
+      - Moving goalposts
+      - Unfalsifiable claims
+
+      **Structural Issues**
+      - Undefined key terms
+      - Scope creep
+      - Hidden value judgments presented as facts
+      - Missing consideration of alternatives
+
+      For each weakness, provide:
+      - type: Category of weakness
+      - description: What specifically is wrong
+      - severity: "minor", "moderate", or "major"
+      - quote: The specific part that's problematic (if applicable)
+
+      Return JSON array:
+      [
+        {
+          "type": "fallacy type or weakness category",
+          "description": "specific explanation",
+          "severity": "minor|moderate|major",
+          "quote": "relevant excerpt if applicable"
+        }
+      ]
+
+      Rules:
+      - Be specific, not vague
+      - Major = fundamentally undermines the argument
+      - Moderate = significantly weakens but doesn't destroy
+      - Minor = nitpick or edge case
+      - Don't manufacture weaknesses that aren't there
+      - Strong arguments may have few weaknesses - that's OK
+
+      Return ONLY the JSON array.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          type:
+            type: string
+          description:
+            type: string
+          severity:
+            type: string
+          quote:
+            type: string

@@ -1,0 +1,127 @@
+cascade_id: semantic_fallacy
+internal: true
+description: |
+  Detect logical fallacies in an argument.
+
+  Identifies specific named fallacies (ad hominem, straw man, false dichotomy,
+  etc.) with explanations of how they appear in the text.
+
+  Perfect for:
+  - Critical thinking education
+  - Argument quality assessment
+  - Debate analysis
+  - Media literacy
+  - Self-editing (catch your own fallacies)
+
+inputs_schema:
+  argument: The argument to analyze for fallacies
+
+sql_function:
+  name: fallacy
+  description: Detect logical fallacies in an argument
+  args:
+    - name: argument
+      type: VARCHAR
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - 'FALLACY({{ argument }})'
+    - '{{ argument }} FALLACY'
+    - 'FALLACIES({{ argument }})'
+  cache: true
+  test_cases:
+    - sql: SELECT fallacy('You can''t trust his opinion on climate change - he''s not even a scientist')
+      expect:
+        type: contains
+        value: hominem
+      description: "Detects ad hominem"
+    - sql: SELECT fallacy('Either you support this bill or you hate children')
+      expect:
+        type: contains
+        value: dichotomy
+      description: "Detects false dichotomy"
+    - sql: SELECT fallacy('We''ve always done it this way, so we should keep doing it')
+      expect:
+        type: contains
+        value: tradition
+      description: "Detects appeal to tradition"
+
+cells:
+  - name: detect_fallacies
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Identify any logical fallacies in this argument.
+
+      ARGUMENT:
+      {{ input.argument }}
+
+      Common Fallacies to Check:
+
+      **Relevance Fallacies**
+      - `ad_hominem`: Attacking the person, not the argument
+      - `appeal_to_authority`: "Expert says so" without relevant expertise
+      - `appeal_to_emotion`: Manipulating feelings instead of reasoning
+      - `appeal_to_popularity`: "Everyone believes it"
+      - `appeal_to_tradition`: "We've always done it this way"
+      - `appeal_to_nature`: "Natural = good"
+      - `genetic_fallacy`: Judging by origin rather than merit
+      - `tu_quoque`: "You do it too" (whataboutism)
+      - `red_herring`: Introducing irrelevant topic
+
+      **Presumption Fallacies**
+      - `false_dichotomy`: Only two options when more exist
+      - `false_cause`: Assuming causation from correlation
+      - `slippery_slope`: Assuming chain of events without justification
+      - `hasty_generalization`: Conclusion from insufficient examples
+      - `begging_the_question`: Conclusion assumed in premise
+      - `circular_reasoning`: A because B, B because A
+      - `loaded_question`: Question that presumes something unproven
+      - `no_true_scotsman`: Redefining terms to exclude counterexamples
+
+      **Ambiguity Fallacies**
+      - `equivocation`: Using word with multiple meanings
+      - `straw_man`: Misrepresenting opponent's argument
+      - `moving_goalposts`: Changing criteria after argument made
+      - `ambiguity`: Vague terms that obscure meaning
+
+      **Formal Fallacies**
+      - `affirming_consequent`: If A then B, B therefore A
+      - `denying_antecedent`: If A then B, not A therefore not B
+      - `composition`: What's true of parts is true of whole
+      - `division`: What's true of whole is true of parts
+
+      For each fallacy found:
+      {
+        "fallacy": "fallacy_name",
+        "explanation": "how this fallacy appears in the argument",
+        "quote": "the specific problematic text",
+        "severity": "minor|moderate|major"
+      }
+
+      Return JSON array of detected fallacies:
+      [{"fallacy": "...", "explanation": "...", "quote": "...", "severity": "..."}]
+
+      If NO fallacies detected, return: []
+
+      Rules:
+      - Only flag clear fallacies, not just weak arguments
+      - Provide specific explanations, not generic definitions
+      - Major = fundamentally invalidates the argument
+      - A valid argument may contain no fallacies - that's OK
+
+      Return ONLY the JSON array.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          fallacy:
+            type: string
+          explanation:
+            type: string
+          quote:
+            type: string
+          severity:
+            type: string

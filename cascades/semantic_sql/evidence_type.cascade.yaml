@@ -1,0 +1,137 @@
+cascade_id: semantic_evidence_type
+internal: true
+description: |
+  Classify the type and assess the strength of evidence in a claim.
+
+  Identifies what KIND of evidence is being presented (anecdotal, statistical,
+  expert opinion, etc.) and rates how strong it is for supporting the claim.
+
+  Perfect for:
+  - Fact-checking (what's the basis for this claim?)
+  - Research review (what evidence tier is this?)
+  - Critical reading (how should I weight this?)
+  - Argument analysis (is the evidence appropriate?)
+
+inputs_schema:
+  text: The text containing evidence or a claim with supporting evidence
+  claim: Optional specific claim to evaluate evidence against
+
+sql_function:
+  name: evidence_type
+  description: Classify evidence type and strength
+  args:
+    - name: text
+      type: VARCHAR
+    - name: claim
+      type: VARCHAR
+      optional: true
+      description: "Specific claim to evaluate evidence against"
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - 'EVIDENCE_TYPE({{ text }})'
+    - 'EVIDENCE_TYPE({{ text }}, ''{{ claim }}'')'
+    - '{{ text }} EVIDENCE_TYPE'
+  cache: true
+  test_cases:
+    - sql: SELECT evidence_type('My uncle smoked his whole life and lived to 95')
+      expect:
+        type: contains
+        value: anecdot
+      description: "Identifies anecdotal evidence"
+    - sql: SELECT evidence_type('A randomized controlled trial of 10,000 participants showed a 23% reduction')
+      expect:
+        type: contains
+        value: experiment
+      description: "Identifies experimental/RCT evidence"
+
+cells:
+  - name: classify_evidence
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Classify the type and strength of evidence in this text.
+
+      TEXT:
+      {{ input.text }}
+
+      {% if input.claim %}
+      CLAIM BEING SUPPORTED: {{ input.claim }}
+      {% endif %}
+
+      Evidence Type Hierarchy (roughly strongest to weakest):
+
+      **Tier 1 - Strongest**
+      - `meta_analysis`: Systematic review of multiple studies
+      - `randomized_controlled_trial`: RCT with proper controls
+      - `systematic_review`: Structured review of literature
+
+      **Tier 2 - Strong**
+      - `experimental`: Controlled experiment (not RCT)
+      - `longitudinal`: Study tracking subjects over time
+      - `large_scale_observational`: Big data / population studies
+
+      **Tier 3 - Moderate**
+      - `peer_reviewed`: Published academic research
+      - `expert_consensus`: Agreement among domain experts
+      - `case_control`: Comparing groups with/without outcome
+      - `statistical`: Data analysis with statistical methods
+
+      **Tier 4 - Weak**
+      - `expert_opinion`: Individual expert's view
+      - `case_study`: Detailed study of single case
+      - `survey`: Self-reported data from respondents
+      - `correlational`: Observed correlation (not causation)
+
+      **Tier 5 - Very Weak**
+      - `anecdotal`: Personal stories or examples
+      - `testimonial`: Individual endorsement
+      - `appeal_to_authority`: "Expert X says so"
+      - `common_sense`: "Everyone knows" / intuition
+      - `analogy`: Comparison to similar situation
+
+      **Tier 6 - Not Evidence**
+      - `speculation`: Guessing about possibilities
+      - `assertion`: Claim without support
+      - `rhetorical`: Persuasion without evidence
+      - `circular`: Conclusion assumes premise
+
+      Evaluate and return:
+
+      {
+        "primary_type": "the main evidence type",
+        "tier": 1-6,
+        "strength": "strong|moderate|weak|very_weak|none",
+        "description": "brief explanation of the evidence",
+        "limitations": ["limitation 1", "limitation 2"],
+        "appropriate_for_claim": true/false (if claim provided),
+        "confidence": 0.0-1.0
+      }
+
+      Rules:
+      - If multiple evidence types, report the PRIMARY one
+      - Consider sample size, methodology, recency
+      - "Appropriate for claim" = is this evidence TYPE suitable (not just is it true)
+      - Confidence = how certain are you about this classification
+
+      Return ONLY the JSON object.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: object
+      properties:
+        primary_type:
+          type: string
+        tier:
+          type: integer
+        strength:
+          type: string
+        description:
+          type: string
+        limitations:
+          type: array
+          items:
+            type: string
+        appropriate_for_claim:
+          type: boolean
+        confidence:
+          type: number

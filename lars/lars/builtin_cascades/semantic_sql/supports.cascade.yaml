@@ -1,0 +1,115 @@
+cascade_id: semantic_supports
+internal: true
+description: |
+  Score how strongly evidence supports a claim.
+
+  Returns a 0-1 score indicating evidential support strength.
+  Unlike IMPLIES (binary logical entailment), SUPPORTS measures
+  how much the evidence increases confidence in the claim.
+
+  - 0.0 = No support (irrelevant or contradicts)
+  - 0.5 = Weak/tangential support
+  - 0.7 = Moderate support
+  - 0.9+ = Strong support
+
+  Perfect for:
+  - Fact-checking (does evidence back the claim?)
+  - Research synthesis (which sources support which claims?)
+  - Argument mapping (evidence → claim relationships)
+  - Citation relevance (is this reference actually supportive?)
+
+inputs_schema:
+  evidence: The evidence or supporting text
+  claim: The claim being evaluated
+
+sql_function:
+  name: supports
+  description: Score how strongly evidence supports a claim (0-1)
+  args:
+    - name: evidence
+      type: VARCHAR
+    - name: claim
+      type: VARCHAR
+  returns: DOUBLE
+  shape: SCALAR
+  operators:
+    - 'SUPPORTS({{ evidence }}, ''{{ claim }}'')'
+    - '{{ evidence }} SUPPORTS ''{{ claim }}'''
+    - '{{ evidence }} SUPPORTS {{ claim }}'
+  cache: true
+  test_cases:
+    - sql: SELECT supports('A randomized trial showed 40% improvement in patient outcomes', 'The treatment is effective')
+      expect:
+        type: range
+        min: 0.7
+        max: 1.0
+      description: "Strong evidential support scores high"
+    - sql: SELECT supports('The sky is blue', 'Dogs make good pets')
+      expect:
+        type: range
+        min: 0.0
+        max: 0.2
+      description: "Irrelevant evidence scores near zero"
+    - sql: SELECT supports('Sales increased 5% this quarter', 'The new marketing campaign is working')
+      expect:
+        type: range
+        min: 0.3
+        max: 0.7
+      description: "Correlational evidence scores moderate"
+
+cells:
+  - name: score_support
+    model: google/gemini-3-flash-preview
+    instructions: |
+      How strongly does this EVIDENCE support this CLAIM?
+
+      EVIDENCE:
+      {{ input.evidence }}
+
+      CLAIM:
+      {{ input.claim }}
+
+      Scoring Guidelines:
+
+      **0.0 - 0.2: No Support**
+      - Evidence is irrelevant to the claim
+      - Evidence actually contradicts the claim
+      - Evidence is about something completely different
+
+      **0.2 - 0.4: Very Weak Support**
+      - Tangentially related but doesn't directly support
+      - Requires many logical leaps to connect
+      - Correlation without causation
+      - Anecdotal where statistical needed
+
+      **0.4 - 0.6: Weak to Moderate Support**
+      - Relevant but not conclusive
+      - Supports part of the claim but not all
+      - Right direction but insufficient strength
+      - One data point among many needed
+
+      **0.6 - 0.8: Moderate to Strong Support**
+      - Directly relevant and meaningful
+      - Would shift a reasonable person's belief
+      - Appropriate evidence type for the claim
+      - Some limitations but generally supportive
+
+      **0.8 - 1.0: Strong Support**
+      - Directly and substantially supports the claim
+      - High-quality evidence (RCT, meta-analysis, etc.)
+      - Would be compelling to a skeptic
+      - Few or no significant limitations
+
+      Consider:
+      - Is the evidence RELEVANT to this specific claim?
+      - Is it the RIGHT TYPE of evidence? (statistical for statistical claims, etc.)
+      - How DIRECTLY does it support? (or require inference?)
+      - What are the LIMITATIONS? (sample size, methodology, etc.)
+      - Could there be ALTERNATIVE EXPLANATIONS?
+
+      Return ONLY a decimal number between 0.0 and 1.0.
+      No explanation, no text, just the number.
+      Example valid outputs: 0.75, 0.3, 0.92
+      Do NOT wrap in JSON. Do NOT add any text.
+    rules:
+      max_turns: 1
