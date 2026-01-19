@@ -7,22 +7,25 @@ description: |
   no dynamic pivots in most dialects, and confusing syntax. This operator
   makes pivoting easy with natural language or simple parameters.
 
+  Uses structural caching via table_sql_execute mode:
+  - LLM only sees table SCHEMA (column names + types), not actual data
+  - Generates native DuckDB PIVOT SQL
+  - SQL cached by schema fingerprint + prompt
+  - Same table shape + same prompt = instant cache hit
+
   Usage examples:
       SELECT * FROM sales THEN PIVOT 'revenue by region for each product'
       SELECT * FROM data THEN PIVOT('category', 'amount')
-      SELECT * FROM data THEN PIVOT('category', 'amount', 'avg')
-
-  The LLM analyzes the data structure and pivot request to:
-  - Identify which column provides pivot values (becomes column headers)
-  - Identify which column(s) to aggregate as values
-  - Determine appropriate aggregation (SUM default for numbers)
-  - Handle dynamic discovery of pivot values
+      SELECT * FROM data THEN PIVOT 'with subtotals'
 
 inputs_schema:
   prompt: Pivot description - natural language or explicit column names
-  _table: Query results as JSON records
+  _table_schema: List of {column, type} objects describing the table
   _table_columns: List of column names
-  _table_row_count: Number of rows
+  _table_column_types: List of column types
+  _input_table_name: The table name to use in generated SQL (always "_input_table")
+  _last_sql_error: (optional) Error from previous SQL attempt, for retry correction
+  _retry_attempt: (optional) Current retry attempt number (1, 2, or 3)
 
 sql_function:
   name: PIVOT
@@ -37,90 +40,170 @@ sql_function:
   operators:
     - 'THEN PIVOT {{ prompt }}'
     - 'THEN PIVOT({{ prompt }})'
-  cache: false
+  output_mode: table_sql_execute
+  cache: true
 
 cells:
-  - name: pivot_table
-    model: google/gemini-2.5-flash-lite
+  - name: generate_pivot_sql
+    model: openai/gpt-5.2-codex
     instructions: |
-      You are a data transformation expert. Pivot (cross-tabulate) the provided data.
+      You are a SQL expert. Generate a DuckDB query for the given table schema and pivot request.
+      You MUST implement ALL features the user requests - do not simplify or skip requirements.
 
       PIVOT REQUEST: {{ input.prompt }}
 
-      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
-      {{ input._table | tojson }}
+      TABLE SCHEMA ({{ input._table_columns | length }} columns):
+      {% for col in input._table_schema %}
+      - {{ col.column }}: {{ col.type }}
+      {% endfor %}
 
-      Your task is to transform this data from "long" format to "wide" format by:
-      1. Identifying the INDEX column(s) - values that stay as row identifiers
-      2. Identifying the PIVOT column - unique values become new column headers
-      3. Identifying the VALUE column(s) - data that fills the pivoted cells
-      4. Applying aggregation if multiple values exist for the same index+pivot combination
+      SOURCE TABLE NAME: {{ input._input_table_name }}
 
-      INTERPRETATION GUIDELINES:
-      - If prompt mentions "X by Y" → pivot on Y, showing X values
-      - If prompt is just column names like "category, amount" → pivot on first, aggregate second
-      - If prompt mentions aggregation (sum, avg, count, max, min) → use that function
-      - Default aggregation for numbers is SUM
-      - Default aggregation for text is first non-null value or concatenation
+      {% if input._sample_distinct_values %}
+      DISTINCT VALUES IN STRING COLUMNS (useful for column totals):
+      {% for col, values in input._sample_distinct_values.items() %}
+      - {{ col }}: {{ values | join(', ') }}
+      {% endfor %}
+      {% endif %}
 
-      Return JSON with this EXACT structure:
+      {% if input._last_sql_error %}
+      ⚠️ YOUR PREVIOUS SQL FAILED (attempt {{ input._retry_attempt }} of 3):
+      ERROR: {{ input._last_sql_error }}
+
+      FIX THE ERROR: Analyze the error message carefully and generate corrected SQL.
+      Common DuckDB PIVOT issues:
+      - ROLLUP is NOT supported with PIVOT - use UNION ALL to add totals row
+      - Column names: Must match exactly (case-sensitive in some contexts)
+      - Subquery aliases: Wrap PIVOT in subquery when adding computed columns
+      - Quote column names that are SQL keywords or contain spaces
+      {% endif %}
+
+      BASIC PIVOT SYNTAX:
+      ```sql
+      PIVOT {{ input._input_table_name }}
+      ON pivot_column
+      USING aggregation(value_column)
+      GROUP BY index_column
+      ```
+
+      ADVANCED FEATURES - Use these when requested:
+
+      IMPORTANT: DuckDB PIVOT does NOT support ROLLUP. Use UNION ALL instead for subtotals.
+
+      1. ROW SUBTOTALS (add a totals row at the bottom):
+         Use UNION ALL with aggregated totals:
+         ```sql
+         WITH pivoted AS (
+           PIVOT {{ input._input_table_name }}
+           ON region
+           USING SUM(revenue)
+           GROUP BY product
+         )
+         SELECT product, North, South, East FROM pivoted
+         UNION ALL
+         SELECT 'Total' AS product, SUM(North), SUM(South), SUM(East) FROM pivoted
+         ```
+
+      2. COLUMN TOTALS (add a "Total" column summing all pivoted values):
+         Add computed column after pivot:
+         ```sql
+         SELECT *, (COALESCE(North, 0) + COALESCE(South, 0) + COALESCE(East, 0)) AS total
+         FROM (
+           PIVOT {{ input._input_table_name }}
+           ON region
+           USING SUM(revenue)
+           GROUP BY product
+         )
+         ```
+
+      3. BOTH ROW AND COLUMN TOTALS:
+         Combine UNION ALL with computed total column:
+         ```sql
+         WITH pivoted AS (
+           SELECT *, (COALESCE(North, 0) + COALESCE(South, 0) + COALESCE(East, 0)) AS total
+           FROM (
+             PIVOT {{ input._input_table_name }}
+             ON region
+             USING SUM(revenue)
+             GROUP BY product
+           )
+         )
+         SELECT * FROM pivoted
+         UNION ALL
+         SELECT 'Total', SUM(North), SUM(South), SUM(East), SUM(total) FROM pivoted
+         ```
+
+      4. PERCENTAGES:
+         Use window functions:
+         ```sql
+         SELECT *,
+           ROUND(100.0 * value / SUM(value) OVER (), 2) AS pct_of_total
+         FROM (PIVOT ...)
+         ```
+
+      5. MULTIPLE AGGREGATIONS:
+         ```sql
+         PIVOT {{ input._input_table_name }}
+         ON region
+         USING SUM(revenue) AS sum_rev, AVG(revenue) AS avg_rev, COUNT(*) AS cnt
+         GROUP BY product
+         ```
+
+      INTERPRETATION:
+      - "subtotals" or "row totals" or "grand total" -> use UNION ALL to add totals row
+      - "column totals" or "total column" -> add computed sum column
+      - "both totals" -> use both UNION ALL and computed column
+      - "percentages" or "percent" -> add percentage calculations
+      - "X by Y for each Z" -> pivot on Y, aggregate X, group by Z
+
+      EXAMPLES:
+
+      Example 1 - Basic:
+      Schema: [product:VARCHAR, region:VARCHAR, revenue:BIGINT]
+      Prompt: "revenue by region for each product"
+      SQL: PIVOT _input_table ON region USING SUM(revenue) GROUP BY product
+
+      Example 2 - With row subtotals:
+      Schema: [product:VARCHAR, region:VARCHAR, revenue:BIGINT]
+      Distinct values: region: North, South
+      Prompt: "revenue by region for each product with subtotals"
+      SQL: WITH pivoted AS (PIVOT _input_table ON region USING SUM(revenue) GROUP BY product) SELECT product, North, South FROM pivoted UNION ALL SELECT 'Total', SUM(North), SUM(South) FROM pivoted
+
+      Example 3 - With column totals:
+      Schema: [product:VARCHAR, region:VARCHAR, revenue:BIGINT]
+      Prompt: "revenue by region with a total column"
+      SQL: SELECT *, (COALESCE(North, 0) + COALESCE(South, 0) + COALESCE(East, 0) + COALESCE(West, 0)) AS total FROM (PIVOT _input_table ON region USING SUM(revenue) GROUP BY product)
+
+      Example 4 - Full crosstab with both row and column totals:
+      Schema: [product:VARCHAR, region:VARCHAR, revenue:BIGINT]
+      Distinct values: region: North, South
+      Prompt: "pivot with row and column totals"
+      SQL: WITH pivoted AS (SELECT *, (COALESCE(North, 0) + COALESCE(South, 0)) AS total FROM (PIVOT _input_table ON region USING SUM(revenue) GROUP BY product)) SELECT * FROM pivoted UNION ALL SELECT 'Total', SUM(North), SUM(South), SUM(total) FROM pivoted
+
+      Return JSON:
       {
-        "pivot_config": {
-          "index_columns": ["col1", "col2"],
-          "pivot_column": "category",
-          "value_columns": ["amount"],
-          "aggregation": "sum"
-        },
-        "data": [
-          {"product": "Widget", "north_revenue": 100, "south_revenue": 150, "east_revenue": null},
-          {"product": "Gadget", "north_revenue": 200, "south_revenue": null, "east_revenue": 75}
-        ]
+        "sql": "YOUR COMPLETE SQL HERE",
+        "explanation": "Brief explanation"
       }
 
-      COLUMN NAMING RULES:
-      - Pivoted columns: {pivot_value}_{value_column} e.g., "north_revenue", "2024_sales"
-      - If only one value column, can omit suffix: "north", "south", "east"
-      - Clean up values for column names: lowercase, replace spaces with underscores
-      - Preserve index column names exactly as in input
-
-      AGGREGATION RULES:
-      - SUM (default for numbers): Add values for same index+pivot combination
-      - AVG: Calculate mean
-      - COUNT: Count occurrences
-      - MAX/MIN: Take maximum/minimum value
-      - FIRST: Take first non-null value (for text)
-
-      NULL HANDLING:
-      - Use null for missing pivot+index combinations (not 0 or empty string)
-
       CRITICAL:
-      - The "data" array must contain the fully pivoted table
-      - Each row must have the same columns
-      - Index columns + all pivoted value columns must be present in every row
+      - IMPLEMENT ALL REQUESTED FEATURES - do not skip subtotals, percentages, etc.
+      - The SQL MUST reference "{{ input._input_table_name }}" as the source table
+      - Use EXACT column names from the schema
+      - For column totals, you may need to guess pivot values or use dynamic approach
+      - Return ONLY JSON, no markdown
 
     output_schema:
       type: object
       required:
-        - data
-        - pivot_config
+        - sql
       properties:
-        pivot_config:
-          type: object
-          properties:
-            index_columns:
-              type: array
-              items:
-                type: string
-            pivot_column:
-              type: string
-            value_columns:
-              type: array
-              items:
-                type: string
-            aggregation:
-              type: string
-        data:
-          type: array
+        sql:
+          type: string
+          description: The complete DuckDB SQL query
+        explanation:
+          type: string
+          description: Brief explanation of the pivot operation
 
     rules:
       max_turns: 1

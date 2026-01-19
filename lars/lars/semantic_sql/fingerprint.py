@@ -382,3 +382,97 @@ def list_known_formats() -> Dict[str, str]:
         Dict mapping format name to regex pattern string
     """
     return {name: pattern.pattern for name, pattern in FORMAT_PATTERNS.items()}
+
+
+def compute_table_schema_fingerprint(
+    column_names: list[str],
+    column_types: list[str],
+) -> str:
+    """
+    Compute a fingerprint for a table schema.
+
+    This enables caching for PIPELINE stages like PIVOT/MELT where
+    the same operation on tables with identical schemas can reuse
+    generated SQL.
+
+    The fingerprint captures:
+    - Column names (order-sensitive)
+    - Column types (normalized to base types)
+
+    Args:
+        column_names: List of column names in order
+        column_types: List of column types in order
+
+    Returns:
+        MD5 hash of the schema structure
+
+    Examples:
+        >>> compute_table_schema_fingerprint(
+        ...     ["product", "q1_revenue", "q2_revenue"],
+        ...     ["VARCHAR", "BIGINT", "BIGINT"]
+        ... )
+        '7a8b9c...'
+    """
+    # Normalize types to base types for better cache hits
+    # e.g., VARCHAR(255) -> VARCHAR, DECIMAL(10,2) -> DECIMAL
+    def normalize_type(t: str) -> str:
+        t_upper = t.upper().strip()
+        # Strip length/precision specs: VARCHAR(255) -> VARCHAR
+        if '(' in t_upper:
+            t_upper = t_upper.split('(')[0]
+        # Map aliases to canonical types
+        type_map = {
+            'INT': 'INTEGER',
+            'INT4': 'INTEGER',
+            'INT8': 'BIGINT',
+            'FLOAT4': 'FLOAT',
+            'FLOAT8': 'DOUBLE',
+            'REAL': 'FLOAT',
+            'STRING': 'VARCHAR',
+            'TEXT': 'VARCHAR',
+            'BOOL': 'BOOLEAN',
+        }
+        return type_map.get(t_upper, t_upper)
+
+    normalized_types = [normalize_type(t) for t in column_types]
+
+    # Create schema signature: "col1:TYPE1|col2:TYPE2|..."
+    schema_parts = [
+        f"{name}:{dtype}"
+        for name, dtype in zip(column_names, normalized_types)
+    ]
+    schema_signature = "|".join(schema_parts)
+
+    return hashlib.md5(schema_signature.encode()).hexdigest()
+
+
+def make_table_fingerprint_cache_key(
+    function_name: str,
+    schema_fingerprint: str,
+    prompt: str,
+) -> str:
+    """
+    Create cache key from table schema fingerprint + prompt.
+
+    For PIPELINE stages like PIVOT/MELT, we cache the generated SQL
+    based on the table structure and the user's request.
+
+    Args:
+        function_name: The pipeline function name (e.g., "PIVOT")
+        schema_fingerprint: The computed schema fingerprint
+        prompt: The user's transformation prompt
+
+    Returns:
+        MD5 hash suitable as cache key
+
+    Examples:
+        >>> make_table_fingerprint_cache_key(
+        ...     "PIVOT",
+        ...     "7a8b9c...",
+        ...     "revenue by region for each product"
+        ... )
+        'd4e5f6...'  # Same for any table with same schema + same prompt
+    """
+    prompt_normalized = prompt.lower().strip()
+    combined = f"{function_name}|schema:{schema_fingerprint}|prompt:{prompt_normalized}"
+    return hashlib.md5(combined.encode()).hexdigest()

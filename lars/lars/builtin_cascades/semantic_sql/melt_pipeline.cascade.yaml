@@ -6,10 +6,11 @@ description: |
   MELT is the inverse of PIVOT - it transforms columns into rows.
   Also known as UNPIVOT, GATHER, or WIDE-TO-LONG transformation.
 
-  This is useful for:
-  - Normalizing denormalized data
-  - Preparing data for visualization tools that expect long format
-  - Converting spreadsheet-style data to database-friendly format
+  Uses structural caching via table_sql_execute mode:
+  - LLM only sees table SCHEMA (column names + types), not actual data
+  - Generates native DuckDB UNPIVOT SQL
+  - SQL cached by schema fingerprint + prompt
+  - Same table shape + same prompt = instant cache hit
 
   Usage examples:
       SELECT * FROM wide_sales THEN MELT 'convert quarterly columns to rows'
@@ -29,9 +30,12 @@ description: |
 
 inputs_schema:
   prompt: Melt description - which columns to unpivot
-  _table: Query results as JSON records
+  _table_schema: List of {column, type} objects describing the table
   _table_columns: List of column names
-  _table_row_count: Number of rows
+  _table_column_types: List of column types
+  _input_table_name: The table name to use in generated SQL (always "_input_table")
+  _last_sql_error: (optional) Error from previous SQL attempt, for retry correction
+  _retry_attempt: (optional) Current retry attempt number (1, 2, or 3)
 
 sql_function:
   name: MELT
@@ -46,94 +50,109 @@ sql_function:
   operators:
     - 'THEN MELT {{ prompt }}'
     - 'THEN MELT({{ prompt }})'
-  cache: false
+  output_mode: table_sql_execute
+  cache: true
 
 cells:
-  - name: melt_table
-    model: google/gemini-2.5-flash-lite
+  - name: generate_melt_sql
+    #model: google/gemini-2.5-flash-lite
     instructions: |
-      You are a data transformation expert. Melt (unpivot) the provided data from wide to long format.
+      You are a SQL expert. Generate a DuckDB UNPIVOT query for the given table schema.
 
-      MELT REQUEST: {{ input.prompt }}
+      MELT/UNPIVOT REQUEST: {{ input.prompt }}
 
-      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
-      {{ input._table | tojson }}
+      TABLE SCHEMA ({{ input._table_columns | length }} columns):
+      {% for col in input._table_schema %}
+      - {{ col.column }}: {{ col.type }}
+      {% endfor %}
 
-      Your task is to transform this data from "wide" format to "long" format by:
-      1. Identifying ID columns - columns that stay as-is (row identifiers)
-      2. Identifying VALUE columns - columns to melt into rows
-      3. Creating a VARIABLE column - contains the original column names
-      4. Creating a VALUE column - contains the values from those columns
+      SOURCE TABLE NAME: {{ input._input_table_name }}
+
+      {% if input._last_sql_error %}
+      ⚠️ YOUR PREVIOUS SQL FAILED (attempt {{ input._retry_attempt }} of 3):
+      ERROR: {{ input._last_sql_error }}
+
+      FIX THE ERROR: Analyze the error message carefully and generate corrected SQL.
+      Common DuckDB UNPIVOT issues:
+      - Column names: Must match exactly from the schema (case-sensitive)
+      - ON clause: List all columns to unpivot, separated by commas
+      - INTO clause: Must have both NAME and VALUE parts
+      - Reserved words: Quote column names that are SQL keywords
+      {% endif %}
+
+      Your task:
+      1. Analyze the schema and user's melt/unpivot request
+      2. Identify:
+         - ID columns: Columns that stay as-is (row identifiers)
+         - VALUE columns: Columns to melt into rows
+         - VARIABLE name: What to call the column containing original column names
+         - VALUE name: What to call the column containing the values
+      3. Generate a valid DuckDB UNPIVOT query
+
+      DuckDB UNPIVOT SYNTAX:
+      ```sql
+      UNPIVOT {{ input._input_table_name }}
+      ON column1, column2, column3
+      INTO
+        NAME variable_column_name
+        VALUE value_column_name
+      ```
 
       INTERPRETATION GUIDELINES:
-      - If prompt lists specific columns → melt those columns
-      - If prompt mentions a pattern (e.g., "quarterly columns", "year columns") → identify matching columns
-      - If prompt says "into X and Y" → use X as variable column name, Y as value column name
-      - Default variable column name: "variable"
-      - Default value column name: "value"
+      - If prompt lists specific columns (q1, q2, q3) -> unpivot those exact columns
+      - If prompt mentions a pattern like "quarterly" or "revenue columns" -> find matching columns by name
+      - If prompt says "into X and Y" -> use X as variable name, Y as value name
+      - Default variable name: "variable"
+      - Default value name: "value"
+      - ID columns are those NOT being unpivoted (they stay as-is)
 
-      Return JSON with this EXACT structure:
+      COLUMN MATCHING:
+      - Look at actual column names in the schema
+      - "quarterly columns" -> columns containing "q1", "q2", "q3", "q4" or "quarter"
+      - "revenue columns" -> columns containing "revenue"
+      - "sales columns" -> columns containing "sales"
+      - Match the EXACT column names from the schema
+
+      EXAMPLES:
+
+      Example 1:
+      Schema: [product:VARCHAR, category:VARCHAR, q1_revenue:BIGINT, q2_revenue:BIGINT, q3_revenue:BIGINT]
+      Prompt: "convert quarterly revenue columns to rows"
+      SQL: UNPIVOT _input_table ON q1_revenue, q2_revenue, q3_revenue INTO NAME quarter VALUE revenue
+
+      Example 2:
+      Schema: [name:VARCHAR, jan:DOUBLE, feb:DOUBLE, mar:DOUBLE]
+      Prompt: "melt monthly columns into month and amount"
+      SQL: UNPIVOT _input_table ON jan, feb, mar INTO NAME month VALUE amount
+
+      Example 3:
+      Schema: [product:VARCHAR, q1_sales:BIGINT, q2_sales:BIGINT, q3_sales:BIGINT]
+      Prompt: "convert quarterly columns to rows"
+      SQL: UNPIVOT _input_table ON q1_sales, q2_sales, q3_sales INTO NAME quarter VALUE sales
+
+      Return JSON with EXACTLY this structure:
       {
-        "melt_config": {
-          "id_columns": ["product", "category"],
-          "value_columns": ["q1_sales", "q2_sales", "q3_sales"],
-          "variable_name": "quarter",
-          "value_name": "sales"
-        },
-        "data": [
-          {"product": "Widget", "category": "A", "quarter": "q1_sales", "sales": 100},
-          {"product": "Widget", "category": "A", "quarter": "q2_sales", "sales": 150},
-          {"product": "Widget", "category": "A", "quarter": "q3_sales", "sales": 200},
-          {"product": "Gadget", "category": "B", "quarter": "q1_sales", "sales": 80}
-        ]
+        "sql": "UNPIVOT _input_table ON col1, col2, col3 INTO NAME variable VALUE value",
+        "explanation": "Brief explanation of what columns are being melted"
       }
 
-      TRANSFORMATION RULES:
-      - Each original row becomes N rows (where N = number of value columns)
-      - ID columns are repeated for each melted row
-      - Variable column contains the original column name
-      - Value column contains the value from that column
-      - Skip null values unless they're meaningful (include them if the pattern matters)
-
-      COLUMN NAMING:
-      - If prompt specifies names like "into period and amount" → use "period" and "amount"
-      - Otherwise use descriptive names based on context:
-        - Time-related columns → "period", "quarter", "year", "month"
-        - Metric columns → "metric", "measure"
-        - Generic → "variable", "value"
-
-      NULL HANDLING:
-      - By default, include rows with null values
-      - The structure should be consistent (same columns in every row)
-
       CRITICAL:
-      - The "data" array must contain the fully melted table
-      - Each row must have: all ID columns + variable column + value column
-      - Total rows = original_rows × number_of_value_columns (minus nulls if skipped)
+      - The SQL MUST reference "{{ input._input_table_name }}" as the source table
+      - Use the EXACT column names from the schema (not shortened versions)
+      - The SQL must be valid DuckDB UNPIVOT syntax
+      - Return ONLY the JSON, no markdown code blocks
 
     output_schema:
       type: object
       required:
-        - data
-        - melt_config
+        - sql
       properties:
-        melt_config:
-          type: object
-          properties:
-            id_columns:
-              type: array
-              items:
-                type: string
-            value_columns:
-              type: array
-              items:
-                type: string
-            variable_name:
-              type: string
-            value_name:
-              type: string
-        data:
-          type: array
+        sql:
+          type: string
+          description: The DuckDB UNPIVOT SQL query
+        explanation:
+          type: string
+          description: Brief explanation of the melt operation
 
     rules:
       max_turns: 1

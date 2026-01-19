@@ -31,6 +31,315 @@ from .pipeline_parser import PipelineStage, ChooseStage, ChooseBranch
 
 log = logging.getLogger(__name__)
 
+
+def _get_dataframe_schema(df: pd.DataFrame) -> Tuple[List[str], List[str]]:
+    """
+    Extract column names and types from a DataFrame.
+
+    Maps pandas/numpy dtypes to DuckDB-compatible type names.
+
+    Args:
+        df: The DataFrame to analyze
+
+    Returns:
+        Tuple of (column_names, column_types)
+    """
+    column_names = list(df.columns)
+    column_types = []
+
+    dtype_map = {
+        'int64': 'BIGINT',
+        'int32': 'INTEGER',
+        'int16': 'SMALLINT',
+        'int8': 'TINYINT',
+        'float64': 'DOUBLE',
+        'float32': 'FLOAT',
+        'bool': 'BOOLEAN',
+        'object': 'VARCHAR',
+        'string': 'VARCHAR',
+        'datetime64[ns]': 'TIMESTAMP',
+        'datetime64[us]': 'TIMESTAMP',
+        'timedelta64[ns]': 'INTERVAL',
+        'category': 'VARCHAR',
+    }
+
+    for col in df.columns:
+        dtype_str = str(df[col].dtype)
+        # Handle datetime with timezone
+        if 'datetime64' in dtype_str:
+            column_types.append('TIMESTAMP')
+        else:
+            column_types.append(dtype_map.get(dtype_str, 'VARCHAR'))
+
+    return column_names, column_types
+
+
+def _execute_table_sql(
+    sql: str,
+    df: pd.DataFrame,
+    duckdb_conn: Any = None,
+) -> pd.DataFrame:
+    """
+    Execute SQL against a DataFrame, registering it as _input_table.
+
+    Args:
+        sql: SQL query that references _input_table
+        df: DataFrame to register as _input_table
+        duckdb_conn: Optional existing DuckDB connection (creates ephemeral if None)
+
+    Returns:
+        Result DataFrame
+    """
+    import duckdb
+
+    # Use provided connection or create ephemeral
+    if duckdb_conn is not None:
+        conn = duckdb_conn
+        should_close = False
+    else:
+        conn = duckdb.connect()
+        should_close = True
+
+    try:
+        # Register DataFrame as _input_table
+        conn.register("_input_table", df)
+
+        # Execute the SQL
+        result = conn.execute(sql).fetchdf()
+
+        # Unregister to clean up
+        try:
+            conn.unregister("_input_table")
+        except Exception:
+            pass
+
+        return result
+    finally:
+        if should_close:
+            conn.close()
+
+
+def _validate_sql_with_table(sql: str, df: pd.DataFrame) -> Optional[str]:
+    """
+    Validate SQL by trying to execute it with DuckDB.
+
+    Args:
+        sql: The SQL to validate
+        df: DataFrame to register as _input_table
+
+    Returns:
+        None if valid, error message string if invalid
+    """
+    import duckdb
+
+    conn = duckdb.connect()
+    try:
+        conn.register("_input_table", df)
+        # Try to execute - this validates both syntax and semantics
+        conn.execute(sql).fetchone()
+        return None  # Valid
+    except Exception as e:
+        error_msg = str(e)
+        # Clean up error message for LLM
+        if "Parser Error:" in error_msg:
+            return error_msg
+        elif "Binder Error:" in error_msg:
+            return error_msg
+        elif "Catalog Error:" in error_msg:
+            return error_msg
+        else:
+            return f"SQL Error: {error_msg}"
+    finally:
+        try:
+            conn.unregister("_input_table")
+        except Exception:
+            pass
+        conn.close()
+
+
+def _execute_table_sql_execute_stage(
+    cascade_entry: Any,
+    stage: PipelineStage,
+    df: pd.DataFrame,
+    context: "PipelineContext",
+    duckdb_conn: Any = None,
+    max_attempts: int = 3,
+) -> pd.DataFrame:
+    """
+    Execute a PIPELINE stage with output_mode: table_sql_execute.
+
+    This mode enables structural caching for table transformations:
+    1. LLM sees only the table SCHEMA (column names + types), not data
+    2. LLM generates DuckDB SQL using _input_table as source
+    3. SQL is validated - if invalid, LLM retries with error context
+    4. Cache key = schema_fingerprint + prompt
+    5. Execute: Register DataFrame, run generated SQL, return result
+
+    Args:
+        cascade_entry: The SQLFunctionEntry for the cascade
+        stage: The pipeline stage being executed
+        df: Input DataFrame
+        context: Pipeline execution context
+        duckdb_conn: Optional DuckDB connection
+        max_attempts: Maximum retry attempts for invalid SQL (default 3)
+
+    Returns:
+        Transformed DataFrame
+    """
+    from ..semantic_sql.fingerprint import (
+        compute_table_schema_fingerprint,
+        make_table_fingerprint_cache_key,
+    )
+    from .cache_adapter import get_cache
+    from ..runner import LARSRunner
+    from ..semantic_sql.executor import _extract_cascade_output
+    from .. import _register_all_skills
+    import hashlib
+
+    _register_all_skills()
+
+    # Get function config
+    sql_func = cascade_entry.sql_function
+    cache_enabled = sql_func.get("cache", True)
+    cascade_name = sql_func.get("name", cascade_entry.cascade_id)
+
+    # Extract schema from DataFrame
+    column_names, column_types = _get_dataframe_schema(df)
+
+    # Get prompt from stage args
+    user_arg_names = [
+        arg["name"] for arg in sql_func.get("args", [])
+        if not arg["name"].startswith("_")
+    ]
+    prompt = stage.args[0] if stage.args else ""
+
+    # Compute cache key based on schema + prompt
+    schema_fingerprint = compute_table_schema_fingerprint(column_names, column_types)
+
+    # For operations needing pivot values (column totals), include sample distinct values in cache key
+    # This ensures different pivot values produce different cached SQL
+    sample_values_for_key: Dict[str, List[str]] = {}
+    for col in df.columns:
+        if str(df[col].dtype) == 'object':
+            distinct = df[col].dropna().unique()
+            if len(distinct) <= 20:
+                sample_values_for_key[col] = sorted([str(v) for v in distinct])
+
+    if sample_values_for_key:
+        # Append sample values hash to schema fingerprint
+        values_str = str(sorted(sample_values_for_key.items()))
+        values_hash = hashlib.md5(values_str.encode()).hexdigest()[:8]
+        schema_fingerprint = f"{schema_fingerprint}_{values_hash}"
+
+    cache_key = make_table_fingerprint_cache_key(cascade_name, schema_fingerprint, prompt)
+
+    log.info(f"[pipeline] table_sql_execute: schema fingerprint = {schema_fingerprint[:12]}...")
+
+    # Check cache
+    if cache_enabled:
+        cache = get_cache()
+        found, cached_sql, _ = cache.get(cascade_name, {"__table_schema_key__": cache_key})
+
+        if found and cached_sql:
+            log.info(f"[pipeline] table_sql_execute: CACHE HIT - reusing generated SQL")
+            return _execute_table_sql(cached_sql, df, duckdb_conn)
+
+    log.info(f"[pipeline] table_sql_execute: CACHE MISS - generating SQL via LLM")
+
+    # Build schema-only inputs for cascade (no actual data!)
+    # This is the key insight: LLM only needs to know the shape
+    schema_inputs: Dict[str, Any] = {
+        "_table_schema": [
+            {"column": name, "type": dtype}
+            for name, dtype in zip(column_names, column_types)
+        ],
+        "_table_columns": column_names,
+        "_table_column_types": column_types,
+        "_table_row_count": len(df),  # For context, not data
+        "_input_table_name": "_input_table",  # The name to use in generated SQL
+    }
+
+    # For PIVOT operations, include sample distinct values from string columns
+    # This helps LLM generate column totals without guessing pivot values
+    sample_values: Dict[str, List[Any]] = {}
+    for col in df.columns:
+        if str(df[col].dtype) == 'object':  # String/categorical column
+            distinct = df[col].dropna().unique()
+            if len(distinct) <= 20:  # Only include if reasonable number of values
+                sample_values[col] = list(distinct)
+    if sample_values:
+        schema_inputs["_sample_distinct_values"] = sample_values
+
+    # Add user args
+    if stage.args and user_arg_names:
+        for i, arg_value in enumerate(stage.args):
+            if i < len(user_arg_names):
+                schema_inputs[user_arg_names[i]] = arg_value
+
+    # Generate and validate SQL with retry loop
+    generated_sql: Optional[str] = None
+    last_error: Optional[str] = None
+
+    for attempt in range(max_attempts):
+        # Add error context if this is a retry
+        if last_error:
+            schema_inputs["_last_sql_error"] = last_error
+            schema_inputs["_retry_attempt"] = attempt + 1
+            log.warning(f"[pipeline] table_sql_execute: Retry {attempt + 1}/{max_attempts}")
+            log.warning(f"[pipeline] table_sql_execute: Previous error: {last_error}")
+            log.info(f"[pipeline] table_sql_execute: Passing error context to cascade: _last_sql_error={last_error[:200]}")
+        else:
+            log.info(f"[pipeline] table_sql_execute: Attempt {attempt + 1}/{max_attempts} (no prior error)")
+
+        # Run cascade to generate SQL
+        session_id = f"{context.session_id}_table_sql_{context.stage_index}_attempt{attempt}"
+        runner = LARSRunner(
+            cascade_entry.cascade_path,
+            session_id=session_id,
+            caller_id=context.caller_id
+        )
+
+        log.info(f"[pipeline] table_sql_execute: Running cascade with inputs keys: {list(schema_inputs.keys())}")
+        result = runner.run(input_data=schema_inputs)
+        output = _extract_cascade_output(result)
+
+        # Extract SQL from output
+        if isinstance(output, dict):
+            generated_sql = output.get("sql") or output.get("query") or output.get("statement")
+        else:
+            generated_sql = str(output).strip()
+
+        if not generated_sql:
+            last_error = "Cascade returned no SQL"
+            continue
+
+        log.info(f"[pipeline] table_sql_execute: Generated SQL (attempt {attempt + 1}): {generated_sql[:100]}...")
+
+        # Validate the SQL
+        validation_error = _validate_sql_with_table(generated_sql, df)
+
+        if validation_error is None:
+            # SQL is valid!
+            log.info(f"[pipeline] table_sql_execute: SQL validated successfully")
+            break
+        else:
+            last_error = validation_error
+            log.warning(f"[pipeline] table_sql_execute: SQL validation failed: {validation_error[:100]}...")
+            generated_sql = None  # Clear for next attempt
+
+    if generated_sql is None:
+        raise ValueError(f"table_sql_execute: Failed to generate valid SQL after {max_attempts} attempts. Last error: {last_error}")
+
+    # Cache the validated SQL
+    if cache_enabled:
+        cache = get_cache()
+        cache.set(cascade_name, {"__table_schema_key__": cache_key}, generated_sql, "VARCHAR")
+        log.info(f"[pipeline] table_sql_execute: cached validated SQL for schema {schema_fingerprint[:12]}...")
+
+    # Execute the SQL against the actual DataFrame
+    return _execute_table_sql(generated_sql, df, duckdb_conn)
+
+
 # Threshold for switching from inline JSON to parquet file
 LARGE_TABLE_THRESHOLD = 1000
 
@@ -543,7 +852,30 @@ def execute_pipeline_stages(
             caller_id=caller_id,
         )
 
-        # Serialize DataFrame for cascade input
+        # Check for table_sql_execute mode (structural caching for table transforms)
+        output_mode = cascade_entry.sql_function.get("output_mode", "value")
+        if output_mode == "table_sql_execute":
+            try:
+                log.info(f"[pipeline] Stage {stage.name} using table_sql_execute mode")
+                current_df = _execute_table_sql_execute_stage(
+                    cascade_entry=cascade_entry,
+                    stage=stage,
+                    df=current_df,
+                    context=context,
+                    duckdb_conn=None,  # No DuckDB connection in simple execute_pipeline_stages
+                )
+                log.info(f"[pipeline] Stage {stage.name} completed: {len(current_df)} rows")
+                previous_stage = stage.name
+                continue
+
+            except Exception as e:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=e
+                )
+
+        # Serialize DataFrame for cascade input (default value mode)
         serialized = _serialize_dataframe(current_df, context)
 
         # Add stage arguments using the cascade's declared argument names
@@ -565,7 +897,7 @@ def execute_pipeline_stages(
                     # Fallback for extra args
                     cascade_inputs[f"arg{i}"] = arg_value
 
-        # Execute the cascade
+        # Execute the cascade (default value mode - passes full data)
         try:
             from ..runner import LARSRunner
             from .. import _register_all_skills
@@ -722,7 +1054,35 @@ def execute_pipeline_with_into(
             caller_id=caller_id,
         )
 
-        # Serialize DataFrame for cascade input
+        # Check for table_sql_execute mode (structural caching for table transforms)
+        output_mode = cascade_entry.sql_function.get("output_mode", "value")
+        if output_mode == "table_sql_execute":
+            try:
+                log.info(f"[pipeline] Stage {stage.name} using table_sql_execute mode")
+                current_df = _execute_table_sql_execute_stage(
+                    cascade_entry=cascade_entry,
+                    stage=stage,
+                    df=current_df,
+                    context=context,
+                    duckdb_conn=duckdb_conn,
+                )
+                log.info(f"[pipeline] Stage {stage.name} completed: {len(current_df)} rows")
+
+                # Save to per-stage INTO table if specified
+                if stage.into_table and duckdb_conn is not None:
+                    _save_to_table(duckdb_conn, current_df, stage.into_table)
+
+                previous_stage = stage.name
+                continue
+
+            except Exception as e:
+                raise PipelineExecutionError(
+                    stage_name=stage.name,
+                    stage_index=idx,
+                    inner_error=e
+                )
+
+        # Serialize DataFrame for cascade input (default value mode)
         serialized = _serialize_dataframe(current_df, context)
 
         # Add stage arguments using the cascade's declared argument names
@@ -739,7 +1099,7 @@ def execute_pipeline_with_into(
                 else:
                     cascade_inputs[f"arg{i}"] = arg_value
 
-        # Execute the cascade
+        # Execute the cascade (default value mode - passes full data)
         try:
             from ..runner import LARSRunner
             from .. import _register_all_skills

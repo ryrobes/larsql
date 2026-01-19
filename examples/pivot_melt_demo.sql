@@ -139,6 +139,33 @@ THEN PIVOT 'revenue by quarter for each product';
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- STRUCTURAL CACHING (built-in to PIVOT and MELT)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- PIVOT and MELT now use structural caching automatically:
+-- 1. LLM only sees table SCHEMA (column names + types), not actual data
+-- 2. LLM generates native DuckDB PIVOT/UNPIVOT SQL
+-- 3. SQL is cached by schema fingerprint + prompt
+-- 4. Same table shape + same prompt = instant cache hit!
+
+-- First run - LLM generates DuckDB PIVOT SQL
+SELECT * FROM sales_by_region
+THEN PIVOT 'revenue by region for each product';
+
+-- Second run with SAME schema + prompt - instant cache hit!
+SELECT * FROM sales_by_region
+THEN PIVOT 'revenue by region for each product';
+
+-- Different prompt = new SQL generated
+SELECT * FROM sales_by_region
+THEN PIVOT 'show regions as columns with revenue values';
+
+-- MELT also uses structural caching
+SELECT * FROM quarterly_sales
+THEN MELT 'convert quarterly revenue columns to rows';
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- CLEANUP (optional)
 -- ═══════════════════════════════════════════════════════════════════════════
 

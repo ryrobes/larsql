@@ -692,3 +692,190 @@ class TestEndToEndWithLLM:
         assert len(result_df) > 0
         # Should have more rows than original (melted)
         assert len(result_df) >= len(sample_data)
+
+
+class TestTableSchemaFingerprinting:
+    """Tests for the table schema fingerprinting system."""
+
+    def test_compute_table_schema_fingerprint(self):
+        """Test schema fingerprint computation."""
+        from lars.semantic_sql.fingerprint import compute_table_schema_fingerprint
+
+        # Same schema should produce same fingerprint
+        fp1 = compute_table_schema_fingerprint(
+            ["product", "region", "revenue"],
+            ["VARCHAR", "VARCHAR", "BIGINT"]
+        )
+        fp2 = compute_table_schema_fingerprint(
+            ["product", "region", "revenue"],
+            ["VARCHAR", "VARCHAR", "BIGINT"]
+        )
+        assert fp1 == fp2
+
+        # Different columns should produce different fingerprint
+        fp3 = compute_table_schema_fingerprint(
+            ["product", "category", "price"],
+            ["VARCHAR", "VARCHAR", "DOUBLE"]
+        )
+        assert fp1 != fp3
+
+    def test_type_normalization(self):
+        """Test that type aliases normalize to same fingerprint."""
+        from lars.semantic_sql.fingerprint import compute_table_schema_fingerprint
+
+        # INT and INTEGER should normalize to same
+        fp1 = compute_table_schema_fingerprint(["id"], ["INT"])
+        fp2 = compute_table_schema_fingerprint(["id"], ["INTEGER"])
+        assert fp1 == fp2
+
+        # VARCHAR and STRING should normalize to same
+        fp3 = compute_table_schema_fingerprint(["name"], ["VARCHAR"])
+        fp4 = compute_table_schema_fingerprint(["name"], ["STRING"])
+        assert fp3 == fp4
+
+    def test_make_table_fingerprint_cache_key(self):
+        """Test cache key generation from schema fingerprint."""
+        from lars.semantic_sql.fingerprint import (
+            compute_table_schema_fingerprint,
+            make_table_fingerprint_cache_key,
+        )
+
+        schema_fp = compute_table_schema_fingerprint(
+            ["product", "revenue"],
+            ["VARCHAR", "BIGINT"]
+        )
+
+        # Same prompt should produce same cache key
+        key1 = make_table_fingerprint_cache_key("PIVOT", schema_fp, "revenue by product")
+        key2 = make_table_fingerprint_cache_key("PIVOT", schema_fp, "revenue by product")
+        assert key1 == key2
+
+        # Different prompt should produce different cache key
+        key3 = make_table_fingerprint_cache_key("PIVOT", schema_fp, "different pivot")
+        assert key1 != key3
+
+
+class TestTableSqlExecuteMode:
+    """Tests for the table_sql_execute output mode."""
+
+    def test_get_dataframe_schema(self):
+        """Test extracting schema from DataFrame."""
+        from lars.sql_tools.pipeline_executor import _get_dataframe_schema
+
+        df = pd.DataFrame({
+            "name": ["Widget", "Gadget"],
+            "price": [9.99, 19.99],
+            "quantity": [100, 200],
+        })
+
+        column_names, column_types = _get_dataframe_schema(df)
+
+        assert column_names == ["name", "price", "quantity"]
+        assert "VARCHAR" in column_types  # name is object/string
+        assert "DOUBLE" in column_types or "FLOAT" in column_types  # price is float
+
+    def test_execute_table_sql(self):
+        """Test executing SQL against a DataFrame."""
+        from lars.sql_tools.pipeline_executor import _execute_table_sql
+
+        df = pd.DataFrame({
+            "product": ["Widget", "Gadget", "Gizmo"],
+            "price": [10.0, 20.0, 30.0],
+        })
+
+        result = _execute_table_sql(
+            "SELECT product, price * 2 as doubled FROM _input_table",
+            df
+        )
+
+        assert len(result) == 3
+        assert "doubled" in result.columns
+        assert result["doubled"].tolist() == [20.0, 40.0, 60.0]
+
+    def test_pivot_uses_table_sql_execute(self):
+        """PIVOT cascade should use table_sql_execute mode for structural caching."""
+        initialize_registry(force=True)
+
+        entry = get_pipeline_cascade("PIVOT")
+        assert entry is not None
+        assert entry.shape == "PIPELINE"
+        assert entry.sql_function.get("output_mode") == "table_sql_execute"
+        assert entry.sql_function.get("cache") == True
+
+    def test_melt_uses_table_sql_execute(self):
+        """MELT cascade should use table_sql_execute mode for structural caching."""
+        initialize_registry(force=True)
+
+        entry = get_pipeline_cascade("MELT")
+        assert entry is not None
+        assert entry.shape == "PIPELINE"
+        assert entry.sql_function.get("output_mode") == "table_sql_execute"
+        assert entry.sql_function.get("cache") == True
+
+
+@pytest.mark.requires_llm
+class TestTableSqlExecuteWithLLM:
+    """End-to-end tests for table_sql_execute mode with actual LLM calls."""
+
+    def test_pivot_generates_and_caches_sql(self):
+        """Test PIVOT generates SQL via LLM and uses structural caching."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        initialize_registry(force=True)
+
+        # Long-format sales data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Widget", "Gadget", "Gadget"],
+            "region": ["North", "South", "North", "South"],
+            "revenue": [100, 150, 200, 175],
+        })
+
+        stages = [PipelineStage(
+            name="PIVOT",
+            args=["revenue by region for each product"],
+            original_text="PIVOT"
+        )]
+
+        result_df = execute_pipeline_stages(
+            stages=stages,
+            initial_df=sample_data,
+            session_id="pivot-test",
+        )
+
+        # Should return pivoted data
+        assert result_df is not None
+        assert len(result_df) > 0
+        # Pivoted should have fewer rows (2 products instead of 4 rows)
+        assert len(result_df) <= len(sample_data)
+
+    def test_melt_generates_and_caches_sql(self):
+        """Test MELT generates SQL via LLM and uses structural caching."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        initialize_registry(force=True)
+
+        # Wide-format quarterly data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Gadget"],
+            "q1_sales": [100, 200],
+            "q2_sales": [150, 250],
+            "q3_sales": [120, 180],
+        })
+
+        stages = [PipelineStage(
+            name="MELT",
+            args=["convert quarterly sales columns to rows"],
+            original_text="MELT"
+        )]
+
+        result_df = execute_pipeline_stages(
+            stages=stages,
+            initial_df=sample_data,
+            session_id="melt-test",
+        )
+
+        # Should return melted data
+        assert result_df is not None
+        assert len(result_df) > 0
+        # Melted should have more rows (2 products × 3 quarters = 6)
+        assert len(result_df) >= len(sample_data)

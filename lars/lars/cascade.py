@@ -1173,7 +1173,8 @@ class SQLFunctionConfig(BaseModel):
     # - "sql_execute": Cascade returns SQL expression, which is executed to get a scalar value
     # - "sql_raw": Cascade returns SQL fragment, which is returned as-is (for debugging/composition)
     # - "sql_statement": Cascade returns full SQL statement, which is executed to get table results
-    output_mode: Literal["value", "sql_execute", "sql_raw", "sql_statement"] = "value"
+    # - "table_sql_execute": For PIPELINE shape - cascade receives schema, returns SQL to execute on table
+    output_mode: Literal["value", "sql_execute", "sql_raw", "sql_statement", "table_sql_execute"] = "value"
 
     # Cache key strategy - controls how cache keys are computed
     # Only used when cache=True
