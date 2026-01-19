@@ -1,0 +1,166 @@
+cascade_id: semantic_triples
+internal: true
+description: |
+  Extract knowledge graph triples (subject, predicate, object) from text.
+
+  Turns unstructured text into structured knowledge that can be queried,
+  joined, and aggregated using standard SQL. Each triple represents a
+  fact or relationship discovered in the text.
+
+  Perfect for:
+  - Building knowledge graphs from documents
+  - Extracting relationships from emails/communications
+  - Creating queryable facts from unstructured data
+  - Entity relationship mapping
+  - Information extraction at scale
+
+inputs_schema:
+  text: The text to extract triples from
+  focus: Optional focus for extraction (e.g., 'people', 'decisions', 'events')
+
+sql_function:
+  name: triples
+  description: Extract (subject, predicate, object) knowledge graph triples from text
+  args:
+    - name: text
+      type: VARCHAR
+    - name: focus
+      type: VARCHAR
+      optional: true
+      description: "Focus area: 'people', 'organizations', 'decisions', 'events', 'all'"
+  returns: JSON
+  shape: SCALAR
+  # Column definitions for auto-generated _rows macro (triples_rows)
+  # Enables: SELECT file, t.* FROM emails, LATERAL triples_rows(message) t
+  returns_columns:
+    - name: subject
+      type: VARCHAR
+    - name: predicate
+      type: VARCHAR
+    - name: object
+      type: VARCHAR
+  operators:
+    - 'TRIPLES({{ text }})'
+    - 'TRIPLES({{ text }}, ''{{ focus }}'')'
+    - '{{ text }} TRIPLES'
+    #- 'TRIPLES_ROWS({{ text }})' # placeholder for metrics (is really a macro that calls triples())
+  cache: true
+  test_cases:
+    - sql: SELECT triples('John Smith works at Acme Corp as a software engineer. He reports to Jane Doe.')
+      expect:
+        type: contains
+        value: works_at
+      description: "Extracts employment and reporting relationships"
+    - sql: SELECT triples('The meeting on Tuesday was cancelled. Bob will reschedule for next week.')
+      expect:
+        type: contains
+        value: cancelled
+      description: "Extracts event information"
+
+cells:
+  - name: extract_triples
+    #model: google/gemini-3-flash-preview
+    instructions: |
+      Extract knowledge graph triples from this text.
+
+      TEXT:
+      {{ input.text }}
+
+      {% if input.focus %}
+      FOCUS ON: {{ input.focus }} relationships
+      {% endif %}
+
+      A triple has three parts:
+      - **subject**: An entity (person, organization, document, event, concept)
+      - **predicate**: A relationship or property (verb-like, snake_case)
+      - **object**: Another entity or a value
+
+      Predicate Conventions (use these standard forms):
+
+      **People & Organizations**
+      - works_at, employed_by, member_of
+      - reports_to, manages, supervised_by
+      - founded, owns, leads, ceo_of
+      - colleague_of, collaborates_with
+
+      **Communication**
+      - sent_email_to, received_email_from
+      - mentioned, discussed, asked_about
+      - requested, approved, rejected
+      - informed, notified, copied_on
+
+      **Events & Time**
+      - scheduled_for, occurred_on, cancelled_on
+      - deadline_is, due_date_is
+      - started_on, ended_on, postponed_to
+
+      **Decisions & Actions**
+      - decided_to, agreed_to, committed_to
+      - proposed, recommended, suggested
+      - approved, rejected, pending
+      - assigned_to, delegated_to
+
+      **Documents & Data**
+      - authored, created, modified
+      - contains, references, attached_to
+      - version_of, supersedes
+
+      **Locations & Attributes**
+      - located_in, based_in, traveled_to
+      - has_role, has_title, has_status
+      - valued_at, costs, priced_at
+
+      Rules:
+      - Normalize entity names (e.g., "Phil" and "Phillip Allen" → "Phillip Allen")
+      - Use snake_case for predicates
+      - Extract 3-15 triples depending on text richness
+      - Include both explicit facts AND reasonable inferences
+      - For emails: extract sender, recipient, topic, any decisions/requests
+      - Omit trivial or uninformative triples
+
+      Example:
+
+      Text: "Hi John, Per our call yesterday, I've approved the Q3 budget of $500K.
+             Please coordinate with Sarah in Finance to set up the accounts.
+             The deadline is October 15th. - Mike"
+
+      Triples:
+      [
+        {"subject": "Mike", "predicate": "sent_email_to", "object": "John"},
+        {"subject": "Mike", "predicate": "approved", "object": "Q3 budget"},
+        {"subject": "Q3 budget", "predicate": "valued_at", "object": "$500K"},
+        {"subject": "John", "predicate": "assigned_to", "object": "account setup"},
+        {"subject": "John", "predicate": "should_coordinate_with", "object": "Sarah"},
+        {"subject": "Sarah", "predicate": "works_in", "object": "Finance"},
+        {"subject": "account setup", "predicate": "deadline_is", "object": "October 15th"},
+        {"subject": "Mike", "predicate": "had_call_with", "object": "John"},
+        {"subject": "call", "predicate": "occurred_on", "object": "yesterday"}
+      ]
+
+      Return a JSON array of triple objects. EXACTLY this format:
+      [{"subject": "X", "predicate": "Y", "object": "Z"}]
+
+      CRITICAL RULES:
+      - Each object MUST have exactly 3 keys: "subject", "predicate", "object"
+      - NO other keys allowed (not "movements", not "value", just those 3)
+      - Keep it SHORT: maximum 5-7 triples
+      - Return ONLY valid JSON array, no explanation, no markdown
+      - Do NOT truncate - complete the JSON array properly with ]
+
+      Example valid output:
+      [{"subject": "John", "predicate": "works_at", "object": "Acme"}, {"subject": "John", "predicate": "emailed", "object": "Jane"}]
+    
+    rules:
+      max_turns: 2
+      max_attempts: 3
+      loop_until: valid_json
+      retry_instructions: |
+        Your previous output was not valid JSON. The error was: {{ validation_error }}
+
+        Remember: Return ONLY a valid JSON array with this EXACT format:
+        [{"subject": "X", "predicate": "Y", "object": "Z"}, ...]
+
+        - No markdown code fences
+        - No explanation text
+        - Complete the array properly (don't truncate)
+        - Each object has exactly 3 keys: subject, predicate, object

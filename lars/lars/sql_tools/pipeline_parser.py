@@ -176,20 +176,41 @@ def _tokenize(sql: str) -> List[_Token]:
 
 def has_pipeline_syntax(sql: str) -> bool:
     """
-    Quick check for THEN keyword at statement level.
+    Quick check for THEN keyword at statement level (not inside CASE expressions).
 
     Used as a fast-path to avoid full parsing when no pipeline syntax is present.
     Returns True if the query might have pipeline syntax (needs full parse).
+
+    IMPORTANT: Must distinguish between:
+    - LARS pipeline: SELECT * FROM t THEN DEDUPE INTO result
+    - SQL CASE: SELECT CASE WHEN x THEN y ELSE z END FROM t
+
+    In CASE expressions, THEN always follows WHEN (possibly with expressions between).
+    In LARS pipelines, THEN follows a complete statement or closing paren.
     """
     # Quick regex check first
     if not re.search(r'\bTHEN\b', sql, re.IGNORECASE):
         return False
 
-    # Tokenize to confirm THEN is at statement level (not in string/comment)
+    # Tokenize to confirm THEN is at statement level and not part of CASE..WHEN..THEN
     tokens = _tokenize(sql)
-    for tok in tokens:
-        if tok.typ == "ident" and tok.text.upper() == "THEN":
-            return True
+
+    # Track CASE/WHEN depth to identify CASE expression THEN vs pipeline THEN
+    case_depth = 0
+
+    for i, tok in enumerate(tokens):
+        if tok.typ == "ident":
+            upper = tok.text.upper()
+            if upper == "CASE":
+                case_depth += 1
+            elif upper == "END" and case_depth > 0:
+                case_depth -= 1
+            elif upper == "THEN":
+                # THEN inside a CASE expression is SQL, not pipeline
+                if case_depth > 0:
+                    continue
+                # THEN outside CASE is pipeline syntax
+                return True
 
     return False
 

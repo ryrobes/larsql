@@ -71,6 +71,15 @@ class SQLFunctionEntry:
         return self.sql_function.get("operators", [])
 
     @property
+    def returns_columns(self) -> List[Dict[str, str]]:
+        """Get column definitions for TABLE-shaped functions.
+
+        Returns list of {"name": "col_name", "type": "VARCHAR"} dicts.
+        When present, auto-generates a _rows() macro for unnesting.
+        """
+        return self.sql_function.get("returns_columns", [])
+
+    @property
     def cache_enabled(self) -> bool:
         """Check if caching is enabled."""
         return self.sql_function.get("cache", True)

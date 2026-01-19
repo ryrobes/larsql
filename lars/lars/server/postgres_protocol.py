@@ -862,12 +862,17 @@ def send_startup_response(sock):
     sock.sendall(AuthenticationOk.encode())
 
     # 2. Parameter status messages (tell client about server config)
+    # These parameters are expected by JDBC drivers and tools like DataGrip
     sock.sendall(ParameterStatus.encode('client_encoding', 'UTF8'))
     sock.sendall(ParameterStatus.encode('server_encoding', 'UTF8'))
     sock.sendall(ParameterStatus.encode('server_version', '14.0'))
     sock.sendall(ParameterStatus.encode('DateStyle', 'ISO, MDY'))
     sock.sendall(ParameterStatus.encode('TimeZone', 'UTC'))
     sock.sendall(ParameterStatus.encode('integer_datetimes', 'on'))
+    sock.sendall(ParameterStatus.encode('standard_conforming_strings', 'on'))
+    sock.sendall(ParameterStatus.encode('IntervalStyle', 'postgres'))
+    sock.sendall(ParameterStatus.encode('is_superuser', 'on'))
+    sock.sendall(ParameterStatus.encode('session_authorization', 'lars'))
 
     # 3. Backend key data (fake values for v1 - not implementing cancel yet)
     import os

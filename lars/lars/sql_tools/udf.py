@@ -2634,6 +2634,54 @@ def register_dynamic_sql_functions(connection, existing: set | None = None):
                 existing_names.add(str(name).lower())
                 registered_count += 1
 
+                # Create companion _rows macro for TABLE-shaped functions with returns_columns
+                # This enables: SELECT file, t.* FROM emails, LATERAL triples_rows(message) t
+                if entry.returns_columns:
+                    try:
+                        rows_macro_name = f"{name}_rows"
+                        if rows_macro_name.lower() not in existing_names:
+                            # Build STRUCT type definition for from_json
+                            # e.g., STRUCT(subject VARCHAR, predicate VARCHAR, object VARCHAR)
+                            struct_fields = ", ".join(
+                                f'{col["name"]} {col.get("type", "VARCHAR")}'
+                                for col in entry.returns_columns
+                            )
+                            struct_type = f'STRUCT({struct_fields})'
+
+                            # Build column select list: _s.col1 AS col1, _s.col2 AS col2, ...
+                            col_selects = ", ".join(
+                                f'_s.{col["name"]} AS {col["name"]}'
+                                for col in entry.returns_columns
+                            )
+
+                            # Use only required args for the macro
+                            # DuckDB doesn't support macro overloading, so we just create one version
+                            # Users can use the raw function with optional args if needed
+                            required_args = [a for a in entry.args if not a.get('optional', False)]
+                            req_arg_names = [a['name'] for a in required_args]
+                            req_macro_args = ', '.join(req_arg_names)
+
+                            macro_sql = f'''
+                                CREATE OR REPLACE MACRO {rows_macro_name}({req_macro_args}) AS TABLE
+                                SELECT {col_selects}
+                                FROM (
+                                    SELECT unnest(
+                                        from_json(
+                                            {name}({req_macro_args})::JSON,
+                                            '["{struct_type}"]'
+                                        )
+                                    ) AS _s
+                                )
+                            '''
+                            connection.execute(macro_sql)
+                            existing_names.add(rows_macro_name.lower())
+                            registered_count += 1
+                            print(f"[DynamicUDF] Created _rows macro: {rows_macro_name}({req_macro_args})")
+
+                    except Exception as macro_err:
+                        import logging
+                        logging.getLogger(__name__).debug(f"[DynamicUDF] Could not create _rows macro for {name}: {macro_err}")
+
                 # ALSO register without "semantic_" prefix for SQL convenience
                 if name.startswith('semantic_'):
                     short_name = name.replace('semantic_', '')

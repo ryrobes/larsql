@@ -223,16 +223,19 @@ def bind_sql_parameters(
 
 def execute_sql_fragment(
     sql_fragment: str,
-    return_type: str = "VARCHAR"
+    return_type: str = "VARCHAR",
+    max_retries: int = 2
 ) -> Any:
     """
     Execute a SQL fragment and return the result.
 
     Wraps the fragment in SELECT if needed and executes via DuckDB.
+    Uses isolated connections to avoid race conditions in parallel execution.
 
     Args:
         sql_fragment: The SQL expression to execute
         return_type: Expected return type for casting
+        max_retries: Number of retries on transient connection errors
 
     Returns:
         The query result
@@ -251,60 +254,94 @@ def execute_sql_fragment(
 
     log.debug(f"[sql_macro] Executing: {sql[:200]}...")
 
-    try:
-        result = duckdb.sql(sql).fetchone()
-        if result is None:
-            return None
+    last_error = None
+    for attempt in range(max_retries + 1):
+        conn = None
+        try:
+            # Use isolated in-memory connection for thread safety
+            # This avoids "closed pending query result" errors from parallel execution
+            conn = duckdb.connect(":memory:")
+            result = conn.execute(sql).fetchone()
 
-        value = result[0]
+            if result is None:
+                return None
 
-        # Type conversion based on return_type
-        return_type = return_type.upper()
+            value = result[0]
 
-        if return_type == "BOOLEAN":
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return value.lower() in ("true", "yes", "1")
-            return bool(value)
+            # Type conversion based on return_type
+            rt = return_type.upper()
 
-        if return_type in ("DOUBLE", "FLOAT"):
-            if value is None:
-                return 0.0
-            return float(value)
-
-        if return_type in ("INTEGER", "INT", "BIGINT"):
-            if value is None:
-                return 0
-            return int(value)
-
-        if return_type == "JSON":
-            # For JSON return type, always return a proper JSON string
-            # DuckDB's json_object() returns a Python dict via the Python bindings
-            # We need to serialize it as valid JSON for ->> operator compatibility
-            if isinstance(value, (dict, list)):
-                return json.dumps(value)
-            if isinstance(value, str):
-                # Already a string - validate it's proper JSON
-                try:
-                    parsed = json.loads(value)
-                    # Re-serialize to ensure proper JSON format
-                    return json.dumps(parsed)
-                except json.JSONDecodeError:
-                    # Not valid JSON, return as-is
+            if rt == "BOOLEAN":
+                if isinstance(value, bool):
                     return value
-            # Other types - try to serialize
-            return json.dumps(value, default=str)
+                if isinstance(value, str):
+                    return value.lower() in ("true", "yes", "1")
+                return bool(value)
 
-        # VARCHAR or other - return as string
-        if value is None:
-            return None
-        return str(value)
+            if rt in ("DOUBLE", "FLOAT"):
+                if value is None:
+                    return 0.0
+                return float(value)
 
-    except Exception as e:
-        log.error(f"[sql_macro] Execution failed: {e}")
-        log.error(f"[sql_macro] SQL was: {sql}")
-        raise
+            if rt in ("INTEGER", "INT", "BIGINT"):
+                if value is None:
+                    return 0
+                return int(value)
+
+            if rt == "JSON":
+                # For JSON return type, always return a proper JSON string
+                # DuckDB's json_object() returns a Python dict via the Python bindings
+                # We need to serialize it as valid JSON for ->> operator compatibility
+                if isinstance(value, (dict, list)):
+                    return json.dumps(value)
+                if isinstance(value, str):
+                    # Already a string - validate it's proper JSON
+                    try:
+                        parsed = json.loads(value)
+                        # Re-serialize to ensure proper JSON format
+                        return json.dumps(parsed)
+                    except json.JSONDecodeError:
+                        # Not valid JSON, return as-is
+                        return value
+                # Other types - try to serialize
+                return json.dumps(value, default=str)
+
+            # VARCHAR or other - return as string
+            if value is None:
+                return None
+            return str(value)
+
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+
+            # Retry on transient connection/result errors
+            if any(msg in error_str for msg in [
+                "closed pending query",
+                "unsuccessful or closed",
+                "connection",
+                "result closed"
+            ]):
+                if attempt < max_retries:
+                    log.warning(f"[sql_macro] Transient error on attempt {attempt + 1}, retrying: {e}")
+                    continue
+
+            # Non-transient error or out of retries
+            log.error(f"[sql_macro] Execution failed: {e}")
+            log.error(f"[sql_macro] SQL was: {sql}")
+            raise
+        finally:
+            # Always close the connection
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # Should not reach here, but just in case
+    if last_error:
+        raise last_error
+    return None
 
 
 # SQL safety patterns - dangerous operations that should be blocked

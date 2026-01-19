@@ -1,0 +1,159 @@
+cascade_id: semantic_timeline
+internal: true
+description: |
+  Extract temporal events from text and order them chronologically.
+
+  Turns unstructured narratives, emails, logs, or documents into
+  ordered sequences of events with timestamps (absolute or relative).
+
+  Perfect for:
+  - Reconstructing sequences of events from emails/documents
+  - Log analysis and incident timelines
+  - Project history extraction
+  - Legal discovery (what happened when?)
+  - Meeting notes → action item timelines
+
+inputs_schema:
+  text: The text to extract timeline from
+  reference_date: Optional reference date for relative times (e.g., "2001-05-14")
+
+sql_function:
+  name: timeline
+  description: Extract chronologically ordered events from text
+  args:
+    - name: text
+      type: VARCHAR
+    - name: reference_date
+      type: VARCHAR
+      optional: true
+      description: "Reference date for resolving relative times (e.g., 'yesterday')"
+  returns: JSON
+  shape: SCALAR
+  operators:
+    - 'TIMELINE({{ text }})'
+    - 'TIMELINE({{ text }}, ''{{ reference_date }}'')'
+    - '{{ text }} TIMELINE'
+  cache: true
+  test_cases:
+    - sql: SELECT timeline('We met on Monday to discuss the proposal. By Wednesday, the contract was signed. The project launched the following week.')
+      expect:
+        type: contains
+        value: Monday
+      description: "Extracts ordered events with relative dates"
+    - sql: SELECT timeline('The server crashed at 3:15 PM. We identified the issue at 3:45 PM and deployed a fix at 4:30 PM.')
+      expect:
+        type: contains
+        value: "3:15"
+      description: "Extracts precise timestamps"
+
+cells:
+  - name: extract_timeline
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Extract a chronological timeline of events from this text.
+
+      TEXT:
+      {{ input.text }}
+
+      {% if input.reference_date %}
+      REFERENCE DATE: {{ input.reference_date }}
+      Use this to resolve relative dates like "yesterday", "last week", "tomorrow".
+      {% endif %}
+
+      For each event, extract:
+      - **timestamp**: When it happened (ISO format if possible, otherwise relative)
+      - **event**: What happened (concise description)
+      - **actors**: Who was involved (array of names/entities)
+      - **type**: Category of event
+
+      Event Types:
+      - `communication`: Email sent, call made, meeting held
+      - `decision`: Approval, rejection, agreement
+      - `action`: Task completed, document created, code deployed
+      - `milestone`: Project phase, deadline, launch
+      - `incident`: Error, failure, problem discovered
+      - `change`: Status change, update, modification
+      - `plan`: Scheduled event, proposed action, future intent
+
+      Timestamp Formats (in order of preference):
+      1. ISO 8601: "2001-05-14T15:30:00"
+      2. Date only: "2001-05-14"
+      3. Relative resolved: "2001-05-13" (if reference_date provided and text says "yesterday")
+      4. Relative unresolved: "yesterday", "last week", "Q3 2001"
+      5. Sequence only: "before:contract_signed", "after:meeting"
+
+      Rules:
+      - Order events chronologically (earliest first)
+      - Include sequence markers for relative ordering when timestamps unclear
+      - Extract implicit events (e.g., "after the meeting" implies a meeting happened)
+      - For emails: the email date is context for relative times
+      - Merge duplicate events, keep most detailed description
+      - Distinguish between past events, current state, and future plans
+
+      Example:
+
+      Text: "Per our call yesterday, I've approved the Q3 budget.
+             Please set up the accounts by October 15th.
+             The board will review in November."
+      Reference date: 2001-05-14
+
+      Timeline:
+      [
+        {
+          "timestamp": "2001-05-13",
+          "event": "Phone call held to discuss Q3 budget",
+          "actors": ["sender", "recipient"],
+          "type": "communication",
+          "sequence": 1
+        },
+        {
+          "timestamp": "2001-05-14",
+          "event": "Q3 budget approved",
+          "actors": ["sender"],
+          "type": "decision",
+          "sequence": 2
+        },
+        {
+          "timestamp": "2001-10-15",
+          "event": "Account setup deadline",
+          "actors": ["recipient"],
+          "type": "milestone",
+          "sequence": 3
+        },
+        {
+          "timestamp": "2001-11",
+          "event": "Board review scheduled",
+          "actors": ["board"],
+          "type": "plan",
+          "sequence": 4
+        }
+      ]
+
+      Return a JSON array ordered chronologically:
+      [{"timestamp": "...", "event": "...", "actors": [...], "type": "...", "sequence": N}, ...]
+
+      Return ONLY the JSON array, no explanation or markdown.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          timestamp:
+            type: string
+          event:
+            type: string
+          actors:
+            type: array
+            items:
+              type: string
+          type:
+            type: string
+          sequence:
+            type: integer
+        required:
+          - timestamp
+          - event
+          - type
+          - sequence

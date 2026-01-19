@@ -89,6 +89,7 @@ def _register_all_skills():
     from .skills.skill_executor import skill_executor, list_available_skills
     from .skills.cascade_validator import validate_cascade_overrides
     from .skills.bi_tools import find_understanding, save_understanding
+    from .skills.valid_json import valid_json, valid_json_array
 
     # Core tools
     register_skill("smart_sql_run", run_sql)

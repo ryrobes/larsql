@@ -177,7 +177,7 @@ class ClientConnection:
                 self._lazy_attach = None
 
             # Minimal setup complete - client can now receive response
-            print(f"[{self.session_id}]   ⚡ Minimal setup complete (responding to client)")
+            print(f"[{self.session_id}]   ⚡ Minimal setup complete")
 
         except Exception as e:
             print(f"[{self.session_id}] ✗ Error in minimal session setup: {e}")
@@ -185,10 +185,12 @@ class ClientConnection:
 
     def setup_session_deferred(self):
         """
-        DEFERRED session setup - heavy operations after client got response.
+        Heavy session setup - auto-attach, metadata tables, views, etc.
 
-        Called AFTER sending startup response so client doesn't timeout.
-        This includes auto-attach, metadata tables, views, etc.
+        Called after minimal setup but BEFORE sending startup response.
+        This ensures the session is fully ready before the client can send queries.
+        (Previously this ran after startup response, but aggressive clients like
+        DataGrip would send queries immediately and timeout waiting for responses.)
 
         For persistent databases, this only runs ONCE per database (tracked at server level).
         Subsequent connections to the same database skip this since the state is already
@@ -217,7 +219,7 @@ class ClientConnection:
                 # Non-fatal - BI tables may not exist yet
                 pass
 
-            # Auto-attach all configured connections (SLOW - but client already got response)
+            # Auto-attach all configured connections (can be slow but must complete before client queries)
             from ..sql_tools.lazy_attach import _auto_attach_all_enabled
             if self._lazy_attach and _auto_attach_all_enabled():
                 try:
@@ -1914,15 +1916,18 @@ class ClientConnection:
                         if v is None:
                             return 'NULL'
                         elif isinstance(v, str):
-                            return "'" + v.replace("\\", "\\\\").replace("'", "''") + "'"
+                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            return "'" + v.replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
                         elif isinstance(v, bool):
                             return '1' if v else '0'
                         elif isinstance(v, (int, float)):
                             return str(v)
                         elif isinstance(v, (dict, list)):
-                            return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''") + "'"
+                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            return "'" + json.dumps(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
                         else:
-                            return "'" + str(v).replace("\\", "\\\\").replace("'", "''") + "'"
+                            # Escape: backslash, single quote, and % (ClickHouse driver uses %-formatting)
+                            return "'" + str(v).replace("\\", "\\\\").replace("'", "''").replace("%", "%%") + "'"
 
                     # Insert in batches of 1000
                     batch_size = 1000
@@ -6923,6 +6928,7 @@ class ClientConnection:
             }
 
             # Send ParseComplete
+            print(f"[{self.session_id}] >> SEND ParseComplete")
             self.sock.sendall(ParseComplete.encode())
             styled_print(f"[{self.session_id}]      {S.OK} Statement prepared ({len(param_types)} parameters)")
 
@@ -7028,6 +7034,7 @@ class ClientConnection:
             }
 
             # Send BindComplete
+            print(f"[{self.session_id}] >> SEND BindComplete")
             self.sock.sendall(BindComplete.encode())
             styled_print(f"[{self.session_id}]      {S.OK} Parameters bound ({len(params)} values)")
 
@@ -7056,9 +7063,15 @@ class ClientConnection:
                 stmt = self.prepared_statements[name]
 
                 # Send ParameterDescription
+                print(f"[{self.session_id}] >> SEND ParameterDescription ({len(stmt['param_types'])} params)")
                 self.sock.sendall(ParameterDescription.encode(stmt['param_types']))
 
-                # Send NoData (we don't know columns without executing)
+                # Send NoData for Describe Statement
+                # Per PostgreSQL protocol, NoData is valid here - it tells the client
+                # that column info will be available after Bind (via Describe Portal).
+                # This is the safest approach since we can't reliably determine columns
+                # without actually executing the query with bound parameters.
+                print(f"[{self.session_id}] >> SEND NoData")
                 self.sock.sendall(NoData.encode())
 
                 styled_print(f"[{self.session_id}]      {S.OK} Statement described ({len(stmt['param_types'])} parameters)")
@@ -9080,15 +9093,15 @@ class ClientConnection:
             # Step 2: Handle startup (sets session_id based on database name)
             self.handle_startup(startup['params'])
 
-            # Step 3: Setup MINIMAL DuckDB session (fast - just connection + core UDFs)
+            # Step 3: Setup DuckDB session with LARS UDFs
+            # NOTE: We do ALL setup before sending startup response to avoid race conditions.
+            # DataGrip and other aggressive clients send queries immediately after startup,
+            # so deferred setup causes broken pipe errors if it takes too long.
             self.setup_session_minimal()
-
-            # Step 4: Send startup response QUICKLY (client is waiting!)
-            # Heavy setup (auto-attach, views, etc.) happens on first query
-            send_startup_response(self.sock)
-
-            # Step 4b: Now do deferred heavy setup (client already got response)
             self.setup_session_deferred()
+
+            # Step 4: Send startup response (session is now fully ready)
+            send_startup_response(self.sock)
 
             # Step 5: Message loop
             while self.running:
@@ -9118,20 +9131,24 @@ class ClientConnection:
                     print(f"[{self.session_id}] Client requested termination")
                     break
 
-                # Extended Query Protocol (NEW!)
+                # Extended Query Protocol
                 elif msg_type == MessageType.PARSE:
+                    print(f"[{self.session_id}] << RECV Parse ({len(payload)} bytes)")
                     msg = ParseMessage.decode(payload)
                     self._handle_parse(msg)
 
                 elif msg_type == MessageType.BIND:
+                    print(f"[{self.session_id}] << RECV Bind ({len(payload)} bytes)")
                     msg = BindMessage.decode(payload)
                     self._handle_bind(msg)
 
                 elif msg_type == MessageType.DESCRIBE:
+                    print(f"[{self.session_id}] << RECV Describe ({len(payload)} bytes)")
                     msg = DescribeMessage.decode(payload)
                     self._handle_describe(msg)
 
                 elif msg_type == MessageType.EXECUTE:
+                    print(f"[{self.session_id}] << RECV Execute ({len(payload)} bytes)")
                     msg = ExecuteMessage.decode(payload)
                     self._handle_execute(msg)
 
@@ -9141,6 +9158,12 @@ class ClientConnection:
 
                 elif msg_type == MessageType.SYNC:
                     self._handle_sync()
+
+                elif msg_type == MessageType.FLUSH:
+                    # Flush tells server to send all pending responses immediately.
+                    # Since we respond synchronously (not buffered), this is a no-op.
+                    # DataGrip sends FLUSH between Parse/Bind to ensure responses arrive.
+                    pass
 
                 else:
                     # Unknown message type
@@ -9412,6 +9435,11 @@ class LARSPostgresServer:
                     # Accept new connection (with timeout)
                     client_sock, addr = sock.accept()
                     self.client_count += 1
+
+                    # Set TCP_NODELAY to disable Nagle algorithm
+                    # This ensures responses are sent immediately without buffering
+                    # Critical for DataGrip and other clients that expect fast responses
+                    client_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
                     # Check connection limit
                     with self._connections_lock:

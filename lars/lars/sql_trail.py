@@ -169,6 +169,15 @@ def _get_dynamic_udf_names(force: bool = False) -> Set[str]:
             if fn_lower.startswith('semantic_'):
                 names.add(fn_lower.replace('semantic_', '', 1))
 
+            # Add {fn}_rows macro for functions with returns_columns (TABLE shape)
+            # e.g., triples -> triples_rows
+            if getattr(entry, "returns_columns", None):
+                names.add(f"{fn_lower}_rows")
+                # Also add short form if applicable
+                if fn_lower.startswith('semantic_'):
+                    short = fn_lower.replace('semantic_', '', 1)
+                    names.add(f"{short}_rows")
+
             # Add any function-style aliases present in operator patterns (e.g., TLDR(...))
             for op in getattr(entry, "operators", []) or []:
                 m = re.match(r'^([A-Z_]+)\s*\(', str(op))
@@ -187,16 +196,32 @@ def _expand_semantic_aliases(udf_types: List[str]) -> List[str]:
     If a query uses a short semantic_* alias (e.g., aligns(...)), also include
     the canonical semantic_* name (semantic_aligns) so query_type classification
     and reporting stay consistent.
+
+    Also handles _rows macros - maps triples_rows back to triples for reporting.
     """
     expanded = set(udf_types)
     try:
         from .semantic_sql.registry import get_sql_function_registry
-        for fn_name in get_sql_function_registry().keys():
+        registry = get_sql_function_registry()
+        for fn_name, entry in registry.items():
             fn_lower = str(fn_name).lower()
             if fn_lower.startswith('semantic_'):
                 short = fn_lower.replace('semantic_', '', 1)
                 if short in expanded:
                     expanded.add(fn_lower)
+
+            # Map {fn}_rows back to parent function
+            # e.g., triples_rows -> triples (so it groups with triples queries)
+            if getattr(entry, "returns_columns", None):
+                rows_name = f"{fn_lower}_rows"
+                if rows_name in expanded:
+                    expanded.add(fn_lower)
+                # Also handle short form: aligns_rows -> semantic_aligns
+                if fn_lower.startswith('semantic_'):
+                    short = fn_lower.replace('semantic_', '', 1)
+                    short_rows = f"{short}_rows"
+                    if short_rows in expanded:
+                        expanded.add(fn_lower)
     except Exception:
         pass
 

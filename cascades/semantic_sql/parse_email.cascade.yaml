@@ -1,0 +1,99 @@
+cascade_id: parse_email
+internal: true
+description: |
+  Parse raw email text into structured fields.
+
+  Uses structural caching - analyzes the email format once, generates
+  extraction SQL, then reuses for all emails with the same structure.
+
+  Extracts: from, to, cc, date, subject, body, and any custom headers.
+
+sql_function:
+  name: parse_email
+  description: Parse raw email into structured JSON (from, to, date, subject, body)
+  args:
+    - name: raw_email
+      type: VARCHAR
+      description: Raw email text with headers
+      structure_source: true
+    - name: fields
+      type: VARCHAR
+      optional: true
+      default: "'from,to,date,subject,body'"
+      description: "Comma-separated fields to extract (default: all standard fields)"
+  returns: JSON
+  shape: SCALAR
+  output_mode: sql_execute
+  cache_key:
+    strategy: structure
+    structure_args:
+      - raw_email
+    structure_config:
+      method: fingerprint
+      sample_size: 500  # Just look at first 500 chars for structure
+  operators:
+    - 'PARSE_EMAIL({{ raw_email }})'
+    - 'PARSE_EMAIL({{ raw_email }}, ''{{ fields }}'')'
+  cache: true
+  test_cases:
+    - sql: |
+        SELECT parse_email('From: john@example.com
+        To: jane@example.com
+        Subject: Hello
+
+        This is the body.')
+      expect:
+        type: contains
+        value: john
+      description: "Extracts email fields"
+
+cells:
+  - name: generate_parser
+    #model: google/gemini-3-flash-preview
+    model: x-ai/grok-4
+    rules:
+      max_turns: 1
+    instructions: |
+      Generate a DuckDB SQL expression to parse this email into a JSON object.
+
+      ## Email Structure Sample:
+      ```
+      {{ input.raw_email }}
+      ```
+
+      ## Fields to Extract:
+      {{ input.fields | default('from,to,cc,date,subject,body') }}
+
+      ## Rules:
+      - Use `:data` as the placeholder for the raw email text
+      - Return a JSON object with the requested fields
+      - Use regexp_extract() for header fields
+      - The body is everything after the first blank line (double newline)
+      - Handle missing fields gracefully (return null, not error)
+      - Clean up extracted values (trim whitespace)
+
+      ## Standard Email Header Patterns:
+      - From: `regexp_extract(:data, 'From:\s*([^\n]+)', 1)`
+      - To: `regexp_extract(:data, 'To:\s*([^\n]+)', 1)`
+      - Cc: `regexp_extract(:data, 'Cc:\s*([^\n]+)', 1)` or `X-cc:`
+      - Date: `regexp_extract(:data, 'Date:\s*([^\n]+)', 1)`
+      - Subject: `regexp_extract(:data, 'Subject:\s*([^\n]+)', 1)`
+      - Body: `regexp_extract(:data, '\n\n(.*)$', 1)` (everything after headers)
+      - X-From: `regexp_extract(:data, 'X-From:\s*([^\n]+)', 1)` (display name)
+      - X-To: `regexp_extract(:data, 'X-To:\s*([^\n]+)', 1)` (display name)
+
+      ## Output Format:
+      Return a SQL expression that produces a JSON object. Use json_object() or construct JSON directly.
+
+      Example output:
+      ```sql
+      json_object(
+        'from', trim(regexp_extract(:data, 'From:\s*([^\n]+)', 1)),
+        'to', trim(regexp_extract(:data, 'To:\s*([^\n]+)', 1)),
+        'date', trim(regexp_extract(:data, 'Date:\s*([^\n]+)', 1)),
+        'subject', trim(regexp_extract(:data, 'Subject:\s*([^\n]+)', 1)),
+        'body', trim(regexp_extract(:data, '\n\n([\s\S]*)$', 1))
+      )
+      ```
+
+      Return ONLY the SQL expression. No explanation, no markdown code fences.

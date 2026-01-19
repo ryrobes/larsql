@@ -1,0 +1,111 @@
+cascade_id: semantic_timeline_agg
+internal: true
+description: |
+  Merge multiple timelines into a unified chronological sequence.
+
+  Takes timelines extracted from multiple documents (emails, logs, reports)
+  and synthesizes them into a single coherent narrative, resolving
+  conflicts and filling gaps.
+
+  Perfect for:
+  - Reconstructing events from email threads
+  - Merging incident reports from multiple sources
+  - Building case timelines from scattered documents
+  - Cross-referencing witness statements
+
+inputs_schema:
+  timelines: Array of timeline JSON arrays to merge
+
+sql_function:
+  name: merge_timelines
+  description: Merge multiple timelines into unified chronological sequence
+  args:
+    - name: timelines
+      type: JSON
+      description: "Array of timeline arrays to merge"
+  returns: JSON
+  shape: AGGREGATE
+  context_arg: timelines
+  operators:
+    - 'MERGE_TIMELINES({{ timelines }})'
+  cache: true
+  test_cases:
+    - sql: |
+        SELECT merge_timelines('[
+          [{"timestamp": "2001-05-14", "event": "Meeting held", "type": "communication", "sequence": 1}],
+          [{"timestamp": "2001-05-15", "event": "Contract signed", "type": "decision", "sequence": 1}]
+        ]')
+      expect:
+        type: contains
+        value: Meeting
+      description: "Merges two simple timelines"
+
+cells:
+  - name: merge_timelines
+    model: google/gemini-3-flash-preview
+    instructions: |
+      Merge these timelines from multiple sources into one unified chronological sequence.
+
+      TIMELINES TO MERGE:
+      {{ input.timelines }}
+
+      Your task:
+      1. **Deduplicate**: Same event from multiple sources → single entry
+      2. **Order**: Sort all events chronologically
+      3. **Resolve conflicts**: If sources disagree on timing, note uncertainty
+      4. **Fill gaps**: Infer connecting events if obvious
+      5. **Attribute sources**: Note when multiple sources confirm an event
+
+      For each merged event:
+      - timestamp: Best estimate of when
+      - event: Most complete description
+      - actors: Union of all actors mentioned
+      - type: Event category
+      - sequence: Order in merged timeline (1, 2, 3...)
+      - confidence: "confirmed" (multiple sources), "single_source", or "inferred"
+      - sources: How many original timelines mentioned this
+
+      Rules:
+      - Prefer specific timestamps over relative ones
+      - When timestamps conflict, prefer the most specific
+      - "confirmed" = 2+ sources agree
+      - Keep the most detailed event description
+      - Preserve all actors mentioned across sources
+
+      Return a JSON array:
+      [
+        {
+          "timestamp": "...",
+          "event": "...",
+          "actors": [...],
+          "type": "...",
+          "sequence": N,
+          "confidence": "confirmed|single_source|inferred",
+          "sources": N
+        }
+      ]
+
+      Return ONLY the JSON array, no explanation or markdown.
+    rules:
+      max_turns: 1
+    output_schema:
+      type: array
+      items:
+        type: object
+        properties:
+          timestamp:
+            type: string
+          event:
+            type: string
+          actors:
+            type: array
+            items:
+              type: string
+          type:
+            type: string
+          sequence:
+            type: integer
+          confidence:
+            type: string
+          sources:
+            type: integer
