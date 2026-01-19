@@ -25,7 +25,7 @@ inputs_schema:
 
 cells:
   - name: evaluate_schemas
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
     instructions: |
       You are a SQL schema analyst. Your job is to evaluate schema search results and
       determine which tables are ACTUALLY useful for the task at hand.

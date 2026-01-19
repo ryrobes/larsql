@@ -42,7 +42,7 @@ sql_function:
     description: Picks best non-null value, skipping fake emails
 cells:
 - name: smart_coalesce
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: 'Pick the best non-null value from this group.
 
 

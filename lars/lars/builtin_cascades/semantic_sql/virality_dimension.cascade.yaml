@@ -42,7 +42,7 @@ sql_function:
     description: Virality potential assessed
 cells:
 - name: assess_virality
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Assess the VIRAL POTENTIAL of these {{ input.texts | length }} social\
     \ media posts.\n\n{% if input.mechanism %}\nFOCUS ON VIRAL MECHANISM: {{ input.mechanism\
     \ }}\n{% if input.mechanism == 'humor' %}\nLook for: jokes, wit, comedic timing,\

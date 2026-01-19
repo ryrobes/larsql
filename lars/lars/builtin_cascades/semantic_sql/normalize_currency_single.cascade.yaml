@@ -38,7 +38,7 @@ sql_function:
     description: Currency converted
 cells:
 - name: normalize_currency
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Normalize this currency value to {{ input.target_currency | default('USD')\
     \ }}.\n\nVALUE: {{ input.value }}\nTARGET CURRENCY: {{ input.target_currency |\
     \ default('USD') }}\n{% if input.reference_date %}REFERENCE DATE: {{ input.reference_date\

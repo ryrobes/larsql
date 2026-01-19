@@ -23,7 +23,7 @@ sql_function:
     description: True statement returns true
 cells:
 - name: evaluate_statement
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: 'Is the following statement true?
 
 

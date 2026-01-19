@@ -16,7 +16,7 @@ inputs_schema:
 
 cells:
   - name: analyze
-    model: "google/gemini-2.5-flash-lite"
+    model: "google/gemini-3-flash-preview"
     instructions: |
       You have a context to analyze. Write Python code to process it using rlm_exec.
 

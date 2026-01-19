@@ -28,7 +28,7 @@ sql_function:
     description: Domain detected
 cells:
 - name: detect_domain
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: 'Detect the subject domain of this text.
 
 

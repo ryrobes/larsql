@@ -8,7 +8,7 @@ inputs_schema:
 
 cells:
   - name: validate
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
     instructions: |
       Check if this output contains useful schema discovery information.
 

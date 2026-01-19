@@ -38,7 +38,7 @@ sql_function:
     description: English to Spanish
 cells:
 - name: translate_text
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Translate this text to {{ input.target_language }}.\n\nTEXT: {{ input.text\
     \ }}\nTARGET LANGUAGE: {{ input.target_language }}\nSOURCE LANGUAGE: {{ input.source_language\
     \ | default('auto') }}\n\nReturn a JSON object:\n{\n  \"original\": \"Hola mundo\"\

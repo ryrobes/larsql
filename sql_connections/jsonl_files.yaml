@@ -1,0 +1,6 @@
+connection_name: jsonl_files
+type: jsonl_folder
+folder_path: /home/ryanr/jsonl-files
+enabled: true
+sample_row_limit: 20
+distinct_value_threshold: 30

@@ -188,7 +188,7 @@ cells:
       
       - Claude: anthropic/claude-sonnet-4, anthropic/claude-opus-4, anthropic/claude-3-5-haiku-latest
       - GPT: openai/gpt-4o, openai/gpt-4o-mini, openai/o1, openai/o3-mini
-      - Gemini: google/gemini-2.5-flash, google/gemini-2.5-flash-lite, google/gemini-2.5-pro
+      - Gemini: google/gemini-2.5-flash, google/gemini-3-flash-preview, google/gemini-2.5-pro
       - Grok: x-ai/grok-4, x-ai/grok-3
       
       ## Natural Language Mappings
@@ -197,7 +197,7 @@ cells:
       - "run N takes" → cascade_overrides.takes.factor: N
       - "pick the best" → cascade_overrides.takes.mode: "evaluate"
       - "combine/aggregate all" → cascade_overrides.takes.mode: "aggregate"
-      - "cheap/fast model" → cell_overrides.default.model: "google/gemini-2.5-flash-lite"
+      - "cheap/fast model" → cell_overrides.default.model: "google/gemini-3-flash-preview"
       - "claude haiku" → cell_overrides.default.model: "anthropic/claude-3-5-haiku-latest"
       - "claude sonnet" → cell_overrides.default.model: "anthropic/claude-sonnet-4"
       - "gpt-4o" → cell_overrides.default.model: "openai/gpt-4o"

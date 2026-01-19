@@ -47,7 +47,7 @@ sql_function:
     description: Toxicity assessed
 cells:
 - name: assess_toxicity
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Assess the TOXICITY/CIVILITY level of these {{ input.texts | length\
     \ }} texts.\n\n{% if input.focus %}\nFOCUS SPECIFICALLY ON: {{ input.focus }}\n\
     {% if input.focus == 'harassment' %}\nLook for: targeted attacks, bullying, intimidation,\

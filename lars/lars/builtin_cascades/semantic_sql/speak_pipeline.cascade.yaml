@@ -33,7 +33,7 @@ sql_function:
 
 cells:
   - name: generate_speech
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
     instructions: |
       Generate a concise, natural-sounding summary of this data for text-to-speech.
 

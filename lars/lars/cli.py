@@ -343,6 +343,24 @@ def main():
         default='pg_client',
         help='Prefix for DuckDB session IDs (default: pg_client)'
     )
+    sql_server_parser.add_argument(
+        '--listen-backlog',
+        type=int,
+        default=1024,
+        help='Socket listen backlog for pending connections (default: 1024)'
+    )
+    sql_server_parser.add_argument(
+        '--max-connections',
+        type=int,
+        default=0,
+        help='Maximum concurrent connections, 0=unlimited (default: 0)'
+    )
+    sql_server_parser.add_argument(
+        '--idle-timeout',
+        type=int,
+        default=0,
+        help='Disconnect idle clients after N seconds, 0=disabled (default: 0)'
+    )
     sql_server_parser.set_defaults(func=cmd_sql_server)
 
     # sql crawl (database schema discovery)
@@ -944,6 +962,24 @@ def main():
         '--session-prefix',
         default='pg_client',
         help='Prefix for DuckDB session IDs (default: pg_client)'
+    )
+    serve_sql_parser.add_argument(
+        '--listen-backlog',
+        type=int,
+        default=1024,
+        help='Socket listen backlog for pending connections (default: 1024)'
+    )
+    serve_sql_parser.add_argument(
+        '--max-connections',
+        type=int,
+        default=0,
+        help='Maximum concurrent connections, 0=unlimited (default: 0)'
+    )
+    serve_sql_parser.add_argument(
+        '--idle-timeout',
+        type=int,
+        default=0,
+        help='Disconnect idle clients after N seconds, 0=disabled (default: 0)'
     )
 
     # serve watcher - Watch daemon for reactive SQL subscriptions
@@ -2244,13 +2280,69 @@ def cmd_sql_semantic(args):
             console.print(f"  {rewritten_sql}")
             console.print()
 
+        # Early termination for LIMIT-friendly semantic queries
+        # Set up caller context and early termination hint
+        _early_term_enabled = False
+        _caller_id = f"ssql-{session_id}"
+        try:
+            from lars.caller_context import set_caller_context
+            from lars.sql_tools.early_termination import (
+                set_early_termination_hint,
+                clear_early_termination_hint,
+                is_limit_friendly_query,
+            )
+            from lars.sql_tools.semantic_rewriter_v2 import _tokenize
+
+            # Set caller context so UDFs can find the early termination hint
+            set_caller_context(_caller_id, {'source': 'ssql_cli'})
+
+            # Check if query has scalar semantic operators and is limit-friendly
+            # BOOLEAN: MEANS, IMPLIES, CONTRADICTS, ALIGNS, MATCHES
+            # DOUBLE: ABOUT (returns relevance score, still benefits from early termination)
+            query_upper = args.query.upper()
+            has_semantic = any(op in query_upper for op in [
+                'MEANS', 'ABOUT', 'IMPLIES', 'CONTRADICTS',
+                'ALIGNS', 'SIMILAR', 'MATCHES',
+            ])
+
+            if has_semantic:
+                tokens = _tokenize(args.query)
+                is_friendly, limit_value, reason = is_limit_friendly_query(tokens)
+
+                if is_friendly and limit_value:
+                    set_early_termination_hint(_caller_id, limit_value)
+                    _early_term_enabled = True
+                    if args.verbose:
+                        console.print(f"[dim]Early termination enabled: LIMIT {limit_value}[/dim]")
+                elif args.verbose and limit_value and reason:
+                    console.print(f"[dim]Early termination skipped: {reason}[/dim]")
+        except Exception as et_error:
+            if args.verbose:
+                console.print(f"[dim yellow]Early termination check failed: {et_error}[/dim yellow]")
+
         # Execute query
         if args.verbose:
             console.print(f"[dim]Executing query...[/dim]")
 
-        with lock:
-            result = conn.execute(rewritten_sql)
-            df = result.fetchdf()
+        try:
+            with lock:
+                result = conn.execute(rewritten_sql)
+                df = result.fetchdf()
+        finally:
+            # Clear early termination hint and caller context
+            if _early_term_enabled:
+                try:
+                    stats = clear_early_termination_hint(_caller_id)
+                    if stats and stats.get('terminated') and args.verbose:
+                        console.print(f"[green]Early termination: found {stats.get('match_count')} matches[/green]")
+                except Exception:
+                    pass
+            # Clear caller context
+            try:
+                from lars.caller_context import clear_caller_context
+                clear_caller_context()
+            except Exception:
+                pass
 
         # Apply limit if specified
         if args.limit and len(df) > args.limit:
@@ -5849,7 +5941,10 @@ def cmd_serve_sql(args):
     start_postgres_server(
         host=args.host,
         port=args.port,
-        session_prefix=args.session_prefix
+        session_prefix=args.session_prefix,
+        listen_backlog=args.listen_backlog,
+        max_connections=args.max_connections,
+        idle_timeout=args.idle_timeout,
     )
 
 
@@ -6153,7 +6248,10 @@ def cmd_sql_server(args):
     start_postgres_server(
         host=args.host,
         port=args.port,
-        session_prefix=args.session_prefix
+        session_prefix=args.session_prefix,
+        listen_backlog=args.listen_backlog,
+        max_connections=args.max_connections,
+        idle_timeout=args.idle_timeout,
     )
 
 

@@ -44,7 +44,7 @@ sql_function:
     description: Selects best quality email from group
 cells:
 - name: select_best
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: 'Select the single best value from this group.
 
 

@@ -47,7 +47,7 @@ sql_function:
     description: Stance detected
 cells:
 - name: analyze_stance
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Analyze the STANCE/POSITION on \"{{ input.topic }}\" expressed in\
     \ these {{ input.texts | length }} texts.\n\nTOPIC TO ANALYZE: {{ input.topic\
     \ }}\n\n{% if input.stances %}\nUSE THESE STANCE CATEGORIES:\n{% for stance in\

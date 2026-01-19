@@ -27,7 +27,7 @@ cells:
       factor: 2
       mode: aggregate  # Combine all outputs instead of picking winner
       models:
-        #- google/gemini-2.5-flash-lite
+        #- google/gemini-3-flash-preview
         #- anthropic/claude-haiku-4.5
         #- deepseek/deepseek-v3.2
         #- allenai/olmo-3-7b-think
@@ -139,7 +139,7 @@ cells:
     handoffs: [reconcile_scores]
 
   - name: reconcile_scores
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
     rules:
       max_attempts: 2
     context:

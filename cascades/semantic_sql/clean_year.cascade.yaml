@@ -54,7 +54,7 @@ sql_function:
     description: Approximate year cleaned
 cells:
 - name: extract_year
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   rules:
     max_turns: 1
   instructions: 'Extract the 4-digit year from this text. Return ONLY an integer.

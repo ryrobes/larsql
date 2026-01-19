@@ -2255,6 +2255,7 @@ def make_vectorized_wrapper(
                 return pa.array([], type=pa.string())
 
         n_rows = len(arrow_arrays[0])
+        log.debug(f"[VectorizedUDF] {func_name}: Processing batch of {n_rows} rows")
         arg_names = [a['name'] for a in fn_entry.args]
 
         # Build list of arg dicts for each row
@@ -2302,62 +2303,140 @@ def make_vectorized_wrapper(
         if cache_hit_count > 0 or len(misses) > 0:
             log.debug(f"[VectorizedUDF] {func_name}: {cache_hit_count} cache hits, {len(misses)} to execute")
 
-        # Execute cache misses in parallel
-        if misses and not is_shutdown_requested():
-            new_cache_items = []
+        # Early termination support for LIMIT-friendly queries
+        # For BOOLEAN functions (like semantic_matches), we track matches and can
+        # stop processing once we have enough, saving LLM calls
+        from .early_termination import (
+            get_early_termination_context,
+            check_early_termination,
+            record_matches,
+            record_processed,
+        )
 
+        early_term_ctx = get_early_termination_context(caller_id) if caller_id else None
+        # Early termination works for BOOLEAN (track True) and DOUBLE (track score > 0)
+        # Both are scalar operations that can short-circuit once we have enough matches
+        # BUT: If already terminated when we start, this call is likely for projection (SELECT),
+        # not filtering (WHERE). Don't skip it - we need those values.
+        already_terminated = early_term_ctx is not None and early_term_ctx.terminated
+        early_term_active = (early_term_ctx is not None and
+                            return_type in ("BOOLEAN", "DOUBLE") and
+                            not already_terminated)
+        skipped_due_to_early_term = 0
+
+        if early_term_active:
+            log.debug(f"[VectorizedUDF] {func_name}: Early termination active (limit_hint={early_term_ctx.limit_hint}, type={return_type})")
+        elif already_terminated:
+            log.debug(f"[VectorizedUDF] {func_name}: Early termination already triggered, processing normally (projection)")
+
+        # Note: We don't count cache hits as "matches" for early termination purposes.
+        # Cache hits are free (no LLM call), so there's nothing to save by skipping them.
+        # Early termination only helps by skipping LLM calls for cache misses.
+
+        # Execute cache misses in parallel with batched submission for early termination
+        new_cache_items = []  # Initialize here so it's always defined
+        if misses and not is_shutdown_requested():
             # Use thread_name_prefix for easier debugging
+            actual_workers = min(max_workers, len(misses))
             executor = ThreadPoolExecutor(
-                max_workers=min(max_workers, len(misses)),
+                max_workers=actual_workers,
                 thread_name_prefix=f"UDF-{func_name}"
             )
             try:
-                futures = {}
-                for i, args, cache_key in misses:
-                    # Check shutdown before submitting each task
-                    if is_shutdown_requested():
-                        log.info(f"[VectorizedUDF] Shutdown requested, stopping submission")
-                        break
-                    import json
-                    # Pass caller_id explicitly to ensure cost tracking works in worker threads
-                    future = executor.submit(execute_fn, func_name, json.dumps(args), True, caller_id)
-                    futures[future] = (i, args, cache_key)
+                # Process in batches to allow early termination between batches
+                # Batch size = 2x workers to keep executor busy while checking termination
+                batch_size = actual_workers * 2
+                miss_iter = iter(misses)
+                pending_futures = {}
+                terminated_early = False
 
-                for future in as_completed(futures, timeout=300):  # 5 min timeout per batch
-                    # Check shutdown during result collection
-                    if is_shutdown_requested():
-                        log.info(f"[VectorizedUDF] Shutdown requested, cancelling remaining futures")
-                        for f in futures:
-                            f.cancel()
-                        break
+                while not terminated_early:
+                    # Submit a batch of work
+                    submitted_this_batch = 0
+                    for i, args, cache_key in miss_iter:
+                        if is_shutdown_requested():
+                            log.info(f"[VectorizedUDF] Shutdown requested, stopping submission")
+                            terminated_early = True
+                            break
 
-                    i, args, cache_key = futures[future]
-                    try:
-                        result = future.result(timeout=60)  # 60s timeout per result
+                        # Early termination check before submitting
+                        if early_term_active and check_early_termination(caller_id):
+                            log.info(f"[VectorizedUDF] {func_name}: Early termination during submission, skipping remaining {len(misses) - len(pending_futures)} rows")
+                            # Count all remaining misses as skipped
+                            remaining = sum(1 for _ in miss_iter) + 1  # +1 for current
+                            skipped_due_to_early_term += remaining
+                            terminated_early = True
+                            break
 
-                        # Coerce result using helper
-                        coerced = coerce_result(result, return_type)
-                        results[i] = coerced
+                        import json
+                        future = executor.submit(execute_fn, func_name, json.dumps(args), True, caller_id)
+                        pending_futures[future] = (i, args, cache_key)
+                        submitted_this_batch += 1
 
-                        # Queue for batch cache write (store raw result, coerce on read)
-                        result_type_str = return_type if return_type in ("BOOLEAN", "DOUBLE", "INTEGER") else "VARCHAR"
-                        new_cache_items.append((args, result, result_type_str))
+                        if submitted_this_batch >= batch_size:
+                            break
 
-                    except Exception as e:
-                        log.warning(f"[VectorizedUDF] Error processing row {i}: {e}")
-                        # Return error indicator based on type
-                        results[i] = coerce_result(f"ERROR: {e}", return_type)
+                    if not pending_futures:
+                        break  # No more work
+
+                    # Collect completed results
+                    completed = []
+                    for future in as_completed(pending_futures, timeout=300):
+                        if is_shutdown_requested():
+                            log.info(f"[VectorizedUDF] Shutdown requested, cancelling remaining")
+                            for f in pending_futures:
+                                f.cancel()
+                            terminated_early = True
+                            break
+
+                        # Check early termination after each result
+                        if early_term_active and check_early_termination(caller_id):
+                            log.info(f"[VectorizedUDF] {func_name}: Early termination triggered, cancelling {len(pending_futures) - len(completed) - 1} pending")
+                            for f in pending_futures:
+                                if not f.done():
+                                    f.cancel()
+                            skipped_due_to_early_term += len([f for f in pending_futures if not f.done()])
+                            terminated_early = True
+                            break
+
+                        completed.append(future)
+                        i, args, cache_key = pending_futures[future]
+                        try:
+                            result = future.result(timeout=60)
+                            coerced = coerce_result(result, return_type)
+                            results[i] = coerced
+
+                            # Track matches and processed count
+                            if early_term_active:
+                                record_processed(caller_id, 1)
+                                is_match = (coerced is True) if return_type == "BOOLEAN" else (coerced is not None and coerced > 0)
+                                if is_match:
+                                    record_matches(caller_id, 1)
+
+                            result_type_str = return_type if return_type in ("BOOLEAN", "DOUBLE", "INTEGER") else "VARCHAR"
+                            new_cache_items.append((args, result, result_type_str))
+
+                        except Exception as e:
+                            log.warning(f"[VectorizedUDF] Error processing row {i}: {e}")
+                            results[i] = coerce_result(f"ERROR: {e}", return_type)
+
+                    # Remove completed futures for next batch
+                    for f in completed:
+                        del pending_futures[f]
 
             finally:
-                # Shutdown executor - use wait=False if shutdown requested for faster exit
                 executor.shutdown(wait=not is_shutdown_requested(), cancel_futures=is_shutdown_requested())
 
-            # Batch store new results
-            if new_cache_items and not is_shutdown_requested():
-                try:
-                    cache.set_batch(func_name, new_cache_items)
-                except Exception as e:
-                    log.debug(f"[VectorizedUDF] Cache batch set error: {e}")
+        # Log early termination stats
+        if skipped_due_to_early_term > 0:
+            log.info(f"[VectorizedUDF] {func_name}: Early termination saved {skipped_due_to_early_term} LLM calls")
+
+        # Batch store new results
+        if new_cache_items and not is_shutdown_requested():
+            try:
+                cache.set_batch(func_name, new_cache_items)
+            except Exception as e:
+                log.debug(f"[VectorizedUDF] Cache batch set error: {e}")
 
         # Final safety coercion - ensure all results have correct type for PyArrow
         # This handles any None values or unexpected types that slipped through

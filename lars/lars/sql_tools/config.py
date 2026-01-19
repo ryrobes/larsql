@@ -100,12 +100,12 @@ class SqlConnectionConfig(BaseModel):
     - Lakehouse: delta, iceberg
     - Scanners: odbc, adbc, gsheets, excel
     - Hybrid/Materialization: mongodb, cassandra, clickhouse
-    - File-based: csv_folder, duckdb_folder
+    - File-based: csv_folder, jsonl_folder, duckdb_folder
     """
     connection_name: str
     type: Literal[
         # Existing types
-        "postgres", "mysql", "sqlite", "duckdb", "csv_folder", "duckdb_folder", "clickhouse",
+        "postgres", "mysql", "sqlite", "duckdb", "csv_folder", "jsonl_folder", "duckdb_folder", "clickhouse",
         # Phase 1: Native ATTACH cloud databases
         "bigquery", "snowflake", "motherduck",
         # Phase 2: Remote filesystems
@@ -293,6 +293,10 @@ def validate_connection_config(config: SqlConnectionConfig) -> List[str]:
     elif config.type == "csv_folder":
         if not config.folder_path:
             errors.append("csv_folder requires folder_path")
+
+    elif config.type == "jsonl_folder":
+        if not config.folder_path:
+            errors.append("jsonl_folder requires folder_path")
 
     elif config.type == "duckdb_folder":
         if not config.folder_path:

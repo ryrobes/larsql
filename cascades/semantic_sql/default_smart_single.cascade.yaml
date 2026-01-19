@@ -31,7 +31,7 @@ sql_function:
     description: Default value suggested
 cells:
 - name: smart_default
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: 'If value is null/empty, provide an intelligent default based on context.
 
 

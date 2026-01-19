@@ -67,11 +67,13 @@ class ClientConnection:
     - Dedicated socket
     """
 
-    def __init__(self, sock, addr, session_prefix='pg_client'):
+    def __init__(self, sock, addr, session_prefix='pg_client', server=None, idle_timeout=0):
         self.sock = sock
         self.addr = addr
         self.session_id = None  # Will be set in handle_startup based on database name
         self.session_prefix = session_prefix
+        self.server = server  # Reference to parent server for connection tracking
+        self.idle_timeout = idle_timeout  # Seconds before disconnecting idle client (0 = disabled)
         self.database_name = 'default'  # Logical database name from client connection
         self.user_name = 'lars'       # Logical user name from client connection
         self.application_name = 'unknown'
@@ -81,6 +83,7 @@ class ClientConnection:
         self.running = True
         self.query_count = 0
         self.transaction_status = 'I'  # 'I' = idle, 'T' = in transaction, 'E' = error
+        self._last_activity = None  # Timestamp of last activity (for idle timeout)
 
         # Extended Query Protocol state
         self.prepared_statements = {}  # name → {query, param_types, param_count}
@@ -93,18 +96,12 @@ class ClientConnection:
         # Cache: last seen attached database set (to refresh views after lazy ATTACH)
         self._last_attached_db_names = set()
 
-    def setup_session(self):
+    def setup_session_minimal(self):
         """
-        Create DuckDB session and register LARS UDFs.
+        FAST session setup - just enough to respond to client.
 
-        This is called once per client connection.
-        The session persists for the lifetime of the connection.
-
-        Database routing:
-        - 'memory' or 'default' → in-memory DuckDB (per-client, ephemeral)
-        - Any other name → persistent file at session_dbs/{database}.duckdb
-
-        Persistent databases survive restarts and are shared across connections.
+        Called BEFORE sending startup response to minimize client wait time.
+        Heavy operations (auto-attach, views, etc.) are deferred to setup_session_deferred().
         """
         try:
             import duckdb
@@ -171,38 +168,68 @@ class ClientConnection:
             from ..sql_tools.udf import register_dynamic_sql_functions
             register_dynamic_sql_functions(self.duckdb_conn)
 
+            # Initialize lazy attach manager (but DON'T auto-attach yet - that's slow)
+            try:
+                from ..sql_tools.config import load_sql_connections
+                from ..sql_tools.lazy_attach import LazyAttachManager
+                self._lazy_attach = LazyAttachManager(self.duckdb_conn, load_sql_connections())
+            except Exception:
+                self._lazy_attach = None
+
+            # Minimal setup complete - client can now receive response
+            print(f"[{self.session_id}]   ⚡ Minimal setup complete (responding to client)")
+
+        except Exception as e:
+            print(f"[{self.session_id}] ✗ Error in minimal session setup: {e}")
+            raise
+
+    def setup_session_deferred(self):
+        """
+        DEFERRED session setup - heavy operations after client got response.
+
+        Called AFTER sending startup response so client doesn't timeout.
+        This includes auto-attach, metadata tables, views, etc.
+
+        For persistent databases, this only runs ONCE per database (tracked at server level).
+        Subsequent connections to the same database skip this since the state is already
+        in the DuckDB file.
+        """
+        # For persistent databases, check if already initialized by another connection
+        if self.is_persistent_db and self.server:
+            with self.server._init_db_lock:
+                if self.database_name in self.server._initialized_databases:
+                    # Already initialized - skip heavy setup
+                    styled_print(f"[{self.session_id}] {S.OK} Session ready (database: {self.database_name}, using existing setup)")
+                    return
+                # Mark as initializing (will add to set after success)
+                is_first_connection = True
+        else:
+            is_first_connection = True  # In-memory always needs full setup
+
+        try:
             # Register promoted metrics as SQL operators (BI of Intent)
             try:
                 from ..bi.metric_registry import register_promoted_metrics
                 promoted_count = register_promoted_metrics(self.duckdb_conn)
                 if promoted_count > 0:
                     styled_print(f"[{self.session_id}]   {S.DB} Registered {promoted_count} promoted metric(s)")
-            except Exception as e:
+            except Exception:
                 # Non-fatal - BI tables may not exist yet
                 pass
 
-            # Lazy ATTACH: configured sql_connections/*.yaml attached on first reference.
-            # Non-fatal if config loading fails.
-            try:
-                from ..sql_tools.config import load_sql_connections
-                from ..sql_tools.lazy_attach import LazyAttachManager, _auto_attach_all_enabled
-                self._lazy_attach = LazyAttachManager(self.duckdb_conn, load_sql_connections())
-
-                # Auto-attach all configured connections on session start (enabled by default)
-                # This makes databases visible in SQL client object browsers immediately
-                if _auto_attach_all_enabled():
-                    try:
-                        results = self._lazy_attach.attach_all()
-                        attached = [r for r in results if r["status"] == "attached"]
-                        failed = [r for r in results if r["status"] == "failed"]
-                        if attached:
-                            styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
-                        if failed:
-                            styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
-                    except Exception as e:
-                        styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
-            except Exception:
-                self._lazy_attach = None
+            # Auto-attach all configured connections (SLOW - but client already got response)
+            from ..sql_tools.lazy_attach import _auto_attach_all_enabled
+            if self._lazy_attach and _auto_attach_all_enabled():
+                try:
+                    results = self._lazy_attach.attach_all()
+                    attached = [r for r in results if r["status"] == "attached"]
+                    failed = [r for r in results if r["status"] == "failed"]
+                    if attached:
+                        styled_print(f"[{self.session_id}]   {S.DB} Auto-attached {len(attached)} connection(s)")
+                    if failed:
+                        styled_print(f"[{self.session_id}]   {S.WARN}  {len(failed)} connection(s) failed to attach")
+                except Exception as e:
+                    styled_print(f"[{self.session_id}]   {S.WARN}  Auto-attach failed: {e}")
 
             # DuckDB v1.4.2+ has built-in pg_catalog support
             styled_print(f"[{self.session_id}]   {S.INFO}  Using DuckDB's built-in pg_catalog (v1.4.2+)")
@@ -225,11 +252,25 @@ class ClientConnection:
             # Register UDF to refresh views after manual ATTACH
             self._register_refresh_views_udf()
 
+            # Mark persistent database as initialized (so other connections skip this)
+            if self.is_persistent_db and self.server and is_first_connection:
+                with self.server._init_db_lock:
+                    self.server._initialized_databases.add(self.database_name)
+
             styled_print(f"[{self.session_id}] {S.OK} Session ready (database: {self.database_name})")
 
         except Exception as e:
-            print(f"[{self.session_id}] ✗ Error setting up session: {e}")
-            raise
+            # Non-fatal - deferred setup failures shouldn't kill the connection
+            styled_print(f"[{self.session_id}] {S.WARN} Deferred setup error (non-fatal): {e}")
+
+    def setup_session(self):
+        """
+        Full session setup (legacy - calls both minimal and deferred).
+
+        For backward compatibility with any code that calls setup_session() directly.
+        """
+        self.setup_session_minimal()
+        self.setup_session_deferred()
 
     def _execute_locked(self, query: str):
         """
@@ -4373,6 +4414,43 @@ class ClientConnection:
                         print(f"[{self.session_id}]      Falling back to sequential execution")
                         # Fall through to normal execution
 
+            # Early termination detection for LIMIT-friendly semantic queries
+            # This allows us to skip LLM calls once we have enough matches
+            # Must detect BEFORE rewriting since operators like MEANS become function calls
+            _early_term_enabled = False
+            _early_term_limit = None
+            try:
+                from lars.sql_tools.early_termination import (
+                    set_early_termination_hint,
+                    is_limit_friendly_query,
+                )
+                from lars.sql_tools.semantic_rewriter_v2 import _tokenize
+
+                # Quick check: does query contain scalar semantic operators?
+                # BOOLEAN: MEANS, IMPLIES, CONTRADICTS, ALIGNS, MATCHES
+                # DOUBLE: ABOUT (returns relevance score)
+                query_upper = query.upper()
+                has_semantic = any(op in query_upper for op in [
+                    'MEANS', 'ABOUT', 'IMPLIES', 'CONTRADICTS',
+                    'ALIGNS', 'SIMILAR', 'MATCHES',
+                ])
+
+                if has_semantic and _caller_id:
+                    # Tokenize and check if limit-friendly
+                    tokens = _tokenize(query)
+                    is_friendly, limit_value, reason = is_limit_friendly_query(tokens)
+
+                    if is_friendly and limit_value:
+                        set_early_termination_hint(_caller_id, limit_value)
+                        _early_term_enabled = True
+                        _early_term_limit = limit_value
+                        styled_print(f"[{self.session_id}]   {S.CHART} Early termination enabled: LIMIT {limit_value}")
+                    elif limit_value and reason:
+                        styled_print(f"[{self.session_id}]   {S.CFG} Early termination skipped: {reason}")
+            except Exception as et_error:
+                # Early termination detection is non-fatal
+                styled_print(f"[{self.session_id}]   {S.WARN}  Early termination check failed: {et_error}")
+
             # Check for prewarm sidecar opportunity (-- @ parallel: N annotation)
             # IMPORTANT: Must run BEFORE rewrite_lars_syntax which strips comments!
             # This launches a background thread to warm the cache for scalar semantic functions
@@ -4449,6 +4527,17 @@ class ClientConnection:
                 result_location=_result_location
             )
 
+            # Clear early termination hint and log stats
+            if _early_term_enabled and _caller_id:
+                try:
+                    from lars.sql_tools.early_termination import clear_early_termination_hint
+                    stats = clear_early_termination_hint(_caller_id)
+                    if stats:
+                        # Show processed vs matches for debugging
+                        styled_print(f"[{self.session_id}]   {S.OK} Early termination: processed {stats.get('processed_count', 0)} rows, found {stats.get('match_count', 0)} matches (target: {stats.get('limit_hint', 0)})")
+                except Exception:
+                    pass  # Non-fatal
+
         except Exception as e:
             # Send error to client
             error_message = str(e)
@@ -4457,6 +4546,14 @@ class ClientConnection:
             # Log query error for SQL Trail
             # Uses unified helper for consistent logging
             self._error_query_tracking(_current_query_id, _query_start_time, e)
+
+            # Clear early termination hint on error (avoid leaking state)
+            if _early_term_enabled and _caller_id:
+                try:
+                    from lars.sql_tools.early_termination import clear_early_termination_hint
+                    clear_early_termination_hint(_caller_id)
+                except Exception:
+                    pass  # Non-fatal
 
             # Mark transaction as errored if we were in one
             if self.transaction_status == 'T':
@@ -7756,6 +7853,40 @@ class ClientConnection:
                 query, original_query=original_query
             )
 
+            # Early termination detection for LIMIT-friendly semantic queries (Extended Query Protocol)
+            # Must detect BEFORE execution since MEANS/similar operators become function calls after rewrite
+            _early_term_enabled = False
+            try:
+                from lars.sql_tools.early_termination import (
+                    set_early_termination_hint,
+                    is_limit_friendly_query,
+                )
+                from lars.sql_tools.semantic_rewriter_v2 import _tokenize
+
+                # Use original_query for detection (before rewriting)
+                detect_query = original_query or query
+                query_upper = detect_query.upper()
+
+                # Quick check: does query contain scalar semantic operators?
+                # BOOLEAN: MEANS, IMPLIES, CONTRADICTS, ALIGNS, MATCHES
+                # DOUBLE: ABOUT (returns relevance score, still benefits from early termination)
+                has_scalar_semantic = any(op in query_upper for op in [
+                    'MEANS', 'ABOUT', 'IMPLIES', 'CONTRADICTS', 'ALIGNS', 'MATCHES',
+                ])
+
+                if has_scalar_semantic and _caller_id:
+                    tokens = _tokenize(detect_query)
+                    is_friendly, limit_value, reason = is_limit_friendly_query(tokens)
+
+                    if is_friendly and limit_value:
+                        set_early_termination_hint(_caller_id, limit_value)
+                        _early_term_enabled = True
+                        styled_print(f"[{self.session_id}]   {S.CHART} Early termination enabled: LIMIT {limit_value}")
+                    elif limit_value and reason:
+                        styled_print(f"[{self.session_id}]   {S.CFG} Early termination skipped: {reason}")
+            except Exception as et_error:
+                styled_print(f"[{self.session_id}]   {S.WARN}  Early termination check failed: {et_error}")
+
             # Check if Describe already sent RowDescription
             # If so, Execute should NOT send RowDescription again
             row_desc_already_sent = portal.get('row_description_sent', False)
@@ -8788,6 +8919,17 @@ class ClientConnection:
                 result_location=_result_location
             )
 
+            # Clear early termination hint and log stats (Extended Query Protocol)
+            if _early_term_enabled and _caller_id:
+                try:
+                    from lars.sql_tools.early_termination import clear_early_termination_hint
+                    stats = clear_early_termination_hint(_caller_id)
+                    if stats:
+                        # Show processed vs matches for debugging
+                        styled_print(f"[{self.session_id}]   {S.OK} Early termination: processed {stats.get('processed_count', 0)} rows, found {stats.get('match_count', 0)} matches (target: {stats.get('limit_hint', 0)})")
+                except Exception:
+                    pass  # Non-fatal
+
         except Exception as e:
             error_str = str(e)
             print(f"[{self.session_id}]      ✗ Execute error: {error_str[:200]}")
@@ -8832,6 +8974,15 @@ class ClientConnection:
             # Mark transaction as errored
             if self.transaction_status == 'T':
                 self.transaction_status = 'E'
+
+            # Clear early termination hint on error (Extended Query Protocol)
+            if _early_term_enabled and _caller_id:
+                try:
+                    from lars.sql_tools.early_termination import clear_early_termination_hint
+                    clear_early_termination_hint(_caller_id)
+                except Exception:
+                    pass  # Non-fatal
+
             # In Extended Query Protocol, don't send ReadyForQuery - wait for Sync
             self.sock.sendall(ErrorResponse.encode('ERROR', f"Execute error: {str(e)}"))
 
@@ -8891,7 +9042,20 @@ class ClientConnection:
         4. Loop: Read message → Execute → Send response
         5. Cleanup on disconnect
         """
+        import time
+
+        # Register with server for connection tracking
+        if self.server:
+            self.server.register_connection(self)
+
+        # Initialize activity tracking
+        self._last_activity = time.time()
+
         try:
+            # Set socket timeout for idle detection (if enabled)
+            if self.idle_timeout > 0:
+                self.sock.settimeout(self.idle_timeout)
+
             # Step 0: Check for SSL request (common - psql tries SSL first)
             first_message = PostgresMessage.read_startup_message(self.sock)
             if not first_message:
@@ -8916,15 +9080,27 @@ class ClientConnection:
             # Step 2: Handle startup (sets session_id based on database name)
             self.handle_startup(startup['params'])
 
-            # Step 3: Setup DuckDB session with LARS UDFs (now that session_id is set)
-            self.setup_session()
+            # Step 3: Setup MINIMAL DuckDB session (fast - just connection + core UDFs)
+            self.setup_session_minimal()
 
-            # Step 4: Send startup response (now that database is ready)
+            # Step 4: Send startup response QUICKLY (client is waiting!)
+            # Heavy setup (auto-attach, views, etc.) happens on first query
             send_startup_response(self.sock)
+
+            # Step 4b: Now do deferred heavy setup (client already got response)
+            self.setup_session_deferred()
 
             # Step 5: Message loop
             while self.running:
-                msg_type, payload = PostgresMessage.read_message(self.sock)
+                try:
+                    msg_type, payload = PostgresMessage.read_message(self.sock)
+                except socket.timeout:
+                    # Idle timeout - disconnect client
+                    styled_print(f"[{self.session_id}] {S.WARN} Idle timeout ({self.idle_timeout}s) - disconnecting")
+                    break
+
+                # Update activity timestamp
+                self._last_activity = time.time()
 
                 if msg_type is None:
                     # Connection closed by client
@@ -8994,7 +9170,13 @@ class ClientConnection:
         (if they connect to the same database name). We must NOT force-close
         the connection unless it's truly corrupt, or we'll break other clients.
         """
-        print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed)")
+        # Unregister from server first
+        if self.server:
+            self.server.unregister_connection(self)
+            active_count = self.server.get_active_count()
+            print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed, {active_count} active connections remaining)")
+        else:
+            print(f"[{self.session_id}] 🧹 Cleaning up ({self.query_count} queries executed)")
 
         # 1. Try to rollback any open transaction to leave DuckDB in clean state
         if self.duckdb_conn:
@@ -9042,9 +9224,18 @@ class LARSPostgresServer:
     - Isolated DuckDB sessions (one per client)
     - LARS UDFs auto-registered
     - Simple Query Protocol (sufficient for most tools)
+    - Configurable connection limits and timeouts
     """
 
-    def __init__(self, host='0.0.0.0', port=5432, session_prefix='pg_client'):
+    def __init__(
+        self,
+        host='0.0.0.0',
+        port=5432,
+        session_prefix='pg_client',
+        listen_backlog=1024,
+        max_connections=0,
+        idle_timeout=0,
+    ):
         """
         Initialize server.
 
@@ -9052,12 +9243,37 @@ class LARSPostgresServer:
             host: Host to listen on (0.0.0.0 = all interfaces)
             port: Port to listen on (5432 = standard PostgreSQL port)
             session_prefix: Prefix for DuckDB session IDs
+            listen_backlog: Socket listen backlog (default: 1024, was 5)
+            max_connections: Maximum concurrent connections (0 = unlimited)
+            idle_timeout: Disconnect idle clients after N seconds (0 = no timeout)
         """
         self.host = host
         self.port = port
         self.session_prefix = session_prefix
+        self.listen_backlog = listen_backlog
+        self.max_connections = max_connections
+        self.idle_timeout = idle_timeout
         self.running = False
         self.client_count = 0
+        self.active_connections: set = set()  # Track active ClientConnection objects
+        self._connections_lock = Lock()  # Protect active_connections set
+        self._initialized_databases: set = set()  # Track which persistent DBs have been set up
+        self._init_db_lock = Lock()  # Protect _initialized_databases
+
+    def register_connection(self, client: 'ClientConnection') -> None:
+        """Register a client connection as active."""
+        with self._connections_lock:
+            self.active_connections.add(client)
+
+    def unregister_connection(self, client: 'ClientConnection') -> None:
+        """Unregister a client connection."""
+        with self._connections_lock:
+            self.active_connections.discard(client)
+
+    def get_active_count(self) -> int:
+        """Get count of active connections."""
+        with self._connections_lock:
+            return len(self.active_connections)
 
     def start(self):
         """
@@ -9088,7 +9304,7 @@ class LARSPostgresServer:
             print("=" * 70)
             return
 
-        sock.listen(5)  # Backlog of 5 pending connections
+        sock.listen(self.listen_backlog)
         self.running = True
 
         # Initialize cascade registry and dynamic operator patterns (cached for server lifetime)
@@ -9136,6 +9352,17 @@ class LARSPostgresServer:
         print("   • Temp tables (session-scoped)")
         print("   • LARS UDFs registered")
         print("   • ATTACH support (connect to Postgres/MySQL/S3)")
+        print()
+        styled_print(f"{S.INFO} Connection settings:")
+        print(f"   • Listen backlog: {self.listen_backlog} (pending connections)")
+        if self.max_connections > 0:
+            print(f"   • Max connections: {self.max_connections}")
+        else:
+            print(f"   • Max connections: unlimited")
+        if self.idle_timeout > 0:
+            print(f"   • Idle timeout: {self.idle_timeout}s")
+        else:
+            print(f"   • Idle timeout: disabled")
         print()
         styled_print(f"{S.PAUSE}  Press Ctrl+C to stop")
         print("=" * 70)
@@ -9186,10 +9413,32 @@ class LARSPostgresServer:
                     client_sock, addr = sock.accept()
                     self.client_count += 1
 
-                    styled_print(f"\n{S.LINK} Client #{self.client_count} connected from {addr[0]}:{addr[1]}")
+                    # Check connection limit
+                    with self._connections_lock:
+                        active_count = len(self.active_connections)
+
+                    if self.max_connections > 0 and active_count >= self.max_connections:
+                        styled_print(f"\n{S.WARN} Client #{self.client_count} from {addr[0]}:{addr[1]} rejected (limit: {self.max_connections}/{self.max_connections})")
+                        # Send PostgreSQL error response before closing
+                        try:
+                            error_msg = f"too many connections ({active_count}/{self.max_connections})"
+                            error_response = ErrorResponse.encode(error_msg, code='53300')  # too_many_connections
+                            client_sock.sendall(error_response)
+                        except Exception:
+                            pass
+                        client_sock.close()
+                        continue
+
+                    styled_print(f"\n{S.LINK} Client #{self.client_count} connected from {addr[0]}:{addr[1]} ({active_count + 1} active)")
 
                     # Handle client in separate thread (allows concurrent connections)
-                    client = ClientConnection(client_sock, addr, self.session_prefix)
+                    client = ClientConnection(
+                        client_sock,
+                        addr,
+                        self.session_prefix,
+                        server=self,
+                        idle_timeout=self.idle_timeout
+                    )
                     thread = threading.Thread(
                         target=client.handle,
                         daemon=True,
@@ -9220,7 +9469,14 @@ class LARSPostgresServer:
             styled_print(f"{S.DONE} Server stopped")
 
 
-def start_postgres_server(host='0.0.0.0', port=5432, session_prefix='pg_client'):
+def start_postgres_server(
+    host='0.0.0.0',
+    port=5432,
+    session_prefix='pg_client',
+    listen_backlog=1024,
+    max_connections=0,
+    idle_timeout=0,
+):
     """
     Start LARS PostgreSQL wire protocol server.
 
@@ -9228,6 +9484,9 @@ def start_postgres_server(host='0.0.0.0', port=5432, session_prefix='pg_client')
         host: Host to listen on (default: 0.0.0.0 = all interfaces)
         port: Port to listen on (default: 5432 = standard PostgreSQL)
         session_prefix: Prefix for DuckDB session IDs (default: 'pg_client')
+        listen_backlog: Socket listen backlog (default: 1024)
+        max_connections: Maximum concurrent connections (0 = unlimited)
+        idle_timeout: Disconnect idle clients after N seconds (0 = no timeout)
 
     Example:
         # Start server
@@ -9243,7 +9502,14 @@ def start_postgres_server(host='0.0.0.0', port=5432, session_prefix='pg_client')
          Apple
         (1 row)
     """
-    server = LARSPostgresServer(host, port, session_prefix)
+    server = LARSPostgresServer(
+        host=host,
+        port=port,
+        session_prefix=session_prefix,
+        listen_backlog=listen_backlog,
+        max_connections=max_connections,
+        idle_timeout=idle_timeout,
+    )
     server.start()
 
 
@@ -9253,6 +9519,16 @@ if __name__ == "__main__":
     parser.add_argument('--host', default='0.0.0.0', help='Host to listen on')
     parser.add_argument('--port', type=int, default=15432, help='Port to listen on')
     parser.add_argument('--session-prefix', default='pg_client', help='Session ID prefix')
+    parser.add_argument('--listen-backlog', type=int, default=1024, help='Socket listen backlog (default: 1024)')
+    parser.add_argument('--max-connections', type=int, default=0, help='Max concurrent connections (0 = unlimited)')
+    parser.add_argument('--idle-timeout', type=int, default=0, help='Idle connection timeout in seconds (0 = disabled)')
     args = parser.parse_args()
 
-    start_postgres_server(host=args.host, port=args.port, session_prefix=args.session_prefix)
+    start_postgres_server(
+        host=args.host,
+        port=args.port,
+        session_prefix=args.session_prefix,
+        listen_backlog=args.listen_backlog,
+        max_connections=args.max_connections,
+        idle_timeout=args.idle_timeout,
+    )

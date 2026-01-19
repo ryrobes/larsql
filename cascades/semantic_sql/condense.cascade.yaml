@@ -58,7 +58,7 @@ sql_function:
     description: Text condensed
 cells:
 - name: condense
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   use_training: true
   training_limit: 5
   training_strategy: recent

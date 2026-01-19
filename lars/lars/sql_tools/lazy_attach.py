@@ -287,6 +287,7 @@ class LazyAttachManager:
         self._failed_configs: Set[str] = set()
         self._duckdb_file_maps: Dict[str, Dict[str, Path]] = {}  # folder_path -> {db_name: file_path}
         self._csv_file_maps: Dict[str, Dict[str, Path]] = {}  # connection_name -> {table_name: file_path}
+        self._jsonl_file_maps: Dict[str, Dict[str, Path]] = {}  # connection_name -> {table_name: file_path}
         self._clickhouse_tables: Dict[str, Set[str]] = {}  # connection_name -> {table_names already materialized}
 
     def ensure_for_query(self, sql: str, *, aggressive: bool = False) -> None:
@@ -307,6 +308,7 @@ class LazyAttachManager:
 
         needed_catalogs: Set[str] = set()
         needed_csv_tables: Dict[str, Set[str]] = {}
+        needed_jsonl_tables: Dict[str, Set[str]] = {}
         needed_clickhouse_tables: Dict[str, Set[str]] = {}
 
         # From relation-qualified names
@@ -318,6 +320,8 @@ class LazyAttachManager:
                 cfg = self._configs[prefix]
                 if cfg.type == "csv_folder" and len(parts) >= 2:
                     needed_csv_tables.setdefault(prefix, set()).add(parts[1])
+                elif cfg.type == "jsonl_folder" and len(parts) >= 2:
+                    needed_jsonl_tables.setdefault(prefix, set()).add(parts[1])
                 elif cfg.type == "clickhouse" and len(parts) >= 2:
                     needed_clickhouse_tables.setdefault(prefix, set()).add(parts[1])
                 else:
@@ -331,6 +335,9 @@ class LazyAttachManager:
             if prefix in self._configs:
                 cfg = self._configs[prefix]
                 if cfg.type == "csv_folder":
+                    # Not enough info to know which table; skip
+                    continue
+                if cfg.type == "jsonl_folder":
                     # Not enough info to know which table; skip
                     continue
                 if cfg.type == "clickhouse":
@@ -347,6 +354,10 @@ class LazyAttachManager:
         # Ensure CSV schema/tables (view/table) exist
         for schema_name, tables in needed_csv_tables.items():
             self._ensure_csv_tables(schema_name, tables)
+
+        # Ensure JSONL schema/tables (view/table) exist
+        for schema_name, tables in needed_jsonl_tables.items():
+            self._ensure_jsonl_tables(schema_name, tables)
 
         # Ensure ClickHouse tables are materialized
         for schema_name, tables in needed_clickhouse_tables.items():
@@ -377,6 +388,24 @@ class LazyAttachManager:
             if cfg.type == "csv_folder":
                 try:
                     table_count = self._attach_all_csv_folder_tables(cfg)
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "attached",
+                        "message": f"{table_count} tables"
+                    })
+                except Exception as e:
+                    results.append({
+                        "connection": name,
+                        "type": cfg.type,
+                        "status": "failed",
+                        "message": str(e)[:100]
+                    })
+                continue
+
+            if cfg.type == "jsonl_folder":
+                try:
+                    table_count = self._attach_all_jsonl_folder_tables(cfg)
                     results.append({
                         "connection": name,
                         "type": cfg.type,
@@ -525,6 +554,53 @@ class LazyAttachManager:
 
         return table_count
 
+    def _attach_all_jsonl_folder_tables(self, cfg: SqlConnectionConfig) -> int:
+        """
+        Create schema and materialize all JSONL files from a jsonl_folder connection.
+
+        Returns the number of tables created.
+        """
+        if not cfg.folder_path or not os.path.isdir(cfg.folder_path):
+            return 0
+
+        connection_name = cfg.connection_name
+
+        # Ensure schema exists
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(connection_name)};")
+
+        # Build file map
+        file_map = self._build_jsonl_file_map(cfg.folder_path)
+        self._jsonl_file_maps[connection_name] = file_map
+
+        table_count = 0
+        for table_name, jsonl_file in sorted(file_map.items()):
+            try:
+                if self._jsonl_table_exists(connection_name, table_name):
+                    table_count += 1  # Already exists, count it
+                    continue
+
+                full_name = f"{_quote_ident(connection_name)}.{_quote_ident(table_name)}"
+
+                if _lazy_attach_jsonl_materialize():
+                    self._conn.execute(
+                        f"""
+                        CREATE TABLE {full_name} AS
+                        SELECT * FROM read_json_auto('{_escape_single_quotes(str(jsonl_file))}', ignore_errors=true)
+                        """.strip()
+                    )
+                else:
+                    self._conn.execute(
+                        f"""
+                        CREATE OR REPLACE VIEW {full_name} AS
+                        SELECT * FROM read_json_auto('{_escape_single_quotes(str(jsonl_file))}', ignore_errors=true)
+                        """.strip()
+                    )
+                table_count += 1
+            except Exception as e:
+                log.debug("[lazy_attach] Failed to create jsonl table %s.%s: %s", connection_name, table_name, e)
+
+        return table_count
+
     def get_available_connections(self) -> List[Dict[str, str]]:
         """
         Get list of all configured connections with their status.
@@ -541,6 +617,12 @@ class LazyAttachManager:
 
             # csv_folder creates schemas, not catalogs
             if cfg.type == "csv_folder":
+                if name in attached_schemas:
+                    status = "attached"
+                elif name in self._failed_configs:
+                    status = "failed"
+            # jsonl_folder creates schemas, not catalogs
+            elif cfg.type == "jsonl_folder":
                 if name in attached_schemas:
                     status = "attached"
                 elif name in self._failed_configs:
@@ -684,8 +766,10 @@ class LazyAttachManager:
         if cfg.type == "clickhouse":
             self._attach_clickhouse(cfg)
             return
-        # csv_folder is handled via schema/table materialization (not catalog attach)
+        # csv_folder and jsonl_folder are handled via schema/table materialization (not catalog attach)
         if cfg.type == "csv_folder":
+            return
+        if cfg.type == "jsonl_folder":
             return
         if cfg.type == "duckdb_folder":
             # Individual duckdb files are attached on demand by name.
@@ -1450,6 +1534,79 @@ class LazyAttachManager:
         return mapping
 
     # ---------------------------------------------------------------------
+    # JSONL table materialization
+    # ---------------------------------------------------------------------
+
+    def _ensure_jsonl_tables(self, connection_name: str, tables: Set[str]) -> None:
+        cfg = self._configs.get(connection_name)
+        if not cfg or cfg.type != "jsonl_folder":
+            return
+        if not cfg.folder_path:
+            return
+
+        # Ensure schema exists
+        self._conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(connection_name)};")
+
+        # Build file map once per connection
+        file_map = self._jsonl_file_maps.get(connection_name)
+        if file_map is None:
+            file_map = self._build_jsonl_file_map(cfg.folder_path)
+            self._jsonl_file_maps[connection_name] = file_map
+
+        for table_name in sorted(tables):
+            try:
+                if self._jsonl_table_exists(connection_name, table_name):
+                    continue
+
+                jsonl_file = file_map.get(table_name)
+                if not jsonl_file:
+                    continue
+
+                full_name = f"{_quote_ident(connection_name)}.{_quote_ident(table_name)}"
+
+                if _lazy_attach_jsonl_materialize():
+                    self._conn.execute(
+                        f"""
+                        CREATE TABLE {full_name} AS
+                        SELECT * FROM read_json_auto('{_escape_single_quotes(str(jsonl_file))}', ignore_errors=true)
+                        """.strip()
+                    )
+                else:
+                    self._conn.execute(
+                        f"""
+                        CREATE OR REPLACE VIEW {full_name} AS
+                        SELECT * FROM read_json_auto('{_escape_single_quotes(str(jsonl_file))}', ignore_errors=true)
+                        """.strip()
+                    )
+            except Exception as e:
+                log.debug("[lazy_attach] Failed ensuring jsonl table %s.%s: %s", connection_name, table_name, e)
+
+    def _jsonl_table_exists(self, schema_name: str, table_name: str) -> bool:
+        try:
+            row = self._conn.execute(
+                """
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_schema = ? AND table_name = ?
+                """,
+                [schema_name, table_name],
+            ).fetchone()
+            return bool(row and row[0] > 0)
+        except Exception:
+            return False
+
+    def _build_jsonl_file_map(self, folder_path: str) -> Dict[str, Path]:
+        folder = Path(folder_path)
+        if not folder.exists() or not folder.is_dir():
+            return {}
+        mapping: Dict[str, Path] = {}
+        # Support both .jsonl and .ndjson extensions
+        for jsonl_file in folder.glob("*.jsonl"):
+            mapping[sanitize_name(jsonl_file.name)] = jsonl_file
+        for ndjson_file in folder.glob("*.ndjson"):
+            mapping[sanitize_name(ndjson_file.name)] = ndjson_file
+        return mapping
+
+    # ---------------------------------------------------------------------
     # ClickHouse table materialization
     # ---------------------------------------------------------------------
 
@@ -1630,6 +1787,11 @@ def _lazy_attach_enabled() -> bool:
 
 def _lazy_attach_csv_materialize() -> bool:
     val = os.environ.get("LARS_LAZY_ATTACH_CSV_MATERIALIZE", "0").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+def _lazy_attach_jsonl_materialize() -> bool:
+    val = os.environ.get("LARS_LAZY_ATTACH_JSONL_MATERIALIZE", "0").strip().lower()
     return val in ("1", "true", "yes", "on")
 
 

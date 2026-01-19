@@ -39,7 +39,7 @@ sql_function:
     description: Engagement level assessed
 cells:
 - name: predict_engagement
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Predict the likely ENGAGEMENT TYPE for these {{ input.texts | length\
     \ }} social media posts.\nWhat kind of response will each post likely receive?\n\
     \n{% if input.platform %}\nPlatform context: {{ input.platform }}\n{% endif %}\n\

@@ -35,7 +35,7 @@ sql_function:
     description: Creates golden record from duplicate customer records
 cells:
 - name: merge_golden
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Create a golden record by merging these duplicate/related records.\n\
     \nRECORDS:\n{{ input.records }}\n\nFor each field, select the best value using\
     \ these criteria (in order):\n\n1. **Completeness**: Prefer non-null, non-empty\

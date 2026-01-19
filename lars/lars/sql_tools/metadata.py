@@ -32,6 +32,11 @@ class TableMetadata:
             schemas = self.conn.list_csv_schemas(alias)
             return [(alias, schema) for schema in schemas]
 
+        elif config.type == "jsonl_folder":
+            # For JSONL folders, each file is a "table" in the alias schema
+            schemas = self.conn.list_jsonl_schemas(alias)
+            return [(alias, schema) for schema in schemas]
+
         elif config.type == "duckdb_folder":
             # For DuckDB folders, each .duckdb file is a separate attached database
             # Returns: [(db_name, table_name), ...]
@@ -273,6 +278,11 @@ class TableMetadata:
         # Build qualified table name based on connection type
         if config.type == "csv_folder":
             # For CSV: csv_files.bigfoot_sightings
+            full_table_name = f"{alias}.{table_name}"
+            display_schema = alias
+
+        elif config.type == "jsonl_folder":
+            # For JSONL: jsonl_files.my_data
             full_table_name = f"{alias}.{table_name}"
             display_schema = alias
 

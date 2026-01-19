@@ -36,7 +36,7 @@ sql_function:
     description: Text converted to JSON
 cells:
 - name: generate_extractor
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   rules:
     max_turns: 1
   instructions: 'You are a DuckDB SQL expert. Generate a SQL expression to extract

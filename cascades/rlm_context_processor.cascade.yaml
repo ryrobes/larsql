@@ -25,7 +25,7 @@ inputs_schema:
 
 cells:
   - name: context_programmer
-    model: "{{ input.chunk_model | default('google/gemini-2.5-flash-lite') }}"
+    model: "{{ input.chunk_model | default('google/gemini-3-flash-preview') }}"
     instructions: |
       You are a **context decomposition expert**. Your job is to process large contexts
       by writing Python code that analyzes, chunks, and synthesizes information.

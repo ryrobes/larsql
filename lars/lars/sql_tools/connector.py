@@ -91,8 +91,8 @@ class DatabaseConnector:
         if alias in self._attached:
             return alias
 
-        # For CSV folders, also check if schema exists in DuckDB file (persistence check)
-        if config.type == "csv_folder":
+        # For CSV/JSONL folders, also check if schema exists in DuckDB file (persistence check)
+        if config.type in ("csv_folder", "jsonl_folder"):
             schema_exists = self.conn.execute(f"""
                 SELECT COUNT(*) FROM information_schema.schemata
                 WHERE schema_name = '{alias}'
@@ -118,6 +118,9 @@ class DatabaseConnector:
 
         elif config.type == "csv_folder":
             self._attach_csv_folder(config, alias)
+
+        elif config.type == "jsonl_folder":
+            self._attach_jsonl_folder(config, alias)
 
         elif config.type == "duckdb_folder":
             self._attach_duckdb_folder(config, alias)
@@ -1247,6 +1250,88 @@ class DatabaseConnector:
         if failed_count > 0:
             print(f"      ({failed_count} file(s) skipped due to errors)")
 
+    def _attach_jsonl_folder(self, config: SqlConnectionConfig, alias: str):
+        """
+        Attach JSONL folder as a database.
+
+        Each JSONL file becomes a table in DuckDB.
+        Supports both .jsonl and .ndjson extensions.
+        Query syntax: SELECT * FROM jsonl_files.my_data
+        """
+        if not config.folder_path:
+            raise ValueError(f"JSONL folder connection {alias} missing folder_path")
+
+        folder = Path(config.folder_path)
+        if not folder.exists():
+            raise FileNotFoundError(f"JSONL folder not found: {config.folder_path}")
+
+        if not folder.is_dir():
+            raise ValueError(f"JSONL folder_path is not a directory: {config.folder_path}")
+
+        # Find all JSONL files (support both .jsonl and .ndjson extensions)
+        jsonl_files = list(folder.glob("*.jsonl")) + list(folder.glob("*.ndjson"))
+
+        if not jsonl_files:
+            print(f"Warning: No JSONL files found in {config.folder_path}")
+            return
+
+        # Create schema first
+        self.conn.execute(f"CREATE SCHEMA IF NOT EXISTS {alias};")
+
+        # MATERIALIZE each JSONL as a TABLE (not view!)
+        # This imports data once, queries are fast (no re-reading JSONL)
+        loaded_count = 0
+        failed_count = 0
+        total_rows = 0
+        newly_imported_count = 0
+
+        for jsonl_file in jsonl_files:
+            schema_name = sanitize_name(jsonl_file.name)
+            table_name = f"{alias}.{schema_name}"
+
+            try:
+                # Check if table already exists (skip re-materialization)
+                table_exists = self.conn.execute(f"""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = '{alias}' AND table_name = '{schema_name}'
+                """).fetchone()[0] > 0
+
+                if table_exists:
+                    # Already materialized, skip
+                    row_count = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                    total_rows += row_count
+                    loaded_count += 1
+                    # Silent - already loaded
+                    continue
+
+                # Import JSONL into DuckDB table (CTAS - Create Table As Select)
+                # read_json_auto automatically handles newline-delimited JSON format
+                self.conn.execute(f"""
+                    CREATE TABLE {table_name} AS
+                    SELECT * FROM read_json_auto('{jsonl_file}', ignore_errors=true)
+                """)
+
+                # Count rows for feedback
+                row_count = self.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                total_rows += row_count
+
+                loaded_count += 1
+                newly_imported_count += 1
+                print(f"    [OK] Materialized {jsonl_file.name} → {schema_name} ({row_count:,} rows)")
+            except Exception as e:
+                failed_count += 1
+                print(f"    [WARN]  Skipped {jsonl_file.name}: {str(e)[:100]}")
+
+        if loaded_count > 0:
+            if newly_imported_count > 0:
+                print(f"  └─ Imported {newly_imported_count} NEW JSONL file(s) (first time)")
+            cached_count = loaded_count - newly_imported_count
+            if cached_count > 0:
+                print(f"  └─ Using {cached_count} cached JSONL table(s) (instant)")
+            print(f"  └─ Total: {loaded_count} JSONL tables ({total_rows:,} rows) ready for queries")
+        if failed_count > 0:
+            print(f"      ({failed_count} file(s) skipped due to errors)")
+
     def _attach_duckdb_file(self, db_file: Path, db_name: str, max_retries: int = 2) -> bool:
         """
         Attach a single DuckDB file with fallback for locked files.
@@ -1442,6 +1527,25 @@ class DatabaseConnector:
         """
         # Query information schema for tables in the alias schema
         # Changed from table_type='VIEW' to 'BASE TABLE' (materialized)
+        result = self.conn.execute(f"""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = '{alias}'
+              AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+        """).fetchall()
+
+        schemas = [row[0] for row in result]
+        return schemas
+
+    def list_jsonl_schemas(self, alias: str) -> List[str]:
+        """
+        List all JSONL schemas (materialized tables) for a jsonl_folder connection.
+
+        Returns:
+            List of schema names (e.g., ['my_data', 'events'])
+        """
+        # Query information schema for tables in the alias schema
         result = self.conn.execute(f"""
             SELECT table_name
             FROM information_schema.tables

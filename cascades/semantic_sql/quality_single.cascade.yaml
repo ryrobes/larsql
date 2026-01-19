@@ -56,7 +56,7 @@ sql_function:
 
 cells:
   - name: assess_quality
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
 
     instructions: |
       Assess the data quality of this value.

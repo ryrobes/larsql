@@ -44,7 +44,7 @@ sql_function:
     description: "Infix IMPLIES: invalid overgeneralization"
 cells:
 - name: check_implication
-  model: google/gemini-2.5-flash-lite
+  #model: google/gemini-3-flash-preview
   instructions: 'Does the PREMISE logically imply the CONCLUSION?
 
 

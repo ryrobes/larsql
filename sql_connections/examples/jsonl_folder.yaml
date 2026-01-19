@@ -1,0 +1,22 @@
+# JSONL Folder Connection Example
+# Query data from newline-delimited JSON (JSONL/NDJSON) files
+# Supports both .jsonl and .ndjson file extensions
+
+connection_name: jsonl_files
+type: jsonl_folder
+
+# Required: Path to folder containing JSONL files
+folder_path: /home/user/jsonl-data
+
+enabled: true
+sample_row_limit: 100
+distinct_value_threshold: 50
+
+# Each JSONL file becomes a table:
+#   events.jsonl      -> jsonl_files.events
+#   users.ndjson      -> jsonl_files.users
+#   api_logs.jsonl    -> jsonl_files.api_logs
+#
+# Query syntax:
+#   SELECT * FROM jsonl_files.events
+#   SELECT * FROM jsonl_files.users WHERE active = true

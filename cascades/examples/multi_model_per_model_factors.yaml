@@ -12,7 +12,7 @@ cells:
     models:
       anthropic/claude-sonnet-4.5:
         factor: 2
-      google/gemini-2.5-flash-lite:
+      google/gemini-3-flash-preview:
         factor: 3
       x-ai/grok-4.1-fast:
         factor: 2

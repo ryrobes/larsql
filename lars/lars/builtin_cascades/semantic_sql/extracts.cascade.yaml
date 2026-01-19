@@ -69,7 +69,7 @@ sql_function:
     description: "Infix EXTRACTS: product name extracted"
 cells:
 - name: extract
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   instructions: "Extract the requested information from this text.\n\nTEXT:\n{{ input.text\
     \ }}\n\nEXTRACT: {{ input.what }}\n\nInstructions:\n1. Find the specific information\
     \ requested in the text\n2. Return ONLY the extracted information, nothing else\n\

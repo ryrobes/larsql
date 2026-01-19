@@ -6,7 +6,7 @@ cells:
 - instructions: '{{ input.prompt }}
 
     '
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   name: llm_phase
   rules:
     max_turns: 1
@@ -35,7 +35,7 @@ cells:
       include:
       - output
   instructions: "Summarize this into markdown please:\n  \n{{ input.prompt }}\n"
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   name: llm_phase_1
   rules:
     max_turns: 1
@@ -50,7 +50,7 @@ cells:
     {{ input.prompt }}
 
     '
-  model: google/gemini-2.5-flash-lite
+  model: google/gemini-3-flash-preview
   name: llm_phase_2
   rules:
     max_turns: 1

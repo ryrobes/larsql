@@ -73,7 +73,7 @@ sql_function:
 
 cells:
   - name: cluster_and_assign
-    model: google/gemini-2.5-flash-lite
+    model: google/gemini-3-flash-preview
     instructions: |
       Analyze these {{ input.texts | length }} values and:
       1. Identify {{ input.num_clusters | default(8) }} semantic clusters
