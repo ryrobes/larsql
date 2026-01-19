@@ -183,6 +183,23 @@ class HistoricalQueryStats:
 
 
 @dataclass
+class PipelineStageExplain:
+    """Explanation for a single pipeline stage (THEN operator)."""
+    stage_name: str             # e.g., 'PIVOT', 'MELT', 'ANALYZE', 'FILTER'
+    stage_index: int            # Position in pipeline (0-based)
+    cascade_id: str             # Backing cascade ID
+    cascade_path: str           # Path to cascade file
+    output_mode: str            # 'value', 'table_sql_execute', etc.
+    model: str                  # LLM model used
+    cells: List[str]            # Cell names in cascade
+    args: List[str]             # Arguments passed to stage
+    into_table: Optional[str]   # Optional per-stage INTO table
+    cache_enabled: bool         # Whether this stage uses caching
+    estimated_cost: float       # Estimated cost for this stage
+    description: str            # Human-readable description
+
+
+@dataclass
 class ExplainResult:
     """Result of EXPLAIN analysis."""
     # Query metadata
@@ -203,6 +220,9 @@ class ExplainResult:
 
     # LLM aggregate operations (SUMMARIZE, TOPICS, SENTIMENT_AGG, etc.)
     aggregates: List[AggregateOperation] = field(default_factory=list)
+
+    # Pipeline stages (for THEN/INTO queries)
+    pipeline_stages: List[PipelineStageExplain] = field(default_factory=list)
 
     # Cost summary
     total_estimated_cost: float = 0.0
@@ -425,6 +445,169 @@ def explain_lars_map(
     result.analysis_duration_ms = (time.time() - start_time) * 1000
 
     return result
+
+
+def explain_pipeline_query(
+    pipeline,
+    original_query: str,
+    duckdb_conn,
+    execute_distinct: bool = True
+) -> ExplainResult:
+    """
+    Analyze a pipeline query (with THEN/INTO stages) and estimate cost.
+
+    Pipeline queries have the form:
+        SELECT * FROM t WHERE col MEANS 'x' THEN PIVOT 'by region' INTO result
+
+    This analyzes both the base SQL semantic operations and each pipeline stage.
+
+    Args:
+        pipeline: ParsedPipeline from pipeline_parser
+        original_query: Full original query for fingerprinting
+        duckdb_conn: DuckDB connection for analysis
+        execute_distinct: Whether to execute distinct queries
+
+    Returns:
+        ExplainResult with base SQL analysis + pipeline stage details
+    """
+    start_time = time.time()
+
+    # Get query fingerprint (returns tuple: hash, template, udf_types)
+    from lars.sql_trail import fingerprint_query
+    fingerprint_hash, _, _ = fingerprint_query(original_query)
+
+    result = ExplainResult(
+        query_type='pipeline_query',
+        fingerprint=fingerprint_hash,
+        rewritten_sql=original_query,
+    )
+
+    # 1. Analyze base SQL for semantic operations
+    try:
+        from lars.sql_tools.prewarm_analyzer import analyze_query_for_prewarm
+        prewarm_specs = analyze_query_for_prewarm(pipeline.base_sql)
+
+        for spec in prewarm_specs:
+            operation = _analyze_semantic_operation(spec, duckdb_conn, execute_distinct)
+            result.operations.append(operation)
+    except Exception as e:
+        log.debug(f"[explain] Failed to analyze base SQL operations: {e}")
+
+    # 2. Detect aggregates in base SQL
+    try:
+        aggregate_specs = _detect_llm_aggregates(pipeline.base_sql)
+        for agg_spec in aggregate_specs:
+            agg_operation = _analyze_aggregate_operation(agg_spec, pipeline.base_sql, duckdb_conn)
+            result.aggregates.append(agg_operation)
+    except Exception as e:
+        log.debug(f"[explain] Failed to detect aggregates: {e}")
+
+    # 3. Analyze each pipeline stage
+    for idx, stage in enumerate(pipeline.stages):
+        stage_explain = _analyze_pipeline_stage(stage, idx)
+        result.pipeline_stages.append(stage_explain)
+
+    # 4. Sum up totals
+    # Base SQL costs
+    scalar_cost = sum(op.estimated_cost for op in result.operations)
+    scalar_calls = sum(op.estimated_llm_calls for op in result.operations)
+    agg_cost = sum(agg.estimated_cost for agg in result.aggregates)
+    agg_calls = sum(agg.estimated_groups for agg in result.aggregates)
+
+    # Pipeline stage costs
+    pipeline_cost = sum(stage.estimated_cost for stage in result.pipeline_stages)
+    pipeline_calls = len(result.pipeline_stages)  # Each stage = 1 LLM call (roughly)
+
+    result.total_estimated_cost = scalar_cost + agg_cost + pipeline_cost
+    result.total_estimated_llm_calls = scalar_calls + agg_calls + pipeline_calls
+
+    # Estimate duration
+    if result.total_estimated_llm_calls > 0:
+        avg_latency_per_call = 1.0
+        result.estimated_duration_seconds = result.total_estimated_llm_calls * avg_latency_per_call
+
+    # Get historical stats
+    result.historical = _get_historical_query_stats(fingerprint_hash)
+
+    # Generate optimization hints
+    result.optimization_hints = _generate_optimization_hints(result)
+
+    # Add pipeline-specific hints
+    for stage in result.pipeline_stages:
+        if stage.output_mode == 'table_sql_execute' and stage.cache_enabled:
+            result.optimization_hints.append(
+                f"[CACHE] {stage.stage_name}: Uses structural caching (schema fingerprint + prompt)")
+
+    result.analysis_duration_ms = (time.time() - start_time) * 1000
+
+    return result
+
+
+def _analyze_pipeline_stage(stage, index: int) -> PipelineStageExplain:
+    """Analyze a single pipeline stage and return its explanation."""
+    from lars.semantic_sql.registry import get_pipeline_cascade
+
+    # Look up the cascade for this stage
+    cascade_entry = get_pipeline_cascade(stage.name)
+
+    if cascade_entry is None:
+        # Unknown stage
+        return PipelineStageExplain(
+            stage_name=stage.name,
+            stage_index=index,
+            cascade_id='unknown',
+            cascade_path='',
+            output_mode='unknown',
+            model='unknown',
+            cells=[],
+            args=stage.args,
+            into_table=getattr(stage, 'into_table', None),
+            cache_enabled=False,
+            estimated_cost=0.0,
+            description=f"Unknown pipeline stage: {stage.name}"
+        )
+
+    # Get cascade details
+    cascade_id = cascade_entry.cascade_id
+    cascade_path = cascade_entry.cascade_path
+    output_mode = cascade_entry.output_mode or 'value'
+    cache_enabled = cascade_entry.cache_enabled
+
+    # Get model and cells from cascade config
+    config = cascade_entry.config
+    cells = []
+    model = _get_default_model()
+
+    if config and 'cells' in config:
+        for cell in config['cells']:
+            if isinstance(cell, dict):
+                cells.append(cell.get('name', 'unknown'))
+                if 'model' in cell:
+                    model = cell['model']
+
+    # Estimate cost (rough: based on model pricing)
+    pricing = _get_model_pricing(model)
+    # Assume ~500 input tokens, ~200 output tokens per stage
+    estimated_cost = (500 * pricing['prompt_price']) + (200 * pricing['completion_price'])
+
+    # Build description
+    args_str = f"({', '.join(repr(a) for a in stage.args)})" if stage.args else ""
+    description = cascade_entry.sql_function.get('description', f"{stage.name} stage") if cascade_entry.sql_function else f"{stage.name} stage"
+
+    return PipelineStageExplain(
+        stage_name=stage.name,
+        stage_index=index,
+        cascade_id=cascade_id,
+        cascade_path=cascade_path,
+        output_mode=output_mode,
+        model=model,
+        cells=cells,
+        args=stage.args,
+        into_table=getattr(stage, 'into_table', None),
+        cache_enabled=cache_enabled,
+        estimated_cost=estimated_cost,
+        description=description
+    )
 
 
 # ============================================================================
@@ -1420,6 +1603,28 @@ def format_explain_result(result: ExplainResult) -> str:
 
             lines.append(f"{inner_prefix}└─ Estimated Total: ${agg.estimated_cost:.4f}")
 
+    # Pipeline stages (for THEN/INTO queries)
+    if result.pipeline_stages:
+        lines.append(f"  │")
+        lines.append(f"  ├─ Pipeline Stages: {len(result.pipeline_stages)}")
+
+        for i, stage in enumerate(result.pipeline_stages):
+            is_last = i == len(result.pipeline_stages) - 1
+            prefix = "  │  └─" if is_last else "  │  ├─"
+            inner_prefix = "  │     " if is_last else "  │  │  "
+
+            args_display = ', '.join(repr(a)[:30] for a in stage.args[:2]) if stage.args else "(no args)"
+            lines.append(f"{prefix} [{stage.stage_index + 1}] {stage.stage_name}({args_display})")
+            lines.append(f"{inner_prefix}├─ Cascade: {stage.cascade_id}")
+            lines.append(f"{inner_prefix}├─ Model: {stage.model}")
+            lines.append(f"{inner_prefix}├─ Cells: {', '.join(stage.cells) if stage.cells else '(none)'}")
+            lines.append(f"{inner_prefix}├─ Output Mode: {stage.output_mode}")
+            if stage.cache_enabled:
+                lines.append(f"{inner_prefix}├─ Cache: enabled (structural caching)")
+            if stage.into_table:
+                lines.append(f"{inner_prefix}├─ INTO: {stage.into_table}")
+            lines.append(f"{inner_prefix}└─ Estimated Cost: ${stage.estimated_cost:.4f}")
+
     # Cost summary
     lines.append(f"  │")
     lines.append(f"  ├─ Total Estimated Cost: ${result.total_estimated_cost:.4f}")
@@ -1515,6 +1720,23 @@ def format_explain_json(result: ExplainResult) -> Dict[str, Any]:
                 'model': agg.model,
             }
             for agg in result.aggregates
+        ],
+        'pipeline_stages': [
+            {
+                'stage_name': stage.stage_name,
+                'stage_index': stage.stage_index,
+                'cascade_id': stage.cascade_id,
+                'cascade_path': stage.cascade_path,
+                'output_mode': stage.output_mode,
+                'model': stage.model,
+                'cells': stage.cells,
+                'args': stage.args,
+                'into_table': stage.into_table,
+                'cache_enabled': stage.cache_enabled,
+                'estimated_cost': stage.estimated_cost,
+                'description': stage.description,
+            }
+            for stage in result.pipeline_stages
         ],
         'total_estimated_cost': result.total_estimated_cost,
         'total_estimated_llm_calls': result.total_estimated_llm_calls,

@@ -4111,6 +4111,17 @@ class ClientConnection:
                 self._handle_watch_command(query)
                 return
 
+            # Handle EXPLAIN queries - must be checked BEFORE pipeline syntax
+            # because EXPLAIN SELECT ... THEN PIVOT would otherwise be intercepted by pipeline handler
+            # Supports: EXPLAIN SELECT ... MEANS ...
+            #           EXPLAIN SELECT ... THEN PIVOT ...
+            #           EXPLAIN (FORMAT JSON) SELECT ...
+            #           explain\nselect ... (lowercase, newline after EXPLAIN)
+            import re
+            if re.match(r'^EXPLAIN[\s(]', query_upper):
+                self._handle_explain_query(query)
+                return
+
             # Handle PIPELINE syntax (THEN/INTO for post-query processing)
             # Syntax: SELECT * FROM table THEN ANALYZE 'prompt' INTO result_table
             from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
@@ -6160,6 +6171,150 @@ class ClientConnection:
         send_query_results(self.sock, job_df, self.transaction_status)
         styled_print(f"[{self.session_id}] {S.SEARCH} Analysis job {job_id} submitted: {prompt[:50]}...")
 
+    def _handle_explain_query(self, query: str):
+        """
+        Handle EXPLAIN queries for semantic SQL and pipeline operators.
+
+        Supports:
+            EXPLAIN SELECT * FROM t WHERE col MEANS 'something'
+            EXPLAIN SELECT * FROM t THEN PIVOT 'by region'
+            EXPLAIN (FORMAT JSON) SELECT * FROM t THEN ANALYZE 'trends'
+
+        For pipeline queries, explains both the base SQL and each stage.
+        """
+        import re
+        import pandas as pd
+        from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+
+        styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query")
+
+        # Parse EXPLAIN prefix
+        normalized = query.strip()
+        explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
+        if not explain_match:
+            # Shouldn't happen, but handle gracefully
+            self._send_error(f"Invalid EXPLAIN syntax: {query[:50]}")
+            return
+
+        inner_query = normalized[explain_match.end():].strip()
+
+        # Check for EXPLAIN (FORMAT JSON) syntax
+        format_json = False
+        format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
+        if format_match:
+            format_json = True
+            inner_query = inner_query[format_match.end():].strip()
+
+        # Check if the query has pipeline syntax (THEN/INTO)
+        if has_pipeline_syntax(inner_query):
+            # Explain pipeline query
+            pipeline = parse_pipeline_syntax(inner_query)
+            if pipeline and pipeline.stages:
+                try:
+                    from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
+                    result = explain_pipeline_query(
+                        pipeline=pipeline,
+                        original_query=inner_query,
+                        duckdb_conn=self.duckdb_conn
+                    )
+
+                    if format_json:
+                        import json
+                        plan_json = json.dumps(format_explain_json(result), indent=2)
+                        plan_json_escaped = plan_json.replace("'", "''")
+                        explain_sql = f"SELECT '{plan_json_escaped}' AS query_plan"
+                    else:
+                        plan_text = format_explain_result(result)
+                        plan_text_escaped = plan_text.replace("'", "''")
+                        explain_sql = f"SELECT '{plan_text_escaped}' AS query_plan"
+
+                    result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+                    send_query_results(self.sock, result_df, self.transaction_status)
+                    styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan")
+                    return
+                except Exception as e:
+                    styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                    # Fall through to regular EXPLAIN handling
+
+        # For non-pipeline queries, use the existing rewriter-based EXPLAIN
+        # (handles LARS MAP/RUN and inline semantic functions)
+        from ..sql_rewriter import rewrite_lars_syntax
+        explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
+
+        # Execute the rewritten explain query
+        try:
+            result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+            send_query_results(self.sock, result_df, self.transaction_status)
+            styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan")
+        except Exception as e:
+            self._send_error(f"EXPLAIN execution failed: {e}")
+
+    def _handle_explain_query_extended(self, query: str, send_row_description: bool = True):
+        """
+        Handle EXPLAIN queries via Extended Query Protocol.
+
+        Same as _handle_explain_query but uses Extended Query Protocol response format.
+        """
+        import re
+        import pandas as pd
+        from ..sql_tools.pipeline_parser import has_pipeline_syntax, parse_pipeline_syntax
+
+        styled_print(f"[{self.session_id}] {S.CLIP} EXPLAIN query (Extended)")
+
+        # Parse EXPLAIN prefix
+        normalized = query.strip()
+        explain_match = re.match(r'EXPLAIN\s*', normalized, re.IGNORECASE)
+        if not explain_match:
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"Invalid EXPLAIN syntax: {query[:50]}"))
+            return
+
+        inner_query = normalized[explain_match.end():].strip()
+
+        # Check for EXPLAIN (FORMAT JSON) syntax
+        format_json = False
+        format_match = re.match(r'\(\s*FORMAT\s+JSON\s*\)\s*', inner_query, re.IGNORECASE)
+        if format_match:
+            format_json = True
+            inner_query = inner_query[format_match.end():].strip()
+
+        # Check if the query has pipeline syntax (THEN/INTO)
+        if has_pipeline_syntax(inner_query):
+            pipeline = parse_pipeline_syntax(inner_query)
+            if pipeline and pipeline.stages:
+                try:
+                    from ..sql_explain import explain_pipeline_query, format_explain_result, format_explain_json
+                    result = explain_pipeline_query(
+                        pipeline=pipeline,
+                        original_query=inner_query,
+                        duckdb_conn=self.duckdb_conn
+                    )
+
+                    if format_json:
+                        import json
+                        plan_text = json.dumps(format_explain_json(result), indent=2)
+                    else:
+                        plan_text = format_explain_result(result)
+
+                    result_df = pd.DataFrame([{'query_plan': plan_text}])
+                    send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+                    styled_print(f"[{self.session_id}]   {S.OK} Returned pipeline EXPLAIN plan (Extended)")
+                    return
+                except Exception as e:
+                    styled_print(f"[{self.session_id}]   {S.WARN} Pipeline EXPLAIN failed: {e}")
+                    # Fall through to regular EXPLAIN handling
+
+        # For non-pipeline queries, use the existing rewriter-based EXPLAIN
+        from ..sql_rewriter import rewrite_lars_syntax
+        explain_sql = rewrite_lars_syntax(query, duckdb_conn=self.duckdb_conn)
+
+        # Execute the rewritten explain query
+        try:
+            result_df = self.duckdb_conn.execute(explain_sql).fetchdf()
+            send_execute_results(self.sock, result_df, send_row_description=send_row_description)
+            styled_print(f"[{self.session_id}]   {S.OK} Returned EXPLAIN plan (Extended)")
+        except Exception as e:
+            self.sock.sendall(ErrorResponse.encode('ERROR', f"EXPLAIN execution failed: {e}"))
+
     def _handle_pipeline_query(self, pipeline, original_query: str, extended_query_mode: bool = False, send_row_description: bool = True):
         """
         Handle queries with THEN/INTO pipeline syntax.
@@ -6860,6 +7015,23 @@ class ClientConnection:
                         styled_print(f"[{self.session_id}]      {S.OK} Portal described (WATCH command - NoData)")
                     return
 
+                # EXPLAIN queries - return query_plan column without executing the query
+                # Must be checked BEFORE pipeline syntax to avoid executing full pipeline
+                import re
+                if re.match(r'^EXPLAIN[\s(]', query_upper):
+                    # Check for FORMAT JSON in EXPLAIN options
+                    is_json = 'FORMAT' in query_upper and 'JSON' in query_upper
+                    if is_json:
+                        columns = [('QUERY PLAN', 'JSON')]
+                    else:
+                        columns = [('query_plan', 'VARCHAR')]
+
+                    self.sock.sendall(RowDescription.encode(columns))
+                    portal['row_description_sent'] = True
+                    portal['described_columns'] = len(columns)
+                    styled_print(f"[{self.session_id}]      {S.OK} Portal described (EXPLAIN - {len(columns)} columns)")
+                    return
+
                 # PIPELINE syntax (THEN/INTO) - Execute pipeline to determine result columns
                 # Cache result for Execute phase to avoid re-running the pipeline
                 # IMPORTANT: Use original_query for pipeline detection to avoid conflicts
@@ -7382,6 +7554,14 @@ class ClientConnection:
             if is_watch_command(query):
                 print(f"[{self.session_id}]      Detected WATCH command via Extended Query")
                 self._handle_watch_command(query, extended_query_mode=True, send_row_description=send_row_desc)
+                return
+
+            # EXPLAIN queries - must be checked BEFORE pipeline syntax
+            # because EXPLAIN SELECT ... THEN PIVOT would otherwise be intercepted by pipeline handler
+            import re
+            if re.match(r'^EXPLAIN[\s(]', query_upper):
+                styled_print(f"[{self.session_id}]      Detected EXPLAIN via Extended Query")
+                self._handle_explain_query_extended(query, send_row_description=send_row_desc)
                 return
 
             # PIPELINE syntax (THEN/INTO) - Handle post-query result processing via Extended Query
