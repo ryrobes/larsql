@@ -59,14 +59,30 @@ class TestRegistryIntegration:
         assert entry is not None
         assert entry.shape == "PIPELINE"
 
+    def test_pivot_cascade_registered(self):
+        """PIVOT pipeline cascade should be registered."""
+        entry = get_pipeline_cascade("PIVOT")
+        assert entry is not None
+        assert entry.shape == "PIPELINE"
+        assert "pivot_pipeline" in entry.cascade_path
+
+    def test_melt_cascade_registered(self):
+        """MELT pipeline cascade should be registered."""
+        entry = get_pipeline_cascade("MELT")
+        assert entry is not None
+        assert entry.shape == "PIPELINE"
+        assert "melt_pipeline" in entry.cascade_path
+
     def test_list_pipeline_cascades(self):
         """Should list all PIPELINE cascades."""
         pipelines = list_pipeline_cascades()
-        assert len(pipelines) >= 4
+        assert len(pipelines) >= 6  # Updated to include PIVOT and MELT
         assert "ANALYZE" in pipelines
         assert "FILTER" in pipelines
         assert "ENRICH" in pipelines
         assert "SPEAK" in pipelines
+        assert "PIVOT" in pipelines
+        assert "MELT" in pipelines
 
     def test_non_pipeline_not_returned(self):
         """get_pipeline_cascade should return None for non-PIPELINE shapes."""
@@ -449,6 +465,119 @@ class TestEndToEndMocked:
             # Both stages were called
             assert call_count[0] == 2
 
+    @patch("lars.runner.LARSRunner")
+    @patch("lars._register_all_skills")
+    def test_pivot_transforms_data(self, mock_register, mock_runner_cls):
+        """PIVOT stage should transform rows to columns."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        # Sample long-format data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Widget", "Gadget", "Gadget"],
+            "region": ["North", "South", "North", "South"],
+            "revenue": [100, 150, 200, 75],
+        })
+
+        # Mock pivot to return wide-format data
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = {
+            "lineage": [
+                {
+                    "cell": "pivot_table",
+                    "output": {
+                        "pivot_config": {
+                            "index_columns": ["product"],
+                            "pivot_column": "region",
+                            "value_columns": ["revenue"],
+                            "aggregation": "sum"
+                        },
+                        "data": [
+                            {"product": "Widget", "north_revenue": 100, "south_revenue": 150},
+                            {"product": "Gadget", "north_revenue": 200, "south_revenue": 75},
+                        ]
+                    }
+                }
+            ]
+        }
+        mock_runner_cls.return_value = mock_runner
+
+        mock_entry = MagicMock()
+        mock_entry.cascade_path = "/path/to/pivot.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
+
+        with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
+            stages = [PipelineStage(name="PIVOT", args=["revenue by region for each product"], original_text="PIVOT")]
+
+            result_df = execute_pipeline_stages(
+                stages=stages,
+                initial_df=sample_data,
+                session_id="test",
+            )
+
+            assert "product" in result_df.columns
+            assert "north_revenue" in result_df.columns
+            assert "south_revenue" in result_df.columns
+            assert len(result_df) == 2  # Pivoted to 2 rows
+
+    @patch("lars.runner.LARSRunner")
+    @patch("lars._register_all_skills")
+    def test_melt_transforms_data(self, mock_register, mock_runner_cls):
+        """MELT stage should transform columns to rows."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        # Sample wide-format data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Gadget"],
+            "q1_sales": [100, 200],
+            "q2_sales": [150, 250],
+            "q3_sales": [120, 180],
+        })
+
+        # Mock melt to return long-format data
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = {
+            "lineage": [
+                {
+                    "cell": "melt_table",
+                    "output": {
+                        "melt_config": {
+                            "id_columns": ["product"],
+                            "value_columns": ["q1_sales", "q2_sales", "q3_sales"],
+                            "variable_name": "quarter",
+                            "value_name": "sales"
+                        },
+                        "data": [
+                            {"product": "Widget", "quarter": "q1_sales", "sales": 100},
+                            {"product": "Widget", "quarter": "q2_sales", "sales": 150},
+                            {"product": "Widget", "quarter": "q3_sales", "sales": 120},
+                            {"product": "Gadget", "quarter": "q1_sales", "sales": 200},
+                            {"product": "Gadget", "quarter": "q2_sales", "sales": 250},
+                            {"product": "Gadget", "quarter": "q3_sales", "sales": 180},
+                        ]
+                    }
+                }
+            ]
+        }
+        mock_runner_cls.return_value = mock_runner
+
+        mock_entry = MagicMock()
+        mock_entry.cascade_path = "/path/to/melt.yaml"
+        mock_entry.sql_function = {"args": [{"name": "prompt", "type": "VARCHAR"}, {"name": "_table", "type": "TABLE"}]}
+
+        with patch("lars.semantic_sql.registry.get_pipeline_cascade", return_value=mock_entry):
+            stages = [PipelineStage(name="MELT", args=["quarterly sales columns into quarter and sales"], original_text="MELT")]
+
+            result_df = execute_pipeline_stages(
+                stages=stages,
+                initial_df=sample_data,
+                session_id="test",
+            )
+
+            assert "product" in result_df.columns
+            assert "quarter" in result_df.columns
+            assert "sales" in result_df.columns
+            assert len(result_df) == 6  # 2 products × 3 quarters
+
 
 @pytest.mark.requires_llm
 class TestEndToEndWithLLM:
@@ -508,3 +637,58 @@ class TestEndToEndWithLLM:
         assert result_df is not None
         # Eco-friendly filter should remove plastic bottle
         assert len(result_df) <= len(sample_products)
+
+    def test_pivot_with_real_llm(self):
+        """Test PIVOT with real LLM call."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        initialize_registry(force=True)
+
+        # Long-format sales data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Widget", "Widget", "Gadget", "Gadget", "Gadget"],
+            "region": ["North", "South", "East", "North", "South", "East"],
+            "revenue": [100, 150, 80, 200, 175, 90],
+        })
+
+        stages = [PipelineStage(name="PIVOT", args=["show revenue by region for each product"], original_text="PIVOT")]
+
+        result_df = execute_pipeline_stages(
+            stages=stages,
+            initial_df=sample_data,
+            session_id="llm-test",
+        )
+
+        # Should return pivoted data
+        assert result_df is not None
+        assert len(result_df) > 0
+        # Should have fewer rows than original (pivoted)
+        assert len(result_df) <= len(sample_data)
+
+    def test_melt_with_real_llm(self):
+        """Test MELT with real LLM call."""
+        from lars.sql_tools.pipeline_parser import PipelineStage
+
+        initialize_registry(force=True)
+
+        # Wide-format quarterly data
+        sample_data = pd.DataFrame({
+            "product": ["Widget", "Gadget"],
+            "q1_sales": [100, 200],
+            "q2_sales": [150, 250],
+            "q3_sales": [120, 180],
+        })
+
+        stages = [PipelineStage(name="MELT", args=["convert quarterly columns to rows"], original_text="MELT")]
+
+        result_df = execute_pipeline_stages(
+            stages=stages,
+            initial_df=sample_data,
+            session_id="llm-test",
+        )
+
+        # Should return melted data
+        assert result_df is not None
+        assert len(result_df) > 0
+        # Should have more rows than original (melted)
+        assert len(result_df) >= len(sample_data)

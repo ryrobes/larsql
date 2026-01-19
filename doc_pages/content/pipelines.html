@@ -306,6 +306,84 @@ flowchart LR
   </div>
 </div>
 
+<h3>PIVOT</h3>
+<p>
+  Smart pivot (cross-tabulation) that transforms rows to columns. The LLM analyzes your data
+  to determine the best pivot configuration—no need to know exact values ahead of time.
+  Handles dynamic column discovery and automatic aggregation.
+</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Natural language pivot</span>
+<span class="kw">SELECT</span> product, region, revenue <span class="kw">FROM</span> sales
+<span class="fn">THEN PIVOT</span> <span class="str">'show revenue by region for each product'</span>;
+
+<span class="cmt">-- Explicit columns (pivot on category, aggregate amount)</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> data <span class="fn">THEN PIVOT</span>(<span class="str">'category, amount'</span>);
+
+<span class="cmt">-- With explicit aggregation</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> data <span class="fn">THEN PIVOT</span>(<span class="str">'category, amount, avg'</span>);</pre>
+  </div>
+</div>
+<p>
+  <strong>Why this is powerful:</strong> Traditional SQL pivot requires knowing all pivot values
+  at query time and has wildly different syntax across databases. PIVOT discovers values dynamically
+  and uses plain English to specify intent.
+</p>
+
+<h3>MELT</h3>
+<p>
+  Transform columns to rows (unpivot/wide-to-long). The inverse of PIVOT—takes
+  spreadsheet-style wide data and normalizes it to database-friendly long format.
+  Also known as UNPIVOT, GATHER, or WIDE-TO-LONG.
+</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">SQL</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Natural language melt</span>
+<span class="kw">SELECT</span> product, q1_sales, q2_sales, q3_sales, q4_sales <span class="kw">FROM</span> quarterly_data
+<span class="fn">THEN MELT</span> <span class="str">'convert quarterly columns to rows'</span>;
+
+<span class="cmt">-- Explicit column specification</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> wide_data
+<span class="fn">THEN MELT</span>(<span class="str">'q1_sales, q2_sales, q3_sales, q4_sales'</span>);
+
+<span class="cmt">-- With custom variable/value names</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> financials
+<span class="fn">THEN MELT</span>(<span class="str">'revenue columns into period and amount'</span>);</pre>
+  </div>
+</div>
+<p>
+  <strong>Example transformation:</strong>
+</p>
+<div class="code-block">
+  <div class="code-block-header">
+    <span class="code-block-lang">Before (Wide) → After (Long)</span>
+  </div>
+  <div class="code-block-content">
+    <pre><span class="cmt">-- Before: Wide format</span>
+| product | q1_sales | q2_sales | q3_sales |
+|---------|----------|----------|----------|
+| Widget  | 100      | 150      | 200      |
+| Gadget  | 80       | 120      | 160      |
+
+<span class="cmt">-- After: Long format</span>
+| product | quarter  | sales |
+|---------|----------|-------|
+| Widget  | q1_sales | 100   |
+| Widget  | q2_sales | 150   |
+| Widget  | q3_sales | 200   |
+| Gadget  | q1_sales | 80    |
+| Gadget  | q2_sales | 120   |
+| Gadget  | q3_sales | 160   |</pre>
+  </div>
+</div>
+
 <h3>SPEAK</h3>
 <p>Convert results to speech using text-to-speech. Side-effect stage.</p>
 <div class="code-block">

@@ -1,0 +1,139 @@
+cascade_id: pipeline_melt
+internal: true
+description: |
+  PIPELINE cascade for melting (unpivoting) wide data to long format.
+
+  MELT is the inverse of PIVOT - it transforms columns into rows.
+  Also known as UNPIVOT, GATHER, or WIDE-TO-LONG transformation.
+
+  This is useful for:
+  - Normalizing denormalized data
+  - Preparing data for visualization tools that expect long format
+  - Converting spreadsheet-style data to database-friendly format
+
+  Usage examples:
+      SELECT * FROM wide_sales THEN MELT 'convert quarterly columns to rows'
+      SELECT * FROM data THEN MELT('q1_sales, q2_sales, q3_sales, q4_sales')
+      SELECT * FROM data THEN MELT('revenue columns into period and amount')
+
+  Example transformation:
+      Input (wide):
+      | product | q1_sales | q2_sales | q3_sales |
+      | Widget  | 100      | 150      | 200      |
+
+      Output (long):
+      | product | quarter  | sales |
+      | Widget  | q1_sales | 100   |
+      | Widget  | q2_sales | 150   |
+      | Widget  | q3_sales | 200   |
+
+inputs_schema:
+  prompt: Melt description - which columns to unpivot
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: MELT
+  description: Transform columns to rows (unpivot/wide-to-long)
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN MELT {{ prompt }}'
+    - 'THEN MELT({{ prompt }})'
+  cache: false
+
+cells:
+  - name: melt_table
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a data transformation expert. Melt (unpivot) the provided data from wide to long format.
+
+      MELT REQUEST: {{ input.prompt }}
+
+      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
+      {{ input._table | tojson }}
+
+      Your task is to transform this data from "wide" format to "long" format by:
+      1. Identifying ID columns - columns that stay as-is (row identifiers)
+      2. Identifying VALUE columns - columns to melt into rows
+      3. Creating a VARIABLE column - contains the original column names
+      4. Creating a VALUE column - contains the values from those columns
+
+      INTERPRETATION GUIDELINES:
+      - If prompt lists specific columns → melt those columns
+      - If prompt mentions a pattern (e.g., "quarterly columns", "year columns") → identify matching columns
+      - If prompt says "into X and Y" → use X as variable column name, Y as value column name
+      - Default variable column name: "variable"
+      - Default value column name: "value"
+
+      Return JSON with this EXACT structure:
+      {
+        "melt_config": {
+          "id_columns": ["product", "category"],
+          "value_columns": ["q1_sales", "q2_sales", "q3_sales"],
+          "variable_name": "quarter",
+          "value_name": "sales"
+        },
+        "data": [
+          {"product": "Widget", "category": "A", "quarter": "q1_sales", "sales": 100},
+          {"product": "Widget", "category": "A", "quarter": "q2_sales", "sales": 150},
+          {"product": "Widget", "category": "A", "quarter": "q3_sales", "sales": 200},
+          {"product": "Gadget", "category": "B", "quarter": "q1_sales", "sales": 80}
+        ]
+      }
+
+      TRANSFORMATION RULES:
+      - Each original row becomes N rows (where N = number of value columns)
+      - ID columns are repeated for each melted row
+      - Variable column contains the original column name
+      - Value column contains the value from that column
+      - Skip null values unless they're meaningful (include them if the pattern matters)
+
+      COLUMN NAMING:
+      - If prompt specifies names like "into period and amount" → use "period" and "amount"
+      - Otherwise use descriptive names based on context:
+        - Time-related columns → "period", "quarter", "year", "month"
+        - Metric columns → "metric", "measure"
+        - Generic → "variable", "value"
+
+      NULL HANDLING:
+      - By default, include rows with null values
+      - The structure should be consistent (same columns in every row)
+
+      CRITICAL:
+      - The "data" array must contain the fully melted table
+      - Each row must have: all ID columns + variable column + value column
+      - Total rows = original_rows × number_of_value_columns (minus nulls if skipped)
+
+    output_schema:
+      type: object
+      required:
+        - data
+        - melt_config
+      properties:
+        melt_config:
+          type: object
+          properties:
+            id_columns:
+              type: array
+              items:
+                type: string
+            value_columns:
+              type: array
+              items:
+                type: string
+            variable_name:
+              type: string
+            value_name:
+              type: string
+        data:
+          type: array
+
+    rules:
+      max_turns: 1

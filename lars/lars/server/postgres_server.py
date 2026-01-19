@@ -6175,8 +6175,6 @@ class ClientConnection:
         """
         import pandas as pd
         from ..sql_tools.pipeline_executor import execute_pipeline_with_into, PipelineExecutionError
-        from ..sql_tools.semantic_rewriter_v2 import rewrite_semantic_sql_v2
-        from ..sql_tools.semantic_operators import rewrite_semantic_operators
 
         styled_print(f"[{self.session_id}] {S.PIPELINE} Pipeline query: {len(pipeline.stages)} stages")
         for stage in pipeline.stages:
@@ -6187,17 +6185,14 @@ class ClientConnection:
             styled_print(f"[{self.session_id}]   {S.SAVE} INTO: {pipeline.into_table}")
 
         try:
-            # 1. Execute base SQL with semantic rewriting
+            # 1. Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
             base_sql = pipeline.base_sql
 
-            # Apply semantic SQL rewrites
-            v2_result = rewrite_semantic_sql_v2(base_sql)
-            if v2_result.changed:
-                base_sql = v2_result.sql_out
-
-            rewritten = rewrite_semantic_operators(base_sql)
-            if rewritten:
-                base_sql = rewritten
+            # Use the unified rewriter - same as normal query path
+            # This ensures dimension functions (vibes, topics, etc.) get CTE transformation
+            # BEFORE semantic rewriters inject ROW_NUMBER() for lineage tracking
+            from ..sql_rewriter import rewrite_lars_syntax
+            base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=self.duckdb_conn)
 
             styled_print(f"[{self.session_id}]   {S.QUERY} Executing base: {base_sql[:80]}...")
 
@@ -6876,19 +6871,13 @@ class ClientConnection:
                     try:
                         import pandas as pd
                         from ..sql_tools.pipeline_executor import execute_pipeline_with_into
-                        from ..sql_tools.semantic_rewriter_v2 import rewrite_semantic_sql_v2
-                        from ..sql_tools.semantic_operators import rewrite_semantic_operators
+                        from ..sql_rewriter import rewrite_lars_syntax
 
                         pipeline = parse_pipeline_syntax(original_query)
                         if pipeline and pipeline.stages:
-                            # Execute base SQL with semantic rewriting
+                            # Execute base SQL with unified rewriting (handles dimension functions, semantic operators, etc.)
                             base_sql = pipeline.base_sql
-                            v2_result = rewrite_semantic_sql_v2(base_sql)
-                            if v2_result.changed:
-                                base_sql = v2_result.sql_out
-                            rewritten = rewrite_semantic_operators(base_sql)
-                            if rewritten:
-                                base_sql = rewritten
+                            base_sql = rewrite_lars_syntax(base_sql, duckdb_conn=self.duckdb_conn)
 
                             # Execute base query
                             result = self.duckdb_conn.execute(base_sql)

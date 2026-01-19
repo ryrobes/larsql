@@ -1,0 +1,126 @@
+cascade_id: pipeline_pivot
+internal: true
+description: |
+  PIPELINE cascade for smart pivoting (cross-tabulation) of query results.
+
+  SQL PIVOT syntax is notoriously painful - different across databases,
+  no dynamic pivots in most dialects, and confusing syntax. This operator
+  makes pivoting easy with natural language or simple parameters.
+
+  Usage examples:
+      SELECT * FROM sales THEN PIVOT 'revenue by region for each product'
+      SELECT * FROM data THEN PIVOT('category', 'amount')
+      SELECT * FROM data THEN PIVOT('category', 'amount', 'avg')
+
+  The LLM analyzes the data structure and pivot request to:
+  - Identify which column provides pivot values (becomes column headers)
+  - Identify which column(s) to aggregate as values
+  - Determine appropriate aggregation (SUM default for numbers)
+  - Handle dynamic discovery of pivot values
+
+inputs_schema:
+  prompt: Pivot description - natural language or explicit column names
+  _table: Query results as JSON records
+  _table_columns: List of column names
+  _table_row_count: Number of rows
+
+sql_function:
+  name: PIVOT
+  description: Transform rows to columns with smart pivot/cross-tabulation
+  args:
+    - name: prompt
+      type: VARCHAR
+    - name: _table
+      type: TABLE
+  returns: TABLE
+  shape: PIPELINE
+  operators:
+    - 'THEN PIVOT {{ prompt }}'
+    - 'THEN PIVOT({{ prompt }})'
+  cache: false
+
+cells:
+  - name: pivot_table
+    model: google/gemini-2.5-flash-lite
+    instructions: |
+      You are a data transformation expert. Pivot (cross-tabulate) the provided data.
+
+      PIVOT REQUEST: {{ input.prompt }}
+
+      DATA ({{ input._table_row_count }} rows, columns: {{ input._table_columns | join(', ') }}):
+      {{ input._table | tojson }}
+
+      Your task is to transform this data from "long" format to "wide" format by:
+      1. Identifying the INDEX column(s) - values that stay as row identifiers
+      2. Identifying the PIVOT column - unique values become new column headers
+      3. Identifying the VALUE column(s) - data that fills the pivoted cells
+      4. Applying aggregation if multiple values exist for the same index+pivot combination
+
+      INTERPRETATION GUIDELINES:
+      - If prompt mentions "X by Y" → pivot on Y, showing X values
+      - If prompt is just column names like "category, amount" → pivot on first, aggregate second
+      - If prompt mentions aggregation (sum, avg, count, max, min) → use that function
+      - Default aggregation for numbers is SUM
+      - Default aggregation for text is first non-null value or concatenation
+
+      Return JSON with this EXACT structure:
+      {
+        "pivot_config": {
+          "index_columns": ["col1", "col2"],
+          "pivot_column": "category",
+          "value_columns": ["amount"],
+          "aggregation": "sum"
+        },
+        "data": [
+          {"product": "Widget", "north_revenue": 100, "south_revenue": 150, "east_revenue": null},
+          {"product": "Gadget", "north_revenue": 200, "south_revenue": null, "east_revenue": 75}
+        ]
+      }
+
+      COLUMN NAMING RULES:
+      - Pivoted columns: {pivot_value}_{value_column} e.g., "north_revenue", "2024_sales"
+      - If only one value column, can omit suffix: "north", "south", "east"
+      - Clean up values for column names: lowercase, replace spaces with underscores
+      - Preserve index column names exactly as in input
+
+      AGGREGATION RULES:
+      - SUM (default for numbers): Add values for same index+pivot combination
+      - AVG: Calculate mean
+      - COUNT: Count occurrences
+      - MAX/MIN: Take maximum/minimum value
+      - FIRST: Take first non-null value (for text)
+
+      NULL HANDLING:
+      - Use null for missing pivot+index combinations (not 0 or empty string)
+
+      CRITICAL:
+      - The "data" array must contain the fully pivoted table
+      - Each row must have the same columns
+      - Index columns + all pivoted value columns must be present in every row
+
+    output_schema:
+      type: object
+      required:
+        - data
+        - pivot_config
+      properties:
+        pivot_config:
+          type: object
+          properties:
+            index_columns:
+              type: array
+              items:
+                type: string
+            pivot_column:
+              type: string
+            value_columns:
+              type: array
+              items:
+                type: string
+            aggregation:
+              type: string
+        data:
+          type: array
+
+    rules:
+      max_turns: 1
